@@ -3,8 +3,4 @@
 /**
  * Response for POST /api/classify (202 Accepted).
  */
-export type ClassifyResponse = {
-  jobId: number
-  totalSessions: number
-  status: string
-}
+export type ClassifyResponse = { jobId: number; totalSessions: number; status: string }

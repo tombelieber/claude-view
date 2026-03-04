@@ -1241,6 +1241,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_classification_job_serde_round_trip_with_nullable_cost_and_tokens() {
+        let job = ClassificationJob {
+            id: 42,
+            started_at: "2026-03-05T00:00:00Z".to_string(),
+            completed_at: Some("2026-03-05T00:01:00Z".to_string()),
+            total_sessions: 10,
+            classified_count: 8,
+            skipped_count: 1,
+            failed_count: 1,
+            provider: "claude-cli".to_string(),
+            model: "claude-haiku-4-5-20251001".to_string(),
+            status: ClassificationJobStatus::Completed,
+            error_message: None,
+            actual_cost_cents: None,
+            tokens_used: None,
+        };
+
+        let json = serde_json::to_string(&job).unwrap();
+        assert!(json.contains("\"actualCostCents\":null"));
+        assert!(json.contains("\"tokensUsed\":null"));
+
+        let parsed: ClassificationJob = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, 42);
+        assert_eq!(parsed.actual_cost_cents, None);
+        assert_eq!(parsed.tokens_used, None);
+        assert_eq!(parsed.status, ClassificationJobStatus::Completed);
+    }
+
     // ============================================================================
     // parse_model_id tests
     // ============================================================================

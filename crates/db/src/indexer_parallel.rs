@@ -779,6 +779,97 @@ fn parse_file_bytes(path: &std::path::Path) -> ParseResult {
     }
 }
 
+fn merge_subagent_parse_result(parent: &mut ParseResult, subagent: ParseResult) {
+    // Preserve existing token + turn merge behavior.
+    parent.deep.total_input_tokens += subagent.deep.total_input_tokens;
+    parent.deep.total_output_tokens += subagent.deep.total_output_tokens;
+    parent.deep.cache_read_tokens += subagent.deep.cache_read_tokens;
+    parent.deep.cache_creation_tokens += subagent.deep.cache_creation_tokens;
+
+    // Merge raw invocation-backed productivity signals so parent metrics reflect
+    // parent + subagent workload under one attributed session.
+    parent.deep.tool_counts.edit += subagent.deep.tool_counts.edit;
+    parent.deep.tool_counts.read += subagent.deep.tool_counts.read;
+    parent.deep.tool_counts.bash += subagent.deep.tool_counts.bash;
+    parent.deep.tool_counts.write += subagent.deep.tool_counts.write;
+    parent.deep.tool_call_count += subagent.deep.tool_call_count;
+    parent.deep.files_read.extend(subagent.deep.files_read);
+    parent.deep.files_edited.extend(subagent.deep.files_edited);
+    parent
+        .deep
+        .files_touched
+        .extend(subagent.deep.files_touched);
+    parent.deep.skills_used.extend(subagent.deep.skills_used);
+
+    for model in subagent.models_seen {
+        if !parent.models_seen.contains(&model) {
+            parent.models_seen.push(model);
+        }
+    }
+    parent.turns.extend(subagent.turns);
+    parent.raw_invocations.extend(subagent.raw_invocations);
+}
+
+fn recompute_merged_productivity_metrics(result: &mut ParseResult) {
+    // files_read: keep deduplicated vector + count contract
+    let mut files_read_unique = std::mem::take(&mut result.deep.files_read);
+    files_read_unique.sort();
+    files_read_unique.dedup();
+    result.deep.files_read_count = files_read_unique.len() as u32;
+    result.deep.files_read = files_read_unique;
+
+    // files_edited: preserve all occurrences for re-edit derivation
+    let mut files_edited_unique = result.deep.files_edited.clone();
+    files_edited_unique.sort();
+    files_edited_unique.dedup();
+    result.deep.files_edited_count = files_edited_unique.len() as u32;
+    result.deep.reedited_files_count = count_reedited_files(&result.deep.files_edited);
+
+    // ai_lines_* are derived from raw invocations, so recompute from merged set.
+    let ai_line_count = count_ai_lines(
+        result
+            .raw_invocations
+            .iter()
+            .map(|inv| (inv.name.as_str(), &inv.input))
+            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i))),
+    );
+    result.deep.ai_lines_added = ai_line_count.lines_added;
+    result.deep.ai_lines_removed = ai_line_count.lines_removed;
+
+    result.deep.skills_used.sort();
+    result.deep.skills_used.dedup();
+    result.deep.files_touched.sort();
+    result.deep.files_touched.dedup();
+}
+
+fn merge_subagent_workload(parent_jsonl_path: &Path, result: &mut ParseResult) {
+    let subagent_dir = parent_jsonl_path.with_extension("").join("subagents");
+    if !subagent_dir.is_dir() {
+        return;
+    }
+
+    let Ok(entries) = std::fs::read_dir(&subagent_dir) else {
+        return;
+    };
+
+    let mut subagent_jsonls: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .collect();
+    subagent_jsonls.sort();
+
+    if subagent_jsonls.is_empty() {
+        return;
+    }
+
+    for sub_path in subagent_jsonls {
+        let sub_result = parse_file_bytes(&sub_path);
+        merge_subagent_parse_result(result, sub_result);
+    }
+
+    recompute_merged_productivity_metrics(result);
+}
+
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut result = ParseResult::default();
     let diag = &mut result.diagnostics;
@@ -794,10 +885,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut first_timestamp: Option<i64> = None;
     let mut last_timestamp: Option<i64> = None;
 
-    // Dedup: track seen (message_id, request_id) pairs to avoid counting
-    // tokens multiple times when Claude Code splits one API response into
-    // multiple JSONL lines (one per content block: thinking, text, tool_use).
-    let mut seen_api_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Dedup for API-call counting and usage-token counting.
+    // API-call count should increment once per response even when usage is absent.
+    // Usage tokens should only be counted once per response when a usage payload exists.
+    let mut seen_api_calls_for_count: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut seen_api_calls_for_usage: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     // Count of unique API calls (not inflated by content block splitting).
     // For legacy data without IDs, each line counts as unique (no dedup possible).
     let mut unique_api_call_count = 0u32;
@@ -1022,7 +1116,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         &mut files_edited_all,
                         &mut first_timestamp,
                         &mut last_timestamp,
-                        &mut seen_api_calls,
+                        &mut seen_api_calls_for_count,
+                        &mut seen_api_calls_for_usage,
                         &mut unique_api_call_count,
                     );
 
@@ -1214,7 +1309,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     &mut tool_call_count,
                     &mut files_read_all,
                     &mut files_edited_all,
-                    &mut seen_api_calls,
+                    &mut seen_api_calls_for_count,
+                    &mut seen_api_calls_for_usage,
                     &mut unique_api_call_count,
                 );
 
@@ -1394,6 +1490,78 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 // Typed handler functions for dispatched parsing
 // ---------------------------------------------------------------------------
 
+fn usage_block_has_token_payload(usage: &UsageBlock) -> bool {
+    usage.input_tokens.is_some()
+        || usage.output_tokens.is_some()
+        || usage.cache_read_input_tokens.is_some()
+        || usage.cache_creation_input_tokens.is_some()
+        || usage
+            .cache_creation
+            .as_ref()
+            .and_then(|c| c.ephemeral_5m_input_tokens)
+            .is_some()
+        || usage
+            .cache_creation
+            .as_ref()
+            .and_then(|c| c.ephemeral_1h_input_tokens)
+            .is_some()
+}
+
+fn value_usage_has_token_payload(usage: Option<&serde_json::Value>) -> bool {
+    usage
+        .map(|u| {
+            u.get("input_tokens").and_then(|v| v.as_u64()).is_some()
+                || u.get("output_tokens").and_then(|v| v.as_u64()).is_some()
+                || u.get("cache_read_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation")
+                    .and_then(|c| c.get("ephemeral_5m_input_tokens"))
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation")
+                    .and_then(|c| c.get("ephemeral_1h_input_tokens"))
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+        })
+        .unwrap_or(false)
+}
+
+fn should_count_api_call(
+    msg_id: Option<&str>,
+    req_id: Option<&str>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+) -> bool {
+    match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
+        }
+        _ => true, // no IDs available — count each legacy line
+    }
+}
+
+fn should_count_usage_block(
+    msg_id: Option<&str>,
+    req_id: Option<&str>,
+    has_usage_payload: bool,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+) -> bool {
+    if !has_usage_payload {
+        return false;
+    }
+    match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
+        }
+        _ => true, // no IDs available — count it (legacy data)
+    }
+}
+
 /// Handle an assistant line parsed via typed `AssistantLine` struct.
 /// Produces identical output to the Value-based path.
 ///
@@ -1414,7 +1582,8 @@ fn handle_assistant_line(
     files_edited_all: &mut Vec<String>,
     first_timestamp: &mut Option<i64>,
     last_timestamp: &mut Option<i64>,
-    seen_api_calls: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_count: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_usage: &mut std::collections::HashSet<String>,
     unique_api_call_count: &mut u32,
 ) {
     diag.lines_assistant += 1;
@@ -1431,23 +1600,31 @@ fn handle_assistant_line(
     }
 
     if let Some(message) = parsed.message {
-        // Dedup: check if this is a duplicate content block from the same API response.
-        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
-        // each carrying the full message-level usage. Only count tokens for the first block.
-        let is_first_block = match (message.id.as_deref(), parsed.request_id.as_deref()) {
-            (Some(msg_id), Some(req_id)) => {
-                let key = format!("{}:{}", msg_id, req_id);
-                seen_api_calls.insert(key) // true if newly inserted
-            }
-            _ => true, // no IDs available — count it (legacy data)
-        };
+        // Dedup: count usage only once per API response.
+        // If the first content block has no usage payload, wait for a later block
+        // with usage instead of consuming the dedup key and dropping telemetry.
+        let has_usage_payload = message
+            .usage
+            .as_ref()
+            .is_some_and(usage_block_has_token_payload);
+        let count_api_call = should_count_api_call(
+            message.id.as_deref(),
+            parsed.request_id.as_deref(),
+            seen_api_calls_for_count,
+        );
+        let count_usage_block = should_count_usage_block(
+            message.id.as_deref(),
+            parsed.request_id.as_deref(),
+            has_usage_payload,
+            seen_api_calls_for_usage,
+        );
 
-        if is_first_block {
+        if count_api_call {
             *unique_api_call_count += 1;
         }
 
         // Extract token usage — only for first content block per API response
-        if is_first_block {
+        if count_usage_block {
             if let Some(ref usage) = message.usage {
                 if let Some(v) = usage.input_tokens {
                     deep.total_input_tokens += v;
@@ -1484,8 +1661,9 @@ fn handle_assistant_line(
                 _ => "text".to_string(),
             };
 
-            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if is_first_block {
+            // Duplicate/no-usage blocks keep token fields as NULL (unknown/not-counted),
+            // not synthetic zero.
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if count_usage_block {
                 (
                     message.usage.as_ref().and_then(|u| u.input_tokens),
                     message.usage.as_ref().and_then(|u| u.output_tokens),
@@ -1509,7 +1687,7 @@ fn handle_assistant_line(
                         .and_then(|c| c.ephemeral_1h_input_tokens),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0), Some(0), Some(0))
+                (None, None, None, None, None, None)
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -1620,7 +1798,8 @@ fn handle_assistant_value(
     tool_call_count: &mut u32,
     files_read_all: &mut Vec<String>,
     files_edited_all: &mut Vec<String>,
-    seen_api_calls: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_count: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_usage: &mut std::collections::HashSet<String>,
     unique_api_call_count: &mut u32,
 ) {
     // Dedup check — same logic as handle_assistant_line
@@ -1629,21 +1808,19 @@ fn handle_assistant_value(
         .and_then(|m| m.get("id"))
         .and_then(|v| v.as_str());
     let req_id = value.get("requestId").and_then(|v| v.as_str());
-    let is_first_block = match (msg_id, req_id) {
-        (Some(mid), Some(rid)) => {
-            let key = format!("{}:{}", mid, rid);
-            seen_api_calls.insert(key)
-        }
-        _ => true,
-    };
+    let usage_value = value.get("message").and_then(|m| m.get("usage"));
+    let has_usage_payload = value_usage_has_token_payload(usage_value);
+    let count_api_call = should_count_api_call(msg_id, req_id, seen_api_calls_for_count);
+    let count_usage_block =
+        should_count_usage_block(msg_id, req_id, has_usage_payload, seen_api_calls_for_usage);
 
-    if is_first_block {
+    if count_api_call {
         *unique_api_call_count += 1;
     }
 
     // Extract token usage from .message.usage — only for first block
-    if is_first_block {
-        if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+    if count_usage_block {
+        if let Some(usage) = usage_value {
             if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
                 deep.total_input_tokens += v;
             }
@@ -1693,8 +1870,9 @@ fn handle_assistant_value(
                 .to_string();
             let timestamp = extract_timestamp_from_value(value);
 
-            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if is_first_block {
+            // Duplicate/no-usage blocks keep token fields as NULL (unknown/not-counted),
+            // not synthetic zero.
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if count_usage_block {
                 (
                     usage
                         .and_then(|u| u.get("input_tokens"))
@@ -1718,7 +1896,7 @@ fn handle_assistant_value(
                         .and_then(|v| v.as_u64()),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0), Some(0), Some(0))
+                (None, None, None, None, None, None)
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -2501,35 +2679,7 @@ where
                     }
                 };
 
-                // Merge subagent tokens into the parent session.
-                // Claude Code spawns subagents (Task tool) that write to
-                // <session-uuid>/subagents/agent-*.jsonl — these are separate
-                // API calls not included in the parent JSONL's token counts.
-                let subagent_dir = path.with_extension("").join("subagents");
-                if subagent_dir.is_dir() {
-                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
-                        for entry in entries.flatten() {
-                            let sub_path = entry.path();
-                            if sub_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                                continue;
-                            }
-                            let sub_result = parse_file_bytes(&sub_path);
-                            result.deep.total_input_tokens += sub_result.deep.total_input_tokens;
-                            result.deep.total_output_tokens += sub_result.deep.total_output_tokens;
-                            result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
-                            result.deep.cache_creation_tokens +=
-                                sub_result.deep.cache_creation_tokens;
-                            // Include sub-agent turns so total_cost_usd (computed later from
-                            // per-turn pricing) reflects the same merged workload as tokens.
-                            for model in &sub_result.models_seen {
-                                if !result.models_seen.contains(model) {
-                                    result.models_seen.push(model.clone());
-                                }
-                            }
-                            result.turns.extend(sub_result.turns);
-                        }
-                    }
-                }
+                merge_subagent_workload(&path, &mut result);
 
                 (result, fsize, fmtime)
             })
@@ -3156,6 +3306,7 @@ where
                 tokio::task::spawn_blocking(move || parse_file_bytes(&path_for_parse))
                     .await
                     .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+            merge_subagent_workload(&path, &mut parse_result);
 
             let meta = &parse_result.deep;
 
@@ -4497,6 +4648,195 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_pass_2_parent_only_vs_subagent_productivity_parity() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let parent_content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_parent","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/shared.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs","old_string":"old\nline","new_string":"new\nline\nx"}},{"type":"tool_use","name":"Bash","input":{"command":"echo parent"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_parent"}
+"#;
+        let parent_only_jsonl = project_dir.join("sess-parent-only.jsonl");
+        std::fs::write(&parent_only_jsonl, parent_content).unwrap();
+
+        let parent_with_sub_jsonl = project_dir.join("sess-with-sub.jsonl");
+        std::fs::write(&parent_with_sub_jsonl, parent_content).unwrap();
+
+        let subagent_dir = project_dir.join("sess-with-sub").join("subagents");
+        std::fs::create_dir_all(&subagent_dir).unwrap();
+        let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
+{"type":"assistant","message":{"id":"msg_sub1","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/main.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"src/lib.rs","content":"alpha\nbeta\n"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/lib.rs","old_string":"alpha\nbeta\n","new_string":"alpha\nbeta\ngamma\n"}}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_sub1"}
+"#;
+        std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
+        let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
+{"type":"assistant","message":{"id":"msg_sub2","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/extra.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs","old_string":"new\nline\nx","new_string":"final\nline\nx"}},{"type":"tool_use","name":"Bash","input":{"command":"echo sub"}}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_sub2"}
+"#;
+        std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
+
+        let index = format!(
+            r#"[{{"sessionId":"sess-parent-only","fullPath":"{}","messageCount":2,"isSidechain":false}},{{"sessionId":"sess-with-sub","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            parent_only_jsonl.to_string_lossy().replace('\\', "\\\\"),
+            parent_with_sub_jsonl
+                .to_string_lossy()
+                .replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 2);
+
+        let parent_row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                tool_counts_edit,
+                tool_counts_read,
+                tool_counts_bash,
+                tool_counts_write,
+                tool_call_count,
+                ai_lines_added,
+                ai_lines_removed,
+                files_read_count,
+                files_edited_count,
+                reedited_files_count,
+                total_input_tokens,
+                total_output_tokens,
+                files_read,
+                files_edited
+            FROM sessions
+            WHERE id = 'sess-parent-only'
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        let with_sub_row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                tool_counts_edit,
+                tool_counts_read,
+                tool_counts_bash,
+                tool_counts_write,
+                tool_call_count,
+                ai_lines_added,
+                ai_lines_removed,
+                files_read_count,
+                files_edited_count,
+                reedited_files_count,
+                total_input_tokens,
+                total_output_tokens,
+                files_read,
+                files_edited
+            FROM sessions
+            WHERE id = 'sess-with-sub'
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        let parent_files_read: Vec<String> = serde_json::from_str(&parent_row.12).unwrap();
+        let parent_files_edited: Vec<String> = serde_json::from_str(&parent_row.13).unwrap();
+        let with_sub_files_read: Vec<String> = serde_json::from_str(&with_sub_row.12).unwrap();
+        let with_sub_files_edited: Vec<String> = serde_json::from_str(&with_sub_row.13).unwrap();
+
+        // Parent-only baseline
+        assert_eq!(parent_row.0, 1); // edit
+        assert_eq!(parent_row.1, 1); // read
+        assert_eq!(parent_row.2, 1); // bash
+        assert_eq!(parent_row.3, 0); // write
+        assert_eq!(parent_row.4, 3); // tool_call_count
+        assert_eq!(parent_row.5, 3); // ai_lines_added
+        assert_eq!(parent_row.6, 2); // ai_lines_removed
+        assert_eq!(parent_row.7, 1); // files_read_count
+        assert_eq!(parent_row.8, 1); // files_edited_count
+        assert_eq!(parent_row.9, 0); // reedited_files_count
+        assert_eq!(parent_row.10, Some(100)); // total_input_tokens
+        assert_eq!(parent_row.11, Some(50)); // total_output_tokens
+        assert_eq!(parent_files_read, vec!["src/shared.rs".to_string()]);
+        assert_eq!(parent_files_edited, vec!["src/main.rs".to_string()]);
+
+        // Parent + subagent merged parity
+        assert_eq!(with_sub_row.0, 3); // edit
+        assert_eq!(with_sub_row.1, 3); // read
+        assert_eq!(with_sub_row.2, 2); // bash
+        assert_eq!(with_sub_row.3, 1); // write
+        assert_eq!(with_sub_row.4, 9); // tool_call_count
+        assert_eq!(with_sub_row.5, 11); // ai_lines_added
+        assert_eq!(with_sub_row.6, 7); // ai_lines_removed
+        assert_eq!(with_sub_row.7, 3); // files_read_count (unique union)
+        assert_eq!(with_sub_row.8, 2); // files_edited_count (unique union)
+        assert_eq!(with_sub_row.9, 2); // main.rs + lib.rs edited 2+ times
+        assert_eq!(with_sub_row.10, Some(240)); // 100 + 80 + 60
+        assert_eq!(with_sub_row.11, Some(100)); // 50 + 30 + 20
+        assert_eq!(
+            with_sub_files_read,
+            vec![
+                "src/extra.rs".to_string(),
+                "src/main.rs".to_string(),
+                "src/shared.rs".to_string()
+            ]
+        );
+        assert_eq!(with_sub_files_edited.len(), 4);
+        assert_eq!(
+            with_sub_files_edited
+                .iter()
+                .filter(|p| p.as_str() == "src/main.rs")
+                .count(),
+            2
+        );
+        assert_eq!(
+            with_sub_files_edited
+                .iter()
+                .filter(|p| p.as_str() == "src/lib.rs")
+                .count(),
+            2
+        );
+
+        // Explicit parity deltas (merged - parent = subagent contribution)
+        assert_eq!(with_sub_row.5 - parent_row.5, 8); // ai_lines_added delta
+        assert_eq!(with_sub_row.6 - parent_row.6, 5); // ai_lines_removed delta
+        assert_eq!(with_sub_row.1 - parent_row.1, 2); // read tool delta
+        assert_eq!(with_sub_row.0 - parent_row.0, 2); // edit tool delta
+        assert_eq!(with_sub_row.3 - parent_row.3, 1); // write tool delta
+    }
+
+    #[tokio::test]
     async fn test_pass_2_sets_null_cost_when_model_unpriced() {
         let tmp = tempfile::TempDir::new().unwrap();
         let claude_dir = tmp.path().to_path_buf();
@@ -5455,8 +5795,29 @@ mod tests {
         // but only the FIRST turn should carry token counts
         assert_eq!(result.turns.len(), 3);
         assert_eq!(result.turns[0].input_tokens, Some(100));
-        assert_eq!(result.turns[1].input_tokens, Some(0)); // zeroed duplicate
-        assert_eq!(result.turns[2].input_tokens, Some(0)); // zeroed duplicate
+        assert_eq!(result.turns[1].input_tokens, None); // duplicate block: unknown/not-counted
+        assert_eq!(result.turns[2].input_tokens, None); // duplicate block: unknown/not-counted
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_waits_for_usage_payload() {
+        // First block has no usage payload; second block has the real usage.
+        // Dedup must count usage when it appears, not burn the key on the first block.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_010","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_010","model":"claude-opus-4-6","content":[{"type":"thinking"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_010","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_010","model":"claude-opus-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":120,"output_tokens":40,"cache_read_input_tokens":300,"cache_creation_input_tokens":20}}}
+"#;
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.api_call_count, 1);
+        assert_eq!(result.deep.total_input_tokens, 120);
+        assert_eq!(result.deep.total_output_tokens, 40);
+        assert_eq!(result.deep.cache_read_tokens, 300);
+        assert_eq!(result.deep.cache_creation_tokens, 20);
+
+        assert_eq!(result.turns.len(), 2);
+        assert_eq!(result.turns[0].input_tokens, None); // no-usage block
+        assert_eq!(result.turns[1].input_tokens, Some(120)); // usage-bearing block
     }
 
     #[test]
@@ -5606,10 +5967,10 @@ mod tests {
         assert_eq!(result.turns.len(), 5);
         // First block of each API call has tokens, rest zeroed
         assert_eq!(result.turns[0].input_tokens, Some(1500)); // req_001 first
-        assert_eq!(result.turns[1].input_tokens, Some(0)); // req_001 dup
+        assert_eq!(result.turns[1].input_tokens, None); // req_001 dup
         assert_eq!(result.turns[2].input_tokens, Some(2000)); // req_002 first
-        assert_eq!(result.turns[3].input_tokens, Some(0)); // req_002 dup
-        assert_eq!(result.turns[4].input_tokens, Some(0)); // req_002 dup
+        assert_eq!(result.turns[3].input_tokens, None); // req_002 dup
+        assert_eq!(result.turns[4].input_tokens, None); // req_002 dup
 
         // user_prompt_count: 2 user lines (one is tool_result, still counted)
         assert_eq!(result.deep.user_prompt_count, 2);

@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import type { CategoriesResponse } from '../types/generated/CategoriesResponse'
+import type { CategoriesResponse as GeneratedCategoriesResponse } from '../types/generated/CategoriesResponse'
+import type { AnalyticsScopeContractMeta } from './use-dashboard'
 import type { TimeRange } from './use-insights'
+
+type CategoriesMetaWithScope = GeneratedCategoriesResponse['meta'] & AnalyticsScopeContractMeta
+
+export type CategoriesResponse = Omit<GeneratedCategoriesResponse, 'meta'> & {
+  meta: CategoriesMetaWithScope
+}
 
 // ============================================================================
 // Helpers
