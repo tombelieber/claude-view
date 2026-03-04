@@ -99,12 +99,26 @@ impl SessionAccumulator {
         // -----------------------------------------------------------------
         // Content-block dedup: Claude Code writes one JSONL line per content
         // block (thinking, text, tool_use), each carrying the full message-level
-        // usage. Only count tokens/cost for the first block per API response.
+        // usage. Count tokens/cost only once per API response. Important: do NOT
+        // mark a response as seen if this block has no usage/cost fields, so a
+        // later block with actual usage is still counted.
         // -----------------------------------------------------------------
-        let is_first_block = match (line.message_id.as_deref(), line.request_id.as_deref()) {
+        let has_measurement_data = line.input_tokens.is_some()
+            || line.output_tokens.is_some()
+            || line.cache_read_tokens.is_some()
+            || line.cache_creation_tokens.is_some()
+            || line.cache_creation_5m_tokens.is_some()
+            || line.cache_creation_1hr_tokens.is_some()
+            || line.cost_usd.is_some();
+
+        let should_count_block = match (line.message_id.as_deref(), line.request_id.as_deref()) {
             (Some(msg_id), Some(req_id)) => {
-                let key = format!("{}:{}", msg_id, req_id);
-                self.seen_api_calls.insert(key) // true if newly inserted
+                if has_measurement_data {
+                    let key = format!("{}:{}", msg_id, req_id);
+                    self.seen_api_calls.insert(key) // true if newly inserted
+                } else {
+                    false
+                }
             }
             _ => true, // no IDs available — count it (legacy data / live streaming)
         };
@@ -144,7 +158,7 @@ impl SessionAccumulator {
         // -----------------------------------------------------------------
         // Token + cost accumulation — guarded by dedup
         // -----------------------------------------------------------------
-        if is_first_block {
+        if should_count_block {
             if let Some(input) = line.input_tokens {
                 self.tokens.input_tokens += input;
                 self.tokens.total_tokens += input;
@@ -178,7 +192,9 @@ impl SessionAccumulator {
             let has_tokens = line.input_tokens.is_some()
                 || line.output_tokens.is_some()
                 || line.cache_read_tokens.is_some()
-                || line.cache_creation_tokens.is_some();
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
             if has_tokens {
                 let turn_tokens = TokenUsage {
                     input_tokens: line.input_tokens.unwrap_or(0),
@@ -193,8 +209,7 @@ impl SessionAccumulator {
                 self.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
                 self.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
                 self.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
-                self.accumulated_cost.cache_creation_cost_usd +=
-                    turn_cost.cache_creation_cost_usd;
+                self.accumulated_cost.cache_creation_cost_usd += turn_cost.cache_creation_cost_usd;
                 self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
                 self.accumulated_cost.total_usd += turn_cost.total_usd;
                 if turn_cost.is_estimated {
@@ -748,6 +763,79 @@ mod tests {
         // Both counted since no IDs for dedup
         assert_eq!(data.tokens.input_tokens, 3000);
         assert_eq!(data.tokens.output_tokens, 1300);
+    }
+
+    #[test]
+    fn test_content_block_dedup_first_block_without_usage() {
+        // If the first block has IDs but no usage/cost fields, it should NOT
+        // consume the dedup key. Later block with usage must still be counted.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut empty_first = empty_line();
+        empty_first.line_type = LineType::Assistant;
+        empty_first.message_id = Some("msg1".to_string());
+        empty_first.request_id = Some("req1".to_string());
+        acc.process_line(&empty_first, 0, &pricing);
+
+        let mut usage_later = empty_line();
+        usage_later.line_type = LineType::Assistant;
+        usage_later.input_tokens = Some(1200);
+        usage_later.output_tokens = Some(300);
+        usage_later.message_id = Some("msg1".to_string());
+        usage_later.request_id = Some("req1".to_string());
+        acc.process_line(&usage_later, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 1200);
+        assert_eq!(data.tokens.output_tokens, 300);
+        assert_eq!(data.tokens.total_tokens, 1500);
+    }
+
+    #[test]
+    fn test_content_block_dedup_cost_usd_only() {
+        // costUSD-only duplicate blocks should still dedup correctly.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut block1 = empty_line();
+        block1.line_type = LineType::Assistant;
+        block1.cost_usd = Some(0.25);
+        block1.message_id = Some("msg-cost".to_string());
+        block1.request_id = Some("req-cost".to_string());
+        acc.process_line(&block1, 0, &pricing);
+
+        let mut block2 = empty_line();
+        block2.line_type = LineType::Assistant;
+        block2.cost_usd = Some(0.25);
+        block2.message_id = Some("msg-cost".to_string());
+        block2.request_id = Some("req-cost".to_string());
+        acc.process_line(&block2, 0, &pricing);
+
+        assert_eq!(acc.total_cost_usd, 0.25);
+    }
+
+    #[test]
+    fn test_content_block_dedup_partial_ids_fallback() {
+        // Partial IDs are treated as fallback/no-dedup and both lines count.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(400);
+        line1.message_id = Some("msg-partial".to_string());
+        acc.process_line(&line1, 0, &pricing);
+
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(600);
+        line2.message_id = Some("msg-partial".to_string());
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 1000);
+        assert_eq!(data.tokens.total_tokens, 1000);
     }
 
     #[test]
