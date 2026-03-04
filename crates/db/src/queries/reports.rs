@@ -45,8 +45,13 @@ pub struct ReportPreview {
     pub project_count: i64,
     #[ts(type = "number")]
     pub total_duration_secs: i64,
+    /// Sum of priced session costs only (sessions with NULL total_cost_usd are excluded).
     #[ts(type = "number")]
     pub total_cost_cents: i64,
+    /// True when one or more sessions in range have unpriced usage.
+    pub has_unpriced_usage: bool,
+    #[ts(type = "number")]
+    pub unpriced_session_count: i64,
     pub projects: Vec<ProjectPreview>,
 }
 
@@ -323,13 +328,14 @@ impl Database {
     /// `start_ts` and `end_ts` are unix timestamps for the range bounds.
     pub async fn get_report_preview(&self, start_ts: i64, end_ts: i64) -> DbResult<ReportPreview> {
         // Aggregate stats
-        let stats: (i64, i64, i64, i64, f64) = sqlx::query_as(
+        let stats: (i64, i64, i64, i64, Option<f64>, i64) = sqlx::query_as(
             r#"SELECT
                 COUNT(*) as session_count,
                 COUNT(DISTINCT project_display_name) as project_count,
                 COALESCE(SUM(duration_seconds), 0) as total_duration,
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as total_tokens,
-                COALESCE(SUM(total_cost_usd), 0.0) as total_cost_usd
+                SUM(total_cost_usd) as total_cost_usd,
+                SUM(CASE WHEN total_cost_usd IS NULL THEN 1 ELSE 0 END) as unpriced_session_count
             FROM valid_sessions
             WHERE first_message_at >= ? AND first_message_at <= ?"#,
         )
@@ -359,13 +365,17 @@ impl Database {
             })
             .collect();
 
-        let total_cost_cents = (stats.4 * 100.0).round() as i64;
+        let total_cost_cents = (stats.4.unwrap_or(0.0) * 100.0).round() as i64;
+        let unpriced_session_count = stats.5;
+        let has_unpriced_usage = unpriced_session_count > 0;
 
         Ok(ReportPreview {
             session_count: stats.0,
             project_count: stats.1,
             total_duration_secs: stats.2,
             total_cost_cents,
+            has_unpriced_usage,
+            unpriced_session_count,
             projects,
         })
     }

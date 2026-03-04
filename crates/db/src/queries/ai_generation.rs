@@ -48,20 +48,21 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        let model_rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        let model_rows: Vec<(String, i64, i64)> = sqlx::query_as(
             r#"
             SELECT
-                primary_model,
-                COALESCE(SUM(total_input_tokens), 0) as input_tokens,
-                COALESCE(SUM(total_output_tokens), 0) as output_tokens
-            FROM valid_sessions
-            WHERE last_message_at >= ?1
-              AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3)
-              AND (?4 IS NULL OR git_branch = ?4)
-              AND primary_model IS NOT NULL
-            GROUP BY primary_model
-            ORDER BY (COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0)) DESC
+                t.model_id,
+                COALESCE(SUM(COALESCE(t.input_tokens, 0)), 0) as input_tokens,
+                COALESCE(SUM(COALESCE(t.output_tokens, 0)), 0) as output_tokens
+            FROM valid_sessions s
+            JOIN turns t ON t.session_id = s.id
+            WHERE s.last_message_at >= ?1
+              AND s.last_message_at <= ?2
+              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?4 IS NULL OR s.git_branch = ?4)
+              AND t.model_id IS NOT NULL
+            GROUP BY t.model_id
+            ORDER BY (COALESCE(SUM(COALESCE(t.input_tokens, 0)), 0) + COALESCE(SUM(COALESCE(t.output_tokens, 0)), 0)) DESC
             "#,
         )
         .bind(from)
@@ -73,12 +74,10 @@ impl Database {
 
         let tokens_by_model: Vec<TokensByModel> = model_rows
             .into_iter()
-            .filter_map(|(model, input_tokens, output_tokens)| {
-                model.map(|m| TokensByModel {
-                    model: m,
-                    input_tokens,
-                    output_tokens,
-                })
+            .map(|(model, input_tokens, output_tokens)| TokensByModel {
+                model,
+                input_tokens,
+                output_tokens,
             })
             .collect();
 
@@ -165,21 +164,22 @@ impl Database {
         let from = from.unwrap_or(1);
         let to = to.unwrap_or(i64::MAX);
 
-        let rows: Vec<(Option<String>, i64, i64, i64, i64)> = sqlx::query_as(
+        let rows: Vec<(String, i64, i64, i64, i64)> = sqlx::query_as(
             r#"
             SELECT
-                primary_model,
-                COALESCE(SUM(total_input_tokens), 0),
-                COALESCE(SUM(total_output_tokens), 0),
-                COALESCE(SUM(cache_read_tokens), 0),
-                COALESCE(SUM(cache_creation_tokens), 0)
-            FROM valid_sessions
-            WHERE last_message_at >= ?1
-              AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3)
-              AND (?4 IS NULL OR git_branch = ?4)
-              AND primary_model IS NOT NULL
-            GROUP BY primary_model
+                t.model_id,
+                COALESCE(SUM(COALESCE(t.input_tokens, 0)), 0),
+                COALESCE(SUM(COALESCE(t.output_tokens, 0)), 0),
+                COALESCE(SUM(COALESCE(t.cache_read_tokens, 0)), 0),
+                COALESCE(SUM(COALESCE(t.cache_creation_tokens, 0)), 0)
+            FROM valid_sessions s
+            JOIN turns t ON t.session_id = s.id
+            WHERE s.last_message_at >= ?1
+              AND s.last_message_at <= ?2
+              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?4 IS NULL OR s.git_branch = ?4)
+              AND t.model_id IS NOT NULL
+            GROUP BY t.model_id
             "#,
         )
         .bind(from)
@@ -189,11 +189,6 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(rows
-            .into_iter()
-            .filter_map(|(model, input, output, cache_read, cache_create)| {
-                model.map(|m| (m, input, output, cache_read, cache_create))
-            })
-            .collect())
+        Ok(rows)
     }
 }

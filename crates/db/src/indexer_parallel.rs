@@ -39,7 +39,8 @@ use crate::Database;
 /// Version 18: Per-turn fallback cost honors cache_creation split (5m/1h).
 /// Version 19: Remove JSONL top-level cost-field parsing path; compute from token usage only.
 /// Version 20: Strict cost integrity: if any turn model is unpriced, session total_cost_usd is NULL.
-pub const CURRENT_PARSE_VERSION: i32 = 20;
+/// Version 21: Source-message integrity hardening (role filtering, summary exclusion, strict tool_use LOC/path extraction).
+pub const CURRENT_PARSE_VERSION: i32 = 21;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -197,6 +198,27 @@ fn calculate_per_turn_cost(
     } else {
         Some(total)
     }
+}
+
+/// Resolve pricing map for indexing cost computation.
+///
+/// Uses cached pricing from SQLite when available, merged over defaults, then
+/// fills any missing tier fields.
+async fn load_indexing_pricing(db: &Database) -> HashMap<String, ModelPricing> {
+    let defaults = default_pricing();
+    let mut pricing = match crate::pricing::load_pricing_cache(db).await {
+        Ok(Some(cached)) => crate::pricing::merge_pricing(&defaults, &cached),
+        Ok(None) => defaults,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Failed to load cached pricing for indexing; using default pricing table"
+            );
+            defaults
+        }
+    };
+    fill_tiering_gaps(&mut pricing);
+    pricing
 }
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
@@ -554,9 +576,65 @@ pub struct ParseDiagnostics {
     pub timestamps_extracted: u32,
     pub timestamps_unparseable: u32,
     pub turns_extracted: u32,
+    pub unknown_source_role_count: u32,
+    pub derived_source_message_doc_count: u32,
+    pub source_message_non_source_provenance_count: u32,
 
     // Bytes
     pub bytes_total: u64,
+}
+
+const SOURCE_MESSAGE_ROLE_USER: &str = "user";
+const SOURCE_MESSAGE_ROLE_ASSISTANT: &str = "assistant";
+const SOURCE_MESSAGE_ROLE_TOOL: &str = "tool";
+const TOOL_INPUT_FILE_PATH_KEYS: [&str; 5] = [
+    "file_path",
+    "path",
+    "filename",
+    "filePath",
+    "entrypoint_path",
+];
+
+fn is_valid_source_message_role(role: &str) -> bool {
+    matches!(
+        role,
+        SOURCE_MESSAGE_ROLE_USER | SOURCE_MESSAGE_ROLE_ASSISTANT | SOURCE_MESSAGE_ROLE_TOOL
+    )
+}
+
+fn sanitize_source_search_messages(
+    messages: Vec<claude_view_core::SearchableMessage>,
+    diag: &mut ParseDiagnostics,
+) -> Vec<claude_view_core::SearchableMessage> {
+    messages
+        .into_iter()
+        .filter_map(|msg| {
+            if is_valid_source_message_role(msg.role.as_str()) {
+                Some(msg)
+            } else {
+                diag.unknown_source_role_count = diag.unknown_source_role_count.saturating_add(1);
+                None
+            }
+        })
+        .collect()
+}
+
+fn note_rejected_derived_source_doc(diag: &mut ParseDiagnostics) {
+    diag.derived_source_message_doc_count = diag.derived_source_message_doc_count.saturating_add(1);
+    diag.source_message_non_source_provenance_count = diag
+        .source_message_non_source_provenance_count
+        .saturating_add(1);
+}
+
+fn extract_tool_input_file_path(input: &serde_json::Value) -> Option<&str> {
+    for key in TOOL_INPUT_FILE_PATH_KEYS {
+        if let Some(path) = input.get(key).and_then(|v| v.as_str()) {
+            if !path.is_empty() {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 /// Zero-copy file data: holds either an mmap (large files) or a Vec (small files).
@@ -606,43 +684,60 @@ pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
     }
 }
 
-/// Extract lines added/removed from Edit or Write tool_use blocks.
+/// Extract lines added/removed from assistant.message.content tool_use blocks.
 ///
-/// For Edit: counts lines in old_string (removed) and new_string (added).
-/// For Write: counts lines in content (all added, none removed).
-///
-/// Returns (lines_added, lines_removed).
-fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
-    // Parse as JSON Value to access input fields
+/// LOC is derived only from Edit/Write tool inputs and aggregated across all
+/// tool_use blocks in the line.
+fn extract_loc_from_assistant_tool_uses(line: &[u8]) -> (u32, u32) {
     let value: serde_json::Value = match serde_json::from_slice(line) {
         Ok(v) => v,
         Err(_) => return (0, 0),
     };
 
-    let input = match value.get("input") {
-        Some(inp) => inp,
+    let content = match value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+    {
+        Some(c) => c,
         None => return (0, 0),
     };
 
-    if is_edit {
-        // Edit tool: old_string → removed, new_string → added
-        let old = input
-            .get("old_string")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
-        let new = input
-            .get("new_string")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
-        let old_lines = old.lines().count() as u32;
-        let new_lines = new.lines().count() as u32;
-        (new_lines, old_lines)
-    } else {
-        // Write tool: all lines are added
-        let content = input.get("content").and_then(|c| c.as_str()).unwrap_or("");
-        let lines = content.lines().count() as u32;
-        (lines, 0)
+    let mut added = 0u32;
+    let mut removed = 0u32;
+
+    for block in content {
+        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let input = match block.get("input") {
+            Some(v) => v,
+            None => continue,
+        };
+
+        match name {
+            "Edit" => {
+                let old = input
+                    .get("old_string")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                let new = input
+                    .get("new_string")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                removed = removed.saturating_add(old.lines().count() as u32);
+                added = added.saturating_add(new.lines().count() as u32);
+            }
+            "Write" => {
+                let content = input.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                added = added.saturating_add(content.lines().count() as u32);
+            }
+            _ => {}
+        }
     }
+
+    (added, removed)
 }
 
 /// Full JSON parser that extracts all 7 JSONL line types.
@@ -737,8 +832,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // Phase C: LOC estimation - SIMD finders for Edit/Write tool_use blocks
     let tool_use_finder = memmem::Finder::new(b"\"type\":\"tool_use\"");
-    let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
-    let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
     // Turn detection: tool_result user messages are continuations, not real turns
     let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
@@ -893,9 +986,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
                 let search_role = if is_tool_result && !is_human_tool_result {
-                    "tool"
+                    SOURCE_MESSAGE_ROLE_TOOL
                 } else {
-                    "user"
+                    SOURCE_MESSAGE_ROLE_USER
                 };
                 result
                     .search_messages
@@ -934,15 +1027,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     );
 
                     // Phase C: LOC estimation from Edit/Write tool_use blocks
-                    // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                    // SIMD pre-filter: only parse lines containing tool_use blocks.
                     if tool_use_finder.find(line).is_some() {
-                        let is_edit = edit_finder.find(line).is_some();
-                        let is_write = write_finder.find(line).is_some();
-                        if is_edit || is_write {
-                            let (added, removed) = extract_loc_from_tool_use(line, is_edit);
-                            result.lines_added = result.lines_added.saturating_add(added);
-                            result.lines_removed = result.lines_removed.saturating_add(removed);
-                        }
+                        let (added, removed) = extract_loc_from_assistant_tool_uses(line);
+                        result.lines_added = result.lines_added.saturating_add(added);
+                        result.lines_removed = result.lines_removed.saturating_add(removed);
                     }
 
                     // Collect assistant text content for search indexing.
@@ -954,7 +1043,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                             result
                                 .search_messages
                                 .push(claude_view_core::SearchableMessage {
-                                    role: "assistant".to_string(),
+                                    role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
                                     content: text,
                                     timestamp: assistant_ts,
                                 });
@@ -1095,9 +1184,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
                     let search_role = if is_tool_result && !is_human_tool_result {
-                        "tool"
+                        SOURCE_MESSAGE_ROLE_TOOL
                     } else {
-                        "user"
+                        SOURCE_MESSAGE_ROLE_USER
                     };
                     result
                         .search_messages
@@ -1130,15 +1219,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 );
 
                 // Phase C: LOC estimation from Edit/Write tool_use blocks
-                // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                // SIMD pre-filter: only parse lines containing tool_use blocks.
                 if tool_use_finder.find(line).is_some() {
-                    let is_edit = edit_finder.find(line).is_some();
-                    let is_write = write_finder.find(line).is_some();
-                    if is_edit || is_write {
-                        let (added, removed) = extract_loc_from_tool_use(line, is_edit);
-                        result.lines_added = result.lines_added.saturating_add(added);
-                        result.lines_removed = result.lines_removed.saturating_add(removed);
-                    }
+                    let (added, removed) = extract_loc_from_assistant_tool_uses(line);
+                    result.lines_added = result.lines_added.saturating_add(added);
+                    result.lines_removed = result.lines_removed.saturating_add(removed);
                 }
 
                 // Collect assistant content for search indexing (Value path)
@@ -1148,7 +1233,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         result
                             .search_messages
                             .push(claude_view_core::SearchableMessage {
-                                role: "assistant".to_string(),
+                                role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
                                 content: text,
                                 timestamp: fallback_assistant_ts,
                             });
@@ -1159,7 +1244,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         result
                             .search_messages
                             .push(claude_view_core::SearchableMessage {
-                                role: "tool".to_string(),
+                                role: SOURCE_MESSAGE_ROLE_TOOL.to_string(),
                                 content: tool_text,
                                 timestamp: fallback_assistant_ts,
                             });
@@ -1484,11 +1569,8 @@ fn handle_assistant_line(
                             }
 
                             // Extract file paths
-                            if let Some(fp) = block
-                                .input
-                                .as_ref()
-                                .and_then(|i| i.get("file_path"))
-                                .and_then(|v| v.as_str())
+                            if let Some(fp) =
+                                block.input.as_ref().and_then(extract_tool_input_file_path)
                             {
                                 if !fp.is_empty() {
                                     diag.file_paths_extracted += 1;
@@ -1699,10 +1781,7 @@ fn handle_assistant_value(
                             _ => {}
                         }
 
-                        if let Some(fp) = input
-                            .and_then(|i| i.get("file_path"))
-                            .and_then(|v| v.as_str())
-                        {
+                        if let Some(fp) = input.and_then(extract_tool_input_file_path) {
                             if !fp.is_empty() {
                                 diag.file_paths_extracted += 1;
                                 deep.files_touched.push(fp.to_string());
@@ -1938,8 +2017,7 @@ fn extract_search_content_from_value(value: &serde_json::Value) -> (Option<Strin
                             else if let Some(cmd) = input.get("command").and_then(|c| c.as_str())
                             {
                                 tool_entries.push(format!("{}: {}", name, cmd));
-                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str())
-                            {
+                            } else if let Some(fp) = extract_tool_input_file_path(input) {
                                 tool_entries.push(format!("{}: {}", name, fp));
                             }
                         }
@@ -2546,11 +2624,26 @@ where
         primary_model: Option<String>,
         messages: Vec<claude_view_core::SearchableMessage>,
         skills: Vec<String>,
-        preview: Option<String>,
-        last_message: Option<String>,
-        timestamp: i64,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
+        for result in &mut results {
+            let search_messages = std::mem::take(&mut result.parse_result.search_messages);
+            result.parse_result.search_messages = sanitize_source_search_messages(
+                search_messages,
+                &mut result.parse_result.diagnostics,
+            );
+
+            let preview = result.parse_result.deep.first_user_prompt.as_deref();
+            let preview_non_empty = preview.map(|s| !s.is_empty()).unwrap_or(false);
+            let has_summary_candidate = preview.is_some()
+                && (preview_non_empty
+                    || !result.project.is_empty()
+                    || !result.parse_result.deep.last_message.is_empty());
+            if has_summary_candidate {
+                note_rejected_derived_source_doc(&mut result.parse_result.diagnostics);
+            }
+        }
+
         results
             .iter()
             .filter(|r| !r.parse_result.search_messages.is_empty())
@@ -2561,13 +2654,6 @@ where
                 primary_model: compute_primary_model(&r.parse_result.turns),
                 messages: r.parse_result.search_messages.clone(),
                 skills: r.parse_result.deep.skills_used.clone(),
-                preview: r.parse_result.deep.first_user_prompt.clone(),
-                last_message: if r.parse_result.deep.last_message.is_empty() {
-                    None
-                } else {
-                    Some(r.parse_result.deep.last_message.clone())
-                },
-                timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
             })
             .collect()
     } else {
@@ -2588,7 +2674,7 @@ where
         if !search_batches.is_empty() {
             let mut search_errors = 0u32;
             for batch in &search_batches {
-                let mut docs: Vec<claude_view_search::SearchDocument> = batch
+                let docs: Vec<claude_view_search::SearchDocument> = batch
                     .messages
                     .iter()
                     .enumerate()
@@ -2604,35 +2690,6 @@ where
                         skills: batch.skills.clone(),
                     })
                     .collect();
-
-                // Add session summary document for metadata search
-                if let Some(preview) = &batch.preview {
-                    let mut summary_parts = Vec::new();
-                    if !preview.is_empty() {
-                        summary_parts.push(preview.as_str());
-                    }
-                    if !batch.project.is_empty() {
-                        summary_parts.push(batch.project.as_str());
-                    }
-                    if let Some(last_msg) = &batch.last_message {
-                        if !last_msg.is_empty() {
-                            summary_parts.push(last_msg.as_str());
-                        }
-                    }
-                    if !summary_parts.is_empty() {
-                        docs.push(claude_view_search::SearchDocument {
-                            session_id: batch.session_id.clone(),
-                            project: batch.project.clone(),
-                            branch: batch.branch.clone().unwrap_or_default(),
-                            model: batch.primary_model.clone().unwrap_or_default(),
-                            role: "summary".to_string(),
-                            content: summary_parts.join(" | "),
-                            turn_number: 0,
-                            timestamp: batch.timestamp,
-                            skills: batch.skills.clone(),
-                        });
-                    }
-                }
 
                 if let Err(e) = search.index_session(&batch.session_id, &docs) {
                     tracing::warn!(
@@ -2722,6 +2779,7 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
         .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
 
     let seen_at = chrono::Utc::now().timestamp();
+    let pricing = load_indexing_pricing(db).await;
 
     for result in results {
         let meta = &result.parse_result.deep;
@@ -2819,11 +2877,7 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
-            {
-                let mut pricing = default_pricing();
-                fill_tiering_gaps(&mut pricing);
-                calculate_per_turn_cost(&result.parse_result.turns, &pricing)
-            },
+            calculate_per_turn_cost(&result.parse_result.turns, &pricing),
         )
         .await
         .map_err(|e| {
@@ -2981,6 +3035,7 @@ where
             "Search index was rebuilt — forcing full re-parse to repopulate search data"
         );
     }
+    let validate_source_docs = search_index.is_some();
 
     // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
     let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new();
@@ -3034,6 +3089,9 @@ where
         )
         .collect();
 
+    // Use one merged pricing map for this full indexing run.
+    let pricing = Arc::new(load_indexing_pricing(db).await);
+
     let semaphore = Arc::new(tokio::sync::Semaphore::new(
         std::thread::available_parallelism()
             .map(|n| n.get())
@@ -3053,6 +3111,8 @@ where
         let skipped = skipped.clone();
         let registry = registry.clone();
         let force_reindex = force_search_reindex;
+        let pricing = pricing.clone();
+        let validate_source_docs = validate_source_docs;
 
         let handle = tokio::spawn(async move {
             let _permit = sem
@@ -3092,7 +3152,7 @@ where
 
             // 3. Parse the JSONL file (blocking I/O in spawn_blocking)
             let path_for_parse = path.clone();
-            let parse_result =
+            let mut parse_result =
                 tokio::task::spawn_blocking(move || parse_file_bytes(&path_for_parse))
                     .await
                     .map_err(|e| format!("spawn_blocking join error: {}", e))?;
@@ -3205,11 +3265,7 @@ where
             // Compute cost per-turn (each turn = one API call) to avoid inflating cost
             // by applying 200k tiered pricing to cumulative session tokens.
             // Strict integrity: NULL when any turn has unpriced model usage.
-            let total_cost_usd = {
-                let mut pricing = default_pricing();
-                fill_tiering_gaps(&mut pricing);
-                calculate_per_turn_cost(&parse_result.turns, &pricing)
-            };
+            let total_cost_usd = calculate_per_turn_cost(&parse_result.turns, &pricing);
 
             // Build ParsedSession
             let sid = session_id.clone();
@@ -3286,13 +3342,28 @@ where
                 .unwrap_or(&effective_encoded)
                 .to_string();
 
+            let search_messages = if validate_source_docs {
+                let messages = sanitize_source_search_messages(
+                    std::mem::take(&mut parse_result.search_messages),
+                    &mut parse_result.diagnostics,
+                );
+                let has_summary_candidate =
+                    !parsed.preview.is_empty() || !project_for_search.is_empty();
+                if has_summary_candidate {
+                    note_rejected_derived_source_doc(&mut parse_result.diagnostics);
+                }
+                messages
+            } else {
+                std::mem::take(&mut parse_result.search_messages)
+            };
+
             Ok((
                 Some(IndexedSession {
                     parsed,
                     turns: parse_result.turns,
                     models_seen: parse_result.models_seen,
                     classified_invocations: classified,
-                    search_messages: parse_result.search_messages,
+                    search_messages,
                     cwd: cwd_owned,
                     git_root,
                     project_for_search,
@@ -3468,7 +3539,7 @@ where
                 continue;
             }
 
-            let mut docs: Vec<claude_view_search::SearchDocument> = session
+            let docs: Vec<claude_view_search::SearchDocument> = session
                 .search_messages
                 .iter()
                 .enumerate()
@@ -3484,34 +3555,6 @@ where
                     skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
                 })
                 .collect();
-
-            // Add session summary document for metadata search
-            if !session.parsed.preview.is_empty() || !session.project_for_search.is_empty() {
-                let mut summary_parts = Vec::new();
-                if !session.parsed.preview.is_empty() {
-                    summary_parts.push(session.parsed.preview.as_str());
-                }
-                if !session.project_for_search.is_empty() {
-                    summary_parts.push(session.project_for_search.as_str());
-                }
-                if !session.parsed.last_message.is_empty() {
-                    summary_parts.push(session.parsed.last_message.as_str());
-                }
-                if !summary_parts.is_empty() {
-                    docs.push(claude_view_search::SearchDocument {
-                        session_id: session.parsed.id.clone(),
-                        project: session.project_for_search.clone(),
-                        branch: session.parsed.git_branch.clone().unwrap_or_default(),
-                        model: session.parsed.primary_model.clone().unwrap_or_default(),
-                        role: "summary".to_string(),
-                        content: summary_parts.join(" | "),
-                        turn_number: 0,
-                        timestamp: session.parsed.last_message_at,
-                        skills: serde_json::from_str(&session.parsed.skills_used)
-                            .unwrap_or_default(),
-                    });
-                }
-            }
 
             if let Err(e) = search.index_session(&session.parsed.id, &docs) {
                 tracing::warn!(session_id = %session.parsed.id, error = %e, "Failed to index session for search");
@@ -5080,6 +5123,9 @@ mod tests {
         assert_eq!(diag.lines_unknown_type, 0);
         assert_eq!(diag.json_parse_failures, 0);
         assert_eq!(diag.content_not_array, 0);
+        assert_eq!(diag.unknown_source_role_count, 0);
+        assert_eq!(diag.derived_source_message_doc_count, 0);
+        assert_eq!(diag.source_message_non_source_provenance_count, 0);
     }
 
     #[test]

@@ -2,6 +2,7 @@
 // Classification job and index run CRUD operations (Theme 4).
 
 use super::row_types::{ClassificationJobRow, IndexRunRow};
+use super::IndexRunIntegrityCounters;
 use crate::{Database, DbResult};
 use chrono::Utc;
 
@@ -12,13 +13,12 @@ impl Database {
         total_sessions: i64,
         provider: &str,
         model: &str,
-        cost_estimate_cents: Option<i64>,
     ) -> DbResult<i64> {
         let started_at = Utc::now().to_rfc3339();
         let row: (i64,) = sqlx::query_as(
             r#"
-            INSERT INTO classification_jobs (started_at, total_sessions, provider, model, cost_estimate_cents)
-            VALUES (?1, ?2, ?3, ?4, ?5)
+            INSERT INTO classification_jobs (started_at, total_sessions, provider, model)
+            VALUES (?1, ?2, ?3, ?4)
             RETURNING id
             "#,
         )
@@ -26,7 +26,6 @@ impl Database {
         .bind(total_sessions)
         .bind(provider)
         .bind(model)
-        .bind(cost_estimate_cents)
         .fetch_one(self.pool())
         .await?;
         Ok(row.0)
@@ -154,18 +153,42 @@ impl Database {
         &self,
         run_type: &str,
         sessions_before: Option<i64>,
+        integrity_counters: Option<&IndexRunIntegrityCounters>,
     ) -> DbResult<i64> {
         let started_at = Utc::now().to_rfc3339();
+        let counters = integrity_counters.copied().unwrap_or_default();
         let row: (i64,) = sqlx::query_as(
             r#"
-            INSERT INTO index_runs (started_at, type, sessions_before)
-            VALUES (?1, ?2, ?3)
+            INSERT INTO index_runs (
+                started_at,
+                type,
+                sessions_before,
+                unknown_top_level_type_count,
+                unknown_required_path_count,
+                imaginary_path_access_count,
+                legacy_fallback_path_count,
+                dropped_line_invalid_json_count,
+                schema_mismatch_count,
+                unknown_source_role_count,
+                derived_source_message_doc_count,
+                source_message_non_source_provenance_count
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             RETURNING id
             "#,
         )
         .bind(&started_at)
         .bind(run_type)
         .bind(sessions_before)
+        .bind(counters.unknown_top_level_type_count)
+        .bind(counters.unknown_required_path_count)
+        .bind(counters.imaginary_path_access_count)
+        .bind(counters.legacy_fallback_path_count)
+        .bind(counters.dropped_line_invalid_json_count)
+        .bind(counters.schema_mismatch_count)
+        .bind(counters.unknown_source_role_count)
+        .bind(counters.derived_source_message_doc_count)
+        .bind(counters.source_message_non_source_provenance_count)
         .fetch_one(self.pool())
         .await?;
         Ok(row.0)
@@ -178,26 +201,66 @@ impl Database {
         sessions_after: Option<i64>,
         duration_ms: i64,
         throughput_mb_per_sec: Option<f64>,
+        integrity_counters: Option<&IndexRunIntegrityCounters>,
     ) -> DbResult<()> {
         let completed_at = Utc::now().to_rfc3339();
-        sqlx::query(
-            r#"
-            UPDATE index_runs SET
-                status = 'completed',
-                completed_at = ?2,
-                sessions_after = ?3,
-                duration_ms = ?4,
-                throughput_mb_per_sec = ?5
-            WHERE id = ?1
-            "#,
-        )
-        .bind(run_id)
-        .bind(&completed_at)
-        .bind(sessions_after)
-        .bind(duration_ms)
-        .bind(throughput_mb_per_sec)
-        .execute(self.pool())
-        .await?;
+        if let Some(counters) = integrity_counters {
+            sqlx::query(
+                r#"
+                UPDATE index_runs SET
+                    status = 'completed',
+                    completed_at = ?2,
+                    sessions_after = ?3,
+                    duration_ms = ?4,
+                    throughput_mb_per_sec = ?5,
+                    unknown_top_level_type_count = ?6,
+                    unknown_required_path_count = ?7,
+                    imaginary_path_access_count = ?8,
+                    legacy_fallback_path_count = ?9,
+                    dropped_line_invalid_json_count = ?10,
+                    schema_mismatch_count = ?11,
+                    unknown_source_role_count = ?12,
+                    derived_source_message_doc_count = ?13,
+                    source_message_non_source_provenance_count = ?14
+                WHERE id = ?1
+                "#,
+            )
+            .bind(run_id)
+            .bind(&completed_at)
+            .bind(sessions_after)
+            .bind(duration_ms)
+            .bind(throughput_mb_per_sec)
+            .bind(counters.unknown_top_level_type_count)
+            .bind(counters.unknown_required_path_count)
+            .bind(counters.imaginary_path_access_count)
+            .bind(counters.legacy_fallback_path_count)
+            .bind(counters.dropped_line_invalid_json_count)
+            .bind(counters.schema_mismatch_count)
+            .bind(counters.unknown_source_role_count)
+            .bind(counters.derived_source_message_doc_count)
+            .bind(counters.source_message_non_source_provenance_count)
+            .execute(self.pool())
+            .await?;
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE index_runs SET
+                    status = 'completed',
+                    completed_at = ?2,
+                    sessions_after = ?3,
+                    duration_ms = ?4,
+                    throughput_mb_per_sec = ?5
+                WHERE id = ?1
+                "#,
+            )
+            .bind(run_id)
+            .bind(&completed_at)
+            .bind(sessions_after)
+            .bind(duration_ms)
+            .bind(throughput_mb_per_sec)
+            .execute(self.pool())
+            .await?;
+        }
         Ok(())
     }
 

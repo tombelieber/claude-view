@@ -10,6 +10,8 @@ use claude_view_core::{
 };
 use sqlx::Row;
 
+use super::types::IndexRunIntegrityCounters;
+
 // ============================================================================
 // Theme 4: Internal row types for classification_jobs and index_runs
 // ============================================================================
@@ -27,7 +29,6 @@ pub(crate) struct ClassificationJobRow {
     model: String,
     status: String,
     error_message: Option<String>,
-    cost_estimate_cents: Option<i64>,
     actual_cost_cents: Option<i64>,
     tokens_used: Option<i64>,
 }
@@ -46,7 +47,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ClassificationJobRow {
             model: row.try_get("model")?,
             status: row.try_get("status")?,
             error_message: row.try_get("error_message")?,
-            cost_estimate_cents: row.try_get("cost_estimate_cents")?,
             actual_cost_cents: row.try_get("actual_cost_cents")?,
             tokens_used: row.try_get("tokens_used")?,
         })
@@ -67,7 +67,6 @@ impl ClassificationJobRow {
             model: self.model,
             status: ClassificationJobStatus::from_db_str(&self.status),
             error_message: self.error_message,
-            cost_estimate_cents: self.cost_estimate_cents,
             actual_cost_cents: self.actual_cost_cents,
             tokens_used: self.tokens_used,
         }
@@ -118,6 +117,53 @@ impl IndexRunRow {
             throughput_mb_per_sec: self.throughput_mb_per_sec,
             status: IndexRunStatus::from_db_str(&self.status),
             error_message: self.error_message,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct IndexRunIntegrityCountersRow {
+    unknown_top_level_type_count: i64,
+    unknown_required_path_count: i64,
+    imaginary_path_access_count: i64,
+    legacy_fallback_path_count: i64,
+    dropped_line_invalid_json_count: i64,
+    schema_mismatch_count: i64,
+    unknown_source_role_count: i64,
+    derived_source_message_doc_count: i64,
+    source_message_non_source_provenance_count: i64,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for IndexRunIntegrityCountersRow {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            unknown_top_level_type_count: row.try_get("unknown_top_level_type_count")?,
+            unknown_required_path_count: row.try_get("unknown_required_path_count")?,
+            imaginary_path_access_count: row.try_get("imaginary_path_access_count")?,
+            legacy_fallback_path_count: row.try_get("legacy_fallback_path_count")?,
+            dropped_line_invalid_json_count: row.try_get("dropped_line_invalid_json_count")?,
+            schema_mismatch_count: row.try_get("schema_mismatch_count")?,
+            unknown_source_role_count: row.try_get("unknown_source_role_count")?,
+            derived_source_message_doc_count: row.try_get("derived_source_message_doc_count")?,
+            source_message_non_source_provenance_count: row
+                .try_get("source_message_non_source_provenance_count")?,
+        })
+    }
+}
+
+impl IndexRunIntegrityCountersRow {
+    pub(crate) fn into_integrity_counters(self) -> IndexRunIntegrityCounters {
+        IndexRunIntegrityCounters {
+            unknown_top_level_type_count: self.unknown_top_level_type_count,
+            unknown_required_path_count: self.unknown_required_path_count,
+            imaginary_path_access_count: self.imaginary_path_access_count,
+            legacy_fallback_path_count: self.legacy_fallback_path_count,
+            dropped_line_invalid_json_count: self.dropped_line_invalid_json_count,
+            schema_mismatch_count: self.schema_mismatch_count,
+            unknown_source_role_count: self.unknown_source_role_count,
+            derived_source_message_doc_count: self.derived_source_message_doc_count,
+            source_message_non_source_provenance_count: self
+                .source_message_non_source_provenance_count,
         }
     }
 }
