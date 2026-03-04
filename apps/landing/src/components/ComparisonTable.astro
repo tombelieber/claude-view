@@ -1,0 +1,125 @@
+---
+/**
+ * Feature comparison table — claude-view vs alternatives.
+ * Schema.org Table markup for GEO.
+ */
+const tools = [
+  { name: 'claude-view', category: 'Full platform', stack: 'Rust + React', size: '15 MB', live: true, search: true, analytics: true },
+  { name: 'opcode', category: 'Viewer', stack: 'TypeScript', size: '~5 MB', live: false, search: false, analytics: false },
+  { name: 'ccusage', category: 'Cost tracker', stack: 'TypeScript', size: '~3 MB', live: false, search: false, analytics: false },
+  { name: 'CodePilot', category: 'Dashboard', stack: 'Python', size: '~20 MB', live: false, search: false, analytics: true },
+  { name: 'claude-run', category: 'Runner', stack: 'TypeScript', size: '~2 MB', live: false, search: false, analytics: false },
+];
+---
+
+<section class="comparison-section">
+  <div class="section-label">How We Compare</div>
+  <h2 class="section-heading">Built different from the ground up.</h2>
+  <div class="table-wrapper">
+    <table itemscope itemtype="https://schema.org/Table">
+      <meta itemprop="name" content="Claude Code tool comparison" />
+      <thead>
+        <tr>
+          <th>Tool</th>
+          <th>Category</th>
+          <th>Stack</th>
+          <th>Size</th>
+          <th>Live Monitor</th>
+          <th>Search</th>
+          <th>Analytics</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tools.map((tool) => (
+          <tr class={tool.name === 'claude-view' ? 'highlight' : ''}>
+            <td class="tool-name">{tool.name}</td>
+            <td>{tool.category}</td>
+            <td>{tool.stack}</td>
+            <td>{tool.size}</td>
+            <td>{tool.live ? '✓' : '—'}</td>
+            <td>{tool.search ? '✓' : '—'}</td>
+            <td>{tool.analytics ? '✓' : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .comparison-section {
+    position: relative;
+    z-index: 1;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-text);
+    margin-bottom: 12px;
+  }
+  .section-heading {
+    font-family: var(--font-heading);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 48px;
+    color: #111;
+  }
+  .table-wrapper {
+    overflow-x: auto;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead {
+    background: rgba(0, 0, 0, 0.02);
+  }
+  th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px 16px;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+    white-space: nowrap;
+  }
+  tr:last-child td {
+    border-bottom: none;
+  }
+  tr.highlight {
+    background: var(--accent-soft);
+  }
+  tr.highlight td {
+    color: var(--color-text);
+    font-weight: 500;
+  }
+  .tool-name {
+    font-weight: 600;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  tr.highlight .tool-name {
+    color: var(--accent-text);
+  }
+</style>

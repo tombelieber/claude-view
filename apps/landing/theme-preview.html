@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude View — Theme Preview (Final)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+:root {
+  /* Anthropic / Claude brand orange */
+  --accent: #d97757;
+  --accent-hover: #c4674a;
+  --accent-soft: rgba(217,119,87,0.07);
+  --accent-border: rgba(217,119,87,0.14);
+  --accent-text: #b85a3a;
+  --accent-glow: rgba(217,119,87,0.12);
+
+  /* Warm neutral palette */
+  --bg: #faf9f7;
+  --surface: rgba(255,255,255,0.6);
+  --surface-solid: #ffffff;
+  --surface-hover: rgba(255,255,255,0.85);
+  --border: rgba(0,0,0,0.06);
+  --border-hover: rgba(0,0,0,0.1);
+  --text: #1a1a1a;
+  --text-secondary: rgba(0,0,0,0.45);
+  --text-tertiary: rgba(0,0,0,0.22);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* ─── Grain texture ─── */
+.grain {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.45;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+}
+
+/* ─── Warm ambient blobs ─── */
+.aurora-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.blob { position: absolute; border-radius: 50%; filter: blur(100px); will-change: transform; }
+.blob-1 {
+  width: 520px; height: 520px; top: -12%; right: 8%;
+  background: radial-gradient(circle, rgba(217,119,87,0.09) 0%, transparent 70%);
+  animation: wf1 22s ease-in-out infinite;
+}
+.blob-2 {
+  width: 450px; height: 450px; top: 25%; left: -8%;
+  background: radial-gradient(circle, rgba(252,211,77,0.07) 0%, transparent 70%);
+  animation: wf2 28s ease-in-out infinite;
+}
+.blob-3 {
+  width: 380px; height: 380px; bottom: 15%; right: 15%;
+  background: radial-gradient(circle, rgba(217,119,87,0.06) 0%, transparent 70%);
+  animation: wf3 18s ease-in-out infinite;
+}
+@keyframes wf1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-4%,5%) scale(1.08); } }
+@keyframes wf2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(5%,-3%) scale(1.05); } }
+@keyframes wf3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-3%,4%) scale(1.1); } }
+
+/* ─── Nav ─── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  max-width: 1080px; margin: 0 auto;
+  padding: 12px 24px 0;
+}
+.nav-inner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px;
+  background: rgba(255,255,255,0.55);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+.logo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600; font-size: 15px; letter-spacing: -0.02em;
+  color: var(--text);
+}
+.nav-links {
+  display: flex; gap: 28px; font-size: 13px; font-weight: 400;
+  color: var(--text-secondary); list-style: none;
+}
+.nav-links a { color: inherit; text-decoration: none; cursor: pointer; transition: color 0.15s; }
+.nav-links a:hover { color: var(--text); }
+.nav-cta {
+  padding: 6px 16px; border-radius: 8px; border: none; cursor: pointer;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  transition: all 0.15s;
+}
+.nav-cta:hover { background: var(--accent-hover); transform: translateY(-0.5px); }
+
+/* ─── Hero ─── */
+.hero {
+  position: relative; z-index: 1;
+  text-align: center; padding: 100px 24px 56px;
+  max-width: 760px; margin: 0 auto;
+}
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 14px 5px 9px; border-radius: 99px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  font-size: 12px; font-weight: 500; color: var(--accent-text);
+  margin-bottom: 36px; letter-spacing: 0.01em;
+}
+.eyebrow .dot-live {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-d 2s ease-in-out infinite;
+}
+@keyframes pulse-d { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.hero h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(36px, 5.5vw, 60px);
+  font-weight: 700; line-height: 1.1; letter-spacing: -0.035em;
+  margin-bottom: 20px; color: #111;
+}
+.hero .subtitle {
+  font-size: 17px; line-height: 1.65; color: var(--text-secondary);
+  max-width: 460px; margin: 0 auto 40px; font-weight: 400;
+}
+.cta-group {
+  display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 24px; border-radius: 10px; border: none; cursor: pointer;
+  background: var(--accent); color: #fff;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 1px rgba(217,119,87,0.1);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(217,119,87,0.18), 0 0 0 1px rgba(217,119,87,0.1);
+}
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 11px 24px; border-radius: 10px; cursor: pointer;
+  background: transparent; color: var(--text-secondary);
+  font-size: 14px; font-weight: 500; font-family: inherit;
+  border: 1px solid var(--border); transition: all 0.15s;
+}
+.btn-ghost:hover { border-color: rgba(0,0,0,0.15); color: var(--text); }
+.btn-ghost svg { fill: currentColor; }
+
+/* Install strip */
+.install-strip {
+  position: relative; z-index: 1;
+  max-width: 390px; margin: 36px auto 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 18px;
+  background: rgba(255,255,255,0.55); border: 1px solid var(--border);
+  border-radius: 10px; cursor: pointer; transition: all 0.2s;
+  backdrop-filter: blur(8px);
+  font-family: 'JetBrains Mono', monospace; font-size: 13px;
+}
+.install-strip:hover { border-color: rgba(0,0,0,0.12); background: rgba(255,255,255,0.8); }
+.install-strip .dollar { color: var(--text-tertiary); }
+.install-strip .cmd { color: var(--text); }
+.install-strip .copy-hint {
+  font-family: 'Inter'; font-size: 11px; color: var(--text-tertiary); margin-left: auto;
+  transition: color 0.15s;
+}
+.install-strip:hover .copy-hint { color: var(--accent); }
+
+/* ─── Product Demo (from Swiss Clean, adapted) ─── */
+.product-section {
+  position: relative; z-index: 1;
+  max-width: 920px; margin: 64px auto 0; padding: 0 24px;
+}
+.product-frame {
+  border-radius: 16px; overflow: hidden;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.6);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    0 1px 2px rgba(0,0,0,0.03),
+    0 8px 32px rgba(0,0,0,0.04),
+    0 0 0 1px rgba(255,255,255,0.5) inset;
+}
+.frame-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: rgba(0,0,0,0.02);
+  border-bottom: 1px solid var(--border);
+}
+.frame-bar .d { width: 10px; height: 10px; border-radius: 50%; }
+.frame-bar .d:nth-child(1) { background: #ff5f57; }
+.frame-bar .d:nth-child(2) { background: #febc2e; }
+.frame-bar .d:nth-child(3) { background: #28c840; }
+.frame-bar .url {
+  flex: 1; text-align: center; font-size: 11px;
+  color: var(--text-tertiary); font-family: 'Inter';
+}
+
+/* Dashboard mock */
+.mock-dash { display: grid; grid-template-columns: 160px 1fr; gap: 0; min-height: 320px; }
+.mock-sidebar {
+  padding: 14px 10px;
+  background: rgba(0,0,0,0.015);
+  border-right: 1px solid var(--border);
+}
+.sb-item {
+  padding: 7px 12px; border-radius: 7px; font-size: 12.5px;
+  color: var(--text-secondary); margin-bottom: 1px; cursor: default;
+  transition: background 0.1s;
+}
+.sb-item.active {
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 500;
+}
+.mock-main { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.mock-stat-row { display: flex; gap: 10px; }
+.mock-stat {
+  flex: 1; padding: 14px 16px;
+  background: rgba(0,0,0,0.02);
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.03);
+}
+.mock-stat .ms-label { font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px; }
+.mock-stat .ms-val {
+  font-family: 'Space Grotesk'; font-size: 22px; font-weight: 700;
+  color: var(--text); letter-spacing: -0.03em;
+}
+.mock-stat .ms-val.accent { color: var(--accent); }
+.mock-agents { display: flex; flex-direction: column; gap: 6px; }
+.mock-agent-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.02);
+  border-radius: 8px; border: 1px solid rgba(0,0,0,0.03);
+  font-size: 12px;
+}
+.mock-agent-row .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.mock-agent-row .dot.g { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.3); }
+.mock-agent-row .dot.y { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.3); }
+.mock-agent-row .dot.off { background: #d4d4d8; }
+.mock-agent-row .name { font-weight: 500; color: var(--text); width: 100px; }
+.mock-agent-row .status { color: var(--text-tertiary); flex: 1; }
+.mock-agent-row .tokens {
+  font-family: 'JetBrains Mono'; font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ─── Features ─── */
+.features-section {
+  position: relative; z-index: 1;
+  max-width: 1060px; margin: 0 auto; padding: 120px 24px 0;
+}
+.section-label {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--accent-text); margin-bottom: 12px;
+}
+.section-heading {
+  font-family: 'Space Grotesk'; font-size: 30px; font-weight: 700;
+  letter-spacing: -0.03em; margin-bottom: 48px; color: #111;
+}
+.features-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+}
+.feat-card {
+  padding: 28px 24px; border-radius: 16px;
+  background: rgba(255,255,255,0.5);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  transition: all 0.25s ease; cursor: default;
+}
+.feat-card:hover {
+  background: rgba(255,255,255,0.8);
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+  transform: translateY(-2px);
+}
+.feat-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+}
+.feat-icon svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.feat-card h3 {
+  font-family: 'Space Grotesk'; font-size: 16px; font-weight: 600;
+  letter-spacing: -0.01em; margin-bottom: 8px; color: #111;
+}
+.feat-card p { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+
+/* ─── Metrics ─── */
+.metrics-bar {
+  position: relative; z-index: 1;
+  max-width: 1060px; margin: 0 auto; padding: 100px 24px 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+}
+.metric-item {
+  text-align: center; padding: 28px 16px; border-radius: 14px;
+  background: rgba(255,255,255,0.45); border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+}
+.metric-item .num {
+  font-family: 'Space Grotesk'; font-size: 32px; font-weight: 700;
+  letter-spacing: -0.04em; color: #111;
+}
+.metric-item .label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ─── Bottom CTA ─── */
+.bottom-cta {
+  position: relative; z-index: 1;
+  text-align: center; padding: 120px 24px 80px;
+  max-width: 480px; margin: 0 auto;
+}
+.bottom-cta h2 {
+  font-family: 'Space Grotesk'; font-size: 28px; font-weight: 700;
+  letter-spacing: -0.03em; margin-bottom: 12px; color: #111;
+}
+.bottom-cta p { font-size: 15px; color: var(--text-secondary); margin-bottom: 32px; }
+
+/* ─── Footer ─── */
+footer {
+  position: relative; z-index: 1;
+  max-width: 1060px; margin: 0 auto;
+  padding: 0 24px 64px;
+  border-top: 1px solid var(--border);
+  padding-top: 48px;
+  display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px;
+}
+footer .brand p { font-size: 13px; color: var(--text-tertiary); line-height: 1.6; max-width: 240px; margin-top: 8px; }
+footer h4 { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 14px; letter-spacing: 0.02em; }
+footer ul { list-style: none; }
+footer ul li { margin-bottom: 8px; }
+footer ul a { font-size: 13px; color: var(--text-secondary); text-decoration: none; cursor: pointer; transition: color 0.15s; }
+footer ul a:hover { color: var(--text); }
+footer .copyright { grid-column: 1 / -1; font-size: 12px; color: var(--text-tertiary); padding-top: 32px; border-top: 1px solid var(--border); }
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .features-grid { grid-template-columns: 1fr; }
+  .metrics-bar { grid-template-columns: repeat(2, 1fr); }
+  .mock-dash { grid-template-columns: 1fr; }
+  .mock-sidebar { display: none; }
+  footer { grid-template-columns: 1fr 1fr; gap: 32px; }
+  footer .brand { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .metrics-bar { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mock-stat-row { flex-wrap: wrap; }
+  .mock-stat { min-width: calc(50% - 5px); }
+  footer { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="grain"></div>
+<div class="aurora-bg">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<!-- ─── Nav ─── -->
+<nav><div class="nav-inner">
+  <div class="logo">Claude View</div>
+  <div class="nav-links">
+    <a>Features</a>
+    <a>Docs</a>
+    <a>Pricing</a>
+    <a>Blog</a>
+  </div>
+  <button class="nav-cta">Get Started</button>
+</div></nav>
+
+<!-- ─── Hero ─── -->
+<section class="hero">
+  <div class="eyebrow">
+    <span class="dot-live"></span>
+    Now in public beta
+  </div>
+  <h1>See every agent.<br>Every token. Every decision.</h1>
+  <p class="subtitle">The observability layer for Claude Code. Monitor agents, track spend, approve actions — from your browser or phone.</p>
+  <div class="cta-group">
+    <button class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Get Started Free
+    </button>
+    <button class="btn-ghost">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+      GitHub
+    </button>
+  </div>
+  <div class="install-strip">
+    <span class="dollar">$</span>
+    <span class="cmd">npx claude-view</span>
+    <span class="copy-hint">copy</span>
+  </div>
+</section>
+
+<!-- ─── Product Demo ─── -->
+<section class="product-section">
+  <div class="product-frame">
+    <div class="frame-bar">
+      <div class="d"></div><div class="d"></div><div class="d"></div>
+      <div class="url">localhost:47892</div>
+    </div>
+    <div class="mock-dash">
+      <div class="mock-sidebar">
+        <div class="sb-item active">Dashboard</div>
+        <div class="sb-item">Sessions</div>
+        <div class="sb-item">Search</div>
+        <div class="sb-item">Patterns</div>
+        <div class="sb-item">Settings</div>
+      </div>
+      <div class="mock-main">
+        <div class="mock-stat-row">
+          <div class="mock-stat">
+            <div class="ms-label">Active Agents</div>
+            <div class="ms-val accent">3</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Tokens Today</div>
+            <div class="ms-val">142,847</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Sessions</div>
+            <div class="ms-val">23</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Est. Cost</div>
+            <div class="ms-val">$4.21</div>
+          </div>
+        </div>
+        <div class="mock-agents">
+          <div class="mock-agent-row">
+            <div class="dot g"></div>
+            <span class="name">feature-auth</span>
+            <span class="status">Running — editing src/auth.ts</span>
+            <span class="tokens">48,291 tok</span>
+          </div>
+          <div class="mock-agent-row">
+            <div class="dot y"></div>
+            <span class="name">test-runner</span>
+            <span class="status">Waiting for approval</span>
+            <span class="tokens">23,104 tok</span>
+          </div>
+          <div class="mock-agent-row">
+            <div class="dot off"></div>
+            <span class="name">docs-update</span>
+            <span class="status">Idle</span>
+            <span class="tokens">71,452 tok</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Features ─── -->
+<section class="features-section">
+  <div class="section-label">Capabilities</div>
+  <div class="section-heading">Everything you need to understand your agents.</div>
+  <div class="features-grid">
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/></svg></div>
+      <h3>Agent Visibility</h3>
+      <p>Every running agent, their status, token consumption, and decision history — updated in real time.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+      <h3>Approve &amp; Reject</h3>
+      <p>Review agent actions before they execute. Full permission control from any device, anywhere.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+      <h3>AI Fluency Score</h3>
+      <p>Measure how effectively you collaborate with AI agents. Track patterns and improvements.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg></div>
+      <h3>Session Sharing</h3>
+      <p>Generate encrypted links for any conversation. E2E encryption — zero server trust.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <h3>Full-Text Search</h3>
+      <p>Tantivy-powered search across all conversations. Find any tool call or code snippet instantly.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div>
+      <h3>Mobile App</h3>
+      <p>Approve actions from your phone. Monitor agents, review sessions — ship from anywhere.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Metrics ─── -->
+<section class="metrics-bar">
+  <div class="metric-item"><div class="num">142k</div><div class="label">Tokens per session</div></div>
+  <div class="metric-item"><div class="num">&lt;1ms</div><div class="label">Search latency</div></div>
+  <div class="metric-item"><div class="num">15MB</div><div class="label">Binary size</div></div>
+  <div class="metric-item"><div class="num">Zero</div><div class="label">Config required</div></div>
+</section>
+
+<!-- ─── Bottom CTA ─── -->
+<section class="bottom-cta">
+  <h2>Ready to see everything?</h2>
+  <p>One command. No config. No account required.</p>
+  <div class="cta-group" style="justify-content:center">
+    <button class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Get Started
+    </button>
+  </div>
+</section>
+
+<!-- ─── Footer ─── -->
+<footer>
+  <div class="brand">
+    <div class="logo">Claude View</div>
+    <p>The observability layer for Claude Code. See everything your AI agents do.</p>
+  </div>
+  <div>
+    <h4>Product</h4>
+    <ul>
+      <li><a>Features</a></li>
+      <li><a>Pricing</a></li>
+      <li><a>Changelog</a></li>
+      <li><a>Download</a></li>
+    </ul>
+  </div>
+  <div>
+    <h4>Resources</h4>
+    <ul>
+      <li><a>Documentation</a></li>
+      <li><a>Blog</a></li>
+      <li><a>GitHub</a></li>
+      <li><a>Discord</a></li>
+    </ul>
+  </div>
+  <div>
+    <h4>Legal</h4>
+    <ul>
+      <li><a>Privacy</a></li>
+      <li><a>Terms</a></li>
+    </ul>
+  </div>
+  <div class="copyright">&copy; 2026 Claude View. All rights reserved.</div>
+</footer>
+
+</body>
+</html>

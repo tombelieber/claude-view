@@ -1,32 +1,46 @@
 ---
-// Sticky nav with blur backdrop, appears on scroll
 import { GITHUB_URL } from '../data/site';
 ---
 <nav
-  class="fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-all duration-300"
+  class="sticky top-0 z-50 max-w-[1080px] mx-auto px-4 sm:px-6 pt-3"
   id="site-nav"
 >
-  <div class="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-    <a href="/" class="font-heading text-xl font-bold text-slate-50 hover:text-cta transition-colors cursor-pointer">
+  <div
+    class="flex items-center justify-between px-5 py-2.5 bg-[rgba(255,255,255,0.55)] backdrop-blur-xl border border-[rgba(0,0,0,0.06)] rounded-[14px] shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+  >
+    <!-- Logo -->
+    <a
+      href="/"
+      class="font-heading text-[15px] font-semibold tracking-[-0.02em] text-[var(--color-text)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+    >
       claude-view
     </a>
-    <div class="hidden md:flex items-center gap-8">
-      <a href="/#features" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Features</a>
-      <a href="/docs/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Docs</a>
-      <a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Pricing</a>
-      <a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer">Blog</a>
+
+    <!-- Desktop links -->
+    <div class="hidden md:flex items-center gap-7">
+      <a href="/#features" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Features</a>
+      <a href="/docs/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Blog</a>
       <a
         href={GITHUB_URL}
         target="_blank"
         rel="noopener noreferrer"
-        class="text-sm text-slate-400 hover:text-slate-50 transition-colors cursor-pointer flex items-center gap-1"
+        class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
       >
         GitHub
       </a>
+      <a
+        href="/#waitlist"
+        class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg px-4 py-2 text-xs font-semibold transition-all hover:-translate-y-[0.5px] cursor-pointer"
+      >
+        Get Started
+      </a>
     </div>
+
     <!-- Mobile hamburger -->
     <button
-      class="md:hidden text-slate-400 hover:text-slate-50 cursor-pointer"
+      class="md:hidden text-[var(--color-text-secondary)] hover:text-[var(--color-text)] cursor-pointer"
       aria-label="Toggle menu"
       aria-expanded="false"
       aria-controls="mobile-menu"
@@ -37,30 +51,36 @@ import { GITHUB_URL } from '../data/site';
       </svg>
     </button>
   </div>
+
   <!-- Mobile menu -->
-  <div class="md:hidden hidden border-t border-slate-700 bg-slate-900/95 backdrop-blur-md" id="mobile-menu">
-    <div class="px-6 py-4 flex flex-col gap-4">
-      <a href="/#features" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Features</a>
-      <a href="/docs/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Docs</a>
-      <a href="/pricing/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Pricing</a>
-      <a href="/blog/" class="text-sm text-slate-400 hover:text-slate-50 cursor-pointer">Blog</a>
+  <div
+    class="md:hidden hidden mt-2 rounded-[14px] border border-[var(--color-border)] bg-white/95 backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+    id="mobile-menu"
+  >
+    <div class="px-5 py-4 flex flex-col gap-4">
+      <a href="/#features" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Features</a>
+      <a href="/docs/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Blog</a>
+      <a
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+      >
+        GitHub
+      </a>
+      <a
+        href="/#waitlist"
+        class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg px-4 py-2 text-xs font-semibold text-center transition-all cursor-pointer"
+      >
+        Get Started
+      </a>
     </div>
   </div>
 </nav>
 
 <script>
-  // Blur backdrop on scroll
-  const nav = document.getElementById('site-nav');
-  window.addEventListener('scroll', () => {
-    if (window.scrollY > 50) {
-      nav?.classList.add('bg-slate-900/80', 'backdrop-blur-md', 'border-slate-700');
-      nav?.classList.remove('border-transparent');
-    } else {
-      nav?.classList.remove('bg-slate-900/80', 'backdrop-blur-md', 'border-slate-700');
-      nav?.classList.add('border-transparent');
-    }
-  });
-
   // Mobile menu toggle
   const btn = document.getElementById('mobile-menu-btn');
   const menu = document.getElementById('mobile-menu');

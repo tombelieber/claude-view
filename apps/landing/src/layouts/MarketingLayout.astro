@@ -42,7 +42,7 @@ const breadcrumbJsonLd = JSON.stringify({
 });
 ---
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -88,14 +88,21 @@ const breadcrumbJsonLd = JSON.stringify({
   <!-- Focus ring for keyboard navigation -->
   <style>
     :focus-visible {
-      outline: 2px solid #22c55e;
+      outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
   </style>
 </head>
-<body class="bg-slate-900 text-slate-50 antialiased">
+<body class="bg-[var(--color-bg)] text-[var(--color-text)] antialiased">
+  <!-- Grain texture + aurora ambient blobs -->
+  <div class="grain" aria-hidden="true"></div>
+  <div class="aurora-bg" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
   <!-- Skip link for keyboard navigation (WCAG 2.2 AA) -->
-  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-green-600 focus:text-white focus:rounded">
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-[var(--accent)] focus:text-white focus:rounded">
     Skip to content
   </a>
   <!-- noscript fallback for older browsers that don't support @media (scripting: none) -->
@@ -105,7 +112,7 @@ const breadcrumbJsonLd = JSON.stringify({
     </style>
   </noscript>
   <Nav />
-  <main id="main-content" class="pt-16">
+  <main id="main-content" class="relative z-[1]">
     <slot />
   </main>
   <Footer />
