@@ -1,0 +1,16 @@
+# Integrity gate-oracle ownership
+crates/db/tests/golden_fixtures/integrity_expected.json @TBGor
+crates/db/tests/golden_fixtures/integrity_fixture.sha256 @TBGor
+scripts/integrity/replay.sh @TBGor
+scripts/integrity/assert-replay-thresholds.sh @TBGor
+
+# Integrity gate wiring ownership
+scripts/integrity/static-regression-checks.sh @TBGor
+scripts/integrity/ci-gates.sh @TBGor
+crates/db/tests/integrity_corpus_snapshot/manifest.json @TBGor
+crates/db/tests/golden_fixtures/integrity_nonzero_tool_index.jsonl @TBGor
+crates/db/tests/golden_fixtures/integrity_progress_nested_content.jsonl @TBGor
+crates/db/tests/golden_fixtures/integrity_tool_use_result_polymorphic.jsonl @TBGor
+crates/db/tests/golden_fixtures/integrity_type_substring_noise.jsonl @TBGor
+crates/db/tests/indexer_integrity_test.rs @TBGor
+crates/db/tests/integrity_real_shape_fixtures.rs @TBGor
