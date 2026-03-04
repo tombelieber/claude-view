@@ -71,9 +71,32 @@ async fn search_handler(
     let offset = query.offset.unwrap_or(0);
     let scope = query.scope.as_deref();
 
-    let response = search_index
-        .search(q, scope, limit, offset)
-        .map_err(|e| crate::error::ApiError::Internal(format!("Search failed: {}", e)))?;
+    // Run Tantivy search on a blocking thread to avoid stalling the Tokio
+    // runtime and to catch panics (which otherwise drop the connection silently).
+    let q_owned = q.to_string();
+    let scope_owned = scope.map(|s| s.to_string());
+    let response = tokio::task::spawn_blocking(move || {
+        search_index.search(&q_owned, scope_owned.as_deref(), limit, offset)
+    })
+    .await
+    .map_err(|e| {
+        // Extract the actual panic message from the JoinError for debugging.
+        let msg = if e.is_panic() {
+            let panic_payload = e.into_panic();
+            if let Some(s) = panic_payload.downcast_ref::<String>() {
+                format!("Search panicked: {}", s)
+            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
+                format!("Search panicked: {}", s)
+            } else {
+                "Search panicked (unknown payload)".to_string()
+            }
+        } else {
+            format!("Search task failed: {}", e)
+        };
+        tracing::error!("{}", msg);
+        crate::error::ApiError::Internal(msg)
+    })?
+    .map_err(|e| crate::error::ApiError::Internal(format!("Search failed: {}", e)))?;
 
     Ok(Json(response))
 }

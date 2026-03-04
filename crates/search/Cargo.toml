@@ -14,6 +14,12 @@ tracing = { workspace = true }
 serde = { workspace = true }
 ts-rs = { workspace = true }
 chrono = { workspace = true }
+grep-matcher = { workspace = true }
+grep-regex = { workspace = true }
+grep-searcher = { workspace = true }
+
+[features]
+codegen = ["claude-view-core/codegen"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

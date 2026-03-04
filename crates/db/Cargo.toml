@@ -22,6 +22,9 @@ memchr = { workspace = true }
 ts-rs = { workspace = true }
 reqwest = { workspace = true }
 
+[features]
+codegen = ["claude-view-core/codegen", "claude-view-search/codegen"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = { workspace = true }

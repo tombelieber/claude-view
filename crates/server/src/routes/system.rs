@@ -28,7 +28,7 @@ use crate::state::AppState;
 
 /// Full system status response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemResponse {
     pub storage: StorageInfo,
@@ -41,7 +41,7 @@ pub struct SystemResponse {
 
 /// Storage section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StorageInfo {
     #[ts(type = "number")]
@@ -70,7 +70,7 @@ impl From<SystemStorageStats> for StorageInfo {
 
 /// Performance section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceInfo {
     /// Duration of last successful index in milliseconds.
@@ -85,7 +85,7 @@ pub struct PerformanceInfo {
 
 /// Health section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthInfo {
     #[ts(type = "number")]
@@ -120,7 +120,7 @@ impl From<HealthStats> for HealthInfo {
 
 /// Index history entry in system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRunInfo {
     pub timestamp: String,
@@ -137,7 +137,7 @@ pub struct IndexRunInfo {
 
 /// Classification section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationInfo {
     #[ts(type = "number")]
@@ -174,7 +174,7 @@ impl From<ClassificationStatus> for ClassificationInfo {
 
 /// Generic action response for POST endpoints.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActionResponse {
     pub status: String,
@@ -184,7 +184,7 @@ pub struct ActionResponse {
 
 /// Clear cache response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClearCacheResponse {
     pub status: String,

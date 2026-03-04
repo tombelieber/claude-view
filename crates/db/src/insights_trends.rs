@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 /// Time-series data point for metric trends.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MetricDataPoint {
     pub date: String,
@@ -24,7 +24,7 @@ pub struct MetricDataPoint {
 
 /// Category evolution data point.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryDataPoint {
     pub date: String,
@@ -35,7 +35,7 @@ pub struct CategoryDataPoint {
 
 /// Activity heatmap cell.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HeatmapCell {
     pub day_of_week: u8,
@@ -47,7 +47,7 @@ pub struct HeatmapCell {
 
 /// Full trends response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsTrendsResponse {
     pub metric: String,

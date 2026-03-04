@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 /// A saved report row.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportRow {
     #[ts(type = "number")]
@@ -36,7 +36,7 @@ pub struct ReportRow {
 
 /// Preview stats for a date range (no AI, pure DB aggregation).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportPreview {
     #[ts(type = "number")]
@@ -52,7 +52,7 @@ pub struct ReportPreview {
 
 /// Per-project summary in the preview.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectPreview {
     pub name: String,

@@ -25,6 +25,7 @@ pub struct SessionFilterParams {
     pub high_reedit: Option<bool>,
     pub time_after: Option<i64>,
     pub time_before: Option<i64>,
+    pub project: Option<String>,
     pub sort: String, // "recent", "tokens", "prompts", "files_edited", "duration"
     pub limit: i64,   // default 30
     pub offset: i64,  // default 0
@@ -167,7 +168,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM sessions s
             WHERE {}
             ORDER BY {}
@@ -234,7 +236,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -291,7 +294,8 @@ impl Database {
             s.category_l1, s.category_l2, s.category_l3,
             s.category_confidence, s.category_source, s.classified_at,
             s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-            s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+            s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+            s.total_cost_usd
         "#;
 
         // Helper closure: appends all WHERE clauses to a QueryBuilder.
@@ -327,15 +331,33 @@ impl Database {
                 qb.push(")");
             }
 
-            // Branch filter (IN list)
+            // Branch filter — handle NO_BRANCH sentinel ("~" → git_branch IS NULL)
             if let Some(branches) = &params.branches {
                 if !branches.is_empty() {
-                    qb.push(" AND s.git_branch IN (");
-                    let mut sep = qb.separated(", ");
-                    for b in branches {
-                        sep.push_bind(b.as_str());
+                    let has_no_branch = branches.iter().any(|b| b == "~");
+                    let named: Vec<&str> = branches
+                        .iter()
+                        .filter(|b| b.as_str() != "~")
+                        .map(|b| b.as_str())
+                        .collect();
+
+                    if has_no_branch && named.is_empty() {
+                        qb.push(" AND s.git_branch IS NULL");
+                    } else if has_no_branch {
+                        qb.push(" AND (s.git_branch IS NULL OR s.git_branch IN (");
+                        let mut sep = qb.separated(", ");
+                        for b in &named {
+                            sep.push_bind(*b);
+                        }
+                        sep.push_unseparated("))");
+                    } else {
+                        qb.push(" AND s.git_branch IN (");
+                        let mut sep = qb.separated(", ");
+                        for b in branches {
+                            sep.push_bind(b.as_str());
+                        }
+                        sep.push_unseparated(")");
                     }
-                    sep.push_unseparated(")");
                 }
             }
 
@@ -402,6 +424,15 @@ impl Database {
             if let Some(before) = params.time_before {
                 qb.push(" AND s.last_message_at <= ");
                 qb.push_bind(before);
+            }
+
+            // Project filter (worktree-aware: match project_id OR git_root)
+            if let Some(ref project) = params.project {
+                qb.push(" AND (s.project_id = ");
+                qb.push_bind(project.as_str());
+                qb.push(" OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ");
+                qb.push_bind(project.as_str());
+                qb.push("))");
             }
         }
 
@@ -634,7 +665,7 @@ impl Database {
         // Top 5 sessions by longest task time
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
                         WHERE longest_task_seconds > 0
               AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
@@ -788,7 +819,7 @@ impl Database {
         // Top 5 sessions by longest task time (filtered)
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
             WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
@@ -1037,6 +1068,7 @@ mod filtered_query_tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -1054,6 +1086,7 @@ mod filtered_query_tests {
             high_reedit: None,
             time_after: None,
             time_before: None,
+            project: None,
             sort: "recent".to_string(),
             limit: 30,
             offset: 0,

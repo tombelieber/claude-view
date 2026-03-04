@@ -441,7 +441,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -873,9 +874,8 @@ impl Database {
     ///
     /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project)`
     ///
-    /// The `project` value is the display name (e.g. `claude-view`) rather than
-    /// the encoded path (`-Users-foo-claude-view`), so that search qualifiers
-    /// like `project:claude-view` match what users naturally type.
+    /// The `project` value is the effective project identity: `COALESCE(NULLIF(git_root, ''), project_id)`.
+    /// This matches what the sidebar sends as the project filter, so search scope filters align.
     pub async fn get_sessions_needing_deep_index(
         &self,
     ) -> DbResult<
@@ -892,7 +892,7 @@ impl Database {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
             sqlx::query_as(
-                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(project_display_name, project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(NULLIF(git_root, ''), project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
             )
             .fetch_all(self.pool())
             .await?;
@@ -1081,7 +1081,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM sessions s WHERE s.id = ?1"#,
         )
         .bind(id)
