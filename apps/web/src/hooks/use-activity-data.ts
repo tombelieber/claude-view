@@ -24,10 +24,7 @@ export interface ActivityData {
 
 /**
  * Fetch ALL sessions for a time range (paginated) and compute activity aggregations.
- * Respects sidebar project/branch filters when provided.
- *
- * NOTE: The /api/sessions endpoint does not support a `project` query param,
- * so project filtering is applied client-side after fetch.
+ * Respects sidebar project/branch filters when provided (server-side).
  */
 export function useActivityData(
   timeAfter: number | null,
@@ -39,7 +36,13 @@ export function useActivityData(
   // independent working session with its own durationSeconds. Counting them gives accurate
   // total working time. The API returns them as part of kind=Conversation sessions.
   const query = useQuery<{ sessions: SessionInfo[]; total: number }>({
-    queryKey: ['activity-sessions', timeAfter, timeBefore, sidebarBranch ?? ''],
+    queryKey: [
+      'activity-sessions',
+      timeAfter,
+      timeBefore,
+      sidebarProject ?? '',
+      sidebarBranch ?? '',
+    ],
     queryFn: async () => {
       const allSessions: SessionInfo[] = []
       let offset = 0
@@ -53,6 +56,7 @@ export function useActivityData(
         sp.set('sort', 'recent')
         if (timeAfter !== null && timeAfter > 0) sp.set('time_after', String(timeAfter))
         if (timeBefore !== null && timeBefore > 0) sp.set('time_before', String(timeBefore))
+        if (sidebarProject) sp.set('project', sidebarProject)
         if (sidebarBranch) sp.set('branches', sidebarBranch)
 
         const resp = await fetch(`/api/sessions?${sp}`)
@@ -95,15 +99,8 @@ export function useActivityData(
 
   const activity = useMemo<ActivityData | null>(() => {
     if (!query.data) return null
-    let { sessions } = query.data
+    const { sessions } = query.data
     const { total } = query.data
-
-    // Client-side project filter (API has no `project` param)
-    if (sidebarProject) {
-      sessions = sessions.filter(
-        (s) => ((s.gitRoot || null) ?? s.projectPath ?? s.project) === sidebarProject,
-      )
-    }
 
     const days = aggregateByDay(sessions)
     const projects = aggregateByProject(sessions)
