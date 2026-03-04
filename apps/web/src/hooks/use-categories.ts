@@ -6,7 +6,11 @@ import type { TimeRange } from './use-insights'
 // Helpers
 // ============================================================================
 
-function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number } {
+function timeRangeToBounds(timeRange: TimeRange): { from?: number; to?: number } {
+  if (timeRange === 'all') {
+    return {}
+  }
+
   const now = Math.floor(Date.now() / 1000)
 
   switch (timeRange) {
@@ -16,8 +20,6 @@ function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number
       return { from: now - 30 * 86400, to: now }
     case '90d':
       return { from: now - 90 * 86400, to: now }
-    case 'all':
-      return { from: 1, to: now }
   }
 }
 
@@ -35,17 +37,19 @@ interface UseCategoriesOptions {
  * Uses React Query for caching with 1 minute stale time.
  */
 export function useCategories({ timeRange, enabled = true }: UseCategoriesOptions) {
-  const { from, to } = timeRangeToTimestamps(timeRange)
-
   return useQuery({
-    queryKey: ['insights-categories', from, to],
+    queryKey: ['insights-categories', timeRange],
     queryFn: async (): Promise<CategoriesResponse> => {
-      const params = new URLSearchParams({
-        from: from.toString(),
-        to: to.toString(),
-      })
+      const { from, to } = timeRangeToBounds(timeRange)
+      const params = new URLSearchParams()
+      if (from != null) params.set('from', from.toString())
+      if (to != null) params.set('to', to.toString())
 
-      const response = await fetch(`/api/insights/categories?${params}`)
+      const query = params.toString()
+
+      const response = await fetch(
+        query ? `/api/insights/categories?${query}` : '/api/insights/categories',
+      )
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`Failed to fetch categories: ${errorText}`)

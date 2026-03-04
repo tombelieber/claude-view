@@ -154,7 +154,7 @@ describe('AIGenerationStats', () => {
 
     it('should render CostBreakdownCard when cost data is present', () => {
       render(<AIGenerationStats />)
-      expect(screen.getByText('Estimated Total Cost')).toBeInTheDocument()
+      expect(screen.getByText('Total Cost')).toBeInTheDocument()
     })
   })
 
@@ -258,7 +258,7 @@ describe('AIGenerationStats', () => {
       })
       render(<AIGenerationStats />)
 
-      expect(screen.queryByText('Estimated Total Cost')).not.toBeInTheDocument()
+      expect(screen.queryByText('Total Cost')).not.toBeInTheDocument()
     })
   })
 

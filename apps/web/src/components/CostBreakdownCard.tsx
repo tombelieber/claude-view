@@ -64,7 +64,7 @@ export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
         <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
           <DollarSign className="w-3.5 h-3.5" />
-          Estimated Total Cost
+          Total Cost
         </p>
         <p className="text-3xl sm:text-4xl font-semibold text-blue-800 dark:text-blue-300 tabular-nums mb-4">
           {formatCostUsd(cost.totalCostUsd)}

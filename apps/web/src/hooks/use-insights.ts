@@ -74,9 +74,14 @@ export interface InsightsData {
 // ============================================================================
 
 /**
- * Convert TimeRange to unix timestamps (seconds) for API.
+ * Convert TimeRange to API bounds.
+ * `all` intentionally omits explicit from/to to use backend default-all-time behavior.
  */
-function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number } {
+function timeRangeToBounds(timeRange: TimeRange): { from?: number; to?: number } {
+  if (timeRange === 'all') {
+    return {}
+  }
+
   const now = Math.floor(Date.now() / 1000)
 
   switch (timeRange) {
@@ -86,8 +91,6 @@ function timeRangeToTimestamps(timeRange: TimeRange): { from: number; to: number
       return { from: now - 30 * 86400, to: now }
     case '90d':
       return { from: now - 90 * 86400, to: now }
-    case 'all':
-      return { from: 1, to: now }
   }
 }
 
@@ -173,17 +176,17 @@ interface UseInsightsOptions {
  * Uses React Query for caching with 1 minute stale time.
  */
 export function useInsights({ timeRange }: UseInsightsOptions) {
-  const { from, to } = timeRangeToTimestamps(timeRange)
-
   return useQuery({
-    queryKey: ['insights', from, to],
+    queryKey: ['insights', timeRange],
     queryFn: async (): Promise<InsightsData> => {
-      const params = new URLSearchParams({
-        from: from.toString(),
-        to: to.toString(),
-      })
+      const { from, to } = timeRangeToBounds(timeRange)
+      const params = new URLSearchParams()
+      if (from != null) params.set('from', from.toString())
+      if (to != null) params.set('to', to.toString())
 
-      const response = await fetch(`/api/insights?${params}`)
+      const query = params.toString()
+
+      const response = await fetch(query ? `/api/insights?${query}` : '/api/insights')
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`Failed to fetch insights: ${errorText}`)

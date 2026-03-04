@@ -1,8 +1,8 @@
 interface ChatStatusBarProps {
   contextUsage: number // 0-100 percentage
   turnCount: number
-  sessionCost: number
-  lastTurnCost: number
+  sessionCost: number | null
+  lastTurnCost: number | null
   status: string
 }
 
@@ -15,6 +15,7 @@ export function ChatStatusBar({
 }: ChatStatusBarProps) {
   const isActive =
     status === 'active' || status === 'waiting_input' || status === 'waiting_permission'
+  const sessionCostLabel = sessionCost == null ? '--' : `$${sessionCost.toFixed(4)}`
 
   return (
     <div className="flex items-center gap-4 px-4 py-1.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-xs text-gray-500 dark:text-gray-400">
@@ -44,10 +45,10 @@ export function ChatStatusBar({
       <span className="text-gray-300 dark:text-gray-600">|</span>
 
       {/* Running cost */}
-      <span className="tabular-nums font-mono">${sessionCost.toFixed(4)}</span>
+      <span className="tabular-nums font-mono">{sessionCostLabel}</span>
 
       {/* Last turn cost */}
-      {lastTurnCost > 0 && isActive && (
+      {lastTurnCost != null && lastTurnCost > 0 && isActive && (
         <>
           <span className="text-gray-300 dark:text-gray-600">|</span>
           <span className="tabular-nums font-mono text-gray-400 dark:text-gray-500">
