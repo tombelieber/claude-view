@@ -27,6 +27,7 @@ import { useSessionsInfinite } from '../hooks/use-sessions-infinite'
 import { useTimeRange } from '../hooks/use-time-range'
 import { NO_BRANCH } from '../lib/constants'
 import { groupSessionsByDate } from '../lib/date-groups'
+import { getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
 import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import {
@@ -73,6 +74,9 @@ function formatDuration(seconds: number): string {
 function formatSortMetric(
   session: {
     durationSeconds?: number
+    totalTaskTimeSeconds?: number | null
+    turnDurationAvgMs?: number | null
+    turnCount?: number
     userPromptCount?: number
     filesEditedCount?: number
     totalInputTokens?: number | null
@@ -82,7 +86,7 @@ function formatSortMetric(
 ): string | null {
   switch (sort) {
     case 'duration': {
-      const dur = session.durationSeconds ?? 0
+      const dur = getDisplayTaskTimeSeconds(session) ?? 0
       return dur > 0 ? formatDuration(dur) : null
     }
     case 'prompts': {
@@ -285,6 +289,7 @@ export function HistoryView() {
         {hasDeepLink && (
           <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
             <button
+              type="button"
               onClick={() => navigate('/')}
               className="p-1 -ml-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               aria-label="Back to dashboard"
@@ -307,6 +312,7 @@ export function HistoryView() {
               <span className="text-gray-400 tabular-nums">{total} sessions</span>
             </div>
             <button
+              type="button"
               onClick={clearAll}
               className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             >
@@ -333,6 +339,7 @@ export function HistoryView() {
             />
             {searchText && (
               <button
+                type="button"
                 onClick={() => setSearchText('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
@@ -362,6 +369,7 @@ export function HistoryView() {
                 </>
               )}
               <button
+                type="button"
                 onClick={() => {
                   const params = new URLSearchParams(searchParams)
                   params.delete('project')
@@ -415,6 +423,7 @@ export function HistoryView() {
                   {total} sessions
                 </span>
                 <button
+                  type="button"
                   onClick={clearAll}
                   className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline underline-offset-2"
                 >
