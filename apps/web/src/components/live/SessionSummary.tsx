@@ -1,10 +1,12 @@
 interface SessionSummaryProps {
-  sessionCost: number
+  sessionCost: number | null
   turnCount: number
   contextUsage: number
 }
 
 export function SessionSummary({ sessionCost, turnCount, contextUsage }: SessionSummaryProps) {
+  const sessionCostLabel = sessionCost == null ? '--' : `$${sessionCost.toFixed(4)}`
+
   return (
     <div className="rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-4 mx-4 my-4">
       <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
@@ -14,7 +16,7 @@ export function SessionSummary({ sessionCost, turnCount, contextUsage }: Session
         <div>
           <p className="text-xs text-gray-500 dark:text-gray-400">Total Cost</p>
           <p className="text-lg font-mono font-semibold text-gray-900 dark:text-gray-100">
-            ${sessionCost.toFixed(4)}
+            {sessionCostLabel}
           </p>
         </div>
         <div>

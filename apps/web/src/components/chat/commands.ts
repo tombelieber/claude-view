@@ -32,7 +32,7 @@ export const COMMANDS: SlashCommand[] = [
 
   // Info commands
   { name: 'help', description: 'Show available slash commands', category: 'info' },
-  { name: 'cost', description: 'Show token usage and estimated cost', category: 'info' },
+  { name: 'cost', description: 'Show token usage and cost', category: 'info' },
   { name: 'status', description: 'Show session status and agent state', category: 'info' },
 ]
 

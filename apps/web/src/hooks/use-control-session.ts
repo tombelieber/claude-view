@@ -27,8 +27,8 @@ interface ControlSessionState {
   streamingMessageId: string
   contextUsage: number
   turnCount: number
-  sessionCost: number
-  lastTurnCost: number
+  sessionCost: number | null
+  lastTurnCost: number | null
   permissionRequest: PermissionRequestMsg | null
   askQuestion: AskUserQuestionMsg | null
   planApproval: PlanApprovalMsg | null
@@ -43,8 +43,8 @@ const initialState: ControlSessionState = {
   streamingMessageId: '',
   contextUsage: 0,
   turnCount: 0,
-  sessionCost: 0,
-  lastTurnCost: 0,
+  sessionCost: null,
+  lastTurnCost: null,
   permissionRequest: null,
   askQuestion: null,
   planApproval: null,

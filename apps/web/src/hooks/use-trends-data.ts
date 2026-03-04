@@ -9,13 +9,24 @@ export type TrendsMetric = 'reedit_rate' | 'sessions' | 'lines' | 'cost_per_line
 export type TrendsRange = '3mo' | '6mo' | '1yr' | 'all'
 export type TrendsGranularity = 'day' | 'week' | 'month'
 
-export interface TrendsParams {
+interface TrendsBaseParams {
   metric: TrendsMetric
-  range: TrendsRange
   granularity: TrendsGranularity
-  from?: number
-  to?: number
 }
+
+type TrendsRangeParams = TrendsBaseParams & {
+  range: TrendsRange
+  from?: never
+  to?: never
+}
+
+type TrendsBoundsParams = TrendsBaseParams & {
+  from: number
+  to: number
+  range?: never
+}
+
+export type TrendsParams = TrendsRangeParams | TrendsBoundsParams
 
 // ============================================================================
 // Metric display info
@@ -40,12 +51,26 @@ export const GRANULARITY_OPTIONS: { value: TrendsGranularity; label: string }[] 
 // ============================================================================
 
 async function fetchTrends(params: TrendsParams): Promise<InsightsTrendsResponse> {
+  const hasRange = 'range' in params && params.range !== undefined
+  const hasFrom = 'from' in params && params.from !== undefined
+  const hasTo = 'to' in params && params.to !== undefined
+
+  if (hasRange && (hasFrom || hasTo)) {
+    throw new Error('Invalid trends params: use either `range` or `from`/`to`, never both')
+  }
+  if (!hasRange && !(hasFrom && hasTo)) {
+    throw new Error('Invalid trends params: explicit bounds require both `from` and `to`')
+  }
+
   const searchParams = new URLSearchParams()
   searchParams.set('metric', params.metric)
-  searchParams.set('range', params.range)
   searchParams.set('granularity', params.granularity)
-  if (params.from) searchParams.set('from', params.from.toString())
-  if (params.to) searchParams.set('to', params.to.toString())
+  if (hasRange) {
+    searchParams.set('range', params.range)
+  } else {
+    if (params.from != null) searchParams.set('from', params.from.toString())
+    if (params.to != null) searchParams.set('to', params.to.toString())
+  }
 
   const response = await fetch(`/api/insights/trends?${searchParams}`)
   if (!response.ok) {
