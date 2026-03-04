@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { useDebounce } from '../hooks/use-debounce'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
-import { useLiveSessionIds } from '../hooks/use-live-session-ids'
+import { useLiveSessionPresence } from '../hooks/use-live-session-ids'
 import { useIsMobile } from '../hooks/use-media-query'
 import { useProjectSummaries } from '../hooks/use-projects'
 import { DEFAULT_FILTERS, useSessionFilters } from '../hooks/use-session-filters'
@@ -113,7 +113,7 @@ export function HistoryView() {
   const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
   const { indexingProgress } = useOutletContext<{ indexingProgress?: IndexingProgress }>()
-  const liveSessionIds = useLiveSessionIds()
+  const { ids: liveSessionIds, costById: liveSessionCosts } = useLiveSessionPresence()
 
   // URL-persisted filter/sort state
   const [searchParams, setSearchParams] = useSearchParams()
@@ -146,6 +146,17 @@ export function HistoryView() {
 
   const sessions = data?.sessions ?? []
   const total = data?.total ?? 0
+  const sessionsWithLiveCost = useMemo(() => {
+    if (!sessions.length || !liveSessionCosts.size) return sessions
+    return sessions.map((session) => {
+      const liveCostUsd = liveSessionCosts.get(session.id)
+      if (liveCostUsd == null || liveCostUsd <= 0) return session
+      return {
+        ...session,
+        totalCostUsd: liveCostUsd,
+      }
+    })
+  }, [sessions, liveSessionCosts])
 
   // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
   const hasDeepLinkSort = filters.sort !== 'recent'
@@ -205,11 +216,11 @@ export function HistoryView() {
   // Extract models from loaded pages (acceptable for MVP — model diversity is low)
   const availableModels = useMemo(() => {
     const set = new Set<string>()
-    for (const s of sessions) {
+    for (const s of sessionsWithLiveCost) {
       if (s.primaryModel) set.add(s.primaryModel)
     }
     return [...set].sort()
-  }, [sessions])
+  }, [sessionsWithLiveCost])
 
   const isFiltered = !!(
     debouncedSearch ||
@@ -227,7 +238,7 @@ export function HistoryView() {
     filters.models.length > 0
   )
 
-  const tooManyToGroup = shouldDisableGrouping(sessions.length)
+  const tooManyToGroup = shouldDisableGrouping(sessionsWithLiveCost.length)
 
   // Auto-reset groupBy when session count exceeds the limit
   const [groupByAutoReset, setGroupByAutoReset] = useState(false)
@@ -243,13 +254,13 @@ export function HistoryView() {
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
     if (filters.groupBy !== 'none' && !tooManyToGroup) {
-      return groupSessions(sessions, filters.groupBy)
+      return groupSessions(sessionsWithLiveCost, filters.groupBy)
     }
     // Default behavior: group by date when sort is 'recent', otherwise single group
     return filters.sort === 'recent'
-      ? groupSessionsByDate(sessions)
-      : [{ label: SORT_LABELS[filters.sort], sessions }]
-  }, [sessions, filters.groupBy, filters.sort, tooManyToGroup])
+      ? groupSessionsByDate(sessionsWithLiveCost)
+      : [{ label: SORT_LABELS[filters.sort], sessions: sessionsWithLiveCost }]
+  }, [sessionsWithLiveCost, filters.groupBy, filters.sort, tooManyToGroup])
 
   // Collapse state for group headers
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -478,11 +489,11 @@ export function HistoryView() {
 
         {/* Session List or Table */}
         <div className="mt-5">
-          {sessions.length > 0 ? (
+          {sessionsWithLiveCost.length > 0 ? (
             filters.viewMode === 'table' ? (
               /* Table view */
               <CompactSessionTable
-                sessions={sessions}
+                sessions={sessionsWithLiveCost}
                 liveSessionIds={liveSessionIds}
                 onSort={(column) => {
                   // Map table column to SessionSort
@@ -599,7 +610,7 @@ export function HistoryView() {
               <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
             </div>
           )}
-          {!hasNextPage && sessions.length > 0 && (
+          {!hasNextPage && sessionsWithLiveCost.length > 0 && (
             <div className="text-center py-4 text-xs text-gray-400">
               All {total} sessions loaded
             </div>
