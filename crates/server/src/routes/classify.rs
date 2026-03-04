@@ -20,7 +20,7 @@ use ts_rs::TS;
 use crate::classify_state::ClassifyStatus;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use claude_view_core::classification::{self, ClassificationInput, BATCH_SIZE};
+use claude_view_core::classification::{ClassificationInput, BATCH_SIZE};
 use claude_view_core::llm::{ClassificationRequest, LlmProvider};
 
 // ============================================================================
@@ -47,10 +47,6 @@ pub struct ClassifyResponse {
     pub job_id: i64,
     #[ts(type = "number")]
     pub total_sessions: i64,
-    #[ts(type = "number")]
-    pub estimated_cost_cents: i64,
-    #[ts(type = "number")]
-    pub estimated_duration_secs: i64,
     pub status: String,
 }
 
@@ -196,19 +192,13 @@ async fn start_classification(
         return Err(ApiError::BadRequest("No sessions to classify".to_string()));
     }
 
-    let batch_size = BATCH_SIZE as i64;
-    let estimated_cost = classification::estimate_cost_cents(session_count, batch_size);
-    let estimated_duration = classification::estimate_duration_secs(session_count, batch_size);
-
-    // Dry run: just return estimates without starting
+    // Dry run: strict mode returns scope only (no synthetic pre-run estimates).
     if body.dry_run {
         return Ok((
             StatusCode::OK,
             Json(ClassifyResponse {
                 job_id: 0,
                 total_sessions: session_count,
-                estimated_cost_cents: estimated_cost,
-                estimated_duration_secs: estimated_duration,
                 status: "dry_run".to_string(),
             }),
         ));
@@ -224,12 +214,7 @@ async fn start_classification(
     let model_name = settings.llm_model.clone();
     let db_job_id = state
         .db
-        .create_classification_job(
-            session_count,
-            provider_name,
-            &model_name,
-            Some(estimated_cost),
-        )
+        .create_classification_job(session_count, provider_name, &model_name)
         .await?;
 
     let job_id_str = format!("cls_{}", db_job_id);
@@ -249,8 +234,6 @@ async fn start_classification(
         Json(ClassifyResponse {
             job_id: db_job_id,
             total_sessions: session_count,
-            estimated_cost_cents: estimated_cost,
-            estimated_duration_secs: estimated_duration,
             status: "running".to_string(),
         }),
     ))
@@ -577,7 +560,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let total = sessions.len();
     if total == 0 {
         classify_state.set_completed();
-        if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+        if let Err(e) = db.complete_classification_job(db_job_id, None).await {
             tracing::error!(error = %e, "Failed to complete classification job with 0 sessions");
         }
         return;
@@ -603,6 +586,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let mut classified_total = 0u64;
     let mut failed_total = 0u64;
     let mut batch_num = 0usize;
+    let mut total_tokens_used: i64 = 0;
+    let mut total_cost_usd: f64 = 0.0;
+    let mut tokens_known = true;
+    let mut cost_known = true;
 
     for batch in inputs.chunks(BATCH_SIZE) {
         // Check for cancellation
@@ -664,6 +651,31 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                         "claude-cli".to_string(),
                     ));
                     classified_total += 1;
+
+                    match resp.total_tokens_used() {
+                        Some(tokens) => {
+                            let tokens_i64 = tokens.min(i64::MAX as u64) as i64;
+                            total_tokens_used = total_tokens_used.saturating_add(tokens_i64);
+                        }
+                        None => {
+                            tokens_known = false;
+                        }
+                    }
+
+                    if let Some(cost_usd) = resp.total_cost_usd {
+                        if !cost_usd.is_finite() || cost_usd < 0.0 {
+                            cost_known = false;
+                            tracing::warn!(
+                                session_id = %input.session_id,
+                                cost_usd,
+                                "Invalid classification cost telemetry; falling back to NULL"
+                            );
+                            continue;
+                        }
+                        total_cost_usd += cost_usd;
+                    } else {
+                        cost_known = false;
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -673,6 +685,8 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                     );
                     failed_total += 1;
                     classify_state.increment_errors();
+                    tokens_known = false;
+                    cost_known = false;
                 }
             }
         }
@@ -704,6 +718,12 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
             classify_state.increment_classified(batch_updates.len() as u64);
         }
 
+        let tokens_for_progress = if tokens_known {
+            Some(total_tokens_used)
+        } else {
+            None
+        };
+
         // Update job progress in database
         if let Err(e) = db
             .update_classification_job_progress(
@@ -711,7 +731,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                 classified_total as i64,
                 0,
                 failed_total as i64,
-                None,
+                tokens_for_progress,
             )
             .await
         {
@@ -721,16 +741,38 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 
     // Job completed
     classify_state.set_completed();
-    if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+    let actual_cost_cents = if cost_known && total_cost_usd.is_finite() {
+        let cents = (total_cost_usd * 100.0).round();
+        if cents <= i64::MAX as f64 {
+            Some(cents as i64)
+        } else {
+            tracing::warn!(
+                total_cost_usd,
+                "Classification cost overflow; storing NULL actual_cost_cents"
+            );
+            None
+        }
+    } else {
+        None
+    };
+    if let Err(e) = db
+        .complete_classification_job(db_job_id, actual_cost_cents)
+        .await
+    {
         tracing::error!(error = %e, "Failed to complete classification job");
     }
+    let tokens_for_progress = if tokens_known {
+        Some(total_tokens_used)
+    } else {
+        None
+    };
     if let Err(e) = db
         .update_classification_job_progress(
             db_job_id,
             classified_total as i64,
             0,
             failed_total as i64,
-            None,
+            tokens_for_progress,
         )
         .await
     {
@@ -795,8 +837,6 @@ mod tests {
         let resp = ClassifyResponse {
             job_id: 42,
             total_sessions: 100,
-            estimated_cost_cents: 5,
-            estimated_duration_secs: 40,
             status: "running".to_string(),
         };
         let json = serde_json::to_string(&resp).unwrap();
