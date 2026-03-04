@@ -189,7 +189,7 @@ pub async fn update_session_deep_fields_tx(
     total_task_time_seconds: i32,
     longest_task_seconds: Option<i32>,
     longest_task_preview: Option<&str>,
-    total_cost_usd: f64,
+    total_cost_usd: Option<f64>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 

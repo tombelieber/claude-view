@@ -92,12 +92,12 @@ async fn test_get_ai_generation_stats() {
         None, // work_type
         None, // git_branch
         Some("claude-opus-4-5-20251101"),
-        None, // last_message_at
-        None, // first_user_prompt
-        0,    // total_task_time_seconds
-        None, // longest_task_seconds
-        None, // longest_task_preview
-        0.0,  // total_cost_usd
+        None,      // last_message_at
+        None,      // first_user_prompt
+        0,         // total_task_time_seconds
+        None,      // longest_task_seconds
+        None,      // longest_task_preview
+        Some(0.0), // total_cost_usd
     )
     .await
     .unwrap();
@@ -151,12 +151,12 @@ async fn test_get_ai_generation_stats() {
         None, // work_type
         None, // git_branch
         Some("claude-sonnet-4-20250514"),
-        None, // last_message_at
-        None, // first_user_prompt
-        0,    // total_task_time_seconds
-        None, // longest_task_seconds
-        None, // longest_task_preview
-        0.0,  // total_cost_usd
+        None,      // last_message_at
+        None,      // first_user_prompt
+        0,         // total_task_time_seconds
+        None,      // longest_task_seconds
+        None,      // longest_task_preview
+        Some(0.0), // total_cost_usd
     )
     .await
     .unwrap();
