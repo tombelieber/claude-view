@@ -106,5 +106,7 @@ mod tests {
         // The exact content depends on what metrics have been recorded
         // At minimum, it should be valid text (not an error)
         assert!(!body_str.contains("error"));
+        assert!(body_str.contains("time_range_resolution_total"));
+        assert!(body_str.contains("time_range_resolution_error_total"));
     }
 }

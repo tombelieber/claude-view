@@ -41,8 +41,8 @@ export interface AssistantDone {
     cacheReadTokens: number
     cacheWriteTokens: number
   }
-  cost: number
-  totalCost: number
+  cost: number | null
+  totalCost: number | null
 }
 
 export interface ToolUseStartMsg {
