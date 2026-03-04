@@ -6,6 +6,7 @@
 //! - Helper functions for recording metrics
 //! - `/metrics` endpoint handler
 
+use claude_view_core::EffectiveRangeSource;
 use metrics::{counter, describe_counter, describe_gauge, describe_histogram, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::sync::OnceLock;
@@ -55,6 +56,14 @@ fn describe_metrics() {
         "dashboard_request_duration_seconds",
         "Duration of API requests in seconds"
     );
+    describe_counter!(
+        "time_range_resolution_total",
+        "Total number of successful time range resolutions"
+    );
+    describe_counter!(
+        "time_range_resolution_error_total",
+        "Total number of time range resolution errors"
+    );
 
     // Sync metrics
     describe_histogram!(
@@ -88,6 +97,26 @@ pub fn record_request(endpoint: &str, status: &str, duration: std::time::Duratio
         .increment(1);
     histogram!("dashboard_request_duration_seconds", "endpoint" => endpoint.to_string())
         .record(duration.as_secs_f64());
+}
+
+/// Record a successful time range resolution.
+pub fn record_time_range_resolution(endpoint: &str, source: EffectiveRangeSource) {
+    counter!(
+        "time_range_resolution_total",
+        "endpoint" => endpoint.to_string(),
+        "source" => source.as_str().to_string()
+    )
+    .increment(1);
+}
+
+/// Record a failed time range resolution.
+pub fn record_time_range_resolution_error(endpoint: &str, reason: &str) {
+    counter!(
+        "time_range_resolution_error_total",
+        "endpoint" => endpoint.to_string(),
+        "reason" => reason.to_string()
+    )
+    .increment(1);
 }
 
 /// Record a completed sync operation.

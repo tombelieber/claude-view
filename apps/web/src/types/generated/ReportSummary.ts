@@ -9,7 +9,11 @@ export type ReportSummary = {
   linesAdded: number
   linesRemoved: number
   commitCount: number
-  estimatedCost: number
+  totalCostUsd: number | null
+  /**
+   * True when some sessions in this period had unpriced usage (NULL total_cost_usd).
+   */
+  hasUnpricedUsage: boolean
   topWins: Array<string>
   focusAreas: Array<string>
 }
