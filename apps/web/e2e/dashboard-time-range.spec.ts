@@ -8,7 +8,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('TC-2A-01: renders segmented control on desktop with correct options', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -48,7 +48,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('TC-2A-02: renders dropdown selector on mobile with correct options', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -92,7 +92,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('TC-2A-03: selecting a time range updates dashboard stats', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -140,7 +140,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('TC-2A-04: custom date range picker opens on Custom selection', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -152,7 +152,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await expect(btnCustom).toHaveAttribute('aria-checked', 'true')
 
     // The DateRangePicker trigger button should appear (with aria-haspopup="dialog")
-    const datePickerTrigger = page.locator('button[aria-haspopup="dialog"]')
+    const datePickerTrigger = page.locator('button[aria-haspopup="dialog"]', { hasText: 'Custom' })
     await expect(datePickerTrigger).toBeVisible({ timeout: 5000 })
 
     // Click the trigger to open the popover
@@ -162,9 +162,9 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     const dialog = page.locator('[role="dialog"][aria-label="Select custom date range"]')
     await expect(dialog).toBeVisible({ timeout: 5000 })
 
-    // Verify "Start date" and "End date" labels
-    await expect(dialog.locator('text=Start date')).toBeVisible()
-    await expect(dialog.locator('text=End date')).toBeVisible()
+    // Verify picker content is present
+    await expect(dialog.locator('text=Quick select')).toBeVisible()
+    await expect(dialog.locator('[role="grid"]').first()).toBeVisible()
 
     // Verify the "Apply" button exists
     const applyButton = dialog.locator('button', { hasText: 'Apply' })
@@ -191,11 +191,11 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await page.setViewportSize({ width: 1280, height: 800 })
 
     // Clear localStorage to avoid stale state interfering
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.evaluate(() => localStorage.removeItem('dashboard-time-range'))
 
     // --- Navigate with ?range=today ---
-    await page.goto('/?range=today')
+    await page.goto('/analytics?range=today')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -204,14 +204,14 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await expect(btnToday).toHaveAttribute('aria-checked', 'true')
 
     // --- Navigate with ?range=7d ---
-    await page.goto('/?range=7d')
+    await page.goto('/analytics?range=7d')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
     const btn7d = segmentedControl.locator('button[role="radio"]', { hasText: '7d' }).first()
     await expect(btn7d).toHaveAttribute('aria-checked', 'true')
 
     // --- Navigate with ?range=90d ---
-    await page.goto('/?range=90d')
+    await page.goto('/analytics?range=90d')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -219,7 +219,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await expect(btn90d).toHaveAttribute('aria-checked', 'true')
 
     // --- Navigate with ?range=all ---
-    await page.goto('/?range=all')
+    await page.goto('/analytics?range=all')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -227,9 +227,9 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
     await expect(btnAll).toHaveAttribute('aria-checked', 'true')
 
     // --- Verify selecting a range updates the URL ---
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.evaluate(() => localStorage.removeItem('dashboard-time-range'))
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -301,7 +301,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('TC-2A-03b: mobile dropdown selection updates dashboard', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 
@@ -332,7 +332,7 @@ test.describe('Dashboard Time Range Filter (Feature 2A)', () => {
    */
   test('date range caption updates when time range changes', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
     await page.waitForSelector('text=Your Claude Code Usage', { timeout: 30000 })
 

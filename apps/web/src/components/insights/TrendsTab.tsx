@@ -1,5 +1,5 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { TimeRange } from '../../hooks/use-insights'
 import {
   type TrendsGranularity,
@@ -23,18 +23,23 @@ interface TrendsTabProps {
 // ============================================================================
 
 /**
- * Map the Phase 5 TimeRange to the trends API range parameter.
+ * Translate Insights page time range into trends query params.
+ * Non-all ranges use explicit from/to to avoid hidden widening.
  */
-function mapTimeRange(timeRange: TimeRange): '3mo' | '6mo' | '1yr' | 'all' {
+function mapTimeRangeToQuery(
+  timeRange: TimeRange,
+): { range: 'all' } | { from: number; to: number } {
+  const now = Math.floor(Date.now() / 1000)
+
   switch (timeRange) {
     case '7d':
-      return '3mo' // 7d is too short; use 3mo to show context
+      return { from: now - 7 * 86400, to: now }
     case '30d':
-      return '3mo'
+      return { from: now - 30 * 86400, to: now }
     case '90d':
-      return '6mo'
+      return { from: now - 90 * 86400, to: now }
     case 'all':
-      return 'all'
+      return { range: 'all' }
   }
 }
 
@@ -97,12 +102,16 @@ export function TrendsTab({ timeRange }: TrendsTabProps) {
   const [metric, setMetric] = useState<TrendsMetric>('reedit_rate')
   const [granularity, setGranularity] = useState<TrendsGranularity>(defaultGranularity(timeRange))
 
-  const apiRange = mapTimeRange(timeRange)
+  const query = useMemo(() => mapTimeRangeToQuery(timeRange), [timeRange])
+
+  useEffect(() => {
+    setGranularity(defaultGranularity(timeRange))
+  }, [timeRange])
 
   const { data, isLoading, error, refetch } = useTrendsData({
     metric,
-    range: apiRange,
     granularity,
+    ...query,
   })
 
   // Error state

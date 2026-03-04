@@ -1,5 +1,8 @@
 import path from 'path'
+import { fileURLToPath } from 'url'
 import { defineConfig, devices } from '@playwright/test'
+
+const webDir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,10 +24,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `cd ${path.resolve(__dirname, '../..')} && cargo run -p claude-view-server`,
-    env: { STATIC_DIR: path.resolve(__dirname, 'dist') },
+    command: `cd ${path.resolve(webDir, '../..')} && cargo run -p claude-view-server`,
+    env: {
+      STATIC_DIR: path.resolve(webDir, 'dist'),
+      CARGO_TARGET_DIR: path.resolve(webDir, '../../target-playwright'),
+    },
     url: 'http://localhost:47892/api/health',
     reuseExistingServer: !process.env.CI,
-    timeout: 120000,
+    timeout: 300000,
   },
 })
