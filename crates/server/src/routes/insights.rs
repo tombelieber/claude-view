@@ -777,12 +777,8 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
         return (String::new(), String::new(), 0.0);
     }
 
-    let best = averages
-        .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let worst = averages
-        .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    let best = averages.iter().min_by(|a, b| a.1.total_cmp(&b.1));
+    let worst = averages.iter().max_by(|a, b| a.1.total_cmp(&b.1));
 
     if let (Some(best), Some(worst)) = (best, worst) {
         let day_name = match best.0 .0 {
@@ -1732,11 +1728,7 @@ pub async fn get_benchmarks(
         });
     }
 
-    skill_adoption.sort_by(|a, b| {
-        a.impact_on_reedit
-            .partial_cmp(&b.impact_on_reedit)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    skill_adoption.sort_by(|a, b| a.impact_on_reedit.total_cmp(&b.impact_on_reedit));
     skill_adoption.truncate(10);
 
     // ----------------------------------------------------------------

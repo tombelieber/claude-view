@@ -46,6 +46,7 @@ function presetToApiRange(preset: TimeRangePreset): string {
  *  IMPORTANT: Do NOT use toISOString() — it returns UTC which shifts the date
  *  for users east of UTC (e.g. UTC+8 midnight local = previous day in UTC). */
 function toLocalDateStr(unixSeconds: number): string {
+  if (unixSeconds <= 0) return ''
   const d = new Date(unixSeconds * 1000)
   const year = d.getFullYear()
   const month = String(d.getMonth() + 1).padStart(2, '0')

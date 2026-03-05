@@ -380,20 +380,12 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
 
     let best = best_slots
         .iter()
-        .min_by(|a, b| {
-            a.avg_reedit_rate
-                .partial_cmp(&b.avg_reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .min_by(|a, b| a.avg_reedit_rate.total_cmp(&b.avg_reedit_rate))
         .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let worst = best_slots
         .iter()
-        .max_by(|a, b| {
-            a.avg_reedit_rate
-                .partial_cmp(&b.avg_reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .max_by(|a, b| a.avg_reedit_rate.total_cmp(&b.avg_reedit_rate))
         .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let days = [
