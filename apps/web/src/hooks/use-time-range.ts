@@ -96,6 +96,7 @@ function formatDate(date: Date): string {
 
 /** Format timestamp for display */
 function formatTimestamp(ts: number): string {
+  if (ts <= 0) return '--'
   return formatDate(new Date(ts * 1000))
 }
 
@@ -153,7 +154,7 @@ export function useTimeRange(): UseTimeRangeReturn {
     if (fromParam && toParam) {
       const from = Number.parseInt(fromParam, 10)
       const to = Number.parseInt(toParam, 10)
-      if (!isNaN(from) && !isNaN(to)) {
+      if (!isNaN(from) && !isNaN(to) && from > 0 && to > 0) {
         return {
           from: new Date(from * 1000),
           to: new Date(to * 1000),

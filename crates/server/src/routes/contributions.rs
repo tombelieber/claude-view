@@ -953,11 +953,7 @@ fn generate_skill_insight(by_skill: &[SkillStats]) -> String {
     let best_skill = by_skill
         .iter()
         .filter(|s| s.skill != "(no skill)" && s.sessions >= 2)
-        .min_by(|a, b| {
-            a.reedit_rate
-                .partial_cmp(&b.reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        .min_by(|a, b| a.reedit_rate.total_cmp(&b.reedit_rate));
 
     match (no_skill, best_skill) {
         (Some(ns), Some(bs)) if ns.reedit_rate > 0.0 => {
