@@ -81,11 +81,7 @@ pub fn generate_insight(
 
 /// Sort insights by impact score descending.
 pub fn sort_by_impact(insights: &mut [GeneratedInsight]) {
-    insights.sort_by(|a, b| {
-        b.impact_score
-            .partial_cmp(&a.impact_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    insights.sort_by(|a, b| b.impact_score.total_cmp(&a.impact_score));
 }
 
 /// Group insights by impact tier.

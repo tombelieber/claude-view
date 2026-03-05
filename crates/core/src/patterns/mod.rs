@@ -113,20 +113,18 @@ pub fn relative_improvement(better: f64, baseline: f64) -> f64 {
 
 /// Helper: find the bucket with the lowest value (best for re-edit rate metrics).
 pub fn best_bucket(buckets: &[Bucket]) -> Option<&Bucket> {
-    buckets.iter().filter(|b| b.count > 0).min_by(|a, b| {
-        a.value
-            .partial_cmp(&b.value)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    })
+    buckets
+        .iter()
+        .filter(|b| b.count > 0)
+        .min_by(|a, b| a.value.total_cmp(&b.value))
 }
 
 /// Helper: find the bucket with the highest value (worst for re-edit rate metrics).
 pub fn worst_bucket(buckets: &[Bucket]) -> Option<&Bucket> {
-    buckets.iter().filter(|b| b.count > 0).max_by(|a, b| {
-        a.value
-            .partial_cmp(&b.value)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    })
+    buckets
+        .iter()
+        .filter(|b| b.count > 0)
+        .max_by(|a, b| a.value.total_cmp(&b.value))
 }
 
 /// Run all pattern calculations on a slice of sessions and return generated insights.
