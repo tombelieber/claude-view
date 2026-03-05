@@ -45,21 +45,21 @@ export function CoachCard() {
 
   if (!insight) {
     return (
-      <div className="rounded-lg border border-border bg-card p-4">
-        <p className="text-sm font-medium text-muted-foreground">Weekly Insight</p>
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Weekly Insight</p>
         <p className="text-sm mt-2">
-          Run <code className="bg-muted px-1 rounded">/insights</code> in Claude Code to unlock your
-          AI coaching.
+          Run <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">/insights</code> in Claude
+          Code to unlock your AI coaching.
         </p>
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-sm font-medium text-muted-foreground">Weekly Insight</p>
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Weekly Insight</p>
       <p className="text-base font-medium mt-2">{insight.text}</p>
-      <p className="text-sm text-muted-foreground mt-1">{insight.detail}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{insight.detail}</p>
     </div>
   )
 }
