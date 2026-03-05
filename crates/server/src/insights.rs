@@ -187,8 +187,8 @@ pub fn model_insight(models: &[ModelStats]) -> Insight {
         .filter(|m| m.reedit_rate.is_some())
         .min_by(|a, b| {
             a.reedit_rate
-                .partial_cmp(&b.reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(f64::MAX)
+                .total_cmp(&b.reedit_rate.unwrap_or(f64::MAX))
         });
 
     // Find cheapest model
@@ -197,8 +197,8 @@ pub fn model_insight(models: &[ModelStats]) -> Insight {
         .filter(|m| m.cost_per_line.is_some())
         .min_by(|a, b| {
             a.cost_per_line
-                .partial_cmp(&b.cost_per_line)
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .unwrap_or(f64::MAX)
+                .total_cmp(&b.cost_per_line.unwrap_or(f64::MAX))
         });
 
     match (best_by_reedit, cheapest) {
