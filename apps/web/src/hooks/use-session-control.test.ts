@@ -186,5 +186,6 @@ describe('useSessionControl', () => {
     // The phase transition effect sees waiting_input → sets phase to 'ready'
     // The drain effect sees ready + waiting_input → calls sendMessage
     expect(result.current.phase).toBe('ready')
+    expect(mockSendMessage).toHaveBeenCalledWith('hello')
   })
 })
