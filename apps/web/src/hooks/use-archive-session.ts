@@ -20,14 +20,19 @@ async function archiveSessionsBulk(ids: string[]): Promise<void> {
   if (!res.ok) throw new Error(`Bulk archive failed: ${res.status}`)
 }
 
+function invalidateSessionCaches(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['sessions'] })
+  qc.invalidateQueries({ queryKey: ['sessions-infinite'] })
+  qc.invalidateQueries({ queryKey: ['recent-sessions'] })
+}
+
 export function useArchiveSession() {
   const qc = useQueryClient()
 
   const archive = useMutation({
     mutationFn: archiveSession,
     onSuccess: (_data, sessionId) => {
-      qc.invalidateQueries({ queryKey: ['sessions'] })
-      qc.invalidateQueries({ queryKey: ['recent-sessions'] })
+      invalidateSessionCaches(qc)
       toast('Session archived', {
         action: {
           label: 'Undo',
@@ -42,8 +47,7 @@ export function useArchiveSession() {
   const unarchiveMutation = useMutation({
     mutationFn: unarchiveSession,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sessions'] })
-      qc.invalidateQueries({ queryKey: ['recent-sessions'] })
+      invalidateSessionCaches(qc)
       toast.success('Session restored')
     },
     onError: () => toast.error('Failed to restore session'),
@@ -52,16 +56,20 @@ export function useArchiveSession() {
   const bulkArchive = useMutation({
     mutationFn: archiveSessionsBulk,
     onSuccess: (_data, ids) => {
-      qc.invalidateQueries({ queryKey: ['sessions'] })
-      qc.invalidateQueries({ queryKey: ['recent-sessions'] })
+      invalidateSessionCaches(qc)
       toast(`${ids.length} sessions archived`, {
         action: {
           label: 'Undo',
           onClick: () => {
-            Promise.all(ids.map(unarchiveSession)).then(() => {
-              qc.invalidateQueries({ queryKey: ['sessions'] })
-              toast.success(`${ids.length} sessions restored`)
-            })
+            Promise.all(ids.map(unarchiveSession))
+              .then(() => {
+                invalidateSessionCaches(qc)
+                toast.success(`${ids.length} sessions restored`)
+              })
+              .catch(() => {
+                invalidateSessionCaches(qc)
+                toast.error('Failed to restore some sessions')
+              })
           },
         },
         duration: 5000,

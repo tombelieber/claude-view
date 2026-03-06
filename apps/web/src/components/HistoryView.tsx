@@ -127,7 +127,19 @@ export function HistoryView() {
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null)
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [showArchived, setShowArchived] = useState(false)
+  const showArchived = searchParams.get('archived') === '1'
+  const setShowArchived = useCallback(
+    (show: boolean) => {
+      const params = new URLSearchParams(searchParams)
+      if (show) {
+        params.set('archived', '1')
+      } else {
+        params.delete('archived')
+      }
+      setSearchParams(params)
+    },
+    [searchParams, setSearchParams],
+  )
   const { archive, bulkArchive } = useArchiveSession()
   const searchRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -555,39 +567,6 @@ export function HistoryView() {
             </div>
           )}
 
-        {/* Bulk action toolbar */}
-        <div className="flex items-center gap-2 px-4 py-2 mt-3 border-b border-gray-200 dark:border-gray-700">
-          <button
-            type="button"
-            onClick={() => {
-              setBulkMode(!bulkMode)
-              setSelectedIds(new Set())
-            }}
-            className={`text-sm px-2 py-1 rounded ${bulkMode ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-          >
-            {bulkMode ? 'Cancel selection' : 'Select'}
-          </button>
-          {bulkMode && selectedIds.size > 0 && (
-            <>
-              <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
-              <button
-                type="button"
-                onClick={handleBulkArchive}
-                className="text-sm px-3 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50"
-              >
-                Archive
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowArchived(!showArchived)}
-            className={`text-sm px-2 py-1 rounded ml-auto ${showArchived ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700' : 'text-gray-500'}`}
-          >
-            {showArchived ? 'Showing archived' : 'Show archived'}
-          </button>
-        </div>
-
         {/* Session List or Table */}
         <div className="mt-5">
           {sessionsWithLiveCost.length > 0 ? (
@@ -621,6 +600,10 @@ export function HistoryView() {
                           : 'time'
                 }
                 sortDirection="desc"
+                onArchive={(id) => archive.mutate(id)}
+                selectable={bulkMode}
+                selected={selectedIds}
+                onSelectToggle={toggleSelect}
               />
             ) : (
               /* Timeline view */
