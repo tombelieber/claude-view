@@ -10,8 +10,8 @@ export const supabase: SupabaseClient | null =
     : null
 
 if (!supabase) {
-  console.warn(
-    '[supabase] VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY not set — auth/sharing disabled',
+  console.debug(
+    '[supabase] VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY not set — running in local mode',
   )
 }
 
