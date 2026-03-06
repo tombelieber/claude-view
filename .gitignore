@@ -6,6 +6,7 @@ dist/
 
 # Rust/Cargo
 target/
+target-codex*/
 **/*.rs.bk
 *.pdb
 claude-view.db
