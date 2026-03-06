@@ -13,14 +13,15 @@ import {
   type SDKSession,
   unstable_v2_resumeSession,
 } from '@anthropic-ai/claude-agent-sdk'
+import { RingBuffer } from './ring-buffer.js'
 import type {
   ActiveSession,
   AskUserQuestionMessage,
-  PlanApprovalMessage,
+  SequencedServerMessage,
   ServerMessage,
 } from './types.js'
 
-interface ControlSession {
+export interface ControlSession {
   controlId: string
   sessionId: string
   sdkSession: SDKSession
@@ -31,6 +32,8 @@ interface ControlSession {
   startedAt: number
   emitter: EventEmitter
   isStreaming: boolean // guard against concurrent sendMessage calls
+  eventBuffer: RingBuffer<{ seq: number; msg: SequencedServerMessage }>
+  nextSeq: number
   pendingPermissions: Map<
     string,
     {
@@ -105,6 +108,8 @@ export class SessionManager {
       startedAt: Date.now(),
       emitter,
       isStreaming: false,
+      eventBuffer: new RingBuffer(200),
+      nextSeq: 0,
       pendingPermissions: new Map(),
       pendingQuestions: new Map(),
       pendingPlans: new Map(),
@@ -113,6 +118,21 @@ export class SessionManager {
 
     this.sessions.set(controlId, cs)
     return cs
+  }
+
+  /** Emit a message with seq number and buffer it for replay (internal). */
+  private emitSequenced(cs: ControlSession, msg: ServerMessage): void {
+    const seq = cs.nextSeq++
+    const sequenced: SequencedServerMessage = { ...msg, seq }
+    cs.eventBuffer.push({ seq, msg: sequenced })
+    cs.emitter.emit('message', sequenced)
+  }
+
+  /** Public wrapper — ws-handler.ts calls this for the initial session_status. */
+  emitSequencedById(controlId: string, msg: ServerMessage): void {
+    const cs = this.sessions.get(controlId)
+    if (!cs) return
+    this.emitSequenced(cs, msg)
   }
 
   /**
@@ -153,17 +173,17 @@ export class SessionManager {
 
         // Update status and emit to frontend
         cs.status = 'waiting_permission'
-        cs.emitter.emit('message', {
+        this.emitSequenced(cs, {
           type: 'ask_user_question',
           requestId,
           questions,
-        } satisfies AskUserQuestionMessage)
-        cs.emitter.emit('message', {
+        })
+        this.emitSequenced(cs, {
           type: 'session_status',
           status: cs.status,
           contextUsage: cs.contextUsage,
           turnCount: cs.turnCount,
-        } satisfies ServerMessage)
+        })
       })
     }
 
@@ -195,17 +215,17 @@ export class SessionManager {
 
         // Update status and emit plan data to frontend
         cs.status = 'waiting_permission'
-        cs.emitter.emit('message', {
+        this.emitSequenced(cs, {
           type: 'plan_approval',
           requestId,
           planData: input,
-        } satisfies PlanApprovalMessage)
-        cs.emitter.emit('message', {
+        })
+        this.emitSequenced(cs, {
           type: 'session_status',
           status: cs.status,
           contextUsage: cs.contextUsage,
           turnCount: cs.turnCount,
-        } satisfies ServerMessage)
+        })
       })
     }
 
@@ -247,20 +267,20 @@ export class SessionManager {
 
       // Emit to frontend via EventEmitter → WebSocket
       cs.status = 'waiting_permission'
-      cs.emitter.emit('message', {
+      this.emitSequenced(cs, {
         type: 'permission_request',
         requestId,
         toolName,
         toolInput: input,
         description: `${toolName} requires permission`,
         timeoutMs: 60_000,
-      } satisfies ServerMessage)
-      cs.emitter.emit('message', {
+      })
+      this.emitSequenced(cs, {
         type: 'session_status',
         status: cs.status,
         contextUsage: cs.contextUsage,
         turnCount: cs.turnCount,
-      } satisfies ServerMessage)
+      })
     })
   }
 
@@ -289,11 +309,11 @@ export class SessionManager {
                 (event as Record<string, unknown>).delta &&
                 (event as Record<string, Record<string, unknown>>).delta.type === 'text_delta'
               ) {
-                cs.emitter.emit('message', {
+                this.emitSequenced(cs, {
                   type: 'assistant_chunk',
                   content: (event as Record<string, Record<string, unknown>>).delta.text as string,
                   messageId,
-                } satisfies ServerMessage)
+                })
               }
               break
             }
@@ -303,12 +323,12 @@ export class SessionManager {
               const assistantMsg = msg as SDKMessage & { type: 'assistant' }
               for (const block of assistantMsg.message.content) {
                 if (block.type === 'tool_use') {
-                  cs.emitter.emit('message', {
+                  this.emitSequenced(cs, {
                     type: 'tool_use_start',
                     toolName: block.name,
                     toolInput: block.input as Record<string, unknown>,
                     toolUseId: block.id,
-                  } satisfies ServerMessage)
+                  })
                 }
               }
               break
@@ -324,13 +344,13 @@ export class SessionManager {
                 cs.turnCount = resultMsg.num_turns ?? 0
               }
               cs.status = 'waiting_input'
-              cs.emitter.emit('message', {
+              this.emitSequenced(cs, {
                 type: 'assistant_done',
                 messageId,
                 usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
                 cost: null,
                 totalCost: cs.totalCost,
-              } satisfies ServerMessage)
+              })
               break
             }
           }
@@ -339,11 +359,11 @@ export class SessionManager {
       } catch (err) {
         cs.isStreaming = false
         cs.status = 'error'
-        cs.emitter.emit('message', {
+        this.emitSequenced(cs, {
           type: 'error',
           message: err instanceof Error ? err.message : String(err),
           fatal: true,
-        } satisfies ServerMessage)
+        })
       }
     })()
   }
@@ -356,12 +376,12 @@ export class SessionManager {
     clearTimeout(pending.timer)
     cs.pendingPermissions.delete(requestId)
     cs.status = 'active'
-    cs.emitter.emit('message', {
+    this.emitSequenced(cs, {
       type: 'session_status',
       status: cs.status,
       contextUsage: cs.contextUsage,
       turnCount: cs.turnCount,
-    } satisfies ServerMessage)
+    })
     pending.resolve(allowed)
     return true
   }
@@ -373,12 +393,12 @@ export class SessionManager {
     if (!pending) return false
     cs.pendingQuestions.delete(requestId)
     cs.status = 'active'
-    cs.emitter.emit('message', {
+    this.emitSequenced(cs, {
       type: 'session_status',
       status: cs.status,
       contextUsage: cs.contextUsage,
       turnCount: cs.turnCount,
-    } satisfies ServerMessage)
+    })
     pending.resolve(answers)
     return true
   }
@@ -390,12 +410,12 @@ export class SessionManager {
     if (!pending) return false
     cs.pendingPlans.delete(requestId)
     cs.status = 'active'
-    cs.emitter.emit('message', {
+    this.emitSequenced(cs, {
       type: 'session_status',
       status: cs.status,
       contextUsage: cs.contextUsage,
       turnCount: cs.turnCount,
-    } satisfies ServerMessage)
+    })
     pending.resolve({ approved, feedback })
     return true
   }
@@ -407,12 +427,12 @@ export class SessionManager {
     if (!pending) return false
     cs.pendingElicitations.delete(requestId)
     cs.status = 'active'
-    cs.emitter.emit('message', {
+    this.emitSequenced(cs, {
       type: 'session_status',
       status: cs.status,
       contextUsage: cs.contextUsage,
       turnCount: cs.turnCount,
-    } satisfies ServerMessage)
+    })
     pending.resolve(response)
     return true
   }
