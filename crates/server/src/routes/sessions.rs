@@ -639,24 +639,24 @@ async fn archive_session_handler(
     // Move file to ~/.claude-view/archives/
     let src = std::path::PathBuf::from(&file_path);
     let archive_dir = archive_base_dir();
-    let project_dir = src.parent().and_then(|p| p.file_name()).unwrap_or_default();
-    let dest_dir = archive_dir.join(project_dir);
+    if let Some(project_dir) = src.parent().and_then(|p| p.file_name()) {
+        let dest_dir = archive_dir.join(project_dir);
 
-    // Attempt file move — failure is non-fatal (DB flag is the source of truth)
-    if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
-        tracing::warn!("Failed to create archive dir: {e}");
-    } else if let Some(file_name) = src.file_name() {
-        let dest = dest_dir.join(file_name);
-        match tokio::fs::rename(&src, &dest).await {
-            Ok(()) => {
-                let _ = state
-                    .db
-                    .update_session_file_path(&id, dest.to_str().unwrap_or_default())
-                    .await;
-            }
-            Err(e) => {
-                tracing::warn!("Failed to move session file to archive: {e}");
-                // DB already marked as archived — indexer guard will skip it
+        // Attempt file move — failure is non-fatal (DB flag is the source of truth)
+        if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
+            tracing::warn!("Failed to create archive dir: {e}");
+        } else if let Some(file_name) = src.file_name() {
+            let dest = dest_dir.join(file_name);
+            match tokio::fs::rename(&src, &dest).await {
+                Ok(()) => {
+                    if let Some(dest_str) = dest.to_str() {
+                        let _ = state.db.update_session_file_path(&id, dest_str).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to move session file to archive: {e}");
+                    // DB already marked as archived — indexer guard will skip it
+                }
             }
         }
     }
@@ -688,11 +688,12 @@ async fn unarchive_session_handler(
             return Err(ApiError::BadRequest("Invalid archive path".to_string()));
         }
 
-        let original = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".claude")
-            .join("projects")
-            .join(relative);
+        let Some(home) = dirs::home_dir() else {
+            return Err(ApiError::Internal(
+                "Cannot determine home directory".to_string(),
+            ));
+        };
+        let original = home.join(".claude").join("projects").join(relative);
 
         // Move file back — failure is non-fatal
         if current.exists() {
@@ -704,7 +705,7 @@ async fn unarchive_session_handler(
             }
         }
 
-        original.to_str().unwrap_or_default().to_string()
+        original.to_string_lossy().to_string()
     } else {
         // File not in archive dir (file move failed during archive) — just clear the flag
         current_path
@@ -732,16 +733,20 @@ async fn bulk_archive_handler(
     let archive_dir = archive_base_dir();
     for (id, file_path) in &results {
         let src = std::path::PathBuf::from(file_path);
-        let project_dir = src.parent().and_then(|p| p.file_name()).unwrap_or_default();
+        let Some(project_dir) = src.parent().and_then(|p| p.file_name()) else {
+            continue;
+        };
         let dest_dir = archive_dir.join(project_dir);
-        let _ = tokio::fs::create_dir_all(&dest_dir).await;
+        if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
+            tracing::warn!("Bulk archive: failed to create dir {dest_dir:?}: {e}");
+            continue;
+        }
         if let Some(file_name) = src.file_name() {
             let dest = dest_dir.join(file_name);
             if let Ok(()) = tokio::fs::rename(&src, &dest).await {
-                let _ = state
-                    .db
-                    .update_session_file_path(id, dest.to_str().unwrap_or_default())
-                    .await;
+                if let Some(dest_str) = dest.to_str() {
+                    let _ = state.db.update_session_file_path(id, dest_str).await;
+                }
             }
         }
     }
@@ -758,10 +763,23 @@ async fn bulk_unarchive_handler(
     let archive_base = archive_base_dir();
     let mut file_paths: Vec<(String, String)> = Vec::new();
 
+    let Some(home) = dirs::home_dir() else {
+        return Err(ApiError::Internal(
+            "Cannot determine home directory".to_string(),
+        ));
+    };
+
     for id in &body.ids {
         let current_path = match state.db.get_session_file_path(id).await {
             Ok(Some(p)) => p,
-            _ => continue,
+            Ok(None) => {
+                tracing::warn!("Bulk unarchive: session {id} not found, skipping");
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!("Bulk unarchive: DB error for session {id}: {e}");
+                continue;
+            }
         };
         let current = std::path::PathBuf::from(&current_path);
         let new_path = if let Ok(relative) = current.strip_prefix(&archive_base) {
@@ -770,20 +788,21 @@ async fn bulk_unarchive_handler(
                 .components()
                 .all(|c| matches!(c, Component::Normal(_)))
             {
+                tracing::warn!("Bulk unarchive: path traversal in {id}, skipping");
                 continue;
             }
-            let original = dirs::home_dir()
-                .unwrap_or_default()
-                .join(".claude")
-                .join("projects")
-                .join(relative);
+            let original = home.join(".claude").join("projects").join(relative);
             if current.exists() {
                 if let Some(parent) = original.parent() {
                     let _ = tokio::fs::create_dir_all(parent).await;
                 }
-                let _ = tokio::fs::rename(&current, &original).await;
+                if let Err(e) = tokio::fs::rename(&current, &original).await {
+                    tracing::warn!(
+                        "Bulk unarchive: failed to move {current:?} → {original:?}: {e}"
+                    );
+                }
             }
-            original.to_str().unwrap_or_default().to_string()
+            original.to_string_lossy().to_string()
         } else {
             current_path
         };
