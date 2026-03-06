@@ -872,7 +872,7 @@ impl Database {
     /// based on: (1) never deep-indexed, (2) stale parse version, (3) file changed
     /// since last index (size or mtime differs).
     ///
-    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project)`
+    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project, archived_at)`
     ///
     /// The `project` value is the effective project identity: `COALESCE(NULLIF(git_root, ''), project_id)`.
     /// This matches what the sidebar sends as the project filter, so search scope filters align.
@@ -887,12 +887,13 @@ impl Database {
             Option<i64>,
             i32,
             String,
+            Option<String>,
         )>,
     > {
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
+        let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String, Option<String>)> =
             sqlx::query_as(
-                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(NULLIF(git_root, ''), project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(NULLIF(git_root, ''), project_id, ''), archived_at FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
             )
             .fetch_all(self.pool())
             .await?;
