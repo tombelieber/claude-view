@@ -99,6 +99,7 @@ mod tests {
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: tokio::sync::OnceCell::new(),
         });
 
         let app = Router::new()
