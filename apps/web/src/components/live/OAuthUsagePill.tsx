@@ -93,6 +93,26 @@ function getSessionTier(tiers: UsageTier[]): UsageTier | undefined {
   return tiers.find((t) => t.id === 'session') ?? tiers[0]
 }
 
+/** Try to extract a human-readable message from the backend error string.
+ *  Backend format: `"API error 429 Too Many Requests: {\"error\":{\"message\":\"...\"}}"` */
+function parseApiError(raw: string): { status: string; message: string } {
+  // Try to extract the JSON payload after the colon
+  const jsonStart = raw.indexOf('{')
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart))
+      const msg = parsed?.error?.message ?? parsed?.message
+      if (msg) {
+        const statusMatch = raw.match(/^API error (\d+ [^:]+)/)
+        return { status: statusMatch?.[1] ?? 'Error', message: msg }
+      }
+    } catch {
+      // Fall through
+    }
+  }
+  return { status: 'Error', message: raw }
+}
+
 /** Returns true if orgName is just "<email>'s Organization" — redundant info. */
 function isRedundantOrgName(orgName: string, email: string | null): boolean {
   if (!email) return false
@@ -122,7 +142,55 @@ export function OAuthUsagePill() {
     )
   }
 
-  if (!data || !data.hasAuth || data.tiers.length === 0) {
+  if (!data || !data.hasAuth) {
+    return null
+  }
+
+  if (data.error) {
+    const parsed = parseApiError(data.error)
+    return (
+      <Tooltip.Provider delayDuration={300}>
+        <Tooltip.Root>
+          <Tooltip.Trigger asChild>
+            <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 cursor-default">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+              Usage unavailable
+            </span>
+          </Tooltip.Trigger>
+          <Tooltip.Portal>
+            <Tooltip.Content
+              side="bottom"
+              align="end"
+              sideOffset={8}
+              className="z-50 w-72 rounded-lg px-4 py-3 bg-white dark:bg-gray-800 text-xs shadow-xl border border-gray-200 dark:border-gray-700 animate-in fade-in-0 zoom-in-95"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                    Usage
+                  </span>
+                  {data.plan && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                      {data.plan}
+                    </span>
+                  )}
+                </div>
+                <div className="rounded bg-amber-500/10 px-2.5 py-2 text-amber-600 dark:text-amber-400">
+                  <div className="font-medium">{parsed.status}</div>
+                  <div className="mt-0.5 text-[11px] text-amber-500 dark:text-amber-500/80">
+                    {parsed.message}
+                  </div>
+                </div>
+              </div>
+              <Tooltip.Arrow className="fill-white dark:fill-gray-800" />
+            </Tooltip.Content>
+          </Tooltip.Portal>
+        </Tooltip.Root>
+      </Tooltip.Provider>
+    )
+  }
+
+  if (data.tiers.length === 0) {
     return null
   }
 
