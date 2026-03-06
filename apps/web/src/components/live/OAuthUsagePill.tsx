@@ -1,4 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { useState } from 'react'
+import { useAuthIdentity } from '../../hooks/use-auth-identity'
 import { type UsageTier, useOAuthUsage } from '../../hooks/use-oauth-usage'
 
 /** Human-readable reset countdown from an ISO date. */
@@ -91,8 +93,19 @@ function getSessionTier(tiers: UsageTier[]): UsageTier | undefined {
   return tiers.find((t) => t.id === 'session') ?? tiers[0]
 }
 
+/** Returns true if orgName is just "<email>'s Organization" — redundant info. */
+function isRedundantOrgName(orgName: string, email: string | null): boolean {
+  if (!email) return false
+  return (
+    orgName.toLowerCase().includes(email.split('@')[0].toLowerCase()) &&
+    orgName.toLowerCase().endsWith("'s organization")
+  )
+}
+
 export function OAuthUsagePill() {
   const { data, isLoading, error, refetch, dataUpdatedAt } = useOAuthUsage()
+  const [tooltipOpen, setTooltipOpen] = useState(false)
+  const { data: identity } = useAuthIdentity(tooltipOpen)
 
   if (isLoading) {
     return <span className="text-xs text-gray-400 dark:text-gray-500">Loading usage...</span>
@@ -120,6 +133,7 @@ export function OAuthUsagePill() {
     <Tooltip.Provider delayDuration={300}>
       <Tooltip.Root
         onOpenChange={(open) => {
+          setTooltipOpen(open)
           if (open) refetch()
         }}
       >
@@ -139,14 +153,28 @@ export function OAuthUsagePill() {
             className="z-50 w-72 rounded-lg px-4 py-3 bg-white dark:bg-gray-800 text-xs shadow-xl border border-gray-200 dark:border-gray-700 animate-in fade-in-0 zoom-in-95"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
-              <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                Usage
-              </span>
-              {data.plan && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
-                  {data.plan}
+            <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                  Usage
                 </span>
+                {data.plan && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                    {data.plan}
+                  </span>
+                )}
+              </div>
+              {identity?.hasAuth && identity.email && (
+                <div className="mt-1.5 space-y-0.5">
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                    {identity.email}
+                  </div>
+                  {identity.orgName && !isRedundantOrgName(identity.orgName, identity.email) && (
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                      {identity.orgName}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
