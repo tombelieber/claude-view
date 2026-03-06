@@ -94,6 +94,7 @@ use crate::state::AppState;
 /// - GET /api/settings - Read current app settings (model, timeout)
 /// - PUT /api/settings - Update app settings (partial, validates model + timeout)
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
+/// - GET /api/oauth/identity - Cached auth identity (email, org, plan)
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
