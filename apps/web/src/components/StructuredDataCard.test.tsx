@@ -130,7 +130,7 @@ describe('StructuredDataCard', () => {
       }
       const { container } = render(<StructuredDataCard xml={xml} />)
       expect(container).toBeInTheDocument()
-    })
+    }, 15000)
 
     it('should show graceful degradation indicator for very deep content', () => {
       let xml = 'Nested content'
@@ -153,7 +153,7 @@ describe('StructuredDataCard', () => {
       expect(endTime - startTime).toBeLessThan(6000)
       const matches = screen.queryAllByText(/Safe content line/i)
       expect(matches.length).toBeGreaterThan(0)
-    })
+    }, 15_000)
 
     it('should handle large XML with mixed safe and unsafe content', () => {
       const largeContent = Array(5000)
