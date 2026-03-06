@@ -6,6 +6,7 @@ pub mod category;
 pub mod classification;
 pub mod cli;
 pub mod contribution;
+pub mod credentials;
 pub mod discovery;
 pub mod error;
 pub mod facets;
