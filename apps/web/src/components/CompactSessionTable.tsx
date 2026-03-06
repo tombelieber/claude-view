@@ -1,3 +1,4 @@
+import * as ContextMenu from '@radix-ui/react-context-menu'
 import { useQuery } from '@tanstack/react-query'
 import {
   type ColumnDef,
@@ -7,7 +8,15 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table'
-import { ArrowDown, ArrowUp, FlaskConical, GitBranch, GitCommit, Search } from 'lucide-react'
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  FlaskConical,
+  GitBranch,
+  GitCommit,
+  Search,
+} from 'lucide-react'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import type { SessionInfo } from '../hooks/use-projects'
@@ -35,6 +44,10 @@ interface CompactSessionTableProps {
   onSort: (column: SortColumn) => void
   sortColumn: SortColumn
   sortDirection: SortDirection
+  selectable?: boolean
+  selected?: Set<string>
+  onSelectToggle?: (id: string) => void
+  onArchive?: (id: string) => void
 }
 
 // --- Formatters ---
@@ -313,6 +326,10 @@ export function CompactSessionTable({
   onSort,
   sortColumn,
   sortDirection,
+  selectable,
+  selected,
+  onSelectToggle,
+  onArchive,
 }: CompactSessionTableProps) {
   const sessionIds = sessions.map((s) => s.id).join(',')
   const { data: badges } = useQuery<Record<string, BadgeData>>({
@@ -370,6 +387,12 @@ export function CompactSessionTable({
         <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/90 backdrop-blur-sm">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
+              {selectable && (
+                <th
+                  scope="col"
+                  className="w-8 py-2 px-2 border-b border-gray-200 dark:border-gray-700"
+                />
+              )}
               {headerGroup.headers.map((header) => {
                 const align = (header.column.columnDef.meta as { align?: string })?.align ?? 'left'
                 const isSorted = header.column.getIsSorted()
@@ -431,28 +454,52 @@ export function CompactSessionTable({
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row, idx) => (
-            <tr
-              key={row.id}
-              className={cn(
-                'border-b border-gray-100 dark:border-gray-800/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors duration-100 cursor-pointer group',
-                idx % 2 === 1 && 'bg-gray-50/40 dark:bg-gray-800/20',
-              )}
-            >
-              {row.getVisibleCells().map((cell) => {
-                const align = (cell.column.columnDef.meta as { align?: string })?.align
-                return (
-                  <td
-                    key={cell.id}
-                    className={cn(
-                      'py-1.5 px-3 overflow-hidden',
-                      align === 'right' && 'text-right tabular-nums',
-                    )}
+            <ContextMenu.Root key={row.id}>
+              <ContextMenu.Trigger asChild>
+                <tr
+                  className={cn(
+                    'border-b border-gray-100 dark:border-gray-800/50 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-colors duration-100 cursor-pointer group',
+                    idx % 2 === 1 && 'bg-gray-50/40 dark:bg-gray-800/20',
+                  )}
+                >
+                  {selectable && (
+                    <td className="w-8 px-2">
+                      <input
+                        type="checkbox"
+                        checked={selected?.has(row.original.id) ?? false}
+                        onChange={() => onSelectToggle?.(row.original.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </td>
+                  )}
+                  {row.getVisibleCells().map((cell) => {
+                    const align = (cell.column.columnDef.meta as { align?: string })?.align
+                    return (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          'py-1.5 px-3 overflow-hidden',
+                          align === 'right' && 'text-right tabular-nums',
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    )
+                  })}
+                </tr>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content className="min-w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 p-1 z-50">
+                  <ContextMenu.Item
+                    className="flex items-center gap-2 px-3 py-2 text-sm rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    onSelect={() => onArchive?.(row.original.id)}
                   >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                )
-              })}
-            </tr>
+                    <Archive className="w-4 h-4" />
+                    Archive session
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
           ))}
         </tbody>
       </table>
