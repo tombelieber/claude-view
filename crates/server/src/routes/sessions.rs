@@ -83,6 +83,8 @@ pub struct SessionsListQuery {
     pub time_before: Option<i64>,
     /// Optional project filter (matches project_id or git_root)
     pub project: Option<String>,
+    /// Include archived sessions (queries `sessions` table instead of `valid_sessions` view)
+    pub show_archived: Option<bool>,
 }
 
 /// Response for GET /api/sessions with pagination
@@ -328,6 +330,7 @@ pub async fn list_sessions(
         time_after: query.time_after,
         time_before: query.time_before,
         project: query.project,
+        show_archived: query.show_archived,
         sort: sort.clone(),
         limit,
         offset,
