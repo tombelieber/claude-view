@@ -1094,6 +1094,95 @@ impl Database {
             r.into_session_info(&pid)
         }))
     }
+
+    /// Archive a session: set archived_at timestamp.
+    /// Returns the file_path so the caller can move the file.
+    pub async fn archive_session(&self, session_id: &str) -> DbResult<Option<String>> {
+        let now = Utc::now().to_rfc3339();
+        let result = sqlx::query_scalar::<_, String>(
+            "UPDATE sessions SET archived_at = ?1 WHERE id = ?2 AND archived_at IS NULL RETURNING file_path",
+        )
+        .bind(&now)
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(result)
+    }
+
+    /// Unarchive a session: clear archived_at, update file_path to new location.
+    pub async fn unarchive_session(&self, session_id: &str, new_file_path: &str) -> DbResult<bool> {
+        let rows = sqlx::query(
+            "UPDATE sessions SET archived_at = NULL, file_path = ?1 WHERE id = ?2 AND archived_at IS NOT NULL",
+        )
+        .bind(new_file_path)
+        .bind(session_id)
+        .execute(self.pool())
+        .await?
+        .rows_affected();
+        Ok(rows > 0)
+    }
+
+    /// Archive multiple sessions in a single transaction.
+    /// Returns vec of (session_id, file_path) for file moves.
+    pub async fn archive_sessions_bulk(
+        &self,
+        session_ids: &[String],
+    ) -> DbResult<Vec<(String, String)>> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let mut results = Vec::new();
+        for id in session_ids {
+            let result = sqlx::query_scalar::<_, String>(
+                "UPDATE sessions SET archived_at = ?1 WHERE id = ?2 AND archived_at IS NULL RETURNING file_path",
+            )
+            .bind(&now)
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if let Some(path) = result {
+                results.push((id.clone(), path));
+            }
+        }
+        tx.commit().await?;
+        Ok(results)
+    }
+
+    /// Update a session's file_path in the DB (e.g. after moving to/from archive).
+    pub async fn update_session_file_path(
+        &self,
+        session_id: &str,
+        new_path: &str,
+    ) -> DbResult<bool> {
+        let rows = sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
+            .bind(new_path)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?
+            .rows_affected();
+        Ok(rows > 0)
+    }
+
+    /// Bulk unarchive: clear archived_at for multiple sessions.
+    pub async fn unarchive_sessions_bulk(
+        &self,
+        file_paths: &[(String, String)],
+    ) -> DbResult<usize> {
+        let mut tx = self.pool().begin().await?;
+        let mut count = 0usize;
+        for (id, new_path) in file_paths {
+            let rows = sqlx::query(
+                "UPDATE sessions SET archived_at = NULL, file_path = ?1 WHERE id = ?2 AND archived_at IS NOT NULL",
+            )
+            .bind(new_path)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            count += rows as usize;
+        }
+        tx.commit().await?;
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
