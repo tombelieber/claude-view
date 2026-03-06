@@ -21,7 +21,9 @@ test.describe('Insights range contract', () => {
     await expect(page.getByRole('heading', { name: 'Insights' })).toBeVisible()
   })
 
-  test('default insights endpoints expose effective all-time range metadata', async ({ request }) => {
+  test('default insights endpoints expose effective all-time range metadata', async ({
+    request,
+  }) => {
     const endpoints = [
       '/api/insights',
       '/api/insights/categories',
@@ -37,7 +39,9 @@ test.describe('Insights range contract', () => {
       expect(body.meta?.effectiveRange).toBeDefined()
       expect(typeof body.meta?.effectiveRange?.from).toBe('number')
       expect(typeof body.meta?.effectiveRange?.to).toBe('number')
-      expect(body.meta?.effectiveRange?.from).toBeLessThanOrEqual(body.meta?.effectiveRange?.to ?? 0)
+      expect(body.meta?.effectiveRange?.from).toBeLessThanOrEqual(
+        body.meta?.effectiveRange?.to ?? 0,
+      )
       expect(body.meta?.effectiveRange?.source).toBe('default_all_time')
     }
   })
