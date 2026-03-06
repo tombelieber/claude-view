@@ -135,6 +135,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         jwks: None,
         share: None,
+        auth_identity: tokio::sync::OnceCell::new(),
     });
     api_routes(state)
 }
@@ -199,6 +200,7 @@ pub fn create_app_full(
         sidecar,
         jwks,
         share,
+        auth_identity: tokio::sync::OnceCell::new(),
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
