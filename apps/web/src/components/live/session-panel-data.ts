@@ -49,7 +49,10 @@ export interface SessionPanelData {
     unpricedCacheReadTokens: number
     unpricedCacheCreationTokens: number
     pricedTokenCoverage: number
-    totalCostSource: 'computed_priced_tokens_full' | 'computed_priced_tokens_partial'
+    totalCostSource:
+      | 'computed_priced_tokens_full'
+      | 'computed_priced_tokens_partial'
+      | 'no_cost_data'
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
 
@@ -138,19 +141,19 @@ export function historyToPanelData(
     cacheReadCostUsd: 0,
     cacheCreationCostUsd: 0,
     cacheSavingsUsd: 0,
-    hasUnpricedUsage: false,
+    hasUnpricedUsage: true,
     unpricedInputTokens: 0,
     unpricedOutputTokens: 0,
     unpricedCacheReadTokens: 0,
     unpricedCacheCreationTokens: 0,
-    pricedTokenCoverage: 1,
-    totalCostSource: 'computed_priced_tokens_full' as const,
+    pricedTokenCoverage: 0,
+    totalCostSource: 'no_cost_data' as const,
   }
 
   return {
     id: sessionDetail.id,
     project: sessionDetail.project,
-    projectDisplayName: sessionDetail.project, // history doesn't have displayName
+    projectDisplayName: sessionDetail.displayName,
     projectPath: sessionDetail.projectPath,
     gitBranch: richData?.gitBranch ?? sessionDetail.gitBranch ?? null,
     status: 'done',
