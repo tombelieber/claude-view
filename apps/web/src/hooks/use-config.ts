@@ -22,7 +22,11 @@ export function useConfig(): ConfigResponse {
     queryFn: async () => {
       const res = await fetch('/api/config')
       if (!res.ok) return fallback
-      return res.json()
+      try {
+        return (await res.json()) as ConfigResponse
+      } catch {
+        return fallback
+      }
     },
     placeholderData: placeholder, // Shown until server responds, then replaced
     staleTime: Number.POSITIVE_INFINITY, // Once fetched from server, never re-fetch
