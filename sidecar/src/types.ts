@@ -37,6 +37,11 @@ export interface ElicitationResponse {
   response: string
 }
 
+export interface ResumeMsg {
+  type: 'resume'
+  lastSeq: number
+}
+
 export type ClientMessage =
   | UserMessage
   | PermissionResponse
@@ -44,6 +49,7 @@ export type ClientMessage =
   | PlanResponse
   | ElicitationResponse
   | PingMessage
+  | ResumeMsg
 
 // ── Sidecar → Frontend (via Axum WS proxy) ──
 
@@ -132,6 +138,14 @@ export interface ElicitationMessage {
   prompt: string
 }
 
+export interface HeartbeatConfig {
+  type: 'heartbeat_config'
+  intervalMs: number
+  // NOTE: seq is NOT baked in. Heartbeat_config is a connection-scoped setup
+  // message sent directly via ws.send() — NOT through emitSequenced.
+  // It's re-sent on each WS open, so replay is unnecessary.
+}
+
 export type ServerMessage =
   | AssistantChunk
   | AssistantDone
@@ -144,6 +158,10 @@ export type ServerMessage =
   | SessionStatusMessage
   | ErrorMessage
   | PongMessage
+  | HeartbeatConfig
+
+// Wrapper type for sequenced messages:
+export type SequencedServerMessage = ServerMessage & { seq: number }
 
 // ── HTTP request/response types ──
 
