@@ -19,6 +19,7 @@ import { useControlSession } from '../../hooks/use-control-session'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
+import { controlStatusToInputState } from '../../lib/control-status-map'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
@@ -26,7 +27,7 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
-import { ChatInputBar, type InputBarState } from '../chat/ChatInputBar'
+import { ChatInputBar } from '../chat/ChatInputBar'
 import { PermissionCard } from '../chat/cards/PermissionCard'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ContextGauge } from './ContextGauge'
@@ -77,25 +78,6 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Map control session status to InputBarState. */
-function controlStatusToInputState(status: string | undefined): InputBarState {
-  switch (status) {
-    case 'active':
-    case 'waiting_input':
-      return 'active'
-    case 'waiting_permission':
-      return 'waiting_permission'
-    case 'connecting':
-      return 'connecting'
-    case 'reconnecting':
-      return 'reconnecting'
-    case 'completed':
-      return 'completed'
-    default:
-      return 'dormant'
-  }
-}
 
 /** Format model name for display (strip long prefixes) */
 function formatModel(model: string | null): string {
