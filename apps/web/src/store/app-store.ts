@@ -16,6 +16,11 @@ interface AppState {
   sidebarCollapsed: boolean
   sidebarWidth: number
 
+  // Sidebar section collapse
+  sidebarTabsCollapsed: boolean
+  sidebarScopeCollapsed: boolean
+  sidebarRecentCollapsed: boolean
+
   // Live Monitor
   recentLiveCommands: string[]
 
@@ -30,6 +35,7 @@ interface AppState {
   cycleTheme: () => void
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
+  toggleSidebarSection: (section: 'tabs' | 'scope' | 'recent') => void
   addRecentLiveCommand: (id: string) => void
 }
 
@@ -44,6 +50,9 @@ export const useAppStore = create<AppState>()(
       theme: 'system',
       sidebarCollapsed: false,
       sidebarWidth: 288,
+      sidebarTabsCollapsed: false,
+      sidebarScopeCollapsed: false,
+      sidebarRecentCollapsed: false,
       recentLiveCommands: [],
 
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -79,6 +88,20 @@ export const useAppStore = create<AppState>()(
           sidebarCollapsed: !state.sidebarCollapsed,
         })),
       setSidebarWidth: (width) => set({ sidebarWidth: Math.max(200, Math.min(width, 600)) }),
+
+      toggleSidebarSection: (section) => {
+        switch (section) {
+          case 'tabs':
+            set((state) => ({ sidebarTabsCollapsed: !state.sidebarTabsCollapsed }))
+            break
+          case 'scope':
+            set((state) => ({ sidebarScopeCollapsed: !state.sidebarScopeCollapsed }))
+            break
+          case 'recent':
+            set((state) => ({ sidebarRecentCollapsed: !state.sidebarRecentCollapsed }))
+            break
+        }
+      },
     }),
     {
       name: 'claude-view-storage',
@@ -88,6 +111,9 @@ export const useAppStore = create<AppState>()(
         theme: state.theme,
         sidebarCollapsed: state.sidebarCollapsed,
         sidebarWidth: state.sidebarWidth,
+        sidebarTabsCollapsed: state.sidebarTabsCollapsed,
+        sidebarScopeCollapsed: state.sidebarScopeCollapsed,
+        sidebarRecentCollapsed: state.sidebarRecentCollapsed,
       }),
     },
   ),
