@@ -383,7 +383,14 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
                 "Token expired. Run 'claude' to re-authenticate.",
             ));
         }
-        Err(e) => return Json(auth_error(e)),
+        Err(e) => {
+            return Json(OAuthUsageResponse {
+                has_auth: true,
+                error: Some(e),
+                plan,
+                tiers: vec![],
+            });
+        }
     };
 
     let tiers = build_tiers(&usage);
