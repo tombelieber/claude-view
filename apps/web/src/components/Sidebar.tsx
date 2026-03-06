@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useProjectBranches } from '../hooks/use-branches'
 import type { ProjectSummary } from '../hooks/use-projects'
@@ -35,6 +36,7 @@ import {
   collectGroupNames,
 } from '../utils/build-project-tree'
 import { getSessionTitle } from '../utils/get-session-title'
+import { SectionHeader } from './sidebar/SectionHeader'
 
 interface SidebarProps {
   projects: ProjectSummary[]
@@ -48,6 +50,16 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const setSidebarWidth = useAppStore((s) => s.setSidebarWidth)
+  const sidebarTabsCollapsed = useAppStore((s) => s.sidebarTabsCollapsed)
+  const sidebarScopeCollapsed = useAppStore((s) => s.sidebarScopeCollapsed)
+  const sidebarRecentCollapsed = useAppStore((s) => s.sidebarRecentCollapsed)
+  const toggleSidebarSection = useAppStore((s) => s.toggleSidebarSection)
+
+  const { defaultLayout } = useDefaultLayout({
+    id: 'sidebar-panels',
+    panelIds: ['tabs', 'scope', 'recent'],
+    storage: localStorage,
+  })
   const [isResizing, setIsResizing] = useState(false)
   const widthRef = useRef(sidebarWidth)
 
@@ -539,216 +551,289 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
       >
         <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
       </div>
-      {/* ─── Zone 1: Navigation Tabs ─── */}
-      <nav
-        className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 space-y-1"
-        aria-label="Main navigation"
-      >
-        {(() => {
-          // Build preserved params string for nav links
-          const preservedParams = new URLSearchParams()
-          if (searchParams.get('project'))
-            preservedParams.set('project', searchParams.get('project')!)
-          if (searchParams.get('branch')) preservedParams.set('branch', searchParams.get('branch')!)
-          const paramString = preservedParams.toString()
-
-          return (
-            <>
-              <Link
-                to={`/${paramString ? `?${paramString}` : ''}`}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname === '/'
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                )}
-              >
-                <Monitor className="w-4 h-4" />
-                <span className="font-medium">Live Monitor</span>
-              </Link>
-              <Link
-                to={`/sessions${paramString ? `?${paramString}` : ''}`}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname.startsWith('/sessions')
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                )}
-              >
-                <Clock className="w-4 h-4" />
-                <span className="font-medium">Sessions</span>
-              </Link>
-              <Link
-                to={`/analytics${paramString ? `?${paramString}` : ''}`}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname === '/analytics'
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                )}
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span className="font-medium">Analytics</span>
-              </Link>
-              <Link
-                to={`/activity${paramString ? `?${paramString}` : ''}`}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname === '/activity'
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                )}
-              >
-                <CalendarDays className="w-4 h-4" />
-                <span className="font-medium">Activity</span>
-              </Link>
-              <Link
-                to={`/reports${paramString ? `?${paramString}` : ''}`}
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  location.pathname === '/reports'
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                )}
-              >
-                <FileText className="w-4 h-4" />
-                <span className="font-medium">Reports</span>
-              </Link>
-              <span
-                className={cn(
-                  'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
-                  'text-gray-600 dark:text-gray-400',
-                )}
-              >
-                <Cpu className="w-4 h-4" />
-                <span className="font-medium">Agent SDK Studio</span>
-                <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                  Coming Soon
-                </span>
-              </span>
-            </>
-          )
-        })()}
-      </nav>
-
-      {/* ─── Zone 2: Scope Panel ─── */}
-      <div className="flex flex-col min-h-0 flex-1">
-        {/* Scope header with clear button */}
-        <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              Scope
-            </span>
-            {selectedProjectId && (
-              <button
-                type="button"
-                onClick={() => {
-                  const newParams = new URLSearchParams(searchParams)
-                  newParams.delete('project')
-                  newParams.delete('branch')
-                  setSearchParams(newParams)
-                }}
-                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                aria-label="Clear scope"
-              >
-                <X className="w-3 h-3" />
-                Clear
-              </button>
-            )}
-          </div>
-
-          {/* View mode toggle + expand/collapse controls */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  viewMode === 'list'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-                )}
-                aria-label="List view"
-                aria-pressed={viewMode === 'list'}
-              >
-                <List className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('tree')}
-                className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                  viewMode === 'tree'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-                )}
-                aria-label="Tree view"
-                aria-pressed={viewMode === 'tree'}
-              >
-                <FolderTree className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="flex items-center gap-0.5 ml-auto">
-              <button
-                type="button"
-                onClick={toggleSidebar}
-                title="Collapse sidebar (⌘B)"
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
-                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                )}
-              >
-                <PanelLeftClose className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleExpandAll}
-                title="Expand All"
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
-                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                )}
-              >
-                <ChevronsUpDown className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleCollapseAll}
-                title="Collapse All"
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
-                  'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                )}
-              >
-                <ChevronsDownUp className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Project tree (scrollable) */}
-        <div
-          className="flex-1 overflow-y-auto py-1"
-          role="tree"
-          aria-label="Projects"
-          onKeyDown={handleKeyDown}
+      <Group orientation="vertical" defaultLayout={defaultLayout} className="flex-1 min-h-0">
+        {/* ─── Zone 1: Navigation Tabs ─── */}
+        <Panel
+          id="tabs"
+          collapsible
+          minSize={5}
+          defaultSize={20}
+          collapsedSize={0}
+          onResize={(size) => {
+            const isCollapsed = size.asPercentage === 0
+            if (isCollapsed !== sidebarTabsCollapsed) toggleSidebarSection('tabs')
+          }}
         >
-          {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
-        </div>
-      </div>
+          <SectionHeader
+            title="Navigation"
+            collapsed={sidebarTabsCollapsed}
+            onToggle={() => toggleSidebarSection('tabs')}
+          />
+          {!sidebarTabsCollapsed && (
+            <nav
+              aria-label="Main navigation"
+              className="flex flex-col gap-0.5 px-2 py-1 overflow-y-auto"
+            >
+              {(() => {
+                // Build preserved params string for nav links
+                const preservedParams = new URLSearchParams()
+                if (searchParams.get('project'))
+                  preservedParams.set('project', searchParams.get('project')!)
+                if (searchParams.get('branch'))
+                  preservedParams.set('branch', searchParams.get('branch')!)
+                const paramString = preservedParams.toString()
 
-      {/* ─── Zone 3: Quick Jump (only when scoped) ─── */}
-      {selectedProjectId && (
-        <QuickJumpZone project={selectedProjectId} branch={searchParams.get('branch')} />
+                return (
+                  <>
+                    <Link
+                      to={`/${paramString ? `?${paramString}` : ''}`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        location.pathname === '/'
+                          ? 'bg-blue-500 text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                      )}
+                    >
+                      <Monitor className="w-4 h-4" />
+                      <span className="font-medium">Live Monitor</span>
+                    </Link>
+                    <Link
+                      to={`/sessions${paramString ? `?${paramString}` : ''}`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        location.pathname.startsWith('/sessions')
+                          ? 'bg-blue-500 text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                      )}
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span className="font-medium">Sessions</span>
+                    </Link>
+                    <Link
+                      to={`/analytics${paramString ? `?${paramString}` : ''}`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        location.pathname === '/analytics'
+                          ? 'bg-blue-500 text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                      )}
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      <span className="font-medium">Analytics</span>
+                    </Link>
+                    <Link
+                      to={`/activity${paramString ? `?${paramString}` : ''}`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        location.pathname === '/activity'
+                          ? 'bg-blue-500 text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                      )}
+                    >
+                      <CalendarDays className="w-4 h-4" />
+                      <span className="font-medium">Activity</span>
+                    </Link>
+                    <Link
+                      to={`/reports${paramString ? `?${paramString}` : ''}`}
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        location.pathname === '/reports'
+                          ? 'bg-blue-500 text-white'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                      )}
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span className="font-medium">Reports</span>
+                    </Link>
+                    <span
+                      className={cn(
+                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
+                        'text-gray-600 dark:text-gray-400',
+                      )}
+                    >
+                      <Cpu className="w-4 h-4" />
+                      <span className="font-medium">Agent SDK Studio</span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                        Coming Soon
+                      </span>
+                    </span>
+                  </>
+                )
+              })()}
+            </nav>
+          )}
+        </Panel>
+
+        <Separator className="group h-1 shrink-0 flex items-center justify-center">
+          <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:h-0.5 group-hover:bg-blue-400 dark:group-hover:bg-blue-500 group-active:bg-blue-500 transition-all" />
+        </Separator>
+
+        {/* ─── Zone 2: Scope Panel ─── */}
+        <Panel
+          id="scope"
+          collapsible
+          minSize={10}
+          defaultSize={55}
+          collapsedSize={0}
+          onResize={(size) => {
+            const isCollapsed = size.asPercentage === 0
+            if (isCollapsed !== sidebarScopeCollapsed) toggleSidebarSection('scope')
+          }}
+        >
+          <SectionHeader
+            title="Scope"
+            collapsed={sidebarScopeCollapsed}
+            onToggle={() => toggleSidebarSection('scope')}
+            actions={
+              selectedProjectId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newParams = new URLSearchParams(searchParams)
+                    newParams.delete('project')
+                    newParams.delete('branch')
+                    setSearchParams(newParams)
+                  }}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                  aria-label="Clear scope"
+                >
+                  <X className="w-3 h-3" />
+                  Clear
+                </button>
+              ) : undefined
+            }
+          />
+          {!sidebarScopeCollapsed && (
+            <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+              {/* View mode toggle + expand/collapse controls */}
+              <div className="px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('list')}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        viewMode === 'list'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                      )}
+                      aria-label="List view"
+                      aria-pressed={viewMode === 'list'}
+                    >
+                      <List className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('tree')}
+                      className={cn(
+                        'flex-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded transition-all',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                        viewMode === 'tree'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                      )}
+                      aria-label="Tree view"
+                      aria-pressed={viewMode === 'tree'}
+                    >
+                      <FolderTree className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-0.5 ml-auto">
+                    <button
+                      type="button"
+                      onClick={toggleSidebar}
+                      title="Collapse sidebar (⌘B)"
+                      className={cn(
+                        'p-1 rounded transition-colors',
+                        'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                        'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+                      )}
+                    >
+                      <PanelLeftClose className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExpandAll}
+                      title="Expand All"
+                      className={cn(
+                        'p-1 rounded transition-colors',
+                        'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                        'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+                      )}
+                    >
+                      <ChevronsUpDown className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCollapseAll}
+                      title="Collapse All"
+                      className={cn(
+                        'p-1 rounded transition-colors',
+                        'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
+                        'hover:bg-gray-200/70 dark:hover:bg-gray-700/70',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+                      )}
+                    >
+                      <ChevronsDownUp className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Project tree (scrollable) */}
+              <div
+                className="flex-1 overflow-y-auto py-1"
+                role="tree"
+                aria-label="Projects"
+                onKeyDown={handleKeyDown}
+              >
+                {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        <Separator className="group h-1 shrink-0 flex items-center justify-center">
+          <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:h-0.5 group-hover:bg-blue-400 dark:group-hover:bg-blue-500 group-active:bg-blue-500 transition-all" />
+        </Separator>
+
+        {/* ─── Zone 3: Recent / Quick Jump ─── */}
+        <Panel
+          id="recent"
+          collapsible
+          minSize={5}
+          defaultSize={25}
+          collapsedSize={0}
+          onResize={(size) => {
+            const isCollapsed = size.asPercentage === 0
+            if (isCollapsed !== sidebarRecentCollapsed) toggleSidebarSection('recent')
+          }}
+        >
+          <SectionHeader
+            title="Recent"
+            collapsed={sidebarRecentCollapsed}
+            onToggle={() => toggleSidebarSection('recent')}
+          />
+          {!sidebarRecentCollapsed &&
+            (selectedProjectId ? (
+              <QuickJumpZone project={selectedProjectId} branch={searchParams.get('branch')} />
+            ) : (
+              <div className="px-3 py-4 text-xs text-gray-400 text-center">
+                Select a project to see recent sessions
+              </div>
+            ))}
+        </Panel>
+      </Group>
+
+      {/* All sections collapsed hint */}
+      {sidebarTabsCollapsed && sidebarScopeCollapsed && sidebarRecentCollapsed && (
+        <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
+          Click a header to expand
+        </div>
       )}
     </aside>
   )
@@ -888,7 +973,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
 
   if (isLoading) {
     return (
-      <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2">
+      <div className="px-3 py-2">
         <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
         {[1, 2, 3].map((i) => (
           <div
@@ -904,17 +989,11 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
   if (!sessions || sessions.length === 0) return null
 
   return (
-    <nav
-      aria-label="Recent sessions"
-      className="border-t border-gray-200 dark:border-gray-700 px-3 py-2"
-    >
+    <nav aria-label="Recent sessions" className="px-3 py-2 overflow-y-auto">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-          Recent
-        </span>
         <Link
           to={`/sessions?project=${encodeURIComponent(project)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`}
-          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ml-auto"
         >
           All <ArrowRight className="w-2.5 h-2.5" />
         </Link>
