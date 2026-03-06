@@ -108,6 +108,8 @@ impl Database {
         // ?4 is used only for BranchFilter::Named (a concrete branch name).
         // Match by project_id or git_root so sidebar clicks include worktree sessions
         let mut conditions = vec!["(s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ?1))".to_string()];
+        // Always exclude archived sessions from user-facing lists
+        conditions.push("s.archived_at IS NULL".to_string());
         if !include_sidechains {
             conditions.push("s.is_sidechain = 0".to_string());
         }
