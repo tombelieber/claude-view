@@ -76,6 +76,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::{ConnectOptions, SqlitePool};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tracing::info;
 
@@ -99,6 +100,8 @@ pub struct Database {
     pool: SqlitePool,
     db_path: PathBuf,
 }
+
+static IN_MEMORY_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl Database {
     /// Open (or create) the database at the given path and run migrations.
@@ -139,7 +142,15 @@ impl Database {
     /// in-memory database. Without this, each connection gets its own
     /// separate database, breaking `tokio::try_join!` and concurrent queries.
     pub async fn new_in_memory() -> DbResult<Self> {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
+        // Use a unique named in-memory DB per call to avoid cross-test collisions
+        // when multiple test databases are created concurrently.
+        let unique_id = IN_MEMORY_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dsn = format!(
+            "sqlite:file:claude_view_test_{}_{}?mode=memory&cache=shared",
+            std::process::id(),
+            unique_id
+        );
+        let options = SqliteConnectOptions::from_str(&dsn)?
             .shared_cache(true)
             .busy_timeout(std::time::Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
