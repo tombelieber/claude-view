@@ -4,7 +4,7 @@
 >
 > **See also:** [`docs/VISION.md`](../VISION.md) (product vision) | [`docs/ROADMAP.md`](../ROADMAP.md) (module roadmap)
 >
-> **Last updated:** 2026-03-04 (Landing page "Warm Aurora" visual redesign — full theme swap, 19 tasks, shippable audit passed)
+> **Last updated:** 2026-03-06 (Lazy Session Resume — useSessionControl hook, ConnectionBanner, ConversationView refactor)
 
 ---
 
@@ -44,6 +44,7 @@
 
 ## Recently Completed
 
+- **Lazy Session Resume** (2026-03-06): Replaced ad-hoc resume state with unified `useSessionControl` hook — phase state machine (idle→resuming→connecting→ready), optimistic message queue with 30s timeout, `ConnectionBanner` for degraded/lost connection states, fixed active/streaming InputBarState mapping bug. 6 tasks, 5 commits, 7 files created/modified, 1204 tests pass. Shippable audit passed (SHIP IT). Plan: [`2026-03-06-session-resume-impl.md`](2026-03-06-session-resume-impl.md)
 - **Landing Page "Warm Aurora" Redesign** (2026-03-04): Complete visual theme swap from dark slate to warm light theme. New fonts (Space Grotesk + Inter), orange accent (#d97757), glass morphism cards, SVG grain overlay, floating aurora blobs. Restructured index.astro with hero/waitlist CTA, ProductDemo browser mock, 3 value sections (Control/Freedom/Visibility), 4 feature cards, MetricsBar, ComparisonTable, FAQ with FAQPage JSON-LD. Restyled all 15+ components and 6 pages for light theme. 404 terminal stays dark. 19 tasks, ~23 files modified/created/deleted, shippable audit passed (SHIP IT).
 - **Unify Project Filtering** (2026-03-04): Server-side `?project=X` filter for Sessions History + activity data. Worktree-aware SQL (match `project_id` OR `git_root`). Fixed NO_BRANCH sentinel bug (`~` → `IS NULL`). 5 tasks, 5 commits, 4 files. Shippable audit passed (SHIP IT). Plan: [`2026-03-04-unify-project-filtering.md`](2026-03-04-unify-project-filtering.md)
 - **Share Viewer Upgrade** (2026-03-02): Upgraded share viewer to feature parity — ViewModeToggle + SessionInfoPanel shared components, verbose mode with Chat/Debug toggle, redesigned header with backdrop-blur branding, ChatGPT-style share modal with Copy Link/Copy Message, expanded Rust share blob with rich session metadata. 8 tasks, 7 commits, ~15 files modified. Shippable audit passed (SHIP IT). Plan: [`web/2026-03-02-share-viewer-upgrade-impl.md`](web/2026-03-02-share-viewer-upgrade-impl.md)

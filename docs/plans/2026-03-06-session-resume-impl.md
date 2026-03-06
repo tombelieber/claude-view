@@ -1,5 +1,7 @@
 # Lazy Session Resume — Implementation Plan
 
+> **Status:** DONE (2026-03-06) — all 6 tasks implemented, shippable audit passed (SHIP IT)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace ad-hoc session resume state with a unified `useSessionControl` hook that owns phase transitions, message lifecycle, and connection health.
@@ -13,6 +15,20 @@
 **Out of scope:** `NewSessionInput.tsx` (calls `/api/control/start`, not `/resume`). `ResumePreFlight.tsx` (independent modal resume flow — sends optional `model`/`projectPath` to sidecar; the sidecar's `ResumeRequest.model` and `ResumeRequest.projectPath` are both optional, so our `{sessionId}`-only body is valid).
 
 **Rollback:** Every task is a separate commit. To undo: `git revert <commit>` in reverse order. No DB migrations, no backend changes.
+
+---
+
+## Completion Summary
+
+| Task | Commit | Description |
+|------|--------|-------------|
+| 1 | `9f543256` | feat(control): add ChatMessageWithStatus type for message lifecycle |
+| 2 | `52b0068b` | feat(control): add useSessionControl hook with phase machine and tests |
+| 3 | `e46dc9b0` | feat: add ConnectionBanner component for degraded/lost states |
+| 4 | `32c14f0c` | refactor: replace ad-hoc resume state with useSessionControl in ConversationView |
+| 5 | `ad25b009` | refactor: extract controlStatusToInputState to shared util, fix active/streaming mapping |
+
+Shippable audit: 89 test files, 1204 tests pass, build succeeds, 0 blockers. All 24 audit fixes from plan changelog applied.
 
 ---
 

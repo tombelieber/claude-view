@@ -1,7 +1,7 @@
 # Lazy Session Resume — Design Document
 
 **Date:** 2026-03-06
-**Status:** Approved
+**Status:** Done (implemented 2026-03-06)
 **Scope:** History session resume flow, connection health, message lifecycle
 
 ## Problem Statement
