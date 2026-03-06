@@ -1,11 +1,15 @@
 ---
-status: pending
+status: archived
 date: 2026-03-06
 phase: K
 depends_on: K
 ---
 
 # Codex Parsing/Indexing Evidence and Statistical Verification Protocol
+
+> Archived on 2026-03-06. Superseded by:
+> - [`../2026-03-06-codex-history-live-tdd-plan.md`](../2026-03-06-codex-history-live-tdd-plan.md)
+> - [`../2026-03-06-codex-parsing-indexing-statistical-verification.md`](../2026-03-06-codex-parsing-indexing-statistical-verification.md)
 
 ## Purpose
 
@@ -167,4 +171,3 @@ Every verification run must include:
 2. Any checksum mismatch invalidates the run.
 3. Any threshold failure blocks release.
 4. Any unverifiable metric claim is rejected.
-

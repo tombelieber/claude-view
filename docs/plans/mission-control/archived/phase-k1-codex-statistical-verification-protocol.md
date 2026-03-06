@@ -1,11 +1,15 @@
 ---
-status: pending
+status: archived
 date: 2026-03-06
 phase: K1
 depends_on: K
 ---
 
 # Codex Parsing/Indexing Statistical Verification Protocol
+
+> Archived on 2026-03-06. Superseded by:
+> - [`../2026-03-06-codex-history-live-tdd-plan.md`](../2026-03-06-codex-history-live-tdd-plan.md)
+> - [`../2026-03-06-codex-parsing-indexing-statistical-verification.md`](../2026-03-06-codex-parsing-indexing-statistical-verification.md)
 
 **Purpose:** Define a reproducible, evidence-based protocol to verify Codex parsing/indexing/live outputs with real usage data and zero fabricated claims.
 

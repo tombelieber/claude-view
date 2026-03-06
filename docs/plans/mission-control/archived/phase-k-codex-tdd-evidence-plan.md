@@ -1,11 +1,15 @@
 ---
-status: pending
+status: archived
 date: 2026-03-06
 phase: K
 depends_on: I
 ---
 
 # Phase K: Codex TDD + Evidence-First Verification Plan
+
+> Archived on 2026-03-06. Superseded by:
+> - [`../2026-03-06-codex-history-live-tdd-plan.md`](../2026-03-06-codex-history-live-tdd-plan.md)
+> - [`../2026-03-06-codex-parsing-indexing-statistical-verification.md`](../2026-03-06-codex-parsing-indexing-statistical-verification.md)
 
 **Goal:** Deliver Codex support for:
 1. sessions history for dashboard/analytics/metrics

@@ -9,6 +9,12 @@ depends_on: A
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+> **Plan Governance (2026-03-06 SoT):** This phase is subordinate to:
+> - [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md)
+> - [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md)
+>
+> If this file conflicts with the SoT docs above, the SoT docs win.
+
 **Goal:** Build a source-aware architecture so Claude and Codex sessions can coexist safely across indexing, API, and UI without ID collisions or source-specific hacks.
 
 **Architecture:** Introduce an explicit `SessionSource` model (`claude`, `codex`) at core + DB layers, enforce source-aware identity (`source`, `source_session_id`, canonical `id`), and route discovery/parsing/indexing through provider adapters instead of Claude-only code paths.
@@ -362,4 +368,3 @@ Expected:
   - Mitigation: migration test explicitly rejects NULL/empty values.
 - Risk: accidental runtime dependency on prefixed `id` parsing everywhere.
   - Mitigation: use explicit `source` and `source_session_id` columns in query layer.
-

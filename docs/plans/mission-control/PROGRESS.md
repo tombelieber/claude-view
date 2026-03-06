@@ -20,10 +20,16 @@ feature: mission-control
 | D.2 | Sub-Agent Deep Dive | `done` | Real-time progress, drill-down conversations, sub-agent WebSocket streaming |
 | E | Custom Layout | `done` | dockview drag-and-drop, tab groups, layout save/load, 3 built-in presets + custom presets, DockLayout + LayoutPresets + hooks + 12 tests |
 | F | Interactive Control | `done` | Node.js sidecar, Agent SDK resume, dashboard chat, bidirectional WebSocket |
-| G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction |
-| H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support |
-| I | Codex Live Mission Control | `pending` | Codex watcher/process/parser integration into live manager + mixed-source Mission Control UI |
-| J | Codex Hardening & Rollout | `pending` | Fixture corpus, migration/backfill hardening, source-scoped reindex, metrics, rollout flags |
+| G | Codex Multi-Provider Foundation | `pending` | Source-aware IDs/schema, provider adapters, startup/indexing root abstraction (governed by 2026-03-06 SoT docs) |
+| H | Codex Historical Sessions | `pending` | Codex discovery + deep parse + `/api/sessions/*` parsing + historical UI source support (governed by 2026-03-06 SoT docs) |
+| I | Codex Live Mission Control | `pending` | Codex watcher/process/parser integration into live manager + mixed-source Mission Control UI (governed by 2026-03-06 SoT docs) |
+| J | Codex Hardening & Rollout | `pending` | Fixture corpus, migration/backfill hardening, source-scoped reindex, metrics, rollout flags (governed by 2026-03-06 SoT docs) |
+
+## Codex Source of Truth (2026-03-06)
+
+- Canonical plan: [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md)
+- Canonical verification protocol: [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md)
+- Governance rule: if any Codex phase doc (G/H/I/J) conflicts with these two SoT docs, the SoT docs win.
 
 ## Dependencies
 
@@ -69,15 +75,21 @@ Phase A ──► Phase G ──► Phase H ──┐
 | [`phase-f-interactive.md`](phase-f-interactive.md) | F | `done` |
 | [`2026-03-01-agent-sdk-upgrade-research.md`](2026-03-01-agent-sdk-upgrade-research.md) | F.2 | `done` |
 | [`2026-03-01-sidecar-sdk-upgrade-impl.md`](2026-03-01-sidecar-sdk-upgrade-impl.md) | F.2 | `done` |
+| [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md) | K (SoT) | `approved` |
+| [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md) | K (SoT) | `approved` |
 | [`phase-g-codex-foundation.md`](phase-g-codex-foundation.md) | G | `pending` |
 | [`phase-h-codex-historical-sessions.md`](phase-h-codex-historical-sessions.md) | H | `pending` |
 | [`phase-i-codex-live-mission-control.md`](phase-i-codex-live-mission-control.md) | I | `pending` |
 | [`phase-j-codex-hardening-rollout.md`](phase-j-codex-hardening-rollout.md) | J | `pending` |
+| [`archived/phase-k-codex-tdd-evidence-plan.md`](archived/phase-k-codex-tdd-evidence-plan.md) | K (legacy) | `archived` |
+| [`archived/phase-k-codex-evidence-verification-protocol.md`](archived/phase-k-codex-evidence-verification-protocol.md) | K (legacy) | `archived` |
+| [`archived/phase-k1-codex-statistical-verification-protocol.md`](archived/phase-k1-codex-statistical-verification-protocol.md) | K1 (legacy) | `archived` |
 
 ## Key Decisions Log
 
 | Date | Decision | Context |
 |------|----------|---------|
+| 2026-03-06 | **Codex plan governance is centralized in two SoT docs (history/live TDD plan + statistical verification protocol).** | Prevents fragmented planning and enforces anti-fabrication, evidence-first verification for parsing/indexing and live monitoring. |
 | 2026-02-16 | **Codex support uses explicit source-aware identity (`source`, `source_session_id`, canonical `id`) instead of path inference.** | Robust multi-provider requirement: avoid session ID collisions and eliminate Claude-only assumptions in indexing/live routes. |
 | 2026-02-16 | **Monitor mode uses RichPane (HTML) exclusively -- no xterm.js.** xterm.js deferred to Phase F (Interactive Control) where we own the PTY via Agent SDK. Monitor mode reads JSONL (structured data) so HTML rendering is strictly better. Verbose toggle replaces raw/rich toggle. | Existing sessions run in VS Code/terminal -- we can't tap their PTY. Our only interface is JSONL log files. HTML renders markdown (tables, bold, code) better than terminal ANSI conversion. |
 | 2026-02-15 | **NO unbounded AI classification on session discovery.** Tier 2 AI (claude CLI) disabled until rate-limited. Structural-only + fallback. | Phase B2 shipped with `spawn_ai_classification()` firing for every Paused session on startup. 40 JSONL files → 40 concurrent `claude -p` processes → timeouts, rate limits, infinite retry loop. Fix: removed `old_status.is_none()` trigger, replaced AI fallback with sync fallback. Re-add AI with `Semaphore(1)` when needed. |

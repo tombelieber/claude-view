@@ -9,6 +9,12 @@ depends_on: G
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+> **Plan Governance (2026-03-06 SoT):** This phase is subordinate to:
+> - [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md)
+> - [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md)
+>
+> If this file conflicts with the SoT docs above, the SoT docs win.
+
 **Goal:** Add robust real-time Codex session monitoring to Mission Control without regressing Claude live behavior.
 
 **Architecture:** Extend live pipeline to be source-aware end-to-end: source-tagged file events, Codex-tail parsing, source-aware process matching, unified live session state model, and frontend rendering that supports mixed-source live grids.
@@ -340,4 +346,3 @@ Expected:
   - Mitigation: add hysteresis rules (`seconds_since_modified` + process signal) before `Done` transitions.
 - Risk: recursive Codex watching increases filesystem event volume.
   - Mitigation: extension filtering (`.jsonl`) + per-source debounce in watcher callback.
-

@@ -9,6 +9,12 @@ depends_on: G
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+> **Plan Governance (2026-03-06 SoT):** This phase is subordinate to:
+> - [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md)
+> - [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md)
+>
+> If this file conflicts with the SoT docs above, the SoT docs win.
+
 **Goal:** Parse and index Codex session history so Codex conversations appear as first-class records in Sessions list and Conversation view.
 
 **Architecture:** Implement Codex-specific discovery + parsing adapters, route them through the source-aware foundation from Phase G, and preserve existing Claude behavior by dispatching by `session.source`.
@@ -365,4 +371,3 @@ Expected:
   - Mitigation: parser uses tolerant matching + preserves unknown event counts in diagnostics.
 - Risk: token totals are cumulative snapshots, not deltas.
   - Mitigation: use final snapshot totals for session-level metrics in this phase.
-

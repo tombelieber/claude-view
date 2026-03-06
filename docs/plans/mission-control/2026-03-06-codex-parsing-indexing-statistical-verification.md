@@ -1,5 +1,5 @@
 ---
-status: pending
+status: approved
 date: 2026-03-06
 phase: K-verify
 depends_on: K

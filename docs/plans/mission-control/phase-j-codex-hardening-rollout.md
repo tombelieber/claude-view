@@ -9,6 +9,12 @@ depends_on: H,I
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+> **Plan Governance (2026-03-06 SoT):** This phase is subordinate to:
+> - [`2026-03-06-codex-history-live-tdd-plan.md`](2026-03-06-codex-history-live-tdd-plan.md)
+> - [`2026-03-06-codex-parsing-indexing-statistical-verification.md`](2026-03-06-codex-parsing-indexing-statistical-verification.md)
+>
+> If this file conflicts with the SoT docs above, the SoT docs win.
+
 **Goal:** Make Codex support production-grade with migration safety, deterministic reindexing, robust tests, observability, and controlled rollout.
 
 **Architecture:** Add source-aware validation layers around indexing and live monitoring, enforce test fixtures for known Codex variants, instrument parser/indexer health metrics, and ship behind explicit rollout controls.
@@ -316,4 +322,3 @@ Expected:
   - Mitigation: fixture corpus + tolerant parsing + explicit unknown-event counters.
 - Risk: rollout surprises on large local datasets.
   - Mitigation: source flag allows codex-disable rollback without reverting schema.
-
