@@ -15,6 +15,7 @@ export interface SessionsQueryParams {
   timeBefore?: number
   sidebarProject?: string | null
   sidebarBranch?: string | null
+  showArchived?: boolean
 }
 
 function buildSearchParams(params: SessionsQueryParams, offset: number): URLSearchParams {
@@ -51,6 +52,8 @@ function buildSearchParams(params: SessionsQueryParams, offset: number): URLSear
 
   if (params.timeAfter) sp.set('time_after', String(params.timeAfter))
   if (params.timeBefore) sp.set('time_before', String(params.timeBefore))
+
+  if (params.showArchived) sp.set('show_archived', 'true')
 
   return sp
 }
