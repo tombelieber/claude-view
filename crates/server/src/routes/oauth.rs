@@ -35,25 +35,31 @@ pub struct OAuthUsageResponse {
     pub tiers: Vec<UsageTier>,
 }
 
-// ── Credential file types ───────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CredentialsFile {
-    claude_ai_oauth: Option<OAuthCredential>,
+pub struct AuthIdentityResponse {
+    pub has_auth: bool,
+    pub email: Option<String>,
+    pub org_name: Option<String>,
+    pub subscription_type: Option<String>,
+    pub auth_method: Option<String>,
 }
 
+// ── Parsed output of `claude auth status --json` ────────────────────────
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OAuthCredential {
-    access_token: String,
+struct ClaudeAuthStatusOutput {
     #[serde(default)]
-    refresh_token: Option<String>,
-    /// Unix milliseconds
+    logged_in: bool,
     #[serde(default)]
-    expires_at: Option<u64>,
+    email: Option<String>,
+    #[serde(default)]
+    org_name: Option<String>,
     #[serde(default)]
     subscription_type: Option<String>,
+    #[serde(default)]
+    auth_method: Option<String>,
 }
 
 // ── Anthropic API response types ────────────────────────────────────────
@@ -94,101 +100,14 @@ struct ExtraUsage {
     utilization: Option<f64>,
 }
 
-/// POST https://platform.claude.com/v1/oauth/token
-#[derive(Debug, Deserialize)]
-struct TokenRefreshResponse {
-    access_token: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    refresh_token: Option<String>,
-    /// Seconds until expiry
-    #[serde(default)]
-    #[allow(dead_code)]
-    expires_in: Option<u64>,
-}
-
 // ── Constants ───────────────────────────────────────────────────────────
 
 const ANTHROPIC_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
-const TOKEN_REFRESH_URL: &str = "https://platform.claude.com/v1/oauth/token";
-const OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const OAUTH_SCOPE: &str = "user:profile user:inference user:sessions:claude_code user:mcp_servers";
-const KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
-/// Refresh proactively if token expires within 5 minutes.
-const REFRESH_BUFFER_MS: u64 = 5 * 60 * 1000;
+
+/// Timeout for the `claude auth status` subprocess.
+const AUTH_STATUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-
-/// Read credentials JSON from macOS Keychain.
-///
-/// The `security find-generic-password -s <service> -w` command returns the
-/// password value. On some macOS versions this comes back as hex-encoded
-/// UTF-8 bytes (e.g. "7b0a22..." for `{\n"`), so we try plain text first,
-/// then hex decode.
-fn read_keychain_credentials() -> Option<Vec<u8>> {
-    #[cfg(not(target_os = "macos"))]
-    {
-        None
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("security")
-            .args(["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"])
-            .output()
-            .ok()?;
-
-        if !output.status.success() {
-            return None;
-        }
-
-        let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if raw.is_empty() {
-            return None;
-        }
-
-        // Try plain JSON first.
-        if raw.starts_with('{') {
-            return Some(raw.into_bytes());
-        }
-
-        // Try hex-decoding (macOS keychain sometimes returns hex-encoded UTF-8).
-        let hex = raw
-            .strip_prefix("0x")
-            .or(raw.strip_prefix("0X"))
-            .unwrap_or(&raw);
-        if !hex.len().is_multiple_of(2) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-            return None;
-        }
-        let bytes: Vec<u8> = (0..hex.len())
-            .step_by(2)
-            .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
-            .collect();
-        if bytes.is_empty() || bytes[0] != b'{' {
-            return None;
-        }
-        Some(bytes)
-    }
-}
-
-/// Load credentials from file, falling back to macOS Keychain.
-fn load_credentials_bytes(home: &std::path::Path) -> Option<Vec<u8>> {
-    let creds_path = home.join(".claude").join(".credentials.json");
-
-    // Try file first.
-    if let Ok(bytes) = std::fs::read(&creds_path) {
-        tracing::debug!("Loaded credentials from file");
-        return Some(bytes);
-    }
-
-    // Fallback: macOS Keychain.
-    if let Some(bytes) = read_keychain_credentials() {
-        tracing::debug!("Loaded credentials from macOS Keychain");
-        return Some(bytes);
-    }
-
-    tracing::debug!("No credentials found (file or keychain)");
-    None
-}
 
 fn no_auth() -> OAuthUsageResponse {
     OAuthUsageResponse {
@@ -206,13 +125,6 @@ fn auth_error(msg: impl Into<String>) -> OAuthUsageResponse {
         plan: None,
         tiers: vec![],
     }
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }
 
 /// Build the usage tiers from the Anthropic API response.
@@ -281,33 +193,6 @@ fn build_tiers(resp: &AnthropicUsageResponse) -> Vec<UsageTier> {
     tiers
 }
 
-/// Try to refresh the OAuth token. Returns a new access token on success.
-async fn try_refresh_token(client: &reqwest::Client, refresh_token: &str) -> Option<String> {
-    let body = serde_json::json!({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-        "client_id": OAUTH_CLIENT_ID,
-        "scope": OAUTH_SCOPE,
-    });
-
-    let resp = client
-        .post(TOKEN_REFRESH_URL)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
-        .ok()?;
-
-    if !resp.status().is_success() {
-        tracing::warn!(status = %resp.status(), "Token refresh failed");
-        return None;
-    }
-
-    let data: TokenRefreshResponse = resp.json().await.ok()?;
-    // TODO: persist refreshed token back to credentials file
-    Some(data.access_token)
-}
-
 /// Fetch usage from the Anthropic API with the given access token.
 async fn fetch_usage(
     client: &reqwest::Client,
@@ -339,7 +224,117 @@ async fn fetch_usage(
     })
 }
 
-// ── Handler ─────────────────────────────────────────────────────────────
+/// Run `claude auth status --json` and parse the result.
+/// Returns `None` on any failure (CLI missing, timeout, parse error).
+fn fetch_auth_identity() -> Option<crate::state::AuthIdentity> {
+    let cli_path = claude_view_core::resolved_cli_path()?;
+
+    // Strip CLAUDE* env vars to prevent SIGKILL inside Claude Code sessions.
+    let claude_vars: Vec<String> = std::env::vars()
+        .filter(|(k, _)| k.starts_with("CLAUDE"))
+        .map(|(k, _)| k)
+        .collect();
+
+    let mut cmd = std::process::Command::new(cli_path);
+    cmd.args(["auth", "status", "--json"]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::null());
+    for var in &claude_vars {
+        cmd.env_remove(var);
+    }
+
+    // Spawn with timeout to prevent indefinite blocking.
+    let mut child = cmd.spawn().ok()?;
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    tracing::debug!("claude auth status exited with {}", status);
+                    return None;
+                }
+                break;
+            }
+            Ok(None) => {
+                if start.elapsed() > AUTH_STATUS_TIMEOUT {
+                    let _ = child.kill();
+                    tracing::warn!(
+                        "claude auth status timed out after {:?}",
+                        AUTH_STATUS_TIMEOUT
+                    );
+                    return None;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            Err(e) => {
+                tracing::debug!("claude auth status wait error: {e}");
+                return None;
+            }
+        }
+    }
+
+    let output = child.wait_with_output().ok()?;
+
+    let parsed: ClaudeAuthStatusOutput = match serde_json::from_slice(&output.stdout) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                stdout = %String::from_utf8_lossy(&output.stdout),
+                "Failed to parse claude auth status JSON — command may not support --json"
+            );
+            return None;
+        }
+    };
+
+    if !parsed.logged_in {
+        return None;
+    }
+
+    Some(crate::state::AuthIdentity {
+        email: parsed.email,
+        org_name: parsed.org_name,
+        subscription_type: parsed.subscription_type,
+        auth_method: parsed.auth_method,
+    })
+}
+
+// ── Handlers ────────────────────────────────────────────────────────────
+
+/// GET /api/oauth/identity
+///
+/// Returns cached auth identity (email, org, plan).
+/// Calls `claude auth status` on first request only, caches forever.
+pub async fn get_auth_identity(State(state): State<Arc<AppState>>) -> Json<AuthIdentityResponse> {
+    let identity = state
+        .auth_identity
+        .get_or_init(|| async {
+            // Run subprocess in blocking task to avoid blocking the tokio runtime.
+            tokio::task::spawn_blocking(fetch_auth_identity)
+                .await
+                .ok()
+                .flatten()
+        })
+        .await;
+
+    match identity {
+        Some(id) => Json(AuthIdentityResponse {
+            has_auth: true,
+            email: id.email.clone(),
+            org_name: id.org_name.clone(),
+            subscription_type: id.subscription_type.clone(),
+            auth_method: id.auth_method.clone(),
+        }),
+        None => Json(AuthIdentityResponse {
+            has_auth: false,
+            email: None,
+            org_name: None,
+            subscription_type: None,
+            auth_method: None,
+        }),
+    }
+}
 
 /// GET /api/oauth/usage
 pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
@@ -349,23 +344,22 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
         None => return Json(no_auth()),
     };
 
-    let creds_bytes = match load_credentials_bytes(&home) {
+    let creds_bytes = match claude_view_core::credentials::load_credentials_bytes(&home) {
         Some(b) => b,
         None => return Json(no_auth()),
     };
 
-    let creds_file: CredentialsFile = match serde_json::from_slice(&creds_bytes) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to parse credentials");
-            return Json(no_auth());
-        }
+    let oauth = match claude_view_core::credentials::parse_credentials(&creds_bytes) {
+        Some(o) => o,
+        None => return Json(no_auth()),
     };
 
-    let oauth = match creds_file.claude_ai_oauth {
-        Some(o) if !o.access_token.is_empty() => o,
-        _ => return Json(no_auth()),
-    };
+    // 2. Check expiry — we never refresh, just report the error.
+    if claude_view_core::credentials::is_token_expired(oauth.expires_at) {
+        return Json(auth_error(
+            "Token expired. Run 'claude' to re-authenticate.",
+        ));
+    }
 
     let plan = oauth.subscription_type.as_deref().map(|s| {
         let mut c = s.chars();
@@ -375,44 +369,16 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
         }
     });
 
-    // 2. Refresh token if expiring soon.
+    // 3. Fetch usage with the current token (no refresh, no retry).
     let client = reqwest::Client::new();
-    let access_token = if let Some(expires_at) = oauth.expires_at {
-        if expires_at <= now_ms() + REFRESH_BUFFER_MS {
-            if let Some(ref rt) = oauth.refresh_token {
-                match try_refresh_token(&client, rt).await {
-                    Some(new_token) => new_token,
-                    None => oauth.access_token.clone(),
-                }
-            } else {
-                oauth.access_token.clone()
-            }
-        } else {
-            oauth.access_token.clone()
-        }
-    } else {
-        oauth.access_token.clone()
-    };
-
-    // 3. Fetch usage (retry once on 401 with token refresh).
-    let result = fetch_usage(&client, &access_token).await;
+    let result = fetch_usage(&client, &oauth.access_token).await;
 
     let usage = match result {
         Ok(u) => u,
         Err(e) if e.contains("401") => {
-            // Token might be stale — try one refresh.
-            if let Some(ref rt) = oauth.refresh_token {
-                if let Some(new_token) = try_refresh_token(&client, rt).await {
-                    match fetch_usage(&client, &new_token).await {
-                        Ok(u) => u,
-                        Err(e2) => return Json(auth_error(e2)),
-                    }
-                } else {
-                    return Json(auth_error("Token expired. Run 'claude' to log in again."));
-                }
-            } else {
-                return Json(auth_error(e));
-            }
+            return Json(auth_error(
+                "Token expired. Run 'claude' to re-authenticate.",
+            ));
         }
         Err(e) => return Json(auth_error(e)),
     };
@@ -428,5 +394,90 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
 }
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/oauth/usage", get(get_oauth_usage))
+    Router::new()
+        .route("/oauth/usage", get(get_oauth_usage))
+        .route("/oauth/identity", get(get_auth_identity))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_identity_endpoint_returns_cached_identity() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Pre-populate the OnceCell with a known identity.
+        state
+            .auth_identity
+            .get_or_init(|| async {
+                Some(crate::state::AuthIdentity {
+                    email: Some("test@example.com".into()),
+                    org_name: Some("Test Corp".into()),
+                    subscription_type: Some("max".into()),
+                    auth_method: Some("claude.ai".into()),
+                })
+            })
+            .await;
+
+        let app = Router::new()
+            .route("/api/oauth/identity", axum::routing::get(get_auth_identity))
+            .with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/oauth/identity")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: AuthIdentityResponse = serde_json::from_slice(&body_bytes).unwrap();
+        assert!(body.has_auth);
+        assert_eq!(body.email.as_deref(), Some("test@example.com"));
+        assert_eq!(body.org_name.as_deref(), Some("Test Corp"));
+    }
+
+    #[tokio::test]
+    async fn test_identity_endpoint_returns_no_auth_when_empty() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+
+        // Pre-populate with None (no identity).
+        state.auth_identity.get_or_init(|| async { None }).await;
+
+        let app = Router::new()
+            .route("/api/oauth/identity", axum::routing::get(get_auth_identity))
+            .with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/oauth/identity")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: AuthIdentityResponse = serde_json::from_slice(&body_bytes).unwrap();
+        assert!(!body.has_auth);
+        assert!(body.email.is_none());
+    }
 }
