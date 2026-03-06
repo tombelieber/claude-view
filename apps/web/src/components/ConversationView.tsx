@@ -14,12 +14,12 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { Virtuoso } from 'react-virtuoso'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { useControlSession } from '../hooks/use-control-session'
 import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
+import { useSessionControl } from '../hooks/use-session-control'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useSessionMessages } from '../hooks/use-session-messages'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
@@ -45,7 +45,8 @@ import { MessageTyped } from './MessageTyped'
 import { SearchInput } from './SearchInput'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
-import { ChatInputBar, type InputBarState } from './chat/ChatInputBar'
+import { ChatInputBar } from './chat/ChatInputBar'
+import { ConnectionBanner } from './chat/ConnectionBanner'
 import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
@@ -92,24 +93,6 @@ function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[
   })
 }
 
-function controlStatusToInputState(status: string | undefined): InputBarState {
-  switch (status) {
-    case 'active':
-    case 'waiting_input':
-      return 'active'
-    case 'waiting_permission':
-      return 'waiting_permission'
-    case 'connecting':
-      return 'connecting'
-    case 'reconnecting':
-      return 'reconnecting'
-    case 'completed':
-      return 'completed'
-    default:
-      return 'dormant'
-  }
-}
-
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -123,9 +106,7 @@ export function ConversationView() {
   const projectName = project?.displayName || projectDir
 
   // Chat input bar: resume flow
-  const [controlId, setControlId] = useState<string | null>(null)
-  const pendingMessageRef = useRef<string | null>(null)
-  const controlSession = useControlSession(controlId)
+  const sessionControl = useSessionControl(sessionId || '')
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
@@ -250,39 +231,6 @@ export function ConversationView() {
       3000,
     )
   }, [sessionId, sessionDetail])
-
-  const handleChatSend = useCallback(
-    async (message: string) => {
-      if (!controlId) {
-        pendingMessageRef.current = message
-        try {
-          const res = await fetch('/api/control/resume', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId }),
-          })
-          if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
-          const data = await res.json()
-          setControlId(data.controlId)
-        } catch {
-          pendingMessageRef.current = null
-          showToast('Failed to resume session', 3000)
-        }
-      } else {
-        controlSession.sendMessage(message)
-      }
-    },
-    [controlId, controlSession.sendMessage, sessionId],
-  )
-
-  // Drain pending message when WS reaches waiting_input
-  useEffect(() => {
-    if (controlId && pendingMessageRef.current && controlSession.status === 'waiting_input') {
-      const msg = pendingMessageRef.current
-      pendingMessageRef.current = null
-      controlSession.sendMessage(msg)
-    }
-  }, [controlId, controlSession.status, controlSession.sendMessage])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
   useEffect(() => {
@@ -844,11 +792,11 @@ export function ConversationView() {
               />
             )}
           </div>
+          <ConnectionBanner health={sessionControl.connectionHealth} />
           <ChatInputBar
-            onSend={handleChatSend}
-            state={controlStatusToInputState(controlSession.status)}
-            contextPercent={Math.round(controlSession.contextUsage)}
-            placeholder={controlId ? 'Send a message...' : 'Resume this session...'}
+            onSend={sessionControl.send}
+            state={sessionControl.inputBarState}
+            contextPercent={sessionControl.contextPercent}
           />
         </div>
 
