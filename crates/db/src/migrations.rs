@@ -712,6 +712,12 @@ ALTER TABLE classification_jobs_v2 RENAME TO classification_jobs;
 CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_classification_jobs_started ON classification_jobs(started_at DESC);
 COMMIT;"#,
+    // Migration 50: Add archived_at column for session archiving
+    r#"BEGIN;
+ALTER TABLE sessions ADD COLUMN archived_at TEXT;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND archived_at IS NULL;
+COMMIT;"#,
 ];
 
 // ============================================================================
@@ -1179,8 +1185,8 @@ mod tests {
         .await
         .unwrap();
 
-        // Migration 49 is the last entry in MIGRATIONS.
-        let migration_49 = super::MIGRATIONS.last().expect("missing migration 49");
+        // Migration 49 is the second-to-last entry in MIGRATIONS (index = len - 2).
+        let migration_49 = &super::MIGRATIONS[super::MIGRATIONS.len() - 2];
         sqlx::raw_sql(migration_49)
             .execute(&pool)
             .await
