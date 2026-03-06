@@ -2051,7 +2051,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.jsonl");
         let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"type":"result","subtype":"success","cost_usd":0.05,"duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
+        writeln!(f, r#"{{"type":"result","subtype":"success","duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
         f.flush().unwrap();
 
         let state = derive_agent_state_from_jsonl(&path).await;

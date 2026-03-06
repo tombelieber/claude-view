@@ -138,7 +138,10 @@ pub fn register(port: u16) {
     }
 
     // Append our 14 hooks in the new matcher-group format
-    let hooks = settings["hooks"].as_object_mut().expect("hooks is object");
+    let Some(hooks) = settings["hooks"].as_object_mut() else {
+        tracing::error!("settings.json has unexpected structure — cannot register hooks");
+        return;
+    };
     for event in HOOK_EVENTS {
         let matcher_group = make_matcher_group(port, event);
         let arr = hooks
