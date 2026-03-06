@@ -2,6 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Copy, Link2, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/use-auth'
+import { useConfig } from '../hooks/use-config'
 import { useCreateShare } from '../hooks/use-share'
 import { getAccessToken } from '../lib/supabase'
 import { showToast } from '../lib/toast'
@@ -27,6 +28,7 @@ function getSessionTitle(messages?: Message[], projectName?: string): string {
 
 // Dialog.Root wires onOpenChange to trigger share creation
 export function ShareModal({ sessionId, messages, projectName }: ShareModalProps) {
+  const { sharing } = useConfig()
   const [isOpen, setIsOpen] = useState(false)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [linkCopied, setLinkCopied] = useState(false)
@@ -80,6 +82,20 @@ export function ShareModal({ sessionId, messages, projectName }: ShareModalProps
     await navigator.clipboard.writeText(shareMessage)
     setMsgCopied(true)
     setTimeout(() => setMsgCopied(false), 2000)
+  }
+
+  // Local mode — show disabled button with explanation
+  if (!sharing) {
+    return (
+      <button
+        type="button"
+        disabled
+        title="Sharing is not available in local mode"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md cursor-not-allowed opacity-60"
+      >
+        <Link2 className="w-4 h-4" /> Share
+      </button>
+    )
   }
 
   return (
