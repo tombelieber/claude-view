@@ -2,6 +2,7 @@
 
 pub mod classify;
 pub mod coaching;
+pub mod config;
 pub mod contributions;
 pub mod control;
 pub mod export;
@@ -42,6 +43,7 @@ use crate::state::AppState;
 /// Create the combined API router with all routes under /api prefix.
 ///
 /// Routes:
+/// - GET /api/config - Runtime capabilities endpoint
 /// - GET /api/health - Health check
 /// - GET /api/projects - List all projects (summaries)
 /// - GET /api/projects/:id/sessions - Paginated sessions for a project
@@ -98,6 +100,7 @@ use crate::state::AppState;
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
+        .nest("/api", config::router())
         .nest("/api", health::router())
         .nest("/api", projects::router())
         .nest("/api", sessions::router())
