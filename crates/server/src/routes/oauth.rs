@@ -311,10 +311,13 @@ pub async fn get_auth_identity(State(state): State<Arc<AppState>>) -> Json<AuthI
         .auth_identity
         .get_or_init(|| async {
             // Run subprocess in blocking task to avoid blocking the tokio runtime.
-            tokio::task::spawn_blocking(fetch_auth_identity)
-                .await
-                .ok()
-                .flatten()
+            match tokio::task::spawn_blocking(fetch_auth_identity).await {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::error!("fetch_auth_identity spawn_blocking failed: {e}");
+                    None
+                }
+            }
         })
         .await;
 
