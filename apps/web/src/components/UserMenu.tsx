@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Link2, LogOut, Settings } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/use-auth'
-import { supabase } from '../lib/supabase'
+import { useConfig } from '../hooks/use-config'
 
 /** Deterministic color from user ID for initials avatar fallback */
 const AVATAR_COLORS = [
@@ -50,9 +50,10 @@ function Avatar({ user }: { user: { avatarUrl?: string; email?: string; id: stri
 
 export function UserMenu() {
   const { user, loading, signOut, openSignIn } = useAuth()
+  const { auth } = useConfig()
 
-  // Don't render anything when Supabase isn't configured (dev without env vars)
-  if (!supabase) return null
+  // Don't render anything when auth isn't configured (local mode)
+  if (!auth) return null
 
   if (loading) return null
 
