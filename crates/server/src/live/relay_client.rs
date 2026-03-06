@@ -168,7 +168,10 @@ async fn connect_and_stream(
     {
         let sessions_map = sessions.read().await;
         for session in sessions_map.values() {
-            let json = serde_json::to_vec(session).unwrap_or_default();
+            let Ok(json) = serde_json::to_vec(session) else {
+                tracing::error!("failed to serialize session for relay");
+                continue;
+            };
             for device in paired_devices {
                 if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
                 {
@@ -189,7 +192,10 @@ async fn connect_and_stream(
                 match event {
                     Ok(SessionEvent::SessionDiscovered { session } |
                        SessionEvent::SessionUpdated { session }) => {
-                        let json = serde_json::to_vec(&session).unwrap_or_default();
+                        let Ok(json) = serde_json::to_vec(&session) else {
+                            tracing::error!("failed to serialize session for relay");
+                            continue;
+                        };
                         for device in paired_devices {
                             if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
                                 let envelope = build_envelope(&device.device_id, &encrypted, Some(&session));
@@ -201,7 +207,10 @@ async fn connect_and_stream(
                     }
                     Ok(SessionEvent::SessionCompleted { session_id }) => {
                         let msg = serde_json::json!({"type": "session_completed", "sessionId": session_id});
-                        let json = serde_json::to_vec(&msg).unwrap_or_default();
+                        let Ok(json) = serde_json::to_vec(&msg) else {
+                            tracing::error!("failed to serialize session for relay");
+                            continue;
+                        };
                         for device in paired_devices {
                             if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
                                 let envelope = build_envelope(&device.device_id, &encrypted, None);
@@ -216,7 +225,10 @@ async fn connect_and_stream(
                         warn!(skipped = n, "relay client lagged, will resync");
                         let sessions_map = sessions.read().await;
                         for session in sessions_map.values() {
-                            let json = serde_json::to_vec(session).unwrap_or_default();
+                            let Ok(json) = serde_json::to_vec(session) else {
+                                tracing::error!("failed to serialize session for relay");
+                                continue;
+                            };
                             for device in paired_devices {
                                 if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
                                     let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
