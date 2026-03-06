@@ -18,7 +18,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, OnceCell};
+
+/// Cached identity from `claude auth status` (email, org, plan).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthIdentity {
+    pub email: Option<String>,
+    pub org_name: Option<String>,
+    pub subscription_type: Option<String>,
+    pub auth_method: Option<String>,
+}
 
 /// Configuration for the conversation sharing feature.
 /// Only populated when SHARE_WORKER_URL and SHARE_VIEWER_URL are set.
@@ -97,6 +107,8 @@ pub struct AppState {
     /// Sharing configuration (Worker URL, viewer URL, HTTP client).
     /// `None` when SHARE_WORKER_URL / SHARE_VIEWER_URL are not set.
     pub share: Option<ShareConfig>,
+    /// Cached auth identity from `claude auth status` (lazy, one-shot).
+    pub auth_identity: OnceCell<Option<AuthIdentity>>,
 }
 
 impl AppState {
@@ -133,6 +145,7 @@ impl AppState {
             sidecar: Arc::new(SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 
@@ -168,6 +181,7 @@ impl AppState {
             sidecar: Arc::new(SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 
@@ -206,6 +220,7 @@ impl AppState {
             sidecar: Arc::new(SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 
