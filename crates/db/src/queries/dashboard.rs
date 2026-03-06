@@ -26,6 +26,7 @@ pub struct SessionFilterParams {
     pub time_after: Option<i64>,
     pub time_before: Option<i64>,
     pub project: Option<String>,
+    pub show_archived: Option<bool>,
     pub sort: String, // "recent", "tokens", "prompts", "files_edited", "duration"
     pub limit: i64,   // default 30
     pub offset: i64,  // default 0
@@ -308,6 +309,12 @@ impl Database {
         ) {
             qb.push(" WHERE 1=1");
 
+            // When querying FROM sessions (show_archived mode), replicate
+            // the sidechain filter that valid_sessions normally provides.
+            if params.show_archived == Some(true) {
+                qb.push(" AND s.is_sidechain = 0");
+            }
+
             // Tantivy-resolved search: filter by pre-computed session IDs
             if let Some(ids) = &params.search_session_ids {
                 if ids.is_empty() {
@@ -438,16 +445,23 @@ impl Database {
             }
         }
 
+        // Choose base table: show_archived queries `sessions` directly
+        // (with is_sidechain filter in append_filters), default uses `valid_sessions` view.
+        let base_from = if params.show_archived == Some(true) {
+            "sessions s"
+        } else {
+            "valid_sessions s"
+        };
+
         // --- COUNT query ---
-        let mut count_qb = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM valid_sessions s");
+        let mut count_qb = sqlx::QueryBuilder::new(format!("SELECT COUNT(*) FROM {base_from}"));
         append_filters(&mut count_qb, params);
 
         let total: (i64,) = count_qb.build_query_as().fetch_one(self.pool()).await?;
         let total = total.0 as usize;
 
         // --- DATA query ---
-        let mut data_qb =
-            sqlx::QueryBuilder::new(format!("SELECT {} FROM valid_sessions s", select_cols));
+        let mut data_qb = sqlx::QueryBuilder::new(format!("SELECT {select_cols} FROM {base_from}"));
         append_filters(&mut data_qb, params);
 
         // ORDER BY (with s.last_message_at DESC tiebreaker for deterministic order)
@@ -1099,6 +1113,7 @@ mod filtered_query_tests {
             time_after: None,
             time_before: None,
             project: None,
+            show_archived: None,
             sort: "recent".to_string(),
             limit: 30,
             offset: 0,
