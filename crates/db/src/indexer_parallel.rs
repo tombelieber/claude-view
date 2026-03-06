@@ -2550,7 +2550,13 @@ where
                 deep_indexed_at,
                 parse_version,
                 project,
+                archived_at,
             )| {
+                // Skip archived sessions entirely
+                if archived_at.is_some() {
+                    return None;
+                }
+
                 let needs_index = if force_search_reindex {
                     // Search index was rebuilt — must re-parse to regenerate search_messages
                     true
@@ -3223,14 +3229,15 @@ where
         .get_sessions_needing_deep_index()
         .await
         .map_err(|e| format!("Failed to load existing sessions: {}", e))?;
-    let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32)> = existing_sessions
-        .into_iter()
-        .map(
-            |(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj)| {
-                (id, (stored_size, stored_mtime, pv))
-            },
-        )
-        .collect();
+    let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32, Option<String>)> =
+        existing_sessions
+            .into_iter()
+            .map(
+                |(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj, archived_at)| {
+                    (id, (stored_size, stored_mtime, pv, archived_at))
+                },
+            )
+            .collect();
 
     // Use one merged pricing map for this full indexing run.
     let pricing = Arc::new(load_indexing_pricing(db).await);
@@ -3278,9 +3285,17 @@ where
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
 
-            // 2. Check staleness against DB (force_search_reindex bypasses)
+            // 2a. If session is archived, skip re-indexing entirely.
+            if let Some((_, _, _, archived_at)) = existing_map.get(&session_id) {
+                if archived_at.is_some() {
+                    skipped.fetch_add(1, Ordering::Relaxed);
+                    return Ok((None, session_id));
+                }
+            }
+
+            // 2b. Check staleness against DB (force_search_reindex bypasses)
             if !force_reindex {
-                if let Some((Some(stored_size), Some(stored_mtime), pv)) =
+                if let Some((Some(stored_size), Some(stored_mtime), pv, _)) =
                     existing_map.get(&session_id)
                 {
                     if *stored_size == current_size
@@ -4949,8 +4964,16 @@ mod tests {
         // Verify file_size_at_index and file_mtime_at_index are populated
         let sessions = db.get_sessions_needing_deep_index().await.unwrap();
         assert_eq!(sessions.len(), 1);
-        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) =
-            &sessions[0];
+        let (
+            _id,
+            _path,
+            stored_size,
+            stored_mtime,
+            deep_indexed_at,
+            parse_version,
+            _project,
+            _archived_at,
+        ) = &sessions[0];
         assert!(
             stored_size.is_some(),
             "file_size_at_index should be populated after deep index"
