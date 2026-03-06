@@ -203,8 +203,9 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
   const connectionHealth: ConnectionHealth =
     phase === 'reconnecting'
       ? 'degraded'
-      : controlSession.status === 'error' ||
-          (controlSession.status === 'disconnected' && controlId != null)
+      : phase !== 'connecting' &&
+          (controlSession.status === 'error' ||
+            (controlSession.status === 'disconnected' && controlId != null))
         ? 'lost'
         : 'ok'
 
