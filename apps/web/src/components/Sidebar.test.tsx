@@ -197,8 +197,8 @@ describe('Sidebar three-zone architecture', () => {
 
     it('shows "Recent" section label', () => {
       render(<Sidebar projects={mockProjects} />, { wrapper: createWrapper('/?project=project-a') })
-      const quickJump = screen.getByRole('navigation', { name: /recent sessions/i })
-      expect(within(quickJump).getByText('Recent')).toBeInTheDocument()
+      // "Recent" label is now in a SectionHeader button above the QuickJumpZone nav
+      expect(screen.getByText('Recent')).toBeInTheDocument()
     })
 
     it('shows "All" link to Sessions page with project scope', () => {

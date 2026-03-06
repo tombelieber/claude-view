@@ -99,6 +99,7 @@ const columnHelper = createColumnHelper<SessionInfo>()
 function buildColumns(
   badges: Record<string, BadgeData> | undefined,
   liveSessionIds?: Set<string>,
+  // biome-ignore lint/suspicious/noExplicitAny: TanStack Table ColumnDef is invariant on TValue; `any` is idiomatic when mixing accessor + display columns
 ): ColumnDef<SessionInfo, any>[] {
   return [
     columnHelper.display({
@@ -337,6 +338,7 @@ export function CompactSessionTable({
     queryFn: async () => {
       if (!sessionIds) return {}
       const res = await fetch(`/api/facets/badges?ids=${encodeURIComponent(sessionIds)}`)
+      if (!res.ok) return {}
       return res.json()
     },
     enabled: !!sessionIds,
