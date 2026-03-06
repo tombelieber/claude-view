@@ -36,4 +36,5 @@ export interface RichSessionData {
   firstUserMessage: string | null
   lastUserMessage: string | null
   lastCacheHitAt: number | null
+  lastUserFile: string | null
 }

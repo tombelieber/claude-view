@@ -51,6 +51,7 @@ export type { SystemStorageStats } from './SystemStorageStats'
 // AI Generation types (Phase 3)
 export type { AggregateCostBreakdown } from './AggregateCostBreakdown'
 export type { AIGenerationStats } from './AIGenerationStats'
+export type { AIGenerationStatsResponse } from './AIGenerationStatsResponse'
 export type { TokensByModel } from './TokensByModel'
 export type { TokensByProject } from './TokensByProject'
 
@@ -79,6 +80,12 @@ export type { CategoryNode } from './CategoryNode'
 export type { OverallAverages } from './OverallAverages'
 export type { CategoriesResponse } from './CategoriesResponse'
 
+// Analytics scope contract types
+export type { AnalyticsDataScope } from './AnalyticsDataScope'
+export type { AnalyticsDataScopeMeta } from './AnalyticsDataScopeMeta'
+export type { AnalyticsScopeMeta } from './AnalyticsScopeMeta'
+export type { AnalyticsSessionBreakdown } from './AnalyticsSessionBreakdown'
+
 // Trends types (Phase 7)
 export type { MetricDataPoint } from './MetricDataPoint'
 export type { CategoryDataPoint } from './CategoryDataPoint'
@@ -86,6 +93,8 @@ export type { HeatmapCell } from './HeatmapCell'
 export type { InsightsTrendsResponse } from './InsightsTrendsResponse'
 
 // Benchmarks types (Phase 8)
+export type { BenchmarksResponseWithMeta } from './BenchmarksResponseWithMeta'
+export type { WeekTrendsResponse } from './WeekTrendsResponse'
 export type { PeriodMetrics } from './PeriodMetrics'
 export type { ImprovementMetrics } from './ImprovementMetrics'
 export type { ProgressComparison } from './ProgressComparison'
@@ -110,6 +119,11 @@ export type { ClassificationJobStatus } from './ClassificationJobStatus'
 export type { CategoryL1 } from './CategoryL1'
 export type { CategoryL2 } from './CategoryL2'
 export type { CategoryL3 } from './CategoryL3'
+
+// Integrity types
+export type { IndexRunIntegrityCounters } from './IndexRunIntegrityCounters'
+export type { IntegrityCounterInfo } from './IntegrityCounterInfo'
+export type { IntegrityInfo } from './IntegrityInfo'
 
 // System types (Theme 4)
 export type { SystemResponse } from './SystemResponse'
