@@ -152,8 +152,8 @@ export const WAITLIST_API = '/api/waitlist'
 
 /**
  * Cloudflare Turnstile site key (public, safe to embed in client code).
- * ⚠️  REPLACE BEFORE DEPLOYING TO PRODUCTION — see Task 8 Step 2.
- * Current value '1x00000000000000000000AA' is Cloudflare's always-passes TEST key.
- * Deploying with this key means ALL bot submissions pass Turnstile verification.
+ * Set PUBLIC_TURNSTILE_SITE_KEY in your Astro environment to use a real key.
+ * Falls back to Cloudflare's always-passes test key for local development.
  */
-export const TURNSTILE_SITE_KEY = '1x00000000000000000000AA' // TODO(deploy): replace with real site key
+export const TURNSTILE_SITE_KEY =
+  import.meta.env.PUBLIC_TURNSTILE_SITE_KEY ?? '1x00000000000000000000AA'
