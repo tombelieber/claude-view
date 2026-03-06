@@ -142,3 +142,18 @@ export interface ChatMessage {
   isError?: boolean
   usage?: AssistantDone['usage']
 }
+
+/** Message lifecycle status for optimistic rendering */
+export type MessageStatus = 'optimistic' | 'sending' | 'sent' | 'failed'
+
+/** ChatMessage with lifecycle tracking — content is required (user messages always have text) */
+export interface ChatMessageWithStatus extends ChatMessage {
+  /** Required content (narrows the optional inherited field) */
+  content: string
+  /** Unique ID for this message instance (used for retry/status updates) */
+  localId: string
+  /** Lifecycle status */
+  status: MessageStatus
+  /** Timestamp when the message was created locally */
+  createdAt: number
+}
