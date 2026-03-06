@@ -2895,23 +2895,14 @@ where
 
     {
         let total_elapsed = phase_start.elapsed();
-        eprintln!(
-            "    [perf] deep index: {} indexed, {} skipped, {} errors",
+        tracing::debug!(
             indexed,
             skipped,
-            parse_errors.len()
-        );
-        eprintln!(
-            "    [perf]   parse phase: {}",
-            claude_view_core::format_duration(parse_elapsed)
-        );
-        eprintln!(
-            "    [perf]   write phase: {}",
-            claude_view_core::format_duration(write_elapsed)
-        );
-        eprintln!(
-            "    [perf]   total:       {}",
-            claude_view_core::format_duration(total_elapsed)
+            errors = parse_errors.len(),
+            parse_phase = %claude_view_core::format_duration(parse_elapsed),
+            write_phase = %claude_view_core::format_duration(write_elapsed),
+            total = %claude_view_core::format_duration(total_elapsed),
+            "deep index perf"
         );
     }
 
@@ -3138,6 +3129,8 @@ struct IndexedSession {
     git_root: Option<String>,
     /// Project name for search indexing
     project_for_search: String,
+    /// Per-session parse diagnostics for integrity counter aggregation
+    diagnostics: ParseDiagnostics,
 }
 
 /// 3-phase startup scan: parse (parallel) → SQLite write (chunked) → search index.
@@ -3518,6 +3511,7 @@ where
                     cwd: cwd_owned,
                     git_root,
                     project_for_search,
+                    diagnostics: parse_result.diagnostics,
                 }),
                 sid,
             ))
@@ -3568,6 +3562,27 @@ where
         search_bytes = total_search_bytes,
         "Phase 1 parse complete, starting Phase 2 SQLite write"
     );
+
+    // Aggregate per-session ParseDiagnostics into IndexRunIntegrityCounters
+    let mut integrity = crate::IndexRunIntegrityCounters::default();
+    for session in &indexed_sessions {
+        let d = &session.diagnostics;
+        integrity.unknown_top_level_type_count += d.lines_unknown_type as i64;
+        integrity.dropped_line_invalid_json_count += d.json_parse_failures as i64;
+        integrity.unknown_source_role_count += d.unknown_source_role_count as i64;
+        integrity.derived_source_message_doc_count += d.derived_source_message_doc_count as i64;
+        integrity.source_message_non_source_provenance_count +=
+            d.source_message_non_source_provenance_count as i64;
+    }
+
+    let index_run_start = std::time::Instant::now();
+    let index_run_id = match db.create_index_run("full", None, Some(&integrity)).await {
+        Ok(id) => Some(id),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to create index run");
+            None
+        }
+    };
 
     // ══════════════════════════════════════════════════════════════════════
     // Phase 2: SQLITE WRITE (sequential, chunked, single writer)
@@ -3733,6 +3748,32 @@ where
                     search.mark_schema_synced();
                 }
             }
+        }
+    }
+
+    // Persist index run completion with aggregated integrity counters
+    if let Some(run_id) = index_run_id {
+        let index_run_duration_ms = index_run_start.elapsed().as_millis() as i64;
+        let total_bytes: u64 = indexed_sessions
+            .iter()
+            .map(|s| s.diagnostics.bytes_total)
+            .sum();
+        let throughput = if index_run_duration_ms > 0 {
+            Some(total_bytes as f64 / (1024.0 * 1024.0) / (index_run_duration_ms as f64 / 1000.0))
+        } else {
+            None
+        };
+        if let Err(e) = db
+            .complete_index_run(
+                run_id,
+                Some(indexed_count as i64),
+                index_run_duration_ms,
+                throughput,
+                Some(&integrity),
+            )
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to complete index run");
         }
     }
 
