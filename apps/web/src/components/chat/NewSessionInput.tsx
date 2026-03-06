@@ -20,8 +20,8 @@ export function NewSessionInput({
           throw new Error('No sessionId returned from server')
         }
         onSessionCreated(data.sessionId)
-      } catch {
-        // TODO: surface error via toast once toast context is available here
+      } catch (err) {
+        console.error('Failed to start session:', err)
       }
     },
     [onSessionCreated],
