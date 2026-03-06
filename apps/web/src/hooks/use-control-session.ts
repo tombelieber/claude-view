@@ -37,7 +37,7 @@ interface ControlSessionState {
 }
 
 const initialState: ControlSessionState = {
-  status: 'connecting',
+  status: 'disconnected',
   messages: [],
   streamingContent: '',
   streamingMessageId: '',
@@ -64,9 +64,14 @@ export function useControlSession(controlId: string | null) {
   const MAX_BACKOFF_MS = 30_000
 
   useEffect(() => {
-    if (!controlId) return
+    if (!controlId) {
+      // No control session — reset to disconnected so the input bar is enabled (dormant)
+      setState({ ...initialState, status: 'disconnected' })
+      return
+    }
     unmountedRef.current = false
     intentionalCloseRef.current = false
+    setState((prev) => ({ ...prev, status: 'connecting' }))
 
     function connect() {
       // Clean up previous WS before creating new one (prevents leaked connections on reconnect)
