@@ -1,13 +1,14 @@
 // apps/web/src/components/AccountSection.tsx
 import { LogOut, User } from 'lucide-react'
 import { useAuth } from '../hooks/use-auth'
-import { supabase } from '../lib/supabase'
+import { useConfig } from '../hooks/use-config'
 
 export function AccountSection() {
   const { user, loading, signOut, openSignIn } = useAuth()
+  const { auth } = useConfig()
 
-  // Don't render if Supabase isn't configured (dev mode)
-  if (!supabase) return null
+  // Don't render if auth isn't configured (local mode)
+  if (!auth) return null
 
   if (loading) return null
 
