@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { useArchiveSession } from '../hooks/use-archive-session'
 import { useDebounce } from '../hooks/use-debounce'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 import { useLiveSessionPresence } from '../hooks/use-live-session-ids'
@@ -124,11 +125,34 @@ export function HistoryView() {
 
   const [searchText, setSearchText] = useState('')
   const [resumeSessionId, setResumeSessionId] = useState<string | null>(null)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showArchived, setShowArchived] = useState(false)
+  const { archive, bulkArchive } = useArchiveSession()
   const searchRef = useRef<HTMLInputElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   // Debounce search text (300ms) so we don't fire a request per keystroke
   const debouncedSearch = useDebounce(searchText, 300)
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleBulkArchive = useCallback(() => {
+    if (selectedIds.size === 0) return
+    bulkArchive.mutate([...selectedIds], {
+      onSuccess: () => {
+        setSelectedIds(new Set())
+        setBulkMode(false)
+      },
+    })
+  }, [selectedIds, bulkArchive])
 
   // Sidebar global filters from URL
   const sidebarProject = searchParams.get('project') || null
@@ -142,6 +166,7 @@ export function HistoryView() {
     timeBefore: timeRange.toTimestamp ?? undefined,
     sidebarProject,
     sidebarBranch,
+    showArchived,
   })
 
   const sessions = data?.sessions ?? []
@@ -455,6 +480,49 @@ export function HistoryView() {
 
         {/* Classify-all banner — disabled (feature flag off) */}
 
+        {/* Bulk action toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setBulkMode(!bulkMode)
+              setSelectedIds(new Set())
+            }}
+            className={`text-sm px-2 py-1 rounded transition-colors ${
+              bulkMode
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            {bulkMode ? 'Cancel selection' : 'Select'}
+          </button>
+          {bulkMode && selectedIds.size > 0 && (
+            <>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {selectedIds.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={handleBulkArchive}
+                className="text-sm px-3 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+              >
+                Archive
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowArchived(!showArchived)}
+            className={`text-sm px-2 py-1 rounded ml-auto transition-colors ${
+              showArchived
+                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            {showArchived ? 'Showing archived' : 'Show archived'}
+          </button>
+        </div>
+
         {/* Inline indexing progress — shows during active startup indexing */}
         {indexingProgress &&
           (indexingProgress.phase === 'reading-indexes' ||
@@ -486,6 +554,39 @@ export function HistoryView() {
               )}
             </div>
           )}
+
+        {/* Bulk action toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2 mt-3 border-b border-gray-200 dark:border-gray-700">
+          <button
+            type="button"
+            onClick={() => {
+              setBulkMode(!bulkMode)
+              setSelectedIds(new Set())
+            }}
+            className={`text-sm px-2 py-1 rounded ${bulkMode ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          >
+            {bulkMode ? 'Cancel selection' : 'Select'}
+          </button>
+          {bulkMode && selectedIds.size > 0 && (
+            <>
+              <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
+              <button
+                type="button"
+                onClick={handleBulkArchive}
+                className="text-sm px-3 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50"
+              >
+                Archive
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowArchived(!showArchived)}
+            className={`text-sm px-2 py-1 rounded ml-auto ${showArchived ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700' : 'text-gray-500'}`}
+          >
+            {showArchived ? 'Showing archived' : 'Show archived'}
+          </button>
+        </div>
 
         {/* Session List or Table */}
         <div className="mt-5">
@@ -581,6 +682,10 @@ export function HistoryView() {
                                     isLive={liveSessionIds.has(session.id)}
                                     projectDisplayName={projectDisplayNames.get(session.project)}
                                     onResumeClick={setResumeSessionId}
+                                    onArchive={(id) => archive.mutate(id)}
+                                    selectable={bulkMode}
+                                    selected={selectedIds.has(session.id)}
+                                    onSelectToggle={toggleSelect}
                                   />
                                 </Link>
                                 {/* Sort metric badge overlay */}
