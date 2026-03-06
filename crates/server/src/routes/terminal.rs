@@ -1173,6 +1173,7 @@ mod tests {
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: tokio::sync::OnceCell::new(),
         });
 
         // Register the session in the live sessions map
@@ -1357,6 +1358,7 @@ mod tests {
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
             jwks: None,
             share: None,
+            auth_identity: tokio::sync::OnceCell::new(),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
