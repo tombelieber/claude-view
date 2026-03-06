@@ -10,6 +10,11 @@ vi.mock('../../hooks/use-oauth-usage', () => ({
   useOAuthUsage: (...args: unknown[]) => mockUseOAuthUsage(...args),
 }))
 
+const mockUseAuthIdentity = vi.fn()
+vi.mock('../../hooks/use-auth-identity', () => ({
+  useAuthIdentity: (...args: unknown[]) => mockUseAuthIdentity(...args),
+}))
+
 const MULTI_TIER_DATA: OAuthUsage = {
   hasAuth: true,
   error: null,
@@ -49,6 +54,16 @@ const MULTI_TIER_DATA: OAuthUsage = {
 describe('OAuthUsagePill', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseAuthIdentity.mockReturnValue({
+      data: {
+        hasAuth: true,
+        email: 'test@example.com',
+        orgName: 'Test Corp',
+        subscriptionType: 'max',
+        authMethod: 'claude.ai',
+      },
+      isLoading: false,
+    })
   })
 
   describe('basic states', () => {
@@ -228,6 +243,10 @@ describe('OAuthUsagePill', () => {
       expect(wrapper.textContent).toContain('Max')
       // Dollar amounts
       expect(wrapper.textContent).toContain('$51.25 / $50.00 spent')
+
+      // Identity info (from mocked useAuthIdentity)
+      expect(wrapper.textContent).toContain('test@example.com')
+      expect(wrapper.textContent).toContain('Test Corp')
     })
 
     it('triggers refetch when tooltip opens', async () => {
@@ -247,6 +266,39 @@ describe('OAuthUsagePill', () => {
       })
 
       expect(mockRefetch).toHaveBeenCalled()
+    })
+
+    it('hides redundant org name matching email pattern', async () => {
+      mockUseAuthIdentity.mockReturnValue({
+        data: {
+          hasAuth: true,
+          email: 'alice@example.com',
+          orgName: "alice's Organization",
+          subscriptionType: 'max',
+          authMethod: 'claude.ai',
+        },
+        isLoading: false,
+      })
+      mockUseOAuthUsage.mockReturnValue({
+        data: MULTI_TIER_DATA,
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      })
+
+      render(<OAuthUsagePill />)
+
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.hover(screen.getByText('11%'))
+
+      await waitFor(() => {
+        expect(getPopperWrapper()).not.toBeNull()
+      })
+
+      const wrapper = getPopperWrapper()!
+      expect(wrapper.textContent).toContain('alice@example.com')
+      // Redundant org name should be hidden
+      expect(wrapper.textContent).not.toContain("alice's Organization")
     })
   })
 })
