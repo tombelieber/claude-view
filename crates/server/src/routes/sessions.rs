@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use claude_view_core::accumulator::SessionAccumulator;
@@ -16,6 +16,25 @@ use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
+
+// ============================================================================
+// Archive request/response types
+// ============================================================================
+
+#[derive(Deserialize)]
+struct BulkArchiveRequest {
+    ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ArchiveResponse {
+    archived: bool,
+}
+
+#[derive(Serialize)]
+struct BulkArchiveResponse {
+    archived_count: usize,
+}
 
 // ============================================================================
 // Filter and Sort Enums
@@ -586,17 +605,214 @@ pub async fn session_activity(
     }))
 }
 
+// ============================================================================
+// Archive / Unarchive handlers
+// ============================================================================
+
+/// Returns ~/.claude-view/archives/
+fn archive_base_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".claude-view")
+        .join("archives")
+}
+
+async fn archive_session_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<ArchiveResponse>> {
+    let file_path = state
+        .db
+        .archive_session(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to archive session {id}: {e}");
+            ApiError::Internal(format!("archive failed: {e}"))
+        })?
+        .ok_or(ApiError::NotFound(format!(
+            "Session {id} not found or already archived"
+        )))?;
+
+    // Move file to ~/.claude-view/archives/
+    let src = std::path::PathBuf::from(&file_path);
+    let archive_dir = archive_base_dir();
+    let project_dir = src.parent().and_then(|p| p.file_name()).unwrap_or_default();
+    let dest_dir = archive_dir.join(project_dir);
+
+    // Attempt file move — failure is non-fatal (DB flag is the source of truth)
+    if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
+        tracing::warn!("Failed to create archive dir: {e}");
+    } else if let Some(file_name) = src.file_name() {
+        let dest = dest_dir.join(file_name);
+        match tokio::fs::rename(&src, &dest).await {
+            Ok(()) => {
+                let _ = state
+                    .db
+                    .update_session_file_path(&id, dest.to_str().unwrap_or_default())
+                    .await;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to move session file to archive: {e}");
+                // DB already marked as archived — indexer guard will skip it
+            }
+        }
+    }
+
+    Ok(Json(ArchiveResponse { archived: true }))
+}
+
+async fn unarchive_session_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<ArchiveResponse>> {
+    let current_path = state
+        .db
+        .get_session_file_path(&id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("DB error: {e}")))?
+        .ok_or(ApiError::NotFound(format!("Session {id} not found")))?;
+
+    let archive_base = archive_base_dir();
+    let current = std::path::PathBuf::from(&current_path);
+
+    let new_path = if let Ok(relative) = current.strip_prefix(&archive_base) {
+        // Security: validate no path traversal in relative components
+        use std::path::Component;
+        if !relative
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+        {
+            return Err(ApiError::BadRequest("Invalid archive path".to_string()));
+        }
+
+        let original = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".claude")
+            .join("projects")
+            .join(relative);
+
+        // Move file back — failure is non-fatal
+        if current.exists() {
+            if let Some(parent) = original.parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
+            if let Err(e) = tokio::fs::rename(&current, &original).await {
+                tracing::warn!("Failed to move file back from archive: {e}");
+            }
+        }
+
+        original.to_str().unwrap_or_default().to_string()
+    } else {
+        // File not in archive dir (file move failed during archive) — just clear the flag
+        current_path
+    };
+
+    state
+        .db
+        .unarchive_session(&id, &new_path)
+        .await
+        .map_err(|e| ApiError::Internal(format!("unarchive failed: {e}")))?;
+
+    Ok(Json(ArchiveResponse { archived: false }))
+}
+
+async fn bulk_archive_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkArchiveRequest>,
+) -> ApiResult<Json<BulkArchiveResponse>> {
+    let results = state
+        .db
+        .archive_sessions_bulk(&body.ids)
+        .await
+        .map_err(|e| ApiError::Internal(format!("bulk archive failed: {e}")))?;
+
+    let archive_dir = archive_base_dir();
+    for (id, file_path) in &results {
+        let src = std::path::PathBuf::from(file_path);
+        let project_dir = src.parent().and_then(|p| p.file_name()).unwrap_or_default();
+        let dest_dir = archive_dir.join(project_dir);
+        let _ = tokio::fs::create_dir_all(&dest_dir).await;
+        if let Some(file_name) = src.file_name() {
+            let dest = dest_dir.join(file_name);
+            if let Ok(()) = tokio::fs::rename(&src, &dest).await {
+                let _ = state
+                    .db
+                    .update_session_file_path(id, dest.to_str().unwrap_or_default())
+                    .await;
+            }
+        }
+    }
+
+    Ok(Json(BulkArchiveResponse {
+        archived_count: results.len(),
+    }))
+}
+
+async fn bulk_unarchive_handler(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<BulkArchiveRequest>,
+) -> ApiResult<Json<BulkArchiveResponse>> {
+    let archive_base = archive_base_dir();
+    let mut file_paths: Vec<(String, String)> = Vec::new();
+
+    for id in &body.ids {
+        let current_path = match state.db.get_session_file_path(id).await {
+            Ok(Some(p)) => p,
+            _ => continue,
+        };
+        let current = std::path::PathBuf::from(&current_path);
+        let new_path = if let Ok(relative) = current.strip_prefix(&archive_base) {
+            use std::path::Component;
+            if !relative
+                .components()
+                .all(|c| matches!(c, Component::Normal(_)))
+            {
+                continue;
+            }
+            let original = dirs::home_dir()
+                .unwrap_or_default()
+                .join(".claude")
+                .join("projects")
+                .join(relative);
+            if current.exists() {
+                if let Some(parent) = original.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::rename(&current, &original).await;
+            }
+            original.to_str().unwrap_or_default().to_string()
+        } else {
+            current_path
+        };
+        file_paths.push((id.clone(), new_path));
+    }
+
+    let count = state
+        .db
+        .unarchive_sessions_bulk(&file_paths)
+        .await
+        .map_err(|e| ApiError::Internal(format!("bulk unarchive failed: {e}")))?;
+
+    Ok(Json(BulkArchiveResponse {
+        archived_count: count,
+    }))
+}
+
 /// Create the sessions routes router.
 #[allow(deprecated)] // Legacy /session/ routes kept for backward compat until v0.6
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
         .route("/sessions/activity", get(session_activity))
+        .route("/sessions/archive", post(bulk_archive_handler))
+        .route("/sessions/unarchive", post(bulk_unarchive_handler))
         .route("/sessions/{id}", get(get_session_detail))
         .route("/sessions/{id}/parsed", get(get_session_parsed))
         .route("/sessions/{id}/messages", get(get_session_messages_by_id))
         .route("/sessions/{id}/rich", get(get_session_rich))
         .route("/sessions/{id}/hook-events", get(get_session_hook_events))
+        .route("/sessions/{id}/archive", post(archive_session_handler))
+        .route("/sessions/{id}/unarchive", post(unarchive_session_handler))
         .route("/session/{project_dir}/{session_id}", get(get_session))
         .route(
             "/session/{project_dir}/{session_id}/messages",
