@@ -17,13 +17,6 @@ export interface CostEstimate {
   last_active_secs_ago: number
 }
 
-export interface ResumeResponse {
-  controlId: string
-  status: 'active' | 'already_active'
-  sessionId: string
-  error?: string
-}
-
 // WebSocket message types (sidecar → frontend)
 
 export interface AssistantChunk {
@@ -121,11 +114,42 @@ export type ServerMessage =
   | SessionStatusMsg
   | ErrorMsg
   | PongMsg
+  | HeartbeatConfigMsg
+
+// Close code constants — must match Rust relay mapping
+export const CLOSE_CODES = {
+  NORMAL: 1000,
+  SESSION_NOT_FOUND: 4004,
+  SIDECAR_UNAVAILABLE: 4100,
+  SIDECAR_WS_FAILED: 4101,
+  SIDECAR_STREAM_ENDED: 4102,
+  HEARTBEAT_TIMEOUT: 4200, // synthetic, client-generated
+  SERVER_SHUTDOWN: 4500,
+} as const
+
+export const NON_RECOVERABLE_CODES = new Set([
+  CLOSE_CODES.SESSION_NOT_FOUND,
+  CLOSE_CODES.SIDECAR_UNAVAILABLE,
+  CLOSE_CODES.SIDECAR_WS_FAILED,
+  CLOSE_CODES.SERVER_SHUTDOWN,
+])
+
+// Heartbeat message — NO seq field. This is a setup message sent directly
+// via ws.send(), not through emitSequenced.
+export interface HeartbeatConfigMsg {
+  type: 'heartbeat_config'
+  intervalMs: number
+}
+
+// Resume request (client → server on reconnect)
+export interface ResumeClientMsg {
+  type: 'resume'
+  lastSeq: number
+}
 
 // Control session info for takeover flow
 export interface ControlSessionInfo {
   sessionId: string
-  controlId: string
   status: 'idle' | 'running' | 'completed'
   origin: 'claude-view' | 'external'
 }
