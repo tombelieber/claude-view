@@ -8,9 +8,9 @@
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Path;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
@@ -221,6 +221,224 @@ async fn resume_session(
     proxy_to_sidecar(&state, "POST", "/control/resume", Some(body)).await
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ConnectQuery {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub model: Option<String>,
+}
+
+/// Call sidecar POST /control/resume via the EXISTING proxy_to_sidecar helper.
+/// Reuses the hyper UDS plumbing already in control.rs — no duplication.
+///
+/// IMPORTANT: proxy_to_sidecar takes `body: Option<String>` (confirmed: line 159).
+/// Use serde_json::to_string(), NOT to_vec(). The helper sends body as UTF-8.
+async fn proxy_resume(
+    state: &AppState,
+    session_id: &str,
+    model: Option<&str>,
+) -> Result<String, ApiError> {
+    let body = serde_json::json!({
+        "sessionId": session_id,
+        "model": model.unwrap_or("claude-sonnet-4-20250514"),
+    });
+    let body_string = serde_json::to_string(&body)
+        .map_err(|e| ApiError::Internal(format!("Serialize resume request: {e}")))?;
+
+    let resp = proxy_to_sidecar(state, "POST", "/control/resume", Some(body_string)).await?;
+
+    let bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Read resume body: {e}")))?
+        .to_bytes();
+    let data: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| ApiError::Internal(format!("Parse resume response: {e}")))?;
+    let control_id = data["controlId"]
+        .as_str()
+        .ok_or_else(|| ApiError::Internal("No controlId in resume response".into()))?
+        .to_string();
+    Ok(control_id)
+}
+
+/// GET /api/control/connect?sessionId=xxx — merged resume + WS endpoint.
+///
+/// Performs resume BEFORE the WS upgrade. If resume fails, returns HTTP error
+/// (not a WS that opens then errors). Eliminates the TOCTOU race.
+async fn ws_connect(
+    ws: WebSocketUpgrade,
+    axum::extract::Query(query): axum::extract::Query<ConnectQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    // 1. Validate sessionId format — simple check, no regex crate needed
+    //    UUID v4: 8-4-4-4-12 hex chars = 36 chars total
+    let is_valid_uuid = query.session_id.len() == 36
+        && query.session_id.bytes().enumerate().all(|(i, b)| {
+            if i == 8 || i == 13 || i == 18 || i == 23 {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        });
+    if !is_valid_uuid {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid session ID format",
+        )
+            .into_response();
+    }
+
+    // 2. Resume session via sidecar (reject with HTTP 502 on failure)
+    //    proxy_resume internally calls ensure_running() via proxy_to_sidecar
+    let control_id = match proxy_resume(&state, &query.session_id, query.model.as_deref()).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!("Resume failed for connect: {e}");
+            return (
+                axum::http::StatusCode::BAD_GATEWAY,
+                format!("Resume failed: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // 3. Get socket_path for the WS relay (sidecar guaranteed running after resume)
+    let socket_path = match state.sidecar.ensure_running().await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("Sidecar unavailable after resume: {e}");
+            return (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                format!("Sidecar unavailable: {e}"),
+            )
+                .into_response();
+        }
+    };
+
+    // 4. Only NOW upgrade — session is guaranteed to exist
+    ws.on_upgrade(move |socket| {
+        handle_ws_relay_with_close_codes(socket, control_id, socket_path, state)
+    })
+}
+
+async fn handle_ws_relay_with_close_codes(
+    frontend_ws: WebSocket,
+    control_id: String,
+    socket_path: String,
+    state: Arc<AppState>,
+) {
+    let _ = state; // kept for future use (e.g. metrics), suppress unused warning
+    let sidecar_path = format!("/control/sessions/{control_id}/stream");
+    let unix_stream = match UnixStream::connect(&socket_path).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("Sidecar Unix socket connect failed: {e}");
+            let (mut sink, _) = frontend_ws.split();
+            let _ = sink
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4100,
+                    reason: "sidecar_connect_failed".into(),
+                })))
+                .await;
+            return;
+        }
+    };
+
+    let ws_url = format!("ws://localhost{sidecar_path}");
+    let (sidecar_ws, _) = match tokio_tungstenite::client_async(ws_url, unix_stream).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::error!("Sidecar WS handshake failed: {e}");
+            let (mut sink, _) = frontend_ws.split();
+            let _ = sink
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4101,
+                    reason: "sidecar_ws_failed".into(),
+                })))
+                .await;
+            return;
+        }
+    };
+
+    // Bidirectional relay with close code mapping
+    let (mut fe_sink, mut fe_stream) = frontend_ws.split();
+    let (mut sc_sink, mut sc_stream) = sidecar_ws.split();
+
+    let fe_to_sc = async {
+        while let Some(Ok(msg)) = fe_stream.next().await {
+            match msg {
+                Message::Text(text) => {
+                    let s: &str = text.as_ref();
+                    if sc_sink
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            s.to_string().into(),
+                        ))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Message::Ping(data) => {
+                    let _ = sc_sink
+                        .send(tokio_tungstenite::tungstenite::Message::Ping(
+                            data.to_vec().into(),
+                        ))
+                        .await;
+                }
+                Message::Close(_) => break,
+                _ => {}
+            }
+        }
+    };
+
+    let sc_to_fe = async {
+        let mut got_close = false;
+        while let Some(Ok(msg)) = sc_stream.next().await {
+            match msg {
+                tokio_tungstenite::tungstenite::Message::Text(text) => {
+                    let s: &str = text.as_ref();
+                    if fe_sink
+                        .send(Message::Text(s.to_string().into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                tokio_tungstenite::tungstenite::Message::Close(frame) => {
+                    let close_frame = frame.map(|f| {
+                        let code_u16: u16 = f.code.into();
+                        CloseFrame {
+                            code: code_u16,
+                            reason: f.reason.to_string().into(),
+                        }
+                    });
+                    let _ = fe_sink.send(Message::Close(close_frame)).await;
+                    got_close = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        // ONLY send 4102 if sidecar stream ended WITHOUT a proper close frame.
+        if !got_close {
+            let _ = fe_sink
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4102,
+                    reason: "sidecar_stream_ended".into(),
+                })))
+                .await;
+        }
+    };
+
+    tokio::select! {
+        _ = fe_to_sc => {},
+        _ = sc_to_fe => {},
+    }
+}
+
 /// POST /api/control/send — proxy to sidecar
 async fn send_message(
     State(state): State<Arc<AppState>>,
@@ -387,6 +605,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/control/estimate", post(estimate_cost))
         .route("/control/resume", post(resume_session))
         .route("/control/send", post(send_message))
+        .route("/control/connect", axum::routing::get(ws_connect))
         .route("/control/sessions", axum::routing::get(list_sessions))
         .route(
             "/control/sessions/{id}",
