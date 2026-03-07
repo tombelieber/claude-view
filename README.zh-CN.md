@@ -42,7 +42,7 @@
 **claude-view** 是一个实时仪表板，与你的 Claude Code 会话并肩运行。一个浏览器标签页，每个会话都可见，一目了然的完整上下文。
 
 ```bash
-npx claude-view
+curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
 ```
 
 就这样。在浏览器中打开。你的所有会话——实时的和过去的——都在一个工作区里。
@@ -163,13 +163,14 @@ claude-view 是为以下开发者设计的：
 
 ---
 
-## 快速开始
+## 安装
 
-```bash
-npx claude-view
-```
+| 方式 | 命令 |
+|--------|---------|
+| **Shell**（推荐） | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **npx** | `npx claude-view` |
 
-在 `http://localhost:47892` 打开。
+Shell 安装器下载预构建二进制文件（~10 MB），安装到 `~/.claude-view/bin`，并添加到 PATH。之后只需运行 `claude-view`。
 
 ### 配置
 
@@ -180,17 +181,7 @@ npx claude-view
 
 ---
 
-## 安装
-
-| 方式 | 命令 |
-|--------|---------|
-| **npx**（推荐） | `npx claude-view` |
-| **Shell 脚本**（无需 Node） | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-
-### 需求
-
-- **Claude Code** 已安装（[在此获取](https://docs.anthropic.com/en/docs/claude-code)）——这建立了我们监控的会话文件
+**唯一需求：**[Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装——这创建了我们监控的会话文件。
 
 ---
 
