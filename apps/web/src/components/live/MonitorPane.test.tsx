@@ -16,6 +16,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'autonomous',
       state: 'tool_use',
       label: 'Working',
+      context: null,
     },
     gitBranch,
     worktreeBranch: null,
