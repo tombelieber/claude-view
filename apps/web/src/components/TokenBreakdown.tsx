@@ -1,5 +1,6 @@
 import { Zap } from 'lucide-react'
 import { formatTokens } from '../hooks/use-ai-generation'
+import { TOKEN_SEGMENT_CONFIG } from '../theme'
 import { MetricCard, StackedBar } from './ui'
 import type { StackedBarSegment } from './ui/StackedBar'
 
@@ -10,43 +11,6 @@ interface TokenBreakdownProps {
   cacheCreationTokens: number
 }
 
-const SEGMENTS: Array<{
-  key: keyof TokenBreakdownProps
-  label: string
-  cardLabel: string
-  color: string
-  darkColor: string
-}> = [
-  {
-    key: 'cacheReadTokens',
-    label: 'Cache Read',
-    cardLabel: 'Cache Read',
-    color: 'bg-emerald-500',
-    darkColor: 'dark:bg-emerald-400',
-  },
-  {
-    key: 'cacheCreationTokens',
-    label: 'Cache Write',
-    cardLabel: 'Cache Write',
-    color: 'bg-amber-500',
-    darkColor: 'dark:bg-amber-400',
-  },
-  {
-    key: 'totalOutputTokens',
-    label: 'Output',
-    cardLabel: 'Output',
-    color: 'bg-blue-600',
-    darkColor: 'dark:bg-blue-400',
-  },
-  {
-    key: 'totalInputTokens',
-    label: 'Fresh Input',
-    cardLabel: 'Fresh Input',
-    color: 'bg-gray-400',
-    darkColor: 'dark:bg-gray-500',
-  },
-]
-
 export function TokenBreakdown(props: TokenBreakdownProps) {
   const grandTotal =
     props.totalInputTokens +
@@ -56,11 +20,11 @@ export function TokenBreakdown(props: TokenBreakdownProps) {
 
   if (grandTotal === 0) return null
 
-  const segments: StackedBarSegment[] = SEGMENTS.map((s) => ({
+  const segments: StackedBarSegment[] = TOKEN_SEGMENT_CONFIG.map((s) => ({
     label: s.label,
     value: props[s.key],
-    color: s.color,
-    darkColor: s.darkColor,
+    color: s.color.light,
+    darkColor: s.color.dark,
   }))
 
   return (
@@ -79,13 +43,13 @@ export function TokenBreakdown(props: TokenBreakdownProps) {
 
       {/* Detail cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {SEGMENTS.map((s) => {
+        {TOKEN_SEGMENT_CONFIG.map((s) => {
           const value = props[s.key]
           const pct = grandTotal > 0 ? ((value / grandTotal) * 100).toFixed(1) : '0.0'
           return (
             <MetricCard
               key={s.key}
-              label={s.cardLabel}
+              label={s.label}
               value={formatTokens(value)}
               subValue={`${pct}% of total`}
             />
