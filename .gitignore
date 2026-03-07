@@ -16,6 +16,8 @@ claude-view.db-*
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 .dev.vars
 
 # Wrangler local state (D1, KV, R2 local dev)
@@ -99,6 +101,16 @@ __pycache__/
 
 # Auto-generated claude-mem files
 **/CLAUDE.md
+
+# Internal docs — HOW we build (secret), not WHAT we built
+docs/plans/
+docs/internal/
+docs/AUDIT_REDESIGN_SUMMARY.md
+docs/DESIGN_PHILOSOPHY_7TYPE_UI.md
+docs/UI_REDESIGN_7TYPE_PARSER.md
+docs/cost-ui-design-system.md
+docs/cost-ui-audit-*.md
+docs/TODO-*.md
 .playwright-mcp/
 
 # Astro build artifacts (apps/landing)
