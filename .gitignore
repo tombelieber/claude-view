@@ -94,8 +94,8 @@ web-build/
 __pycache__/
 *.pyc
 
-# Claude Code plans (ephemeral)
-.claude/plans/
+# Claude Code local config (skills, plans, worktrees)
+.claude/
 
 # Auto-generated claude-mem files
 **/CLAUDE.md
