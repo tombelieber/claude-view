@@ -11,6 +11,12 @@ function mockClient(response: unknown): ClaudeViewClient {
   } as unknown as ClaudeViewClient
 }
 
+function findTool<T extends { name: string }>(tools: T[], name: string): T {
+  const tool = tools.find((t) => t.name === name)
+  if (!tool) throw new Error(`Tool "${name}" not found`)
+  return tool
+}
+
 function assertNoUndefinedValues(obj: Record<string, unknown>, path = '') {
   for (const [key, value] of Object.entries(obj)) {
     const fullPath = path ? `${path}.${key}` : key
@@ -54,7 +60,7 @@ describe('handler integration — sessions', () => {
 
   it('list_sessions maps camelCase API fields correctly', async () => {
     const client = mockClient({ sessions: [API_SESSION], total: 1, hasMore: false })
-    const tool = sessionTools.find((t) => t.name === 'list_sessions')!
+    const tool = findTool(sessionTools, 'list_sessions')
     const result = JSON.parse(await tool.handler(client, {}))
     expect(result.sessions).toHaveLength(1)
     const s = result.sessions[0]
@@ -73,7 +79,7 @@ describe('handler integration — sessions', () => {
 
   it('get_session maps camelCase API fields correctly', async () => {
     const client = mockClient(API_SESSION)
-    const tool = sessionTools.find((t) => t.name === 'get_session')!
+    const tool = findTool(sessionTools, 'get_session')
     const result = JSON.parse(await tool.handler(client, { session_id: 'sess-001' }))
     assertNoUndefinedValues(result)
     expect(result.project).toBe('my-project')
@@ -102,7 +108,7 @@ describe('handler integration — sessions', () => {
         },
       ],
     })
-    const tool = sessionTools.find((t) => t.name === 'search_sessions')!
+    const tool = findTool(sessionTools, 'search_sessions')
     const result = JSON.parse(await tool.handler(client, { query: 'OAuth' }))
     expect(result.total_sessions).toBe(1)
     expect(result.total_matches).toBe(3)
@@ -126,7 +132,7 @@ describe('handler integration — stats', () => {
       currentWeek: { sessionCount: 12, totalTokens: 500000, totalFilesEdited: 45, commitCount: 8 },
       trends: { sessions: { current: 12, previous: 10, delta: 2, deltaPercent: 20.0 } },
     })
-    const tool = statsTools.find((t) => t.name === 'get_stats')!
+    const tool = findTool(statsTools, 'get_stats')
     const result = JSON.parse(await tool.handler(client, {}))
     assertNoUndefinedValues(result)
     expect(result.total_sessions).toBe(150)
@@ -147,7 +153,7 @@ describe('handler integration — stats', () => {
       consistency: 0.5,
       sessionsAnalyzed: 42,
     })
-    const tool = statsTools.find((t) => t.name === 'get_fluency_score')!
+    const tool = findTool(statsTools, 'get_fluency_score')
     const result = JSON.parse(await tool.handler(client, {}))
     assertNoUndefinedValues(result)
     expect(result.score).toBe(78)
@@ -167,7 +173,7 @@ describe('handler integration — stats', () => {
       sessionsCount: 150,
     }
     const client = mockClient(apiResponse)
-    const tool = statsTools.find((t) => t.name === 'get_token_stats')!
+    const tool = findTool(statsTools, 'get_token_stats')
     const result = JSON.parse(await tool.handler(client, {}))
     expect(result.totalInputTokens).toBe(2000000)
     expect(result.cacheHitRatio).toBe(0.45)
@@ -195,7 +201,7 @@ describe('handler integration — live', () => {
       total: 1,
       processCount: 1,
     })
-    const tool = liveTools.find((t) => t.name === 'list_live_sessions')!
+    const tool = findTool(liveTools, 'list_live_sessions')
     const result = JSON.parse(await tool.handler(client, {}))
     expect(result.sessions).toHaveLength(1)
     const s = result.sessions[0]
@@ -212,17 +218,15 @@ describe('handler integration — live', () => {
     const client = mockClient({
       needsYouCount: 2,
       autonomousCount: 3,
-      deliveredCount: 1,
       totalCostTodayUsd: 4.56,
       totalTokensToday: 1500000,
       processCount: 6,
     })
-    const tool = liveTools.find((t) => t.name === 'get_live_summary')!
+    const tool = findTool(liveTools, 'get_live_summary')
     const result = JSON.parse(await tool.handler(client, {}))
     assertNoUndefinedValues(result)
     expect(result.needs_attention).toBe(2)
     expect(result.autonomous).toBe(3)
-    expect(result.delivered).toBe(1)
     expect(result.total_cost_today_usd).toBe(4.56)
     expect(result.total_tokens_today).toBe(1500000)
     expect(result.process_count).toBe(6)

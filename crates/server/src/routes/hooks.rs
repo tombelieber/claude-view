@@ -92,7 +92,6 @@ fn group_name_from_agent_group(group: &AgentStateGroup) -> &'static str {
     match group {
         AgentStateGroup::NeedsYou => "needs_you",
         AgentStateGroup::Autonomous => "autonomous",
-        AgentStateGroup::Delivered => "delivered",
     }
 }
 
