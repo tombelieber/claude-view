@@ -227,11 +227,12 @@ export function HistoryView() {
   const hasDeepLink = hasDeepLinkSort || hasDeepLinkFilter
 
   // Focus search on mount (only if not deep-linked)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — adding hasDeepLink would re-focus on route changes
   useEffect(() => {
     if (!hasDeepLink) {
       searchRef.current?.focus()
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // IntersectionObserver for infinite scroll
   useEffect(() => {
@@ -301,6 +302,7 @@ export function HistoryView() {
 
   // Auto-reset groupBy when session count exceeds the limit
   const [groupByAutoReset, setGroupByAutoReset] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only react to tooManyToGroup changes — including filters would infinite-loop
   useEffect(() => {
     if (tooManyToGroup && filters.groupBy !== 'none') {
       setFilters({ ...filters, groupBy: 'none' })
@@ -308,7 +310,7 @@ export function HistoryView() {
     } else if (!tooManyToGroup) {
       setGroupByAutoReset(false)
     }
-  }, [tooManyToGroup]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tooManyToGroup])
 
   // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
   const groups = useMemo(() => {
