@@ -1,13 +1,13 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import type { CostEstimate, ResumeResponse } from '../../types/control'
+import type { CostEstimate } from '../../types/control'
 
 interface ResumePreFlightProps {
   sessionId: string
   open: boolean
   onOpenChange: (open: boolean) => void
-  onResume: (controlId: string, sessionId: string) => void
+  onResume: (sessionId: string) => void
 }
 
 /** Current-gen models offered in the selector. Users can always switch model on resume. */
@@ -76,29 +76,6 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
     : model
       ? [{ value: model, label: `${modelLabel(model)} (session)` }, ...MODEL_OPTIONS]
       : MODEL_OPTIONS
-
-  const resumeMutation = useMutation({
-    mutationFn: async (): Promise<ResumeResponse> => {
-      const res = await fetch('/api/control/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          model: model ?? estimate.data?.model,
-          projectPath: estimate.data?.project_name ?? '',
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Resume failed' }))
-        throw new Error(err.error || 'Resume failed')
-      }
-      return res.json()
-    },
-    onSuccess: (data) => {
-      onOpenChange(false)
-      onResume(data.controlId, sessionId)
-    },
-  })
 
   const data = estimate.data
   const selectValue = model ?? ''
@@ -227,19 +204,16 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
             </Dialog.Close>
             <button
               type="button"
-              onClick={() => resumeMutation.mutate()}
-              disabled={!data || resumeMutation.isPending}
+              onClick={() => {
+                onOpenChange(false)
+                onResume(sessionId)
+              }}
+              disabled={!data}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {resumeMutation.isPending ? 'Resuming...' : 'Resume in Dashboard'}
+              Resume in Dashboard
             </button>
           </div>
-
-          {resumeMutation.error && (
-            <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-              {(resumeMutation.error as Error).message}
-            </p>
-          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
