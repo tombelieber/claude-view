@@ -67,7 +67,8 @@ export function useArchiveSession() {
                 invalidateSessionCaches(qc)
                 toast.success(`${ids.length} sessions restored`)
               })
-              .catch(() => {
+              .catch((error: unknown) => {
+                console.error('Failed to archive session:', error)
                 invalidateSessionCaches(qc)
                 toast.error('Failed to restore some sessions', {
                   duration: TOAST_DURATION.extended,
