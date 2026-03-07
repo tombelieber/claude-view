@@ -1,0 +1,48 @@
+---
+title: "Mission Control: Watching Your AI Agents Work in Real Time"
+description: "v0.5.0 is the biggest release yet — live dashboards for every running Claude Code agent with sub-agent visualization, cost tracking, and full-text search."
+date: 2026-02-19
+author: claude-view team
+---
+
+You have three Claude Code agents running. One is refactoring your API layer. Another is writing integration tests. A third is debugging a deployment script. You alt-tab between terminal windows trying to remember which is which, whether any are waiting for approval, and how much you've spent in the last hour.
+
+v0.5.0 ends the alt-tabbing. This is Mission Control.
+
+## Real-time session state machine
+
+Every running Claude Code session is now tracked with a state machine: **Needs You** (waiting for human input), **Autonomous** (actively working), and **Done** (completed). The live dashboard shows all sessions at a glance, color-coded by state. You know instantly which agents need attention and which are working autonomously.
+
+State transitions are detected by monitoring the JSONL output in real time. When an agent emits a user-facing question or hits a permission boundary, it flips to "Needs You." When it starts executing tool calls again, it's back to "Autonomous."
+
+## Sub-agent swim lanes
+
+Claude Code can spawn sub-agents — child processes that handle specific subtasks. Before v0.5.0, these were invisible. Now the dashboard shows sub-agent hierarchies as nested swim lanes. You can see the parent agent coordinating work and each sub-agent executing its piece.
+
+This is critical for complex tasks where a top-level agent delegates to 2-3 sub-agents simultaneously. Without visualization, you're flying blind.
+
+## Verbose mode
+
+Click any session card and toggle verbose mode to see every tool call as it happens. File reads, writes, shell commands, search queries — the full stream. This is the equivalent of watching over the agent's shoulder, except you can monitor multiple agents at once.
+
+## Full-text search with Tantivy
+
+Session history is now indexed by a Tantivy search engine — the same engine that powers parts of GitHub's search. Type a query and get results across all your sessions instantly. Fuzzy matching handles typos. Results highlight the matching text in context.
+
+This replaced a naive substring search that slowed down linearly with session count. Tantivy builds an inverted index at startup, and queries return in single-digit milliseconds regardless of how many sessions you have.
+
+## AI Fluency Score
+
+A new composite metric — the AI Fluency Score — rates your collaboration with AI agents on a 0-100 scale. It factors in session efficiency (tokens per useful output), tool usage patterns, and iteration count. The score trends over time so you can see whether you're getting better at directing AI agents.
+
+## Navigation restructure
+
+Mission Control is now the landing page when you open claude-view. Session history, analytics, and search are still one click away, but the live dashboard is front and center. If you're running agents, that's what you need to see first.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Start a few Claude Code sessions, then open claude-view. You'll never go back to alt-tabbing.
