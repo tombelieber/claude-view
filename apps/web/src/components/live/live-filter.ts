@@ -81,7 +81,9 @@ export function filterLiveSessions(
 
   // Branch filter
   if (filters.branches.length > 0) {
-    result = result.filter((s) => s.gitBranch !== null && filters.branches.includes(s.gitBranch))
+    result = result.filter(
+      (s) => s.effectiveBranch !== null && filters.branches.includes(s.effectiveBranch),
+    )
   }
 
   // Text search
@@ -89,7 +91,7 @@ export function filterLiveSessions(
   if (query) {
     result = result.filter((s) => {
       const project = (s.projectDisplayName || s.project).toLowerCase()
-      const branch = (s.gitBranch ?? '').toLowerCase()
+      const branch = (s.effectiveBranch ?? '').toLowerCase()
       const message = s.lastUserMessage.toLowerCase()
       return project.includes(query) || branch.includes(query) || message.includes(query)
     })
