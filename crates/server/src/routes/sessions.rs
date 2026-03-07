@@ -1808,6 +1808,7 @@ mod tests {
                 label: "Waiting for first prompt".into(),
                 group_name: "needs_you".into(),
                 context: None,
+                source: "hook".into(),
             },
             claude_view_db::HookEventRow {
                 timestamp: 1001,
@@ -1816,6 +1817,7 @@ mod tests {
                 label: "Running: git status".into(),
                 group_name: "autonomous".into(),
                 context: Some(r#"{"command":"git status"}"#.into()),
+                source: "hook".into(),
             },
         ];
         claude_view_db::hook_events_queries::insert_hook_events(&db, "hook-test", &events)
