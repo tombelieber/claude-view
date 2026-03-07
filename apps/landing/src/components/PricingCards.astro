@@ -14,7 +14,7 @@ const businessTiers = BUSINESS_TIERS.map((t) => ({
 
 <!-- Individual Plans -->
 <h2 class="text-2xl font-semibold text-[var(--color-text)] mb-8">Individual</h2>
-<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16">
+<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto mb-16">
   {individualTiers.map((tier) => (
     <div class={`rounded-2xl border p-8 flex flex-col ${
       tier.highlight
@@ -55,8 +55,8 @@ const businessTiers = BUSINESS_TIERS.map((t) => ({
   ))}
 </div>
 
-<!-- Business Plans -->
-<h2 class="text-2xl font-semibold text-[var(--color-text)] mb-8">Business</h2>
+<!-- Team & Enterprise Plans -->
+<h2 class="text-2xl font-semibold text-[var(--color-text)] mb-8">Team & Enterprise</h2>
 <div class="grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
   {businessTiers.map((tier) => (
     <div class="rounded-2xl border border-[var(--color-border)] bg-white/50 backdrop-blur-xl p-8 flex flex-col">
