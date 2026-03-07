@@ -777,6 +777,7 @@ async fn handle_terminal_ws(
                     "label": event.label,
                     "group": event.group,
                     "context": event.context,
+                    "source": event.source,
                 });
                 if socket
                     .send(Message::Text(msg.to_string().into()))
@@ -1051,6 +1052,7 @@ async fn handle_terminal_ws(
                             "label": event.label,
                             "group": event.group,
                             "context": event.context,
+                            "source": event.source,
                         });
                         if socket
                             .send(Message::Text(msg.to_string().into()))
