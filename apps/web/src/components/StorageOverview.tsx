@@ -186,18 +186,16 @@ export function StorageOverview() {
         ).toFixed(1)
       : null
 
-  const handleClearCache = async () => {
-    try {
-      const result = await clearCache.mutateAsync()
-      toast.success('Cache cleared', {
-        description: `Freed ${formatBytes(result.clearedBytes)}`,
-      })
+  const handleClearCache = () => {
+    const promise = clearCache.mutateAsync().then((result) => {
       queryClient.invalidateQueries({ queryKey: ['storage-stats'] })
-    } catch (e) {
-      toast.error('Failed to clear cache', {
-        description: e instanceof Error ? e.message : 'Unknown error',
-      })
-    }
+      return result
+    })
+    toast.promise(promise, {
+      loading: 'Clearing cache...',
+      success: (result) => `Cache cleared — freed ${formatBytes(result.clearedBytes)}`,
+      error: (e) => `Clear failed: ${e instanceof Error ? e.message : 'Unknown error'}`,
+    })
   }
 
   const handleRebuildIndex = async () => {
