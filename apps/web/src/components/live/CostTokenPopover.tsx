@@ -1,5 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card'
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
+import { COST_CATEGORY_COLORS } from '../../theme'
 import type { LiveSummary } from './use-live-sessions'
 
 interface CostTokenPopoverProps {
@@ -33,28 +34,28 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
               <Row
                 label="Input"
                 value={formatCostUsd(summary.inputCostUsd)}
-                dot="bg-gray-400 dark:bg-gray-500"
+                dot={COST_CATEGORY_COLORS.input.dot}
               />
               <Row
                 label="Output"
                 value={formatCostUsd(summary.outputCostUsd)}
-                dot="bg-blue-600 dark:bg-blue-400"
+                dot={COST_CATEGORY_COLORS.output.dot}
               />
               <Row
                 label="Cache read"
                 value={formatCostUsd(summary.cacheReadCostUsd)}
-                dot="bg-emerald-500 dark:bg-emerald-400"
+                dot={COST_CATEGORY_COLORS.cacheRead.dot}
               />
               <Row
                 label="Cache creation"
                 value={formatCostUsd(summary.cacheCreationCostUsd)}
-                dot="bg-amber-500 dark:bg-amber-400"
+                dot={COST_CATEGORY_COLORS.cacheWrite.dot}
               />
               {summary.cacheSavingsUsd > 0 && (
                 <Row
                   label="Cache savings"
                   value={`-${formatCostUsd(summary.cacheSavingsUsd)}`}
-                  className="text-green-500"
+                  className={COST_CATEGORY_COLORS.savings.text}
                 />
               )}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
@@ -76,22 +77,22 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
               <Row
                 label="Input"
                 value={formatTokenCount(summary.inputTokens)}
-                dot="bg-gray-400 dark:bg-gray-500"
+                dot={COST_CATEGORY_COLORS.input.dot}
               />
               <Row
                 label="Output"
                 value={formatTokenCount(summary.outputTokens)}
-                dot="bg-blue-600 dark:bg-blue-400"
+                dot={COST_CATEGORY_COLORS.output.dot}
               />
               <Row
                 label="Cache read"
                 value={formatTokenCount(summary.cacheReadTokens)}
-                dot="bg-emerald-500 dark:bg-emerald-400"
+                dot={COST_CATEGORY_COLORS.cacheRead.dot}
               />
               <Row
                 label="Cache creation"
                 value={formatTokenCount(summary.cacheCreationTokens)}
-                dot="bg-amber-500 dark:bg-amber-400"
+                dot={COST_CATEGORY_COLORS.cacheWrite.dot}
               />
               <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
                 <Row
