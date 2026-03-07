@@ -6,9 +6,10 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::cache::CacheError;
 use crate::state::AppState;
 
 // ── Response types (sent to frontend) ───────────────────────────────────
@@ -404,9 +405,44 @@ pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> Json<OAuthUs
     }
 }
 
+/// Minimum interval between force refreshes (spam guard).
+const FORCE_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// POST /api/oauth/usage/refresh
+///
+/// Bypass TTL cache and fetch fresh data from Anthropic.
+/// Returns 429 + Retry-After header if called within 60s of the last attempt.
+pub async fn post_oauth_usage_refresh(
+    State(state): State<Arc<AppState>>,
+) -> axum::response::Response {
+    match state
+        .oauth_usage_cache
+        .force_refresh(FORCE_REFRESH_MIN_INTERVAL, || fetch_oauth_usage_inner())
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(CacheError::TooSoon { wait_secs }) => (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, wait_secs.to_string())],
+        )
+            .into_response(),
+        Err(CacheError::Fetch(e)) => Json(OAuthUsageResponse {
+            has_auth: true,
+            error: Some(e),
+            plan: None,
+            tiers: vec![],
+        })
+        .into_response(),
+    }
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/oauth/usage", get(get_oauth_usage))
+        .route(
+            "/oauth/usage/refresh",
+            axum::routing::post(post_oauth_usage_refresh),
+        )
         .route("/oauth/identity", get(get_auth_identity))
 }
 
