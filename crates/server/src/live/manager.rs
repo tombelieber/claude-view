@@ -439,6 +439,125 @@ impl LiveSessionManager {
             .or_insert_with(SessionAccumulator::new);
     }
 
+    /// Enrich a newly-created session from its existing accumulator data.
+    ///
+    /// When a hook creates a session after the initial JSONL scan has already
+    /// populated the accumulator, the session needs the accumulated metadata
+    /// (git_branch, title, cost, tokens, etc.) applied immediately. Otherwise
+    /// it shows as "(no branch)" until the next file modification triggers
+    /// `process_jsonl_update`.
+    pub async fn enrich_session_from_accumulator(&self, session_id: &str) {
+        let accumulators = self.accumulators.read().await;
+        let Some(acc) = accumulators.get(session_id) else {
+            return;
+        };
+        // Only enrich if the accumulator has actually parsed data
+        if acc.offset == 0 {
+            return;
+        }
+        let Some(ref file_path) = acc.file_path else {
+            return;
+        };
+
+        let cached_cwd = acc.resolved_cwd.as_deref();
+        let (project, project_display_name, project_path, _) =
+            extract_project_info(file_path, cached_cwd);
+
+        let mut cost = acc.accumulated_cost.clone();
+        finalize_cost_breakdown(&mut cost, &acc.tokens);
+
+        let cache_status = match acc.last_cache_hit_at {
+            Some(ts) => {
+                let secs = seconds_since_modified_from_timestamp(ts);
+                if secs < 300 {
+                    CacheStatus::Warm
+                } else {
+                    CacheStatus::Cold
+                }
+            }
+            None => CacheStatus::Unknown,
+        };
+
+        let wt_branch = acc.latest_cwd.as_deref().and_then(resolve_worktree_branch);
+        let file_path_str = file_path.to_string_lossy().to_string();
+
+        let last_activity_at = std::fs::metadata(file_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let metadata = JsonlMetadata {
+            git_branch: acc.git_branch.clone(),
+            is_worktree: wt_branch.is_some(),
+            worktree_branch: wt_branch,
+            pid: None, // hooks own PID binding
+            title: acc.first_user_message.clone(),
+            last_user_message: acc.last_user_message.clone(),
+            last_user_file: acc.last_user_file.clone(),
+            turn_count: acc.user_turn_count,
+            started_at: acc.started_at,
+            last_activity_at,
+            model: acc.model.clone(),
+            tokens: acc.tokens.clone(),
+            context_window_tokens: acc.context_window_tokens,
+            cost,
+            cache_status,
+            current_turn_started_at: acc.current_turn_started_at,
+            last_turn_task_seconds: acc.last_turn_task_seconds,
+            sub_agents: acc.sub_agents.clone(),
+            progress_items: {
+                let mut items = acc.todo_items.clone();
+                items.extend(acc.task_items.clone());
+                items
+            },
+            tools_used: {
+                let mut mcp: Vec<_> = acc.mcp_servers.iter().cloned().collect();
+                mcp.sort();
+                let mut skill: Vec<_> = acc.skills.iter().cloned().collect();
+                skill.sort();
+                let mut tools = Vec::with_capacity(mcp.len() + skill.len());
+                for name in mcp {
+                    tools.push(super::state::ToolUsed {
+                        name,
+                        kind: "mcp".to_string(),
+                    });
+                }
+                for name in skill {
+                    tools.push(super::state::ToolUsed {
+                        name,
+                        kind: "skill".to_string(),
+                    });
+                }
+                tools
+            },
+            last_cache_hit_at: acc.last_cache_hit_at,
+            compact_count: acc.compact_count,
+        };
+        drop(accumulators);
+
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            let hook_activity = session.last_activity_at;
+            apply_jsonl_metadata(
+                session,
+                &metadata,
+                &file_path_str,
+                &project,
+                &project_display_name,
+                &project_path,
+            );
+            // Preserve the hook's last_activity_at if it's more recent than file mtime
+            if hook_activity > session.last_activity_at {
+                session.last_activity_at = hook_activity;
+            }
+            let _ = self.tx.send(SessionEvent::SessionUpdated {
+                session: session.clone(),
+            });
+        }
+    }
+
     /// Called by hook handler when SessionEnd removes a session after delay.
     pub async fn remove_accumulator(&self, session_id: &str) {
         self.accumulators.write().await.remove(session_id);
