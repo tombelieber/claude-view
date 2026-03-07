@@ -263,6 +263,20 @@ NEVER document:
 
 Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> JSON -> API response -> TS type -> hook -> component -> browser**. `Option`/`undefined` silently absorbs gaps — manual browser verification catches what tests won't.
 
+### TypeScript Types — Generated Types Are Source of Truth (MANDATORY)
+
+**Rust structs with `#[derive(TS)]` are the ONLY source of truth for API types.** Generated types live in `apps/web/src/types/generated/` and `packages/shared/src/types/generated/`. Hand-written TS types that represent API responses or Rust structs are **BANNED** — they silently drift and cause type mismatches the compiler can't catch.
+
+**Rules:**
+
+1. **NEVER hand-write a TS interface/type that mirrors a Rust struct.** Import from `types/generated/` or `@claude-view/shared` instead
+2. **Hand-written types are ONLY acceptable for:** component Props, hook-local UI state, view models that combine multiple generated types (e.g. `SessionPanelData`), WebSocket/relay protocol envelopes with no Rust equivalent
+3. **Before creating any new TS type**, check if a generated equivalent already exists: `ls apps/web/src/types/generated/ | grep -i <TypeName>`
+4. **After adding `#[derive(TS)]` to a Rust struct**, verify the generated `.ts` file appears and that no hand-written duplicate exists elsewhere
+5. **`packages/shared/src/types/index.ts` re-exports matter** — `export *` from a hand-written file shadows generated types of the same name. Generated types MUST win
+
+**Why this is a hard rule:** A 2026-03-08 audit found 10+ hand-written types duplicating generated types across `relay.ts`, `use-live-sessions.ts`, `types.ts`, and `use-dashboard.ts`. One had an `AgentState.context` type mismatch (`?: unknown` vs `JsonValue | null`) that silently broke type safety app-wide. Optional (`?`) vs required fields on arrays caused `undefined` instead of `[]`, breaking iteration.
+
 ### Live Monitor / History Parity
 
 **Every UI feature in the live monitor side panel MUST also work in the history session detail panel.** They share the same `SessionDetailPanel` component via `SessionPanelData`. When adding a field:

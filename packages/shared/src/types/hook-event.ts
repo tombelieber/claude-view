@@ -9,7 +9,7 @@ export interface HookEventItem {
   eventName: string
   toolName?: string
   label: string
-  group: 'autonomous' | 'needs_you' | 'delivered'
+  group: 'autonomous' | 'needs_you'
   context?: string
   source?: string
 }

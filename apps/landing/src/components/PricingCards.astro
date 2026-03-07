@@ -1,15 +1,21 @@
 ---
-import { PRICING_TIERS } from '../data/site';
+import { INDIVIDUAL_TIERS, BUSINESS_TIERS } from '../data/site';
 
-// Build display-ready tiers from centralized constants
-const tiers = PRICING_TIERS.map((t) => ({
+const individualTiers = INDIVIDUAL_TIERS.map((t) => ({
   ...t,
-  price: t.period && t.period !== 'forever' ? `${t.price}${t.period}` : t.price,
+  price: t.period && t.period !== 'forever' ? `${t.price}${t.perUser ? '/user' : ''}${t.period}` : t.price,
+}));
+
+const businessTiers = BUSINESS_TIERS.map((t) => ({
+  ...t,
+  price: t.period && t.period !== 'forever' ? `${t.price}${t.perUser ? '/user' : ''}${t.period}` : t.price,
 }));
 ---
 
-<div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-  {tiers.map((tier) => (
+<!-- Individual Plans -->
+<h2 class="text-2xl font-semibold text-[var(--color-text)] mb-8">Individual</h2>
+<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mb-16">
+  {individualTiers.map((tier) => (
     <div class={`rounded-2xl border p-8 flex flex-col ${
       tier.highlight
         ? 'border-[var(--accent-border)] bg-[var(--accent-soft)]'
@@ -36,6 +42,45 @@ const tiers = PRICING_TIERS.map((t) => ({
           class="block w-full text-center py-3 px-6 rounded-lg font-medium text-sm transition-colors border border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent-text)] hover:bg-[rgba(217,119,87,0.12)] hover:border-[var(--accent)]"
         >
           Join Waitlist
+        </a>
+      ) : (
+        <a
+          href={tier.ctaHref}
+          class="block text-center py-3 px-6 rounded-lg font-medium text-sm transition-colors bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+        >
+          {tier.cta}
+        </a>
+      )}
+    </div>
+  ))}
+</div>
+
+<!-- Business Plans -->
+<h2 class="text-2xl font-semibold text-[var(--color-text)] mb-8">Business</h2>
+<div class="grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
+  {businessTiers.map((tier) => (
+    <div class="rounded-2xl border border-[var(--color-border)] bg-white/50 backdrop-blur-xl p-8 flex flex-col">
+      <h3 class="text-xl font-bold text-[var(--color-text)]">{tier.name}</h3>
+      <div class="mt-4 mb-2">
+        <span class="text-4xl font-bold text-[var(--color-text)]">{tier.price}</span>
+      </div>
+      <p class="text-sm text-[var(--color-text-secondary)] mb-6">{tier.description}</p>
+      <ul class="space-y-3 mb-8 flex-1">
+        {tier.features.map((f) => (
+          <li class="flex items-start gap-2 text-sm text-[var(--color-text-secondary)]">
+            <svg class="w-4 h-4 text-[var(--accent)] mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            {f}
+          </li>
+        ))}
+      </ul>
+      {tier.comingSoon ? (
+        <a
+          href="#waitlist"
+          class="block w-full text-center py-3 px-6 rounded-lg font-medium text-sm transition-colors border border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent-text)] hover:bg-[rgba(217,119,87,0.12)] hover:border-[var(--accent)]"
+        >
+          {tier.cta}
         </a>
       ) : (
         <a
