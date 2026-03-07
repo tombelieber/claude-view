@@ -48,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         |_session_id| {},
         |_| {},
+        || {},
     )
     .await
     .map_err(|e| format!("Scan failed: {}", e))?;
@@ -70,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         |_session_id| {},
         |_| {},
+        || {},
     )
     .await
     .map_err(|e| format!("Rescan failed: {}", e))?;
