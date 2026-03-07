@@ -1894,6 +1894,7 @@ mod tests {
             tools_used: Vec::new(),
             last_cache_hit_at: None,
             compact_count: 0,
+            control: None,
             hook_events: Vec::new(),
         };
         session.hook_events.push(HookEvent {

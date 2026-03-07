@@ -198,6 +198,7 @@ fn build_recovered_session(
         tools_used: Vec::new(),
         last_cache_hit_at: None,
         compact_count: 0,
+        control: None,
         hook_events: Vec::new(),
     }
 }
@@ -355,6 +356,8 @@ pub struct LiveSessionManager {
     search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
     /// Registry holder for passing to scan_and_index_all on overflow reconciliation.
     registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
+    /// Channel to request snapshot writes. Debounced to max 1 write/sec.
+    snapshot_tx: mpsc::Sender<()>,
 }
 
 impl LiveSessionManager {
@@ -371,6 +374,9 @@ impl LiveSessionManager {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
 
+        // Debounced snapshot writer channel (bounded to 1 — extra signals are coalesced)
+        let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(1);
+
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
             tx: tx.clone(),
@@ -381,9 +387,11 @@ impl LiveSessionManager {
             db,
             search_index,
             registry,
+            snapshot_tx,
         });
 
         // Spawn background tasks
+        manager.spawn_snapshot_writer(snapshot_rx);
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
@@ -419,6 +427,103 @@ impl LiveSessionManager {
         self.accumulators.write().await.remove(session_id);
     }
 
+    /// Request a debounced snapshot write to disk.
+    /// Non-blocking — if the channel is full, the signal is coalesced.
+    pub fn request_snapshot_save(&self) {
+        let _ = self.snapshot_tx.try_send(());
+    }
+
+    /// Spawn the debounced snapshot writer background task.
+    /// Drains the channel and writes at most once per second.
+    fn spawn_snapshot_writer(self: &Arc<Self>, mut rx: mpsc::Receiver<()>) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            while rx.recv().await.is_some() {
+                // Drain any queued signals (coalesce)
+                while rx.try_recv().is_ok() {}
+                manager.save_session_snapshot_from_state().await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                // Drain signals that arrived during the sleep
+                while rx.try_recv().is_ok() {}
+            }
+        });
+    }
+
+    /// CAS bind a control session to a live session.
+    pub async fn bind_control(
+        &self,
+        session_id: &str,
+        control_id: String,
+        expected_current: Option<&str>,
+    ) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            let current = session.control.as_ref().map(|c| c.control_id.as_str());
+            if current != expected_current {
+                return false;
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            session.control = Some(super::state::ControlBinding {
+                control_id,
+                bound_at: now,
+                cancel: tokio_util::sync::CancellationToken::new(),
+            });
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove the control binding.
+    pub async fn unbind_control(&self, session_id: &str) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            if let Some(binding) = session.control.take() {
+                binding.cancel.cancel(); // Signal WS relay to close
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Conditionally unbind: only if current control_id matches.
+    pub async fn unbind_control_if(&self, session_id: &str, expected_control_id: &str) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            if session.control.as_ref().map(|c| c.control_id.as_str()) == Some(expected_control_id)
+            {
+                if let Some(binding) = session.control.take() {
+                    binding.cancel.cancel();
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Get all session IDs with active control bindings.
+    pub async fn controlled_session_ids(&self) -> Vec<(String, String)> {
+        self.sessions
+            .read()
+            .await
+            .iter()
+            .filter_map(|(id, s)| {
+                s.control
+                    .as_ref()
+                    .map(|c| (id.clone(), c.control_id.clone()))
+            })
+            .collect()
+    }
+
     /// Total number of Claude processes detected on the system.
     ///
     /// This is the raw process count (not deduplicated by cwd).
@@ -446,6 +551,7 @@ impl LiveSessionManager {
                             },
                             agent_state: s.agent_state.clone(),
                             last_activity_at: s.last_activity_at,
+                            control_id: s.control.as_ref().map(|c| c.control_id.clone()),
                         },
                     )
                 })
@@ -1688,6 +1794,7 @@ fn load_session_snapshot_from_str(content: &str) -> SessionSnapshot {
                             context: None,
                         },
                         last_activity_at: 0,
+                        control_id: None,
                     },
                 )
             })
@@ -1866,6 +1973,7 @@ mod tests {
                     context: None,
                 },
                 last_activity_at: 1708500000,
+                control_id: None,
             },
         );
         let snapshot = SessionSnapshot {
@@ -1918,6 +2026,7 @@ mod tests {
                     context: None,
                 },
                 last_activity_at: 1708500000,
+                control_id: None,
             },
         );
         let snapshot = SessionSnapshot {
@@ -1965,6 +2074,7 @@ mod tests {
                 context: None,
             },
             last_activity_at: 1708500000,
+            control_id: None,
         };
 
         let session = build_recovered_session(
@@ -1994,6 +2104,55 @@ mod tests {
         // Bound PID that is dead
         let dead_pid: u32 = 4_000_000;
         assert!(!is_pid_alive(dead_pid));
+    }
+
+    #[test]
+    fn test_snapshot_roundtrip_with_control_id() {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionSnapshot, SnapshotEntry};
+        use std::collections::HashMap;
+
+        let mut sessions = HashMap::new();
+        sessions.insert(
+            "sess-1".to_string(),
+            SnapshotEntry {
+                pid: 111,
+                status: "working".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                last_activity_at: 1700000000,
+                control_id: Some("ctrl-abc".to_string()),
+            },
+        );
+        sessions.insert(
+            "sess-2".to_string(),
+            SnapshotEntry {
+                pid: 222,
+                status: "paused".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::NeedsYou,
+                    state: "idle".into(),
+                    label: "Idle".into(),
+                    context: None,
+                },
+                last_activity_at: 1700000000,
+                control_id: None,
+            },
+        );
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions,
+        };
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let loaded = load_session_snapshot_from_str(&json);
+        assert_eq!(
+            loaded.sessions["sess-1"].control_id,
+            Some("ctrl-abc".to_string())
+        );
+        assert_eq!(loaded.sessions["sess-2"].control_id, None);
     }
 
     #[tokio::test]
