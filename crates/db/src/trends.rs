@@ -235,7 +235,7 @@ impl Database {
               COALESCE(SUM(CASE WHEN last_message_at >= ?3 AND last_message_at <= ?4 THEN reedited_files_count ELSE 0 END), 0)
             FROM valid_sessions
             WHERE last_message_at >= ?3 AND last_message_at <= ?2
-              AND (?5 IS NULL OR project_id = ?5)
+              AND (?5 IS NULL OR project_id = ?5 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?5))
               AND (?6 IS NULL OR git_branch = ?6)
             "#,
         )
@@ -258,7 +258,7 @@ impl Database {
                 THEN COALESCE(s.total_input_tokens, 0) + COALESCE(s.total_output_tokens, 0) ELSE 0 END), 0)
             FROM valid_sessions s
             WHERE s.last_message_at >= ?3 AND s.last_message_at <= ?2
-              AND (?5 IS NULL OR s.project_id = ?5)
+              AND (?5 IS NULL OR s.project_id = ?5 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?5))
               AND (?6 IS NULL OR s.git_branch = ?6)
             "#,
         )
@@ -280,7 +280,7 @@ impl Database {
             FROM session_commits sc
             INNER JOIN valid_sessions s ON sc.session_id = s.id
             WHERE s.last_message_at >= ?3 AND s.last_message_at <= ?2
-              AND (?5 IS NULL OR s.project_id = ?5)
+              AND (?5 IS NULL OR s.project_id = ?5 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?5))
               AND (?6 IS NULL OR s.git_branch = ?6)
             "#,
         )
