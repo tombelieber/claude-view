@@ -64,7 +64,13 @@ pub async fn register_push_token(
     {
         Ok(resp) if !resp.status().is_success() => {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = match resp.text().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to read push notification response body");
+                    String::new()
+                }
+            };
             warn!("OneSignal token registration failed ({status}): {body}");
             // Still return ok=true — the relay accepted the request. OneSignal
             // errors are non-fatal; the device can retry on the next app launch.
@@ -120,7 +126,13 @@ pub async fn send_push_notification(
     {
         Ok(resp) if !resp.status().is_success() => {
             let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
+            let body = match resp.text().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to read push notification response body");
+                    String::new()
+                }
+            };
             warn!("OneSignal push failed ({status}): {body}");
         }
         Err(e) => {
