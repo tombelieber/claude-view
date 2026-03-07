@@ -11,7 +11,7 @@ export type MatchHit = {
   /**
    * 1-based turn number within the conversation.
    */
-  turnNumber: bigint
+  turnNumber: number
   /**
    * Snippet with `<mark>` tags highlighting matched terms.
    */
@@ -19,5 +19,5 @@ export type MatchHit = {
   /**
    * Unix timestamp (seconds) of this message. 0 if unknown.
    */
-  timestamp: bigint
+  timestamp: number
 }

@@ -652,7 +652,10 @@ async fn archive_session_handler(
             match tokio::fs::rename(&src, &dest).await {
                 Ok(()) => {
                     if let Some(dest_str) = dest.to_str() {
-                        let _ = state.db.update_session_file_path(&id, dest_str).await;
+                        if let Err(e) = state.db.update_session_file_path(&id, dest_str).await {
+                            tracing::error!(session_id = %id, error = %e, "failed to update session file path in DB after move");
+                            // Note: file has been moved but DB not updated — this is a data integrity issue
+                        }
                     }
                 }
                 Err(e) => {
@@ -747,7 +750,10 @@ async fn bulk_archive_handler(
             let dest = dest_dir.join(file_name);
             if let Ok(()) = tokio::fs::rename(&src, &dest).await {
                 if let Some(dest_str) = dest.to_str() {
-                    let _ = state.db.update_session_file_path(id, dest_str).await;
+                    if let Err(e) = state.db.update_session_file_path(id, dest_str).await {
+                        tracing::error!(session_id = %id, error = %e, "failed to update session file path in DB after move");
+                        // Note: file has been moved but DB not updated — this is a data integrity issue
+                    }
                 }
             }
         }

@@ -4,11 +4,11 @@
  * Schema.org Table markup for GEO.
  */
 const tools = [
-  { name: 'claude-view', category: 'Full platform', stack: 'Rust + React', size: '15 MB', live: true, search: true, analytics: true },
-  { name: 'opcode', category: 'Viewer', stack: 'TypeScript', size: '~5 MB', live: false, search: false, analytics: false },
-  { name: 'ccusage', category: 'Cost tracker', stack: 'TypeScript', size: '~3 MB', live: false, search: false, analytics: false },
-  { name: 'CodePilot', category: 'Dashboard', stack: 'Python', size: '~20 MB', live: false, search: false, analytics: true },
-  { name: 'claude-run', category: 'Runner', stack: 'TypeScript', size: '~2 MB', live: false, search: false, analytics: false },
+  { name: 'claude-view', category: 'Full platform', stack: 'Rust + React', size: '15 MB', live: true, search: true, analytics: true, sharing: true, kanban: true, branchDrift: true },
+  { name: 'opcode', category: 'Viewer', stack: 'TypeScript', size: '~5 MB', live: false, search: false, analytics: false, sharing: false, kanban: false, branchDrift: false },
+  { name: 'ccusage', category: 'Cost tracker', stack: 'TypeScript', size: '~3 MB', live: false, search: false, analytics: false, sharing: false, kanban: false, branchDrift: false },
+  { name: 'CodePilot', category: 'Dashboard', stack: 'Python', size: '~20 MB', live: false, search: false, analytics: true, sharing: false, kanban: false, branchDrift: false },
+  { name: 'claude-run', category: 'Runner', stack: 'TypeScript', size: '~2 MB', live: false, search: false, analytics: false, sharing: false, kanban: false, branchDrift: false },
 ];
 ---
 
@@ -27,6 +27,9 @@ const tools = [
           <th>Live Monitor</th>
           <th>Search</th>
           <th>Analytics</th>
+          <th>Session Sharing</th>
+          <th>Kanban View</th>
+          <th>Branch Drift</th>
         </tr>
       </thead>
       <tbody>
@@ -39,6 +42,9 @@ const tools = [
             <td>{tool.live ? '✓' : '—'}</td>
             <td>{tool.search ? '✓' : '—'}</td>
             <td>{tool.analytics ? '✓' : '—'}</td>
+            <td>{tool.sharing ? '✓' : '—'}</td>
+            <td>{tool.kanban ? '✓' : '—'}</td>
+            <td>{tool.branchDrift ? '✓' : '—'}</td>
           </tr>
         ))}
       </tbody>

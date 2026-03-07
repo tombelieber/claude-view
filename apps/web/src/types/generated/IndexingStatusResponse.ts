@@ -7,7 +7,7 @@ export type IndexingStatusResponse = {
   phase: string
   indexed: number
   total: number
-  bytesProcessed: bigint
-  bytesTotal: bigint
+  bytesProcessed: number
+  bytesTotal: number
   errorMessage: string | null
 }

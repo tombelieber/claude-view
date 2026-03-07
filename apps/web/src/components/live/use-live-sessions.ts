@@ -50,10 +50,7 @@ export interface LiveSession {
     unpricedCacheReadTokens: number
     unpricedCacheCreationTokens: number
     pricedTokenCoverage: number
-    totalCostSource:
-      | 'computed_priced_tokens_full'
-      | 'computed_priced_tokens_partial'
-      | 'no_cost_data'
+    totalCostSource: string
   }
   cacheStatus: 'warm' | 'cold' | 'unknown'
   currentTurnStartedAt?: number | null

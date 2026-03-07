@@ -57,9 +57,10 @@ Dat is het. Opent in je browser. Al je sessies — live en afgelopen — in éé
 | **Notificatiegeluiden** | Krijg een melding wanneer een sessie klaar is of je input nodig heeft — stop met terminals pollen |
 | **Contextmeter** | Realtime contextvenstergebruik per sessie — zie welke in de gevarenzone zitten |
 | **Cache-warm-aftelling** | Weet precies wanneer de prompt-cache verloopt zodat je je volgende bericht kunt timen om tokens te besparen |
-| **Kostenvolgorder** | Uitgaven per sessie en totaal met cache-besparingen uitsplitsing |
+| **Kostenvolgorde** | Uitgaven per sessie en totaal — hover voor token/kosten-uitsplitsing met cache-besparingen per categorie |
 | **Sub-agent visualisatie** | Zie de volledige agent-boom — sub-agents, hun status en welke tools ze aanroepen |
-| **Meerdere weergaven** | Grid, Lijst of Monitor-modus (live chat grid) — kies wat past bij je workflow |
+| **Meerdere weergaven** | Grid, Lijst, Kanban of Monitor-modus — kies wat past bij je workflow |
+| **Kanban-swimlanes** | Groepeer sessies op project of branch — visuele swimlane-layout voor multi-project workflows |
 
 ### Rijke Chatgeschiedenis
 
@@ -70,6 +71,8 @@ Dat is het. Opent in je browser. Al je sessies — live en afgelopen — in éé
 | **Compact / uitgebreide toggle** | Blader snel door het gesprek of duik in elke tool-aanroep |
 | **Thread-weergave** | Volg agentgesprekken met sub-agent hiërarchieën |
 | **Exporteren** | Markdown-export voor contexthervatting of delen |
+| **Bulkselectie & archivering** | Selecteer meerdere sessies voor batch-archivering met persistente filterstatus |
+| **Versleuteld delen** | Deel elke sessie via E2E-versleutelde link — nul serververtrouwen |
 
 ### Geavanceerd Zoeken
 
@@ -88,7 +91,8 @@ Claude Code doet veel achter "denkt na..." dat nooit in je terminal verschijnt. 
 | **Sub-agent gesprekken** | Zie de volledige boom van gegenereerde agents, hun prompts en hun outputs |
 | **MCP-server aanroepen** | Zie welke MCP-tools worden aangeroepen en hun resultaten |
 | **Skill / hook / plugin tracking** | Weet welke skills zijn geactiveerd, welke hooks zijn gedraaid, welke plugins actief zijn |
-| **Hook-event opname** | Elk hook-event wordt vastgelegd en is doorzoekbaar — controleer wat wanneer is geactiveerd. *(Vereist dat claude-view draait terwijl sessies actief zijn; kan historische events niet achteraf traceren)* |
+| **Hook-event opname** | Dual-channel hook-vastlegging (live + JSONL-backfill) — elk hook-event opgenomen en doorzoekbaar, ook voor eerdere sessies |
+| **Worktree-branch-drift** | Detecteert wanneer git worktree-branches divergeren — getoond in live monitor en geschiedenis |
 | **Tool-gebruik tijdlijn** | Actielog van elk tool_use/tool_result-paar met timing |
 | **Fout-surfacing** | Fouten verschijnen op de sessiekaart — geen verborgen mislukkingen meer |
 | **Raw-bericht inspecteur** | Duik in de raw JSON van elk bericht wanneer je het complete beeld nodig hebt |
@@ -141,8 +145,7 @@ claude-view is ontworpen voor de ontwikkelaar die:
 - Snel van context moet wisselen zonder het overzicht te verliezen
 - **Tokenuitgaven wil optimaliseren** door berichten te timen rond cache-vensters
 - Gefrustreerd is door Cmd-Tab door terminals om agents te controleren
-
-Eén browsertab. Alle sessies. Blijf in de flow.
+- **Worktree-bewust** — detecteert branch-drift over git worktrees heen
 
 ---
 
@@ -151,9 +154,9 @@ Eén browsertab. Alle sessies. Blijf in de flow.
 | | |
 |---|---|
 | **Razend snel** | Rust-backend met SIMD-versnelde JSONL-parsing, memory-mapped I/O — indexeert duizenden sessies in seconden |
-| **Realtime** | File watcher + SSE + WebSocket voor sub-seconde live updates over alle sessies |
-| **Kleine voetafdruk** | Enkel ~15 MB binary. Geen runtime-afhankelijkheden, geen achtergrond-daemons |
-| **100% lokaal** | Alle gegevens blijven op jouw machine. Nul telemetrie, nul cloud, nul netwerkverzoeken |
+| **Realtime** | File watcher + SSE + uniforme WebSocket met heartbeat, event-replay en crashherstel |
+| **Kleine voetafdruk** | ~10 MB download, ~27 MB op schijf. Geen runtime-afhankelijkheden, geen achtergrond-daemons |
+| **100% lokaal** | Alle gegevens blijven op jouw machine. Nul telemetrie, geen verplichte accounts. Optioneel versleuteld delen beschikbaar. |
 | **Nul configuratie** | `npx claude-view` en klaar. Geen API-keys, geen setup, geen accounts |
 
 ---

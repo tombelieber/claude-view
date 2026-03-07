@@ -28,6 +28,7 @@ pub struct GrepSessionHit {
     pub session_id: String,
     pub project: String,
     pub project_path: String,
+    #[ts(type = "number")]
     pub modified_at: i64,
     pub matches: Vec<GrepLineMatch>,
 }
