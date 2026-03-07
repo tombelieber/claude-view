@@ -212,7 +212,6 @@ export function SessionCard({
           model={session.model}
           isStalled={stalledSessions?.has(session.id)}
           agentStateGroup={session.agentState.group}
-          agentStateLabel={session.agentState.label}
           agentStateKey={session.agentState.state}
           spinnerVerb={pickVerb(session.id)}
           lastCacheHitAt={session.lastCacheHitAt}

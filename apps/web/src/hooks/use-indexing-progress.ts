@@ -70,7 +70,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     const es = new EventSource(sseUrl())
 
     es.addEventListener('status', (e: MessageEvent) => {
-      let data
+      let data: Record<string, unknown>
       try {
         data = JSON.parse(e.data)
       } catch {
@@ -88,7 +88,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     })
 
     es.addEventListener('ready', (e: MessageEvent) => {
-      let data
+      let data: Record<string, unknown>
       try {
         data = JSON.parse(e.data)
       } catch {
@@ -110,7 +110,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     })
 
     es.addEventListener('deep-progress', (e: MessageEvent) => {
-      let data
+      let data: Record<string, unknown>
       try {
         data = JSON.parse(e.data)
       } catch {
@@ -138,7 +138,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     })
 
     es.addEventListener('finalizing', (e: MessageEvent) => {
-      let data
+      let data: Record<string, unknown>
       try {
         data = JSON.parse(e.data)
       } catch {
@@ -159,7 +159,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     })
 
     es.addEventListener('done', (e: MessageEvent) => {
-      let data
+      let data: Record<string, unknown>
       try {
         data = JSON.parse(e.data)
       } catch {
@@ -187,7 +187,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     // with data. Browser connection errors arrive as plain Events without data.
     es.addEventListener('error', (e: Event) => {
       if ('data' in e && (e as MessageEvent).data) {
-        let data
+        let data: Record<string, unknown>
         try {
           data = JSON.parse((e as MessageEvent).data)
         } catch {

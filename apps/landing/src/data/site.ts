@@ -33,23 +33,20 @@ export interface PricingTier {
   ctaHref: string
   highlight?: boolean
   comingSoon?: boolean
+  /** Per-user pricing (shown as "/user/mo" instead of "/mo"). */
+  perUser?: boolean
 }
 
 export const PRICING = {
-  free: {
-    name: 'Free',
+  hobby: {
+    name: 'Hobby',
     price: '$0',
     period: 'forever',
-    description: 'Everything you need for solo development.',
+    description: 'See what your Claude Code is actually doing.',
     features: [
-      'Unlimited local sessions',
+      'Limited session monitoring',
       'Session browser & search',
-      'Cost tracking & AI Fluency Score',
-      'Kanban swimlane view',
-      'Bulk select & archive',
-      'Conversation sharing',
-      'Hook event tracking',
-      'Claude Code plugin (8 tools, 3 skills)',
+      'Basic cost tracking',
       'Community support',
     ],
     cta: 'Get Started',
@@ -57,41 +54,101 @@ export const PRICING = {
   },
   pro: {
     name: 'Pro',
-    price: '$19',
+    price: '$20',
     period: '/mo',
-    description: 'For power users who need cloud access.',
+    description: 'Full control of your Claude Code from anywhere.',
     features: [
-      'Everything in Free',
-      'Cloud relay access',
-      'Mobile app',
+      'Everything in Hobby, plus:',
+      'Unlimited session monitoring',
+      'Cloud relay — work from any device',
+      'Mobile app (monitor + control)',
       'Remote agent control',
-      'Priority support',
+      'Plan runner & workflows',
+      'Agent orchestration engine',
+      'Quality gates (auto-review)',
+      'AI Fluency Score & full analytics',
     ],
     cta: 'Join Waitlist',
     ctaHref: '',
     highlight: true,
     comingSoon: true,
   },
-  team: {
-    name: 'Team',
-    price: '$49',
+  proPlus: {
+    name: 'Pro+',
+    price: '$60',
     period: '/mo',
-    description: 'Shared dashboards for engineering teams.',
+    description: '3x usage for heavier workloads.',
+    features: ['Everything in Pro, plus:', '3x usage on all features', 'Priority support'],
+    cta: 'Join Waitlist',
+    ctaHref: '',
+    comingSoon: true,
+  },
+  ultra: {
+    name: 'Ultra',
+    price: '$200',
+    period: '/mo',
+    description: 'Maximum power for all-day agent fleets.',
     features: [
-      'Everything in Pro',
-      'Team dashboard',
-      'Shared session history',
-      'Usage analytics',
-      'SSO & admin controls',
+      'Everything in Pro, plus:',
+      '20x usage on all features',
+      'Priority access to new features',
+      'Priority support',
     ],
     cta: 'Join Waitlist',
     ctaHref: '',
     comingSoon: true,
   },
+  business: {
+    name: 'Business',
+    price: '$40',
+    period: '/mo',
+    perUser: true,
+    description: 'Your whole team, one dashboard.',
+    features: [
+      'Everything in Pro, plus:',
+      'Team dashboard & shared sessions',
+      'Usage analytics & reporting',
+      'Centralized team billing',
+      'Role-based access control',
+      'SAML/OIDC SSO',
+      'Org-wide privacy controls',
+    ],
+    cta: 'Join Waitlist',
+    ctaHref: '',
+    comingSoon: true,
+  },
+  enterprise: {
+    name: 'Enterprise',
+    price: 'Custom',
+    period: '',
+    description: 'Org-wide deployment with full compliance.',
+    features: [
+      'Everything in Business, plus:',
+      'Pooled usage across org',
+      'Invoice / PO billing',
+      'SCIM seat management',
+      'Audit logs & compliance',
+      'Dedicated support & account management',
+    ],
+    cta: 'Contact Sales',
+    ctaHref: '',
+    comingSoon: true,
+  },
 } as const satisfies Record<string, PricingTier>
 
-/** Ordered array for rendering pricing cards. */
-export const PRICING_TIERS: PricingTier[] = [PRICING.free, PRICING.pro, PRICING.team]
+/** Individual plans — shown in the main pricing grid. */
+export const INDIVIDUAL_TIERS: PricingTier[] = [
+  PRICING.hobby,
+  PRICING.pro,
+  PRICING.proPlus,
+  PRICING.ultra,
+]
+
+/** Business plans — shown below the individual grid. */
+export const BUSINESS_TIERS: PricingTier[] = [PRICING.business, PRICING.enterprise]
+
+/** All tiers in order. */
+export const PRICING_TIERS: PricingTier[] = [...INDIVIDUAL_TIERS, ...BUSINESS_TIERS]
 
 // ---------------------------------------------------------------------------
 // Platform support
