@@ -13,8 +13,8 @@
 ### Distribution Strategy
 | Decision | Choice |
 |----------|--------|
-| Primary install | `npx claude-view` (downloads pre-built binary) |
-| Secondary install | `brew install claude-view` |
+| Primary install | `curl -fsSL .../install.sh \| sh` (downloads pre-built binary to `~/.claude-view/bin`) |
+| Secondary install | `npx claude-view` (downloads same binary via npm wrapper) |
 | NO cargo install | Users don't need Rust |
 | NO Docker for MVP | Complicates local file access |
 | NO Bun-only | ~95% have Node, ~15% have Bun |
@@ -276,6 +276,27 @@ Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> 
 5. **`packages/shared/src/types/index.ts` re-exports matter** — `export *` from a hand-written file shadows generated types of the same name. Generated types MUST win
 
 **Why this is a hard rule:** A 2026-03-08 audit found 10+ hand-written types duplicating generated types across `relay.ts`, `use-live-sessions.ts`, `types.ts`, and `use-dashboard.ts`. One had an `AgentState.context` type mismatch (`?: unknown` vs `JsonValue | null`) that silently broke type safety app-wide. Optional (`?`) vs required fields on arrays caused `undefined` instead of `[]`, breaking iteration.
+
+### Polymorphic Project Filter — EVERY SQL Query (RECURRING BUG)
+
+**EVERY SQL `WHERE` clause that filters by project MUST check BOTH `project_id` AND `git_root`.** This bug has recurred 10+ times. The sidebar sends `ProjectSummary.name` which is `COALESCE(NULLIF(git_root, ''), project_id)` — meaning it sends the `git_root` path (e.g. `/Users/alice/dev/project`) for 98%+ of sessions, but downstream queries that only check `project_id` (the encoded form like `-Users-alice-dev-project`) silently return 0 rows.
+
+**Mandatory SQL pattern for ALL project-filtered queries:**
+```sql
+WHERE (?N IS NULL OR project_id = ?N OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?N))
+```
+
+**Mandatory client-side pattern for live session filtering:**
+```typescript
+filters.projects.some(p => p === s.projectPath || p === (s.projectDisplayName || s.project))
+```
+
+**Checklist when adding ANY new query that accepts a project filter:**
+1. Use the polymorphic `project_id OR git_root` pattern — never `project_id` alone
+2. Add a regression test that inserts a session with both `project_id` and `git_root`, then filters by `git_root` value
+3. Run `rg 'project_id = ?' crates/db/src/` and verify every match either has the `git_root` fallback or is a self-join/CRUD (not a filter)
+
+**Why session history worked but analytics/contributions/live didn't:** `query_sessions_filtered` was the ONLY function that checked both identifiers. All 40+ other SQL clauses across `dashboard.rs`, `snapshots.rs`, `trends.rs`, `ai_generation.rs`, and `system.rs` only checked `project_id`.
 
 ### Live Monitor / History Parity
 
