@@ -6,6 +6,7 @@ import { useGitSync } from '../hooks/use-git-sync'
 import { useGitSyncProgress } from '../hooks/use-git-sync-progress'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { formatRelativeTime, useStatus, useTick } from '../hooks/use-status'
+import { TOAST_DURATION } from '../lib/notify'
 
 interface StatusBarProps {
   projects: ProjectSummary[]
@@ -76,7 +77,7 @@ export function StatusBar({ projects }: StatusBarProps) {
       doneHandledRef.current = true
       toast.error('Sync failed', {
         description: progress.errorMessage ?? 'Unknown error',
-        duration: 6000,
+        duration: TOAST_DURATION.extended,
         action: {
           label: 'Retry',
           onClick: handleRetry,
@@ -100,7 +101,7 @@ export function StatusBar({ projects }: StatusBarProps) {
     if (syncStatus === 'conflict') {
       toast.info('Sync already in progress', {
         description: 'Please wait for the current sync to complete.',
-        duration: 3000,
+        duration: TOAST_DURATION.micro,
       })
     }
   }, [syncStatus])

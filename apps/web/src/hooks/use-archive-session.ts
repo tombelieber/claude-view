@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { TOAST_DURATION } from '../lib/notify'
 
 async function archiveSession(id: string): Promise<void> {
   const res = await fetch(`/api/sessions/${id}/archive`, { method: 'POST' })
@@ -38,10 +39,10 @@ export function useArchiveSession() {
           label: 'Undo',
           onClick: () => unarchiveMutation.mutate(sessionId),
         },
-        duration: 5000,
+        duration: TOAST_DURATION.standard,
       })
     },
-    onError: () => toast.error('Failed to archive session'),
+    onError: () => toast.error('Failed to archive session', { duration: TOAST_DURATION.extended }),
   })
 
   const unarchiveMutation = useMutation({
@@ -50,7 +51,7 @@ export function useArchiveSession() {
       invalidateSessionCaches(qc)
       toast.success('Session restored')
     },
-    onError: () => toast.error('Failed to restore session'),
+    onError: () => toast.error('Failed to restore session', { duration: TOAST_DURATION.extended }),
   })
 
   const bulkArchive = useMutation({
@@ -68,14 +69,16 @@ export function useArchiveSession() {
               })
               .catch(() => {
                 invalidateSessionCaches(qc)
-                toast.error('Failed to restore some sessions')
+                toast.error('Failed to restore some sessions', {
+                  duration: TOAST_DURATION.extended,
+                })
               })
           },
         },
-        duration: 5000,
+        duration: TOAST_DURATION.standard,
       })
     },
-    onError: () => toast.error('Failed to archive sessions'),
+    onError: () => toast.error('Failed to archive sessions', { duration: TOAST_DURATION.extended }),
   })
 
   return { archive, unarchive: unarchiveMutation, bulkArchive }
