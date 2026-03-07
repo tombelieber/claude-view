@@ -27,6 +27,7 @@ pub struct SessionHit {
     pub project: String,
     pub branch: Option<String>,
     /// Unix timestamp (seconds) of the most recent match in this session.
+    #[ts(type = "number")]
     pub modified_at: i64,
     /// How many individual messages matched in this session.
     pub match_count: usize,
@@ -46,9 +47,11 @@ pub struct MatchHit {
     /// "user", "assistant", or "tool"
     pub role: String,
     /// 1-based turn number within the conversation.
+    #[ts(type = "number")]
     pub turn_number: u64,
     /// Snippet with `<mark>` tags highlighting matched terms.
     pub snippet: String,
     /// Unix timestamp (seconds) of this message. 0 if unknown.
+    #[ts(type = "number")]
     pub timestamp: i64,
 }

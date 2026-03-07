@@ -16,7 +16,10 @@ export function useHookEvents(sessionId: string, enabled: boolean): HookEventIte
     let cancelled = false
 
     fetch(`/api/sessions/${encodeURIComponent(sessionId)}/hook-events`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`hook-events: ${r.status}`)
+        return r.json()
+      })
       .then((data) => {
         if (cancelled) return
         const items: HookEventItem[] = (data.hookEvents ?? []).map(
@@ -34,7 +37,8 @@ export function useHookEvents(sessionId: string, enabled: boolean): HookEventIte
         )
         setEvents(items)
       })
-      .catch(() => {
+      .catch((e) => {
+        console.error('hook-events fetch failed:', e)
         if (!cancelled) setEvents([])
       })
 

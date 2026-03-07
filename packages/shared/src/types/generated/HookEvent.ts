@@ -7,7 +7,7 @@ export type HookEvent = {
   /**
    * Unix timestamp (seconds).
    */
-  timestamp: bigint
+  timestamp: number
   /**
    * Hook event name: "PreToolUse", "PostToolUse", "Stop", etc.
    */

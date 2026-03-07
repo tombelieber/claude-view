@@ -24,6 +24,7 @@ echo "Generating TypeScript types from Rust structs..."
 # Without `--features codegen`, #[ts(export)] is gated off via cfg_attr,
 # so normal `cargo test` never touches the generated files.
 cargo test -p claude-view-core --features codegen export_bindings -- --nocapture
+cargo test -p claude-view-search --features codegen export_bindings -- --nocapture
 cargo test -p claude-view-db --features codegen export_bindings -- --nocapture
 cargo test -p claude-view-server --features codegen export_bindings -- --nocapture
 

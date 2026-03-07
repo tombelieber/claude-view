@@ -57,9 +57,10 @@ C'est tout. S'ouvre dans votre navigateur. Toutes vos sessions — en direct et 
 | **Sons de notification** | Soyez alerté quand une session se termine ou nécessite votre input — arrêtez de sonder les terminaux |
 | **Jauge de contexte** | Utilisation de la fenêtre de contexte en temps réel par session — voyez lesquelles sont en zone de danger |
 | **Compte à rebours du cache** | Sachez exactement quand le cache de prompts expire pour programmer votre prochain message et économiser des tokens |
-| **Suivi des coûts** | Dépense par session et agrégée avec ventilation des économies de cache |
+| **Suivi des coûts** | Dépense par session et agrégée — survolez pour voir la ventilation token/coût avec économies de cache par catégorie |
 | **Visualisation des sous-agents** | Voyez l'arbre complet des agents — sous-agents, leur statut et les outils qu'ils appellent |
-| **Vues multiples** | Grille, Liste ou mode Moniteur (grille de chat en direct) — choisissez ce qui convient à votre workflow |
+| **Vues multiples** | Grille, Liste, Kanban ou mode Moniteur — choisissez ce qui convient à votre workflow |
+| **Swimlanes Kanban** | Groupez les sessions par projet ou branche — disposition visuelle en swimlanes pour les workflows multi-projets |
 
 ### Historique de Chat Enrichi
 
@@ -70,6 +71,8 @@ C'est tout. S'ouvre dans votre navigateur. Toutes vos sessions — en direct et 
 | **Toggle compact / détaillé** | Survolez la conversation ou plongez dans chaque appel d'outil |
 | **Vue par fils** | Suivez les conversations d'agents avec les hiérarchies de sous-agents |
 | **Export** | Export Markdown pour la reprise de contexte ou le partage |
+| **Sélection groupée et archivage** | Sélectionnez plusieurs sessions pour l'archivage par lot avec état de filtre persistant |
+| **Partage chiffré** | Partagez n'importe quelle session via un lien chiffré E2E — zéro confiance serveur |
 
 ### Recherche Avancée
 
@@ -88,7 +91,8 @@ Claude Code fait beaucoup de choses derrière "réflexion en cours..." qui n'app
 | **Conversations de sous-agents** | Voyez l'arbre complet des agents générés, leurs prompts et leurs résultats |
 | **Appels aux serveurs MCP** | Voyez quels outils MCP sont invoqués et leurs résultats |
 | **Suivi des skills / hooks / plugins** | Sachez quels skills se sont déclenchés, quels hooks ont tourné, quels plugins sont actifs |
-| **Enregistrement d'événements de hooks** | Chaque événement de hook est capturé et navigable — retournez vérifier ce qui s'est déclenché et quand. *(Nécessite que claude-view soit en cours d'exécution pendant que les sessions sont actives ; ne peut pas tracer les événements historiques rétroactivement)* |
+| **Enregistrement d'événements de hooks** | Capture de hooks double canal (live + backfill JSONL) — chaque événement de hook enregistré et navigable, même pour les sessions passées |
+| **Dérive de branches worktree** | Détecte quand les branches de git worktree divergent — affiché dans le moniteur en direct et l'historique |
 | **Chronologie d'utilisation des outils** | Log d'actions de chaque paire tool_use/tool_result avec timing |
 | **Remontée d'erreurs** | Les erreurs remontent à la carte de session — plus de défaillances enterrées |
 | **Inspecteur de messages bruts** | Plongez dans le JSON brut de n'importe quel message quand vous avez besoin de l'image complète |
@@ -141,8 +145,7 @@ claude-view est conçu pour le développeur qui :
 - A besoin de changer de contexte rapidement sans perdre le fil
 - Veut **optimiser les dépenses de tokens** en programmant les messages autour des fenêtres de cache
 - Est frustré de faire Cmd-Tab entre les terminaux pour vérifier les agents
-
-Un onglet de navigateur. Toutes les sessions. Restez dans le flow.
+- **Compatible worktrees** — détecte la dérive de branches entre les git worktrees
 
 ---
 
@@ -151,9 +154,9 @@ Un onglet de navigateur. Toutes les sessions. Restez dans le flow.
 | | |
 |---|---|
 | **Ultra rapide** | Backend Rust avec parsing JSONL accéléré par SIMD, I/O mappé en mémoire — indexe des milliers de sessions en secondes |
-| **Temps réel** | File watcher + SSE + WebSocket pour des mises à jour en direct sub-seconde sur toutes les sessions |
-| **Empreinte minimale** | Un seul binaire de ~15 Mo. Pas de dépendances runtime, pas de démons en arrière-plan |
-| **100% local** | Toutes les données restent sur votre machine. Zéro télémétrie, zéro cloud, zéro requêtes réseau |
+| **Temps réel** | File watcher + SSE + WebSocket unifié avec heartbeat, replay d'événements et récupération après crash |
+| **Empreinte minimale** | ~10 Mo de téléchargement, ~27 Mo sur disque. Pas de dépendances runtime, pas de démons en arrière-plan |
+| **100% local** | Toutes les données restent sur votre machine. Zéro télémétrie, zéro compte requis. Partage chiffré optionnel disponible. |
 | **Zéro configuration** | `npx claude-view` et c'est fait. Pas de clés API, pas de setup, pas de compte |
 
 ---

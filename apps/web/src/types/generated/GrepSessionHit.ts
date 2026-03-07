@@ -8,6 +8,6 @@ export type GrepSessionHit = {
   sessionId: string
   project: string
   projectPath: string
-  modifiedAt: bigint
+  modifiedAt: number
   matches: Array<GrepLineMatch>
 }

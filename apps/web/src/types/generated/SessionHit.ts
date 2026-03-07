@@ -11,7 +11,7 @@ export type SessionHit = {
   /**
    * Unix timestamp (seconds) of the most recent match in this session.
    */
-  modifiedAt: bigint
+  modifiedAt: number
   /**
    * How many individual messages matched in this session.
    */
