@@ -1,0 +1,810 @@
+import { FindProvider } from '@claude-view/shared/contexts/FindContext'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Copy,
+  Download,
+  FileX,
+  MessageSquare,
+  PanelRight,
+  Terminal,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
+import { Virtuoso } from 'react-virtuoso'
+import { ExpandProvider } from '../contexts/ExpandContext'
+import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { useHookEvents } from '../hooks/use-hook-events'
+import { useProjectSessions } from '../hooks/use-projects'
+import type { ProjectSummary } from '../hooks/use-projects'
+import { useRichSessionData } from '../hooks/use-rich-session-data'
+import { isNotFoundError, useSession } from '../hooks/use-session'
+import { useSessionControl } from '../hooks/use-session-control'
+import { useSessionDetail } from '../hooks/use-session-detail'
+import { useSessionMessages } from '../hooks/use-session-messages'
+import { computeCategoryCounts } from '../lib/compute-category-counts'
+import {
+  type ExportMetadata,
+  downloadHtml,
+  exportToPdf,
+  generateStandaloneHtml,
+} from '../lib/export-html'
+import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
+import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
+import { messagesToRichMessages } from '../lib/message-to-rich'
+import { buildThreadMap, getThreadChain } from '../lib/thread-map'
+import { showToast } from '../lib/toast'
+import { cn } from '../lib/utils'
+import { useMonitorStore } from '../store/monitor-store'
+import type { Message } from '../types/generated'
+import { CommitsPanel } from './CommitsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
+import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
+import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
+import { MessageTyped } from './MessageTyped'
+import { SearchInput } from './SearchInput'
+import { SessionMetricsBar } from './SessionMetricsBar'
+import { ShareModal } from './ShareModal'
+import { ChatInputBar } from './chat/ChatInputBar'
+import { ConnectionBanner } from './chat/ConnectionBanner'
+import { RichPane } from './live/RichPane'
+import { SessionDetailPanel } from './live/SessionDetailPanel'
+import { ViewModeControls } from './live/ViewModeControls'
+import { historyToPanelData } from './live/session-panel-data'
+
+/** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
+function HistoryRichPane({
+  messages,
+  categoryCounts,
+}: {
+  messages: import('./live/RichPane').RichMessage[]
+  categoryCounts?: import('../lib/compute-category-counts').CategoryCounts
+}) {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  return (
+    <RichPane
+      messages={messages}
+      isVisible={true}
+      verboseMode={verboseMode}
+      bufferDone={true}
+      categoryCounts={categoryCounts}
+    />
+  )
+}
+
+/** Strings that Claude Code emits as placeholder content (no real text) */
+const EMPTY_CONTENT = new Set(['(no content)', ''])
+
+function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
+  if (mode === 'full') return messages
+  return messages.filter((msg) => {
+    if (msg.role === 'user') return true
+    if (msg.role === 'assistant') {
+      // Hide assistant messages with no real content (only tool calls, no text)
+      if (EMPTY_CONTENT.has(msg.content.trim()) && !msg.thinking) return false
+      return true
+    }
+    if (msg.role === 'tool_use') return false
+    if (msg.role === 'tool_result') return false
+    if (msg.role === 'system') return false
+    if (msg.role === 'progress') return false
+    if (msg.role === 'summary') return false
+    return false
+  })
+}
+
+export function ConversationView() {
+  const { sessionId } = useParams()
+  const navigate = useNavigate()
+  const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
+
+  // Fetch session detail first (uses /api/sessions/:id, no projectDir needed)
+  // to get the project directory for the legacy session/messages endpoints
+  const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
+  const projectDir = sessionDetail?.project ?? ''
+  const project = summaries.find((p) => p.name === projectDir)
+  const projectName = project?.displayName || projectDir
+
+  // Chat input bar: resume flow
+  const sessionControl = useSessionControl(sessionId || '')
+
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+  const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
+  const resumeMenuRef = useRef<HTMLDivElement>(null)
+  const [searchParams] = useSearchParams()
+
+  // In-session find (Cmd+F / Ctrl+F)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const findInputRef = useRef<HTMLInputElement>(null)
+
+  // Build a deterministic "back to sessions" URL, preserving project/branch filters
+  const backUrl = useMemo(() => {
+    const preserved = new URLSearchParams()
+    const project = searchParams.get('project')
+    const branch = searchParams.get('branch')
+    if (project) preserved.set('project', project)
+    if (branch) preserved.set('branch', branch)
+    const qs = preserved.toString()
+    return qs ? `/sessions?${qs}` : '/sessions'
+  }, [searchParams])
+  // useSession and useSessionMessages now use /api/sessions/:id/* (no projectDir needed)
+  const { data: session, error: sessionError } = useSession(sessionId || null)
+  const {
+    data: pagesData,
+    isLoading: isMessagesLoading,
+    error: messagesError,
+    fetchPreviousPage,
+    hasPreviousPage,
+    isFetchingPreviousPage,
+  } = useSessionMessages(sessionId || null)
+
+  // Detect when DB has the session but the JSONL file is gone from disk
+  const isFileGone =
+    !!sessionDetail && (isNotFoundError(messagesError) || isNotFoundError(sessionError))
+
+  // Only gate initial render on paginated messages — the full session fetch
+  // loads in the background for export use. This ensures faster time-to-first-content.
+  const isLoading = isFileGone ? false : isMessagesLoading || (!sessionDetail && !detailError)
+  const error = isFileGone ? null : detailError || messagesError
+  const exportsReady = !!session
+
+  const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
+  const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
+
+  // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
+  const { data: richData } = useRichSessionData(sessionId || null)
+
+  // Fetch stored hook events from SQLite (enabled for all historical sessions)
+  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
+
+  const exportMeta: ExportMetadata | undefined = useMemo(() => {
+    if (!sessionDetail) return undefined
+    return {
+      sessionId: sessionId || '',
+      projectName,
+      projectPath: sessionDetail.projectPath,
+      primaryModel: sessionDetail.primaryModel,
+      durationSeconds: sessionDetail.durationSeconds,
+      totalInputTokens: sessionDetail.totalInputTokens,
+      totalOutputTokens: sessionDetail.totalOutputTokens,
+      messageCount: session?.messages?.length ?? 0,
+      userPromptCount: sessionDetail.userPromptCount,
+      toolCallCount: sessionDetail.toolCallCount,
+      filesEditedCount: sessionDetail.filesEditedCount,
+      filesReadCount: sessionDetail.filesReadCount,
+      commitCount: sessionDetail.commitCount,
+      gitBranch: sessionDetail.gitBranch,
+      exportDate: new Date().toISOString(),
+    }
+  }, [sessionDetail, sessionId, projectName, session])
+
+  const handleExportHtml = useCallback(() => {
+    if (!session) return
+    const html = generateStandaloneHtml(session.messages, exportMeta)
+    downloadHtml(html, `conversation-${sessionId}.html`)
+  }, [session, sessionId, exportMeta])
+
+  const handleExportPdf = useCallback(() => {
+    if (!session) return
+    exportToPdf(session.messages, exportMeta)
+  }, [session, exportMeta])
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!session) return
+    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    downloadMarkdown(markdown, `conversation-${sessionId}.md`)
+  }, [session, projectName, sessionId])
+
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!session) return
+    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    const ok = await copyToClipboard(markdown)
+    showToast(
+      ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions',
+      ok ? 2000 : 3000,
+    )
+  }, [session, projectName, sessionId])
+
+  const handleResume = useCallback(async () => {
+    const projectPath = sessionDetail?.projectPath
+    if (projectPath) {
+      try {
+        const res = await fetch(`/api/check-path?path=${encodeURIComponent(projectPath)}`)
+        const data = await res.json()
+        if (!data.exists) {
+          showToast('Project path no longer exists — worktree may have been removed', 4000)
+          return
+        }
+      } catch {
+        // If the check fails (e.g. endpoint doesn't exist yet), proceed anyway
+      }
+    }
+    const cmd = `claude --resume ${sessionId}`
+    const ok = await copyToClipboard(cmd)
+    showToast(
+      ok
+        ? 'Resume command copied — paste in terminal'
+        : 'Failed to copy — check browser permissions',
+      3000,
+    )
+  }, [sessionId, sessionDetail])
+
+  // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Cmd (Mac) or Ctrl (Windows/Linux)
+      const modifierKey = e.metaKey || e.ctrlKey
+
+      if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        handleExportHtml()
+      } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault()
+        handleExportPdf()
+      } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        handleResume()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleExportHtml, handleExportPdf, handleResume])
+
+  // In-session find: Cmd+F / Ctrl+F to open, Escape to close
+  // Use ref to avoid re-registering the handler on every findOpen change
+  const findOpenRef = useRef(findOpen)
+  useEffect(() => {
+    findOpenRef.current = findOpen
+  }, [findOpen])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        setFindOpen(true)
+      }
+      if (e.key === 'Escape' && findOpenRef.current) {
+        setFindOpen(false)
+        setFindQuery('')
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Close export menu on outside click
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [exportMenuOpen])
+
+  // Close resume menu on outside click
+  useEffect(() => {
+    if (!resumeMenuOpen) return
+    function handleClick(e: MouseEvent) {
+      if (resumeMenuRef.current && !resumeMenuRef.current.contains(e.target as Node)) {
+        setResumeMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [resumeMenuOpen])
+
+  const allMessages = useMemo(
+    () => pagesData?.pages.flatMap((page) => page.messages) ?? [],
+    [pagesData],
+  )
+
+  // Full session messages for verbose/terminal view (loaded in background by useSession)
+  // Falls back to paginated data while session is still loading.
+  const verboseAllMessages = useMemo(() => session?.messages ?? allMessages, [session, allMessages])
+
+  const totalMessages = session?.messages?.length ?? pagesData?.pages[0]?.total ?? 0
+
+  const filteredMessages = useMemo(
+    () => (allMessages.length > 0 ? filterMessages(allMessages, 'compact') : []),
+    [allMessages],
+  )
+  const hiddenCount = allMessages.length - filteredMessages.length
+
+  // Virtuoso reverse-infinite-scroll: firstItemIndex must decrease as items
+  // are prepended so Virtuoso can adjust scroll position and keep firing
+  // startReached. See https://virtuoso.dev/prepend-items/
+  const FIRST_ITEM_START = 1_000_000
+  const firstItemIndex = useMemo(
+    () => FIRST_ITEM_START - filteredMessages.length,
+    [filteredMessages.length],
+  )
+
+  // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
+  // The compact chat view intentionally excludes them to keep focus on the user/assistant conversation.
+
+  const [panelOpen, setPanelOpen] = useState(true)
+
+  // Convert messages to RichMessage[] for verbose mode + terminal tab
+  const richMessages = useMemo(
+    () => (verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : []),
+    [verboseAllMessages],
+  )
+
+  // Merge hook events into Rich view (both hook_event and hook_progress show)
+  const richHookMessages = useMemo(() => hookEventsToRichMessages(hookEvents), [hookEvents])
+
+  // Skip SQLite hook-event merge when the parser already includes hook_event
+  // entries from JSONL (avoids duplicates). Fall back to SQLite merge for older
+  // sessions whose JSONL predates hook_event support.
+  const richMessagesWithHookEvents = useMemo(() => {
+    if (
+      richHookMessages.length === 0 ||
+      richMessages.some((m) => m.metadata?.type === 'hook_event')
+    ) {
+      return richMessages
+    }
+    return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
+  }, [richMessages, richHookMessages])
+
+  // Shared category counts for both verbose terminal and side panel
+  const historyCategoryCounts = useMemo(
+    () => computeCategoryCounts(richMessagesWithHookEvents),
+    [richMessagesWithHookEvents],
+  )
+
+  // Build panel data for SessionDetailPanel
+  const panelData = useMemo(() => {
+    if (!sessionDetail) return undefined
+    return historyToPanelData(
+      sessionDetail,
+      richData ?? undefined,
+      sessionInfo,
+      richMessagesWithHookEvents,
+    )
+  }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
+
+  // When the user scrolls to the top, we want to load ALL remaining history without
+  // requiring repeated manual scrolls. The problem: Virtuoso fires startReached once
+  // per "scroll to top" event, then adjusts scrollTop (to maintain the viewport after
+  // prepending items), which takes the list out of "at top" state. With compact mode's
+  // heavy filtering (~5% of messages visible), the user would need 10+ manual scrolls.
+  //
+  // Fix: a ref that marks "load-all mode". Once startReached fires, we set the ref and
+  // keep calling fetchPreviousPage after each completed fetch until offset=0 is reached.
+  const isLoadingAllRef = useRef(false)
+
+  useEffect(() => {
+    if (!isFetchingPreviousPage) {
+      if (hasPreviousPage && isLoadingAllRef.current) {
+        fetchPreviousPage()
+      } else {
+        isLoadingAllRef.current = false
+      }
+    }
+  }, [isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage])
+
+  const handleStartReached = useCallback(() => {
+    if (hasPreviousPage && !isFetchingPreviousPage) {
+      isLoadingAllRef.current = true
+      fetchPreviousPage()
+    }
+  }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage])
+
+  const threadMap = useMemo(() => buildThreadMap(filteredMessages), [filteredMessages])
+
+  const getThreadChainForUuid = useCallback(
+    (uuid: string) => getThreadChain(uuid, filteredMessages),
+    [filteredMessages],
+  )
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+          <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+            <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="flex-1 p-6">
+          <div className="max-w-4xl mx-auto">
+            <Skeleton label="conversation" rows={4} withHeader={false} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <ErrorState message={error.message} onBack={() => navigate(backUrl)} />
+      </div>
+    )
+  }
+
+  if (!session && !pagesData && !isFileGone) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <EmptyState
+          icon={<MessageSquare className="w-6 h-6 text-gray-400" />}
+          title="No conversation data found"
+          description="This session may have been deleted or moved."
+          action={{ label: 'Back to sessions', onClick: () => navigate(backUrl) }}
+        />
+      </div>
+    )
+  }
+
+  if (isFileGone && sessionDetail) {
+    return (
+      <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-4">
+            <Link
+              to={backUrl}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Sessions
+            </Link>
+            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleResume}
+            aria-label="Copy resume command to clipboard"
+            title={`Session file missing from disk.\nProject: ${sessionDetail?.projectPath ?? 'unknown'}\nResume may fail if the directory no longer exists.`}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm border border-amber-500 dark:border-amber-400 text-amber-700 dark:text-amber-300 bg-white dark:bg-gray-800 rounded-md transition-colors hover:bg-amber-50 dark:hover:bg-amber-900/30 focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-1"
+          >
+            <Terminal className="w-4 h-4" />
+            <span>Resume</span>
+          </button>
+        </div>
+
+        {/* Two-column: Message + Sidebar */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: File-gone notice */}
+          <div className="flex-1 min-w-0 flex items-center justify-center">
+            <div className="text-center max-w-md px-6">
+              <FileX className="w-12 h-12 text-amber-400 mx-auto mb-4" />
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Session conversation data is no longer available
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                The JSONL file for this session has been removed from disk. Session metrics are
+                still available in the sidebar.
+              </p>
+              <Link
+                to={backUrl}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
+              >
+                Back to sessions
+              </Link>
+            </div>
+          </div>
+
+          {/* Right: Metrics sidebar — still renders from DB data (no rich data since JSONL is gone) */}
+          <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
+            {sessionDetail.userPromptCount > 0 && (
+              <SessionMetricsBar
+                prompts={sessionDetail.userPromptCount}
+                tokens={
+                  sessionDetail.totalInputTokens != null && sessionDetail.totalOutputTokens != null
+                    ? BigInt(sessionDetail.totalInputTokens) +
+                      BigInt(sessionDetail.totalOutputTokens)
+                    : null
+                }
+                filesRead={sessionDetail.filesReadCount}
+                filesEdited={sessionDetail.filesEditedCount}
+                reeditRate={
+                  sessionDetail.filesEditedCount > 0
+                    ? sessionDetail.reeditedFilesCount / sessionDetail.filesEditedCount
+                    : null
+                }
+                commits={sessionDetail.commitCount}
+                variant="vertical"
+              />
+            )}
+            <FilesTouchedPanel
+              files={buildFilesTouched(
+                sessionDetail.filesRead ?? [],
+                sessionDetail.filesEdited ?? [],
+              )}
+            />
+            <CommitsPanel commits={sessionDetail.commits ?? []} />
+          </aside>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
+      {/* Conversation Header */}
+      <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-4">
+          <Link
+            to={backUrl}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Sessions
+          </Link>
+          <span className="text-gray-300 dark:text-gray-600">|</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">{projectName}</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ViewModeControls />
+          {!verboseMode && hiddenCount > 0 && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">{hiddenCount} hidden</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Panel toggle */}
+          <button
+            type="button"
+            onClick={() => setPanelOpen(!panelOpen)}
+            aria-pressed={panelOpen}
+            className={cn(
+              'p-1.5 rounded-md transition-colors',
+              panelOpen
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+            )}
+            title="Toggle detail panel"
+          >
+            <PanelRight className="w-4 h-4" />
+          </button>
+          <ShareModal
+            sessionId={sessionId!}
+            messages={session?.messages}
+            projectName={projectName}
+          />
+          {/* Continue / Resume dropdown */}
+          <div className="relative" ref={resumeMenuRef}>
+            <button
+              type="button"
+              onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
+              disabled={!exportsReady}
+              aria-label="Continue options"
+              aria-expanded={resumeMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                exportsReady
+                  ? 'border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer'
+                  : 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400',
+              )}
+            >
+              <Terminal className="w-4 h-4" />
+              <span>Continue</span>
+              <ChevronDown
+                className={cn('w-3.5 h-3.5 transition-transform', resumeMenuOpen && 'rotate-180')}
+                aria-hidden="true"
+              />
+            </button>
+            {resumeMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleCopyMarkdown()
+                    setResumeMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copy Full Transcript
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResume()
+                    setResumeMenuOpen(false)
+                  }}
+                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
+                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span className="flex flex-col items-start">
+                    <span>Resume Command</span>
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
+                      {sessionDetail?.projectPath ?? ''}
+                    </span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Export overflow menu */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+              disabled={!exportsReady}
+              aria-label="Export options"
+              aria-expanded={exportMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1.5 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-300 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                exportsReady
+                  ? 'hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
+                  : 'opacity-50 cursor-not-allowed',
+              )}
+            >
+              <Download className="w-4 h-4" />
+              <span>Export</span>
+              <ChevronDown
+                className={cn('w-3.5 h-3.5 transition-transform', exportMenuOpen && 'rotate-180')}
+                aria-hidden="true"
+              />
+            </button>
+
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportHtml()
+                    setExportMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  HTML
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportPdf()
+                    setExportMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportMarkdown()
+                    setExportMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  Markdown
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Two-column: Conversation + Sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Conversation messages + ChatInputBar */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* In-session find bar (Cmd+F) */}
+          {findOpen && (
+            <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
+              <SearchInput
+                ref={findInputRef}
+                value={findQuery}
+                onChange={setFindQuery}
+                placeholder="Find in conversation..."
+                autoFocus
+                shortcutHint="Cmd+F"
+                onClose={() => {
+                  setFindOpen(false)
+                  setFindQuery('')
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setFindOpen(false)
+                    setFindQuery('')
+                  }
+                }}
+              />
+            </div>
+          )}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {!verboseMode ? (
+              <FindProvider value={findQuery}>
+                <ThreadHighlightProvider>
+                  <ExpandProvider>
+                    <Virtuoso
+                      data={filteredMessages}
+                      firstItemIndex={firstItemIndex}
+                      startReached={handleStartReached}
+                      initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                      followOutput="smooth"
+                      itemContent={(index, message) => {
+                        const thread = message.uuid ? threadMap.get(message.uuid) : undefined
+                        return (
+                          <div className="max-w-4xl mx-auto px-6 pb-4">
+                            <ErrorBoundary key={message.uuid || index}>
+                              <MessageTyped
+                                message={message}
+                                messageIndex={index}
+                                messageType={message.role}
+                                metadata={message.metadata}
+                                parentUuid={thread?.parentUuid}
+                                indent={thread?.indent ?? 0}
+                                isChildMessage={thread?.isChild ?? false}
+                                onGetThreadChain={getThreadChainForUuid}
+                                showThinking={false}
+                              />
+                            </ErrorBoundary>
+                          </div>
+                        )
+                      }}
+                      components={{
+                        Header: () =>
+                          isFetchingPreviousPage ? (
+                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                              Loading older messages...
+                            </div>
+                          ) : hasPreviousPage ? (
+                            <div className="h-6" />
+                          ) : filteredMessages.length > 0 ? (
+                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
+                              Beginning of conversation
+                            </div>
+                          ) : (
+                            <div className="h-6" />
+                          ),
+                        Footer: () =>
+                          filteredMessages.length > 0 ? (
+                            <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+                              {totalMessages} messages
+                              {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
+                              {sessionInfo && sessionInfo.toolCallCount > 0 && (
+                                <> &bull; {sessionInfo.toolCallCount} tool calls</>
+                              )}
+                            </div>
+                          ) : null,
+                      }}
+                      increaseViewportBy={{ top: 400, bottom: 400 }}
+                      className="h-full overflow-auto"
+                    />
+                  </ExpandProvider>
+                </ThreadHighlightProvider>
+              </FindProvider>
+            ) : (
+              <HistoryRichPane
+                messages={richMessagesWithHookEvents}
+                categoryCounts={historyCategoryCounts}
+              />
+            )}
+          </div>
+          <ConnectionBanner health={sessionControl.connectionHealth} />
+          <ChatInputBar
+            onSend={sessionControl.send}
+            state={sessionControl.inputBarState}
+            contextPercent={sessionControl.contextPercent}
+          />
+        </div>
+
+        {/* Right: Detail panel (inline) */}
+        {panelOpen && panelData && (
+          <SessionDetailPanel panelData={panelData} onClose={() => setPanelOpen(false)} inline />
+        )}
+      </div>
+    </div>
+  )
+}

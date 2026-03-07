@@ -1,0 +1,2 @@
+[env]
+TS_RS_EXPORT_DIR = { value = "apps/web/src/types/generated", relative = true }

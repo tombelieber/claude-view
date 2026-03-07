@@ -8,7 +8,7 @@
 | **Distribution (users)** | `npx claude-view` | 95% of devs have Node, maximum reach |
 | **Development (you)** | Bun | Fast, npm-compatible, use it locally |
 
-Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm install` for dev. Never delete `package-lock.json`.
+`bun.lock` tracked in git. `package-lock.json` removed — npm can't resolve `workspace:*` protocol. Never use `npm install` for dev.
 
 ### Distribution Strategy
 | Decision | Choice |
@@ -24,9 +24,30 @@ Both lockfiles (`bun.lock`, `package-lock.json`) tracked in git. Never use `npm 
 |----------|--------|
 | Runtime | Localhost web server (browser, not desktop app) |
 | Backend | Rust (Axum), ~15MB binary |
-| Frontend | React SPA |
+| Frontend | React SPA (Vite) + Expo native app |
+| Monorepo | Turborepo + Bun workspaces |
 | Desktop app (Tauri) | Deferred indefinitely |
 | Node.js sidecar | Mission Control Phase F |
+
+### Monorepo Workspace Layout
+
+| Path | Package | Purpose |
+|------|---------|---------|
+| `apps/web/` | `@claude-view/web` | React SPA (Vite) — the main web frontend |
+| `apps/share/` | `@claude-view/share` | Share viewer SPA (Vite) — Cloudflare Pages |
+| `apps/mobile/` | `@claude-view/mobile` | Expo SDK 55 native app (Tamagui v2) |
+| `apps/landing/` | `@claude-view/landing` | Static HTML landing page (Cloudflare Pages) |
+| `packages/shared/` | `@claude-view/shared` | Relay types, theme tokens |
+| `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
+| `crates/` | — | Rust backend (unchanged) |
+| `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
+
+**Key config files:**
+
+- `turbo.json` — Turborepo pipeline config
+- `bunfig.toml` — `linker = "hoisted"` (required for Metro/Expo compatibility)
+- `tsconfig.base.json` — shared TypeScript base config, apps extend it
+- React pinned to 19.2.0 across all apps for deduplication
 
 ### Rust Crate Structure
 | Crate | Package name | Purpose |
@@ -90,6 +111,134 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 1. Local dev working first — Rust backend serves existing React UI
 2. npx deployment second — defer until backend works
 
+### Dev Commands (Monorepo)
+
+| Command | What it does |
+|---------|-------------|
+| `bun dev` | Full-stack dev — Rust server (cargo-watch) + Web frontend (Vite HMR) |
+| `bun run dev:web` | Web frontend only (assumes Rust server running) |
+| `bun run dev:server` | Rust backend only (with cargo-watch) |
+| `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
+| `bun run preview` | Production-like local — builds web, runs Rust with prod-like share URLs |
+| `bun run build` | `bunx turbo build` — builds all apps |
+| `bun run test` | `bunx turbo test` — runs all test suites |
+| `cd apps/web && bunx vitest run` | Run web frontend tests only |
+| `cargo test -p claude-view-server` | Run Rust server tests only |
+| `bun run deploy:share:dev` | Build share SPA (`.env.dev`) + deploy to Pages dev |
+| `bun run deploy:share` | Build share SPA (`.env.production`) + deploy to Pages prod |
+
+**Shell-injected share env vars** (Rust server reads these via `std::env::var()`):
+
+| Script | `SHARE_WORKER_URL` (API calls) | `SHARE_VIEWER_URL` (user-facing links) |
+| ------------ | --------------------------------------------------------------- | ----------------------------------------- |
+| `dev:server` | `claude-view-share-worker-dev.workers.dev` | `claude-view-share-viewer-dev.pages.dev` |
+| `preview` | `api-share.claudeview.ai` | `share.claudeview.ai` |
+| `start` | Not set — sharing disabled unless exported in shell | Not set |
+
+Both `dev:server` and `preview` use `unset SHARE_WORKER_URL SHARE_VIEWER_URL` then hardcode the values — they are NOT overridable via prior shell exports. `SUPABASE_URL` still uses `${VAR:-default}` syntax and can be overridden. `start` is bare `cargo run --release` for production where env vars are set externally (systemd, Docker, CI).
+
+## Git Discipline — Dirty Working Tree
+
+**NEVER `git add` a file that has pre-existing unstaged modifications unless you are ONLY committing your own changes.** When `git status` shows ` M` (unstaged) files at session start, those are the user's in-progress work — not yours to commit.
+
+Before ANY `git add`:
+1. Run `git status` and note all pre-existing ` M` files
+2. If a file you need to edit is already modified, **STOP and warn the user**: "This file has uncommitted changes. Should I commit your work first, or isolate my changes?"
+3. Never commit the user's WIP under your commit message — it destroys git history and makes the user think their work was reverted
+4. If you must edit a file with pre-existing changes, either:
+   - Ask the user to commit their work first, OR
+   - Use `git stash` before starting, make your changes on a clean tree, commit, then `git stash pop`
+5. After `git add`, verify the diff size makes sense — if your change was 7 lines but the staged diff is 500+ lines, something is wrong
+
+**The golden rule:** Your commit should contain ONLY your changes. The user's uncommitted work is sacred — don't touch it, don't commit it, don't mix it with yours.
+
+## Git Discipline — NEVER Reset Branch Pointer
+
+**NEVER run `git reset` to FETCH_HEAD, a remote ref, or any ref that moves the branch pointer backward.** This silently orphans unpushed local commits and has caused hours of lost work.
+
+Banned commands (no exceptions without explicit user request):
+- `git reset FETCH_HEAD` — destroys all unpushed commits
+- `git reset origin/<branch>` — same effect
+- `git reset --hard` — destroys commits AND working directory changes
+- `git fetch && git reset` — the "sync" anti-pattern
+
+If you need to sync with remote, use `git pull --rebase` or ask the user first. If you need to undo your own commit, use `git revert`, not `git reset`.
+
+## Secrets & Environment Variables
+
+### Architecture
+
+End users running `npx claude-view` need **ZERO configuration**. All public keys/URLs are baked into the JS bundle at CI build time. No `.env` files ship with the binary. No `.env` files are loaded at runtime.
+
+### Per-service env var layout
+
+Each service manages its own env vars. No root `.env`. No automatic `.env` file loading in Rust (dotenvy removed).
+
+| Service | How env vars are set | .env.example location |
+|---------|---------------------|----------------------|
+| **Rust server** | Shell exports (`std::env::var()`) | `crates/server/.env.example` |
+| **Relay** | Fly.io secrets / shell exports | `crates/relay/.env.example` |
+| **Web frontend** | `apps/web/.env.local` (Vite `VITE_*`) | `apps/web/.env.example` |
+| **Share viewer** | `apps/share/.env.dev` / `.env.production` (Vite `VITE_*`) | `apps/share/.env.production` |
+| **Sidecar** | `process.env` with defaults | N/A (only `SIDECAR_SOCKET`) |
+| **Landing** | None (static HTML) | N/A |
+| **Share Worker** | `wrangler secret put` / `wrangler.toml` [vars] | `infra/share-worker/wrangler.toml` |
+| **CI/CD** | GitHub Actions secrets | N/A |
+
+### Rules
+
+- **No root `.env`** — each service is self-contained
+- **No `dotenvy`** — Rust reads shell env only, no magic file loading
+- **Never commit `.env`, `.env.local`, or `.dev.vars`** — they are gitignored
+- **Never put secret keys in `.env.example`** — only placeholders
+- **Publishable keys are safe to embed** in client code (Supabase publishable key, Supabase URL)
+- **Service role / secret keys are NEVER used** in this project — JWT validation uses JWKS
+
+### Cloudflare Dev/Prod Strategy
+
+Primary domain: **claudeview.ai**. `claudeview.com` redirects to `claudeview.ai`.
+
+| Service | Dev | Production |
+| ------- | --- | ---------- |
+| **Share Worker (API)** | `claude-view-share-worker-dev` (`.workers.dev`) | `claude-view-share-worker-prod` → `api-share.claudeview.ai` |
+| **Share Viewer (SPA)** | `claude-view-share-viewer-dev` (Pages) | `claude-view-share-viewer` → `share.claudeview.ai` |
+| **D1 Database** | `claude-view-share-d1-dev` | `claude-view-share-d1-prod` |
+| **R2 Bucket** | `claude-view-share-r2-dev` | `claude-view-share-r2-prod` |
+| **Landing** | Cloudflare Pages preview | `claudeview.ai` |
+
+**Two-domain split:** The share feature uses two separate Cloudflare services on different subdomains:
+
+- `api-share.claudeview.ai` — Worker (API: create/upload/fetch/delete encrypted blobs)
+- `share.claudeview.ai` — Pages (SPA: renders shared conversations in browser)
+
+The Rust server uses `SHARE_WORKER_URL` to call the API and `SHARE_VIEWER_URL` to build user-facing links. The share SPA uses `VITE_WORKER_URL` to fetch encrypted blobs from the API. Never conflate these two domains.
+
+Pattern: `claude-view-share-{type}-{env}` — always suffix with `-dev` or `-prod`.
+
+Deploy commands:
+
+- Worker dev: `cd infra/share-worker && npx wrangler deploy --env dev`
+- Worker prod: `cd infra/share-worker && npx wrangler deploy`
+- Viewer dev: `bun run deploy:share:dev` (builds with `.env.dev`, deploys to Pages)
+- Viewer prod: `bun run deploy:share` (builds with `.env.production`, deploys to Pages)
+
+Secrets (set via `wrangler secret put`, NEVER in code/docs):
+
+- `SUPABASE_URL` — set per environment (`--env dev` for dev)
+- Any future secrets follow the same pattern
+
+Safe to document (public):
+
+- Supabase project URL, publishable key
+- Worker names, D1/R2 resource names
+- Domain layout
+
+NEVER document:
+
+- Supabase secret key (`sb_secret_*`)
+- Wrangler secret values
+- Any `*.workers.dev` URLs with auth tokens
+
 ## Hard Rules
 
 > Detailed code examples: `docs/claude-rules-reference.md`
@@ -107,13 +256,22 @@ Business strategy and operational plans live in a **private sibling repo** (one 
 - **Startup:** Server binds port before any indexing/background work
 - **SIMD pre-filter:** `memmem::Finder` check before JSON parse
 - **Parallelism:** `Semaphore` bounded to `available_parallelism()`
+- **JWT/JWKS:** NEVER hardcode JWT algorithm (RS256, ES256, etc.). Supabase changes signing algorithms without notice (moved from HS256 → ES256). Always read the `alg` field from the JWKS response and use it dynamically. See `crates/server/src/auth/supabase.rs` — `jwk_algorithm()` parses `alg` from the JWK JSON.
 
 ### Full-Stack Wiring
 
 Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> JSON -> API response -> TS type -> hook -> component -> browser**. `Option`/`undefined` silently absorbs gaps — manual browser verification catches what tests won't.
 
+### Live Monitor / History Parity
+
+**Every UI feature in the live monitor side panel MUST also work in the history session detail panel.** They share the same `SessionDetailPanel` component via `SessionPanelData`. When adding a field:
+1. Add to `liveSessionToPanelData()` AND `historyToPanelData()` in `session-panel-data.ts`
+2. Verify the API returns the data for both live AND historical sessions
+3. This has broken 3+ times because only the live path gets wired. Never again.
+
 ### Frontend / React
 
+- **Source location:** `apps/web/src/` (not root `src/` -- that was the pre-monorepo layout)
 - **useEffect deps:** Never raw parsed objects. `useMemo` on a primitive key
 - **URL params:** Copy-then-modify (`new URLSearchParams(existing)`), never blank constructor
 - **Timestamps:** Guard `ts <= 0` before `new Date(ts * 1000)` at every layer. Timestamp 0 = data bug
@@ -135,7 +293,11 @@ Never trust a single external data source. Cross-check indexes against filesyste
 
 ### SSE / Vite Dev Proxy
 
-Vite buffers SSE. In dev mode, connect `EventSource` directly to Rust server at `:47892`. Test SSE with `bun run preview`.
+Vite buffers SSE. In dev mode, connect `EventSource` directly to Rust server at `:47892`. Test SSE with `cd apps/web && bun run preview`.
+
+### Frontend Changes Require `bun run build`
+
+`cargo run` only rebuilds the Rust server binary. The frontend JS bundle in `dist/` is a **separate build artifact**. After editing any `.ts`/`.tsx`/`.css` file, you MUST run `bun run build` before restarting the server — otherwise the browser serves the stale old bundle and your changes are invisible. **Always `bun run build` after frontend changes.**
 
 ### Release Process
 
@@ -143,9 +305,12 @@ Use `./scripts/release.sh {patch|minor|major}` then push with tags. Also bump `C
 
 ### Testing
 
-- **Test only what changed.** Before running tests, check `git diff --name-only` to identify touched crates. Only run `cargo test -p claude-view-{crate}` for crates with actual changes. Never blanket-run `cargo test -p claude-view-core` (626 tests, ~60s) unless core was modified.
+- **Test only what changed.** Before running tests, check `git diff --name-only` to identify touched crates/apps.
+- **Rust:** Only run `cargo test -p claude-view-{crate}` for crates with actual changes. Never blanket-run `cargo test -p claude-view-core` (626 tests, ~60s) unless core was modified.
 - **Module-scoped filters** when only a few files changed: `cargo test -p claude-view-core parser::` instead of the full crate.
-- **Full workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
+- **Full Rust workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
+- **Web frontend:** `cd apps/web && bunx vitest run` (not `bun run test:client` -- that no longer exists).
+- **All workspaces:** `bun run test` runs `bunx turbo test` across all apps.
 
 ## UI/UX Rules
 

@@ -19,13 +19,14 @@ pub use queries::facets::{FacetAggregateStats, FacetRow};
 pub use queries::hook_events::{self as hook_events_queries, HookEventRow};
 pub use queries::reports::{ProjectPreview, ReportPreview, ReportRow};
 pub use queries::settings::AppSettings;
-pub use queries::AggregateCostBreakdown;
 pub use queries::AIGenerationStats;
 pub use queries::ActivityPoint;
+pub use queries::AggregateCostBreakdown;
 pub use queries::BranchCount;
 pub use queries::ClassificationStatus;
 pub use queries::HealthStats;
 pub use queries::HealthStatus;
+pub use queries::IndexRunIntegrityCounters;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
@@ -49,8 +50,7 @@ pub use trends::WeekTrends;
 // Re-export unified pricing types (owned by claude_view_core::pricing)
 pub use claude_view_core::pricing::{
     calculate_cost, calculate_cost_usd, default_pricing, lookup_pricing, CacheStatus,
-    CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage, FALLBACK_INPUT_COST_PER_TOKEN,
-    FALLBACK_OUTPUT_COST_PER_TOKEN,
+    CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage,
 };
 // Re-export DB-owned pricing refresh helpers.
 pub use pricing::{fetch_litellm_pricing, load_pricing_cache, merge_pricing, save_pricing_cache};
@@ -76,6 +76,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, S
 use sqlx::{ConnectOptions, SqlitePool};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 use tracing::info;
 
@@ -99,6 +100,8 @@ pub struct Database {
     pool: SqlitePool,
     db_path: PathBuf,
 }
+
+static IN_MEMORY_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 impl Database {
     /// Open (or create) the database at the given path and run migrations.
@@ -139,7 +142,15 @@ impl Database {
     /// in-memory database. Without this, each connection gets its own
     /// separate database, breaking `tokio::try_join!` and concurrent queries.
     pub async fn new_in_memory() -> DbResult<Self> {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
+        // Use a unique named in-memory DB per call to avoid cross-test collisions
+        // when multiple test databases are created concurrently.
+        let unique_id = IN_MEMORY_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dsn = format!(
+            "sqlite:file:claude_view_test_{}_{}?mode=memory&cache=shared",
+            std::process::id(),
+            unique_id
+        );
+        let options = SqliteConnectOptions::from_str(&dsn)?
             .shared_cache(true)
             .busy_timeout(std::time::Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
@@ -238,12 +249,54 @@ impl Database {
             ("insertions", "INTEGER"),
             ("deletions", "INTEGER"),
         ];
+        let expected_index_run_cols = &[
+            (
+                "unknown_top_level_type_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_top_level_type_count >= 0)",
+            ),
+            (
+                "unknown_required_path_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_required_path_count >= 0)",
+            ),
+            (
+                "imaginary_path_access_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (imaginary_path_access_count >= 0)",
+            ),
+            (
+                "legacy_fallback_path_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (legacy_fallback_path_count >= 0)",
+            ),
+            (
+                "dropped_line_invalid_json_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (dropped_line_invalid_json_count >= 0)",
+            ),
+            (
+                "schema_mismatch_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (schema_mismatch_count >= 0)",
+            ),
+            (
+                "unknown_source_role_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (unknown_source_role_count >= 0)",
+            ),
+            (
+                "derived_source_message_doc_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (derived_source_message_doc_count >= 0)",
+            ),
+            (
+                "source_message_non_source_provenance_count",
+                "INTEGER NOT NULL DEFAULT 0 CHECK (source_message_non_source_provenance_count >= 0)",
+            ),
+        ];
 
         for (col, typedef) in expected_session_cols {
             self.add_column_if_missing("sessions", col, typedef).await?;
         }
         for (col, typedef) in expected_commit_cols {
             self.add_column_if_missing("commits", col, typedef).await?;
+        }
+        for (col, typedef) in expected_index_run_cols {
+            self.add_column_if_missing("index_runs", col, typedef)
+                .await?;
         }
 
         // Ensure contribution_snapshots table exists

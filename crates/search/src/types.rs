@@ -3,7 +3,7 @@ use ts_rs::TS;
 
 /// Response from a full-text search query across all sessions.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     /// The original query string.
@@ -20,7 +20,7 @@ pub struct SearchResponse {
 
 /// A session that contains one or more search matches.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHit {
     pub session_id: String,
@@ -40,7 +40,7 @@ pub struct SessionHit {
 
 /// A single message-level search match with a highlighted snippet.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MatchHit {
     /// "user", "assistant", or "tool"

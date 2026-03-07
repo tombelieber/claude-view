@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use crate::crypto::{
     box_secret_key, load_or_create_identity, load_paired_devices, remove_paired_device,
-    verifying_key_bytes,
+    store_verification_secret, verifying_key_bytes,
 };
 use crate::state::AppState;
 
@@ -42,6 +42,9 @@ struct QrPayload {
     k: String,
     /// One-time pairing token.
     t: String,
+    /// Verification secret (base64, 32 bytes). Included in QR URL only,
+    /// never sent to the relay. Phone uses it to compute HMAC binding.
+    s: String,
     /// Protocol version.
     v: u8,
 }
@@ -54,16 +57,22 @@ struct PairedDeviceResponse {
 }
 
 /// GET /pairing/qr — Generate QR payload for mobile pairing.
-async fn generate_qr(
-    State(_state): State<Arc<AppState>>,
-) -> Result<Json<QrPayload>, StatusCode> {
+async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPayload>, StatusCode> {
+    use rand::Rng;
+
     let identity = load_or_create_identity().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let box_secret =
-        box_secret_key(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let box_secret = box_secret_key(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let box_public = box_secret.public_key();
 
     let token = uuid::Uuid::new_v4().to_string();
+
+    // Generate 32-byte verification secret for HMAC anti-MITM binding.
+    // This secret is embedded in the QR URL and NEVER sent to the relay.
+    let verification_secret: [u8; 32] = rand::thread_rng().gen();
+    store_verification_secret(&token, &verification_secret)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let s_b64 = STANDARD.encode(verification_secret);
 
     let relay_ws = relay_ws_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let relay_http = relay_http_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
@@ -71,7 +80,7 @@ async fn generate_qr(
         verifying_key_bytes(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let client = reqwest::Client::new();
-    let _ = client
+    let resp = client
         .post(format!("{relay_http}/pair"))
         .json(&serde_json::json!({
             "device_id": identity.device_id,
@@ -79,14 +88,26 @@ async fn generate_qr(
             "one_time_token": &token,
         }))
         .send()
-        .await;
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to register pairing offer with relay: {e}");
+            StatusCode::BAD_GATEWAY
+        })?;
+    if !resp.status().is_success() {
+        tracing::error!("Relay rejected pairing offer: HTTP {}", resp.status());
+        return Err(StatusCode::BAD_GATEWAY);
+    }
 
     let k_b64 = STANDARD.encode(box_public.as_bytes());
+    // Include verification secret in QR URL so phone can compute HMAC binding.
+    // The relay never sees `s` — it's only in the direct QR scan.
     let mobile_url = format!(
-        "{}/mobile?k={}&t={}",
+        "{}/mobile?k={}&t={}&r={}&s={}",
         relay_http,
         urlencoding::encode(&k_b64),
         urlencoding::encode(&token),
+        urlencoding::encode(&relay_ws),
+        urlencoding::encode(&s_b64),
     );
 
     Ok(Json(QrPayload {
@@ -94,6 +115,7 @@ async fn generate_qr(
         r: relay_ws,
         k: k_b64,
         t: token,
+        s: s_b64,
         v: 1,
     }))
 }

@@ -6,10 +6,13 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-use super::{mean, Bucket, best_bucket, relative_improvement, worst_bucket};
+use super::{best_bucket, mean, relative_improvement, worst_bucket, Bucket};
 
 /// Calculate all workflow patterns from session data.
-pub fn calculate_workflow_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_workflow_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = w03_planning_to_execution(sessions, time_range_days) {
@@ -32,7 +35,10 @@ pub fn calculate_workflow_patterns(sessions: &[SessionInfo], time_range_days: u3
 }
 
 /// W03: Planning to Execution - sessions with more reads before edits perform better.
-fn w03_planning_to_execution(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn w03_planning_to_execution(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -75,7 +81,10 @@ fn w03_planning_to_execution(sessions: &[SessionInfo], time_range_days: u32) -> 
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -96,7 +105,10 @@ fn w03_planning_to_execution(sessions: &[SessionInfo], time_range_days: u32) -> 
 }
 
 /// W04: Test First Correlation - sessions with test file edits have fewer re-edits.
-fn w04_test_first_correlation(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn w04_test_first_correlation(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -152,7 +164,10 @@ fn w04_test_first_correlation(sessions: &[SessionInfo], time_range_days: u32) ->
 }
 
 /// W05: Commit Frequency - frequent committers vs end-of-session committers.
-fn w05_commit_frequency(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn w05_commit_frequency(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -204,7 +219,10 @@ fn w05_commit_frequency(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 
     let mut vars = HashMap::new();
     vars.insert("commit_style".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -225,7 +243,10 @@ fn w05_commit_frequency(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 }
 
 /// W06: Branch Discipline - feature branch vs main branch re-edit rates.
-fn w06_branch_discipline(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn w06_branch_discipline(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0 && s.git_branch.is_some())
@@ -278,7 +299,10 @@ fn w06_branch_discipline(sessions: &[SessionInfo], time_range_days: u32) -> Opti
 }
 
 /// W07: Read Before Write - sessions with more reads have better outcomes.
-fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn w07_read_before_write(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -322,7 +346,10 @@ fn w07_read_before_write(sessions: &[SessionInfo], time_range_days: u32) -> Opti
 
     let mut vars = HashMap::new();
     vars.insert("read_level".to_string(), best.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {

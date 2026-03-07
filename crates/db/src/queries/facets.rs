@@ -112,10 +112,9 @@ impl Database {
 
     /// Get all session IDs that have facets stored.
     pub async fn get_all_facet_session_ids(&self) -> sqlx::Result<Vec<String>> {
-        let rows: Vec<(String,)> =
-            sqlx::query_as("SELECT session_id FROM session_facets")
-                .fetch_all(self.pool())
-                .await?;
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT session_id FROM session_facets")
+            .fetch_all(self.pool())
+            .await?;
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
@@ -138,15 +137,13 @@ impl Database {
 
     /// Compute aggregate statistics across all facets.
     pub async fn get_facet_aggregate_stats(&self) -> sqlx::Result<FacetAggregateStats> {
-        let (total_with_facets,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM session_facets")
-                .fetch_one(self.pool())
-                .await?;
+        let (total_with_facets,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_facets")
+            .fetch_one(self.pool())
+            .await?;
 
-        let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-                .fetch_one(self.pool())
-                .await?;
+        let (total_sessions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
 
         let total_without_facets = total_sessions - total_with_facets;
 
@@ -164,11 +161,10 @@ impl Database {
         };
 
         // Frustrated count
-        let (frustrated_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM session_facets WHERE satisfaction = 'frustrated'",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (frustrated_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM session_facets WHERE satisfaction = 'frustrated'")
+                .fetch_one(self.pool())
+                .await?;
 
         // Satisfied or above: satisfied, very_satisfied, delighted
         let (satisfied_or_above_count,): (i64,) = sqlx::query_as(
@@ -208,8 +204,7 @@ impl Database {
         let mut results = Vec::new();
 
         for chunk in session_ids.chunks(SQLITE_VARIABLE_LIMIT) {
-            let placeholders: Vec<String> =
-                (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
             let in_clause = placeholders.join(", ");
 
             let sql = format!(
@@ -232,9 +227,7 @@ impl Database {
     /// Check the last 7 sessions for a negative satisfaction pattern.
     /// If 3+ of the last 7 are "frustrated" or "dissatisfied", returns
     /// (pattern_name, count, tip_text).
-    pub async fn get_pattern_alert(
-        &self,
-    ) -> sqlx::Result<Option<(String, i64, String)>> {
+    pub async fn get_pattern_alert(&self) -> sqlx::Result<Option<(String, i64, String)>> {
         // Get last 7 sessions ordered by ingested_at DESC
         let rows: Vec<(Option<String>,)> = sqlx::query_as(
             r#"
@@ -284,7 +277,9 @@ mod tests {
     use super::*;
 
     async fn setup_db() -> Database {
-        Database::new_in_memory().await.expect("in-memory DB should open")
+        Database::new_in_memory()
+            .await
+            .expect("in-memory DB should open")
     }
 
     async fn insert_test_session(db: &Database, id: &str) {
@@ -333,11 +328,10 @@ mod tests {
         assert_eq!(count, 1);
 
         // Verify it's actually in the DB
-        let (row_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM session_facets")
-                .fetch_one(db.pool())
-                .await
-                .unwrap();
+        let (row_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_facets")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
         assert_eq!(row_count, 1);
     }
 
@@ -355,11 +349,10 @@ mod tests {
         db.batch_upsert_facets(&[facet2]).await.unwrap();
 
         // Still just 1 row
-        let (row_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM session_facets")
-                .fetch_one(db.pool())
-                .await
-                .unwrap();
+        let (row_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_facets")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
         assert_eq!(row_count, 1);
 
         // Verify updated value

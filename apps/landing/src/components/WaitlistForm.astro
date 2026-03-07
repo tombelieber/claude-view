@@ -1,0 +1,299 @@
+---
+import { WAITLIST_API, SITE_URL, TURNSTILE_SITE_KEY } from '../data/site';
+
+interface Props {
+  /** 'default' for hero/feature sections, 'compact' for docs pages */
+  variant?: 'default' | 'compact'
+}
+
+const { variant = 'default' } = Astro.props
+const isCompact = variant === 'compact'
+---
+
+<div
+  class:list={['waitlist-form', { 'max-w-md mx-auto': isCompact, 'max-w-lg mx-auto': !isCompact }]}
+  data-api={WAITLIST_API}
+  data-site-url={SITE_URL}
+  data-site-key={TURNSTILE_SITE_KEY}
+  id="waitlist"
+>
+  <!-- NOTE: id="waitlist" is used as the scroll target for all '#waitlist' anchors.
+       Only place ONE WaitlistForm per page — duplicate ids violate HTML uniqueness.
+       If you need a second CTA on the same page, use <a href="#waitlist"> to scroll to this one. -->
+  <!-- Social proof counter -->
+  <p class:list={['waitlist-counter text-[var(--color-text-secondary)] mb-3', isCompact ? 'text-xs' : 'text-sm']}>
+    <span class="waitlist-count-text">Join the early access waitlist</span>
+  </p>
+
+  <!-- Form state: default -->
+  <form class="waitlist-default flex flex-col sm:flex-row gap-2">
+    <input
+      type="email"
+      name="email"
+      required
+      autocomplete="email"
+      placeholder="you@example.com"
+      class:list={[
+        'flex-1 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors',
+        isCompact ? 'px-3 py-2 text-sm' : 'px-4 py-3',
+      ]}
+    />
+    <!-- Honeypot: invisible to humans, bots fill it -->
+    <input type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0;" />
+    <!-- Turnstile widget container -->
+    <div class="turnstile-container"></div>
+    <button
+      type="submit"
+      class:list={[
+        'waitlist-submit rounded-lg font-semibold transition-all bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
+        isCompact ? 'px-4 py-2 text-sm' : 'px-6 py-3',
+      ]}
+    >
+      Join waitlist
+    </button>
+  </form>
+
+  <!-- Error message -->
+  <p class="waitlist-error text-red-400 text-sm mt-2 hidden"></p>
+
+  <!-- Success state (hidden by default) -->
+  <div class="waitlist-success hidden">
+    <p class:list={['font-semibold text-[var(--accent)] mb-3', isCompact ? 'text-base' : 'text-lg']}>
+      You're <span class="waitlist-position font-bold">#—</span> on the waitlist!
+    </p>
+    <p class="text-[var(--color-text-secondary)] text-sm mb-3">Share to help us grow:</p>
+    <div class="flex flex-col sm:flex-row gap-2 mb-3">
+      <div class="flex-1 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-white/80 px-3 py-2">
+        <code class="waitlist-referral-link text-[var(--accent)] text-sm truncate flex-1"></code>
+        <button
+          type="button"
+          class="waitlist-copy text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors text-sm font-medium whitespace-nowrap"
+          aria-label="Copy referral link"
+        >
+          Copy
+        </button>
+      </div>
+    </div>
+    <a
+      class="waitlist-share-x inline-flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-[rgba(0,0,0,0.12)] transition-colors"
+      href="#"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+      </svg>
+      Share on X
+    </a>
+  </div>
+</div>
+
+<style>
+  .waitlist-submit {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(217, 119, 87, 0.1);
+  }
+  .waitlist-submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(217, 119, 87, 0.18), 0 0 0 1px rgba(217, 119, 87, 0.1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .waitlist-submit:hover:not(:disabled) {
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  function initWaitlistForms() {
+    const forms = document.querySelectorAll<HTMLDivElement>('.waitlist-form')
+    const refParam = new URLSearchParams(window.location.search).get('ref')
+
+    forms.forEach((container) => {
+      // Guard: skip containers already initialized.
+      // Without this, `astro:after-swap` fires on every page navigation re-run
+      // and adds duplicate submit/copy event listeners, causing N API calls per submit
+      // after N page navigations.
+      if (container.dataset.initialized) return
+      container.dataset.initialized = 'true'
+
+      const api = container.dataset.api!
+      const siteUrl = container.dataset.siteUrl!
+      const siteKey = container.dataset.siteKey!
+
+      const form = container.querySelector<HTMLFormElement>('.waitlist-default')!
+      const emailInput = form.querySelector<HTMLInputElement>('input[name="email"]')!
+      const honeypot = form.querySelector<HTMLInputElement>('input[name="company"]')!
+      const submitBtn = form.querySelector<HTMLButtonElement>('.waitlist-submit')!
+      const errorEl = container.querySelector<HTMLParagraphElement>('.waitlist-error')!
+      const successEl = container.querySelector<HTMLDivElement>('.waitlist-success')!
+      const counterEl = container.querySelector<HTMLParagraphElement>('.waitlist-counter')!
+      const countTextEl = container.querySelector<HTMLSpanElement>('.waitlist-count-text')!
+      const positionEl = container.querySelector<HTMLSpanElement>('.waitlist-position')!
+      const linkEl = container.querySelector<HTMLElement>('.waitlist-referral-link')!
+      const copyBtn = container.querySelector<HTMLButtonElement>('.waitlist-copy')!
+      const shareXLink = container.querySelector<HTMLAnchorElement>('.waitlist-share-x')!
+      const turnstileContainer = container.querySelector<HTMLDivElement>('.turnstile-container')!
+
+      // Load Turnstile SDK and render widget
+      function loadTurnstile() {
+        if ((window as any).turnstile) {
+          renderTurnstile()
+          return
+        }
+        // Guard: only inject Turnstile SDK once per page (multiple forms would each call this).
+        // The script tag guard also ensures window.onTurnstileLoad is only set once —
+        // by whichever form runs loadTurnstile() first. That callback iterates ALL
+        // .waitlist-form containers, so every form on the page gets a widget regardless
+        // of which form registered the callback.
+        if (document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+          return
+        }
+        const script = document.createElement('script')
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad'
+        script.async = true
+        ;(window as any).onTurnstileLoad = () => {
+          document.querySelectorAll<HTMLDivElement>('.waitlist-form').forEach((c) => {
+            const tc = c.querySelector<HTMLDivElement>('.turnstile-container')
+            if (tc && !tc.dataset.rendered) {
+              tc.dataset.rendered = 'true'
+              // Capture widgetId to enable reset on token expiry
+              const widgetId = (window as any).turnstile.render(tc, {
+                sitekey: c.dataset.siteKey,
+                callback: (token: string) => {
+                  c.dataset.turnstileToken = token
+                },
+                'expired-callback': () => {
+                  c.dataset.turnstileToken = ''
+                  // Re-issue a fresh token automatically — user doesn't see an error
+                  ;(window as any).turnstile.reset(widgetId)
+                },
+                size: 'flexible',
+                theme: 'light',
+              })
+            }
+          })
+        }
+        document.head.appendChild(script)
+      }
+
+      function renderTurnstile() {
+        if (turnstileContainer.dataset.rendered) return
+        turnstileContainer.dataset.rendered = 'true'
+        const widgetId = (window as any).turnstile.render(turnstileContainer, {
+          sitekey: siteKey,
+          callback: (token: string) => { container.dataset.turnstileToken = token },
+          'expired-callback': () => {
+            container.dataset.turnstileToken = ''
+            ;(window as any).turnstile.reset(widgetId)
+          },
+          size: 'flexible',
+          theme: 'light',
+        })
+      }
+
+      loadTurnstile()
+
+      // Fetch waitlist count for social proof
+      fetch(api)
+        .then((r) => r.json())
+        .then((data: any) => {
+          if (data.total_count > 0) {
+            countTextEl.textContent = `Join ${data.total_count.toLocaleString()} developers on the waitlist`
+          }
+        })
+        .catch(() => {}) // Silent fail — counter is nice-to-have
+
+      // Form submission
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        errorEl.classList.add('hidden')
+        errorEl.textContent = ''
+
+        const email = emailInput.value.trim()
+        if (!email) {
+          errorEl.textContent = 'Please enter your email'
+          errorEl.classList.remove('hidden')
+          return
+        }
+
+        const token = container.dataset.turnstileToken
+        if (!token) {
+          errorEl.textContent = 'Verification loading — please try again in a moment'
+          errorEl.classList.remove('hidden')
+          return
+        }
+
+        submitBtn.disabled = true
+        submitBtn.textContent = 'Joining...'
+
+        try {
+          const res = await fetch(api, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              ref: refParam || undefined,
+              turnstile_token: token,
+              company: honeypot.value, // Honeypot value (empty for humans)
+            }),
+          })
+
+          const data = await res.json()
+
+          if (!res.ok) {
+            errorEl.textContent = data.error || 'Something went wrong. Please try again.'
+            errorEl.classList.remove('hidden')
+            submitBtn.disabled = false
+            submitBtn.textContent = 'Join waitlist'
+            return
+          }
+
+          // Success — transform to success state
+          const referralUrl = `${siteUrl}?ref=${data.referral_code}`
+          positionEl.textContent = `#${data.position}`
+          linkEl.textContent = referralUrl
+
+          const shareText = encodeURIComponent(
+            `I just joined the claude-view waitlist — Mission Control for AI coding agents. Join me:`
+          )
+          shareXLink.href = `https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(referralUrl)}`
+
+          form.classList.add('hidden')
+          counterEl.classList.add('hidden')
+          successEl.classList.remove('hidden')
+        } catch {
+          errorEl.textContent = 'Network error. Please check your connection and try again.'
+          errorEl.classList.remove('hidden')
+          submitBtn.disabled = false
+          submitBtn.textContent = 'Join waitlist'
+        }
+      })
+
+      // Copy referral link
+      copyBtn.addEventListener('click', async () => {
+        const link = linkEl.textContent || ''
+        try {
+          await navigator.clipboard.writeText(link)
+          copyBtn.textContent = 'Copied!'
+          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+        } catch {
+          // Fallback
+          const textarea = document.createElement('textarea')
+          textarea.value = link
+          textarea.style.position = 'fixed'
+          textarea.style.opacity = '0'
+          document.body.appendChild(textarea)
+          textarea.select()
+          document.execCommand('copy')
+          document.body.removeChild(textarea)
+          copyBtn.textContent = 'Copied!'
+          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+        }
+      })
+    })
+  }
+
+  // Run on initial load and after Astro view transitions
+  initWaitlistForms()
+  document.addEventListener('astro:after-swap', initWaitlistForms)
+</script>

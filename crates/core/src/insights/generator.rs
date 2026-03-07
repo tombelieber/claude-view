@@ -10,7 +10,7 @@ use super::templates::{get_template, render_template};
 
 /// A generated insight with human-readable text and scoring.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedInsight {
     pub pattern_id: String,
@@ -25,7 +25,7 @@ pub struct GeneratedInsight {
 
 /// Evidence backing an insight.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightEvidence {
     pub sample_size: u32,
@@ -81,18 +81,29 @@ pub fn generate_insight(
 
 /// Sort insights by impact score descending.
 pub fn sort_by_impact(insights: &mut [GeneratedInsight]) {
-    insights.sort_by(|a, b| {
-        b.impact_score
-            .partial_cmp(&a.impact_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    insights.sort_by(|a, b| b.impact_score.total_cmp(&a.impact_score));
 }
 
 /// Group insights by impact tier.
-pub fn group_by_tier(insights: &[GeneratedInsight]) -> (Vec<&GeneratedInsight>, Vec<&GeneratedInsight>, Vec<&GeneratedInsight>) {
-    let high: Vec<_> = insights.iter().filter(|i| i.impact_tier == "high").collect();
-    let medium: Vec<_> = insights.iter().filter(|i| i.impact_tier == "medium").collect();
-    let observations: Vec<_> = insights.iter().filter(|i| i.impact_tier == "observation").collect();
+pub fn group_by_tier(
+    insights: &[GeneratedInsight],
+) -> (
+    Vec<&GeneratedInsight>,
+    Vec<&GeneratedInsight>,
+    Vec<&GeneratedInsight>,
+) {
+    let high: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "high")
+        .collect();
+    let medium: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "medium")
+        .collect();
+    let observations: Vec<_> = insights
+        .iter()
+        .filter(|i| i.impact_tier == "observation")
+        .collect();
     (high, medium, observations)
 }
 

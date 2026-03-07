@@ -9,9 +9,9 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
-use tracing::{info, warn};
 use claude_view_core::facets::{default_facet_cache_path, scan_facet_cache};
 use claude_view_db::{Database, FacetRow};
+use tracing::{info, warn};
 
 /// Status of the current facet ingest job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,12 +100,16 @@ impl FacetIngestState {
 
     /// Returns `true` if ingest is currently running (Scanning or Ingesting).
     pub fn is_running(&self) -> bool {
-        matches!(self.status(), IngestStatus::Scanning | IngestStatus::Ingesting)
+        matches!(
+            self.status(),
+            IngestStatus::Scanning | IngestStatus::Ingesting
+        )
     }
 
     /// Reset all counters to zero and status to Idle.
     pub fn reset(&self) {
-        self.status.store(IngestStatus::Idle as u8, Ordering::Relaxed);
+        self.status
+            .store(IngestStatus::Idle as u8, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
         self.ingested.store(0, Ordering::Relaxed);
         self.skipped.store(0, Ordering::Relaxed);
@@ -138,7 +142,9 @@ pub async fn run_facet_ingest(
     state.reset();
 
     // 2. Set status to Scanning
-    state.status.store(IngestStatus::Scanning as u8, Ordering::Relaxed);
+    state
+        .status
+        .store(IngestStatus::Scanning as u8, Ordering::Relaxed);
 
     // 3. Determine cache directory and scan
     let dir = match cache_dir {
@@ -149,20 +155,28 @@ pub async fn run_facet_ingest(
     let cached_facets = scan_facet_cache(&dir).map_err(|e| {
         let msg = format!("Failed to scan facet cache at {}: {}", dir.display(), e);
         warn!("{}", msg);
-        state.status.store(IngestStatus::Error as u8, Ordering::Relaxed);
+        state
+            .status
+            .store(IngestStatus::Error as u8, Ordering::Relaxed);
         msg
     })?;
 
     // 4. If empty, set NoCacheFound and return
     if cached_facets.is_empty() {
         info!("No facet cache files found in {}", dir.display());
-        state.status.store(IngestStatus::NoCacheFound as u8, Ordering::Relaxed);
+        state
+            .status
+            .store(IngestStatus::NoCacheFound as u8, Ordering::Relaxed);
         return Ok(0);
     }
 
     // 5. Set total and transition to Ingesting
-    state.total.store(cached_facets.len() as u64, Ordering::Relaxed);
-    state.status.store(IngestStatus::Ingesting as u8, Ordering::Relaxed);
+    state
+        .total
+        .store(cached_facets.len() as u64, Ordering::Relaxed);
+    state
+        .status
+        .store(IngestStatus::Ingesting as u8, Ordering::Relaxed);
 
     // 6. Get existing session IDs from DB
     let existing_ids: HashSet<String> = db
@@ -171,7 +185,9 @@ pub async fn run_facet_ingest(
         .map_err(|e| {
             let msg = format!("Failed to query existing facet IDs: {}", e);
             warn!("{}", msg);
-            state.status.store(IngestStatus::Error as u8, Ordering::Relaxed);
+            state
+                .status
+                .store(IngestStatus::Error as u8, Ordering::Relaxed);
             msg
         })?
         .into_iter()
@@ -194,10 +210,8 @@ pub async fn run_facet_ingest(
                     .unwrap_or_else(|_| "{}".to_string()),
                 outcome: facet.outcome.clone(),
                 satisfaction: facet.dominant_satisfaction().map(|s| s.to_string()),
-                user_satisfaction_counts: serde_json::to_string(
-                    &facet.user_satisfaction_counts,
-                )
-                .unwrap_or_else(|_| "{}".to_string()),
+                user_satisfaction_counts: serde_json::to_string(&facet.user_satisfaction_counts)
+                    .unwrap_or_else(|_| "{}".to_string()),
                 claude_helpfulness: facet.claude_helpfulness.clone(),
                 session_type: facet.session_type.clone(),
                 friction_counts: serde_json::to_string(&facet.friction_counts)
@@ -219,7 +233,9 @@ pub async fn run_facet_ingest(
         db.batch_upsert_facets(&new_rows).await.map_err(|e| {
             let msg = format!("Failed to upsert facets: {}", e);
             warn!("{}", msg);
-            state.status.store(IngestStatus::Error as u8, Ordering::Relaxed);
+            state
+                .status
+                .store(IngestStatus::Error as u8, Ordering::Relaxed);
             msg
         })?;
     }
@@ -231,9 +247,13 @@ pub async fn run_facet_ingest(
     // 11. Set status to Complete
     info!(
         "Facet ingest complete: {} new, {} skipped, {} total cached",
-        new_count, skipped_count, cached_facets.len()
+        new_count,
+        skipped_count,
+        cached_facets.len()
     );
-    state.status.store(IngestStatus::Complete as u8, Ordering::Relaxed);
+    state
+        .status
+        .store(IngestStatus::Complete as u8, Ordering::Relaxed);
 
     // 12. Return new_count
     Ok(new_count)
@@ -273,13 +293,19 @@ mod tests {
         assert_eq!(state.status(), IngestStatus::Idle);
         assert!(!state.is_running());
 
-        state.status.store(IngestStatus::Scanning as u8, Ordering::Relaxed);
+        state
+            .status
+            .store(IngestStatus::Scanning as u8, Ordering::Relaxed);
         assert!(state.is_running());
 
-        state.status.store(IngestStatus::Ingesting as u8, Ordering::Relaxed);
+        state
+            .status
+            .store(IngestStatus::Ingesting as u8, Ordering::Relaxed);
         assert!(state.is_running());
 
-        state.status.store(IngestStatus::Complete as u8, Ordering::Relaxed);
+        state
+            .status
+            .store(IngestStatus::Complete as u8, Ordering::Relaxed);
         assert!(!state.is_running());
 
         state.reset();

@@ -81,7 +81,8 @@ impl GitSyncState {
     /// Must be called before each new sync to clear stale values from the
     /// previous run. Safe to call from any thread.
     pub fn reset(&self) {
-        self.phase.store(GitSyncPhase::Idle as u8, Ordering::Relaxed);
+        self.phase
+            .store(GitSyncPhase::Idle as u8, Ordering::Relaxed);
         self.repos_scanned.store(0, Ordering::Relaxed);
         self.total_repos.store(0, Ordering::Relaxed);
         self.commits_found.store(0, Ordering::Relaxed);
@@ -146,7 +147,8 @@ impl GitSyncState {
 
     /// Set the total number of sessions eligible for correlation.
     pub fn set_total_correlatable_sessions(&self, val: usize) {
-        self.total_correlatable_sessions.store(val, Ordering::Relaxed);
+        self.total_correlatable_sessions
+            .store(val, Ordering::Relaxed);
     }
 
     // -- Counters (fetch_add-based) -------------------------------------------

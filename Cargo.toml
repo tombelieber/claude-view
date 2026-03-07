@@ -12,13 +12,14 @@ repository = "https://github.com/tombelieber/claude-view"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full", "test-util"] }
+tokio-util = "0.7"
 tokio-stream = "0.1"
 async-stream = "0.3"
 
 # Web framework
 axum = { version = "0.8", features = ["macros", "ws"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "trace", "compression-gzip"] }
-tower = { version = "0.5", features = ["util"] }
+tower = { version = "0.5", features = ["util", "timeout"] }
 
 # Database
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
@@ -60,9 +61,6 @@ open = "5"
 # HTTP client (for litellm pricing fetch)
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
-# Environment
-dotenvy = "0.15"
-
 # Utilities
 base64 = "0.22"
 dirs = "5"
@@ -72,7 +70,7 @@ urlencoding = "2"
 memmap2 = "0.9"
 memchr = "2"
 sysinfo = "0.33"
-ts-rs = { version = "11", features = ["serde-compat"] }
+ts-rs = { version = "11", features = ["serde-compat", "serde-json-impl"] }
 
 # Testing
 tempfile = "3"
@@ -82,6 +80,12 @@ assert-json-diff = "2"
 pretty_assertions = "1"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
+
+# Phase F: Unix socket HTTP client (sidecar proxy)
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
 
 # Internal crates
 claude-view-core = { path = "crates/core" }

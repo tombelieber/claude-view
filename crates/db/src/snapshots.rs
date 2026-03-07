@@ -19,11 +19,6 @@ use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Legacy blended cost per token in cents (0.00025 cents = $2.50/M tokens).
-/// Used only by `estimate_cost_cents()` for snapshot generation.
-/// For accurate per-model pricing, use `pricing::calculate_cost_usd()`.
-const BLENDED_COST_PER_TOKEN_CENTS: f64 = 0.00025;
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -56,10 +51,8 @@ fn fill_date_gaps(sparse: Vec<DailyTrendPoint>, from: &str, to: &str) -> Vec<Dai
     }
 
     // Build a lookup from date string -> existing data point
-    let mut by_date: std::collections::HashMap<String, DailyTrendPoint> = sparse
-        .into_iter()
-        .map(|p| (p.date.clone(), p))
-        .collect();
+    let mut by_date: std::collections::HashMap<String, DailyTrendPoint> =
+        sparse.into_iter().map(|p| (p.date.clone(), p)).collect();
 
     let mut result = Vec::new();
     let mut current = start;
@@ -131,19 +124,19 @@ impl TimeRange {
     /// Cache duration in seconds for this time range.
     pub fn cache_seconds(&self) -> u64 {
         match self {
-            TimeRange::Today => 60,      // 1 minute for real-time data
-            TimeRange::Week => 300,      // 5 minutes
-            TimeRange::Month => 900,     // 15 minutes
+            TimeRange::Today => 60,        // 1 minute for real-time data
+            TimeRange::Week => 300,        // 5 minutes
+            TimeRange::Month => 900,       // 15 minutes
             TimeRange::NinetyDays => 1800, // 30 minutes
-            TimeRange::All => 1800,      // 30 minutes
-            TimeRange::Custom => 900,    // 15 minutes
+            TimeRange::All => 1800,        // 30 minutes
+            TimeRange::Custom => 900,      // 15 minutes
         }
     }
 }
 
 /// A single contribution snapshot row.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionSnapshot {
     #[ts(type = "number")]
@@ -171,7 +164,7 @@ pub struct ContributionSnapshot {
 
 /// Aggregated contribution metrics for a time period.
 #[derive(Debug, Clone, Default, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AggregatedContributions {
     /// Total sessions in the period
@@ -195,7 +188,7 @@ pub struct AggregatedContributions {
     /// Total tokens used
     #[ts(type = "number")]
     pub tokens_used: i64,
-    /// Total estimated cost in cents
+    /// Total cost in cents
     #[ts(type = "number")]
     pub cost_cents: i64,
     /// Total files edited across all sessions
@@ -205,7 +198,7 @@ pub struct AggregatedContributions {
 
 /// Daily trend data point for charts.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTrendPoint {
     pub date: String,
@@ -225,7 +218,7 @@ pub struct DailyTrendPoint {
 
 /// Model usage breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelBreakdown {
     pub model: String,
@@ -242,7 +235,7 @@ pub struct ModelBreakdown {
 
 /// Branch contribution breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchBreakdown {
     pub branch: String,
@@ -263,7 +256,7 @@ pub struct BranchBreakdown {
 
 /// Session contribution detail for the drill-down view.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContribution {
     pub session_id: String,
@@ -286,7 +279,7 @@ pub struct SessionContribution {
 
 /// Linked commit for session drill-down.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LinkedCommit {
     pub hash: String,
@@ -301,7 +294,7 @@ pub struct LinkedCommit {
 
 /// Model statistics for the byModel breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelStats {
     pub model: String,
@@ -324,7 +317,7 @@ pub struct ModelStats {
 
 /// Learning curve data point.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurvePeriod {
     pub period: String,
@@ -333,7 +326,7 @@ pub struct LearningCurvePeriod {
 
 /// Learning curve metrics.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurve {
     pub periods: Vec<LearningCurvePeriod>,
@@ -344,7 +337,7 @@ pub struct LearningCurve {
 
 /// Skill effectiveness statistics.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillStats {
     pub skill: String,
@@ -358,7 +351,7 @@ pub struct SkillStats {
 
 /// Uncommitted work tracker entry.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UncommittedWork {
     pub project_id: String,
@@ -377,7 +370,7 @@ pub struct UncommittedWork {
 
 /// File impact for session detail view.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FileImpact {
     pub path: String,
@@ -390,7 +383,7 @@ pub struct FileImpact {
 
 /// Lightweight session summary for branch expansion.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSession {
     pub session_id: String,
@@ -569,7 +562,8 @@ impl Database {
                 let from = from_date.unwrap_or("1970-01-01");
                 let to_default = Local::now().format("%Y-%m-%d").to_string();
                 let to = to_date.unwrap_or(&to_default);
-                self.get_contributions_in_range(from, to, project_id, branch).await
+                self.get_contributions_in_range(from, to, project_id, branch)
+                    .await
             }
             _ => {
                 let days = range.days_back().unwrap_or(7);
@@ -577,7 +571,8 @@ impl Database {
                     .format("%Y-%m-%d")
                     .to_string();
                 let to = Local::now().format("%Y-%m-%d").to_string();
-                self.get_contributions_in_range(&from, &to, project_id, branch).await
+                self.get_contributions_in_range(&from, &to, project_id, branch)
+                    .await
             }
         }
     }
@@ -591,7 +586,7 @@ impl Database {
         let today = Local::now().format("%Y-%m-%d").to_string();
         let today_start = format!("{} 00:00:00", today);
 
-        let row: (i64, i64, i64, i64, i64, i64) = if let Some(pid) = project_id {
+        let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = if let Some(pid) = project_id {
             sqlx::query_as(
                 r#"
                 SELECT
@@ -600,7 +595,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -621,7 +617,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND (?2 IS NULL OR git_branch = ?2)
@@ -675,8 +672,7 @@ impl Database {
                 .await?
             };
 
-        // Estimate cost (simplified - uses average pricing)
-        let cost_cents = estimate_cost_cents(row.3);
+        let cost_cents = usd_opt_to_cents(row.6, row.0);
 
         Ok(AggregatedContributions {
             sessions_count: row.0,
@@ -693,8 +689,8 @@ impl Database {
 
     /// Get all-time contributions by querying sessions directly.
     ///
-    /// Uses `valid_sessions` view which filters `is_sidechain = 0 AND last_message_at > 0`
-    /// to match the dashboard's session count.
+    /// Uses `valid_sessions` (`is_sidechain = 0`) to match dashboard
+    /// primary-session semantics.
     async fn get_all_contributions(
         &self,
         project_id: Option<&str>,
@@ -702,7 +698,7 @@ impl Database {
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -710,7 +706,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND (?2 IS NULL OR git_branch = ?2)
@@ -740,7 +737,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -755,7 +752,7 @@ impl Database {
             })
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -763,7 +760,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE git_branch = ?1
                 "#,
@@ -789,7 +787,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -804,7 +802,7 @@ impl Database {
             })
         } else {
             // Global: query sessions directly (consistent with dashboard canonical filter)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -812,7 +810,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 "#,
             )
@@ -834,7 +833,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -853,7 +852,7 @@ impl Database {
     /// Get contributions in a date range.
     ///
     /// All branches query `valid_sessions` directly (view pre-filters
-    /// `is_sidechain = 0 AND last_message_at > 0`) to match the dashboard.
+    /// `is_sidechain = 0`) to match the dashboard.
     async fn get_contributions_in_range(
         &self,
         from: &str,
@@ -863,7 +862,7 @@ impl Database {
     ) -> DbResult<AggregatedContributions> {
         if let Some(pid) = project_id {
             // Project-filtered: query sessions directly (snapshots only have global data)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -871,7 +870,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE project_id = ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
@@ -909,7 +909,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -924,7 +924,7 @@ impl Database {
             })
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -932,7 +932,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -966,7 +967,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -981,7 +982,7 @@ impl Database {
             })
         } else {
             // Global: query sessions directly (consistent with dashboard canonical filter)
-            let row: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            let row: (i64, i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
@@ -989,7 +990,8 @@ impl Database {
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(user_prompt_count), 0) as prompts,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1019,7 +1021,7 @@ impl Database {
                 .fetch_one(self.pool())
                 .await?;
 
-            let cost_cents = estimate_cost_cents(row.3);
+            let cost_cents = usd_opt_to_cents(row.6, row.0);
 
             Ok(AggregatedContributions {
                 sessions_count: row.0,
@@ -1060,9 +1062,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -1076,7 +1079,7 @@ impl Database {
         let sparse = if let Some(pid) = project_id {
             // Project-filtered: query sessions directly grouped by date
             // (snapshots only have global data)
-            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
+            let rows: Vec<(String, i64, i64, i64, i64, i64, f64)> = sqlx::query_as(
                 r#"
                 SELECT
                     date(s.last_message_at, 'unixepoch', 'localtime') as date,
@@ -1090,7 +1093,8 @@ impl Database {
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(s.total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions s
                 WHERE s.project_id = ?1
                   AND s.is_sidechain = 0
@@ -1109,22 +1113,31 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                    let cost_cents = estimate_cost_cents(tokens_used);
-                    DailyTrendPoint {
+                .map(
+                    |(
                         date,
                         lines_added,
                         lines_removed,
                         commits,
                         sessions,
                         tokens_used,
-                        cost_cents,
-                    }
-                })
+                        cost_usd,
+                    )| {
+                        DailyTrendPoint {
+                            date,
+                            lines_added,
+                            lines_removed,
+                            commits,
+                            sessions,
+                            tokens_used,
+                            cost_cents: usd_to_cents(cost_usd),
+                        }
+                    },
+                )
                 .collect()
         } else if branch.is_some() {
             // Global + branch filter: query sessions directly (snapshots lack branch column)
-            let rows: Vec<(String, i64, i64, i64, i64, i64)> = sqlx::query_as(
+            let rows: Vec<(String, i64, i64, i64, i64, i64, f64)> = sqlx::query_as(
                 r#"
                 SELECT
                     date(s.last_message_at, 'unixepoch', 'localtime') as date,
@@ -1136,7 +1149,8 @@ impl Database {
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
                     ), 0) as commits_count,
                     COUNT(*) as sessions_count,
-                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used
+                    COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used,
+                    COALESCE(SUM(s.total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions s
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
@@ -1152,18 +1166,27 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used)| {
-                    let cost_cents = estimate_cost_cents(tokens_used);
-                    DailyTrendPoint {
+                .map(
+                    |(
                         date,
                         lines_added,
                         lines_removed,
                         commits,
                         sessions,
                         tokens_used,
-                        cost_cents,
-                    }
-                })
+                        cost_usd,
+                    )| {
+                        DailyTrendPoint {
+                            date,
+                            lines_added,
+                            lines_removed,
+                            commits,
+                            sessions,
+                            tokens_used,
+                            cost_cents: usd_to_cents(cost_usd),
+                        }
+                    },
+                )
                 .collect()
         } else {
             // Global: use pre-aggregated snapshots
@@ -1188,15 +1211,25 @@ impl Database {
             .await?;
 
             rows.into_iter()
-                .map(|(date, lines_added, lines_removed, commits, sessions, tokens_used, cost_cents)| DailyTrendPoint {
-                    date,
-                    lines_added,
-                    lines_removed,
-                    commits,
-                    sessions,
-                    tokens_used,
-                    cost_cents,
-                })
+                .map(
+                    |(
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    )| DailyTrendPoint {
+                        date,
+                        lines_added,
+                        lines_removed,
+                        commits,
+                        sessions,
+                        tokens_used,
+                        cost_cents,
+                    },
+                )
                 .collect()
         };
 
@@ -1226,9 +1259,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -1277,7 +1311,15 @@ impl Database {
             Ok(rows
                 .into_iter()
                 .map(
-                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity)| {
+                    |(
+                        branch,
+                        sessions_count,
+                        lines_added,
+                        lines_removed,
+                        commits_count,
+                        _files_edited,
+                        last_activity,
+                    )| {
                         BranchBreakdown {
                             branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
                             sessions_count,
@@ -1294,7 +1336,17 @@ impl Database {
                 .collect())
         } else {
             // Global: group by project + branch so frontend can group by project
-            let rows: Vec<(Option<String>, i64, i64, i64, i64, i64, Option<i64>, Option<String>, Option<String>)> = sqlx::query_as(
+            let rows: Vec<(
+                Option<String>,
+                i64,
+                i64,
+                i64,
+                i64,
+                i64,
+                Option<i64>,
+                Option<String>,
+                Option<String>,
+            )> = sqlx::query_as(
                 r#"
                 SELECT
                     s.git_branch,
@@ -1329,7 +1381,17 @@ impl Database {
             Ok(rows
                 .into_iter()
                 .map(
-                    |(branch, sessions_count, lines_added, lines_removed, commits_count, _files_edited, last_activity, pid, pname)| {
+                    |(
+                        branch,
+                        sessions_count,
+                        lines_added,
+                        lines_removed,
+                        commits_count,
+                        _files_edited,
+                        last_activity,
+                        pid,
+                        pname,
+                    )| {
                         BranchBreakdown {
                             branch: branch.unwrap_or_else(|| "(no branch)".to_string()),
                             sessions_count,
@@ -1373,10 +1435,11 @@ impl Database {
             Some(branch)
         };
 
-        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
-            if let Some(b) = branch_filter {
-                sqlx::query_as(
-                    r#"
+        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> =
+            if let Some(pid) = project_id {
+                if let Some(b) = branch_filter {
+                    sqlx::query_as(
+                        r#"
                     SELECT
                         id,
                         work_type,
@@ -1393,17 +1456,17 @@ impl Database {
                     ORDER BY last_message_at DESC
                     LIMIT ?5
                     "#,
-                )
-                .bind(pid)
-                .bind(b)
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+                    )
+                    .bind(pid)
+                    .bind(b)
+                    .bind(&from)
+                    .bind(&to)
+                    .bind(limit)
+                    .fetch_all(self.pool())
+                    .await?
+                } else {
+                    sqlx::query_as(
+                        r#"
                     SELECT
                         id,
                         work_type,
@@ -1420,17 +1483,17 @@ impl Database {
                     ORDER BY last_message_at DESC
                     LIMIT ?4
                     "#,
-                )
-                .bind(pid)
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            }
-        } else if let Some(b) = branch_filter {
-            sqlx::query_as(
-                r#"
+                    )
+                    .bind(pid)
+                    .bind(&from)
+                    .bind(&to)
+                    .bind(limit)
+                    .fetch_all(self.pool())
+                    .await?
+                }
+            } else if let Some(b) = branch_filter {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     id,
                     work_type,
@@ -1446,16 +1509,16 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?4
                 "#,
-            )
-            .bind(b)
-            .bind(&from)
-            .bind(&to)
-            .bind(limit)
-            .fetch_all(self.pool())
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
+                )
+                .bind(b)
+                .bind(&from)
+                .bind(&to)
+                .bind(limit)
+                .fetch_all(self.pool())
+                .await?
+            } else {
+                sqlx::query_as(
+                    r#"
                 SELECT
                     id,
                     work_type,
@@ -1471,18 +1534,26 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?3
                 "#,
-            )
-            .bind(&from)
-            .bind(&to)
-            .bind(limit)
-            .fetch_all(self.pool())
-            .await?
-        };
+                )
+                .bind(&from)
+                .bind(&to)
+                .bind(limit)
+                .fetch_all(self.pool())
+                .await?
+            };
 
         Ok(rows
             .into_iter()
             .map(
-                |(session_id, work_type, duration_seconds, ai_lines_added, ai_lines_removed, commit_count, last_message_at)| {
+                |(
+                    session_id,
+                    work_type,
+                    duration_seconds,
+                    ai_lines_added,
+                    ai_lines_removed,
+                    commit_count,
+                    last_message_at,
+                )| {
                     BranchSession {
                         session_id,
                         work_type,
@@ -1502,9 +1573,13 @@ impl Database {
     // ========================================================================
 
     /// Get contribution detail for a single session.
-    pub async fn get_session_contribution(&self, session_id: &str) -> DbResult<Option<SessionContribution>> {
-        let row: Option<(String, Option<String>, i64, i64, i64, i64, i64, i64, i64)> = sqlx::query_as(
-            r#"
+    pub async fn get_session_contribution(
+        &self,
+        session_id: &str,
+    ) -> DbResult<Option<SessionContribution>> {
+        let row: Option<(String, Option<String>, i64, i64, i64, i64, i64, i64, i64)> =
+            sqlx::query_as(
+                r#"
             SELECT
                 id,
                 work_type,
@@ -1515,16 +1590,16 @@ impl Database {
                 files_edited_count,
                 reedited_files_count,
                 commit_count
-            FROM sessions
+            FROM valid_sessions
             WHERE id = ?1
             "#,
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+            )
+            .bind(session_id)
+            .fetch_optional(self.pool())
+            .await?;
 
-        Ok(row.map(|(session_id, work_type, duration_seconds, prompt_count, ai_lines_added, ai_lines_removed, files_edited_count, reedited_files_count, commit_count)| {
-            SessionContribution {
+        Ok(row.map(
+            |(
                 session_id,
                 work_type,
                 duration_seconds,
@@ -1534,8 +1609,20 @@ impl Database {
                 files_edited_count,
                 reedited_files_count,
                 commit_count,
-            }
-        }))
+            )| {
+                SessionContribution {
+                    session_id,
+                    work_type,
+                    duration_seconds,
+                    prompt_count,
+                    ai_lines_added,
+                    ai_lines_removed,
+                    files_edited_count,
+                    reedited_files_count,
+                    commit_count,
+                }
+            },
+        ))
     }
 
     /// Get commits linked to a session.
@@ -1560,13 +1647,15 @@ impl Database {
 
         Ok(rows
             .into_iter()
-            .map(|(hash, message, insertions, deletions, tier)| LinkedCommit {
-                hash,
-                message,
-                insertions,
-                deletions,
-                tier,
-            })
+            .map(
+                |(hash, message, insertions, deletions, tier)| LinkedCommit {
+                    hash,
+                    message,
+                    insertions,
+                    deletions,
+                    tier,
+                },
+            )
             .collect())
     }
 
@@ -1576,10 +1665,9 @@ impl Database {
 
     /// Get model breakdown statistics for a time range.
     ///
-    /// Aggregates by `primary_model` from the `sessions` table. Each session's
-    /// lines, tokens, and re-edit metrics are attributed to its primary model.
-    /// The unified pipeline populates `primary_model` during indexing, so this
-    /// query works without the `turns` table.
+    /// Token usage is aggregated from `turns.model_id` (ground-truth per API
+    /// call). Session-level editing metrics remain attributed by `primary_model`
+    /// to preserve existing line/re-edit summaries.
     pub async fn get_model_breakdown(
         &self,
         range: TimeRange,
@@ -1591,85 +1679,122 @@ impl Database {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = if let Some(pid) = project_id {
-            sqlx::query_as(
-                r#"
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> =
+            if let Some(pid) = project_id {
+                sqlx::query_as(
+                    r#"
+                WITH token_agg AS (
+                    SELECT
+                        t.model_id AS model,
+                        COUNT(DISTINCT s.id) AS sessions_with_model,
+                        COALESCE(SUM(t.input_tokens), 0) AS input_tokens,
+                        COALESCE(SUM(t.output_tokens), 0) AS output_tokens,
+                        COALESCE(SUM(t.cache_read_tokens), 0) AS cache_read_tokens,
+                        COALESCE(SUM(t.cache_creation_tokens), 0) AS cache_creation_tokens
+                    FROM valid_sessions s
+                    JOIN turns t ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND s.project_id = ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
+                      AND (?4 IS NULL OR s.git_branch = ?4)
+                    GROUP BY t.model_id
+                ),
+                session_agg AS (
+                    SELECT
+                        s.primary_model AS model,
+                        COUNT(*) AS sessions_primary,
+                        COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) AS lines,
+                        COALESCE(SUM(s.reedited_files_count), 0) AS reedited,
+                        COALESCE(SUM(s.files_edited_count), 0) AS files_edited
+                    FROM valid_sessions s
+                    WHERE s.primary_model IS NOT NULL
+                      AND s.project_id = ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
+                      AND (?4 IS NULL OR s.git_branch = ?4)
+                    GROUP BY s.primary_model
+                )
                 SELECT
-                    s.primary_model as model,
-                    COUNT(*) as sessions,
-                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
-                    COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
-                    COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
-                    COALESCE(SUM(s.cache_read_tokens), 0) as cache_read_tokens,
-                    COALESCE(SUM(s.cache_creation_tokens), 0) as cache_creation_tokens,
-                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
-                    COALESCE(SUM(s.files_edited_count), 0) as files_edited
-                FROM valid_sessions s
-                WHERE s.primary_model IS NOT NULL
-                  AND s.project_id = ?1
-                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
-                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
-                  AND (?4 IS NULL OR s.git_branch = ?4)
-                GROUP BY s.primary_model
-                ORDER BY input_tokens + output_tokens DESC
+                    t.model as model,
+                    COALESCE(sa.sessions_primary, t.sessions_with_model) as sessions,
+                    COALESCE(sa.lines, 0) as lines,
+                    t.input_tokens as input_tokens,
+                    t.output_tokens as output_tokens,
+                    t.cache_read_tokens as cache_read_tokens,
+                    t.cache_creation_tokens as cache_creation_tokens,
+                    COALESCE(sa.reedited, 0) as reedited,
+                    COALESCE(sa.files_edited, 0) as files_edited
+                FROM token_agg t
+                LEFT JOIN session_agg sa ON sa.model = t.model
+                ORDER BY t.input_tokens + t.output_tokens DESC
                 "#,
-            )
-            .bind(pid)
-            .bind(&from)
-            .bind(&to)
-            .bind(branch)
-            .fetch_all(self.pool())
-            .await?
-        } else {
-            sqlx::query_as(
-                r#"
+                )
+                .bind(pid)
+                .bind(&from)
+                .bind(&to)
+                .bind(branch)
+                .fetch_all(self.pool())
+                .await?
+            } else {
+                sqlx::query_as(
+                    r#"
+                WITH token_agg AS (
+                    SELECT
+                        t.model_id AS model,
+                        COUNT(DISTINCT s.id) AS sessions_with_model,
+                        COALESCE(SUM(t.input_tokens), 0) AS input_tokens,
+                        COALESCE(SUM(t.output_tokens), 0) AS output_tokens,
+                        COALESCE(SUM(t.cache_read_tokens), 0) AS cache_read_tokens,
+                        COALESCE(SUM(t.cache_creation_tokens), 0) AS cache_creation_tokens
+                    FROM valid_sessions s
+                    JOIN turns t ON t.session_id = s.id
+                    WHERE t.model_id IS NOT NULL
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                      AND (?3 IS NULL OR s.git_branch = ?3)
+                    GROUP BY t.model_id
+                ),
+                session_agg AS (
+                    SELECT
+                        s.primary_model AS model,
+                        COUNT(*) AS sessions_primary,
+                        COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) AS lines,
+                        COALESCE(SUM(s.reedited_files_count), 0) AS reedited,
+                        COALESCE(SUM(s.files_edited_count), 0) AS files_edited
+                    FROM valid_sessions s
+                    WHERE s.primary_model IS NOT NULL
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
+                      AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
+                      AND (?3 IS NULL OR s.git_branch = ?3)
+                    GROUP BY s.primary_model
+                )
                 SELECT
-                    s.primary_model as model,
-                    COUNT(*) as sessions,
-                    COALESCE(SUM(s.ai_lines_added + s.ai_lines_removed), 0) as lines,
-                    COALESCE(SUM(s.total_input_tokens), 0) as input_tokens,
-                    COALESCE(SUM(s.total_output_tokens), 0) as output_tokens,
-                    COALESCE(SUM(s.cache_read_tokens), 0) as cache_read_tokens,
-                    COALESCE(SUM(s.cache_creation_tokens), 0) as cache_creation_tokens,
-                    COALESCE(SUM(s.reedited_files_count), 0) as reedited,
-                    COALESCE(SUM(s.files_edited_count), 0) as files_edited
-                FROM valid_sessions s
-                WHERE s.primary_model IS NOT NULL
-                  AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
-                  AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND (?3 IS NULL OR s.git_branch = ?3)
-                GROUP BY s.primary_model
-                ORDER BY input_tokens + output_tokens DESC
+                    t.model as model,
+                    COALESCE(sa.sessions_primary, t.sessions_with_model) as sessions,
+                    COALESCE(sa.lines, 0) as lines,
+                    t.input_tokens as input_tokens,
+                    t.output_tokens as output_tokens,
+                    t.cache_read_tokens as cache_read_tokens,
+                    t.cache_creation_tokens as cache_creation_tokens,
+                    COALESCE(sa.reedited, 0) as reedited,
+                    COALESCE(sa.files_edited, 0) as files_edited
+                FROM token_agg t
+                LEFT JOIN session_agg sa ON sa.model = t.model
+                ORDER BY t.input_tokens + t.output_tokens DESC
                 "#,
-            )
-            .bind(&from)
-            .bind(&to)
-            .bind(branch)
-            .fetch_all(self.pool())
-            .await?
-        };
+                )
+                .bind(&from)
+                .bind(&to)
+                .bind(branch)
+                .fetch_all(self.pool())
+                .await?
+            };
 
         Ok(rows
             .into_iter()
-            .map(|(model, sessions, lines, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, reedited, files_edited)| {
-                let reedit_rate = if files_edited > 0 {
-                    Some(reedited as f64 / files_edited as f64)
-                } else {
-                    None
-                };
-
-                // cost_per_line is computed by the handler using per-model pricing
-                // (set to None here, filled in by contributions.rs)
-
-                // Generate simple insight
-                let insight = match reedit_rate {
-                    Some(rr) if rr < 0.15 => format!("Low re-edit rate ({:.0}%)", rr * 100.0),
-                    Some(rr) if rr > 0.35 => format!("High re-edit rate ({:.0}%)", rr * 100.0),
-                    Some(rr) => format!("{:.0}% re-edit rate", rr * 100.0),
-                    None => "No re-edit data".to_string(),
-                };
-
-                ModelStats {
+            .map(
+                |(
                     model,
                     sessions,
                     lines,
@@ -1677,11 +1802,40 @@ impl Database {
                     output_tokens,
                     cache_read_tokens,
                     cache_creation_tokens,
-                    reedit_rate,
-                    cost_per_line: None,
-                    insight,
-                }
-            })
+                    reedited,
+                    files_edited,
+                )| {
+                    let reedit_rate = if files_edited > 0 {
+                        Some(reedited as f64 / files_edited as f64)
+                    } else {
+                        None
+                    };
+
+                    // cost_per_line is computed by the handler using per-model pricing
+                    // (set to None here, filled in by contributions.rs)
+
+                    // Generate simple insight
+                    let insight = match reedit_rate {
+                        Some(rr) if rr < 0.15 => format!("Low re-edit rate ({:.0}%)", rr * 100.0),
+                        Some(rr) if rr > 0.35 => format!("High re-edit rate ({:.0}%)", rr * 100.0),
+                        Some(rr) => format!("{:.0}% re-edit rate", rr * 100.0),
+                        None => "No re-edit data".to_string(),
+                    };
+
+                    ModelStats {
+                        model,
+                        sessions,
+                        lines,
+                        input_tokens,
+                        output_tokens,
+                        cache_read_tokens,
+                        cache_creation_tokens,
+                        reedit_rate,
+                        cost_per_line: None,
+                        insight,
+                    }
+                },
+            )
             .collect())
     }
 
@@ -1737,11 +1891,9 @@ impl Database {
         let periods: Vec<LearningCurvePeriod> = rows
             .iter()
             .filter(|(_, _, files_edited)| *files_edited > 0)
-            .map(|(period, reedited, files_edited)| {
-                LearningCurvePeriod {
-                    period: period.clone(),
-                    reedit_rate: *reedited as f64 / *files_edited as f64,
-                }
+            .map(|(period, reedited, files_edited)| LearningCurvePeriod {
+                period: period.clone(),
+                reedit_rate: *reedited as f64 / *files_edited as f64,
             })
             .collect();
 
@@ -1956,13 +2108,15 @@ impl Database {
         // Build results
         let mut results: Vec<SkillStats> = skill_rows
             .into_iter()
-            .map(|(skill_name, sessions, avg_loc, commit_rate, reedit_rate)| SkillStats {
-                skill: skill_name,
-                sessions,
-                avg_loc: avg_loc.round() as i64,
-                commit_rate,
-                reedit_rate,
-            })
+            .map(
+                |(skill_name, sessions, avg_loc, commit_rate, reedit_rate)| SkillStats {
+                    skill: skill_name,
+                    sessions,
+                    avg_loc: avg_loc.round() as i64,
+                    commit_rate,
+                    reedit_rate,
+                },
+            )
             .collect();
 
         // Add "(no skill)" baseline if there are sessions without skills
@@ -2088,12 +2242,11 @@ impl Database {
     /// Parses files_edited JSON from the session.
     pub async fn get_session_file_impacts(&self, session_id: &str) -> DbResult<Vec<FileImpact>> {
         // Get files_edited JSON from session
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT files_edited FROM sessions WHERE id = ?1",
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT files_edited FROM valid_sessions WHERE id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
 
         let Some((files_json,)) = row else {
             return Ok(Vec::new());
@@ -2115,7 +2268,7 @@ impl Database {
             .into_iter()
             .map(|path| FileImpact {
                 path,
-                lines_added: 0,  // Would need JSONL parsing for actual counts
+                lines_added: 0, // Would need JSONL parsing for actual counts
                 lines_removed: 0,
                 action: "modified".to_string(),
             })
@@ -2145,9 +2298,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2169,14 +2323,15 @@ impl Database {
     /// and upserts it into the contribution_snapshots table.
     pub async fn generate_daily_snapshot(&self, date: &str) -> DbResult<()> {
         // Get session aggregates for the date (global)
-        let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        let session_agg: (i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
             r#"
             SELECT
                 COUNT(*) as sessions_count,
                 COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                 COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                 COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                SUM(total_cost_usd) as total_cost_usd
             FROM valid_sessions
             WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
             "#,
@@ -2202,7 +2357,7 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        let cost_cents = estimate_cost_cents(session_agg.3);
+        let cost_cents = usd_opt_to_cents(session_agg.5, session_agg.0);
 
         // Upsert global snapshot (project_id = NULL, branch = NULL)
         self.upsert_snapshot(
@@ -2251,14 +2406,15 @@ impl Database {
 
         for date in &dates {
             // Inline the snapshot generation to use the transaction
-            let session_agg: (i64, i64, i64, i64, i64) = sqlx::query_as(
+            let session_agg: (i64, i64, i64, i64, i64, Option<f64>) = sqlx::query_as(
                 r#"
                 SELECT
                     COUNT(*) as sessions_count,
                     COALESCE(SUM(ai_lines_added), 0) as ai_lines_added,
                     COALESCE(SUM(ai_lines_removed), 0) as ai_lines_removed,
                     COALESCE(SUM(total_input_tokens + total_output_tokens), 0) as tokens_used,
-                    COALESCE(SUM(files_edited_count), 0) as files_edited_count
+                    COALESCE(SUM(files_edited_count), 0) as files_edited_count,
+                    SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
                 WHERE date(last_message_at, 'unixepoch', 'localtime') = ?1
                 "#,
@@ -2288,7 +2444,7 @@ impl Database {
                 continue;
             }
 
-            let cost_cents = estimate_cost_cents(session_agg.3);
+            let cost_cents = usd_opt_to_cents(session_agg.5, session_agg.0);
 
             // Delete any existing row for this (date, NULL, NULL) combo,
             // since UNIQUE(date, project_id, branch) doesn't catch NULL duplicates.
@@ -2386,7 +2542,19 @@ impl Database {
         let mut tx = self.pool().begin().await?;
         let mut count = 0u32;
 
-        for (week_start, sessions, lines_added, lines_removed, commits, insertions, deletions, tokens, cost, files_edited) in weeks {
+        for (
+            week_start,
+            sessions,
+            lines_added,
+            lines_removed,
+            commits,
+            insertions,
+            deletions,
+            tokens,
+            cost,
+            files_edited,
+        ) in weeks
+        {
             // Create the week key format: "W:YYYY-MM-DD" to distinguish from daily
             let week_key = format!("W:{}", week_start);
 
@@ -2505,9 +2673,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2586,9 +2755,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2663,9 +2833,10 @@ impl Database {
                     .unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
                 (from, to)
             }
-            TimeRange::All => {
-                ("1970-01-01".to_string(), Local::now().format("%Y-%m-%d").to_string())
-            }
+            TimeRange::All => (
+                "1970-01-01".to_string(),
+                Local::now().format("%Y-%m-%d").to_string(),
+            ),
             _ => {
                 let days = range.days_back().unwrap_or(7);
                 let from = (Local::now() - chrono::Duration::days(days))
@@ -2718,19 +2889,17 @@ impl Database {
 // Helper Functions
 // ============================================================================
 
-/// Estimate cost in cents from token count.
+/// Convert real USD totals to whole cents.
+fn usd_to_cents(total_cost_usd: f64) -> i64 {
+    (total_cost_usd * 100.0).round() as i64
+}
+
+/// Convert optional USD totals to cents.
 ///
-/// Uses a blended rate assuming ~50% Sonnet, ~40% Haiku, ~10% Opus usage.
-/// Input:output ratio assumed to be 2:1.
-///
-/// Pricing (per million tokens):
-/// - Opus: $15 input, $75 output
-/// - Sonnet: $3 input, $15 output
-/// - Haiku: $0.25 input, $1.25 output
-///
-/// Blended rate: ~$2.5 per million tokens average
-fn estimate_cost_cents(total_tokens: i64) -> i64 {
-    (total_tokens as f64 * BLENDED_COST_PER_TOKEN_CENTS).round() as i64
+/// `SUM(total_cost_usd)` returns NULL when there are no priced rows.
+/// We keep the legacy integer snapshot shape and map NULL to 0 cents.
+fn usd_opt_to_cents(total_cost_usd: Option<f64>, _sessions_count: i64) -> i64 {
+    total_cost_usd.map(usd_to_cents).unwrap_or(0)
 }
 
 // ============================================================================
@@ -2772,15 +2941,18 @@ mod tests {
     }
 
     #[test]
-    fn test_estimate_cost_cents() {
-        // 1 million tokens = ~$2.50 = 250 cents
-        assert_eq!(estimate_cost_cents(1_000_000), 250);
+    fn test_usd_to_cents() {
+        assert_eq!(usd_to_cents(2.50), 250);
+        assert_eq!(usd_to_cents(0.0), 0);
+        assert_eq!(usd_to_cents(0.026), 3); // rounded
+    }
 
-        // 0 tokens = 0 cost
-        assert_eq!(estimate_cost_cents(0), 0);
-
-        // 10k tokens = ~2.5 cents
-        assert_eq!(estimate_cost_cents(10_000), 3); // rounded
+    #[test]
+    fn test_usd_opt_to_cents() {
+        assert_eq!(usd_opt_to_cents(Some(2.50), 1), 250);
+        assert_eq!(usd_opt_to_cents(Some(0.0), 1), 0);
+        assert_eq!(usd_opt_to_cents(None, 0), 0);
+        assert_eq!(usd_opt_to_cents(None, 3), 0);
     }
 
     #[tokio::test]
@@ -2808,9 +2980,22 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert a snapshot
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 12)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            10,
+            500,
+            100,
+            5,
+            450,
+            80,
+            100000,
+            25,
+            12,
+        )
+        .await
+        .unwrap();
 
         // Query it back
         let row: (i64, i64, i64) = sqlx::query_as(
@@ -2825,17 +3010,29 @@ mod tests {
         assert_eq!(row.2, 5);
 
         // Upsert with different values
-        db.upsert_snapshot("2026-02-05", None, None, 15, 600, 150, 7, 500, 100, 150000, 38, 18)
-            .await
-            .unwrap();
-
-        // Should be updated, not duplicated
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM contribution_snapshots WHERE date = '2026-02-05'",
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            15,
+            600,
+            150,
+            7,
+            500,
+            100,
+            150000,
+            38,
+            18,
         )
-        .fetch_one(db.pool())
         .await
         .unwrap();
+
+        // Should be updated, not duplicated
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM contribution_snapshots WHERE date = '2026-02-05'")
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
         assert_eq!(count.0, 1);
 
         let row: (i64, i64) = sqlx::query_as(
@@ -2864,15 +3061,54 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         // Insert some snapshots
-        db.upsert_snapshot("2026-02-03", None, None, 5, 200, 50, 2, 180, 40, 50000, 13, 5)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2026-02-04", None, None, 8, 350, 80, 4, 300, 60, 80000, 20, 10)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2026-02-05", None, None, 10, 500, 100, 5, 450, 80, 100000, 25, 15)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-02-03",
+            None,
+            None,
+            5,
+            200,
+            50,
+            2,
+            180,
+            40,
+            50000,
+            13,
+            5,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2026-02-04",
+            None,
+            None,
+            8,
+            350,
+            80,
+            4,
+            300,
+            60,
+            80000,
+            20,
+            10,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2026-02-05",
+            None,
+            None,
+            10,
+            500,
+            100,
+            5,
+            450,
+            80,
+            100000,
+            25,
+            15,
+        )
+        .await
+        .unwrap();
 
         let trend = db
             .get_contribution_trend(
@@ -2902,6 +3138,37 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
         let result = db.get_session_contribution("nonexistent").await.unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_session_contribution_excludes_sidechain() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, is_sidechain,
+                work_type, duration_seconds, user_prompt_count,
+                ai_lines_added, ai_lines_removed, files_edited_count,
+                reedited_files_count, commit_count
+            )
+            VALUES
+                ('primary-sess', 'proj', '/tmp/primary.jsonl', 'Primary', 0, 'code', 120, 3, 20, 5, 2, 1, 1),
+                ('sidechain-sess', 'proj', '/tmp/side.jsonl', 'Sidechain', 1, 'code', 120, 3, 20, 5, 2, 1, 1)
+            "#,
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let primary = db.get_session_contribution("primary-sess").await.unwrap();
+        assert!(primary.is_some(), "primary session should be returned");
+
+        let sidechain = db.get_session_contribution("sidechain-sess").await.unwrap();
+        assert!(
+            sidechain.is_none(),
+            "sidechain session must be excluded from contribution detail"
+        );
     }
 
     #[tokio::test]
@@ -2978,6 +3245,36 @@ mod tests {
         assert_eq!(impacts[0].path, "src/main.rs");
         assert_eq!(impacts[1].path, "src/lib.rs");
         assert_eq!(impacts[0].action, "modified");
+    }
+
+    #[tokio::test]
+    async fn test_get_session_file_impacts_excludes_sidechain() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (id, project_id, file_path, preview, files_edited, is_sidechain)
+            VALUES
+                ('primary-files', 'proj', '/tmp/primary-files.jsonl', 'Primary', '["src/main.rs"]', 0),
+                ('sidechain-files', 'proj', '/tmp/sidechain-files.jsonl', 'Side', '["src/secret.rs"]', 1)
+            "#,
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let primary_impacts = db.get_session_file_impacts("primary-files").await.unwrap();
+        assert_eq!(primary_impacts.len(), 1);
+        assert_eq!(primary_impacts[0].path, "src/main.rs");
+
+        let sidechain_impacts = db
+            .get_session_file_impacts("sidechain-files")
+            .await
+            .unwrap();
+        assert!(
+            sidechain_impacts.is_empty(),
+            "sidechain session file impacts must not leak into detail response"
+        );
     }
 
     #[tokio::test]
@@ -3168,12 +3465,38 @@ mod tests {
         db.upsert_snapshot("2025-12-02", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 4)
             .await
             .unwrap();
-        db.upsert_snapshot("2025-12-03", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 7)
-            .await
-            .unwrap();
-        db.upsert_snapshot("2025-12-04", None, None, 6, 150, 30, 2, 130, 25, 15000, 4, 5)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2025-12-03",
+            None,
+            None,
+            8,
+            200,
+            40,
+            3,
+            180,
+            30,
+            20000,
+            5,
+            7,
+        )
+        .await
+        .unwrap();
+        db.upsert_snapshot(
+            "2025-12-04",
+            None,
+            None,
+            6,
+            150,
+            30,
+            2,
+            130,
+            25,
+            15000,
+            4,
+            5,
+        )
+        .await
+        .unwrap();
 
         // Perform rollup with 30 day retention
         let count = db.rollup_weekly_snapshots(30).await.unwrap();
@@ -3218,13 +3541,12 @@ mod tests {
         assert_eq!(count, 0); // Nothing rolled up
 
         // Recent snapshot should still exist
-        let daily_count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1",
-        )
-        .bind(&today)
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+        let daily_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM contribution_snapshots WHERE date = ?1")
+                .bind(&today)
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
         assert_eq!(daily_count.0, 1);
     }
 
@@ -3236,9 +3558,22 @@ mod tests {
         db.upsert_snapshot("2026-01-15", None, None, 5, 100, 20, 2, 90, 15, 10000, 3, 3)
             .await
             .unwrap();
-        db.upsert_snapshot("2026-01-16", None, None, 8, 200, 40, 3, 180, 30, 20000, 5, 6)
-            .await
-            .unwrap();
+        db.upsert_snapshot(
+            "2026-01-16",
+            None,
+            None,
+            8,
+            200,
+            40,
+            3,
+            180,
+            30,
+            20000,
+            5,
+            6,
+        )
+        .await
+        .unwrap();
 
         // Insert a weekly snapshot manually
         sqlx::query(

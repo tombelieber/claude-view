@@ -8,10 +8,13 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-use super::{mean, Bucket, best_bucket, relative_improvement, worst_bucket};
+use super::{best_bucket, mean, relative_improvement, worst_bucket, Bucket};
 
 /// Calculate all temporal patterns from session data.
-pub fn calculate_temporal_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_temporal_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = t01_time_of_day(sessions, time_range_days) {
@@ -89,7 +92,10 @@ fn t01_time_of_day(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
     let mut vars = HashMap::new();
     vars.insert("best_time".to_string(), best.label.clone());
     vars.insert("worst_time".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement * 100.0),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -150,7 +156,10 @@ fn t02_day_of_week(sessions: &[SessionInfo], time_range_days: u32) -> Option<Gen
     let mut vars = HashMap::new();
     vars.insert("best_day".to_string(), best.label.clone());
     vars.insert("worst_day".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement * 100.0),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -221,7 +230,10 @@ fn t07_monthly_trend(sessions: &[SessionInfo], time_range_days: u32) -> Option<G
     let sample_size = editing_sessions.len() as u32;
     let mut vars = HashMap::new();
     vars.insert("trend_direction".to_string(), trend_direction.to_string());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement.abs() * 100.0));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement.abs() * 100.0),
+    );
 
     let mut comparison = HashMap::new();
     comparison.insert("latest_reedit".to_string(), latest.1);

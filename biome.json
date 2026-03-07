@@ -1,0 +1,99 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignore": [
+      "node_modules",
+      "dist",
+      "target",
+      ".expo",
+      ".tmp",
+      "apps/landing/dist",
+      ".astro",
+      "**/.astro"
+    ]
+  },
+  "overrides": [
+    {
+      "include": ["apps/web/src/types/generated/**", "packages/shared/src/types/generated/**"],
+      "linter": { "enabled": false }
+    }
+  ],
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {
+        "useButtonType": "warn",
+        "useSemanticElements": "warn",
+        "useKeyWithClickEvents": "warn",
+        "noLabelWithoutControl": "warn",
+        "useFocusableInteractive": "warn",
+        "noRedundantRoles": "warn",
+        "noAriaHiddenOnFocusable": "warn",
+        "noSvgWithoutTitle": "warn"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "error",
+        "noUnusedImports": "warn",
+        "noUnusedVariables": "warn"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "useOptionalChain": "warn",
+        "useLiteralKeys": "warn",
+        "noUselessTernary": "warn"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useImportType": "warn",
+        "useTemplate": "warn",
+        "useNumberNamespace": "warn",
+        "useNodeAssertStrict": "off",
+        "noUnusedTemplateLiteral": "warn",
+        "useDefaultParameterLast": "warn",
+        "useExponentiationOperator": "warn",
+        "noCommaOperator": "warn",
+        "useSelfClosingElements": "warn",
+        "useNodejsImportProtocol": "warn",
+        "noUselessElse": "warn",
+        "useSingleVarDeclarator": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noConsoleLog": "warn",
+        "noThenProperty": "off",
+        "noImplicitAnyLet": "warn",
+        "noGlobalIsNan": "warn",
+        "noGlobalIsFinite": "warn",
+        "noShadowRestrictedNames": "warn",
+        "noAssignInExpressions": "warn",
+        "noArrayIndexKey": "warn"
+      }
+    }
+  },
+  "organizeImports": {
+    "enabled": true
+  }
+}

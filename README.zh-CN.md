@@ -171,6 +171,7 @@ npx claude-view
 | 环境变量 | 默认 | 描述 |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` 或 `PORT` | `47892` | 覆盖默认端口 |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | 覆盖数据目录 |
 
 ---
 

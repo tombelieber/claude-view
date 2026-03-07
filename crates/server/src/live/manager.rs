@@ -15,12 +15,12 @@ use tracing::{error, info, warn};
 
 use claude_view_core::live_parser::{parse_tail, LineType, TailFinders};
 use claude_view_core::pricing::{
-    calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
+    calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 
-use claude_view_db::Database;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::Database;
 
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
@@ -50,6 +50,8 @@ struct SessionAccumulator {
     first_user_message: String,
     /// The last user message content (truncated).
     last_user_message: String,
+    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
+    last_user_file: Option<String>,
     /// Git branch name extracted from user messages.
     git_branch: Option<String>,
     /// The timestamp of the first line (session start).
@@ -82,6 +84,14 @@ struct SessionAccumulator {
     tool_counts_read: u32,
     tool_counts_bash: u32,
     tool_counts_write: u32,
+    /// Number of compact_boundary system messages seen.
+    compact_count: u32,
+    /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
+    /// priced individually (200k tiering is per-API-request, not per-session).
+    accumulated_cost: CostBreakdown,
+    /// Dedup guard for split assistant content blocks.
+    /// Keyed by `message.id:requestId` so one API response is counted once.
+    seen_api_calls: std::collections::HashSet<String>,
 }
 
 impl SessionAccumulator {
@@ -94,6 +104,7 @@ impl SessionAccumulator {
             user_turn_count: 0,
             first_user_message: String::new(),
             last_user_message: String::new(),
+            last_user_file: None,
             git_branch: None,
             started_at: None,
             current_turn_started_at: None,
@@ -111,6 +122,9 @@ impl SessionAccumulator {
             tool_counts_read: 0,
             tool_counts_bash: 0,
             tool_counts_write: 0,
+            compact_count: 0,
+            accumulated_cost: CostBreakdown::default(),
+            seen_api_calls: std::collections::HashSet::new(),
         }
     }
 }
@@ -121,6 +135,7 @@ struct JsonlMetadata {
     pid: Option<u32>,
     title: String,
     last_user_message: String,
+    last_user_file: Option<String>,
     turn_count: u32,
     started_at: Option<i64>,
     last_activity_at: i64,
@@ -135,6 +150,7 @@ struct JsonlMetadata {
     progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
     tools_used: Vec<super::state::ToolUsed>,
+    compact_count: u32,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -165,6 +181,7 @@ fn build_recovered_session(
         pid: Some(entry.pid),
         title: String::new(),
         last_user_message: String::new(),
+        last_user_file: None,
         current_activity: entry.agent_state.label.clone(),
         turn_count: 0,
         started_at: None,
@@ -180,6 +197,8 @@ fn build_recovered_session(
         progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
+        compact_count: 0,
+        control: None,
         hook_events: Vec::new(),
     }
 }
@@ -231,7 +250,11 @@ async fn derive_agent_state_from_jsonl(path: &Path) -> Option<AgentState> {
                         state: "acting".into(),
                         label: format!(
                             "Using {}",
-                            parsed.tool_names.first().map(|s| s.as_str()).unwrap_or("tool")
+                            parsed
+                                .tool_names
+                                .first()
+                                .map(|s| s.as_str())
+                                .unwrap_or("tool")
                         ),
                         context: None,
                     }
@@ -289,6 +312,9 @@ fn apply_jsonl_metadata(
     if !m.last_user_message.is_empty() {
         session.last_user_message = m.last_user_message.clone();
     }
+    if m.last_user_file.is_some() {
+        session.last_user_file = m.last_user_file.clone();
+    }
     session.turn_count = m.turn_count;
     if m.started_at.is_some() {
         session.started_at = m.started_at;
@@ -305,6 +331,7 @@ fn apply_jsonl_metadata(
     session.progress_items = m.progress_items.clone();
     session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;
+    session.compact_count = m.compact_count;
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -329,6 +356,10 @@ pub struct LiveSessionManager {
     search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
     /// Registry holder for passing to scan_and_index_all on overflow reconciliation.
     registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
+    /// Channel to request snapshot writes. Debounced to max 1 write/sec.
+    snapshot_tx: mpsc::Sender<()>,
+    /// Sidecar manager for crash recovery of controlled sessions.
+    sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
 }
 
 impl LiveSessionManager {
@@ -341,9 +372,13 @@ impl LiveSessionManager {
         db: Database,
         search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
+        sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+
+        // Debounced snapshot writer channel (bounded to 1 — extra signals are coalesced)
+        let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(1);
 
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
@@ -355,9 +390,12 @@ impl LiveSessionManager {
             db,
             search_index,
             registry,
+            snapshot_tx,
+            sidecar,
         });
 
         // Spawn background tasks
+        manager.spawn_snapshot_writer(snapshot_rx);
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
@@ -393,6 +431,103 @@ impl LiveSessionManager {
         self.accumulators.write().await.remove(session_id);
     }
 
+    /// Request a debounced snapshot write to disk.
+    /// Non-blocking — if the channel is full, the signal is coalesced.
+    pub fn request_snapshot_save(&self) {
+        let _ = self.snapshot_tx.try_send(());
+    }
+
+    /// Spawn the debounced snapshot writer background task.
+    /// Drains the channel and writes at most once per second.
+    fn spawn_snapshot_writer(self: &Arc<Self>, mut rx: mpsc::Receiver<()>) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            while rx.recv().await.is_some() {
+                // Drain any queued signals (coalesce)
+                while rx.try_recv().is_ok() {}
+                manager.save_session_snapshot_from_state().await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                // Drain signals that arrived during the sleep
+                while rx.try_recv().is_ok() {}
+            }
+        });
+    }
+
+    /// CAS bind a control session to a live session.
+    pub async fn bind_control(
+        &self,
+        session_id: &str,
+        control_id: String,
+        expected_current: Option<&str>,
+    ) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            let current = session.control.as_ref().map(|c| c.control_id.as_str());
+            if current != expected_current {
+                return false;
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            session.control = Some(super::state::ControlBinding {
+                control_id,
+                bound_at: now,
+                cancel: tokio_util::sync::CancellationToken::new(),
+            });
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove the control binding.
+    pub async fn unbind_control(&self, session_id: &str) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            if let Some(binding) = session.control.take() {
+                binding.cancel.cancel(); // Signal WS relay to close
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Conditionally unbind: only if current control_id matches.
+    pub async fn unbind_control_if(&self, session_id: &str, expected_control_id: &str) -> bool {
+        let mut sessions = self.sessions.write().await;
+        if let Some(session) = sessions.get_mut(session_id) {
+            if session.control.as_ref().map(|c| c.control_id.as_str()) == Some(expected_control_id)
+            {
+                if let Some(binding) = session.control.take() {
+                    binding.cancel.cancel();
+                }
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Get all session IDs with active control bindings.
+    pub async fn controlled_session_ids(&self) -> Vec<(String, String)> {
+        self.sessions
+            .read()
+            .await
+            .iter()
+            .filter_map(|(id, s)| {
+                s.control
+                    .as_ref()
+                    .map(|c| (id.clone(), c.control_id.clone()))
+            })
+            .collect()
+    }
+
     /// Total number of Claude processes detected on the system.
     ///
     /// This is the raw process count (not deduplicated by cwd).
@@ -420,6 +555,7 @@ impl LiveSessionManager {
                             },
                             agent_state: s.agent_state.clone(),
                             last_activity_at: s.last_activity_at,
+                            control_id: s.control.as_ref().map(|c| c.control_id.clone()),
                         },
                     )
                 })
@@ -492,6 +628,7 @@ impl LiveSessionManager {
                     let mut promoted = 0u32;
                     let mut dead = 0u32;
                     let mut dead_ids: Vec<String> = Vec::new();
+                    let mut sessions_to_recover: Vec<(String, String)> = Vec::new();
 
                     for (session_id, entry) in &snapshot.sessions {
                         // Skip if hook already created this session
@@ -521,14 +658,8 @@ impl LiveSessionManager {
                             let (project, project_display_name, project_path, _) =
                                 extract_project_info(path, cached_cwd);
                             if let Some(acc) = accumulators.get(session_id) {
-                                let cost = manager
-                                    .pricing
-                                    .read()
-                                    .ok()
-                                    .map(|p| {
-                                        calculate_cost(&acc.tokens, acc.model.as_deref(), &p)
-                                    })
-                                    .unwrap_or_default();
+                                let mut cost = acc.accumulated_cost.clone();
+                                finalize_cost_breakdown(&mut cost, &acc.tokens);
 
                                 let cache_status = match acc.last_cache_hit_at {
                                     Some(ts) => {
@@ -547,6 +678,7 @@ impl LiveSessionManager {
                                     pid: Some(entry.pid),
                                     title: acc.first_user_message.clone(),
                                     last_user_message: acc.last_user_message.clone(),
+                                    last_user_file: acc.last_user_file.clone(),
                                     turn_count: acc.user_turn_count,
                                     started_at: acc.started_at,
                                     last_activity_at: entry.last_activity_at,
@@ -570,8 +702,7 @@ impl LiveSessionManager {
                                         let mut skill: Vec<_> =
                                             acc.skills.iter().cloned().collect();
                                         skill.sort();
-                                        let mut tools =
-                                            Vec::with_capacity(mcp.len() + skill.len());
+                                        let mut tools = Vec::with_capacity(mcp.len() + skill.len());
                                         for name in mcp {
                                             tools.push(super::state::ToolUsed {
                                                 name,
@@ -587,6 +718,7 @@ impl LiveSessionManager {
                                         tools
                                     },
                                     last_cache_hit_at: acc.last_cache_hit_at,
+                                    compact_count: acc.compact_count,
                                 };
                                 drop(accumulators);
 
@@ -635,10 +767,11 @@ impl LiveSessionManager {
                                 .write()
                                 .await
                                 .insert(session_id.clone(), session.clone());
-                            let _ = manager
-                                .tx
-                                .send(SessionEvent::SessionDiscovered { session });
+                            let _ = manager.tx.send(SessionEvent::SessionDiscovered { session });
                             promoted += 1;
+                            if let Some(ref ctrl_id) = entry.control_id {
+                                sessions_to_recover.push((session_id.clone(), ctrl_id.clone()));
+                            }
                         } else {
                             warn!(
                                 session_id = %session_id,
@@ -655,7 +788,36 @@ impl LiveSessionManager {
                         for id in &dead_ids {
                             accumulators.remove(id);
                         }
-                        info!(cleaned = dead_ids.len(), "Cleaned accumulators for dead snapshot PIDs");
+                        info!(
+                            cleaned = dead_ids.len(),
+                            "Cleaned accumulators for dead snapshot PIDs"
+                        );
+                    }
+
+                    // Recover controlled sessions via sidecar
+                    if !sessions_to_recover.is_empty() {
+                        if let Some(ref sidecar) = manager.sidecar {
+                            match sidecar.ensure_running().await {
+                                Ok(_) => {
+                                    let recovered = sidecar
+                                        .recover_controlled_sessions(&sessions_to_recover)
+                                        .await;
+                                    for (sid, new_ctrl_id) in &recovered {
+                                        manager.bind_control(sid, new_ctrl_id.clone(), None).await;
+                                    }
+                                    info!(
+                                        "Recovered {}/{} controlled sessions after restart",
+                                        recovered.len(),
+                                        sessions_to_recover.len()
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Sidecar unavailable for recovery: {e}. Control bindings cleared."
+                                    );
+                                }
+                            }
+                        }
                     }
 
                     if promoted > 0 || dead > 0 {
@@ -739,12 +901,28 @@ impl LiveSessionManager {
                         let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
                         let hints = build_index_hints(&claude_dir);
                         let search_for_rescan = manager.search_index.read().unwrap().clone();
-                        let registry_for_rescan = manager.registry.read().unwrap().as_ref().map(|r| std::sync::Arc::new(r.clone()));
+                        let registry_for_rescan = manager
+                            .registry
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .map(|r| std::sync::Arc::new(r.clone()));
                         let (indexed, _) = scan_and_index_all(
-                            &claude_dir, &manager.db, &hints, search_for_rescan, registry_for_rescan, |_| {},
-                        ).await.unwrap_or((0, 0));
+                            &claude_dir,
+                            &manager.db,
+                            &hints,
+                            search_for_rescan,
+                            registry_for_rescan,
+                            |_| {},
+                            |_| {},
+                        )
+                        .await
+                        .unwrap_or((0, 0));
                         if indexed > 0 {
-                            tracing::info!(indexed, "Reconciliation scan complete — resyncing live state");
+                            tracing::info!(
+                                indexed,
+                                "Reconciliation scan complete — resyncing live state"
+                            );
                             // Resync in-memory state for all recently-modified files
                             let recent_paths = initial_scan(&claude_dir);
                             for path in &recent_paths {
@@ -823,7 +1001,6 @@ impl LiveSessionManager {
                                 continue;
                             }
                         }
-
                     }
 
                     // Remove dead sessions from map
@@ -854,6 +1031,60 @@ impl LiveSessionManager {
                 }
 
                 // =============================================================
+                // Phase 1b: Stale control binding detection
+                // =============================================================
+                let controlled = manager.controlled_session_ids().await;
+                if !controlled.is_empty() {
+                    if let Some(ref sidecar) = manager.sidecar {
+                        if !sidecar.is_running() {
+                            // Sidecar died — attempt restart + recovery
+                            tracing::warn!(
+                                "Sidecar not running, attempting restart for {} controlled sessions",
+                                controlled.len()
+                            );
+                            match sidecar.ensure_running().await {
+                                Ok(_) => {
+                                    let recovered =
+                                        sidecar.recover_controlled_sessions(&controlled).await;
+                                    for (session_id, new_control_id) in &recovered {
+                                        let old_id = controlled
+                                            .iter()
+                                            .find(|(id, _)| id == session_id)
+                                            .map(|(_, cid)| cid.as_str());
+                                        manager
+                                            .bind_control(
+                                                session_id,
+                                                new_control_id.clone(),
+                                                old_id,
+                                            )
+                                            .await;
+                                    }
+                                    let recovered_ids: std::collections::HashSet<&str> =
+                                        recovered.iter().map(|(id, _)| id.as_str()).collect();
+                                    for (session_id, old_control_id) in &controlled {
+                                        if !recovered_ids.contains(session_id.as_str()) {
+                                            manager
+                                                .unbind_control_if(session_id, old_control_id)
+                                                .await;
+                                        }
+                                    }
+                                    manager.request_snapshot_save();
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to restart sidecar: {e}. Clearing all control bindings."
+                                    );
+                                    for (session_id, old_control_id) in &controlled {
+                                        manager.unbind_control_if(session_id, old_control_id).await;
+                                    }
+                                    manager.request_snapshot_save();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // =============================================================
                 // Phase 2: Process count + snapshot (every 3rd tick = 30s)
                 // =============================================================
                 if !tick_count.is_multiple_of(3) {
@@ -861,10 +1092,9 @@ impl LiveSessionManager {
                 }
 
                 // 2.1 — Process count refresh (display metric only)
-                let total_count =
-                    tokio::task::spawn_blocking(count_claude_processes)
-                        .await
-                        .unwrap_or_default();
+                let total_count = tokio::task::spawn_blocking(count_claude_processes)
+                    .await
+                    .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
 
                 // 2.2 — Unconditional snapshot save (defense in depth)
@@ -916,7 +1146,9 @@ impl LiveSessionManager {
         // Use cached cwd from accumulator if available (avoids re-reading file every poll)
         let cached_cwd = {
             let accumulators = self.accumulators.read().await;
-            accumulators.get(&session_id).and_then(|a| a.resolved_cwd.clone())
+            accumulators
+                .get(&session_id)
+                .and_then(|a| a.resolved_cwd.clone())
         };
         let (project, project_display_name, project_path, resolved_cwd) =
             extract_project_info(path, cached_cwd.as_deref());
@@ -997,32 +1229,58 @@ impl LiveSessionManager {
             acc.tool_counts_read = 0;
             acc.tool_counts_bash = 0;
             acc.tool_counts_write = 0;
+            acc.compact_count = 0;
+            acc.accumulated_cost = CostBreakdown::default();
+            acc.seen_api_calls.clear();
         }
 
         for line in &new_lines {
-            // Accumulate tokens (cumulative, for cost calculation)
-            if let Some(input) = line.input_tokens {
-                acc.tokens.input_tokens += input;
-                acc.tokens.total_tokens += input;
-            }
-            if let Some(output) = line.output_tokens {
-                acc.tokens.output_tokens += output;
-                acc.tokens.total_tokens += output;
-            }
-            if let Some(cache_read) = line.cache_read_tokens {
-                acc.tokens.cache_read_tokens += cache_read;
-                acc.tokens.total_tokens += cache_read;
-            }
-            if let Some(cache_creation) = line.cache_creation_tokens {
-                acc.tokens.cache_creation_tokens += cache_creation;
-                acc.tokens.total_tokens += cache_creation;
-            }
-            // Accumulate split cache creation by TTL
-            if let Some(tokens_5m) = line.cache_creation_5m_tokens {
-                acc.tokens.cache_creation_5m_tokens += tokens_5m;
-            }
-            if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
-                acc.tokens.cache_creation_1hr_tokens += tokens_1hr;
+            // Content-block dedup (same policy as core SessionAccumulator):
+            // only count tokens/cost once per API response.
+            let has_measurement_data = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
+            let should_count_block = match (line.message_id.as_deref(), line.request_id.as_deref())
+            {
+                (Some(msg_id), Some(req_id)) => {
+                    if has_measurement_data {
+                        let key = format!("{}:{}", msg_id, req_id);
+                        acc.seen_api_calls.insert(key)
+                    } else {
+                        false
+                    }
+                }
+                _ => true, // Legacy lines without IDs: no safe dedup key available.
+            };
+
+            if should_count_block {
+                // Accumulate tokens (cumulative, for cost calculation)
+                if let Some(input) = line.input_tokens {
+                    acc.tokens.input_tokens += input;
+                    acc.tokens.total_tokens += input;
+                }
+                if let Some(output) = line.output_tokens {
+                    acc.tokens.output_tokens += output;
+                    acc.tokens.total_tokens += output;
+                }
+                if let Some(cache_read) = line.cache_read_tokens {
+                    acc.tokens.cache_read_tokens += cache_read;
+                    acc.tokens.total_tokens += cache_read;
+                }
+                if let Some(cache_creation) = line.cache_creation_tokens {
+                    acc.tokens.cache_creation_tokens += cache_creation;
+                    acc.tokens.total_tokens += cache_creation;
+                }
+                // Accumulate split cache creation by TTL
+                if let Some(tokens_5m) = line.cache_creation_5m_tokens {
+                    acc.tokens.cache_creation_5m_tokens += tokens_5m;
+                }
+                if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
+                    acc.tokens.cache_creation_1hr_tokens += tokens_1hr;
+                }
             }
 
             // Track last cache hit time when we see cache activity.
@@ -1057,9 +1315,46 @@ impl LiveSessionManager {
                 }
             }
 
-            // Track model
+            // Track model (must happen BEFORE per-turn cost so model is current)
             if let Some(ref model) = line.model {
                 acc.model = Some(model.clone());
+            }
+
+            // Per-turn cost accumulation: price THIS turn's tokens individually.
+            // The 200k tiering threshold is per-API-request, not per-session.
+            let has_tokens = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
+            if should_count_block && has_tokens {
+                let turn_tokens = TokenUsage {
+                    input_tokens: line.input_tokens.unwrap_or(0),
+                    output_tokens: line.output_tokens.unwrap_or(0),
+                    cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
+                    cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
+                    cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
+                    cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
+                    total_tokens: 0,
+                };
+                if let Ok(p) = self.pricing.read() {
+                    let turn_cost = calculate_cost(&turn_tokens, acc.model.as_deref(), &p);
+                    acc.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
+                    acc.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
+                    acc.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
+                    acc.accumulated_cost.cache_creation_cost_usd +=
+                        turn_cost.cache_creation_cost_usd;
+                    acc.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
+                    acc.accumulated_cost.total_usd += turn_cost.total_usd;
+                    acc.accumulated_cost.unpriced_input_tokens += turn_cost.unpriced_input_tokens;
+                    acc.accumulated_cost.unpriced_output_tokens += turn_cost.unpriced_output_tokens;
+                    acc.accumulated_cost.unpriced_cache_read_tokens +=
+                        turn_cost.unpriced_cache_read_tokens;
+                    acc.accumulated_cost.unpriced_cache_creation_tokens +=
+                        turn_cost.unpriced_cache_creation_tokens;
+                    acc.accumulated_cost.has_unpriced_usage |= turn_cost.has_unpriced_usage;
+                }
             }
 
             // Track git branch from user messages
@@ -1076,6 +1371,9 @@ impl LiveSessionManager {
                         acc.first_user_message = line.content_preview.clone();
                     }
                     acc.last_user_message = line.content_preview.clone();
+                    if line.ide_file.is_some() {
+                        acc.last_user_file = line.ide_file.clone();
+                    }
                 }
             }
 
@@ -1162,8 +1460,9 @@ impl LiveSessionManager {
                                 input_tokens: result.usage_input_tokens.unwrap_or(0),
                                 output_tokens: result.usage_output_tokens.unwrap_or(0),
                                 cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
-                                cache_creation_tokens:
-                                    result.usage_cache_creation_tokens.unwrap_or(0),
+                                cache_creation_tokens: result
+                                    .usage_cache_creation_tokens
+                                    .unwrap_or(0),
                                 cache_creation_5m_tokens: 0,
                                 cache_creation_1hr_tokens: 0,
                                 total_tokens: 0, // not used by calculate_cost
@@ -1222,10 +1521,10 @@ impl LiveSessionManager {
 
             // --- Tool integration tracking (MCP servers + skills) ---
             for tool_name in &line.tool_names {
-                if tool_name.starts_with("mcp__") {
+                if let Some(rest) = tool_name.strip_prefix("mcp__") {
                     // Pattern: mcp__{server}__{tool} — extract the server segment
-                    if let Some(idx) = tool_name[5..].find("__") {
-                        let server = &tool_name[5..5 + idx];
+                    if let Some(idx) = rest.find("__") {
+                        let server = &rest[..idx];
                         acc.mcp_servers.insert(server.to_string());
                     }
                 }
@@ -1234,6 +1533,11 @@ impl LiveSessionManager {
                 if !skill_name.is_empty() {
                     acc.skills.insert(skill_name.clone());
                 }
+            }
+
+            // Track compaction events
+            if line.is_compact_boundary {
+                acc.compact_count += 1;
             }
 
             // --- TodoWrite: full replacement ---
@@ -1323,19 +1627,19 @@ impl LiveSessionManager {
             }
         }
 
-        // Calculate cost from accumulated tokens
-        let cost = self
-            .pricing
-            .read()
-            .ok()
-            .map(|p| calculate_cost(&acc.tokens, acc.model.as_deref(), &p))
-            .unwrap_or_default();
+        // Use per-turn accumulated cost (computed in the line processing loop above).
+        let mut cost = acc.accumulated_cost.clone();
+        finalize_cost_breakdown(&mut cost, &acc.tokens);
 
         // Derive cache status from last cache hit (ground truth from API response tokens).
         let cache_status = match acc.last_cache_hit_at {
             Some(ts) => {
                 let secs = seconds_since_modified_from_timestamp(ts);
-                if secs < 300 { CacheStatus::Warm } else { CacheStatus::Cold }
+                if secs < 300 {
+                    CacheStatus::Warm
+                } else {
+                    CacheStatus::Cold
+                }
             }
             None => CacheStatus::Unknown,
         };
@@ -1349,6 +1653,7 @@ impl LiveSessionManager {
             pid: None,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
+            last_user_file: acc.last_user_file.clone(),
             turn_count: acc.user_turn_count,
             started_at: acc.started_at,
             last_activity_at,
@@ -1386,28 +1691,33 @@ impl LiveSessionManager {
                 tools
             },
             last_cache_hit_at: acc.last_cache_hit_at,
+            compact_count: acc.compact_count,
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
         let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
-        if let Err(e) = self.db.update_session_from_tail(
-            &session_id,
-            acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
-            acc.user_turn_count as i32,
-            last_activity_at,
-            &acc.last_user_message,
-            file_size,
-            file_size,
-            last_activity_at, // mtime approximation
-            acc.tokens.input_tokens as i64,
-            acc.tokens.output_tokens as i64,
-            acc.tokens.cache_read_tokens as i64,
-            acc.tokens.cache_creation_tokens as i64,
-            acc.tool_counts_edit as i32,
-            acc.tool_counts_read as i32,
-            acc.tool_counts_bash as i32,
-            acc.tool_counts_write as i32,
-        ).await {
+        if let Err(e) = self
+            .db
+            .update_session_from_tail(
+                &session_id,
+                acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32, // approx message_count
+                acc.user_turn_count as i32,
+                last_activity_at,
+                &acc.last_user_message,
+                file_size,
+                file_size,
+                last_activity_at, // mtime approximation
+                acc.tokens.input_tokens as i64,
+                acc.tokens.output_tokens as i64,
+                acc.tokens.cache_read_tokens as i64,
+                acc.tokens.cache_creation_tokens as i64,
+                acc.tool_counts_edit as i32,
+                acc.tool_counts_read as i32,
+                acc.tool_counts_bash as i32,
+                acc.tool_counts_write as i32,
+            )
+            .await
+        {
             tracing::warn!(session_id = %session_id, error = %e, "Failed to update session from tail");
         }
 
@@ -1458,7 +1768,10 @@ fn extract_session_id(path: &Path) -> String {
 /// Returns `(encoded_project_name, display_name, decoded_project_path, resolved_cwd)`.
 /// The 4th value is the raw cwd used for resolution — callers should cache it
 /// in `SessionAccumulator.resolved_cwd` to avoid re-reading JSONL on every poll.
-fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, String, String, Option<String>) {
+fn extract_project_info(
+    path: &Path,
+    cached_cwd: Option<&str>,
+) -> (String, String, String, Option<String>) {
     let project_encoded = path
         .parent()
         .and_then(|p| p.file_name())
@@ -1467,19 +1780,22 @@ fn extract_project_info(path: &Path, cached_cwd: Option<&str>) -> (String, Strin
         .to_string();
 
     // Use cached cwd if available, else resolve from JSONL on disk.
-    let cwd = cached_cwd
-        .map(|s| s.to_string())
-        .or_else(|| {
-            path.parent()
-                .and_then(|project_dir| claude_view_core::resolve_cwd_for_project(project_dir))
-        });
+    let cwd = cached_cwd.map(|s| s.to_string()).or_else(|| {
+        path.parent()
+            .and_then(claude_view_core::resolve_cwd_for_project)
+    });
 
     let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
         &project_encoded,
         cwd.as_deref(),
     );
 
-    (project_encoded, resolved.display_name, resolved.full_path, cwd)
+    (
+        project_encoded,
+        resolved.display_name,
+        resolved.full_path,
+        cwd,
+    )
 }
 
 /// Calculate seconds since a Unix timestamp.
@@ -1533,7 +1849,12 @@ fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
 fn load_session_snapshot(path: &Path) -> SessionSnapshot {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return SessionSnapshot { version: 2, sessions: HashMap::new() },
+        Err(_) => {
+            return SessionSnapshot {
+                version: 2,
+                sessions: HashMap::new(),
+            }
+        }
     };
     load_session_snapshot_from_str(&content)
 }
@@ -1561,13 +1882,20 @@ fn load_session_snapshot_from_str(content: &str) -> SessionSnapshot {
                             context: None,
                         },
                         last_activity_at: 0,
+                        control_id: None,
                     },
                 )
             })
             .collect();
-        return SessionSnapshot { version: 2, sessions };
+        return SessionSnapshot {
+            version: 2,
+            sessions,
+        };
     }
-    SessionSnapshot { version: 2, sessions: HashMap::new() }
+    SessionSnapshot {
+        version: 2,
+        sessions: HashMap::new(),
+    }
 }
 
 #[cfg(test)]
@@ -1595,7 +1923,7 @@ mod tests {
         let path = PathBuf::from("/home/user/.claude/projects/-tmp/session.jsonl");
         let (encoded, display, full_path, _cwd) = extract_project_info(&path, None);
         assert_eq!(encoded, "-tmp");
-        assert_eq!(display, "tmp");
+        assert_eq!(display, "-tmp");
         assert_eq!(full_path, "-tmp"); // encoded name, not decoded — no cwd available
     }
 
@@ -1733,9 +2061,13 @@ mod tests {
                     context: None,
                 },
                 last_activity_at: 1708500000,
+                control_id: None,
             },
         );
-        let snapshot = SessionSnapshot { version: 2, sessions: entries };
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions: entries,
+        };
 
         save_session_snapshot(&path, &snapshot);
         let loaded = load_session_snapshot(&path);
@@ -1770,18 +2102,25 @@ mod tests {
         use std::collections::HashMap;
 
         let mut entries = HashMap::new();
-        entries.insert("session-1".to_string(), SnapshotEntry {
-            pid: 12345,
-            status: "working".to_string(),
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working".into(),
-                context: None,
+        entries.insert(
+            "session-1".to_string(),
+            SnapshotEntry {
+                pid: 12345,
+                status: "working".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                last_activity_at: 1708500000,
+                control_id: None,
             },
-            last_activity_at: 1708500000,
-        });
-        let snapshot = SessionSnapshot { version: 2, sessions: entries };
+        );
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions: entries,
+        };
 
         let json = serde_json::to_string(&snapshot).unwrap();
         let parsed: SessionSnapshot = serde_json::from_str(&json).unwrap();
@@ -1811,9 +2150,7 @@ mod tests {
 
     #[test]
     fn test_build_recovered_session_from_snapshot() {
-        use crate::live::state::{
-            AgentState, AgentStateGroup, SessionStatus, SnapshotEntry,
-        };
+        use crate::live::state::{AgentState, AgentStateGroup, SessionStatus, SnapshotEntry};
 
         let entry = SnapshotEntry {
             pid: 12345,
@@ -1825,6 +2162,7 @@ mod tests {
                 context: None,
             },
             last_activity_at: 1708500000,
+            control_id: None,
         };
 
         let session = build_recovered_session(
@@ -1838,7 +2176,7 @@ mod tests {
         assert_eq!(session.status, SessionStatus::Paused);
         assert_eq!(session.agent_state.state, "awaiting_input");
         assert_eq!(session.last_activity_at, 1708500000);
-        assert_eq!(session.project_display_name, "tmp");
+        assert_eq!(session.project_display_name, "-tmp");
         // Without cwd from JSONL, project_path is the encoded name (not naive decode)
         assert_eq!(session.project_path, "-tmp");
     }
@@ -1854,6 +2192,55 @@ mod tests {
         // Bound PID that is dead
         let dead_pid: u32 = 4_000_000;
         assert!(!is_pid_alive(dead_pid));
+    }
+
+    #[test]
+    fn test_snapshot_roundtrip_with_control_id() {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionSnapshot, SnapshotEntry};
+        use std::collections::HashMap;
+
+        let mut sessions = HashMap::new();
+        sessions.insert(
+            "sess-1".to_string(),
+            SnapshotEntry {
+                pid: 111,
+                status: "working".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                last_activity_at: 1700000000,
+                control_id: Some("ctrl-abc".to_string()),
+            },
+        );
+        sessions.insert(
+            "sess-2".to_string(),
+            SnapshotEntry {
+                pid: 222,
+                status: "paused".to_string(),
+                agent_state: AgentState {
+                    group: AgentStateGroup::NeedsYou,
+                    state: "idle".into(),
+                    label: "Idle".into(),
+                    context: None,
+                },
+                last_activity_at: 1700000000,
+                control_id: None,
+            },
+        );
+        let snapshot = SessionSnapshot {
+            version: 2,
+            sessions,
+        };
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let loaded = load_session_snapshot_from_str(&json);
+        assert_eq!(
+            loaded.sessions["sess-1"].control_id,
+            Some("ctrl-abc".to_string())
+        );
+        assert_eq!(loaded.sessions["sess-2"].control_id, None);
     }
 
     #[tokio::test]
@@ -1911,7 +2298,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("session.jsonl");
         let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"type":"result","subtype":"success","cost_usd":0.05,"duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
+        writeln!(f, r#"{{"type":"result","subtype":"success","duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
         f.flush().unwrap();
 
         let state = derive_agent_state_from_jsonl(&path).await;
@@ -1929,8 +2316,16 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         // Real assistant line first, then progress lines after it
         writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"Done"}}],"stop_reason":"end_turn"}}}}"#).unwrap();
-        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
-        writeln!(f, r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"progress","data":{{"type":"usage","usage":{{}}}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let state = derive_agent_state_from_jsonl(&path).await;

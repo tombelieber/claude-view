@@ -4,17 +4,15 @@
 // These tests verify robustness of the parsing and correlation pipeline
 // when encountering malformed, missing, or unusual data.
 
+use claude_view_core::metrics::{
+    edit_velocity, read_to_edit_ratio, reedit_rate, tokens_per_prompt, tool_density,
+};
+use claude_view_db::git_correlation::{scan_repo_commits, tier1_match, tier2_match, GitCommit};
 use claude_view_db::indexer_parallel::{
     extract_commit_skill_invocations, parse_bytes, pass_1_read_indexes, pass_2_deep_index,
     CommitSkillInvocation, RawInvocation,
 };
-use claude_view_db::git_correlation::{
-    scan_repo_commits, tier1_match, tier2_match, GitCommit,
-};
 use claude_view_db::Database;
-use claude_view_core::metrics::{
-    edit_velocity, read_to_edit_ratio, reedit_rate, tokens_per_prompt, tool_density,
-};
 
 // ============================================================================
 // A10.1: JSONL Parsing Edge Cases
@@ -31,9 +29,18 @@ this is not valid JSON {{{
     let result = parse_bytes(data);
 
     // Should skip the malformed line and continue
-    assert_eq!(result.deep.user_prompt_count, 2, "Should count 2 valid user messages");
-    assert_eq!(result.deep.api_call_count, 1, "Should count 1 valid assistant message");
-    assert_eq!(result.deep.last_message, "Thanks", "Should capture last valid user message");
+    assert_eq!(
+        result.deep.user_prompt_count, 2,
+        "Should count 2 valid user messages"
+    );
+    assert_eq!(
+        result.deep.api_call_count, 1,
+        "Should count 1 valid assistant message"
+    );
+    assert_eq!(
+        result.deep.last_message, "Thanks",
+        "Should capture last valid user message"
+    );
 }
 
 #[test]
@@ -62,8 +69,14 @@ fn a10_1_only_system_messages_zero_user_prompts() {
     let result = parse_bytes(data);
 
     assert_eq!(result.deep.user_prompt_count, 0, "No user messages");
-    assert_eq!(result.deep.api_call_count, 2, "Should count assistant messages");
-    assert_eq!(result.deep.turn_count, 0, "No complete turns without user prompts");
+    assert_eq!(
+        result.deep.api_call_count, 2,
+        "Should count assistant messages"
+    );
+    assert_eq!(
+        result.deep.turn_count, 0,
+        "No complete turns without user prompts"
+    );
 }
 
 #[test]
@@ -77,7 +90,10 @@ fn a10_1_missing_timestamps_skipped_for_duration() {
     let result = parse_bytes(data);
 
     // Duration should be calculated from first and last timestamps found
-    assert_eq!(result.deep.duration_seconds, 600, "10 minutes between available timestamps");
+    assert_eq!(
+        result.deep.duration_seconds, 600,
+        "10 minutes between available timestamps"
+    );
     assert!(result.deep.first_timestamp.is_some());
     assert!(result.deep.last_timestamp.is_some());
 }
@@ -100,15 +116,20 @@ fn a10_1_invalid_timestamp_format_skipped() {
 fn a10_1_utf8_bom_handled() {
     // UTF-8 BOM (EF BB BF) at the start of file
     let mut data = vec![0xEF, 0xBB, 0xBF];
-    data.extend_from_slice(br#"{"type":"user","message":{"content":"Hello after BOM"}}
+    data.extend_from_slice(
+        br#"{"type":"user","message":{"content":"Hello after BOM"}}
 {"type":"assistant","message":{"content":"Response"}}
-"#);
+"#,
+    );
 
     let result = parse_bytes(&data);
 
     // Should parse correctly despite BOM (first line might fail JSON parse, but no panic)
     // The BOM will cause the first line to be invalid JSON, so it's skipped
-    assert!(result.deep.api_call_count >= 1, "Should parse at least the assistant message");
+    assert!(
+        result.deep.api_call_count >= 1,
+        "Should parse at least the assistant message"
+    );
 }
 
 #[test]
@@ -214,7 +235,10 @@ fn a10_2_special_chars_in_path_stored_as_is() {
     let result = parse_bytes(data);
 
     assert_eq!(result.deep.files_read_count, 1);
-    assert!(result.deep.files_read.contains(&"/path/with spaces/and-special_chars/@#$%.rs".to_string()));
+    assert!(result
+        .deep
+        .files_read
+        .contains(&"/path/with spaces/and-special_chars/@#$%.rs".to_string()));
 }
 
 #[test]
@@ -236,7 +260,10 @@ fn a10_2_multiple_tool_use_in_content_counted() {
 "#;
     let result = parse_bytes(data);
 
-    assert_eq!(result.deep.tool_call_count, 5, "Should count all 5 tool calls");
+    assert_eq!(
+        result.deep.tool_call_count, 5,
+        "Should count all 5 tool calls"
+    );
     assert_eq!(result.deep.files_read_count, 2);
     assert_eq!(result.deep.files_edited_count, 2); // Edit + Write
     assert_eq!(result.raw_invocations.len(), 5);
@@ -393,8 +420,14 @@ fn a10_3_tier1_window_boundaries() {
     // Should match exactly 2 (at boundaries)
     assert_eq!(matches.len(), 2);
     let hashes: Vec<_> = matches.iter().map(|m| m.commit_hash.as_str()).collect();
-    assert!(hashes.contains(&"a".repeat(40).as_str()), "T-60 should match");
-    assert!(hashes.contains(&"b".repeat(40).as_str()), "T+300 should match");
+    assert!(
+        hashes.contains(&"a".repeat(40).as_str()),
+        "T-60 should match"
+    );
+    assert!(
+        hashes.contains(&"b".repeat(40).as_str()),
+        "T+300 should match"
+    );
 }
 
 // ============================================================================
@@ -439,7 +472,9 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
 
     // Run parallel indexing
     pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+        .await
+        .unwrap();
 
     assert_eq!(indexed, 10, "All 10 sessions should be indexed");
 
@@ -449,7 +484,10 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
 
     for (i, session) in projects[0].sessions.iter().enumerate() {
         assert!(session.deep_indexed, "Session {} should be deep indexed", i);
-        assert_eq!(session.user_prompt_count, 1, "Each session has 1 user prompt");
+        assert_eq!(
+            session.user_prompt_count, 1,
+            "Each session has 1 user prompt"
+        );
     }
 }
 
@@ -506,7 +544,9 @@ async fn a10_5_session_deleted_cascades_session_commits() {
             session_end: None,
         },
     };
-    db.batch_insert_session_commits(&[correlation]).await.unwrap();
+    db.batch_insert_session_commits(&[correlation])
+        .await
+        .unwrap();
 
     // Verify link exists
     let count = db.count_commits_for_session("sess-1").await.unwrap();
@@ -519,11 +559,15 @@ async fn a10_5_session_deleted_cascades_session_commits() {
         .unwrap();
 
     // Verify cascade delete
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_commits WHERE session_id = 'sess-1'")
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
-    assert_eq!(count.0, 0, "session_commits should cascade delete with session");
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM session_commits WHERE session_id = 'sess-1'")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        count.0, 0,
+        "session_commits should cascade delete with session"
+    );
 
     // Commit itself should still exist (no cascade on commit side)
     let commit_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM commits WHERE hash = ?1")
@@ -538,7 +582,10 @@ async fn a10_5_session_deleted_cascades_session_commits() {
 fn a10_5_zero_duration_derived_metrics_return_none() {
     // When duration is 0, edit_velocity should return None
     let result = edit_velocity(10, 0);
-    assert_eq!(result, None, "edit_velocity with 0 duration should return None");
+    assert_eq!(
+        result, None,
+        "edit_velocity with 0 duration should return None"
+    );
 }
 
 #[test]
@@ -590,7 +637,10 @@ fn a10_commit_skill_non_skill_tools() {
     ];
 
     let result = extract_commit_skill_invocations(&raw);
-    assert!(result.is_empty(), "Non-Skill tools should not produce commit invocations");
+    assert!(
+        result.is_empty(),
+        "Non-Skill tools should not produce commit invocations"
+    );
 }
 
 #[test]
@@ -629,7 +679,10 @@ fn a10_commit_skill_non_commit_skill() {
     }];
 
     let result = extract_commit_skill_invocations(&raw);
-    assert!(result.is_empty(), "Non-commit skills should not be extracted");
+    assert!(
+        result.is_empty(),
+        "Non-commit skills should not be extracted"
+    );
 }
 
 #[test]

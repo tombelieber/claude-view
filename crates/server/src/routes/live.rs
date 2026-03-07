@@ -82,13 +82,15 @@ pub async fn live_stream(
             let map = sessions.read().await;
             let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
             let summary = build_summary(&map, pc);
-            yield Ok(Event::default().event("summary").data(
-                serde_json::to_string(&summary).unwrap_or_default()
-            ));
+            match serde_json::to_string(&summary) {
+                Ok(data) => yield Ok(Event::default().event("summary").data(data)),
+                Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
+            }
             for session in map.values() {
-                yield Ok(Event::default().event("session_discovered").data(
-                    serde_json::to_string(session).unwrap_or_default()
-                ));
+                match serde_json::to_string(session) {
+                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                    Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
+                }
             }
         }
 
@@ -99,25 +101,16 @@ pub async fn live_stream(
                 event = rx.recv() => {
                     match event {
                         Ok(session_event) => {
-                            let (event_name, data) = match &session_event {
-                                SessionEvent::SessionDiscovered { .. } => (
-                                    "session_discovered",
-                                    serde_json::to_string(&session_event).unwrap_or_default(),
-                                ),
-                                SessionEvent::SessionUpdated { .. } => (
-                                    "session_updated",
-                                    serde_json::to_string(&session_event).unwrap_or_default(),
-                                ),
-                                SessionEvent::SessionCompleted { .. } => (
-                                    "session_completed",
-                                    serde_json::to_string(&session_event).unwrap_or_default(),
-                                ),
-                                SessionEvent::Summary { .. } => (
-                                    "summary",
-                                    serde_json::to_string(&session_event).unwrap_or_default(),
-                                ),
+                            let event_name = match &session_event {
+                                SessionEvent::SessionDiscovered { .. } => "session_discovered",
+                                SessionEvent::SessionUpdated { .. } => "session_updated",
+                                SessionEvent::SessionCompleted { .. } => "session_completed",
+                                SessionEvent::Summary { .. } => "summary",
                             };
-                            yield Ok(Event::default().event(event_name).data(data));
+                            match serde_json::to_string(&session_event) {
+                                Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
+                                Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
+                            }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!(
@@ -129,13 +122,15 @@ pub async fn live_stream(
                             let map = sessions.read().await;
                             let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
                             let summary = build_summary(&map, pc);
-                            yield Ok(Event::default().event("summary").data(
-                                serde_json::to_string(&summary).unwrap_or_default()
-                            ));
+                            match serde_json::to_string(&summary) {
+                                Ok(data) => yield Ok(Event::default().event("summary").data(data)),
+                                Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
+                            }
                             for session in map.values() {
-                                yield Ok(Event::default().event("session_discovered").data(
-                                    serde_json::to_string(session).unwrap_or_default()
-                                ));
+                                match serde_json::to_string(session) {
+                                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                                    Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
+                                }
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,

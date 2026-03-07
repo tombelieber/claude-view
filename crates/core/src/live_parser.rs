@@ -9,8 +9,22 @@ use memchr::memmem;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::progress::{RawTaskCreate, RawTaskIdAssignment, RawTaskUpdate, RawTodoItem};
+
+static PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Number of times progress parsing fell back from
+/// `data.message.message.content` to `data.message.content`.
+pub fn progress_message_content_fallback_count() -> u64 {
+    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.load(Ordering::Relaxed)
+}
+
+/// Reset fallback counter. Primarily useful for tests.
+pub fn reset_progress_message_content_fallback_count() {
+    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.store(0, Ordering::Relaxed);
+}
 
 /// Byte offset + timestamp for incremental tailing.
 pub struct TailState {
@@ -53,7 +67,7 @@ pub struct SubAgentResult {
     pub tool_use_id: String,
     /// Alphanumeric agent ID from `toolUseResult.agentId`.
     pub agent_id: Option<String>,
-    pub status: String,  // "completed", "error", etc.
+    pub status: String, // "completed", "error", etc.
     pub total_duration_ms: Option<u64>,
     /// Number of tool calls from `toolUseResult.totalToolUseCount`.
     pub total_tool_use_count: Option<u32>,
@@ -77,8 +91,6 @@ pub struct LiveLine {
     pub cache_creation_tokens: Option<u64>,
     pub cache_creation_5m_tokens: Option<u64>,
     pub cache_creation_1hr_tokens: Option<u64>,
-    /// Pre-calculated cost in USD from JSONL entry (top-level `costUSD` field).
-    pub cost_usd: Option<f64>,
     pub timestamp: Option<String>,
     pub stop_reason: Option<String>,
     /// Git branch extracted from user-type JSONL lines.
@@ -110,6 +122,14 @@ pub struct LiveLine {
     pub task_id_assignments: Vec<RawTaskIdAssignment>,
     /// Skill names extracted from Skill tool_use blocks (from `input.skill`).
     pub skill_names: Vec<String>,
+    /// Whether this is a system message with subtype "compact_boundary".
+    pub is_compact_boundary: bool,
+    /// Filename extracted from `<ide_opened_file>` tag, if present.
+    pub ide_file: Option<String>,
+    /// `message.id` from the API response (for dedup: one API response = multiple JSONL lines).
+    pub message_id: Option<String>,
+    /// `requestId` from the JSONL entry (for dedup: combined with message_id).
+    pub request_id: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -127,12 +147,6 @@ pub enum LineType {
 /// Pre-compiled SIMD substring finders. Build once at startup via
 /// [`TailFinders::new`] and share across polls.
 pub struct TailFinders {
-    pub type_user: memmem::Finder<'static>,
-    pub type_assistant: memmem::Finder<'static>,
-    pub type_system: memmem::Finder<'static>,
-    pub type_progress: memmem::Finder<'static>,
-    pub type_summary: memmem::Finder<'static>,
-    pub type_result: memmem::Finder<'static>,
     pub content_key: memmem::Finder<'static>,
     pub model_key: memmem::Finder<'static>,
     pub usage_key: memmem::Finder<'static>,
@@ -146,18 +160,13 @@ pub struct TailFinders {
     pub task_create_key: memmem::Finder<'static>,
     pub task_update_key: memmem::Finder<'static>,
     pub task_notification_key: memmem::Finder<'static>,
+    pub compact_boundary_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
     /// Create all finders once. The needles are `'static` string slices.
     pub fn new() -> Self {
         Self {
-            type_user: memmem::Finder::new(b"\"user\""),
-            type_assistant: memmem::Finder::new(b"\"assistant\""),
-            type_system: memmem::Finder::new(b"\"system\""),
-            type_progress: memmem::Finder::new(b"\"progress\""),
-            type_summary: memmem::Finder::new(b"\"summary\""),
-            type_result: memmem::Finder::new(b"\"result\""),
             content_key: memmem::Finder::new(b"\"content\""),
             model_key: memmem::Finder::new(b"\"model\""),
             usage_key: memmem::Finder::new(b"\"usage\""),
@@ -171,6 +180,7 @@ impl TailFinders {
             task_create_key: memmem::Finder::new(b"\"name\":\"TaskCreate\""),
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
+            compact_boundary_key: memmem::Finder::new(b"\"compact_boundary\""),
         }
     }
 }
@@ -239,6 +249,161 @@ pub fn parse_tail(
     Ok((lines, new_offset))
 }
 
+#[derive(Debug, Default, Clone)]
+struct ToolUseResultPayload {
+    agent_id: Option<String>,
+    status: Option<String>,
+    total_duration_ms: Option<u64>,
+    total_tool_use_count: Option<u32>,
+    usage_input_tokens: Option<u64>,
+    usage_output_tokens: Option<u64>,
+    usage_cache_read_tokens: Option<u64>,
+    usage_cache_creation_tokens: Option<u64>,
+}
+
+impl ToolUseResultPayload {
+    fn has_data(&self) -> bool {
+        self.agent_id.is_some()
+            || self.status.is_some()
+            || self.total_duration_ms.is_some()
+            || self.total_tool_use_count.is_some()
+            || self.usage_input_tokens.is_some()
+            || self.usage_output_tokens.is_some()
+            || self.usage_cache_read_tokens.is_some()
+            || self.usage_cache_creation_tokens.is_some()
+    }
+
+    fn merge(&mut self, other: ToolUseResultPayload) {
+        if other.agent_id.is_some() && self.agent_id.is_none() {
+            self.agent_id = other.agent_id;
+        }
+        if other.status.is_some() {
+            self.status = other.status;
+        }
+        if other.total_duration_ms.is_some() && self.total_duration_ms.is_none() {
+            self.total_duration_ms = other.total_duration_ms;
+        }
+        if other.total_tool_use_count.is_some() && self.total_tool_use_count.is_none() {
+            self.total_tool_use_count = other.total_tool_use_count;
+        }
+        if other.usage_input_tokens.is_some() && self.usage_input_tokens.is_none() {
+            self.usage_input_tokens = other.usage_input_tokens;
+        }
+        if other.usage_output_tokens.is_some() && self.usage_output_tokens.is_none() {
+            self.usage_output_tokens = other.usage_output_tokens;
+        }
+        if other.usage_cache_read_tokens.is_some() && self.usage_cache_read_tokens.is_none() {
+            self.usage_cache_read_tokens = other.usage_cache_read_tokens;
+        }
+        if other.usage_cache_creation_tokens.is_some() && self.usage_cache_creation_tokens.is_none()
+        {
+            self.usage_cache_creation_tokens = other.usage_cache_creation_tokens;
+        }
+    }
+}
+
+fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResultPayload> {
+    match tur {
+        serde_json::Value::Object(obj) => {
+            let has_known_key = obj.contains_key("status")
+                || obj.contains_key("agentId")
+                || obj.contains_key("totalDurationMs")
+                || obj.contains_key("totalToolUseCount")
+                || obj.contains_key("usage");
+            if !has_known_key {
+                return None;
+            }
+
+            let status = obj
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| Some("completed".to_string()));
+            let usage = obj.get("usage");
+
+            Some(ToolUseResultPayload {
+                agent_id: obj
+                    .get("agentId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                status,
+                total_duration_ms: obj.get("totalDurationMs").and_then(|v| v.as_u64()),
+                total_tool_use_count: obj
+                    .get("totalToolUseCount")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32),
+                usage_input_tokens: usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_output_tokens: usage
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_cache_read_tokens: usage
+                    .and_then(|u| u.get("cache_read_input_tokens"))
+                    .and_then(|v| v.as_u64()),
+                usage_cache_creation_tokens: usage
+                    .and_then(|u| u.get("cache_creation_input_tokens"))
+                    .and_then(|v| v.as_u64()),
+            })
+        }
+        serde_json::Value::String(status) => {
+            let status = status.trim();
+            if status.is_empty() {
+                None
+            } else {
+                Some(ToolUseResultPayload {
+                    status: Some(status.to_string()),
+                    ..ToolUseResultPayload::default()
+                })
+            }
+        }
+        serde_json::Value::Array(items) => {
+            let mut merged = ToolUseResultPayload::default();
+            for item in items {
+                if let Some(parsed) = parse_tool_use_result_payload(item) {
+                    merged.merge(parsed);
+                }
+            }
+            if merged.has_data() {
+                Some(merged)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn progress_content_blocks(data: &serde_json::Value) -> (Option<&Vec<serde_json::Value>>, bool) {
+    let primary = data
+        .get("message")
+        .and_then(|m| m.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array());
+    if primary.is_some() {
+        return (primary, false);
+    }
+
+    let fallback = data
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array());
+    (fallback, fallback.is_some())
+}
+
+fn json_value_kind(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
 /// Classify and extract fields from a single JSONL line.
 ///
 /// Claude Code JSONL wraps API messages inside a `"message"` field:
@@ -248,42 +413,12 @@ pub fn parse_tail(
 /// ```
 /// We check both the top level and the nested `message` object for each field.
 pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
-    // Fast classification via SIMD substring search (avoids JSON parse for
-    // lines that don't contain the keys we care about).
-    // Check result/progress/summary BEFORE user/assistant because these lines
-    // may contain nested "role":"assistant" which would match the assistant finder.
-    let line_type = if finders.type_result.find(raw).is_some()
-        && finders.type_progress.find(raw).is_none()
-    {
-        // "result" appears in result lines AND in toolUseResult lines.
-        // Disambiguate: if line has "result" but NOT "user", it's a
-        // top-level result line. If it has both "result" and "user", it's
-        // a toolUseResult on a user line → classify as User below.
-        if finders.type_user.find(raw).is_none() {
-            LineType::Result
-        } else {
-            LineType::User
-        }
-    } else if finders.type_progress.find(raw).is_some() {
-        LineType::Progress
-    } else if finders.type_summary.find(raw).is_some() {
-        LineType::Summary
-    } else if finders.type_user.find(raw).is_some() {
-        LineType::User
-    } else if finders.type_assistant.find(raw).is_some() {
-        LineType::Assistant
-    } else if finders.type_system.find(raw).is_some() {
-        LineType::System
-    } else {
-        LineType::Other
-    };
-
     // Parse JSON to extract structured fields
     let parsed: serde_json::Value = match serde_json::from_slice(raw) {
         Ok(v) => v,
         Err(_) => {
             return LiveLine {
-                line_type,
+                line_type: LineType::Other,
                 role: None,
                 content_preview: String::new(),
                 tool_names: Vec::new(),
@@ -294,7 +429,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 cache_creation_tokens: None,
                 cache_creation_5m_tokens: None,
                 cache_creation_1hr_tokens: None,
-                cost_usd: None,
                 timestamp: None,
                 stop_reason: None,
                 git_branch: None,
@@ -310,8 +444,23 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 task_updates: Vec::new(),
                 task_id_assignments: Vec::new(),
                 skill_names: Vec::new(),
+                is_compact_boundary: false,
+                ide_file: None,
+                message_id: None,
+                request_id: None,
             };
         }
+    };
+
+    // Classification must come from exact top-level `type`.
+    let line_type = match parsed.get("type").and_then(|t| t.as_str()) {
+        Some("user") => LineType::User,
+        Some("assistant") => LineType::Assistant,
+        Some("system") => LineType::System,
+        Some("progress") => LineType::Progress,
+        Some("summary") => LineType::Summary,
+        Some("result") => LineType::Result,
+        _ => LineType::Other,
     };
 
     // The nested message object (most fields live here in Claude Code JSONL)
@@ -332,14 +481,20 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names, skill_names, is_tool_result) =
+    let (content_preview, tool_names, skill_names, is_tool_result, ide_file) =
         extract_content_and_tools(content_source, finders);
 
-    // Detect system-injected prefixes in user-type lines.
-    // These are not real user prompts — they're tool result continuations,
-    // command outputs, or session continuation markers injected by Claude Code.
+    // Detect system-injected prefixes from RAW content (before stripping).
+    // NOTE: .as_str() returns None for array content, defaulting to "" (false).
+    // This is safe because system-prefix messages (<command-name>, <task-notification>,
+    // <local-command-stdout>) always use string content in Claude Code JSONL — never
+    // inside content arrays.
     let has_system_prefix = if line_type == LineType::User {
-        let c = content_preview.trim_start();
+        let raw = content_source
+            .get("content")
+            .and_then(|c| c.as_str())
+            .unwrap_or("");
+        let c = raw.trim_start();
         c.starts_with("<local-command-caveat>")
             || c.starts_with("<local-command-stdout>")
             || c.starts_with("<command-name>/clear")
@@ -392,8 +547,18 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         UsageTokens::default()
     };
 
-    // Extract top-level costUSD (pre-calculated cost from Claude Code API)
-    let cost_usd = parsed.get("costUSD").and_then(|v| v.as_f64());
+    // Extract message.id and requestId for content-block dedup.
+    // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+    // each carrying the full message-level usage. We need these IDs to avoid counting
+    // tokens/cost multiple times for the same API response.
+    let message_id = msg
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let request_id = parsed
+        .get("requestId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let timestamp = parsed
         .get("timestamp")
@@ -426,12 +591,16 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     let mut sub_agent_spawns = Vec::new();
     if line_type == LineType::Assistant && finders.task_name_key.find(raw).is_some() {
         // Already have `parsed` from JSON parse above
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("Task")
                 {
-                    let tool_use_id = block.get("id")
+                    let tool_use_id = block
+                        .get("id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -459,74 +628,76 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     }
 
     // --- Sub-agent completion detection (user lines with toolUseResult) ---
-    let sub_agent_result = if line_type == LineType::User
-        && finders.tool_use_result_key.find(raw).is_some()
-    {
-        // Extract toolUseResult from top-level (NOT inside message.content)
-        parsed.get("toolUseResult").and_then(|tur| {
-            // Find the matching tool_use_id from the tool_result block in content
-            let tool_use_id = msg
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-                .and_then(|blocks| {
-                    blocks.iter().find_map(|b| {
-                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
-                        } else {
-                            None
-                        }
-                    })
-                })?;
+    let sub_agent_result =
+        if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
+            // Extract toolUseResult from top-level (NOT inside message.content)
+            parsed.get("toolUseResult").and_then(|tur| {
+                let parsed_tur = match parse_tool_use_result_payload(tur) {
+                    Some(parsed) => parsed,
+                    None => {
+                        tracing::debug!(
+                            kind = json_value_kind(tur),
+                            "Ignoring unsupported toolUseResult variant"
+                        );
+                        return None;
+                    }
+                };
 
-            let agent_id = tur.get("agentId")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let status = tur.get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("completed")
-                .to_string();
-            let total_duration_ms = tur.get("totalDurationMs").and_then(|v| v.as_u64());
-            let total_tool_use_count = tur.get("totalToolUseCount")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as u32);
-            let usage = tur.get("usage");
-            Some(SubAgentResult {
-                tool_use_id,
-                agent_id,
-                status,
-                total_duration_ms,
-                total_tool_use_count,
-                usage_input_tokens: usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                usage_output_tokens: usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                usage_cache_read_tokens: usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                usage_cache_creation_tokens: usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                // Find the matching tool_use_id from the tool_result block in content
+                let tool_use_id = msg
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array())
+                    .and_then(|blocks| {
+                        blocks.iter().find_map(|b| {
+                            if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                                b.get("tool_use_id")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from)
+                            } else {
+                                None
+                            }
+                        })
+                    })?;
+                Some(SubAgentResult {
+                    tool_use_id,
+                    agent_id: parsed_tur.agent_id,
+                    status: parsed_tur.status.unwrap_or_else(|| "completed".to_string()),
+                    total_duration_ms: parsed_tur.total_duration_ms,
+                    total_tool_use_count: parsed_tur.total_tool_use_count,
+                    usage_input_tokens: parsed_tur.usage_input_tokens,
+                    usage_output_tokens: parsed_tur.usage_output_tokens,
+                    usage_cache_read_tokens: parsed_tur.usage_cache_read_tokens,
+                    usage_cache_creation_tokens: parsed_tur.usage_cache_creation_tokens,
+                })
             })
-        })
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // --- Sub-agent progress detection (progress lines with agent_progress) ---
-    // SIMD pre-filter on "agent_progress" then verify the parsed JSON `type` field
-    // for an extra safety check (belt-and-suspenders with the line_type classification).
-    let sub_agent_progress = if finders.agent_progress_key.find(raw).is_some()
-        && parsed.get("type").and_then(|t| t.as_str()) == Some("progress")
-    {
-        parsed.get("data").and_then(|data| {
-            if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
-                return None;
-            }
-            let parent_tool_use_id = parsed.get("parentToolUseID")
-                .and_then(|v| v.as_str())
-                .map(String::from)?;
-            let agent_id = data.get("agentId")
-                .and_then(|v| v.as_str())
-                .map(String::from)?;
-            // Extract current tool from the latest tool_use block in message.content
-            let current_tool = data.get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-                .and_then(|blocks| {
+    // SIMD pre-filter on "agent_progress" + exact LineType::Progress check.
+    let sub_agent_progress =
+        if line_type == LineType::Progress && finders.agent_progress_key.find(raw).is_some() {
+            parsed.get("data").and_then(|data| {
+                if data.get("type").and_then(|t| t.as_str()) != Some("agent_progress") {
+                    return None;
+                }
+                let parent_tool_use_id = parsed
+                    .get("parentToolUseID")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)?;
+                let agent_id = data
+                    .get("agentId")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)?;
+                // Primary: data.message.message.content[*]
+                // Fallback: data.message.content[*]
+                let (progress_blocks, used_fallback) = progress_content_blocks(data);
+                if used_fallback {
+                    PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+                }
+
+                let current_tool = progress_blocks.and_then(|blocks| {
                     blocks.iter().rev().find_map(|b| {
                         if b.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
                             b.get("name").and_then(|n| n.as_str()).map(String::from)
@@ -535,57 +706,96 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                         }
                     })
                 });
-            Some(SubAgentProgress {
-                parent_tool_use_id,
-                agent_id,
-                current_tool,
+                Some(SubAgentProgress {
+                    parent_tool_use_id,
+                    agent_id,
+                    current_tool,
+                })
             })
-        })
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
     // --- TodoWrite detection (assistant lines with TodoWrite tool_use) ---
-    let todo_write = if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
-        msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()).and_then(|blocks| {
-            blocks.iter().find_map(|b| {
-                if b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-                    && b.get("name").and_then(|n| n.as_str()) == Some("TodoWrite")
-                {
-                    b.get("input").and_then(|i| i.get("todos")).and_then(|t| t.as_array()).map(|todos| {
-                        todos.iter().filter_map(|item| {
-                            Some(RawTodoItem {
-                                content: item.get("content").and_then(|v| v.as_str())?.to_string(),
-                                status: item.get("status").and_then(|v| v.as_str()).unwrap_or("pending").to_string(),
-                                active_form: item.get("activeForm").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            })
-                        }).collect::<Vec<_>>()
+    let todo_write =
+        if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
+            msg.and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|blocks| {
+                    blocks.iter().find_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("tool_use")
+                            && b.get("name").and_then(|n| n.as_str()) == Some("TodoWrite")
+                        {
+                            b.get("input")
+                                .and_then(|i| i.get("todos"))
+                                .and_then(|t| t.as_array())
+                                .map(|todos| {
+                                    todos
+                                        .iter()
+                                        .filter_map(|item| {
+                                            Some(RawTodoItem {
+                                                content: item
+                                                    .get("content")
+                                                    .and_then(|v| v.as_str())?
+                                                    .to_string(),
+                                                status: item
+                                                    .get("status")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("pending")
+                                                    .to_string(),
+                                                active_form: item
+                                                    .get("activeForm")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("")
+                                                    .to_string(),
+                                            })
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                        } else {
+                            None
+                        }
                     })
-                } else {
-                    None
-                }
-            })
-        })
-    } else {
-        None
-    };
+                })
+        } else {
+            None
+        };
 
     // --- TaskCreate detection (assistant lines with TaskCreate tool_use) ---
     let mut task_creates = Vec::new();
     if line_type == LineType::Assistant && finders.task_create_key.find(raw).is_some() {
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("TaskCreate")
                 {
-                    let tool_use_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let tool_use_id = block
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let input = block.get("input");
                     if !tool_use_id.is_empty() {
                         task_creates.push(RawTaskCreate {
                             tool_use_id,
-                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            description: input.and_then(|i| i.get("description")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            subject: input
+                                .and_then(|i| i.get("subject"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            description: input
+                                .and_then(|i| i.get("description"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            active_form: input
+                                .and_then(|i| i.get("activeForm"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                         });
                     }
                 }
@@ -596,19 +806,35 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // --- TaskUpdate detection (assistant lines with TaskUpdate tool_use) ---
     let mut task_updates = Vec::new();
     if line_type == LineType::Assistant && finders.task_update_key.find(raw).is_some() {
-        if let Some(content) = msg.and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+        if let Some(content) = msg
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        {
             for block in content {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
                     && block.get("name").and_then(|n| n.as_str()) == Some("TaskUpdate")
                 {
                     let input = block.get("input");
-                    let task_id = input.and_then(|i| i.get("taskId")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let task_id = input
+                        .and_then(|i| i.get("taskId"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     if !task_id.is_empty() {
                         task_updates.push(RawTaskUpdate {
                             task_id,
-                            status: input.and_then(|i| i.get("status")).and_then(|v| v.as_str()).map(String::from),
-                            subject: input.and_then(|i| i.get("subject")).and_then(|v| v.as_str()).map(String::from),
-                            active_form: input.and_then(|i| i.get("activeForm")).and_then(|v| v.as_str()).map(String::from),
+                            status: input
+                                .and_then(|i| i.get("status"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            subject: input
+                                .and_then(|i| i.get("subject"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
+                            active_form: input
+                                .and_then(|i| i.get("activeForm"))
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
                         });
                     }
                 }
@@ -619,7 +845,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // --- TaskIdAssignment detection (user lines with toolUseResult containing task.id) ---
     let mut task_id_assignments = Vec::new();
     if line_type == LineType::User && finders.tool_use_result_key.find(raw).is_some() {
-        if let Some(task_id) = parsed.get("toolUseResult")
+        if let Some(task_id) = parsed
+            .get("toolUseResult")
             .and_then(|tur| tur.get("task"))
             .and_then(|t| t.get("id"))
             .and_then(|v| v.as_str())
@@ -630,7 +857,9 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 .and_then(|blocks| {
                     blocks.iter().find_map(|b| {
                         if b.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                            b.get("tool_use_id").and_then(|v| v.as_str()).map(String::from)
+                            b.get("tool_use_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
                         } else {
                             None
                         }
@@ -645,6 +874,10 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         }
     }
 
+    // --- Compact boundary detection (system lines with subtype "compact_boundary") ---
+    let is_compact_boundary =
+        line_type == LineType::System && finders.compact_boundary_key.find(raw).is_some();
+
     LiveLine {
         line_type,
         role,
@@ -657,7 +890,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         cache_creation_tokens,
         cache_creation_5m_tokens,
         cache_creation_1hr_tokens,
-        cost_usd,
         timestamp,
         stop_reason,
         git_branch,
@@ -673,7 +905,76 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         task_updates,
         task_id_assignments,
         skill_names,
+        is_compact_boundary,
+        ide_file,
+        message_id,
+        request_id,
     }
+}
+
+/// Strip XML noise tags from user message content and extract IDE file context.
+///
+/// Returns `(clean_text, ide_file)` where:
+/// - `clean_text` is the content with all noise tags removed, trimmed
+/// - `ide_file` is the last path component from `<ide_opened_file>` if present
+///
+/// Tags stripped: system-reminder, ide_opened_file, ide_selection, command-name,
+/// command-args, command-message, local-command-stdout, local-command-caveat,
+/// task-notification, user-prompt-submit-hook.
+///
+/// NOTE: The IDE filename extraction regex ("the file\s+(\S+)\s+in the IDE") is
+/// coupled to Claude Code's current hook output format. If the format changes,
+/// extraction gracefully degrades to `None`.
+fn strip_noise_tags(content: &str) -> (String, Option<String>) {
+    use regex_lite::Regex;
+    use std::sync::OnceLock;
+
+    // `regex-lite` does NOT support backreferences (\1), so each tag must be
+    // enumerated with its explicit closing tag. Uses OnceLock to match codebase
+    // convention (see cli.rs, sync.rs, metrics.rs).
+    static NOISE_TAGS: OnceLock<Regex> = OnceLock::new();
+    let noise_re = NOISE_TAGS.get_or_init(|| {
+        Regex::new(concat!(
+            r"(?s)<system-reminder>.*?</system-reminder>\s*",
+            r"|<ide_selection>.*?</ide_selection>\s*",
+            r"|<command-name>.*?</command-name>\s*",
+            r"|<command-args>.*?</command-args>\s*",
+            r"|<command-message>.*?</command-message>\s*",
+            r"|<local-command-stdout>.*?</local-command-stdout>\s*",
+            r"|<local-command-caveat>.*?</local-command-caveat>\s*",
+            r"|<task-notification>.*?</task-notification>\s*",
+            r"|<user-prompt-submit-hook>.*?</user-prompt-submit-hook>\s*",
+        ))
+        .unwrap()
+    });
+
+    // Separate regex for ide_opened_file to extract filename before stripping
+    static IDE_FILE_TAG: OnceLock<Regex> = OnceLock::new();
+    let ide_tag_re = IDE_FILE_TAG
+        .get_or_init(|| Regex::new(r"(?s)<ide_opened_file>.*?</ide_opened_file>\s*").unwrap());
+
+    static IDE_FILE_PATH: OnceLock<Regex> = OnceLock::new();
+    let ide_path_re =
+        IDE_FILE_PATH.get_or_init(|| Regex::new(r"the file\s+(\S+)\s+in the IDE").unwrap());
+
+    // Extract IDE file before stripping
+    let ide_file = ide_tag_re.find(content).and_then(|m| {
+        ide_path_re.captures(m.as_str()).and_then(|caps| {
+            caps.get(1).map(|p| {
+                let path = p.as_str();
+                // Extract last path component (filename)
+                path.rsplit('/').next().unwrap_or(path).to_string()
+            })
+        })
+    });
+
+    // Strip all noise tags
+    let cleaned = noise_re.replace_all(content, "");
+    // Strip ide_opened_file tag
+    let cleaned = ide_tag_re.replace_all(&cleaned, "");
+    let cleaned = cleaned.trim().to_string();
+
+    (cleaned, ide_file)
 }
 
 /// Extract content preview (truncated to 200 chars), tool_use names,
@@ -682,15 +983,18 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
     _finders: &TailFinders,
-) -> (String, Vec<String>, Vec<String>, bool) {
+) -> (String, Vec<String>, Vec<String>, bool, Option<String>) {
     let mut preview = String::new();
     let mut tool_names = Vec::new();
     let mut skill_names = Vec::new();
     let mut has_tool_result = false;
+    let mut ide_file: Option<String> = None;
 
     match parsed.get("content") {
         Some(serde_json::Value::String(s)) => {
-            preview = truncate_str(s, 200);
+            let (stripped, file) = strip_noise_tags(s);
+            preview = truncate_str(&stripped, 200);
+            ide_file = file;
         }
         Some(serde_json::Value::Array(blocks)) => {
             for block in blocks {
@@ -698,7 +1002,11 @@ fn extract_content_and_tools(
                     Some("text") => {
                         if preview.is_empty() {
                             if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                preview = truncate_str(text, 200);
+                                let (stripped, file) = strip_noise_tags(text);
+                                preview = truncate_str(&stripped, 200);
+                                if ide_file.is_none() {
+                                    ide_file = file;
+                                }
                             }
                         }
                     }
@@ -729,7 +1037,7 @@ fn extract_content_and_tools(
         _ => {}
     }
 
-    (preview, tool_names, skill_names, has_tool_result)
+    (preview, tool_names, skill_names, has_tool_result, ide_file)
 }
 
 /// Extract a `<task-notification>` from the full content JSON value.
@@ -862,7 +1170,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("single.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(f, r#"{{"role":"user","content":"Hello world"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"Hello world"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -897,7 +1209,11 @@ mod tests {
         // Write initial content
         {
             let mut f = File::create(&path).unwrap();
-            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#).unwrap();
+            writeln!(
+                f,
+                r#"{{"type":"user","message":{{"role":"user","content":"hello"}}}}"#
+            )
+            .unwrap();
             writeln!(f, r#"{{"type":"assistant","message":{{"role":"assistant","content":[{{"type":"text","text":"hi"}}]}}}}"#).unwrap();
         }
 
@@ -909,12 +1225,19 @@ mod tests {
         // "Replace" the file with smaller content (simulates log rotation)
         {
             let mut f = File::create(&path).unwrap();
-            writeln!(f, r#"{{"type":"user","message":{{"role":"user","content":"new session"}}}}"#).unwrap();
+            writeln!(
+                f,
+                r#"{{"type":"user","message":{{"role":"user","content":"new session"}}}}"#
+            )
+            .unwrap();
         }
 
         // Old offset is larger than new file — should reset and read from start
         let (lines2, offset2) = parse_tail(&path, offset, &finders).unwrap();
-        assert!(!lines2.is_empty(), "Should read new content after file replacement");
+        assert!(
+            !lines2.is_empty(),
+            "Should read new content after file replacement"
+        );
         assert!(offset2 > 0);
     }
 
@@ -923,7 +1246,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("incremental.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(f, r#"{{"role":"user","content":"first"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"first"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -938,7 +1265,11 @@ mod tests {
             .append(true)
             .open(&path)
             .unwrap();
-        writeln!(f, r#"{{"role":"assistant","content":"second"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"assistant","message":{{"role":"assistant","content":"second"}}}}"#
+        )
+        .unwrap();
         f.flush().unwrap();
 
         // Second read from previous offset
@@ -1468,11 +1799,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("no_content.jsonl");
         let mut f = File::create(&path).unwrap();
-        writeln!(
-            f,
-            r#"{{"type":"user","message":{{"role":"user"}}}}"#
-        )
-        .unwrap();
+        writeln!(f, r#"{{"type":"user","message":{{"role":"user"}}}}"#).unwrap();
         f.flush().unwrap();
 
         let finders = TailFinders::new();
@@ -1690,7 +2017,10 @@ mod tests {
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{"skill":""}}]}}"#;
         let line = parse_single_line(raw, &finders);
         assert_eq!(line.tool_names, vec!["Skill"]);
-        assert!(line.skill_names.is_empty(), "Empty skill name should be ignored");
+        assert!(
+            line.skill_names.is_empty(),
+            "Empty skill name should be ignored"
+        );
     }
 
     #[test]
@@ -1699,7 +2029,10 @@ mod tests {
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Skill","input":{}}]}}"#;
         let line = parse_single_line(raw, &finders);
         assert_eq!(line.tool_names, vec!["Skill"]);
-        assert!(line.skill_names.is_empty(), "Missing skill field should produce no skill_names");
+        assert!(
+            line.skill_names.is_empty(),
+            "Missing skill field should produce no skill_names"
+        );
     }
 
     #[test]
@@ -1707,8 +2040,17 @@ mod tests {
         let finders = TailFinders::new();
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"toolu_01B","name":"mcp__plugin_playwright_playwright__browser_navigate","input":{"url":"http://example.com"}}]}}"#;
         let line = parse_single_line(raw, &finders);
-        assert_eq!(line.tool_names, vec!["Bash", "mcp__plugin_playwright_playwright__browser_navigate"]);
-        assert!(line.skill_names.is_empty(), "Non-Skill tools should produce no skill_names");
+        assert_eq!(
+            line.tool_names,
+            vec![
+                "Bash",
+                "mcp__plugin_playwright_playwright__browser_navigate"
+            ]
+        );
+        assert!(
+            line.skill_names.is_empty(),
+            "Non-Skill tools should produce no skill_names"
+        );
     }
 
     #[test]
@@ -1716,7 +2058,122 @@ mod tests {
         let finders = TailFinders::new();
         let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01A","name":"mcp__chrome-devtools__take_screenshot","input":{}},{"type":"tool_use","id":"toolu_01B","name":"Skill","input":{"skill":"pdf"}}]}}"#;
         let line = parse_single_line(raw, &finders);
-        assert_eq!(line.tool_names, vec!["mcp__chrome-devtools__take_screenshot", "Skill"]);
+        assert_eq!(
+            line.tool_names,
+            vec!["mcp__chrome-devtools__take_screenshot", "Skill"]
+        );
         assert_eq!(line.skill_names, vec!["pdf"]);
+    }
+
+    // -------------------------------------------------------------------------
+    // strip_noise_tags
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_strip_noise_tags_system_reminder() {
+        let input = "<system-reminder>SessionStart:startup hook success: Success</system-reminder>fix the bug";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "fix the bug");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_ide_opened_file() {
+        let input = "<ide_opened_file>The user opened the file /Users/me/project/src/auth.rs in the IDE. This may or may not be related to the current task.</ide_opened_file> continue";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "continue");
+        assert_eq!(file.as_deref(), Some("auth.rs"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_multiple_tags() {
+        let input = "<system-reminder>hook data</system-reminder><ide_opened_file>The user opened the file /path/to/main.rs in the IDE.</ide_opened_file><ide_selection>some code</ide_selection> do the thing";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "do the thing");
+        assert_eq!(file.as_deref(), Some("main.rs"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_no_tags() {
+        let input = "just a normal message";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "just a normal message");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_only_tags() {
+        let input = "<system-reminder>hook stuff</system-reminder>";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_command_tags() {
+        let input = "<command-name>/clear</command-name><command-message>Clearing context</command-message> hello";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "hello");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_nested_path() {
+        let input = "<ide_opened_file>The user opened the file /deep/nested/path/to/component.tsx in the IDE.</ide_opened_file>review this";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "review this");
+        assert_eq!(file.as_deref(), Some("component.tsx"));
+    }
+
+    #[test]
+    fn test_strip_noise_tags_user_prompt_submit_hook() {
+        let input = "<user-prompt-submit-hook>hook output</user-prompt-submit-hook>fix tests";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "fix tests");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_strip_noise_tags_whitespace_between_text() {
+        let input = "hello <system-reminder>hook data</system-reminder> world";
+        let (clean, file) = strip_noise_tags(input);
+        assert_eq!(clean, "hello world");
+        assert!(file.is_none());
+    }
+
+    #[test]
+    fn test_parse_tail_strips_noise_tags_from_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tags.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<system-reminder>hook data</system-reminder>fix the bug"}}}}"#
+        ).unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].content_preview, "fix the bug");
+        assert!(lines[0].ide_file.is_none());
+    }
+
+    #[test]
+    fn test_parse_tail_extracts_ide_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ide.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"<ide_opened_file>The user opened the file /src/auth.rs in the IDE.</ide_opened_file> continue"}}}}"#
+        ).unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].content_preview, "continue");
+        assert_eq!(lines[0].ide_file.as_deref(), Some("auth.rs"));
     }
 }

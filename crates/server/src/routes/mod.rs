@@ -2,7 +2,9 @@
 
 pub mod classify;
 pub mod coaching;
+pub mod config;
 pub mod contributions;
+pub mod control;
 pub mod export;
 pub mod facets;
 pub mod grep;
@@ -23,6 +25,7 @@ pub mod score;
 pub mod search;
 pub mod sessions;
 pub mod settings;
+pub mod share;
 pub mod stats;
 pub mod status;
 pub mod sync;
@@ -40,6 +43,7 @@ use crate::state::AppState;
 /// Create the combined API router with all routes under /api prefix.
 ///
 /// Routes:
+/// - GET /api/config - Runtime capabilities endpoint
 /// - GET /api/health - Health check
 /// - GET /api/projects - List all projects (summaries)
 /// - GET /api/projects/:id/sessions - Paginated sessions for a project
@@ -92,9 +96,11 @@ use crate::state::AppState;
 /// - GET /api/settings - Read current app settings (model, timeout)
 /// - PUT /api/settings - Update app settings (partial, validates model + timeout)
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
+/// - GET /api/oauth/identity - Cached auth identity (email, org, plan)
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
+        .nest("/api", config::router())
         .nest("/api", health::router())
         .nest("/api", projects::router())
         .nest("/api", sessions::router())
@@ -109,6 +115,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", system::router())
         .nest("/api", classify::router())
         .nest("/api", coaching::router())
+        .nest("/api", control::router())
         .nest("/api", insights::router())
         .nest("/api", contributions::router())
         .nest("/api", score::router())
@@ -123,6 +130,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", settings::router())
         .nest("/api", oauth::router())
         .nest("/api", pairing::router())
+        .nest("/api", share::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
@@ -134,7 +142,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_api_routes_creation() {
-        let db = claude_view_db::Database::new_in_memory().await.expect("in-memory DB");
+        let db = claude_view_db::Database::new_in_memory()
+            .await
+            .expect("in-memory DB");
         let state = AppState::new(db);
         let _router = api_routes(state);
     }

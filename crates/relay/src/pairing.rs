@@ -23,6 +23,13 @@ pub struct ClaimRequest {
     pub pubkey: Vec<u8>,
     /// Phone's X25519 pubkey encrypted with Mac's X25519 pubkey (NaCl box).
     pub pubkey_encrypted_blob: String,
+    /// Phone's plaintext X25519 pubkey (base64). Mac uses this to decrypt
+    /// the blob and verify ownership. Forwarded in pair_complete message.
+    pub x25519_pubkey: String,
+    /// HMAC-SHA256(verification_secret, phone_x25519_pubkey) for anti-MITM binding.
+    /// Optional for backwards compatibility. Relay forwards this to Mac without inspection.
+    #[serde(default)]
+    pub verification_hmac: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -30,11 +37,30 @@ pub struct PairResponse {
     pub ok: bool,
 }
 
+fn extract_ip(headers: &axum::http::HeaderMap) -> String {
+    headers
+        .get("fly-client-ip")
+        .or_else(|| headers.get("cf-connecting-ip"))
+        .or_else(|| headers.get("x-forwarded-for"))
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .unwrap_or("unknown")
+        .trim()
+        .to_string()
+}
+
 /// POST /pair — Mac creates a pairing offer.
 pub async fn create_pair(
     State(state): State<RelayState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<PairRequest>,
 ) -> Result<Json<PairResponse>, StatusCode> {
+    // Rate limiting
+    let ip = extract_ip(&headers);
+    if !state.pair_rate_limiter.check(&ip).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
     // Validate Ed25519 pubkey
     let verifying_key = VerifyingKey::from_bytes(
         req.pubkey
@@ -73,8 +99,29 @@ pub async fn create_pair(
 /// POST /pair/claim — Phone claims a pairing offer.
 pub async fn claim_pair(
     State(state): State<RelayState>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ClaimRequest>,
 ) -> Result<Json<PairResponse>, StatusCode> {
+    // JWT auth — require valid Supabase token if auth is configured
+    if let Some(auth) = &state.supabase_auth {
+        let jwt = headers
+            .get("Authorization")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "))
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        if auth.validate(jwt).is_err() {
+            tracing::warn!(endpoint = "pair/claim", "JWT validation failed");
+            sentry::capture_message("JWT validation failed", sentry::Level::Warning);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    // Rate limiting
+    let ip = extract_ip(&headers);
+    if !state.claim_rate_limiter.check(&ip).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
     // Look up and consume the one-time token
     let (_, offer) = state
         .pairing_offers
@@ -113,14 +160,36 @@ pub async fn claim_pair(
         mac_device.paired_devices.insert(req.device_id.clone());
     }
 
-    // Forward encrypted phone pubkey blob to Mac via WS (if connected)
+    // Forward encrypted phone pubkey blob + plaintext X25519 key to Mac via WS.
+    // Include verification_hmac if present (relay is a passthrough, cannot forge it).
     if let Some(mac_conn) = state.connections.get(&offer.device_id) {
-        let msg = serde_json::json!({
+        let mut msg = serde_json::json!({
             "type": "pair_complete",
             "device_id": req.device_id,
             "pubkey_encrypted_blob": req.pubkey_encrypted_blob,
+            "x25519_pubkey": req.x25519_pubkey,
         });
+        if let Some(ref hmac) = req.verification_hmac {
+            msg["verification_hmac"] = serde_json::Value::String(hmac.clone());
+        }
         let _ = mac_conn.tx.send(msg.to_string());
+    }
+
+    // PostHog: track successful pairing
+    if let Some(ref client) = state.posthog_client {
+        let client = client.clone();
+        let api_key = state.posthog_api_key.clone();
+        let device_id = req.device_id.clone();
+        tokio::spawn(async move {
+            crate::posthog::track(
+                &client,
+                &api_key,
+                "relay_paired",
+                &device_id,
+                serde_json::json!({}),
+            )
+            .await;
+        });
     }
 
     info!(mac = %offer.device_id, phone = %req.device_id, "pairing complete");

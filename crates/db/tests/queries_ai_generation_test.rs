@@ -2,6 +2,7 @@
 //! Integration tests for Database AI generation stats query methods.
 
 use claude_view_db::Database;
+use sqlx::Executor;
 
 #[tokio::test]
 async fn test_get_ai_generation_stats() {
@@ -47,33 +48,57 @@ async fn test_get_ai_generation_stats() {
         "ai-gen-1",
         "Last msg",
         3,
-        5, 10, 3, 2,
-        "[]", "[]",
-        5, 8, 15,
-        "[]", "[]",
-        0, 4, 0,
-        120, 1,
-        Some(500),
-        3000, 2000, 0, 0, // total_input, total_output, cache_read, cache_creation
+        5,
+        10,
+        3,
+        2,
+        "[]",
+        "[]",
+        5,
+        8,
+        15,
+        "[]",
+        "[]",
         0,
-        None, None, None,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
+        4,
+        0,
+        120,
+        1,
+        Some(500),
+        3000,
+        2000,
+        0,
+        0, // total_input, total_output, cache_read, cache_creation
+        0,
+        None,
+        None,
+        None,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         None,
         1,
         2000,
         1706200000,
-        0, 0, 0, // lines_added, lines_removed, loc_source
-        0, 0,    // ai_lines_added, ai_lines_removed
-        None,    // work_type
-        None,    // git_branch
+        0,
+        0,
+        0, // lines_added, lines_removed, loc_source
+        0,
+        0,    // ai_lines_added, ai_lines_removed
+        None, // work_type
+        None, // git_branch
         Some("claude-opus-4-5-20251101"),
-        None, // last_message_at
-        None, // first_user_prompt
-        0, // total_task_time_seconds
-        None, // longest_task_seconds
-        None, // longest_task_preview
-        0.0,  // total_cost_usd
+        None,      // last_message_at
+        None,      // first_user_prompt
+        0,         // total_task_time_seconds
+        None,      // longest_task_seconds
+        None,      // longest_task_preview
+        Some(0.0), // total_cost_usd
     )
     .await
     .unwrap();
@@ -82,39 +107,132 @@ async fn test_get_ai_generation_stats() {
         "ai-gen-2",
         "Last msg 2",
         2,
-        3, 5, 1, 1,
-        "[]", "[]",
-        3, 5, 10,
-        "[]", "[]",
-        0, 2, 0,
-        60, 0,
-        Some(1500),
-        1000, 500, 0, 0,
+        3,
+        5,
+        1,
+        1,
+        "[]",
+        "[]",
+        3,
+        5,
+        10,
+        "[]",
+        "[]",
         0,
-        None, None, None,
-        0, 0, 0, 0,
-        0, 0, 0, 0,
+        2,
+        0,
+        60,
+        0,
+        Some(1500),
+        1000,
+        500,
+        0,
+        0,
+        0,
+        None,
+        None,
+        None,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         None,
         1,
         1000,
         1706200000,
-        0, 0, 0, // lines_added, lines_removed, loc_source
-        0, 0,    // ai_lines_added, ai_lines_removed
-        None,    // work_type
-        None,    // git_branch
+        0,
+        0,
+        0, // lines_added, lines_removed, loc_source
+        0,
+        0,    // ai_lines_added, ai_lines_removed
+        None, // work_type
+        None, // git_branch
         Some("claude-sonnet-4-20250514"),
-        None, // last_message_at
-        None, // first_user_prompt
-        0, // total_task_time_seconds
-        None, // longest_task_seconds
-        None, // longest_task_preview
-        0.0,  // total_cost_usd
+        None,      // last_message_at
+        None,      // first_user_prompt
+        0,         // total_task_time_seconds
+        None,      // longest_task_seconds
+        None,      // longest_task_preview
+        Some(0.0), // total_cost_usd
     )
     .await
     .unwrap();
 
+    // Ground-truth model usage comes from turns.model_id.
+    db.pool()
+        .execute(sqlx::query(
+            r#"
+                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                VALUES ('claude-opus-4-5-20251101', 'anthropic', 'opus', 0, 0)
+                "#,
+        ))
+        .await
+        .unwrap();
+    db.pool()
+        .execute(sqlx::query(
+            r#"
+                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
+                VALUES ('claude-sonnet-4-20250514', 'anthropic', 'sonnet', 0, 0)
+                "#,
+        ))
+        .await
+        .unwrap();
+
+    db.pool()
+        .execute(
+            sqlx::query(
+                r#"
+                INSERT INTO turns (
+                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind("ai-gen-1")
+            .bind("turn-ai-gen-1")
+            .bind(1)
+            .bind("claude-opus-4-5-20251101")
+            .bind(3000)
+            .bind(2000)
+            .bind(0)
+            .bind(0)
+            .bind(1000),
+        )
+        .await
+        .unwrap();
+
+    db.pool()
+        .execute(
+            sqlx::query(
+                r#"
+                INSERT INTO turns (
+                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens, timestamp
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind("ai-gen-2")
+            .bind("turn-ai-gen-2")
+            .bind(1)
+            .bind("claude-sonnet-4-20250514")
+            .bind(1000)
+            .bind(500)
+            .bind(0)
+            .bind(0)
+            .bind(2000),
+        )
+        .await
+        .unwrap();
+
     // Test all-time (no range filter)
-    let stats = db.get_ai_generation_stats(None, None, None, None).await.unwrap();
+    let stats = db
+        .get_ai_generation_stats(None, None, None, None)
+        .await
+        .unwrap();
 
     // files_created = sum of files_edited_count: 4 + 2 = 6
     assert_eq!(stats.files_created, 6, "Sum of files_edited_count");
@@ -126,7 +244,11 @@ async fn test_get_ai_generation_stats() {
     assert_eq!(stats.lines_removed, 0);
 
     // 2 model entries
-    assert_eq!(stats.tokens_by_model.len(), 2, "Should have 2 model entries");
+    assert_eq!(
+        stats.tokens_by_model.len(),
+        2,
+        "Should have 2 model entries"
+    );
     let opus = stats
         .tokens_by_model
         .iter()

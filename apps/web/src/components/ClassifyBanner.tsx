@@ -1,0 +1,96 @@
+import { FlaskConical, Loader2, Sparkles, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useClassification } from '../hooks/use-classification'
+
+const CLASSIFY_COUNT_KEY = 'classify-single-count'
+const BANNER_DISMISSED_KEY = 'classify-banner-dismissed'
+const SHOW_AFTER_COUNT = 3
+
+interface ClassifyBannerProps {
+  unclassifiedCount: number
+}
+
+/**
+ * Inline banner that appears after the user has classified 3+ sessions individually.
+ * Prompts them to classify all remaining sessions.
+ */
+export function ClassifyBanner({ unclassifiedCount }: ClassifyBannerProps) {
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(BANNER_DISMISSED_KEY) === 'true',
+  )
+  const [singleCount, setSingleCount] = useState(() =>
+    Number.parseInt(localStorage.getItem(CLASSIFY_COUNT_KEY) || '0', 10),
+  )
+  const { startClassification, isLoading } = useClassification()
+  const [isStarting, setIsStarting] = useState(false)
+
+  // Listen for classify count changes via CustomEvent (instant, same-tab)
+  // and StorageEvent (cross-tab fallback)
+  useEffect(() => {
+    const handleCustom = (e: Event) => {
+      const count = (e as CustomEvent<number>).detail
+      setSingleCount(count)
+    }
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === CLASSIFY_COUNT_KEY && e.newValue) {
+        setSingleCount(Number.parseInt(e.newValue, 10))
+      }
+    }
+    window.addEventListener('classify-single-done', handleCustom)
+    window.addEventListener('storage', handleStorage)
+    return () => {
+      window.removeEventListener('classify-single-done', handleCustom)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [])
+
+  // Don't show if: dismissed, not enough single classifies, no unclassified sessions
+  if (dismissed || singleCount < SHOW_AFTER_COUNT || unclassifiedCount === 0) {
+    return null
+  }
+
+  const handleClassifyAll = async () => {
+    setIsStarting(true)
+    await startClassification('unclassified')
+    setIsStarting(false)
+  }
+
+  const handleDismiss = () => {
+    setDismissed(true)
+    localStorage.setItem(BANNER_DISMISSED_KEY, 'true')
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+      <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+        <Sparkles className="w-4 h-4 flex-shrink-0" />
+        <span>
+          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all (cost is
+          recorded from real usage after completion)
+        </span>
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
+          <FlaskConical className="w-2.5 h-2.5" />
+          Experimental
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleClassifyAll}
+          disabled={isStarting || isLoading}
+          className="px-3 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-md transition-colors"
+        >
+          {isStarting ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Classify All'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="p-0.5 text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300"
+          aria-label="Dismiss"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
+}

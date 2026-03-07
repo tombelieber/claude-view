@@ -1,0 +1,3 @@
+{"type":"user","timestamp":"2026-03-01T10:02:00Z","toolUseResult":{"agentId":"agent-1","status":"completed","result":{"ok":true},"totalToolUseCount":3},"message":{"content":[{"type":"text","text":"Task completed"}]}}
+{"type":"user","timestamp":"2026-03-01T10:02:10Z","toolUseResult":"User rejected tool use","message":{"content":[{"type":"text","text":"I rejected it"}]}}
+{"type":"user","timestamp":"2026-03-01T10:02:20Z","toolUseResult":[{"agentId":"agent-2","status":"error"}],"message":{"content":[{"type":"text","text":"Array variant"}]}}
