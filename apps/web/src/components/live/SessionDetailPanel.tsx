@@ -59,8 +59,8 @@ interface SessionDetailPanelProps {
   onClose: () => void
   /** When true, render inline as a flex child instead of a fixed portal overlay. */
   inline?: boolean
-  /** Control channel ID for interactive session control (chat input, permissions). */
-  controlId?: string
+  /** Control session ID for interactive session control (chat input, permissions). */
+  controlSessionId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ export function SessionDetailPanel({
   panelData: panelDataProp,
   onClose,
   inline,
-  controlId,
+  controlSessionId,
 }: SessionDetailPanelProps) {
   // Resolve to unified data shape
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
@@ -133,7 +133,7 @@ export function SessionDetailPanel({
   const hasSubAgents = data.subAgents && data.subAgents.length > 0
 
   // ---- Control session hooks (unconditional — Rules of Hooks) ----
-  const controlSession = useControlSession(controlId ?? null)
+  const controlSession = useControlSession(controlSessionId ?? null)
   const controlCallbacks = useControlCallbacks(
     controlSession.sendRaw,
     controlSession.respondPermission,
@@ -613,7 +613,7 @@ export function SessionDetailPanel({
                 onRespond={controlSession.respondPermission}
               />
             )}
-            {controlId && (
+            {controlSessionId && (
               <ChatInputBar
                 onSend={controlSession.sendMessage}
                 state={controlStatusToInputState(controlSession.status)}

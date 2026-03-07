@@ -21,6 +21,10 @@ export function controlStatusToInputState(status: string | undefined): InputBarS
       return 'reconnecting'
     case 'completed':
       return 'completed'
+    case 'fatal':
+    case 'failed':
+    case 'idle':
+      return 'dormant'
     default:
       return 'dormant'
   }
