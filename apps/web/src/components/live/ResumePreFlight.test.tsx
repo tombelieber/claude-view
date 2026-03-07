@@ -109,25 +109,15 @@ describe('ResumePreFlight', () => {
     ).toBeInTheDocument()
   })
 
-  it('uses estimate model as resume fallback when selector not changed', async () => {
+  it('calls onResume with sessionId directly on button click (no resume POST)', async () => {
     const onOpenChange = vi.fn()
     const onResume = vi.fn()
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       if (input === '/api/control/estimate') {
         return new Response(JSON.stringify(estimatePayload({ model: 'claude-opus-4-20250514' })), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
-      }
-      if (input === '/api/control/resume') {
-        return new Response(
-          JSON.stringify({
-            controlId: 'ctrl-1',
-            status: 'active',
-            sessionId: 'sess-1',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        )
       }
       return new Response('{}', { status: 404 })
     })
@@ -149,22 +139,13 @@ describe('ResumePreFlight', () => {
     })
     fireEvent.click(resumeButton)
 
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        '/api/control/resume',
-        expect.objectContaining({ method: 'POST' }),
-      )
-    })
-
-    const resumeCall = fetchSpy.mock.calls.find((call) => call[0] === '/api/control/resume')
-    expect(resumeCall).toBeTruthy()
-    const body = JSON.parse((resumeCall?.[1] as RequestInit).body as string)
-    expect(body.model).toBe('claude-opus-4-20250514')
-    expect(body.projectPath).toBe('/repo')
-
-    await waitFor(() => {
-      expect(onOpenChange).toHaveBeenCalledWith(false)
-      expect(onResume).toHaveBeenCalledWith('ctrl-1', 'sess-1')
-    })
+    // onResume called with ONLY sessionId (no controlId)
+    expect(onResume).toHaveBeenCalledWith('sess-1')
+    // Dialog closed
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    // NO fetch to /api/control/resume
+    const fetchSpy = vi.mocked(globalThis.fetch)
+    const resumeCalls = fetchSpy.mock.calls.filter((call) => call[0] === '/api/control/resume')
+    expect(resumeCalls).toHaveLength(0)
   })
 })

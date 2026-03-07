@@ -37,10 +37,6 @@ vi.mock('./pages/AnalyticsPage', () => ({
   AnalyticsPage: () => <div>Analytics Page</div>,
 }))
 
-vi.mock('./pages/ControlPage', () => ({
-  ControlPage: () => <div>Control Page</div>,
-}))
-
 vi.mock('./pages/LiveMonitorPage', () => ({
   LiveMonitorPage: () => <div>Live Monitor Page</div>,
 }))
