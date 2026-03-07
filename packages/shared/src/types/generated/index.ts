@@ -3,6 +3,7 @@
 export type { AgentState } from './AgentState'
 export type { AgentStateGroup } from './AgentStateGroup'
 export type { CacheStatus } from './CacheStatus'
+export type { ControlBinding } from './ControlBinding'
 export type { CostBreakdown } from './CostBreakdown'
 export type { HookEvent } from './HookEvent'
 export type { JsonValue } from './JsonValue'
