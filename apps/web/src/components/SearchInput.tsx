@@ -1,5 +1,6 @@
-import { Search, X } from 'lucide-react'
+import { Loader2, Search, X } from 'lucide-react'
 import { forwardRef, useEffect, useRef } from 'react'
+import type { IndexingPhase } from '../hooks/use-indexing-progress'
 
 interface SearchInputProps {
   value: string
@@ -13,6 +14,23 @@ interface SearchInputProps {
   onClose?: () => void
   onKeyDown?: (e: React.KeyboardEvent) => void
   className?: string
+  /** When set, shows indexing-aware placeholder and spinner icon. */
+  indexingPhase?: IndexingPhase
+  /** Percentage (0-100) shown in placeholder during deep-indexing. */
+  indexingPercent?: number
+}
+
+function getIndexingPlaceholder(phase: IndexingPhase, percent: number): string {
+  switch (phase) {
+    case 'idle':
+    case 'reading-indexes':
+      return 'Preparing search...'
+    case 'ready':
+    case 'deep-indexing':
+      return `Search (indexing ${percent}%)...`
+    default:
+      return 'Search conversations...'
+  }
 }
 
 export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
@@ -28,11 +46,21 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
     onClose,
     onKeyDown,
     className = '',
+    indexingPhase,
+    indexingPercent = 0,
   },
   ref,
 ) {
   const internalRef = useRef<HTMLInputElement>(null)
   const inputRef = (ref as React.RefObject<HTMLInputElement>) || internalRef
+  const isIndexing =
+    indexingPhase &&
+    indexingPhase !== 'done' &&
+    indexingPhase !== 'error' &&
+    indexingPhase !== 'idle'
+  const resolvedPlaceholder = isIndexing
+    ? getIndexingPlaceholder(indexingPhase, indexingPercent)
+    : placeholder
 
   useEffect(() => {
     if (autoFocus) {
@@ -42,13 +70,22 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+      {isIndexing ? (
+        <Loader2 className="w-4 h-4 text-blue-400 dark:text-blue-500 animate-spin motion-reduce:animate-none flex-shrink-0" />
+      ) : (
+        <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+      )}
       <input
         ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
+        aria-label={
+          isIndexing
+            ? 'Search conversations — indexing in progress, results may be limited'
+            : undefined
+        }
         onKeyDown={onKeyDown}
         className="flex-1 bg-transparent text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none"
       />
