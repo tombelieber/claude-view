@@ -21,12 +21,21 @@ Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP s
 <div align="center">
 
 ```bash
-npx claude-view
+curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
 ```
 
 **One command. Every session visible. Real-time.**
 
 </div>
+
+---
+
+## Install
+
+| Method | Command |
+|--------|---------|
+| **Shell** (recommended) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **npx** | `npx claude-view` |
 
 ---
 

@@ -42,7 +42,7 @@ Você faz Cmd-Tab entre 15 janelas de terminal tentando lembrar qual sessão est
 **claude-view** é um painel em tempo real que funciona ao lado das suas sessões do Claude Code. Uma aba do navegador, cada sessão visível, contexto completo de relance.
 
 ```bash
-npx claude-view
+curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
 ```
 
 É isso. Abre no seu navegador. Todas as suas sessões — ao vivo e passadas — em um workspace.
@@ -163,13 +163,14 @@ O claude-view é projetado para o desenvolvedor que:
 
 ---
 
-## Início Rápido
+## Instalação
 
-```bash
-npx claude-view
-```
+| Método | Comando |
+|--------|---------|
+| **Shell** (recomendado) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **npx** | `npx claude-view` |
 
-Abre em `http://localhost:47892`.
+O instalador shell baixa um binário pré-compilado (~10 MB), instala em `~/.claude-view/bin` e adiciona ao PATH. Depois é só executar `claude-view`.
 
 ### Configuração
 
@@ -180,17 +181,7 @@ Abre em `http://localhost:47892`.
 
 ---
 
-## Instalação
-
-| Método | Comando |
-|--------|---------|
-| **npx** (recomendado) | `npx claude-view` |
-| **Script shell** (Node não necessário) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
-
-### Requisitos
-
-- **Claude Code** instalado ([obtenha aqui](https://docs.anthropic.com/en/docs/claude-code)) — isso cria os arquivos de sessão que monitoramos
+**Único requisito:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instalado — isso cria os arquivos de sessão que monitoramos.
 
 ---
 

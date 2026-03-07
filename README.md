@@ -37,7 +37,7 @@ Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP s
 <div align="center">
 
 ```bash
-npx claude-view
+curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
 ```
 
 **One command. Every session visible. Real-time.**
@@ -240,17 +240,12 @@ When you're already running 10+ Claude Code sessions eating RAM and CPU, the las
 
 ## Installation
 
-```bash
-npx claude-view
-```
-
-Opens at `http://localhost:47892`.
-
 | Method | Command |
 |--------|---------|
-| **npx** (recommended) | `npx claude-view` |
-| **Shell script** (no Node required) | `curl -sL https://raw.githubusercontent.com/tombelieber/claude-view/main/start.sh \| bash` |
-| **Git clone** | `git clone https://github.com/tombelieber/claude-view.git && cd claude-view && ./start.sh` |
+| **Shell** (recommended) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **npx** | `npx claude-view` |
+
+The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claude-view/bin`, and adds it to your PATH. Then just run `claude-view`.
 
 **Only requirement:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed — this creates the session files we monitor.
 
