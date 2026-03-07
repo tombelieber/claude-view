@@ -1,7 +1,7 @@
 // sidecar/src/ws-handler.ts
 import type { WebSocket } from 'ws'
 import type { SessionManager } from './session-manager.js'
-import type { ClientMessage, ServerMessage } from './types.js'
+import type { ClientMessage, ResumeMsg, ServerMessage } from './types.js'
 
 export function handleWebSocket(ws: WebSocket, controlId: string, sessions: SessionManager) {
   const session = sessions.getSession(controlId)
@@ -19,14 +19,21 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
   }
   session.emitter.on('message', onMessage)
 
-  // Send initial status
+  // Route through emitSequencedById so it gets seq + buffered for replay
+  sessions.emitSequencedById(controlId, {
+    type: 'session_status',
+    status: session.status,
+    contextUsage: session.contextUsage,
+    turnCount: session.turnCount,
+  })
+
+  // Send heartbeat config — client should ping at this interval.
+  // No seq — this is a setup message, not a replayable event.
   ws.send(
     JSON.stringify({
-      type: 'session_status',
-      status: session.status,
-      contextUsage: session.contextUsage,
-      turnCount: session.turnCount,
-    } satisfies ServerMessage),
+      type: 'heartbeat_config',
+      intervalMs: 15_000,
+    }),
   )
 
   // Handle incoming messages from frontend
@@ -72,6 +79,29 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
                 fatal: false,
               }),
             )
+          break
+        }
+        case 'resume': {
+          const lastSeq = (msg as ResumeMsg).lastSeq
+          const missed = session.eventBuffer.getAfter(lastSeq, (e) => e.seq)
+          if (missed === null) {
+            // Buffer exhausted — can't replay
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'replay_buffer_exhausted',
+                fatal: true,
+              }),
+            )
+            ws.close()
+          } else {
+            // Replay missed events — they already have seq baked in
+            for (const event of missed) {
+              if (ws.readyState === ws.OPEN) {
+                ws.send(JSON.stringify(event.msg))
+              }
+            }
+          }
           break
         }
         case 'ping':
