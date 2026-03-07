@@ -358,6 +358,8 @@ pub struct LiveSessionManager {
     registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
     /// Channel to request snapshot writes. Debounced to max 1 write/sec.
     snapshot_tx: mpsc::Sender<()>,
+    /// Sidecar manager for crash recovery of controlled sessions.
+    sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
 }
 
 impl LiveSessionManager {
@@ -370,6 +372,7 @@ impl LiveSessionManager {
         db: Database,
         search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
+        sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -388,6 +391,7 @@ impl LiveSessionManager {
             search_index,
             registry,
             snapshot_tx,
+            sidecar,
         });
 
         // Spawn background tasks
@@ -624,6 +628,7 @@ impl LiveSessionManager {
                     let mut promoted = 0u32;
                     let mut dead = 0u32;
                     let mut dead_ids: Vec<String> = Vec::new();
+                    let mut sessions_to_recover: Vec<(String, String)> = Vec::new();
 
                     for (session_id, entry) in &snapshot.sessions {
                         // Skip if hook already created this session
@@ -764,6 +769,9 @@ impl LiveSessionManager {
                                 .insert(session_id.clone(), session.clone());
                             let _ = manager.tx.send(SessionEvent::SessionDiscovered { session });
                             promoted += 1;
+                            if let Some(ref ctrl_id) = entry.control_id {
+                                sessions_to_recover.push((session_id.clone(), ctrl_id.clone()));
+                            }
                         } else {
                             warn!(
                                 session_id = %session_id,
@@ -784,6 +792,32 @@ impl LiveSessionManager {
                             cleaned = dead_ids.len(),
                             "Cleaned accumulators for dead snapshot PIDs"
                         );
+                    }
+
+                    // Recover controlled sessions via sidecar
+                    if !sessions_to_recover.is_empty() {
+                        if let Some(ref sidecar) = manager.sidecar {
+                            match sidecar.ensure_running().await {
+                                Ok(_) => {
+                                    let recovered = sidecar
+                                        .recover_controlled_sessions(&sessions_to_recover)
+                                        .await;
+                                    for (sid, new_ctrl_id) in &recovered {
+                                        manager.bind_control(sid, new_ctrl_id.clone(), None).await;
+                                    }
+                                    info!(
+                                        "Recovered {}/{} controlled sessions after restart",
+                                        recovered.len(),
+                                        sessions_to_recover.len()
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Sidecar unavailable for recovery: {e}. Control bindings cleared."
+                                    );
+                                }
+                            }
+                        }
                     }
 
                     if promoted > 0 || dead > 0 {
@@ -994,6 +1028,60 @@ impl LiveSessionManager {
                     let _ = manager
                         .tx
                         .send(SessionEvent::SessionCompleted { session_id });
+                }
+
+                // =============================================================
+                // Phase 1b: Stale control binding detection
+                // =============================================================
+                let controlled = manager.controlled_session_ids().await;
+                if !controlled.is_empty() {
+                    if let Some(ref sidecar) = manager.sidecar {
+                        if !sidecar.is_running() {
+                            // Sidecar died — attempt restart + recovery
+                            tracing::warn!(
+                                "Sidecar not running, attempting restart for {} controlled sessions",
+                                controlled.len()
+                            );
+                            match sidecar.ensure_running().await {
+                                Ok(_) => {
+                                    let recovered =
+                                        sidecar.recover_controlled_sessions(&controlled).await;
+                                    for (session_id, new_control_id) in &recovered {
+                                        let old_id = controlled
+                                            .iter()
+                                            .find(|(id, _)| id == session_id)
+                                            .map(|(_, cid)| cid.as_str());
+                                        manager
+                                            .bind_control(
+                                                session_id,
+                                                new_control_id.clone(),
+                                                old_id,
+                                            )
+                                            .await;
+                                    }
+                                    let recovered_ids: std::collections::HashSet<&str> =
+                                        recovered.iter().map(|(id, _)| id.as_str()).collect();
+                                    for (session_id, old_control_id) in &controlled {
+                                        if !recovered_ids.contains(session_id.as_str()) {
+                                            manager
+                                                .unbind_control_if(session_id, old_control_id)
+                                                .await;
+                                        }
+                                    }
+                                    manager.request_snapshot_save();
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to restart sidecar: {e}. Clearing all control bindings."
+                                    );
+                                    for (session_id, old_control_id) in &controlled {
+                                        manager.unbind_control_if(session_id, old_control_id).await;
+                                    }
+                                    manager.request_snapshot_save();
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // =============================================================
