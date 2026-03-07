@@ -77,7 +77,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
           cmp = (a.projectDisplayName || a.project).localeCompare(b.projectDisplayName || b.project)
           break
         case 'branch':
-          cmp = (a.gitBranch ?? '').localeCompare(b.gitBranch ?? '')
+          cmp = (a.effectiveBranch ?? '').localeCompare(b.effectiveBranch ?? '')
           break
         case 'turns':
           cmp = a.turnCount - b.turnCount
@@ -181,11 +181,11 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Branch */}
                 <td className="px-2 py-2 w-[120px]">
-                  {session.gitBranch ? (
+                  {session.effectiveBranch ? (
                     <span className="inline-flex items-center gap-1 max-w-full">
                       <GitBranch className="h-3 w-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
                       <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded truncate">
-                        {session.gitBranch}
+                        {session.effectiveBranch}
                       </span>
                     </span>
                   ) : (

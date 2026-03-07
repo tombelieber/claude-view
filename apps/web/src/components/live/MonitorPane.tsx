@@ -219,11 +219,11 @@ function FullHeader({
       </span>
 
       {/* Branch */}
-      {session.gitBranch && (
+      {session.effectiveBranch && (
         <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[15ch]">
           <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
-          <span className="truncate" title={session.gitBranch}>
-            {session.gitBranch}
+          <span className="truncate" title={session.effectiveBranch}>
+            {session.effectiveBranch}
           </span>
         </span>
       )}
