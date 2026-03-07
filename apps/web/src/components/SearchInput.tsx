@@ -28,6 +28,8 @@ function getIndexingPlaceholder(phase: IndexingPhase, percent: number): string {
     case 'ready':
     case 'deep-indexing':
       return `Search (indexing ${percent}%)...`
+    case 'finalizing':
+      return 'Building search index...'
     default:
       return 'Search conversations...'
   }
