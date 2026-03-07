@@ -1,5 +1,6 @@
-import { ChevronDown, Filter, Search, X } from 'lucide-react'
+import { ChevronDown, Filter, Loader2, Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import type { IndexingPhase } from '../../hooks/use-indexing-progress'
 import type { LiveSessionFilters } from './live-filter'
 
 interface LiveFilterBarProps {
@@ -14,6 +15,10 @@ interface LiveFilterBarProps {
   availableProjects: string[]
   availableBranches: string[]
   searchInputRef?: React.RefObject<HTMLInputElement | null>
+  /** Current indexing phase — when set, shows spinner and phase-aware placeholder. */
+  indexingPhase?: IndexingPhase
+  /** Indexing percentage (0-100) shown in placeholder during deep-indexing. */
+  indexingPercent?: number
 }
 
 type DropdownType = 'status' | 'project' | 'branch' | null
@@ -30,10 +35,23 @@ export function LiveFilterBar({
   availableProjects,
   availableBranches,
   searchInputRef,
+  indexingPhase,
+  indexingPercent = 0,
 }: LiveFilterBarProps) {
   const [localSearch, setLocalSearch] = useState(filters.search)
   const [openDropdown, setOpenDropdown] = useState<DropdownType>(null)
   const barRef = useRef<HTMLDivElement>(null)
+
+  const isIndexing =
+    indexingPhase &&
+    indexingPhase !== 'done' &&
+    indexingPhase !== 'error' &&
+    indexingPhase !== 'idle'
+  const searchPlaceholder = isIndexing
+    ? indexingPhase === 'reading-indexes' || indexingPhase === 'ready'
+      ? 'Preparing search...'
+      : `Search (indexing ${indexingPercent}%)...`
+    : 'Search sessions...'
 
   // Sync local search from external changes (e.g. clearAll)
   useEffect(() => {
@@ -96,13 +114,18 @@ export function LiveFilterBar({
       <div className="flex items-center gap-2">
         {/* Search input */}
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+          {isIndexing ? (
+            <Loader2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-blue-400 dark:text-blue-500 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 dark:text-gray-500" />
+          )}
           <input
             ref={searchInputRef}
             type="text"
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
-            placeholder="Search sessions..."
+            placeholder={searchPlaceholder}
+            aria-label={isIndexing ? 'Search sessions — indexing in progress' : 'Search sessions'}
             className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md pl-8 pr-8 py-1.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
           />
           {localSearch && (
