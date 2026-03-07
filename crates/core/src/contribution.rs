@@ -111,10 +111,7 @@ pub fn count_lines_in_edit(input: &serde_json::Value) -> AiLineCount {
 /// Returns lines_added = line count of content, lines_removed = 0.
 /// Write creates a new file, so there's nothing removed.
 pub fn count_lines_in_write(input: &serde_json::Value) -> AiLineCount {
-    let content = input
-        .get("content")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let content = input.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
     AiLineCount {
         lines_added: count_lines(content),
@@ -348,7 +345,10 @@ mod tests {
     #[test]
     fn test_write_large_file() {
         // Simulate writing a 100-line file
-        let content = (0..100).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let content = (0..100)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         let input = json!({
             "file_path": "/test.rs",
             "content": content
@@ -409,7 +409,7 @@ mod tests {
         let invocations = vec![("Edit", &edit_input), ("Write", &write_input)];
         let count = count_ai_lines(invocations);
         // Edit: +1, -2; Write: +3, -0
-        assert_eq!(count.lines_added, 4);  // 1 + 3
+        assert_eq!(count.lines_added, 4); // 1 + 3
         assert_eq!(count.lines_removed, 2); // 2 + 0
     }
 

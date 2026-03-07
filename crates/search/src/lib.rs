@@ -34,7 +34,8 @@ pub use types::{MatchHit, SearchResponse, SessionHit};
 // Version 4: Enriched content — tool_result indexed, session summary document, fuzzy matching
 // Version 5: Force rebuild to repopulate after v4 wipe left index empty (needs_full_reindex fix)
 // Version 6: Fix schema_version written before indexing completes — deferred to post-commit
-pub const SEARCH_SCHEMA_VERSION: u32 = 6;
+// Version 7: Project field stores effective identity (git_root or project_id) to match sidebar filter
+pub const SEARCH_SCHEMA_VERSION: u32 = 7;
 // Version 1: Initial schema (project as STRING with encoded path)
 // Version 2: model field changed to TEXT for partial matching
 // Version 3: Force rebuild to ensure model TEXT schema is applied correctly
@@ -157,7 +158,10 @@ impl SearchIndex {
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if p.file_name().map(|n| n != "schema_version").unwrap_or(false) {
+                    if p.file_name()
+                        .map(|n| n != "schema_version")
+                        .unwrap_or(false)
+                    {
                         if p.is_dir() {
                             let _ = std::fs::remove_dir_all(&p);
                         } else {
@@ -224,9 +228,7 @@ impl SearchIndex {
         let model_field = schema
             .get_field("model")
             .expect("schema missing model field");
-        let role_field = schema
-            .get_field("role")
-            .expect("schema missing role field");
+        let role_field = schema.get_field("role").expect("schema missing role field");
         let content_field = schema
             .get_field("content")
             .expect("schema missing content field");
@@ -415,10 +417,8 @@ mod tests {
             },
         ];
 
-        idx.index_session("sess-001", &docs[0..1])
-            .expect("index");
-        idx.index_session("sess-002", &docs[1..2])
-            .expect("index");
+        idx.index_session("sess-001", &docs[0..1]).expect("index");
+        idx.index_session("sess-002", &docs[1..2]).expect("index");
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
@@ -459,10 +459,8 @@ mod tests {
             },
         ];
 
-        idx.index_session("sess-001", &docs[0..1])
-            .expect("index");
-        idx.index_session("sess-002", &docs[1..2])
-            .expect("index");
+        idx.index_session("sess-001", &docs[0..1]).expect("index");
+        idx.index_session("sess-002", &docs[1..2]).expect("index");
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
@@ -490,8 +488,7 @@ mod tests {
             skills: vec![],
         }];
 
-        idx.index_session("sess-to-delete", &docs)
-            .expect("index");
+        idx.index_session("sess-to-delete", &docs).expect("index");
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
@@ -554,15 +551,11 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Old content should not be found
-        let result = idx
-            .search("databases", None, 10, 0)
-            .expect("search old");
+        let result = idx.search("databases", None, 10, 0).expect("search old");
         assert_eq!(result.total_sessions, 0);
 
         // New content should be found
-        let result = idx
-            .search("networking", None, 10, 0)
-            .expect("search new");
+        let result = idx.search("networking", None, 10, 0).expect("search new");
         assert_eq!(result.total_sessions, 1);
     }
 
@@ -651,17 +644,13 @@ mod tests {
             },
         ];
 
-        idx.index_session("sess-001", &docs[0..1])
-            .expect("index");
-        idx.index_session("sess-002", &docs[1..2])
-            .expect("index");
+        idx.index_session("sess-001", &docs[0..1]).expect("index");
+        idx.index_session("sess-002", &docs[1..2]).expect("index");
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
         // Search with skill qualifier
-        let result = idx
-            .search("skill:Edit bug", None, 10, 0)
-            .expect("search");
+        let result = idx.search("skill:Edit bug", None, 10, 0).expect("search");
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "sess-001");
     }
@@ -759,10 +748,8 @@ mod tests {
             },
         ];
 
-        idx.index_session("sess-001", &docs[0..1])
-            .expect("index");
-        idx.index_session("sess-002", &docs[1..2])
-            .expect("index");
+        idx.index_session("sess-001", &docs[0..1]).expect("index");
+        idx.index_session("sess-002", &docs[1..2]).expect("index");
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
@@ -771,9 +758,14 @@ mod tests {
         let result = idx
             .search("\"login authentication\"", None, 10, 0)
             .expect("phrase search");
-        assert!(result.total_sessions >= 1, "at least the exact phrase match");
-        assert_eq!(result.sessions[0].session_id, "sess-001",
-            "exact phrase match must rank first");
+        assert!(
+            result.total_sessions >= 1,
+            "at least the exact phrase match"
+        );
+        assert_eq!(
+            result.sessions[0].session_id, "sess-001",
+            "exact phrase match must rank first"
+        );
     }
 
     #[test]
@@ -801,8 +793,9 @@ mod tests {
                 branch: "".to_string(),
                 model: "".to_string(),
                 role: "user".to_string(),
-                content: "authentication authentication authentication is critical for authentication"
-                    .to_string(),
+                content:
+                    "authentication authentication authentication is critical for authentication"
+                        .to_string(),
                 turn_number: 1,
                 timestamp: 1739598000,
                 skills: vec![],
@@ -826,14 +819,16 @@ mod tests {
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
-        let result = idx
-            .search("authentication", None, 10, 0)
-            .expect("search");
+        let result = idx.search("authentication", None, 10, 0).expect("search");
         assert_eq!(result.total_sessions, 2);
         // Both sessions should be found. Note: FuzzyTermQuery uses constant scoring
         // (not BM25), so ordering by best_score is not guaranteed to reflect term
         // frequency. We verify both sessions are present.
-        let ids: Vec<&str> = result.sessions.iter().map(|s| s.session_id.as_str()).collect();
+        let ids: Vec<&str> = result
+            .sessions
+            .iter()
+            .map(|s| s.session_id.as_str())
+            .collect();
         assert!(ids.contains(&"sess-strong"), "strong session should appear");
         assert!(ids.contains(&"sess-weak"), "weak session should appear");
     }
@@ -850,23 +845,37 @@ mod tests {
         let idx = SearchIndex::open(&idx_path).unwrap();
 
         // After open() with mismatch, needs_full_reindex should be true
-        assert!(idx.needs_full_reindex, "should need full reindex after version mismatch");
+        assert!(
+            idx.needs_full_reindex,
+            "should need full reindex after version mismatch"
+        );
 
         // Version file should NOT be updated yet (deferred to mark_schema_synced)
         let after = std::fs::read_to_string(&version_path).unwrap();
-        assert_eq!(after.trim(), "1", "schema_version should stay at old value until mark_schema_synced");
+        assert_eq!(
+            after.trim(),
+            "1",
+            "schema_version should stay at old value until mark_schema_synced"
+        );
 
         // After marking synced, version file should be updated
         idx.mark_schema_synced();
         let synced = std::fs::read_to_string(&version_path).unwrap();
-        assert_eq!(synced.trim(), format!("{}", SEARCH_SCHEMA_VERSION), "schema_version should match after sync");
+        assert_eq!(
+            synced.trim(),
+            format!("{}", SEARCH_SCHEMA_VERSION),
+            "schema_version should match after sync"
+        );
 
         // Drop the first index to release the writer lock before re-opening
         drop(idx);
 
         // Re-opening should now NOT need rebuild
         let idx2 = SearchIndex::open(&idx_path).unwrap();
-        assert!(!idx2.needs_full_reindex, "should not need reindex after sync");
+        assert!(
+            !idx2.needs_full_reindex,
+            "should not need reindex after sync"
+        );
     }
 
     #[test]
@@ -876,7 +885,10 @@ mod tests {
 
         // No version file at all
         let idx = SearchIndex::open(&idx_path).unwrap();
-        assert!(idx.needs_full_reindex, "should need full reindex when no version file");
+        assert!(
+            idx.needs_full_reindex,
+            "should need full reindex when no version file"
+        );
 
         // After syncing, should not need rebuild
         idx.mark_schema_synced();
@@ -885,7 +897,10 @@ mod tests {
         drop(idx);
 
         let idx2 = SearchIndex::open(&idx_path).unwrap();
-        assert!(!idx2.needs_full_reindex, "should not need reindex after sync");
+        assert!(
+            !idx2.needs_full_reindex,
+            "should not need reindex after sync"
+        );
     }
 
     #[test]
@@ -924,12 +939,20 @@ mod tests {
 
         // Partial model name should match
         let result = idx.search("model:opus hello", None, 10, 0).unwrap();
-        assert_eq!(result.total_sessions, 1, "model:opus should match claude-opus-4-6");
+        assert_eq!(
+            result.total_sessions, 1,
+            "model:opus should match claude-opus-4-6"
+        );
         assert_eq!(result.sessions[0].session_id, "s1");
 
         // Full model name should also still match
-        let result2 = idx.search("model:claude-opus-4-6 hello", None, 10, 0).unwrap();
-        assert_eq!(result2.total_sessions, 1, "full model name should still match");
+        let result2 = idx
+            .search("model:claude-opus-4-6 hello", None, 10, 0)
+            .unwrap();
+        assert_eq!(
+            result2.total_sessions, 1,
+            "full model name should still match"
+        );
     }
 
     #[test]
@@ -1007,7 +1030,10 @@ mod tests {
         assert_eq!(r4.total_sessions, 1, "skill-only qualifier should work");
 
         let r5 = idx.search("model:opus", None, 10, 0).unwrap();
-        assert_eq!(r5.total_sessions, 1, "model-only qualifier (partial) should work");
+        assert_eq!(
+            r5.total_sessions, 1,
+            "model-only qualifier (partial) should work"
+        );
     }
 
     #[test]
@@ -1045,12 +1071,15 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         let result = idx.search("brainstorming", None, 10, 0).expect("search");
-        assert_eq!(result.total_sessions, 1, "should find session via tool_result content");
+        assert_eq!(
+            result.total_sessions, 1,
+            "should find session via tool_result content"
+        );
         assert_eq!(result.sessions[0].session_id, "sess-tool");
     }
 
     #[test]
-    fn test_search_finds_session_summary_content() {
+    fn test_search_excludes_session_summary_content() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
         let docs = vec![
@@ -1083,7 +1112,10 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         let result = idx.search("brainstorming", None, 10, 0).expect("search");
-        assert_eq!(result.total_sessions, 1, "should find via summary content");
+        assert_eq!(
+            result.total_sessions, 0,
+            "summary-role documents must be excluded from source-message indexing"
+        );
     }
 
     #[test]
@@ -1111,24 +1143,38 @@ mod tests {
         assert_eq!(r1.total_sessions, 1, "exact match");
 
         // Typo: missing letter
-        let r2 = idx.search("brainstormin", None, 10, 0).expect("typo missing letter");
-        assert_eq!(r2.total_sessions, 1, "fuzzy should match with missing letter");
+        let r2 = idx
+            .search("brainstormin", None, 10, 0)
+            .expect("typo missing letter");
+        assert_eq!(
+            r2.total_sessions, 1,
+            "fuzzy should match with missing letter"
+        );
 
         // Typo: transposed letters
-        let r3 = idx.search("brianstorming", None, 10, 0).expect("typo transposition");
-        assert_eq!(r3.total_sessions, 1, "fuzzy should match with transposed letters");
+        let r3 = idx
+            .search("brianstorming", None, 10, 0)
+            .expect("typo transposition");
+        assert_eq!(
+            r3.total_sessions, 1,
+            "fuzzy should match with transposed letters"
+        );
 
         // Quoted phrase with typo: multi-signal scoring still fires fuzzy as a
         // low-weight signal, so this may find results. The key invariant is that
         // exact matches rank higher than fuzzy-only matches (tested elsewhere).
-        let r4 = idx.search("\"brainstormin\"", None, 10, 0).expect("quoted typo");
+        let r4 = idx
+            .search("\"brainstormin\"", None, 10, 0)
+            .expect("quoted typo");
         // With multi-signal, fuzzy can still match even in quoted mode
         // (the phrase signal won't fire, but fuzzy will). This is intentional —
         // better recall, with phrase matches boosted when they exist.
         if r4.total_sessions > 0 {
             // If fuzzy matched, the score should be relatively low (only fuzzy signal)
-            assert!(r4.sessions[0].best_score < r1.sessions[0].best_score,
-                "fuzzy-only match should score lower than exact match");
+            assert!(
+                r4.sessions[0].best_score < r1.sessions[0].best_score,
+                "fuzzy-only match should score lower than exact match"
+            );
         }
     }
 }

@@ -1,0 +1,65 @@
+---
+title: CLI Options
+description: Command-line usage, subcommands, and environment variables for claude-view.
+---
+
+import { DEFAULT_PORT } from '../../../../data/site';
+
+## Usage
+
+```bash
+npx claude-view
+```
+
+Or if globally installed:
+```bash
+claude-view
+```
+
+The server starts, opens your browser, and begins discovering Claude Code sessions automatically.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `cleanup` | Remove stale lock files and temporary data |
+
+```bash
+claude-view cleanup
+```
+
+## Environment variables
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CLAUDE_VIEW_PORT</code></td><td>Override server port</td><td><code>{DEFAULT_PORT}</code></td></tr>
+    <tr><td><code>PORT</code></td><td>Alternative port variable (fallback)</td><td>—</td></tr>
+    <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>warn</code></td></tr>
+  </tbody>
+</table>
+
+## Examples
+
+```bash
+# Default — starts server and opens browser
+npx claude-view
+
+# Custom port via env var
+CLAUDE_VIEW_PORT=8080 npx claude-view
+
+# Verbose logging
+RUST_LOG=info npx claude-view
+
+# Debug logging for the server crate only
+RUST_LOG=warn,claude_view_server=debug npx claude-view
+
+# Clean up stale data
+npx claude-view cleanup
+```
+
+## Port fallback
+
+If the specified port (default <code>{DEFAULT_PORT}</code>) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.

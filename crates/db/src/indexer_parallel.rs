@@ -2,6 +2,12 @@
 // Fast JSONL parsing with memory-mapped I/O and SIMD-accelerated scanning.
 // Also contains the two-pass indexing pipeline: Pass 1 (index JSON) and Pass 2 (deep JSONL).
 
+use claude_view_core::{
+    classify_work_type, count_ai_lines, discover_orphan_sessions,
+    pricing::{calculate_cost, default_pricing, fill_tiering_gaps, ModelPricing, TokenUsage},
+    read_all_session_indexes, resolve_cwd_for_project, resolve_project_path_with_cwd,
+    resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry, ToolCounts,
+};
 use memchr::memmem;
 use serde::de::{self, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
@@ -10,11 +16,6 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use claude_view_core::{
-    classify_work_type, count_ai_lines, discover_orphan_sessions, read_all_session_indexes,
-    resolve_cwd_for_project, resolve_project_path_with_cwd, resolve_worktree_parent,
-    ClassificationInput, ClassifyResult, Registry, ToolCounts,
-};
 
 use crate::Database;
 
@@ -25,14 +26,21 @@ use crate::Database;
 /// Version 4: LOC estimation, AI contribution tracking, work type classification.
 /// Version 5: Git branch extraction, primary model detection.
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
-/// Version 7: Search index uses project_display_name instead of encoded project_id.
+/// Version 7: Search index uses effective project identity (git_root or project_id) for sidebar filter alignment.
 /// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
-/// Version 10: costUSD parity — accumulate per-entry costUSD, store as total_cost_usd.
+/// Version 10: Persist session total_cost_usd.
 /// Version 11: Unified session pipeline — single-pass parse-before-write.
 /// Version 12: valid_sessions view no longer requires last_message_at > 0.
 /// Version 13: Unified pipeline writes turns, models, invocations, and search index.
-pub const CURRENT_PARSE_VERSION: i32 = 13;
+/// Version 14: Task-time turns split on interactive human tool_result responses.
+/// Version 15: Cost computed from token counts.
+/// Version 16: Per-turn cost computation (200k tiering per-API-request, not per-session).
+/// Version 18: Per-turn fallback cost honors cache_creation split (5m/1h).
+/// Version 19: Remove JSONL top-level cost-field parsing path; compute from token usage only.
+/// Version 20: Strict cost integrity: if any turn model is unpriced, session total_cost_usd is NULL.
+/// Version 21: Source-message integrity hardening (role filtering, summary exclusion, strict tool_use LOC/path extraction).
+pub const CURRENT_PARSE_VERSION: i32 = 21;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -59,13 +67,13 @@ pub struct ParsedSession {
     pub tool_counts_read: i32,
     pub tool_counts_bash: i32,
     pub tool_counts_write: i32,
-    pub files_touched: String,       // JSON array
-    pub skills_used: String,         // JSON array
+    pub files_touched: String, // JSON array
+    pub skills_used: String,   // JSON array
     pub user_prompt_count: i32,
     pub api_call_count: i32,
     pub tool_call_count: i32,
-    pub files_read: String,          // JSON array
-    pub files_edited: String,        // JSON array
+    pub files_read: String,   // JSON array
+    pub files_edited: String, // JSON array
     pub files_read_count: i32,
     pub files_edited_count: i32,
     pub reedited_files_count: i32,
@@ -101,7 +109,7 @@ pub struct ParsedSession {
     pub total_task_time_seconds: Option<i64>,
     pub longest_task_seconds: Option<i64>,
     pub longest_task_preview: Option<String>,
-    pub total_cost_usd: f64,
+    pub total_cost_usd: Option<f64>,
 }
 
 /// Hints from sessions-index.json — merged during parse, never written to DB directly.
@@ -162,6 +170,57 @@ fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> 
         .map(|(model, _)| model.to_string())
 }
 
+/// Compute total cost by summing per-turn costs (each turn = one API call).
+/// This avoids inflating cost by applying 200k tiered pricing to cumulative tokens.
+/// Returns `None` if any turn had tokens for an unpriced model.
+fn calculate_per_turn_cost(
+    turns: &[claude_view_core::RawTurn],
+    pricing: &HashMap<String, ModelPricing>,
+) -> Option<f64> {
+    let mut total = 0.0;
+    let mut has_unpriced_usage = false;
+    for turn in turns {
+        let tokens = TokenUsage {
+            input_tokens: turn.input_tokens.unwrap_or(0),
+            output_tokens: turn.output_tokens.unwrap_or(0),
+            cache_read_tokens: turn.cache_read_tokens.unwrap_or(0),
+            cache_creation_tokens: turn.cache_creation_tokens.unwrap_or(0),
+            cache_creation_5m_tokens: turn.cache_creation_5m_tokens.unwrap_or(0),
+            cache_creation_1hr_tokens: turn.cache_creation_1hr_tokens.unwrap_or(0),
+            total_tokens: 0,
+        };
+        let turn_cost = calculate_cost(&tokens, Some(&turn.model_id), pricing);
+        total += turn_cost.total_usd;
+        has_unpriced_usage |= turn_cost.has_unpriced_usage;
+    }
+    if has_unpriced_usage {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+/// Resolve pricing map for indexing cost computation.
+///
+/// Uses cached pricing from SQLite when available, merged over defaults, then
+/// fills any missing tier fields.
+async fn load_indexing_pricing(db: &Database) -> HashMap<String, ModelPricing> {
+    let defaults = default_pricing();
+    let mut pricing = match crate::pricing::load_pricing_cache(db).await {
+        Ok(Some(cached)) => crate::pricing::merge_pricing(&defaults, &cached),
+        Ok(None) => defaults,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "Failed to load cached pricing for indexing; using default pricing table"
+            );
+            defaults
+        }
+    };
+    fill_tiering_gaps(&mut pricing);
+    pricing
+}
+
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
 /// These fields are NOT available from sessions-index.json.
 #[derive(Debug, Clone, Default)]
@@ -201,10 +260,6 @@ pub struct ExtendedMetadata {
     pub cache_read_tokens: u64,
     pub cache_creation_tokens: u64,
     pub thinking_block_count: u32,
-
-    /// Accumulated costUSD from JSONL entries (ccusage "auto" mode).
-    /// Sum of per-entry `costUSD` when present.
-    pub total_cost_usd: f64,
 
     // System line metrics
     pub turn_durations_ms: Vec<u64>,
@@ -285,8 +340,6 @@ struct AssistantLine {
     #[serde(rename = "requestId")]
     request_id: Option<String>,
     message: Option<AssistantMessage>,
-    #[serde(rename = "costUSD")]
-    cost_usd: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -304,7 +357,14 @@ struct UsageBlock {
     output_tokens: Option<u64>,
     cache_read_input_tokens: Option<u64>,
     cache_creation_input_tokens: Option<u64>,
+    cache_creation: Option<CacheCreationUsage>,
     service_tier: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CacheCreationUsage {
+    ephemeral_5m_input_tokens: Option<u64>,
+    ephemeral_1h_input_tokens: Option<u64>,
 }
 
 /// Custom visitor result — avoids #[serde(untagged)] buffering overhead.
@@ -423,7 +483,9 @@ pub const COMMIT_SKILL_NAMES: &[&str] = &[
 /// - `input.skill` is one of the commit-related skill names
 ///
 /// Returns a list of `CommitSkillInvocation` with skill name and timestamp.
-pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Vec<CommitSkillInvocation> {
+pub fn extract_commit_skill_invocations(
+    raw_invocations: &[RawInvocation],
+) -> Vec<CommitSkillInvocation> {
     raw_invocations
         .iter()
         .filter_map(|inv| {
@@ -433,11 +495,7 @@ pub fn extract_commit_skill_invocations(raw_invocations: &[RawInvocation]) -> Ve
             }
 
             // Extract the skill name from input.skill
-            let skill_name = inv
-                .input
-                .as_ref()?
-                .get("skill")?
-                .as_str()?;
+            let skill_name = inv.input.as_ref()?.get("skill")?.as_str()?;
 
             // Check if it's a commit-related skill
             if COMMIT_SKILL_NAMES.contains(&skill_name) {
@@ -478,7 +536,7 @@ pub struct ParseResult {
 pub struct DeepIndexResult {
     pub session_id: String,
     pub file_path: String,
-    /// Project name (from sessions table `project_id` column), used for search indexing.
+    /// Effective project identity (git_root or project_id), used for search indexing.
     pub project: String,
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
@@ -518,9 +576,65 @@ pub struct ParseDiagnostics {
     pub timestamps_extracted: u32,
     pub timestamps_unparseable: u32,
     pub turns_extracted: u32,
+    pub unknown_source_role_count: u32,
+    pub derived_source_message_doc_count: u32,
+    pub source_message_non_source_provenance_count: u32,
 
     // Bytes
     pub bytes_total: u64,
+}
+
+const SOURCE_MESSAGE_ROLE_USER: &str = "user";
+const SOURCE_MESSAGE_ROLE_ASSISTANT: &str = "assistant";
+const SOURCE_MESSAGE_ROLE_TOOL: &str = "tool";
+const TOOL_INPUT_FILE_PATH_KEYS: [&str; 5] = [
+    "file_path",
+    "path",
+    "filename",
+    "filePath",
+    "entrypoint_path",
+];
+
+fn is_valid_source_message_role(role: &str) -> bool {
+    matches!(
+        role,
+        SOURCE_MESSAGE_ROLE_USER | SOURCE_MESSAGE_ROLE_ASSISTANT | SOURCE_MESSAGE_ROLE_TOOL
+    )
+}
+
+fn sanitize_source_search_messages(
+    messages: Vec<claude_view_core::SearchableMessage>,
+    diag: &mut ParseDiagnostics,
+) -> Vec<claude_view_core::SearchableMessage> {
+    messages
+        .into_iter()
+        .filter_map(|msg| {
+            if is_valid_source_message_role(msg.role.as_str()) {
+                Some(msg)
+            } else {
+                diag.unknown_source_role_count = diag.unknown_source_role_count.saturating_add(1);
+                None
+            }
+        })
+        .collect()
+}
+
+fn note_rejected_derived_source_doc(diag: &mut ParseDiagnostics) {
+    diag.derived_source_message_doc_count = diag.derived_source_message_doc_count.saturating_add(1);
+    diag.source_message_non_source_provenance_count = diag
+        .source_message_non_source_provenance_count
+        .saturating_add(1);
+}
+
+fn extract_tool_input_file_path(input: &serde_json::Value) -> Option<&str> {
+    for key in TOOL_INPUT_FILE_PATH_KEYS {
+        if let Some(path) = input.get(key).and_then(|v| v.as_str()) {
+            if !path.is_empty() {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 /// Zero-copy file data: holds either an mmap (large files) or a Vec (small files).
@@ -570,37 +684,60 @@ pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
     }
 }
 
-/// Extract lines added/removed from Edit or Write tool_use blocks.
+/// Extract lines added/removed from assistant.message.content tool_use blocks.
 ///
-/// For Edit: counts lines in old_string (removed) and new_string (added).
-/// For Write: counts lines in content (all added, none removed).
-///
-/// Returns (lines_added, lines_removed).
-fn extract_loc_from_tool_use(line: &[u8], is_edit: bool) -> (u32, u32) {
-    // Parse as JSON Value to access input fields
+/// LOC is derived only from Edit/Write tool inputs and aggregated across all
+/// tool_use blocks in the line.
+fn extract_loc_from_assistant_tool_uses(line: &[u8]) -> (u32, u32) {
     let value: serde_json::Value = match serde_json::from_slice(line) {
         Ok(v) => v,
         Err(_) => return (0, 0),
     };
 
-    let input = match value.get("input") {
-        Some(inp) => inp,
+    let content = match value
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+    {
+        Some(c) => c,
         None => return (0, 0),
     };
 
-    if is_edit {
-        // Edit tool: old_string → removed, new_string → added
-        let old = input.get("old_string").and_then(|s| s.as_str()).unwrap_or("");
-        let new = input.get("new_string").and_then(|s| s.as_str()).unwrap_or("");
-        let old_lines = old.lines().count() as u32;
-        let new_lines = new.lines().count() as u32;
-        (new_lines, old_lines)
-    } else {
-        // Write tool: all lines are added
-        let content = input.get("content").and_then(|c| c.as_str()).unwrap_or("");
-        let lines = content.lines().count() as u32;
-        (lines, 0)
+    let mut added = 0u32;
+    let mut removed = 0u32;
+
+    for block in content {
+        if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+            continue;
+        }
+        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let input = match block.get("input") {
+            Some(v) => v,
+            None => continue,
+        };
+
+        match name {
+            "Edit" => {
+                let old = input
+                    .get("old_string")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                let new = input
+                    .get("new_string")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                removed = removed.saturating_add(old.lines().count() as u32);
+                added = added.saturating_add(new.lines().count() as u32);
+            }
+            "Write" => {
+                let content = input.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                added = added.saturating_add(content.lines().count() as u32);
+            }
+            _ => {}
+        }
     }
+
+    (added, removed)
 }
 
 /// Full JSON parser that extracts all 7 JSONL line types.
@@ -642,6 +779,97 @@ fn parse_file_bytes(path: &std::path::Path) -> ParseResult {
     }
 }
 
+fn merge_subagent_parse_result(parent: &mut ParseResult, subagent: ParseResult) {
+    // Preserve existing token + turn merge behavior.
+    parent.deep.total_input_tokens += subagent.deep.total_input_tokens;
+    parent.deep.total_output_tokens += subagent.deep.total_output_tokens;
+    parent.deep.cache_read_tokens += subagent.deep.cache_read_tokens;
+    parent.deep.cache_creation_tokens += subagent.deep.cache_creation_tokens;
+
+    // Merge raw invocation-backed productivity signals so parent metrics reflect
+    // parent + subagent workload under one attributed session.
+    parent.deep.tool_counts.edit += subagent.deep.tool_counts.edit;
+    parent.deep.tool_counts.read += subagent.deep.tool_counts.read;
+    parent.deep.tool_counts.bash += subagent.deep.tool_counts.bash;
+    parent.deep.tool_counts.write += subagent.deep.tool_counts.write;
+    parent.deep.tool_call_count += subagent.deep.tool_call_count;
+    parent.deep.files_read.extend(subagent.deep.files_read);
+    parent.deep.files_edited.extend(subagent.deep.files_edited);
+    parent
+        .deep
+        .files_touched
+        .extend(subagent.deep.files_touched);
+    parent.deep.skills_used.extend(subagent.deep.skills_used);
+
+    for model in subagent.models_seen {
+        if !parent.models_seen.contains(&model) {
+            parent.models_seen.push(model);
+        }
+    }
+    parent.turns.extend(subagent.turns);
+    parent.raw_invocations.extend(subagent.raw_invocations);
+}
+
+fn recompute_merged_productivity_metrics(result: &mut ParseResult) {
+    // files_read: keep deduplicated vector + count contract
+    let mut files_read_unique = std::mem::take(&mut result.deep.files_read);
+    files_read_unique.sort();
+    files_read_unique.dedup();
+    result.deep.files_read_count = files_read_unique.len() as u32;
+    result.deep.files_read = files_read_unique;
+
+    // files_edited: preserve all occurrences for re-edit derivation
+    let mut files_edited_unique = result.deep.files_edited.clone();
+    files_edited_unique.sort();
+    files_edited_unique.dedup();
+    result.deep.files_edited_count = files_edited_unique.len() as u32;
+    result.deep.reedited_files_count = count_reedited_files(&result.deep.files_edited);
+
+    // ai_lines_* are derived from raw invocations, so recompute from merged set.
+    let ai_line_count = count_ai_lines(
+        result
+            .raw_invocations
+            .iter()
+            .map(|inv| (inv.name.as_str(), &inv.input))
+            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i))),
+    );
+    result.deep.ai_lines_added = ai_line_count.lines_added;
+    result.deep.ai_lines_removed = ai_line_count.lines_removed;
+
+    result.deep.skills_used.sort();
+    result.deep.skills_used.dedup();
+    result.deep.files_touched.sort();
+    result.deep.files_touched.dedup();
+}
+
+fn merge_subagent_workload(parent_jsonl_path: &Path, result: &mut ParseResult) {
+    let subagent_dir = parent_jsonl_path.with_extension("").join("subagents");
+    if !subagent_dir.is_dir() {
+        return;
+    }
+
+    let Ok(entries) = std::fs::read_dir(&subagent_dir) else {
+        return;
+    };
+
+    let mut subagent_jsonls: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .collect();
+    subagent_jsonls.sort();
+
+    if subagent_jsonls.is_empty() {
+        return;
+    }
+
+    for sub_path in subagent_jsonls {
+        let sub_result = parse_file_bytes(&sub_path);
+        merge_subagent_parse_result(result, sub_result);
+    }
+
+    recompute_merged_productivity_metrics(result);
+}
+
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut result = ParseResult::default();
     let diag = &mut result.diagnostics;
@@ -657,10 +885,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let mut first_timestamp: Option<i64> = None;
     let mut last_timestamp: Option<i64> = None;
 
-    // Dedup: track seen (message_id, request_id) pairs to avoid counting
-    // tokens multiple times when Claude Code splits one API response into
-    // multiple JSONL lines (one per content block: thinking, text, tool_use).
-    let mut seen_api_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Dedup for API-call counting and usage-token counting.
+    // API-call count should increment once per response even when usage is absent.
+    // Usage tokens should only be counted once per response when a usage payload exists.
+    let mut seen_api_calls_for_count: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut seen_api_calls_for_usage: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     // Count of unique API calls (not inflated by content block splitting).
     // For legacy data without IDs, each line counts as unique (no dedup possible).
     let mut unique_api_call_count = 0u32;
@@ -695,11 +926,14 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // Phase C: LOC estimation - SIMD finders for Edit/Write tool_use blocks
     let tool_use_finder = memmem::Finder::new(b"\"type\":\"tool_use\"");
-    let edit_finder = memmem::Finder::new(b"\"name\":\"Edit\"");
-    let write_finder = memmem::Finder::new(b"\"name\":\"Write\"");
 
     // Turn detection: tool_result user messages are continuations, not real turns
     let tool_result_finder = memmem::Finder::new(b"\"tool_result\"");
+    // Interactive tool_result markers: these represent human responses and should
+    // start a new active turn.
+    let tool_result_questions_finder = memmem::Finder::new(b"\"toolUseResult\":{\"questions\"");
+    let tool_result_rejected_finder =
+        memmem::Finder::new(b"\"toolUseResult\":\"User rejected tool use\"");
 
     // gitBranch extraction
     let git_branch_finder = memmem::Finder::new(b"\"gitBranch\":\"");
@@ -788,23 +1022,42 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             user_count += 1;
             // Check if this is a tool_result continuation (not a real user turn)
             let is_tool_result = tool_result_finder.find(line).is_some();
+            let has_interactive_tool_result_marker = is_tool_result
+                && (tool_result_questions_finder.find(line).is_some()
+                    || tool_result_rejected_finder.find(line).is_some());
+            let mut is_human_tool_result = false;
             let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
+                is_human_tool_result = is_tool_result
+                    && (has_interactive_tool_result_marker
+                        || is_human_tool_result_content(&content));
+                let is_real_user_input =
+                    !is_system_user_content(&content) && (!is_tool_result || is_human_tool_result);
+
+                if first_user_content.is_none() && is_real_user_input {
                     first_user_content = Some(content.clone());
                 }
                 last_user_content = Some(content.clone());
 
-                // Turn detection: real user prompts (not system prefixes, not tool_result)
-                if !is_tool_result && !is_system_user_content(&content) {
+                // Turn detection: real user prompts and human interactive tool responses.
+                // Regular tool_result payloads (Read/Edit/Bash output, web search output, etc.)
+                // remain continuations of the current turn.
+                if is_real_user_input {
                     let current_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
                     // Close previous turn if one was open
-                    if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                    if let (Some(start_ts), Some(end_ts)) =
+                        (result.deep.current_turn_start_ts, last_timestamp)
+                    {
                         let wall_secs = (end_ts - start_ts).max(0) as u32;
                         result.deep.total_task_time_seconds += wall_secs;
-                        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                        if result
+                            .deep
+                            .longest_task_seconds
+                            .is_none_or(|prev| wall_secs > prev)
+                        {
                             result.deep.longest_task_seconds = Some(wall_secs);
-                            result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                            result.deep.longest_task_preview =
+                                result.deep.current_turn_prompt.take();
                         }
                     }
                     // Start new turn
@@ -826,12 +1079,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             // Push search message for user content (including tool_result)
             if let Some(text) = user_text_for_search {
-                let search_role = if is_tool_result { "tool" } else { "user" };
-                result.search_messages.push(claude_view_core::SearchableMessage {
-                    role: search_role.to_string(),
-                    content: text,
-                    timestamp: user_ts,
-                });
+                let search_role = if is_tool_result && !is_human_tool_result {
+                    SOURCE_MESSAGE_ROLE_TOOL
+                } else {
+                    SOURCE_MESSAGE_ROLE_USER
+                };
+                result
+                    .search_messages
+                    .push(claude_view_core::SearchableMessage {
+                        role: search_role.to_string(),
+                        content: text,
+                        timestamp: user_ts,
+                    });
             }
             continue;
         }
@@ -857,38 +1116,43 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         &mut files_edited_all,
                         &mut first_timestamp,
                         &mut last_timestamp,
-                        &mut seen_api_calls,
+                        &mut seen_api_calls_for_count,
+                        &mut seen_api_calls_for_usage,
                         &mut unique_api_call_count,
                     );
 
                     // Phase C: LOC estimation from Edit/Write tool_use blocks
-                    // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                    // SIMD pre-filter: only parse lines containing tool_use blocks.
                     if tool_use_finder.find(line).is_some() {
-                        let is_edit = edit_finder.find(line).is_some();
-                        let is_write = write_finder.find(line).is_some();
-                        if is_edit || is_write {
-                            let (added, removed) = extract_loc_from_tool_use(line, is_edit);
-                            result.lines_added = result.lines_added.saturating_add(added);
-                            result.lines_removed = result.lines_removed.saturating_add(removed);
-                        }
+                        let (added, removed) = extract_loc_from_assistant_tool_uses(line);
+                        result.lines_added = result.lines_added.saturating_add(added);
+                        result.lines_removed = result.lines_removed.saturating_add(removed);
                     }
 
                     // Collect assistant text content for search indexing.
                     // Use SIMD text_finder on raw bytes — avoids re-parse, consistent with user path.
-                    if let Some(text) = extract_first_text_content(line, &content_finder, &text_finder) {
+                    if let Some(text) =
+                        extract_first_text_content(line, &content_finder, &text_finder)
+                    {
                         if !text.is_empty() {
-                            result.search_messages.push(claude_view_core::SearchableMessage {
-                                role: "assistant".to_string(),
-                                content: text,
-                                timestamp: assistant_ts,
-                            });
+                            result
+                                .search_messages
+                                .push(claude_view_core::SearchableMessage {
+                                    role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
+                                    content: text,
+                                    timestamp: assistant_ts,
+                                });
                         }
                     }
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
                     // Fallback: SIMD skill extraction even when typed parse fails
-                    extract_skills_from_line(line, &skill_name_finder, &mut result.deep.skills_used);
+                    extract_skills_from_line(
+                        line,
+                        &skill_name_finder,
+                        &mut result.deep.skills_used,
+                    );
                 }
             }
             continue;
@@ -899,7 +1163,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             diag.json_parse_attempts += 1;
             match serde_json::from_slice::<SystemLine>(line) {
                 Ok(parsed) => {
-                    handle_system_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                    handle_system_line(
+                        parsed,
+                        &mut result.deep,
+                        diag,
+                        &mut first_timestamp,
+                        &mut last_timestamp,
+                    );
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
@@ -913,7 +1183,13 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             diag.json_parse_attempts += 1;
             match serde_json::from_slice::<SummaryLine>(line) {
                 Ok(parsed) => {
-                    handle_summary_line(parsed, &mut result.deep, diag, &mut first_timestamp, &mut last_timestamp);
+                    handle_summary_line(
+                        parsed,
+                        &mut result.deep,
+                        diag,
+                        &mut first_timestamp,
+                        &mut last_timestamp,
+                    );
                 }
                 Err(_) => {
                     diag.json_parse_failures += 1;
@@ -949,25 +1225,46 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 diag.lines_user += 1;
                 user_count += 1;
                 let is_tool_result = tool_result_finder.find(line).is_some();
+                let mut is_human_tool_result = false;
                 let fallback_user_ts = extract_timestamp_from_value(&value);
                 let mut fallback_user_text: Option<String> = None;
-                if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                    if first_user_content.is_none() && !is_system_user_content(&content) && !is_tool_result {
+                if let Some(content) =
+                    extract_first_text_content(line, &content_finder, &text_finder)
+                {
+                    let has_interactive_tool_result_marker =
+                        value.get("toolUseResult").is_some_and(|tr| {
+                            tr.get("questions").is_some()
+                                || tr.as_str() == Some("User rejected tool use")
+                        });
+                    is_human_tool_result = is_tool_result
+                        && (has_interactive_tool_result_marker
+                            || is_human_tool_result_content(&content));
+                    let is_real_user_input = !is_system_user_content(&content)
+                        && (!is_tool_result || is_human_tool_result);
+
+                    if first_user_content.is_none() && is_real_user_input {
                         first_user_content = Some(content.clone());
                     }
                     last_user_content = Some(content.clone());
 
-                    // Turn detection: real user prompts (not system prefixes, not tool_result)
-                    if !is_tool_result && !is_system_user_content(&content) {
+                    // Turn detection: real user prompts and human interactive tool responses.
+                    if is_real_user_input {
                         // Timestamp was already extracted above (before the match)
                         let current_ts = fallback_user_ts;
                         // Close previous turn if one was open
-                        if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
+                        if let (Some(start_ts), Some(end_ts)) =
+                            (result.deep.current_turn_start_ts, last_timestamp)
+                        {
                             let wall_secs = (end_ts - start_ts).max(0) as u32;
                             result.deep.total_task_time_seconds += wall_secs;
-                            if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+                            if result
+                                .deep
+                                .longest_task_seconds
+                                .is_none_or(|prev| wall_secs > prev)
+                            {
                                 result.deep.longest_task_seconds = Some(wall_secs);
-                                result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
+                                result.deep.longest_task_preview =
+                                    result.deep.current_turn_prompt.take();
                             }
                         }
                         // Start new turn
@@ -981,12 +1278,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 // Push search message for fallback user content (including tool_result)
                 if let Some(text) = fallback_user_text {
-                    let search_role = if is_tool_result { "tool" } else { "user" };
-                    result.search_messages.push(claude_view_core::SearchableMessage {
-                        role: search_role.to_string(),
-                        content: text,
-                        timestamp: fallback_user_ts,
-                    });
+                    let search_role = if is_tool_result && !is_human_tool_result {
+                        SOURCE_MESSAGE_ROLE_TOOL
+                    } else {
+                        SOURCE_MESSAGE_ROLE_USER
+                    };
+                    result
+                        .search_messages
+                        .push(claude_view_core::SearchableMessage {
+                            role: search_role.to_string(),
+                            content: text,
+                            timestamp: fallback_user_ts,
+                        });
                 }
             }
             "assistant" => {
@@ -1006,40 +1309,41 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     &mut tool_call_count,
                     &mut files_read_all,
                     &mut files_edited_all,
-                    &mut seen_api_calls,
+                    &mut seen_api_calls_for_count,
+                    &mut seen_api_calls_for_usage,
                     &mut unique_api_call_count,
                 );
 
                 // Phase C: LOC estimation from Edit/Write tool_use blocks
-                // SIMD pre-filter: only parse lines that are tool_use AND (Edit OR Write)
+                // SIMD pre-filter: only parse lines containing tool_use blocks.
                 if tool_use_finder.find(line).is_some() {
-                    let is_edit = edit_finder.find(line).is_some();
-                    let is_write = write_finder.find(line).is_some();
-                    if is_edit || is_write {
-                        let (added, removed) = extract_loc_from_tool_use(line, is_edit);
-                        result.lines_added = result.lines_added.saturating_add(added);
-                        result.lines_removed = result.lines_removed.saturating_add(removed);
-                    }
+                    let (added, removed) = extract_loc_from_assistant_tool_uses(line);
+                    result.lines_added = result.lines_added.saturating_add(added);
+                    result.lines_removed = result.lines_removed.saturating_add(removed);
                 }
 
                 // Collect assistant content for search indexing (Value path)
                 let (text_content, tool_entries) = extract_search_content_from_value(&value);
                 if let Some(text) = text_content {
                     if !text.is_empty() {
-                        result.search_messages.push(claude_view_core::SearchableMessage {
-                            role: "assistant".to_string(),
-                            content: text,
-                            timestamp: fallback_assistant_ts,
-                        });
+                        result
+                            .search_messages
+                            .push(claude_view_core::SearchableMessage {
+                                role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
+                                content: text,
+                                timestamp: fallback_assistant_ts,
+                            });
                     }
                 }
                 for tool_text in tool_entries {
                     if !tool_text.is_empty() {
-                        result.search_messages.push(claude_view_core::SearchableMessage {
-                            role: "tool".to_string(),
-                            content: tool_text,
-                            timestamp: fallback_assistant_ts,
-                        });
+                        result
+                            .search_messages
+                            .push(claude_view_core::SearchableMessage {
+                                role: SOURCE_MESSAGE_ROLE_TOOL.to_string(),
+                                content: tool_text,
+                                timestamp: fallback_assistant_ts,
+                            });
                     }
                 }
             }
@@ -1062,7 +1366,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         result.deep.compaction_count += 1;
                     }
                     "stop_hook_summary" => {
-                        if value.get("preventedContinuation").and_then(|v| v.as_bool()) == Some(true) {
+                        if value.get("preventedContinuation").and_then(|v| v.as_bool())
+                            == Some(true)
+                        {
                             result.deep.hook_blocked_count += 1;
                         }
                     }
@@ -1071,7 +1377,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             }
             "progress" => {
                 diag.lines_progress += 1;
-                let data_type = value.get("data").and_then(|d| d.get("type")).and_then(|t| t.as_str()).unwrap_or("");
+                let data_type = value
+                    .get("data")
+                    .and_then(|d| d.get("type"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("");
                 match data_type {
                     "agent_progress" => result.deep.agent_spawn_count += 1,
                     "bash_progress" => result.deep.bash_progress_count += 1,
@@ -1111,7 +1421,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     if let (Some(start_ts), Some(end_ts)) = (result.deep.current_turn_start_ts, last_timestamp) {
         let wall_secs = (end_ts - start_ts).max(0) as u32;
         result.deep.total_task_time_seconds += wall_secs;
-        if result.deep.longest_task_seconds.is_none_or(|prev| wall_secs > prev) {
+        if result
+            .deep
+            .longest_task_seconds
+            .is_none_or(|prev| wall_secs > prev)
+        {
             result.deep.longest_task_seconds = Some(wall_secs);
             result.deep.longest_task_preview = result.deep.current_turn_prompt.take();
         }
@@ -1119,7 +1433,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // Finalize metrics
     result.deep.turn_count = (user_count as usize).min(assistant_count as usize);
-    result.deep.last_message = last_user_content.map(|c| truncate(&c, 200)).unwrap_or_default();
+    result.deep.last_message = last_user_content
+        .map(|c| truncate(&c, 200))
+        .unwrap_or_default();
     result.deep.first_user_prompt = first_user_content.map(|c| truncate(&c, 500));
     result.deep.user_prompt_count = user_count;
     result.deep.api_call_count = unique_api_call_count;
@@ -1142,8 +1458,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 
     // AI contribution tracking: count lines added/removed from Edit/Write tool_use
     let ai_line_count = count_ai_lines(
-        result.raw_invocations.iter().map(|inv| (inv.name.as_str(), &inv.input))
-            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i)))
+        result
+            .raw_invocations
+            .iter()
+            .map(|inv| (inv.name.as_str(), &inv.input))
+            .filter_map(|(name, input)| input.as_ref().map(|i| (name, i))),
     );
     result.deep.ai_lines_added = ai_line_count.lines_added;
     result.deep.ai_lines_removed = ai_line_count.lines_removed;
@@ -1171,6 +1490,78 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
 // Typed handler functions for dispatched parsing
 // ---------------------------------------------------------------------------
 
+fn usage_block_has_token_payload(usage: &UsageBlock) -> bool {
+    usage.input_tokens.is_some()
+        || usage.output_tokens.is_some()
+        || usage.cache_read_input_tokens.is_some()
+        || usage.cache_creation_input_tokens.is_some()
+        || usage
+            .cache_creation
+            .as_ref()
+            .and_then(|c| c.ephemeral_5m_input_tokens)
+            .is_some()
+        || usage
+            .cache_creation
+            .as_ref()
+            .and_then(|c| c.ephemeral_1h_input_tokens)
+            .is_some()
+}
+
+fn value_usage_has_token_payload(usage: Option<&serde_json::Value>) -> bool {
+    usage
+        .map(|u| {
+            u.get("input_tokens").and_then(|v| v.as_u64()).is_some()
+                || u.get("output_tokens").and_then(|v| v.as_u64()).is_some()
+                || u.get("cache_read_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation_input_tokens")
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation")
+                    .and_then(|c| c.get("ephemeral_5m_input_tokens"))
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+                || u.get("cache_creation")
+                    .and_then(|c| c.get("ephemeral_1h_input_tokens"))
+                    .and_then(|v| v.as_u64())
+                    .is_some()
+        })
+        .unwrap_or(false)
+}
+
+fn should_count_api_call(
+    msg_id: Option<&str>,
+    req_id: Option<&str>,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+) -> bool {
+    match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
+        }
+        _ => true, // no IDs available — count each legacy line
+    }
+}
+
+fn should_count_usage_block(
+    msg_id: Option<&str>,
+    req_id: Option<&str>,
+    has_usage_payload: bool,
+    seen_api_calls: &mut std::collections::HashSet<String>,
+) -> bool {
+    if !has_usage_payload {
+        return false;
+    }
+    match (msg_id, req_id) {
+        (Some(mid), Some(rid)) => {
+            let key = format!("{}:{}", mid, rid);
+            seen_api_calls.insert(key)
+        }
+        _ => true, // no IDs available — count it (legacy data)
+    }
+}
+
 /// Handle an assistant line parsed via typed `AssistantLine` struct.
 /// Produces identical output to the Value-based path.
 ///
@@ -1191,7 +1582,8 @@ fn handle_assistant_line(
     files_edited_all: &mut Vec<String>,
     first_timestamp: &mut Option<i64>,
     last_timestamp: &mut Option<i64>,
-    seen_api_calls: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_count: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_usage: &mut std::collections::HashSet<String>,
     unique_api_call_count: &mut u32,
 ) {
     diag.lines_assistant += 1;
@@ -1208,23 +1600,31 @@ fn handle_assistant_line(
     }
 
     if let Some(message) = parsed.message {
-        // Dedup: check if this is a duplicate content block from the same API response.
-        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
-        // each carrying the full message-level usage. Only count tokens for the first block.
-        let is_first_block = match (message.id.as_deref(), parsed.request_id.as_deref()) {
-            (Some(msg_id), Some(req_id)) => {
-                let key = format!("{}:{}", msg_id, req_id);
-                seen_api_calls.insert(key) // true if newly inserted
-            }
-            _ => true, // no IDs available — count it (legacy data)
-        };
+        // Dedup: count usage only once per API response.
+        // If the first content block has no usage payload, wait for a later block
+        // with usage instead of consuming the dedup key and dropping telemetry.
+        let has_usage_payload = message
+            .usage
+            .as_ref()
+            .is_some_and(usage_block_has_token_payload);
+        let count_api_call = should_count_api_call(
+            message.id.as_deref(),
+            parsed.request_id.as_deref(),
+            seen_api_calls_for_count,
+        );
+        let count_usage_block = should_count_usage_block(
+            message.id.as_deref(),
+            parsed.request_id.as_deref(),
+            has_usage_payload,
+            seen_api_calls_for_usage,
+        );
 
-        if is_first_block {
+        if count_api_call {
             *unique_api_call_count += 1;
         }
 
         // Extract token usage — only for first content block per API response
-        if is_first_block {
+        if count_usage_block {
             if let Some(ref usage) = message.usage {
                 if let Some(v) = usage.input_tokens {
                     deep.total_input_tokens += v;
@@ -1238,14 +1638,6 @@ fn handle_assistant_line(
                 if let Some(v) = usage.cache_creation_input_tokens {
                     deep.cache_creation_tokens += v;
                 }
-            }
-        }
-
-        // Accumulate costUSD (top-level field, not inside message.usage)
-        // Only count on first block to avoid double-counting multi-block responses
-        if is_first_block {
-            if let Some(cost) = parsed.cost_usd {
-                deep.total_cost_usd += cost;
             }
         }
 
@@ -1269,16 +1661,33 @@ fn handle_assistant_line(
                 _ => "text".to_string(),
             };
 
-            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc) = if is_first_block {
+            // Duplicate/no-usage blocks keep token fields as NULL (unknown/not-counted),
+            // not synthetic zero.
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if count_usage_block {
                 (
                     message.usage.as_ref().and_then(|u| u.input_tokens),
                     message.usage.as_ref().and_then(|u| u.output_tokens),
-                    message.usage.as_ref().and_then(|u| u.cache_read_input_tokens),
-                    message.usage.as_ref().and_then(|u| u.cache_creation_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_read_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation.as_ref())
+                        .and_then(|c| c.ephemeral_5m_input_tokens),
+                    message
+                        .usage
+                        .as_ref()
+                        .and_then(|u| u.cache_creation.as_ref())
+                        .and_then(|c| c.ephemeral_1h_input_tokens),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0))
+                (None, None, None, None, None, None)
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -1291,6 +1700,8 @@ fn handle_assistant_line(
                 output_tokens: outp,
                 cache_read_tokens: cr,
                 cache_creation_tokens: cc,
+                cache_creation_5m_tokens: cc_5m,
+                cache_creation_1hr_tokens: cc_1hr,
                 service_tier: message.usage.as_ref().and_then(|u| u.service_tier.clone()),
                 timestamp: ts,
             });
@@ -1321,7 +1732,9 @@ fn handle_assistant_line(
                                 "Write" => deep.tool_counts.write += 1,
                                 "Bash" => deep.tool_counts.bash += 1,
                                 "Skill" => {
-                                    if let Some(skill_name) = block.input.as_ref()
+                                    if let Some(skill_name) = block
+                                        .input
+                                        .as_ref()
                                         .and_then(|i| i.get("skill"))
                                         .and_then(|v| v.as_str())
                                     {
@@ -1334,9 +1747,8 @@ fn handle_assistant_line(
                             }
 
                             // Extract file paths
-                            if let Some(fp) = block.input.as_ref()
-                                .and_then(|i| i.get("file_path"))
-                                .and_then(|v| v.as_str())
+                            if let Some(fp) =
+                                block.input.as_ref().and_then(extract_tool_input_file_path)
                             {
                                 if !fp.is_empty() {
                                     diag.file_paths_extracted += 1;
@@ -1386,46 +1798,47 @@ fn handle_assistant_value(
     tool_call_count: &mut u32,
     files_read_all: &mut Vec<String>,
     files_edited_all: &mut Vec<String>,
-    seen_api_calls: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_count: &mut std::collections::HashSet<String>,
+    seen_api_calls_for_usage: &mut std::collections::HashSet<String>,
     unique_api_call_count: &mut u32,
 ) {
     // Dedup check — same logic as handle_assistant_line
-    let msg_id = value.get("message").and_then(|m| m.get("id")).and_then(|v| v.as_str());
+    let msg_id = value
+        .get("message")
+        .and_then(|m| m.get("id"))
+        .and_then(|v| v.as_str());
     let req_id = value.get("requestId").and_then(|v| v.as_str());
-    let is_first_block = match (msg_id, req_id) {
-        (Some(mid), Some(rid)) => {
-            let key = format!("{}:{}", mid, rid);
-            seen_api_calls.insert(key)
-        }
-        _ => true,
-    };
+    let usage_value = value.get("message").and_then(|m| m.get("usage"));
+    let has_usage_payload = value_usage_has_token_payload(usage_value);
+    let count_api_call = should_count_api_call(msg_id, req_id, seen_api_calls_for_count);
+    let count_usage_block =
+        should_count_usage_block(msg_id, req_id, has_usage_payload, seen_api_calls_for_usage);
 
-    if is_first_block {
+    if count_api_call {
         *unique_api_call_count += 1;
     }
 
     // Extract token usage from .message.usage — only for first block
-    if is_first_block {
-        if let Some(usage) = value.get("message").and_then(|m| m.get("usage")) {
+    if count_usage_block {
+        if let Some(usage) = usage_value {
             if let Some(v) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
                 deep.total_input_tokens += v;
             }
             if let Some(v) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
                 deep.total_output_tokens += v;
             }
-            if let Some(v) = usage.get("cache_read_input_tokens").and_then(|v| v.as_u64()) {
+            if let Some(v) = usage
+                .get("cache_read_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
                 deep.cache_read_tokens += v;
             }
-            if let Some(v) = usage.get("cache_creation_input_tokens").and_then(|v| v.as_u64()) {
+            if let Some(v) = usage
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+            {
                 deep.cache_creation_tokens += v;
             }
-        }
-    }
-
-    // Accumulate costUSD from top-level field
-    if is_first_block {
-        if let Some(cost) = value.get("costUSD").and_then(|v| v.as_f64()) {
-            deep.total_cost_usd += cost;
         }
     }
 
@@ -1438,9 +1851,17 @@ fn handle_assistant_value(
             }
 
             let usage = message.get("usage");
-            let uuid = value.get("uuid").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let parent_uuid = value.get("parentUuid").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let content_type = message.get("content")
+            let uuid = value
+                .get("uuid")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let parent_uuid = value
+                .get("parentUuid")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let content_type = message
+                .get("content")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|block| block.get("type"))
@@ -1449,16 +1870,33 @@ fn handle_assistant_value(
                 .to_string();
             let timestamp = extract_timestamp_from_value(value);
 
-            // Zero out token fields on duplicate blocks so per-turn queries don't double-count
-            let (inp, outp, cr, cc) = if is_first_block {
+            // Duplicate/no-usage blocks keep token fields as NULL (unknown/not-counted),
+            // not synthetic zero.
+            let (inp, outp, cr, cc, cc_5m, cc_1hr) = if count_usage_block {
                 (
-                    usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("cache_read_input_tokens")).and_then(|v| v.as_u64()),
-                    usage.and_then(|u| u.get("cache_creation_input_tokens")).and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("output_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_read_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation"))
+                        .and_then(|c| c.get("ephemeral_5m_input_tokens"))
+                        .and_then(|v| v.as_u64()),
+                    usage
+                        .and_then(|u| u.get("cache_creation"))
+                        .and_then(|c| c.get("ephemeral_1h_input_tokens"))
+                        .and_then(|v| v.as_u64()),
                 )
             } else {
-                (Some(0), Some(0), Some(0), Some(0))
+                (None, None, None, None, None, None)
             };
 
             turns.push(claude_view_core::RawTurn {
@@ -1471,7 +1909,12 @@ fn handle_assistant_value(
                 output_tokens: outp,
                 cache_read_tokens: cr,
                 cache_creation_tokens: cc,
-                service_tier: usage.and_then(|u| u.get("service_tier")).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                cache_creation_5m_tokens: cc_5m,
+                cache_creation_1hr_tokens: cc_1hr,
+                service_tier: usage
+                    .and_then(|u| u.get("service_tier"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
                 timestamp,
             });
             diag.turns_extracted += 1;
@@ -1505,9 +1948,8 @@ fn handle_assistant_value(
                             "Write" => deep.tool_counts.write += 1,
                             "Bash" => deep.tool_counts.bash += 1,
                             "Skill" => {
-                                if let Some(skill_name) = input
-                                    .and_then(|i| i.get("skill"))
-                                    .and_then(|v| v.as_str())
+                                if let Some(skill_name) =
+                                    input.and_then(|i| i.get("skill")).and_then(|v| v.as_str())
                                 {
                                     if !skill_name.is_empty() {
                                         deep.skills_used.push(skill_name.to_string());
@@ -1517,7 +1959,7 @@ fn handle_assistant_value(
                             _ => {}
                         }
 
-                        if let Some(fp) = input.and_then(|i| i.get("file_path")).and_then(|v| v.as_str()) {
+                        if let Some(fp) = input.and_then(extract_tool_input_file_path) {
                             if !fp.is_empty() {
                                 diag.file_paths_extracted += 1;
                                 deep.files_touched.push(fp.to_string());
@@ -1714,9 +2156,7 @@ fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usize, &[u8])>
 ///
 /// Handles both string content (`"content": "..."`) and array content
 /// (`"content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]`).
-fn extract_search_content_from_value(
-    value: &serde_json::Value,
-) -> (Option<String>, Vec<String>) {
+fn extract_search_content_from_value(value: &serde_json::Value) -> (Option<String>, Vec<String>) {
     let mut tool_entries = Vec::new();
 
     let message = match value.get("message") {
@@ -1743,15 +2183,19 @@ fn extract_search_content_from_value(
                     }
                     "tool_use" => {
                         // Include tool name + stringified input for searchability
-                        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        let name = block
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("unknown");
                         if let Some(input) = block.get("input") {
                             if let Some(s) = input.as_str() {
                                 tool_entries.push(format!("{}: {}", name, s));
                             }
                             // For object inputs, include only if small (e.g., command field)
-                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
+                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str())
+                            {
                                 tool_entries.push(format!("{}: {}", name, cmd));
-                            } else if let Some(fp) = input.get("file_path").and_then(|f| f.as_str()) {
+                            } else if let Some(fp) = extract_tool_input_file_path(input) {
                                 tool_entries.push(format!("{}: {}", name, fp));
                             }
                         }
@@ -1821,7 +2265,7 @@ fn extract_quoted_string(data: &[u8]) -> Option<String> {
     }
 }
 
-use claude_view_core::is_system_user_content;
+use claude_view_core::{is_human_tool_result_content, is_system_user_content};
 
 /// SIMD fallback: extract skill names from raw bytes (looking for "skill":"..." patterns).
 /// Used when the typed AssistantLine parse fails but we still want to capture skills.
@@ -1868,7 +2312,9 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// (common for worktree dirs) are scanned for `.jsonl` files and included.
 ///
 /// Returns `(num_projects, num_sessions)`.
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 #[allow(deprecated)]
 pub async fn pass_1_read_indexes(
     claude_dir: &Path,
@@ -1899,8 +2345,8 @@ pub async fn pass_1_read_indexes(
         let entry_cwd = entry_cwd_owned.as_deref();
 
         // Infer git_root from cwd path (detects /.claude/worktrees/ and /.worktrees/ patterns)
-        let inferred_git_root = entry_cwd
-            .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
+        let inferred_git_root =
+            entry_cwd.and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
 
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
@@ -1970,7 +2416,10 @@ pub async fn pass_1_read_indexes(
             // Always store session_cwd and git_root so the backfill and UI grouping work.
             // Use entry-level cwd if available, else the project-level resolved cwd.
             let session_cwd = entry.session_cwd.as_deref().or(entry_cwd);
-            if session_cwd.is_some() || entry.parent_session_id.is_some() || inferred_git_root.is_some() {
+            if session_cwd.is_some()
+                || entry.parent_session_id.is_some()
+                || inferred_git_root.is_some()
+            {
                 db.update_session_topology(
                     &entry.session_id,
                     session_cwd,
@@ -1993,8 +2442,14 @@ pub async fn pass_1_read_indexes(
             continue;
         }
         total_projects += 1;
-        insert_project_sessions(claude_dir, db, project_encoded, entries, &mut total_sessions)
-            .await?;
+        insert_project_sessions(
+            claude_dir,
+            db,
+            project_encoded,
+            entries,
+            &mut total_sessions,
+        )
+        .await?;
     }
 
     // Loop 2: Orphan sessions from dirs without sessions-index.json
@@ -2042,7 +2497,9 @@ pub async fn pass_1_read_indexes(
 ///
 /// Returns `(indexed_count, total_bytes)` on success, where `total_bytes` is the
 /// sum of all JSONL file sizes that were eligible for deep indexing.
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 #[allow(deprecated)]
 pub async fn pass_2_deep_index<F>(
     db: &Database,
@@ -2084,41 +2541,57 @@ where
     let all_sessions_count = all_sessions.len();
     let sessions: Vec<(String, String, String)> = all_sessions
         .into_iter()
-        .filter_map(|(id, file_path, stored_size, stored_mtime, deep_indexed_at, parse_version, project)| {
-            let needs_index = if force_search_reindex {
-                // Search index was rebuilt — must re-parse to regenerate search_messages
-                true
-            } else if deep_indexed_at.is_none() {
-                // Never deep-indexed → must index
-                true
-            } else if parse_version < CURRENT_PARSE_VERSION {
-                // Parser upgraded → must re-index
-                true
-            } else if let (Some(sz), Some(mt)) = (stored_size, stored_mtime) {
-                // Has stored metadata → stat the file and compare size + mtime
-                match std::fs::metadata(&file_path) {
-                    Ok(meta) => {
-                        let current_size = meta.len() as i64;
-                        let current_mtime = meta
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-                        current_size != sz || current_mtime != mt
-                    }
-                    Err(_) => false, // File doesn't exist or can't be read, skip
+        .filter_map(
+            |(
+                id,
+                file_path,
+                stored_size,
+                stored_mtime,
+                deep_indexed_at,
+                parse_version,
+                project,
+                archived_at,
+            )| {
+                // Skip archived sessions entirely
+                if archived_at.is_some() {
+                    return None;
                 }
-            } else {
-                // No stored file metadata → must re-index to populate it
-                true
-            };
-            if needs_index {
-                Some((id, file_path, project))
-            } else {
-                None
-            }
-        })
+
+                let needs_index = if force_search_reindex {
+                    // Search index was rebuilt — must re-parse to regenerate search_messages
+                    true
+                } else if deep_indexed_at.is_none() {
+                    // Never deep-indexed → must index
+                    true
+                } else if parse_version < CURRENT_PARSE_VERSION {
+                    // Parser upgraded → must re-index
+                    true
+                } else if let (Some(sz), Some(mt)) = (stored_size, stored_mtime) {
+                    // Has stored metadata → stat the file and compare size + mtime
+                    match std::fs::metadata(&file_path) {
+                        Ok(meta) => {
+                            let current_size = meta.len() as i64;
+                            let current_mtime = meta
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0);
+                            current_size != sz || current_mtime != mt
+                        }
+                        Err(_) => false, // File doesn't exist or can't be read, skip
+                    }
+                } else {
+                    // No stored file metadata → must re-index to populate it
+                    true
+                };
+                if needs_index {
+                    Some((id, file_path, project))
+                } else {
+                    None
+                }
+            },
+        )
         .collect();
 
     let phase_start = std::time::Instant::now();
@@ -2212,26 +2685,7 @@ where
                     }
                 };
 
-                // Merge subagent tokens into the parent session.
-                // Claude Code spawns subagents (Task tool) that write to
-                // <session-uuid>/subagents/agent-*.jsonl — these are separate
-                // API calls not included in the parent JSONL's token counts.
-                let subagent_dir = path.with_extension("").join("subagents");
-                if subagent_dir.is_dir() {
-                    if let Ok(entries) = std::fs::read_dir(&subagent_dir) {
-                        for entry in entries.flatten() {
-                            let sub_path = entry.path();
-                            if sub_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
-                                continue;
-                            }
-                            let sub_result = parse_file_bytes(&sub_path);
-                            result.deep.total_input_tokens += sub_result.deep.total_input_tokens;
-                            result.deep.total_output_tokens += sub_result.deep.total_output_tokens;
-                            result.deep.cache_read_tokens += sub_result.deep.cache_read_tokens;
-                            result.deep.cache_creation_tokens += sub_result.deep.cache_creation_tokens;
-                        }
-                    }
-                }
+                merge_subagent_workload(&path, &mut result);
 
                 (result, fsize, fmtime)
             })
@@ -2257,11 +2711,8 @@ where
                     .raw_invocations
                     .iter()
                     .filter_map(|raw| {
-                        let result = claude_view_core::classify_tool_use(
-                            &raw.name,
-                            &raw.input,
-                            registry,
-                        );
+                        let result =
+                            claude_view_core::classify_tool_use(&raw.name, &raw.input, registry);
                         match result {
                             ClassifyResult::Valid { invocable_id, .. } => Some((
                                 file_path.clone(),
@@ -2329,11 +2780,26 @@ where
         primary_model: Option<String>,
         messages: Vec<claude_view_core::SearchableMessage>,
         skills: Vec<String>,
-        preview: Option<String>,
-        last_message: Option<String>,
-        timestamp: i64,
     }
     let search_batches: Vec<SearchBatch> = if search_index.is_some() {
+        for result in &mut results {
+            let search_messages = std::mem::take(&mut result.parse_result.search_messages);
+            result.parse_result.search_messages = sanitize_source_search_messages(
+                search_messages,
+                &mut result.parse_result.diagnostics,
+            );
+
+            let preview = result.parse_result.deep.first_user_prompt.as_deref();
+            let preview_non_empty = preview.map(|s| !s.is_empty()).unwrap_or(false);
+            let has_summary_candidate = preview.is_some()
+                && (preview_non_empty
+                    || !result.project.is_empty()
+                    || !result.parse_result.deep.last_message.is_empty());
+            if has_summary_candidate {
+                note_rejected_derived_source_doc(&mut result.parse_result.diagnostics);
+            }
+        }
+
         results
             .iter()
             .filter(|r| !r.parse_result.search_messages.is_empty())
@@ -2344,9 +2810,6 @@ where
                 primary_model: compute_primary_model(&r.parse_result.turns),
                 messages: r.parse_result.search_messages.clone(),
                 skills: r.parse_result.deep.skills_used.clone(),
-                preview: r.parse_result.deep.first_user_prompt.clone(),
-                last_message: if r.parse_result.deep.last_message.is_empty() { None } else { Some(r.parse_result.deep.last_message.clone()) },
-                timestamp: r.parse_result.deep.last_timestamp.unwrap_or(0),
             })
             .collect()
     } else {
@@ -2367,7 +2830,7 @@ where
         if !search_batches.is_empty() {
             let mut search_errors = 0u32;
             for batch in &search_batches {
-                let mut docs: Vec<claude_view_search::SearchDocument> = batch
+                let docs: Vec<claude_view_search::SearchDocument> = batch
                     .messages
                     .iter()
                     .enumerate()
@@ -2383,35 +2846,6 @@ where
                         skills: batch.skills.clone(),
                     })
                     .collect();
-
-                // Add session summary document for metadata search
-                if let Some(preview) = &batch.preview {
-                    let mut summary_parts = Vec::new();
-                    if !preview.is_empty() {
-                        summary_parts.push(preview.as_str());
-                    }
-                    if !batch.project.is_empty() {
-                        summary_parts.push(batch.project.as_str());
-                    }
-                    if let Some(last_msg) = &batch.last_message {
-                        if !last_msg.is_empty() {
-                            summary_parts.push(last_msg.as_str());
-                        }
-                    }
-                    if !summary_parts.is_empty() {
-                        docs.push(claude_view_search::SearchDocument {
-                            session_id: batch.session_id.clone(),
-                            project: batch.project.clone(),
-                            branch: batch.branch.clone().unwrap_or_default(),
-                            model: batch.primary_model.clone().unwrap_or_default(),
-                            role: "summary".to_string(),
-                            content: summary_parts.join(" | "),
-                            turn_number: 0,
-                            timestamp: batch.timestamp,
-                            skills: batch.skills.clone(),
-                        });
-                    }
-                }
 
                 if let Err(e) = search.index_session(&batch.session_id, &docs) {
                     tracing::warn!(
@@ -2467,23 +2901,14 @@ where
 
     {
         let total_elapsed = phase_start.elapsed();
-        eprintln!(
-            "    [perf] deep index: {} indexed, {} skipped, {} errors",
+        tracing::debug!(
             indexed,
             skipped,
-            parse_errors.len()
-        );
-        eprintln!(
-            "    [perf]   parse phase: {}",
-            claude_view_core::format_duration(parse_elapsed)
-        );
-        eprintln!(
-            "    [perf]   write phase: {}",
-            claude_view_core::format_duration(write_elapsed)
-        );
-        eprintln!(
-            "    [perf]   total:       {}",
-            claude_view_core::format_duration(total_elapsed)
+            errors = parse_errors.len(),
+            parse_phase = %claude_view_core::format_duration(parse_elapsed),
+            write_phase = %claude_view_core::format_duration(write_elapsed),
+            total = %claude_view_core::format_duration(total_elapsed),
+            "deep index perf"
         );
     }
 
@@ -2493,10 +2918,7 @@ where
 /// Write deep index results using sqlx async transactions.
 /// Used by pass_2_deep_index (retained for test compatibility).
 #[allow(deprecated)]
-async fn write_results_sqlx(
-    db: &Database,
-    results: &[DeepIndexResult],
-) -> Result<usize, String> {
+async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Result<usize, String> {
     let mut tx = db
         .pool()
         .begin()
@@ -2504,18 +2926,19 @@ async fn write_results_sqlx(
         .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
 
     let seen_at = chrono::Utc::now().timestamp();
+    let pricing = load_indexing_pricing(db).await;
 
     for result in results {
         let meta = &result.parse_result.deep;
 
-        let files_touched = serde_json::to_string(&meta.files_touched)
-            .unwrap_or_else(|_| "[]".to_string());
-        let skills_used = serde_json::to_string(&meta.skills_used)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_read = serde_json::to_string(&meta.files_read)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_edited = serde_json::to_string(&meta.files_edited)
-            .unwrap_or_else(|_| "[]".to_string());
+        let files_touched =
+            serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
+        let skills_used =
+            serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
+        let files_read =
+            serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
+        let files_edited =
+            serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
 
         let commit_invocations =
             extract_commit_skill_invocations(&result.parse_result.raw_invocations);
@@ -2525,7 +2948,11 @@ async fn write_results_sqlx(
             (None, None, None)
         } else {
             let total: u64 = meta.turn_durations_ms.iter().sum();
-            let max = *meta.turn_durations_ms.iter().max().expect("non-empty checked above");
+            let max = *meta
+                .turn_durations_ms
+                .iter()
+                .max()
+                .expect("non-empty checked above");
             let avg = total / meta.turn_durations_ms.len() as u64;
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
@@ -2597,7 +3024,7 @@ async fn write_results_sqlx(
             meta.total_task_time_seconds as i32,
             meta.longest_task_seconds.map(|v| v as i32),
             meta.longest_task_preview.as_deref(),
-            meta.total_cost_usd,
+            calculate_per_turn_cost(&result.parse_result.turns, &pricing),
         )
         .await
         .map_err(|e| {
@@ -2621,17 +3048,14 @@ async fn write_results_sqlx(
             .map_err(|e| format!("DELETE invocations for {} error: {}", result.session_id, e))?;
 
         if !result.classified_invocations.is_empty() {
-            crate::queries::batch_insert_invocations_tx(
-                &mut tx,
-                &result.classified_invocations,
-            )
-            .await
-            .map_err(|e| {
-                format!(
-                    "Failed to insert invocations for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            crate::queries::batch_insert_invocations_tx(&mut tx, &result.classified_invocations)
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert invocations for {}: {}",
+                        result.session_id, e
+                    )
+                })?;
         }
 
         if !result.parse_result.turns.is_empty() {
@@ -2641,12 +3065,7 @@ async fn write_results_sqlx(
                 seen_at,
             )
             .await
-            .map_err(|e| {
-                format!(
-                    "Failed to upsert models for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            .map_err(|e| format!("Failed to upsert models for {}: {}", result.session_id, e))?;
 
             crate::queries::batch_insert_turns_tx(
                 &mut tx,
@@ -2654,12 +3073,7 @@ async fn write_results_sqlx(
                 &result.parse_result.turns,
             )
             .await
-            .map_err(|e| {
-                format!(
-                    "Failed to insert turns for {}: {}",
-                    result.session_id, e
-                )
-            })?;
+            .map_err(|e| format!("Failed to insert turns for {}: {}", result.session_id, e))?;
         }
     }
 
@@ -2721,6 +3135,8 @@ struct IndexedSession {
     git_root: Option<String>,
     /// Project name for search indexing
     project_for_search: String,
+    /// Per-session parse diagnostics for integrity counter aggregation
+    diagnostics: ParseDiagnostics,
 }
 
 /// 3-phase startup scan: parse (parallel) → SQLite write (chunked) → search index.
@@ -2730,16 +3146,26 @@ struct IndexedSession {
 /// Phase 3: Write search index to Tantivy (after SQLite success).
 ///
 /// Returns (indexed_count, skipped_count).
-pub async fn scan_and_index_all<F>(
+///
+/// `on_file_done` fires for **every** `.jsonl` file (parsed or skipped) so
+/// callers can drive a progress counter that reaches 100%.
+///
+/// `on_total_known` fires once with the actual `.jsonl` file count right
+/// after the filesystem walk, before any parsing begins. This is the single
+/// source of truth for "total sessions to process" — callers should use it
+/// to set their progress total instead of guessing from external sources.
+pub async fn scan_and_index_all<F, T>(
     claude_dir: &Path,
     db: &Database,
     hints: &HashMap<String, IndexHints>,
     search_index: Option<Arc<claude_view_search::SearchIndex>>,
     registry: Option<Arc<Registry>>,
     on_file_done: F,
+    on_total_known: T,
 ) -> Result<(usize, usize), String>
 where
     F: Fn(&str) + Send + Sync + 'static,
+    T: FnOnce(usize),
 {
     let projects_dir = claude_dir.join("projects");
     if !projects_dir.exists() {
@@ -2754,8 +3180,11 @@ where
         .unwrap_or(false);
 
     if force_search_reindex {
-        tracing::info!("Search index was rebuilt — forcing full re-parse to repopulate search data");
+        tracing::info!(
+            "Search index was rebuilt — forcing full re-parse to repopulate search data"
+        );
     }
+    let source_docs_validation_enabled = search_index.is_some();
 
     // Collect all .jsonl files at depth 2: {projects_dir}/{project_encoded}/{session_id}.jsonl
     let mut files: Vec<(std::path::PathBuf, String, String)> = Vec::new();
@@ -2792,17 +3221,26 @@ where
         }
     }
 
+    // Report actual file count — single source of truth for progress total.
+    on_total_known(files.len());
+
     // Pre-load all existing session staleness info from DB in one query.
     let existing_sessions = db
         .get_sessions_needing_deep_index()
         .await
         .map_err(|e| format!("Failed to load existing sessions: {}", e))?;
-    let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32)> = existing_sessions
-        .into_iter()
-        .map(|(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj)| {
-            (id, (stored_size, stored_mtime, pv))
-        })
-        .collect();
+    let existing_map: HashMap<String, (Option<i64>, Option<i64>, i32, Option<String>)> =
+        existing_sessions
+            .into_iter()
+            .map(
+                |(id, _fp, stored_size, stored_mtime, _deep_at, pv, _proj, archived_at)| {
+                    (id, (stored_size, stored_mtime, pv, archived_at))
+                },
+            )
+            .collect();
+
+    // Use one merged pricing map for this full indexing run.
+    let pricing = Arc::new(load_indexing_pricing(db).await);
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(
         std::thread::available_parallelism()
@@ -2823,6 +3261,8 @@ where
         let skipped = skipped.clone();
         let registry = registry.clone();
         let force_reindex = force_search_reindex;
+        let pricing = pricing.clone();
+        let validate_source_docs = source_docs_validation_enabled;
 
         let handle = tokio::spawn(async move {
             let _permit = sem
@@ -2833,7 +3273,9 @@ where
             // 1. stat() the file for current size + mtime
             let metadata = match std::fs::metadata(&path) {
                 Ok(m) => m,
-                Err(_) => return Ok::<Option<IndexedSession>, String>(None),
+                Err(_) => {
+                    return Ok::<(Option<IndexedSession>, String), String>((None, session_id))
+                }
             };
             let current_size = metadata.len() as i64;
             let current_mtime = metadata
@@ -2843,9 +3285,17 @@ where
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
 
-            // 2. Check staleness against DB (force_search_reindex bypasses)
+            // 2a. If session is archived, skip re-indexing entirely.
+            if let Some((_, _, _, archived_at)) = existing_map.get(&session_id) {
+                if archived_at.is_some() {
+                    skipped.fetch_add(1, Ordering::Relaxed);
+                    return Ok((None, session_id));
+                }
+            }
+
+            // 2b. Check staleness against DB (force_search_reindex bypasses)
             if !force_reindex {
-                if let Some((Some(stored_size), Some(stored_mtime), pv)) =
+                if let Some((Some(stored_size), Some(stored_mtime), pv, _)) =
                     existing_map.get(&session_id)
                 {
                     if *stored_size == current_size
@@ -2853,18 +3303,18 @@ where
                         && *pv >= CURRENT_PARSE_VERSION
                     {
                         skipped.fetch_add(1, Ordering::Relaxed);
-                        return Ok(None);
+                        return Ok((None, session_id));
                     }
                 }
             }
 
             // 3. Parse the JSONL file (blocking I/O in spawn_blocking)
             let path_for_parse = path.clone();
-            let parse_result = tokio::task::spawn_blocking(move || {
-                parse_file_bytes(&path_for_parse)
-            })
-            .await
-            .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+            let mut parse_result =
+                tokio::task::spawn_blocking(move || parse_file_bytes(&path_for_parse))
+                    .await
+                    .map_err(|e| format!("spawn_blocking join error: {}", e))?;
+            merge_subagent_workload(&path, &mut parse_result);
 
             let meta = &parse_result.deep;
 
@@ -2872,7 +3322,7 @@ where
             if meta.last_timestamp.is_none() {
                 tracing::debug!(path = %path.display(), "Skipping file with no timestamps");
                 skipped.fetch_add(1, Ordering::Relaxed);
-                return Ok(None);
+                return Ok((None, session_id));
             }
 
             // 4. Resolve project info from cwd (authoritative) or hints
@@ -2881,10 +3331,16 @@ where
 
             let (effective_encoded, resolved) =
                 if let Some(parent_encoded) = resolve_worktree_parent(&project_encoded) {
-                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&parent_encoded, cwd);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(
+                        &parent_encoded,
+                        cwd,
+                    );
                     (parent_encoded, r)
                 } else {
-                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(&project_encoded, cwd);
+                    let r = claude_view_core::discovery::resolve_project_path_with_cwd(
+                        &project_encoded,
+                        cwd,
+                    );
                     (project_encoded.clone(), r)
                 };
 
@@ -2922,14 +3378,14 @@ where
             let work_type = classify_work_type(&work_type_input);
             let primary_model = compute_primary_model(&parse_result.turns);
 
-            let files_touched_json = serde_json::to_string(&meta.files_touched)
-                .unwrap_or_else(|_| "[]".to_string());
-            let skills_used_json = serde_json::to_string(&meta.skills_used)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_read_json = serde_json::to_string(&meta.files_read)
-                .unwrap_or_else(|_| "[]".to_string());
-            let files_edited_json = serde_json::to_string(&meta.files_edited)
-                .unwrap_or_else(|_| "[]".to_string());
+            let files_touched_json =
+                serde_json::to_string(&meta.files_touched).unwrap_or_else(|_| "[]".to_string());
+            let skills_used_json =
+                serde_json::to_string(&meta.skills_used).unwrap_or_else(|_| "[]".to_string());
+            let files_read_json =
+                serde_json::to_string(&meta.files_read).unwrap_or_else(|_| "[]".to_string());
+            let files_edited_json =
+                serde_json::to_string(&meta.files_edited).unwrap_or_else(|_| "[]".to_string());
 
             let git_branch = parse_result.git_branch.clone().or(git_branch_hint);
             let summary = meta.summary_text.clone().or(summary_hint);
@@ -2965,7 +3421,13 @@ where
                 .and_then(claude_view_core::discovery::infer_git_root_from_worktree_path)
                 .map(|s| s.to_string());
 
+            // Compute cost per-turn (each turn = one API call) to avoid inflating cost
+            // by applying 200k tiered pricing to cumulative session tokens.
+            // Strict integrity: NULL when any turn has unpriced model usage.
+            let total_cost_usd = calculate_per_turn_cost(&parse_result.turns, &pricing);
+
             // Build ParsedSession
+            let sid = session_id.clone();
             let parsed = ParsedSession {
                 id: session_id,
                 project_id: effective_encoded.clone(),
@@ -3028,32 +3490,72 @@ where
                 total_task_time_seconds: Some(meta.total_task_time_seconds as i64),
                 longest_task_seconds: meta.longest_task_seconds.map(|v| v as i64),
                 longest_task_preview: meta.longest_task_preview.clone(),
-                total_cost_usd: meta.total_cost_usd,
+                total_cost_usd,
             };
 
-            Ok(Some(IndexedSession {
-                parsed,
-                turns: parse_result.turns,
-                models_seen: parse_result.models_seen,
-                classified_invocations: classified,
-                search_messages: parse_result.search_messages,
-                cwd: cwd_owned,
-                git_root,
-                project_for_search: effective_encoded,
-            }))
+            // Use git_root as project identity for search (matches sidebar filter).
+            // Falls back to encoded project_id when git_root is absent.
+            let project_for_search = git_root
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&effective_encoded)
+                .to_string();
+
+            let search_messages = if validate_source_docs {
+                let messages = sanitize_source_search_messages(
+                    std::mem::take(&mut parse_result.search_messages),
+                    &mut parse_result.diagnostics,
+                );
+                let has_summary_candidate =
+                    !parsed.preview.is_empty() || !project_for_search.is_empty();
+                if has_summary_candidate {
+                    note_rejected_derived_source_doc(&mut parse_result.diagnostics);
+                }
+                messages
+            } else {
+                std::mem::take(&mut parse_result.search_messages)
+            };
+
+            Ok((
+                Some(IndexedSession {
+                    parsed,
+                    turns: parse_result.turns,
+                    models_seen: parse_result.models_seen,
+                    classified_invocations: classified,
+                    search_messages,
+                    cwd: cwd_owned,
+                    git_root,
+                    project_for_search,
+                    diagnostics: parse_result.diagnostics,
+                }),
+                sid,
+            ))
         });
 
         handles.push(handle);
     }
 
-    // Collect all parse results
+    // Collect all parse results — fire on_file_done for every file (parsed or skipped)
+    // so the progress counter reaches 100%.
+    let on_file_done = Arc::new(on_file_done);
     let mut indexed_sessions: Vec<IndexedSession> = Vec::with_capacity(handles.len());
     for h in handles {
         match h.await {
-            Ok(Ok(Some(session))) => indexed_sessions.push(session),
-            Ok(Ok(None)) => {} // skipped or empty
-            Ok(Err(e)) => tracing::warn!("scan_and_index_all parse error: {}", e),
-            Err(e) => tracing::warn!("scan_and_index_all join error: {}", e),
+            Ok(Ok((Some(session), _id))) => {
+                on_file_done(&session.parsed.id);
+                indexed_sessions.push(session);
+            }
+            Ok(Ok((None, id))) => {
+                on_file_done(&id);
+            }
+            Ok(Err(e)) => {
+                on_file_done("_error");
+                tracing::warn!("scan_and_index_all parse error: {}", e);
+            }
+            Err(e) => {
+                on_file_done("_error");
+                tracing::warn!("scan_and_index_all join error: {}", e);
+            }
         }
     }
 
@@ -3063,7 +3565,12 @@ where
 
     let total_search_bytes: usize = indexed_sessions
         .iter()
-        .map(|s| s.search_messages.iter().map(|m| m.content.len()).sum::<usize>())
+        .map(|s| {
+            s.search_messages
+                .iter()
+                .map(|m| m.content.len())
+                .sum::<usize>()
+        })
         .sum();
     tracing::info!(
         sessions = indexed_sessions.len(),
@@ -3071,10 +3578,30 @@ where
         "Phase 1 parse complete, starting Phase 2 SQLite write"
     );
 
+    // Aggregate per-session ParseDiagnostics into IndexRunIntegrityCounters
+    let mut integrity = crate::IndexRunIntegrityCounters::default();
+    for session in &indexed_sessions {
+        let d = &session.diagnostics;
+        integrity.unknown_top_level_type_count += d.lines_unknown_type as i64;
+        integrity.dropped_line_invalid_json_count += d.json_parse_failures as i64;
+        integrity.unknown_source_role_count += d.unknown_source_role_count as i64;
+        integrity.derived_source_message_doc_count += d.derived_source_message_doc_count as i64;
+        integrity.source_message_non_source_provenance_count +=
+            d.source_message_non_source_provenance_count as i64;
+    }
+
+    let index_run_start = std::time::Instant::now();
+    let index_run_id = match db.create_index_run("full", None, Some(&integrity)).await {
+        Ok(id) => Some(id),
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to create index run");
+            None
+        }
+    };
+
     // ══════════════════════════════════════════════════════════════════════
     // Phase 2: SQLITE WRITE (sequential, chunked, single writer)
     // ══════════════════════════════════════════════════════════════════════
-    let on_file_done = Arc::new(on_file_done);
     let seen_at = chrono::Utc::now().timestamp();
     let mut indexed_count: usize = 0;
 
@@ -3145,14 +3672,24 @@ where
             if !session.turns.is_empty() {
                 crate::queries::batch_insert_turns_tx(&mut tx, &session.parsed.id, &session.turns)
                     .await
-                    .map_err(|e| format!("Failed to insert turns for {}: {}", session.parsed.id, e))?;
+                    .map_err(|e| {
+                        format!("Failed to insert turns for {}: {}", session.parsed.id, e)
+                    })?;
             }
 
             // INSERT invocations
             if !session.classified_invocations.is_empty() {
-                crate::queries::batch_insert_invocations_tx(&mut tx, &session.classified_invocations)
-                    .await
-                    .map_err(|e| format!("Failed to insert invocations for {}: {}", session.parsed.id, e))?;
+                crate::queries::batch_insert_invocations_tx(
+                    &mut tx,
+                    &session.classified_invocations,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert invocations for {}: {}",
+                        session.parsed.id, e
+                    )
+                })?;
             }
         }
 
@@ -3160,10 +3697,6 @@ where
             .await
             .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
 
-        // Fire progress callbacks AFTER commit (data is durable)
-        for session in chunk {
-            on_file_done(&session.parsed.id);
-        }
         indexed_count += chunk.len();
 
         // Yield between chunks so live manager writes can slip through
@@ -3187,7 +3720,7 @@ where
                 continue;
             }
 
-            let mut docs: Vec<claude_view_search::SearchDocument> = session
+            let docs: Vec<claude_view_search::SearchDocument> = session
                 .search_messages
                 .iter()
                 .enumerate()
@@ -3204,33 +3737,6 @@ where
                 })
                 .collect();
 
-            // Add session summary document for metadata search
-            if !session.parsed.preview.is_empty() || !session.project_for_search.is_empty() {
-                let mut summary_parts = Vec::new();
-                if !session.parsed.preview.is_empty() {
-                    summary_parts.push(session.parsed.preview.as_str());
-                }
-                if !session.project_for_search.is_empty() {
-                    summary_parts.push(session.project_for_search.as_str());
-                }
-                if !session.parsed.last_message.is_empty() {
-                    summary_parts.push(session.parsed.last_message.as_str());
-                }
-                if !summary_parts.is_empty() {
-                    docs.push(claude_view_search::SearchDocument {
-                        session_id: session.parsed.id.clone(),
-                        project: session.project_for_search.clone(),
-                        branch: session.parsed.git_branch.clone().unwrap_or_default(),
-                        model: session.parsed.primary_model.clone().unwrap_or_default(),
-                        role: "summary".to_string(),
-                        content: summary_parts.join(" | "),
-                        turn_number: 0,
-                        timestamp: session.parsed.last_message_at,
-                        skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
-                    });
-                }
-            }
-
             if let Err(e) = search.index_session(&session.parsed.id, &docs) {
                 tracing::warn!(session_id = %session.parsed.id, error = %e, "Failed to index session for search");
                 search_errors += 1;
@@ -3246,13 +3752,43 @@ where
                     tracing::warn!(error = %e, "Failed to reload search reader after commit");
                 }
                 if search_errors > 0 {
-                    tracing::info!(indexed = sessions_indexed, errors = search_errors, "Search index write complete (with errors)");
+                    tracing::info!(
+                        indexed = sessions_indexed,
+                        errors = search_errors,
+                        "Search index write complete (with errors)"
+                    );
                 }
                 // Mark schema synced if this was a full reindex
                 if force_search_reindex {
                     search.mark_schema_synced();
                 }
             }
+        }
+    }
+
+    // Persist index run completion with aggregated integrity counters
+    if let Some(run_id) = index_run_id {
+        let index_run_duration_ms = index_run_start.elapsed().as_millis() as i64;
+        let total_bytes: u64 = indexed_sessions
+            .iter()
+            .map(|s| s.diagnostics.bytes_total)
+            .sum();
+        let throughput = if index_run_duration_ms > 0 {
+            Some(total_bytes as f64 / (1024.0 * 1024.0) / (index_run_duration_ms as f64 / 1000.0))
+        } else {
+            None
+        };
+        if let Err(e) = db
+            .complete_index_run(
+                run_id,
+                Some(indexed_count as i64),
+                index_run_duration_ms,
+                throughput,
+                Some(&integrity),
+            )
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to complete index run");
         }
     }
 
@@ -3347,13 +3883,11 @@ mod tests {
         // Byte offsets: first two invocations share the same line offset,
         // third invocation is on a different line
         assert_eq!(
-            result.raw_invocations[0].byte_offset,
-            result.raw_invocations[1].byte_offset,
+            result.raw_invocations[0].byte_offset, result.raw_invocations[1].byte_offset,
             "Read and Edit are on the same JSONL line"
         );
         assert_ne!(
-            result.raw_invocations[0].byte_offset,
-            result.raw_invocations[2].byte_offset,
+            result.raw_invocations[0].byte_offset, result.raw_invocations[2].byte_offset,
             "Bash is on a different JSONL line"
         );
     }
@@ -3440,7 +3974,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a10"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 5, "Should count 5 user messages");
+        assert_eq!(
+            result.deep.user_prompt_count, 5,
+            "Should count 5 user messages"
+        );
     }
 
     #[test]
@@ -3450,7 +3987,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 0, "Should be 0 with no user messages");
+        assert_eq!(
+            result.deep.user_prompt_count, 0,
+            "Should be 0 with no user messages"
+        );
     }
 
     #[test]
@@ -3467,14 +4007,20 @@ mod tests {
 {"type":"user","message":{"content":"Fifth"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.user_prompt_count, 5, "Unicode content should not affect counting");
+        assert_eq!(
+            result.deep.user_prompt_count, 5,
+            "Unicode content should not affect counting"
+        );
     }
 
     #[test]
     fn test_user_prompt_count_empty_file() {
         // Test case 5: Empty JSONL file → 0
         let result = parse_bytes(b"");
-        assert_eq!(result.deep.user_prompt_count, 0, "Empty file should have 0 user prompts");
+        assert_eq!(
+            result.deep.user_prompt_count, 0,
+            "Empty file should have 0 user prompts"
+        );
     }
 
     // --- Step 4: api_call_count (A1.6) ---
@@ -3497,7 +4043,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a8"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.api_call_count, 8, "Should count 8 assistant messages");
+        assert_eq!(
+            result.deep.api_call_count, 8,
+            "Should count 8 assistant messages"
+        );
     }
 
     #[test]
@@ -3507,7 +4056,10 @@ mod tests {
 {"type":"user","message":{"content":"q2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.api_call_count, 0, "Should be 0 with no assistant messages");
+        assert_eq!(
+            result.deep.api_call_count, 0,
+            "Should be 0 with no assistant messages"
+        );
     }
 
     // --- Step 5: tool_call_count (A1.7) ---
@@ -3523,7 +4075,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 6, "Should count 6 tool calls (2 per message x 3)");
+        assert_eq!(
+            result.deep.tool_call_count, 6,
+            "Should count 6 tool calls (2 per message x 3)"
+        );
     }
 
     #[test]
@@ -3535,7 +4090,10 @@ mod tests {
 {"type":"assistant","message":{"content":"More text."}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 0, "Should be 0 with no tool calls");
+        assert_eq!(
+            result.deep.tool_call_count, 0,
+            "Should be 0 with no tool calls"
+        );
     }
 
     #[test]
@@ -3545,7 +4103,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}},{"type":"tool_use","name":"Read","input":{}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.tool_call_count, 5, "Should count 5 parallel tool calls");
+        assert_eq!(
+            result.deep.tool_call_count, 5,
+            "Should count 5 parallel tool calls"
+        );
     }
 
     // --- Step 6: files_read (A1.2) ---
@@ -3557,7 +4118,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}},{"type":"tool_use","name":"Read","input":{"file_path":"/a/bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 2, "Should have 2 unique files read");
+        assert_eq!(
+            result.deep.files_read_count, 2,
+            "Should have 2 unique files read"
+        );
         assert!(result.deep.files_read.contains(&"/a/foo.rs".to_string()));
         assert!(result.deep.files_read.contains(&"/a/bar.rs".to_string()));
     }
@@ -3571,7 +4135,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/a/foo.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 1, "Should dedup to 1 unique file");
+        assert_eq!(
+            result.deep.files_read_count, 1,
+            "Should dedup to 1 unique file"
+        );
         assert_eq!(result.deep.files_read.len(), 1);
         assert_eq!(result.deep.files_read[0], "/a/foo.rs");
     }
@@ -3594,7 +4161,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"other":"value"}},{"type":"tool_use","name":"Read","input":{"file_path":"/valid/path.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_read_count, 1, "Should only count valid file_path");
+        assert_eq!(
+            result.deep.files_read_count, 1,
+            "Should only count valid file_path"
+        );
         assert_eq!(result.deep.files_read[0], "/valid/path.rs");
     }
 
@@ -3606,7 +4176,10 @@ mod tests {
 "#;
         let result = parse_bytes(data);
         assert_eq!(result.deep.files_read_count, 1);
-        assert_eq!(result.deep.files_read[0], "/a/my file.rs", "Path with spaces should be preserved");
+        assert_eq!(
+            result.deep.files_read[0], "/a/my file.rs",
+            "Path with spaces should be preserved"
+        );
     }
 
     // --- Step 7: files_edited (A1.3) ---
@@ -3618,7 +4191,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_edited_count, 2, "Should have 2 unique files edited");
+        assert_eq!(
+            result.deep.files_edited_count, 2,
+            "Should have 2 unique files edited"
+        );
         assert!(result.deep.files_edited.contains(&"foo.rs".to_string()));
         assert!(result.deep.files_edited.contains(&"bar.rs".to_string()));
     }
@@ -3634,8 +4210,15 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.files_edited.len(), 3, "Should store ALL occurrences (3)");
-        assert_eq!(result.deep.files_edited_count, 1, "Unique count should be 1");
+        assert_eq!(
+            result.deep.files_edited.len(),
+            3,
+            "Should store ALL occurrences (3)"
+        );
+        assert_eq!(
+            result.deep.files_edited_count, 1,
+            "Unique count should be 1"
+        );
     }
 
     #[test]
@@ -3674,7 +4257,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"foo.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"bar.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 1, "Only foo.rs was re-edited (3 times)");
+        assert_eq!(
+            result.deep.reedited_files_count, 1,
+            "Only foo.rs was re-edited (3 times)"
+        );
     }
 
     #[test]
@@ -3684,7 +4270,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"b.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"c.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 0, "No re-edits when all files are unique");
+        assert_eq!(
+            result.deep.reedited_files_count, 0,
+            "No re-edits when all files are unique"
+        );
     }
 
     #[test]
@@ -3706,7 +4295,10 @@ mod tests {
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"x.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"y.rs"}}]}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.reedited_files_count, 2, "Both x.rs and y.rs were re-edited");
+        assert_eq!(
+            result.deep.reedited_files_count, 2,
+            "Both x.rs and y.rs were re-edited"
+        );
     }
 
     // --- Step 9: duration_seconds (A1.5) ---
@@ -3714,24 +4306,32 @@ mod tests {
     #[test]
     fn test_duration_seconds_basic() {
         // Test case 1: 10:00:00 to 10:15:30 → 930 seconds (15m 30s)
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 {"type":"assistant","timestamp":"2026-01-27T10:05:00Z","message":{"content":"a1"}}
 {"type":"user","timestamp":"2026-01-27T10:10:00Z","message":{"content":"q2"}}
 {"type":"assistant","timestamp":"2026-01-27T10:15:30Z","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 930, "Duration should be 930 seconds");
-        assert_eq!(result.deep.first_timestamp, Some(1769508000));  // 2026-01-27T10:00:00Z
-        assert_eq!(result.deep.last_timestamp, Some(1769508930));   // 2026-01-27T10:15:30Z
+        assert_eq!(
+            result.deep.duration_seconds, 930,
+            "Duration should be 930 seconds"
+        );
+        assert_eq!(result.deep.first_timestamp, Some(1769508000)); // 2026-01-27T10:00:00Z
+        assert_eq!(result.deep.last_timestamp, Some(1769508930)); // 2026-01-27T10:15:30Z
     }
 
     #[test]
     fn test_duration_seconds_single_message() {
         // Test case 2: Single message → 0
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 0, "Single message should have 0 duration");
+        assert_eq!(
+            result.deep.duration_seconds, 0,
+            "Single message should have 0 duration"
+        );
     }
 
     #[test]
@@ -3750,7 +4350,10 @@ mod tests {
 {"type":"assistant","message":{"content":"a1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 0, "No timestamps means 0 duration");
+        assert_eq!(
+            result.deep.duration_seconds, 0,
+            "No timestamps means 0 duration"
+        );
     }
 
     #[test]
@@ -3760,19 +4363,26 @@ mod tests {
 {"type":"assistant","timestamp":1706400500,"message":{"content":"a1"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 500, "Should handle Unix integer timestamps");
+        assert_eq!(
+            result.deep.duration_seconds, 500,
+            "Should handle Unix integer timestamps"
+        );
     }
 
     #[test]
     fn test_duration_seconds_mixed_messages() {
         // Only some messages have timestamps - should still compute from first/last
-        let data = br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
+        let data =
+            br#"{"type":"user","timestamp":"2026-01-27T10:00:00Z","message":{"content":"q1"}}
 {"type":"assistant","message":{"content":"a1"}}
 {"type":"user","message":{"content":"q2"}}
 {"type":"assistant","timestamp":"2026-01-27T10:10:00Z","message":{"content":"a2"}}
 "#;
         let result = parse_bytes(data);
-        assert_eq!(result.deep.duration_seconds, 600, "Should compute from first and last available timestamps");
+        assert_eq!(
+            result.deep.duration_seconds, 600,
+            "Should compute from first and last available timestamps"
+        );
     }
 
     // --- Unit test for count_reedited_files ---
@@ -3792,8 +4402,11 @@ mod tests {
 
         // Multiple re-edited
         let multi_reedit = vec![
-            "a".to_string(), "a".to_string(),
-            "b".to_string(), "b".to_string(), "b".to_string(),
+            "a".to_string(),
+            "a".to_string(),
+            "b".to_string(),
+            "b".to_string(),
+            "b".to_string(),
             "c".to_string(),
         ];
         assert_eq!(count_reedited_files(&multi_reedit), 2); // a and b were re-edited
@@ -3826,8 +4439,15 @@ mod tests {
         assert_eq!(result.deep.files_read_count, 2);
 
         // files_edited: ["/src/main.rs", "/src/main.rs", "/src/new.rs"], count=2 (unique)
-        assert_eq!(result.deep.files_edited.len(), 3, "Should store all occurrences");
-        assert_eq!(result.deep.files_edited_count, 2, "Unique count should be 2");
+        assert_eq!(
+            result.deep.files_edited.len(),
+            3,
+            "Should store all occurrences"
+        );
+        assert_eq!(
+            result.deep.files_edited_count, 2,
+            "Unique count should be 2"
+        );
 
         // reedited_files_count: 1 (/src/main.rs was edited twice)
         assert_eq!(result.deep.reedited_files_count, 1);
@@ -3978,9 +4598,15 @@ mod tests {
         // Run Pass 2 (no registry)
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, move |done, _total, _bytes| {
-            progress_clone.store(done, Ordering::Relaxed);
-        })
+        let (indexed, _) = pass_2_deep_index(
+            &db,
+            None,
+            None,
+            |_| {},
+            move |done, _total, _bytes| {
+                progress_clone.store(done, Ordering::Relaxed);
+            },
+        )
         .await
         .unwrap();
 
@@ -4011,7 +4637,7 @@ mod tests {
         // Parent session JSONL with token usage
         let parent_jsonl = project_dir.join("sess-sub.jsonl");
         let parent_content = r#"{"type":"user","message":{"content":"hello"}}
-{"type":"assistant","message":{"id":"msg_parent1","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
+{"type":"assistant","message":{"id":"msg_parent1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_1"}
 "#;
         std::fs::write(&parent_jsonl, parent_content).unwrap();
 
@@ -4020,12 +4646,12 @@ mod tests {
         std::fs::create_dir_all(&subagent_dir).unwrap();
 
         let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
-{"type":"assistant","message":{"id":"msg_sub1","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
+{"type":"assistant","message":{"id":"msg_sub1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_s1"}
 "#;
         std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
 
         let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
-{"type":"assistant","message":{"id":"msg_sub2","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
+{"type":"assistant","message":{"id":"msg_sub2","model":"claude-sonnet-4-6","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_s2"}
 "#;
         std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
 
@@ -4047,10 +4673,259 @@ mod tests {
         let projects = db.list_projects().await.unwrap();
         let session = &projects[0].sessions[0];
         // Parent: 100+80+60=240 input, 50+30+20=100 output
-        assert_eq!(session.total_input_tokens, Some(240), "input = parent + sub1 + sub2");
-        assert_eq!(session.total_output_tokens, Some(100), "output = parent + sub1 + sub2");
-        assert_eq!(session.total_cache_read_tokens, Some(1800), "cache_read = 1000 + 500 + 300");
-        assert_eq!(session.total_cache_creation_tokens, Some(350), "cache_create = 200 + 100 + 50");
+        assert_eq!(
+            session.total_input_tokens,
+            Some(240),
+            "input = parent + sub1 + sub2"
+        );
+        assert_eq!(
+            session.total_output_tokens,
+            Some(100),
+            "output = parent + sub1 + sub2"
+        );
+        assert_eq!(
+            session.total_cache_read_tokens,
+            Some(1800),
+            "cache_read = 1000 + 500 + 300"
+        );
+        assert_eq!(
+            session.total_cache_creation_tokens,
+            Some(350),
+            "cache_create = 200 + 100 + 50"
+        );
+        // Cost is always computed from token usage + model pricing.
+        let cost = session
+            .total_cost_usd
+            .expect("total_cost_usd should be set");
+        assert!(
+            (cost - 0.0040725).abs() < 1e-9,
+            "cost should be computed from tokens (~0.0040725), got {cost}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pass_2_parent_only_vs_subagent_productivity_parity() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let parent_content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_parent","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/shared.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs","old_string":"old\nline","new_string":"new\nline\nx"}},{"type":"tool_use","name":"Bash","input":{"command":"echo parent"}}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}},"requestId":"req_parent"}
+"#;
+        let parent_only_jsonl = project_dir.join("sess-parent-only.jsonl");
+        std::fs::write(&parent_only_jsonl, parent_content).unwrap();
+
+        let parent_with_sub_jsonl = project_dir.join("sess-with-sub.jsonl");
+        std::fs::write(&parent_with_sub_jsonl, parent_content).unwrap();
+
+        let subagent_dir = project_dir.join("sess-with-sub").join("subagents");
+        std::fs::create_dir_all(&subagent_dir).unwrap();
+        let sub1_content = r#"{"type":"user","message":{"content":"sub task"}}
+{"type":"assistant","message":{"id":"msg_sub1","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/main.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"src/lib.rs","content":"alpha\nbeta\n"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/lib.rs","old_string":"alpha\nbeta\n","new_string":"alpha\nbeta\ngamma\n"}}],"usage":{"input_tokens":80,"output_tokens":30,"cache_read_input_tokens":500,"cache_creation_input_tokens":100}},"requestId":"req_sub1"}
+"#;
+        std::fs::write(subagent_dir.join("agent-abc.jsonl"), sub1_content).unwrap();
+        let sub2_content = r#"{"type":"user","message":{"content":"another sub"}}
+{"type":"assistant","message":{"id":"msg_sub2","model":"claude-sonnet-4-6","content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/extra.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"src/main.rs","old_string":"new\nline\nx","new_string":"final\nline\nx"}},{"type":"tool_use","name":"Bash","input":{"command":"echo sub"}}],"usage":{"input_tokens":60,"output_tokens":20,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}},"requestId":"req_sub2"}
+"#;
+        std::fs::write(subagent_dir.join("agent-def.jsonl"), sub2_content).unwrap();
+
+        let index = format!(
+            r#"[{{"sessionId":"sess-parent-only","fullPath":"{}","messageCount":2,"isSidechain":false}},{{"sessionId":"sess-with-sub","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            parent_only_jsonl.to_string_lossy().replace('\\', "\\\\"),
+            parent_with_sub_jsonl
+                .to_string_lossy()
+                .replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 2);
+
+        let parent_row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                tool_counts_edit,
+                tool_counts_read,
+                tool_counts_bash,
+                tool_counts_write,
+                tool_call_count,
+                ai_lines_added,
+                ai_lines_removed,
+                files_read_count,
+                files_edited_count,
+                reedited_files_count,
+                total_input_tokens,
+                total_output_tokens,
+                files_read,
+                files_edited
+            FROM sessions
+            WHERE id = 'sess-parent-only'
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        let with_sub_row: (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            r#"
+            SELECT
+                tool_counts_edit,
+                tool_counts_read,
+                tool_counts_bash,
+                tool_counts_write,
+                tool_call_count,
+                ai_lines_added,
+                ai_lines_removed,
+                files_read_count,
+                files_edited_count,
+                reedited_files_count,
+                total_input_tokens,
+                total_output_tokens,
+                files_read,
+                files_edited
+            FROM sessions
+            WHERE id = 'sess-with-sub'
+            "#,
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        let parent_files_read: Vec<String> = serde_json::from_str(&parent_row.12).unwrap();
+        let parent_files_edited: Vec<String> = serde_json::from_str(&parent_row.13).unwrap();
+        let with_sub_files_read: Vec<String> = serde_json::from_str(&with_sub_row.12).unwrap();
+        let with_sub_files_edited: Vec<String> = serde_json::from_str(&with_sub_row.13).unwrap();
+
+        // Parent-only baseline
+        assert_eq!(parent_row.0, 1); // edit
+        assert_eq!(parent_row.1, 1); // read
+        assert_eq!(parent_row.2, 1); // bash
+        assert_eq!(parent_row.3, 0); // write
+        assert_eq!(parent_row.4, 3); // tool_call_count
+        assert_eq!(parent_row.5, 3); // ai_lines_added
+        assert_eq!(parent_row.6, 2); // ai_lines_removed
+        assert_eq!(parent_row.7, 1); // files_read_count
+        assert_eq!(parent_row.8, 1); // files_edited_count
+        assert_eq!(parent_row.9, 0); // reedited_files_count
+        assert_eq!(parent_row.10, Some(100)); // total_input_tokens
+        assert_eq!(parent_row.11, Some(50)); // total_output_tokens
+        assert_eq!(parent_files_read, vec!["src/shared.rs".to_string()]);
+        assert_eq!(parent_files_edited, vec!["src/main.rs".to_string()]);
+
+        // Parent + subagent merged parity
+        assert_eq!(with_sub_row.0, 3); // edit
+        assert_eq!(with_sub_row.1, 3); // read
+        assert_eq!(with_sub_row.2, 2); // bash
+        assert_eq!(with_sub_row.3, 1); // write
+        assert_eq!(with_sub_row.4, 9); // tool_call_count
+        assert_eq!(with_sub_row.5, 11); // ai_lines_added
+        assert_eq!(with_sub_row.6, 7); // ai_lines_removed
+        assert_eq!(with_sub_row.7, 3); // files_read_count (unique union)
+        assert_eq!(with_sub_row.8, 2); // files_edited_count (unique union)
+        assert_eq!(with_sub_row.9, 2); // main.rs + lib.rs edited 2+ times
+        assert_eq!(with_sub_row.10, Some(240)); // 100 + 80 + 60
+        assert_eq!(with_sub_row.11, Some(100)); // 50 + 30 + 20
+        assert_eq!(
+            with_sub_files_read,
+            vec![
+                "src/extra.rs".to_string(),
+                "src/main.rs".to_string(),
+                "src/shared.rs".to_string()
+            ]
+        );
+        assert_eq!(with_sub_files_edited.len(), 4);
+        assert_eq!(
+            with_sub_files_edited
+                .iter()
+                .filter(|p| p.as_str() == "src/main.rs")
+                .count(),
+            2
+        );
+        assert_eq!(
+            with_sub_files_edited
+                .iter()
+                .filter(|p| p.as_str() == "src/lib.rs")
+                .count(),
+            2
+        );
+
+        // Explicit parity deltas (merged - parent = subagent contribution)
+        assert_eq!(with_sub_row.5 - parent_row.5, 8); // ai_lines_added delta
+        assert_eq!(with_sub_row.6 - parent_row.6, 5); // ai_lines_removed delta
+        assert_eq!(with_sub_row.1 - parent_row.1, 2); // read tool delta
+        assert_eq!(with_sub_row.0 - parent_row.0, 2); // edit tool delta
+        assert_eq!(with_sub_row.3 - parent_row.3, 1); // write tool delta
+    }
+
+    #[tokio::test]
+    async fn test_pass_2_sets_null_cost_when_model_unpriced() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let session_jsonl = project_dir.join("sess-unpriced.jsonl");
+        let content = r#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"id":"msg_1","model":"unpriced-model-xyz","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}},"requestId":"req_1"}
+"#;
+        std::fs::write(&session_jsonl, content).unwrap();
+
+        let index = format!(
+            r#"[{{"sessionId":"sess-unpriced","fullPath":"{}","messageCount":2,"isSidechain":false}}]"#,
+            session_jsonl.to_string_lossy().replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        let db = Database::new_in_memory().await.unwrap();
+        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(indexed, 1);
+
+        let projects = db.list_projects().await.unwrap();
+        let session = &projects[0].sessions[0];
+        assert_eq!(session.total_input_tokens, Some(100));
+        assert_eq!(session.total_output_tokens, Some(50));
+        assert!(
+            session.total_cost_usd.is_none(),
+            "strict mode: session total_cost_usd must be NULL when model pricing is missing"
+        );
     }
 
     #[tokio::test]
@@ -4060,11 +4935,15 @@ mod tests {
 
         // Run Pass 1 then Pass 2
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(first_run, 1);
 
         // Run Pass 2 again — should skip because deep_indexed_at is set
-        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(second_run, 0, "Should skip already deep-indexed sessions");
     }
 
@@ -4077,13 +4956,24 @@ mod tests {
         pass_1_read_indexes(&claude_dir, &db).await.unwrap();
 
         // Run Pass 2 — should deep-index the 1 session
-        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(first_run, 1, "Should deep-index 1 session on first run");
 
         // Verify file_size_at_index and file_mtime_at_index are populated
         let sessions = db.get_sessions_needing_deep_index().await.unwrap();
         assert_eq!(sessions.len(), 1);
-        let (_id, _path, stored_size, stored_mtime, deep_indexed_at, parse_version, _project) = &sessions[0];
+        let (
+            _id,
+            _path,
+            stored_size,
+            stored_mtime,
+            deep_indexed_at,
+            parse_version,
+            _project,
+            _archived_at,
+        ) = &sessions[0];
         assert!(
             stored_size.is_some(),
             "file_size_at_index should be populated after deep index"
@@ -4092,17 +4982,16 @@ mod tests {
             stored_mtime.is_some(),
             "file_mtime_at_index should be populated after deep index"
         );
-        assert!(
-            deep_indexed_at.is_some(),
-            "deep_indexed_at should be set"
-        );
+        assert!(deep_indexed_at.is_some(), "deep_indexed_at should be set");
         assert_eq!(
             *parse_version, CURRENT_PARSE_VERSION,
             "parse_version should match current"
         );
 
         // Run Pass 2 again — should skip because file hasn't changed
-        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(second_run, 0, "Should skip unchanged session");
 
         // Now append data to the JSONL file (simulates user continuing conversation)
@@ -4132,20 +5021,30 @@ mod tests {
         drop(file);
 
         // Run Pass 2 again — should re-index because file size changed
-        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
-        assert_eq!(third_run, 1, "Should re-index session after file was modified");
+        let (third_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
+        assert_eq!(
+            third_run, 1,
+            "Should re-index session after file was modified"
+        );
 
         // Verify the updated metrics reflect the new content
         let projects = db.list_projects().await.unwrap();
         let session = &projects[0].sessions[0];
-        assert_eq!(session.turn_count, 3, "Should now have 3 turns after re-index");
+        assert_eq!(
+            session.turn_count, 3,
+            "Should now have 3 turns after re-index"
+        );
         assert_eq!(
             session.last_message, "one more question",
             "Last user message should reflect appended content"
         );
 
         // Run Pass 2 one more time — should skip again (file hasn't changed)
-        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {}).await.unwrap();
+        let (fourth_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
+            .await
+            .unwrap();
         assert_eq!(fourth_run, 0, "Should skip after re-index completed");
     }
 
@@ -4199,7 +5098,11 @@ mod tests {
 
         let result = extract_commit_skill_invocations(&raw);
 
-        assert_eq!(result.len(), 1, "Should detect commit-commands:commit-push-pr");
+        assert_eq!(
+            result.len(),
+            1,
+            "Should detect commit-commands:commit-push-pr"
+        );
         assert_eq!(result[0].skill_name, "commit-commands:commit-push-pr");
         assert_eq!(result[0].timestamp_unix, 1706400300);
     }
@@ -4390,7 +5293,10 @@ mod tests {
         assert_eq!(result.deep.agent_spawn_count, 0);
 
         // Summary
-        assert_eq!(result.deep.summary_text.as_deref(), Some("Fixed authentication bug in auth.rs"));
+        assert_eq!(
+            result.deep.summary_text.as_deref(),
+            Some("Fixed authentication bug in auth.rs")
+        );
 
         // Queue
         assert_eq!(result.deep.queue_enqueue_count, 1);
@@ -4400,12 +5306,24 @@ mod tests {
         assert_eq!(result.deep.file_snapshot_count, 1);
 
         // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:04:00 = 240s)
-        assert!(result.deep.total_task_time_seconds > 0, "total_task_time_seconds should be > 0");
+        assert!(
+            result.deep.total_task_time_seconds > 0,
+            "total_task_time_seconds should be > 0"
+        );
         assert_eq!(result.deep.total_task_time_seconds, 240);
-        assert!(result.deep.longest_task_seconds.is_some(), "longest_task_seconds should be Some");
+        assert!(
+            result.deep.longest_task_seconds.is_some(),
+            "longest_task_seconds should be Some"
+        );
         assert_eq!(result.deep.longest_task_seconds, Some(240));
-        assert!(result.deep.longest_task_preview.is_some(), "longest_task_preview should be Some");
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read and fix auth.rs"));
+        assert!(
+            result.deep.longest_task_preview.is_some(),
+            "longest_task_preview should be Some"
+        );
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Read and fix auth.rs")
+        );
 
         // Sanity check: wall-clock task time >= CC turn_duration_total_ms / 1000
         let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
@@ -4481,11 +5399,20 @@ mod tests {
 
         // Longest task is turn 1 at 100 seconds
         assert_eq!(result.deep.longest_task_seconds, Some(100));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Implement the login page"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Implement the login page")
+        );
 
         // Verify longest is the maximum, not first or last
-        assert!(result.deep.longest_task_seconds.unwrap() > 40, "longest should not be the last turn (40s)");
-        assert!(result.deep.longest_task_seconds.unwrap() > 95, "longest should not be the second turn (95s)");
+        assert!(
+            result.deep.longest_task_seconds.unwrap() > 40,
+            "longest should not be the last turn (40s)"
+        );
+        assert!(
+            result.deep.longest_task_seconds.unwrap() > 95,
+            "longest should not be the second turn (95s)"
+        );
 
         // Sanity check: wall-clock >= CC turn_duration_total / 1000
         let turn_duration_total_secs = result.deep.turn_durations_ms.iter().sum::<u64>() / 1000;
@@ -4510,7 +5437,10 @@ mod tests {
         // Only 1 real turn: "Hello world" at ts=1700000000 → ends at ts=1700000120 (last_timestamp) = 120s
         assert_eq!(result.deep.total_task_time_seconds, 120);
         assert_eq!(result.deep.longest_task_seconds, Some(120));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Hello world"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Hello world")
+        );
     }
 
     #[test]
@@ -4526,7 +5456,46 @@ mod tests {
         // Only 1 real turn: "Read the file" at ts=1700000000 → ends at ts=1700000090 = 90s
         assert_eq!(result.deep.total_task_time_seconds, 90);
         assert_eq!(result.deep.longest_task_seconds, Some(90));
-        assert_eq!(result.deep.longest_task_preview.as_deref(), Some("Read the file"));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Read the file")
+        );
+    }
+
+    #[test]
+    fn test_task_time_human_tool_result_starts_new_turn() {
+        // Interactive question-response tool_result should count as user input.
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Plan the release"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"What release type do you want?"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700001000,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"User has answered your questions: \"Release type?\"=\"Patch\". You can now continue with the user's answers in mind."}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700001030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        // Split into 2 active runs:
+        // 1) 1700000000 -> 1700000030 = 30s
+        // 2) 1700001000 -> 1700001030 = 30s
+        assert_eq!(result.deep.total_task_time_seconds, 60);
+        assert_eq!(result.deep.longest_task_seconds, Some(30));
+        assert_eq!(
+            result.deep.longest_task_preview.as_deref(),
+            Some("Plan the release")
+        );
+    }
+
+    #[test]
+    fn test_task_time_human_tool_result_detected_by_structured_marker() {
+        // Even if content wording changes, structured toolUseResult.questions
+        // should still mark this as human input that starts a new turn.
+        let data = br#"{"type":"user","uuid":"u1","timestamp":1700000000,"sessionId":"test","message":{"role":"user","content":"Plan the release"},"version":"1.0.0","cwd":"/project"}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":1700000030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Pick one"}],"usage":{"input_tokens":100,"output_tokens":50}}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":1700001000,"sessionId":"test","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"selection received"}]},"toolUseResult":{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"a"},{"label":"B","description":"b"}],"multiSelect":false}],"answers":{"Pick one":"A"}}}
+{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":1700001030,"sessionId":"test","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"Done."}],"usage":{"input_tokens":100,"output_tokens":50}}}
+"#;
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.total_task_time_seconds, 60);
+        assert_eq!(result.deep.longest_task_seconds, Some(30));
     }
 
     #[test]
@@ -4558,6 +5527,9 @@ mod tests {
         assert_eq!(diag.lines_unknown_type, 0);
         assert_eq!(diag.json_parse_failures, 0);
         assert_eq!(diag.content_not_array, 0);
+        assert_eq!(diag.unknown_source_role_count, 0);
+        assert_eq!(diag.derived_source_message_doc_count, 0);
+        assert_eq!(diag.source_message_non_source_provenance_count, 0);
     }
 
     #[test]
@@ -4631,7 +5603,10 @@ mod tests {
 
         assert_eq!(
             skills,
-            vec!["superpowers:brainstorming", "superpowers:systematic-debugging"],
+            vec![
+                "superpowers:brainstorming",
+                "superpowers:systematic-debugging"
+            ],
             "Should extract exactly the 2 skills from assistant tool_use blocks"
         );
 
@@ -4836,7 +5811,10 @@ mod tests {
         );
         let data = line.as_bytes();
         let result = parse_bytes(data);
-        let prompt = result.deep.first_user_prompt.expect("Should have first_user_prompt");
+        let prompt = result
+            .deep
+            .first_user_prompt
+            .expect("Should have first_user_prompt");
         // truncate() adds "..." when truncating, so max is 500 chars + "..."
         assert!(
             prompt.chars().count() <= 503,
@@ -4857,20 +5835,53 @@ mod tests {
         let result = parse_bytes(data);
 
         // Session-level tokens: should be counted ONCE, not 3x
-        assert_eq!(result.deep.total_input_tokens, 100, "input_tokens counted 3x");
-        assert_eq!(result.deep.total_output_tokens, 50, "output_tokens counted 3x");
+        assert_eq!(
+            result.deep.total_input_tokens, 100,
+            "input_tokens counted 3x"
+        );
+        assert_eq!(
+            result.deep.total_output_tokens, 50,
+            "output_tokens counted 3x"
+        );
         assert_eq!(result.deep.cache_read_tokens, 1000, "cache_read counted 3x");
-        assert_eq!(result.deep.cache_creation_tokens, 200, "cache_create counted 3x");
+        assert_eq!(
+            result.deep.cache_creation_tokens, 200,
+            "cache_create counted 3x"
+        );
 
         // api_call_count: 3 JSONL lines but only 1 unique API response
-        assert_eq!(result.deep.api_call_count, 1, "api_call_count inflated by content blocks");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "api_call_count inflated by content blocks"
+        );
 
         // Should still create 3 turns (one per content block) for UI display,
         // but only the FIRST turn should carry token counts
         assert_eq!(result.turns.len(), 3);
         assert_eq!(result.turns[0].input_tokens, Some(100));
-        assert_eq!(result.turns[1].input_tokens, Some(0)); // zeroed duplicate
-        assert_eq!(result.turns[2].input_tokens, Some(0)); // zeroed duplicate
+        assert_eq!(result.turns[1].input_tokens, None); // duplicate block: unknown/not-counted
+        assert_eq!(result.turns[2].input_tokens, None); // duplicate block: unknown/not-counted
+    }
+
+    #[test]
+    fn test_parse_bytes_dedup_waits_for_usage_payload() {
+        // First block has no usage payload; second block has the real usage.
+        // Dedup must count usage when it appears, not burn the key on the first block.
+        let data = br#"{"type":"user","uuid":"u1","message":{"content":"hello"}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","requestId":"req_010","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_010","model":"claude-opus-4-6","content":[{"type":"thinking"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"a1","requestId":"req_010","timestamp":"2026-01-01T00:00:00Z","message":{"id":"msg_010","model":"claude-opus-4-6","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":120,"output_tokens":40,"cache_read_input_tokens":300,"cache_creation_input_tokens":20}}}
+"#;
+        let result = parse_bytes(data);
+
+        assert_eq!(result.deep.api_call_count, 1);
+        assert_eq!(result.deep.total_input_tokens, 120);
+        assert_eq!(result.deep.total_output_tokens, 40);
+        assert_eq!(result.deep.cache_read_tokens, 300);
+        assert_eq!(result.deep.cache_creation_tokens, 20);
+
+        assert_eq!(result.turns.len(), 2);
+        assert_eq!(result.turns[0].input_tokens, None); // no-usage block
+        assert_eq!(result.turns[1].input_tokens, Some(120)); // usage-bearing block
     }
 
     #[test]
@@ -4885,13 +5896,28 @@ mod tests {
         let result = parse_bytes(data);
 
         // Should count tokens only once despite 2 blocks
-        assert_eq!(result.deep.total_input_tokens, 200, "fallback path: input_tokens counted 2x");
-        assert_eq!(result.deep.total_output_tokens, 80, "fallback path: output_tokens counted 2x");
-        assert_eq!(result.deep.cache_read_tokens, 5000, "fallback path: cache_read counted 2x");
-        assert_eq!(result.deep.cache_creation_tokens, 300, "fallback path: cache_create counted 2x");
+        assert_eq!(
+            result.deep.total_input_tokens, 200,
+            "fallback path: input_tokens counted 2x"
+        );
+        assert_eq!(
+            result.deep.total_output_tokens, 80,
+            "fallback path: output_tokens counted 2x"
+        );
+        assert_eq!(
+            result.deep.cache_read_tokens, 5000,
+            "fallback path: cache_read counted 2x"
+        );
+        assert_eq!(
+            result.deep.cache_creation_tokens, 300,
+            "fallback path: cache_create counted 2x"
+        );
 
         // api_call_count: 2 JSONL lines but only 1 unique API response
-        assert_eq!(result.deep.api_call_count, 1, "fallback path: api_call_count inflated");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "fallback path: api_call_count inflated"
+        );
     }
 
     #[test]
@@ -4912,7 +5938,10 @@ mod tests {
         assert_eq!(result.deep.cache_creation_tokens, 500); // 200 + 300
 
         // 3 assistant JSONL lines, but only 2 unique API responses
-        assert_eq!(result.deep.api_call_count, 2, "should count 2 unique API calls");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "should count 2 unique API calls"
+        );
     }
 
     #[test]
@@ -4930,7 +5959,10 @@ mod tests {
         assert_eq!(result.deep.total_output_tokens, 100);
 
         // Legacy: each line treated as a separate API call (no IDs to dedup with)
-        assert_eq!(result.deep.api_call_count, 2, "legacy lines each count as api call");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "legacy lines each count as api call"
+        );
     }
 
     #[test]
@@ -4968,7 +6000,10 @@ mod tests {
         // and the other through the Value fallback
         assert_eq!(result.deep.total_input_tokens, 500);
         assert_eq!(result.deep.total_output_tokens, 100);
-        assert_eq!(result.deep.api_call_count, 1, "mixed paths should share dedup");
+        assert_eq!(
+            result.deep.api_call_count, 1,
+            "mixed paths should share dedup"
+        );
     }
 
     #[test]
@@ -4977,13 +6012,16 @@ mod tests {
         let result = parse_bytes(data);
 
         // 2 unique API responses (req_001 with 2 blocks, req_002 with 3 blocks)
-        assert_eq!(result.deep.api_call_count, 2, "should have 2 unique API calls");
+        assert_eq!(
+            result.deep.api_call_count, 2,
+            "should have 2 unique API calls"
+        );
 
         // Tokens: req_001(1500+150+500+100) + req_002(2000+200+1500+0)
-        assert_eq!(result.deep.total_input_tokens, 3500);  // 1500 + 2000
-        assert_eq!(result.deep.total_output_tokens, 350);   // 150 + 200
-        assert_eq!(result.deep.cache_read_tokens, 2000);    // 500 + 1500
-        assert_eq!(result.deep.cache_creation_tokens, 100);  // 100 + 0
+        assert_eq!(result.deep.total_input_tokens, 3500); // 1500 + 2000
+        assert_eq!(result.deep.total_output_tokens, 350); // 150 + 200
+        assert_eq!(result.deep.cache_read_tokens, 2000); // 500 + 1500
+        assert_eq!(result.deep.cache_creation_tokens, 100); // 100 + 0
 
         // Tools: Read from req_001, Edit from req_002 (both still counted)
         assert_eq!(result.deep.tool_counts.read, 1);
@@ -4993,30 +6031,24 @@ mod tests {
         assert_eq!(result.turns.len(), 5);
         // First block of each API call has tokens, rest zeroed
         assert_eq!(result.turns[0].input_tokens, Some(1500)); // req_001 first
-        assert_eq!(result.turns[1].input_tokens, Some(0));     // req_001 dup
+        assert_eq!(result.turns[1].input_tokens, None); // req_001 dup
         assert_eq!(result.turns[2].input_tokens, Some(2000)); // req_002 first
-        assert_eq!(result.turns[3].input_tokens, Some(0));     // req_002 dup
-        assert_eq!(result.turns[4].input_tokens, Some(0));     // req_002 dup
+        assert_eq!(result.turns[3].input_tokens, None); // req_002 dup
+        assert_eq!(result.turns[4].input_tokens, None); // req_002 dup
 
         // user_prompt_count: 2 user lines (one is tool_result, still counted)
         assert_eq!(result.deep.user_prompt_count, 2);
     }
 
     #[test]
-    fn test_cost_usd_accumulation() {
-        // Entry 1: has costUSD
-        let line1 = r#"{"type":"assistant","costUSD":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
-        // Entry 2: has costUSD
-        let line2 = r#"{"type":"assistant","costUSD":0.03,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
-        // Entry 3: no costUSD (fallback should not crash)
-        let line3 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"No cost"}],"usage":{"input_tokens":500,"output_tokens":200}}}"#;
-
-        let input = format!("{}\n{}\n{}\n", line1, line2, line3);
+    fn test_parse_bytes_ignores_unknown_top_level_fields() {
+        let line1 = r#"{"type":"assistant","ignoredTopLevelCost":0.05,"message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello"}],"usage":{"input_tokens":1000,"output_tokens":500,"cache_read_input_tokens":200,"cache_creation_input_tokens":50}}}"#;
+        let line2 = r#"{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-6","content":[{"type":"text","text":"World"}],"usage":{"input_tokens":800,"output_tokens":300,"cache_read_input_tokens":100,"cache_creation_input_tokens":30}}}"#;
+        let input = format!("{}\n{}\n", line1, line2);
         let result = parse_bytes(input.as_bytes());
-
-        let cost = result.deep.total_cost_usd;
-        // 0.05 + 0.03 = 0.08 (third entry has no costUSD, contributes 0)
-        assert!((cost - 0.08).abs() < 0.0001, "Expected 0.08, got {cost}");
+        assert_eq!(result.turns.len(), 2);
+        assert_eq!(result.deep.total_input_tokens, 1800);
+        assert_eq!(result.deep.total_output_tokens, 800);
     }
 }
 
@@ -5057,7 +6089,7 @@ mod scan_and_index_tests {
 
         // First scan: should parse and insert
         let (indexed, skipped) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed, 1, "first scan should index 1 file");
@@ -5065,7 +6097,7 @@ mod scan_and_index_tests {
 
         // Second scan without file changes: should skip
         let (indexed2, skipped2) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {})
+            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
                 .await
                 .unwrap();
         assert_eq!(indexed2, 0, "second scan should index 0 files");

@@ -20,7 +20,7 @@ use memchr::memmem;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
-use claude_view_core::category::{categorize_tool, categorize_progress};
+use claude_view_core::category::{categorize_progress, categorize_tool};
 
 use crate::state::AppState;
 
@@ -125,7 +125,14 @@ async fn ws_terminal_handler(
             manager: terminal_connections.clone(),
         };
 
-        handle_terminal_ws(socket, sid.clone(), file_path, terminal_connections.clone(), state.clone()).await;
+        handle_terminal_ws(
+            socket,
+            sid.clone(),
+            file_path,
+            terminal_connections.clone(),
+            state.clone(),
+        )
+        .await;
         // _guard dropped here (or on panic/cancel), calling disconnect()
     })
 }
@@ -406,7 +413,9 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
 
             let category = categorize_progress(data_type);
 
-            let hook_name = data.and_then(|d| d.get("hookName")).and_then(|v| v.as_str());
+            let hook_name = data
+                .and_then(|d| d.get("hookName"))
+                .and_then(|v| v.as_str());
             let command = data.and_then(|d| d.get("command")).and_then(|v| v.as_str());
             let content = if let Some(hn) = hook_name {
                 format!("{}: {}", data_type, hn)
@@ -441,7 +450,10 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
             return vec![result.to_string()];
         }
         "system" => {
-            let subtype = parsed.get("subtype").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let subtype = parsed
+                .get("subtype")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let duration_ms = parsed.get("durationMs").and_then(|v| v.as_u64());
             let content = if let Some(ms) = duration_ms {
                 format!("{}: {}ms", subtype, ms)
@@ -459,7 +471,10 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
             return vec![result.to_string()];
         }
         "queue-operation" => {
-            let operation = parsed.get("operation").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let operation = parsed
+                .get("operation")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let mut result = serde_json::json!({
                 "type": "system",
                 "content": format!("queue-{}", operation),
@@ -1073,17 +1088,23 @@ async fn handle_terminal_ws(
 /// Modified events are sent through the `mpsc::Sender<WatchEvent>` channel.
 fn start_file_watcher(
     tx: mpsc::Sender<WatchEvent>,
-    #[allow(clippy::ptr_arg)]
-    file_path: &PathBuf,
+    #[allow(clippy::ptr_arg)] file_path: &PathBuf,
 ) -> notify::Result<RecommendedWatcher> {
-    let target_path = file_path.clone();
+    // Canonicalize the target path so that the comparison against event paths
+    // works on macOS where symlinks like /var -> /private/var cause mismatches
+    // (e.g. NamedTempFile returns /var/folders/... but FSEvents reports
+    // /private/var/folders/...).
+    let canonical_path = file_path
+        .canonicalize()
+        .unwrap_or_else(|_| file_path.clone());
+    let target_for_closure = canonical_path.clone();
 
     let mut watcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
             match res {
                 Ok(event) => {
                     // Filter to only events for our target file
-                    let is_target = event.paths.iter().any(|p| p == &target_path);
+                    let is_target = event.paths.iter().any(|p| p == &target_for_closure);
                     if !is_target {
                         return;
                     }
@@ -1104,8 +1125,10 @@ fn start_file_watcher(
         })?;
 
     // Watch the parent directory since notify may not support watching
-    // individual files on all platforms (e.g., macOS FSEvents)
-    let watch_dir = file_path
+    // individual files on all platforms (e.g., macOS FSEvents).
+    // Use the canonical path's parent so the watched directory
+    // matches the resolved event paths.
+    let watch_dir = canonical_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."));
 
@@ -1144,7 +1167,13 @@ mod tests {
             live_manager: None,
             search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: tokio::sync::OnceCell::new(),
         });
 
         // Register the session in the live sessions map
@@ -1168,6 +1197,7 @@ mod tests {
                 pid: None,
                 title: "Test session".to_string(),
                 last_user_message: "test".to_string(),
+                last_user_file: None,
                 current_activity: "testing".to_string(),
                 turn_count: 0,
                 started_at: None,
@@ -1183,6 +1213,8 @@ mod tests {
                 progress_items: Vec::new(),
                 tools_used: Vec::new(),
                 last_cache_hit_at: None,
+                compact_count: 0,
+                control: None,
                 hook_events: Vec::new(),
             };
             map.insert(session_id.to_string(), session);
@@ -1321,7 +1353,13 @@ mod tests {
             live_manager: None,
             search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
+            sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: tokio::sync::OnceCell::new(),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
@@ -1485,20 +1523,23 @@ mod tests {
             }
         });
 
-        // Wait for the live line to arrive (file watcher + debounce delay)
-        let live_msg = tokio::time::timeout(Duration::from_secs(10), async {
+        // Wait for the live line to arrive (file watcher + debounce delay).
+        // Use a generous outer timeout and keep looping even when individual
+        // recv_text calls time out — on macOS the FSEvents watcher may take
+        // several seconds to coalesce and fire.
+        let live_msg = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 if let Some(text) = recv_text(&mut ws).await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                         if v["type"] == "line"
                             && v["data"].as_str().unwrap_or("").contains("live response")
                         {
-                            return Some(v);
+                            return v;
                         }
                     }
-                } else {
-                    return None;
                 }
+                // recv_text returned None (per-message timeout) — keep waiting
+                // for the outer timeout to expire rather than giving up early.
             }
         })
         .await;
@@ -1506,7 +1547,7 @@ mod tests {
         write_handle.abort();
 
         assert!(
-            live_msg.is_ok() && live_msg.unwrap().is_some(),
+            live_msg.is_ok(),
             "Expected live streamed line containing 'live response'"
         );
 
@@ -1649,19 +1690,21 @@ mod tests {
             }
         });
 
-        // Wait for the rich-mode message
-        let rich_msg = tokio::time::timeout(Duration::from_secs(10), async {
+        // Wait for the rich-mode message.
+        // Keep looping even when individual recv_text calls time out — on
+        // macOS the FSEvents watcher may take several seconds to fire.
+        let rich_msg = tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 if let Some(text) = recv_text(&mut ws).await {
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
                         // In rich mode, the type should be "message" (not "line")
                         if v["type"] == "message" {
-                            return Some(v);
+                            return v;
                         }
                     }
-                } else {
-                    return None;
                 }
+                // recv_text returned None (per-message timeout) — keep waiting
+                // for the outer timeout to expire rather than giving up early.
             }
         })
         .await;
@@ -1669,8 +1712,6 @@ mod tests {
         write_handle.abort();
 
         assert!(rich_msg.is_ok(), "Timed out waiting for rich mode message");
-        let rich_msg = rich_msg.unwrap();
-        assert!(rich_msg.is_some(), "Expected rich mode message");
 
         let msg = rich_msg.unwrap();
         assert_eq!(msg["type"], "message");
@@ -1751,8 +1792,7 @@ mod tests {
     #[test]
     fn format_line_rich_mode_progress_emits_category() {
         let finders = RichModeFinders::new();
-        let line =
-            r#"{"type":"progress","data":{"type":"hook_progress","hookName":"pre-commit"}}"#;
+        let line = r#"{"type":"progress","data":{"type":"hook_progress","hookName":"pre-commit"}}"#;
         let result = format_line_for_mode(line, "rich", &finders);
         assert_eq!(result.len(), 1, "Progress events should emit one message");
         let parsed: serde_json::Value = serde_json::from_str(&result[0]).unwrap();

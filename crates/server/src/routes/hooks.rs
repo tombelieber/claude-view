@@ -1,6 +1,8 @@
 use axum::{extract::State, response::Json, routing::post, Router};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
@@ -45,6 +47,13 @@ pub struct HookPayload {
 
 /// Maximum hook events kept in memory per session.
 const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
+/// Maximum unresolved hook events kept in memory per session before promotion.
+const MAX_UNRESOLVED_HOOK_EVENTS_PER_SESSION: usize = 5000;
+
+/// Hook events received before a valid live session can be created
+/// (e.g. missing cwd). Replayed on first valid session creation.
+static UNRESOLVED_HOOK_EVENTS: OnceLock<tokio::sync::Mutex<HashMap<String, Vec<HookEvent>>>> =
+    OnceLock::new();
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/live/hook", post(handle_hook))
@@ -69,6 +78,60 @@ fn build_hook_event(
     }
 }
 
+fn unresolved_hook_events() -> &'static tokio::sync::Mutex<HashMap<String, Vec<HookEvent>>> {
+    UNRESOLVED_HOOK_EVENTS.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+}
+
+fn has_valid_cwd(cwd: Option<&str>) -> bool {
+    cwd.map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+fn group_name_from_agent_group(group: &AgentStateGroup) -> &'static str {
+    match group {
+        AgentStateGroup::NeedsYou => "needs_you",
+        AgentStateGroup::Autonomous => "autonomous",
+        AgentStateGroup::Delivered => "delivered",
+    }
+}
+
+fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEvent, max: usize) {
+    if dst.len() >= max {
+        dst.drain(..100.min(dst.len()));
+    }
+    dst.push(event);
+}
+
+fn append_capped_hook_events(dst: &mut Vec<HookEvent>, mut events: Vec<HookEvent>, max: usize) {
+    if events.is_empty() {
+        return;
+    }
+    dst.append(&mut events);
+    if dst.len() > max {
+        let overflow = dst.len() - max;
+        dst.drain(..overflow);
+    }
+}
+
+async fn buffer_unresolved_hook_event(session_id: &str, event: HookEvent) {
+    let mut map = unresolved_hook_events().lock().await;
+    let entry = map.entry(session_id.to_string()).or_default();
+    append_capped_hook_event(entry, event, MAX_UNRESOLVED_HOOK_EVENTS_PER_SESSION);
+}
+
+async fn take_unresolved_hook_events(session_id: &str) -> Vec<HookEvent> {
+    let mut map = unresolved_hook_events().lock().await;
+    map.remove(session_id).unwrap_or_default()
+}
+
+async fn put_back_unresolved_hook_events(session_id: &str, events: Vec<HookEvent>) {
+    if events.is_empty() {
+        return;
+    }
+    let mut map = unresolved_hook_events().lock().await;
+    let entry = map.entry(session_id.to_string()).or_default();
+    append_capped_hook_events(entry, events, MAX_UNRESOLVED_HOOK_EVENTS_PER_SESSION);
+}
+
 async fn handle_hook(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
@@ -81,9 +144,8 @@ async fn handle_hook(
         return Json(serde_json::json!({ "ok": true }));
     }
 
-    let claude_pid = extract_pid_from_header(
-        headers.get("x-claude-pid").and_then(|v| v.to_str().ok()),
-    );
+    let claude_pid =
+        extract_pid_from_header(headers.get("x-claude-pid").and_then(|v| v.to_str().ok()));
     let mut pid_newly_bound = false;
     let mut state_changed = false;
 
@@ -102,10 +164,12 @@ async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let hook_event_context: Option<serde_json::Value> = payload
-        .tool_input
-        .clone()
-        .or_else(|| payload.error.as_ref().map(|e| serde_json::json!({"error": e})));
+    let hook_event_context: Option<serde_json::Value> = payload.tool_input.clone().or_else(|| {
+        payload
+            .error
+            .as_ref()
+            .map(|e| serde_json::json!({"error": e}))
+    });
 
     // ── Lazy session creation ────────────────────────────────────────────
     // Sessions that were already running before the server started won't
@@ -121,60 +185,117 @@ async fn handle_hook(
             .await
             .contains_key(&payload.session_id);
         if needs_creation {
-            let session = LiveSession {
-                id: payload.session_id.clone(),
-                project: String::new(),
-                project_display_name: extract_project_name(payload.cwd.as_deref()),
-                project_path: payload.cwd.clone().unwrap_or_default(),
-                file_path: payload.transcript_path.clone().unwrap_or_default(),
-                status: status_from_agent_state(&agent_state),
-                agent_state: agent_state.clone(),
-                git_branch: None,
-                pid: claude_pid,
-                title: String::new(),
-                last_user_message: payload
-                    .prompt
-                    .as_ref()
-                    .map(|p| p.chars().take(500).collect())
-                    .unwrap_or_default(),
-                current_activity: agent_state.label.clone(),
-                turn_count: 0,
-                started_at: None,
-                last_activity_at: now,
-                model: payload.model.clone(),
-                tokens: TokenUsage::default(),
-                context_window_tokens: 0,
-                cost: CostBreakdown::default(),
-                cache_status: CacheStatus::Unknown,
-                current_turn_started_at: None,
-                last_turn_task_seconds: None,
-                sub_agents: Vec::new(),
-                progress_items: Vec::new(),
-                tools_used: Vec::new(),
-                last_cache_hit_at: None,
-                hook_events: Vec::new(),
-            };
-            let mut sessions = state.live_sessions.write().await;
-            if !sessions.contains_key(&payload.session_id) {
-                sessions.insert(session.id.clone(), session.clone());
-                drop(sessions);
-                if let Some(mgr) = &state.live_manager {
-                    mgr.create_accumulator_for_hook(&payload.session_id).await;
+            if has_valid_cwd(payload.cwd.as_deref()) {
+                let buffered_events = take_unresolved_hook_events(&payload.session_id).await;
+                let mut sessions = state.live_sessions.write().await;
+                if !sessions.contains_key(&payload.session_id) {
+                    let mut session = LiveSession {
+                        id: payload.session_id.clone(),
+                        project: String::new(),
+                        project_display_name: extract_project_name(payload.cwd.as_deref()),
+                        project_path: payload.cwd.clone().unwrap_or_default(),
+                        file_path: payload.transcript_path.clone().unwrap_or_default(),
+                        status: status_from_agent_state(&agent_state),
+                        agent_state: agent_state.clone(),
+                        git_branch: None,
+                        pid: claude_pid,
+                        title: String::new(),
+                        last_user_message: payload
+                            .prompt
+                            .as_ref()
+                            .map(|p| p.chars().take(500).collect())
+                            .unwrap_or_default(),
+                        last_user_file: None,
+                        current_activity: agent_state.label.clone(),
+                        turn_count: 0,
+                        started_at: None,
+                        last_activity_at: now,
+                        model: payload.model.clone(),
+                        tokens: TokenUsage::default(),
+                        context_window_tokens: 0,
+                        cost: CostBreakdown::default(),
+                        cache_status: CacheStatus::Unknown,
+                        current_turn_started_at: None,
+                        last_turn_task_seconds: None,
+                        sub_agents: Vec::new(),
+                        progress_items: Vec::new(),
+                        tools_used: Vec::new(),
+                        last_cache_hit_at: None,
+                        compact_count: 0,
+                        control: None,
+                        hook_events: Vec::new(),
+                    };
+                    append_capped_hook_events(
+                        &mut session.hook_events,
+                        buffered_events,
+                        MAX_HOOK_EVENTS_PER_SESSION,
+                    );
+                    sessions.insert(session.id.clone(), session.clone());
+                    drop(sessions);
+                    if let Some(mgr) = &state.live_manager {
+                        mgr.create_accumulator_for_hook(&payload.session_id).await;
+                    }
+                    tracing::info!(
+                        session_id = %payload.session_id,
+                        event = %payload.hook_event_name,
+                        "Lazily created session from non-SessionStart hook (was running before server)"
+                    );
+                    let _ = state
+                        .live_tx
+                        .send(SessionEvent::SessionDiscovered { session });
+                } else if !buffered_events.is_empty() {
+                    if let Some(existing) = sessions.get_mut(&payload.session_id) {
+                        append_capped_hook_events(
+                            &mut existing.hook_events,
+                            buffered_events,
+                            MAX_HOOK_EVENTS_PER_SESSION,
+                        );
+                    }
                 }
-                tracing::info!(
+            } else {
+                tracing::debug!(
                     session_id = %payload.session_id,
                     event = %payload.hook_event_name,
-                    "Lazily created session from non-SessionStart hook (was running before server)"
+                    "Skipped live session creation: missing cwd (buffering unresolved hook events)"
                 );
-                let _ = state
-                    .live_tx
-                    .send(SessionEvent::SessionDiscovered { session });
+            }
+        }
+    }
+
+    // If the session already exists (e.g. snapshot promotion), replay any
+    // unresolved events that were buffered before creation.
+    if payload.hook_event_name != "SessionEnd" {
+        let session_exists = state
+            .live_sessions
+            .read()
+            .await
+            .contains_key(&payload.session_id);
+        if session_exists {
+            let buffered_events = take_unresolved_hook_events(&payload.session_id).await;
+            if !buffered_events.is_empty() {
+                let mut sessions = state.live_sessions.write().await;
+                if let Some(existing) = sessions.get_mut(&payload.session_id) {
+                    append_capped_hook_events(
+                        &mut existing.hook_events,
+                        buffered_events,
+                        MAX_HOOK_EVENTS_PER_SESSION,
+                    );
+                } else {
+                    drop(sessions);
+                    put_back_unresolved_hook_events(&payload.session_id, buffered_events).await;
+                }
             }
         }
     }
 
     match payload.hook_event_name.as_str() {
         "SessionStart" => {
+            let should_create = has_valid_cwd(payload.cwd.as_deref());
+            let buffered_events = if should_create {
+                take_unresolved_hook_events(&payload.session_id).await
+            } else {
+                Vec::new()
+            };
             let mut sessions = state.live_sessions.write().await;
 
             if let Some(existing) = sessions.get_mut(&payload.session_id) {
@@ -194,12 +315,19 @@ async fn handle_hook(
                         existing.pid = Some(pid);
                     }
                 }
+                if !buffered_events.is_empty() {
+                    append_capped_hook_events(
+                        &mut existing.hook_events,
+                        buffered_events,
+                        MAX_HOOK_EVENTS_PER_SESSION,
+                    );
+                }
                 let _ = state.live_tx.send(SessionEvent::SessionUpdated {
                     session: existing.clone(),
                 });
-            } else {
+            } else if should_create {
                 // Session doesn't exist — create skeleton.
-                let session = LiveSession {
+                let mut session = LiveSession {
                     id: payload.session_id.clone(),
                     project: String::new(),
                     project_display_name: extract_project_name(payload.cwd.as_deref()),
@@ -211,6 +339,7 @@ async fn handle_hook(
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
+                    last_user_file: None,
                     current_activity: agent_state.label.clone(),
                     turn_count: 0,
                     started_at: Some(now),
@@ -226,8 +355,15 @@ async fn handle_hook(
                     progress_items: Vec::new(),
                     tools_used: Vec::new(),
                     last_cache_hit_at: None,
+                    compact_count: 0,
+                    control: None,
                     hook_events: Vec::new(),
                 };
+                append_capped_hook_events(
+                    &mut session.hook_events,
+                    buffered_events,
+                    MAX_HOOK_EVENTS_PER_SESSION,
+                );
                 sessions.insert(session.id.clone(), session.clone());
                 state_changed = true;
                 drop(sessions); // release lock before async manager call
@@ -237,6 +373,11 @@ async fn handle_hook(
                 let _ = state
                     .live_tx
                     .send(SessionEvent::SessionDiscovered { session });
+            } else {
+                tracing::debug!(
+                    session_id = %payload.session_id,
+                    "Skipped SessionStart live session creation: missing cwd (buffering unresolved hook events)"
+                );
             }
         }
         "UserPromptSubmit" => {
@@ -287,15 +428,27 @@ async fn handle_hook(
         }
         "SessionEnd" => {
             let session_id = payload.session_id.clone();
+            let unresolved_events = take_unresolved_hook_events(&session_id).await;
 
             // Persist hook events to SQLite before removing from memory.
             // Per CLAUDE.md: batch writes in transactions (insert_hook_events does this).
             {
                 let sessions = state.live_sessions.read().await;
                 if let Some(session) = sessions.get(&session_id) {
-                    if !session.hook_events.is_empty() {
-                        let rows: Vec<claude_view_db::HookEventRow> = session
-                            .hook_events
+                    let mut rows: Vec<claude_view_db::HookEventRow> = session
+                        .hook_events
+                        .iter()
+                        .map(|e| claude_view_db::HookEventRow {
+                            timestamp: e.timestamp,
+                            event_name: e.event_name.clone(),
+                            tool_name: e.tool_name.clone(),
+                            label: e.label.clone(),
+                            group_name: e.group.clone(),
+                            context: e.context.clone(),
+                        })
+                        .collect();
+                    rows.extend(
+                        unresolved_events
                             .iter()
                             .map(|e| claude_view_db::HookEventRow {
                                 timestamp: e.timestamp,
@@ -304,13 +457,16 @@ async fn handle_hook(
                                 label: e.label.clone(),
                                 group_name: e.group.clone(),
                                 context: e.context.clone(),
-                            })
-                            .collect();
-                        if let Err(e) =
-                            claude_view_db::hook_events_queries::insert_hook_events(
-                                &state.db, &session_id, &rows,
-                            )
-                            .await
+                            }),
+                    );
+
+                    if !rows.is_empty() {
+                        if let Err(e) = claude_view_db::hook_events_queries::insert_hook_events(
+                            &state.db,
+                            &session_id,
+                            &rows,
+                        )
+                        .await
                         {
                             tracing::warn!(
                                 session_id = %session_id,
@@ -325,6 +481,37 @@ async fn handle_hook(
                             );
                         }
                     }
+                } else if !unresolved_events.is_empty() {
+                    let rows: Vec<claude_view_db::HookEventRow> = unresolved_events
+                        .iter()
+                        .map(|e| claude_view_db::HookEventRow {
+                            timestamp: e.timestamp,
+                            event_name: e.event_name.clone(),
+                            tool_name: e.tool_name.clone(),
+                            label: e.label.clone(),
+                            group_name: e.group.clone(),
+                            context: e.context.clone(),
+                        })
+                        .collect();
+                    if let Err(e) = claude_view_db::hook_events_queries::insert_hook_events(
+                        &state.db,
+                        &session_id,
+                        &rows,
+                    )
+                    .await
+                    {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %e,
+                            "Failed to persist unresolved hook events to SQLite"
+                        );
+                    } else {
+                        tracing::info!(
+                            session_id = %session_id,
+                            count = rows.len(),
+                            "Persisted unresolved hook events to SQLite"
+                        );
+                    }
                 }
             }
 
@@ -333,11 +520,7 @@ async fn handle_hook(
                 mgr.remove_accumulator(&session_id).await;
             }
             // Clean up hook event broadcast channel
-            state
-                .hook_event_channels
-                .write()
-                .await
-                .remove(&session_id);
+            state.hook_event_channels.write().await.remove(&session_id);
             let _ = state
                 .live_tx
                 .send(SessionEvent::SessionCompleted { session_id });
@@ -502,25 +685,20 @@ async fn handle_hook(
     if payload.hook_event_name != "SessionEnd" {
         let mut sessions = state.live_sessions.write().await;
         if let Some(session) = sessions.get_mut(&payload.session_id) {
-            let actual_group = match &session.agent_state.group {
-                AgentStateGroup::NeedsYou => "needs_you",
-                AgentStateGroup::Autonomous => "autonomous",
-                AgentStateGroup::Delivered => "delivered",
-            };
-
             let hook_event = build_hook_event(
                 now,
                 &payload.hook_event_name,
                 payload.tool_name.as_deref(),
                 &agent_state.label,
-                actual_group,
+                group_name_from_agent_group(&session.agent_state.group),
                 hook_event_context.as_ref(),
             );
 
-            if session.hook_events.len() >= MAX_HOOK_EVENTS_PER_SESSION {
-                session.hook_events.drain(..100); // drop oldest 100
-            }
-            session.hook_events.push(hook_event.clone());
+            append_capped_hook_event(
+                &mut session.hook_events,
+                hook_event.clone(),
+                MAX_HOOK_EVENTS_PER_SESSION,
+            );
             drop(sessions);
 
             // Broadcast to any connected WS listeners
@@ -528,6 +706,17 @@ async fn handle_hook(
             if let Some(tx) = channels.get(&payload.session_id) {
                 let _ = tx.send(hook_event);
             }
+        } else {
+            drop(sessions);
+            let hook_event = build_hook_event(
+                now,
+                &payload.hook_event_name,
+                payload.tool_name.as_deref(),
+                &agent_state.label,
+                group_name_from_agent_group(&agent_state.group),
+                hook_event_context.as_ref(),
+            );
+            buffer_unresolved_hook_event(&payload.session_id, hook_event).await;
         }
     }
 
@@ -887,6 +1076,7 @@ mod tests {
             pid: None,
             title: "Test session".into(),
             last_user_message: String::new(),
+            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 5,
             started_at: Some(1000),
@@ -902,6 +1092,8 @@ mod tests {
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
+            compact_count: 0,
+            control: None,
             hook_events: Vec::new(),
         }
     }
@@ -1233,6 +1425,250 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_session_start_missing_cwd_buffers_without_creating_session() {
+        let session_id = "missing-cwd-start";
+        let _ = take_unresolved_hook_events(session_id).await;
+
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+        let body = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "SessionStart"
+        });
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        assert!(
+            sessions.get(session_id).is_none(),
+            "SessionStart without cwd must not create a live session"
+        );
+        drop(sessions);
+
+        let unresolved = take_unresolved_hook_events(session_id).await;
+        assert_eq!(unresolved.len(), 1);
+        assert_eq!(unresolved[0].event_name, "SessionStart");
+    }
+
+    #[tokio::test]
+    async fn test_unresolved_events_promote_on_later_valid_cwd_hook() {
+        let session_id = "promote-on-valid-cwd";
+        let _ = take_unresolved_hook_events(session_id).await;
+
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // 1) Unknown session hook without cwd: no live session created
+        let body_unresolved = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status"}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_unresolved).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(state.live_sessions.read().await.get(session_id).is_none());
+
+        // 2) Later hook with cwd promotes session and replays unresolved events
+        let body_promote = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": "/tmp/promoted-project",
+            "prompt": "Continue"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_promote).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .expect("session should be promoted");
+        assert_eq!(session.project_path, "/tmp/promoted-project");
+        assert_eq!(session.hook_events.len(), 2);
+        assert_eq!(session.hook_events[0].event_name, "PreToolUse");
+        assert_eq!(session.hook_events[1].event_name, "UserPromptSubmit");
+        drop(sessions);
+
+        let unresolved = take_unresolved_hook_events(session_id).await;
+        assert!(unresolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_session_end_persists_unresolved_events_without_live_session() {
+        let session_id = "unresolved-session-end";
+        let _ = take_unresolved_hook_events(session_id).await;
+
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        let body_pre = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Read",
+            "tool_input": {"file_path": "/tmp/a.rs"}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_pre).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(state.live_sessions.read().await.get(session_id).is_none());
+
+        let body_end = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "SessionEnd"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_end).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let stored = claude_view_db::hook_events_queries::get_hook_events(&state.db, session_id)
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].event_name, "PreToolUse");
+
+        let unresolved = take_unresolved_hook_events(session_id).await;
+        assert!(unresolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_existing_session_replays_buffered_events_after_promotion() {
+        let session_id = "replay-after-promotion";
+        let _ = take_unresolved_hook_events(session_id).await;
+
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // 1) Hook arrives before session exists and without cwd -> buffered
+        let body_unresolved = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "pwd"}
+        });
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_unresolved).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert!(state.live_sessions.read().await.get(session_id).is_none());
+
+        // 2) Simulate startup snapshot promotion: session now exists without hook-driven creation
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert(session_id.to_string(), make_autonomous_session(session_id));
+        }
+
+        // 3) Next hook should replay buffered events into existing session
+        let body_update = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": "/tmp/promoted-project",
+            "prompt": "Continue"
+        });
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body_update).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions
+            .get(session_id)
+            .expect("session should exist after simulated promotion");
+        assert_eq!(session.hook_events.len(), 2);
+        assert_eq!(session.hook_events[0].event_name, "PreToolUse");
+        assert_eq!(session.hook_events[1].event_name, "UserPromptSubmit");
+        drop(sessions);
+
+        let unresolved = take_unresolved_hook_events(session_id).await;
+        assert!(unresolved.is_empty());
+    }
+
+    #[tokio::test]
     async fn test_task_completed_hook_event_records_actual_session_group() {
         // Setup: create AppState with a session in autonomous state
         let db = claude_view_db::Database::new_in_memory().await.unwrap();
@@ -1261,7 +1697,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1313,7 +1751,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1354,7 +1794,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1398,7 +1840,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -1452,7 +1896,9 @@ mod tests {
                     .method("POST")
                     .uri("/api/live/hook")
                     .header("content-type", "application/json")
-                    .body(axum::body::Body::from(serde_json::to_string(&body).unwrap()))
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await

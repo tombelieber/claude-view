@@ -13,7 +13,7 @@ use ts_rs::TS;
 
 /// Top-level category (L1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum CategoryL1 {
     Code,
@@ -42,7 +42,7 @@ impl CategoryL1 {
 
 /// Second-level category (L2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum CategoryL2 {
     Feature,
@@ -101,7 +101,7 @@ impl CategoryL2 {
 
 /// Third-level category (L3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "kebab-case")]
 pub enum CategoryL3 {
     // Feature
@@ -229,7 +229,9 @@ impl CategoryL3 {
             Self::EnvSetup | Self::BuildTooling | Self::Dependencies => CategoryL2::Config,
             Self::CiCd | Self::Deployment | Self::Monitoring => CategoryL2::Ops,
             Self::Brainstorming | Self::DesignDoc | Self::TaskBreakdown => CategoryL2::Planning,
-            Self::CodeUnderstanding | Self::ConceptLearning | Self::DebugInvestigation => CategoryL2::Explanation,
+            Self::CodeUnderstanding | Self::ConceptLearning | Self::DebugInvestigation => {
+                CategoryL2::Explanation
+            }
             Self::SystemDesign | Self::DataModeling | Self::ApiDesign => CategoryL2::Architecture,
         }
     }
@@ -376,7 +378,12 @@ pub fn build_batch_prompt(inputs: &[ClassificationInput]) -> String {
             "(none)".to_string()
         } else {
             // Limit to 10 skills
-            let limited: Vec<&str> = input.skills_used.iter().take(10).map(|s| s.as_str()).collect();
+            let limited: Vec<&str> = input
+                .skills_used
+                .iter()
+                .take(10)
+                .map(|s| s.as_str())
+                .collect();
             limited.join(", ")
         };
 
@@ -387,7 +394,10 @@ pub fn build_batch_prompt(inputs: &[ClassificationInput]) -> String {
         prompt.push_str("---\n\n");
     }
 
-    prompt.push_str(&format!("Return JSON with classifications for all {} sessions.", inputs.len()));
+    prompt.push_str(&format!(
+        "Return JSON with classifications for all {} sessions.",
+        inputs.len()
+    ));
     prompt
 }
 
@@ -410,8 +420,8 @@ pub fn parse_batch_response(raw: &str) -> Result<Vec<ValidatedClassification>, S
     let response: BatchClassificationResponse = serde_json::from_str(&cleaned)
         .or_else(|_| {
             // Try Claude CLI wrapper format: { "result": "..." }
-            let wrapper: serde_json::Value = serde_json::from_str(&cleaned)
-                .map_err(|e| format!("JSON parse failed: {}", e))?;
+            let wrapper: serde_json::Value =
+                serde_json::from_str(&cleaned).map_err(|e| format!("JSON parse failed: {}", e))?;
             if let Some(result_str) = wrapper.get("result").and_then(|v| v.as_str()) {
                 let inner_cleaned = strip_markdown_json(result_str);
                 serde_json::from_str(&inner_cleaned)
@@ -495,41 +505,6 @@ fn strip_markdown_json(s: &str) -> String {
 }
 
 // ============================================================================
-// Cost Estimation
-// ============================================================================
-
-/// Estimate the classification cost in cents.
-///
-/// Uses approximate token counts for Claude Haiku:
-/// - System prompt: ~800 tokens
-/// - Per session: ~200 tokens input, ~50 tokens output
-/// - Haiku pricing: $0.25/MTok input, $1.25/MTok output
-pub fn estimate_cost_cents(session_count: i64, batch_size: i64) -> i64 {
-    let num_batches = (session_count + batch_size - 1) / batch_size;
-    let system_tokens = 800; // per batch
-    let per_session_input = 200;
-    let per_session_output = 50;
-
-    let total_input = num_batches * system_tokens + session_count * per_session_input;
-    let total_output = session_count * per_session_output;
-
-    // Haiku: $0.25/MTok input, $1.25/MTok output
-    // Convert to cents: $0.25/1M = 0.025 cents/1K tokens
-    let input_cost_cents = total_input as f64 * 0.025 / 1000.0;
-    let output_cost_cents = total_output as f64 * 0.125 / 1000.0;
-
-    (input_cost_cents + output_cost_cents).ceil() as i64
-}
-
-/// Estimate duration in seconds for classification.
-///
-/// Assumes ~2 seconds per batch (Claude CLI overhead + Haiku response time).
-pub fn estimate_duration_secs(session_count: i64, batch_size: i64) -> i64 {
-    let num_batches = (session_count + batch_size - 1) / batch_size;
-    num_batches * 2 // ~2 seconds per batch
-}
-
-// ============================================================================
 // Constants
 // ============================================================================
 
@@ -549,7 +524,10 @@ mod tests {
         // New canonical form
         assert_eq!(CategoryL1::parse("code_work"), Some(CategoryL1::Code));
         assert_eq!(CategoryL1::parse("support_work"), Some(CategoryL1::Support));
-        assert_eq!(CategoryL1::parse("thinking_work"), Some(CategoryL1::Thinking));
+        assert_eq!(
+            CategoryL1::parse("thinking_work"),
+            Some(CategoryL1::Thinking)
+        );
         // Backwards compat: old form still accepted
         assert_eq!(CategoryL1::parse("code"), Some(CategoryL1::Code));
         assert_eq!(CategoryL1::parse("support"), Some(CategoryL1::Support));
@@ -574,7 +552,10 @@ mod tests {
         assert_eq!(CategoryL3::NewComponent.parent_l2(), CategoryL2::Feature);
         assert_eq!(CategoryL3::ErrorFix.parent_l2(), CategoryL2::Bugfix);
         assert_eq!(CategoryL3::ReadmeGuides.parent_l2(), CategoryL2::Docs);
-        assert_eq!(CategoryL3::SystemDesign.parent_l2(), CategoryL2::Architecture);
+        assert_eq!(
+            CategoryL3::SystemDesign.parent_l2(),
+            CategoryL2::Architecture
+        );
     }
 
     #[test]
@@ -702,19 +683,6 @@ mod tests {
         let results = parse_batch_response(&json).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].l1, "thinking");
-    }
-
-    #[test]
-    fn test_estimate_cost_cents() {
-        let cost = estimate_cost_cents(100, 5);
-        assert!(cost > 0);
-        assert!(cost < 100); // Should be well under $1 for 100 sessions
-    }
-
-    #[test]
-    fn test_estimate_duration_secs() {
-        let duration = estimate_duration_secs(100, 5);
-        assert_eq!(duration, 40); // 20 batches * 2 sec
     }
 
     #[test]

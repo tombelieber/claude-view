@@ -99,9 +99,10 @@ pub fn count_claude_processes() -> u32 {
         let name = process.name().to_string_lossy();
 
         let is_claude = name.contains("claude")
-            || process.cmd().iter().any(|arg| {
-                arg.to_string_lossy().contains("@anthropic-ai/claude")
-            });
+            || process
+                .cmd()
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("@anthropic-ai/claude"));
 
         if !is_claude {
             continue;

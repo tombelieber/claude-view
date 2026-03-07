@@ -11,7 +11,7 @@ use crate::state::AppState;
 
 /// Response for the health check endpoint.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct HealthResponse {
     pub status: String,

@@ -54,8 +54,5 @@
   "engines": {
     "node": ">=16"
   },
-  "files": [
-    "index.js",
-    "README.md"
-  ]
+  "files": ["index.js", "README.md"]
 }

@@ -1,0 +1,724 @@
+// src/components/HistoryView.tsx
+
+import { useQuery } from '@tanstack/react-query'
+import {
+  ArrowLeft,
+  ChevronDown,
+  Clock,
+  Coins,
+  FileEdit,
+  FolderOpen,
+  Loader2,
+  MessageSquare,
+  Search,
+  TrendingUp,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { useArchiveSession } from '../hooks/use-archive-session'
+import { useDebounce } from '../hooks/use-debounce'
+import type { IndexingProgress } from '../hooks/use-indexing-progress'
+import { useLiveSessionPresence } from '../hooks/use-live-session-ids'
+import { useIsMobile } from '../hooks/use-media-query'
+import { useProjectSummaries } from '../hooks/use-projects'
+import { DEFAULT_FILTERS, useSessionFilters } from '../hooks/use-session-filters'
+import type { SessionSort } from '../hooks/use-session-filters'
+import { useSessionsInfinite } from '../hooks/use-sessions-infinite'
+import { useTimeRange } from '../hooks/use-time-range'
+import { NO_BRANCH } from '../lib/constants'
+import { groupSessionsByDate } from '../lib/date-groups'
+import { getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
+import { buildSessionUrl } from '../lib/url-utils'
+import { cn } from '../lib/utils'
+import {
+  MAX_GROUPABLE_SESSIONS,
+  groupSessions,
+  shouldDisableGrouping,
+} from '../utils/group-sessions'
+import { ActivitySparkline } from './ActivitySparkline'
+import { CompactSessionTable } from './CompactSessionTable'
+import type { SortColumn } from './CompactSessionTable'
+import { SessionsEmptyState, Skeleton } from './LoadingStates'
+import { SessionCard } from './SessionCard'
+import { SessionToolbar } from './SessionToolbar'
+import { ResumePreFlight } from './live/ResumePreFlight'
+import { DateRangePicker, TimeRangeSelector } from './ui'
+
+/** Human-readable labels for sort options */
+const SORT_LABELS: Record<SessionSort, string> = {
+  recent: 'Most recent',
+  tokens: 'Most tokens',
+  prompts: 'Most prompts',
+  files_edited: 'Most files edited',
+  duration: 'Longest duration',
+}
+
+const SORT_ICONS: Record<SessionSort, React.ReactNode> = {
+  recent: <Clock className="w-3.5 h-3.5" />,
+  tokens: <Coins className="w-3.5 h-3.5" />,
+  prompts: <MessageSquare className="w-3.5 h-3.5" />,
+  files_edited: <FileEdit className="w-3.5 h-3.5" />,
+  duration: <Clock className="w-3.5 h-3.5" />,
+}
+
+/** Format duration in human-readable form */
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = seconds / 3600
+  return `${hours.toFixed(1)}h`
+}
+
+/** Format value for the sort metric displayed on each card */
+function formatSortMetric(
+  session: {
+    durationSeconds?: number
+    totalTaskTimeSeconds?: number | null
+    turnDurationAvgMs?: number | null
+    turnCount?: number
+    userPromptCount?: number
+    filesEditedCount?: number
+    totalInputTokens?: number | null
+    totalOutputTokens?: number | null
+  },
+  sort: SessionSort,
+): string | null {
+  switch (sort) {
+    case 'duration': {
+      const dur = getDisplayTaskTimeSeconds(session) ?? 0
+      return dur > 0 ? formatDuration(dur) : null
+    }
+    case 'prompts': {
+      const count = session.userPromptCount ?? 0
+      return count > 0 ? `${count} prompts` : null
+    }
+    case 'files_edited': {
+      const count = session.filesEditedCount ?? 0
+      return count > 0 ? `${count} files` : null
+    }
+    case 'tokens': {
+      const total = (session.totalInputTokens ?? 0) + (session.totalOutputTokens ?? 0)
+      if (total <= 0) return null
+      if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M tokens`
+      if (total >= 1_000) return `${(total / 1_000).toFixed(0)}K tokens`
+      return `${total} tokens`
+    }
+    default:
+      return null
+  }
+}
+
+export function HistoryView() {
+  const navigate = useNavigate()
+  const { data: summaries } = useProjectSummaries()
+  const { indexingProgress } = useOutletContext<{ indexingProgress?: IndexingProgress }>()
+  const { ids: liveSessionIds, costById: liveSessionCosts } = useLiveSessionPresence()
+
+  // URL-persisted filter/sort state
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [filters, setFilters] = useSessionFilters(searchParams, setSearchParams)
+
+  const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
+  const isMobile = useIsMobile()
+
+  const [searchText, setSearchText] = useState('')
+  const [resumeSessionId, setResumeSessionId] = useState<string | null>(null)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const showArchived = searchParams.get('archived') === '1'
+  const setShowArchived = useCallback(
+    (show: boolean) => {
+      const params = new URLSearchParams(searchParams)
+      if (show) {
+        params.set('archived', '1')
+      } else {
+        params.delete('archived')
+      }
+      setSearchParams(params)
+    },
+    [searchParams, setSearchParams],
+  )
+  const { archive, bulkArchive } = useArchiveSession()
+  const searchRef = useRef<HTMLInputElement>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  // Debounce search text (300ms) so we don't fire a request per keystroke
+  const debouncedSearch = useDebounce(searchText, 300)
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleBulkArchive = useCallback(() => {
+    if (selectedIds.size === 0) return
+    bulkArchive.mutate([...selectedIds], {
+      onSuccess: () => {
+        setSelectedIds(new Set())
+        setBulkMode(false)
+      },
+    })
+  }, [selectedIds, bulkArchive])
+
+  // Sidebar global filters from URL
+  const sidebarProject = searchParams.get('project') || null
+  const sidebarBranch = searchParams.get('branch') || null
+
+  // Server-side filtered + paginated query
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useSessionsInfinite({
+    filters,
+    search: debouncedSearch,
+    timeAfter: timeRange.fromTimestamp ?? undefined,
+    timeBefore: timeRange.toTimestamp ?? undefined,
+    sidebarProject,
+    sidebarBranch,
+    showArchived,
+  })
+
+  const sessions = data?.sessions ?? []
+  const total = data?.total ?? 0
+  const sessionsWithLiveCost = useMemo(() => {
+    if (!sessions.length || !liveSessionCosts.size) return sessions
+    return sessions.map((session) => {
+      const liveCostUsd = liveSessionCosts.get(session.id)
+      if (liveCostUsd == null || liveCostUsd <= 0) return session
+      return {
+        ...session,
+        totalCostUsd: liveCostUsd,
+      }
+    })
+  }, [sessions, liveSessionCosts])
+
+  // Detect if we arrived from a dashboard deep-link (non-default sort or filter in URL)
+  const hasDeepLinkSort = filters.sort !== 'recent'
+  const hasDeepLinkFilter =
+    filters.hasCommits !== 'any' ||
+    filters.hasSkills !== 'any' ||
+    filters.highReedit !== null ||
+    filters.minDuration !== null
+  const hasDeepLink = hasDeepLinkSort || hasDeepLinkFilter
+
+  // Focus search on mount (only if not deep-linked)
+  useEffect(() => {
+    if (!hasDeepLink) {
+      searchRef.current?.focus()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // Map project display names
+  const projectDisplayNames = useMemo(() => {
+    if (!summaries) return new Map<string, string>()
+    const map = new Map<string, string>()
+    for (const s of summaries) {
+      map.set(s.name, s.displayName)
+    }
+    return map
+  }, [summaries])
+
+  // Fetch complete branch list from the server for filter popover
+  const { data: availableBranches = [] } = useQuery({
+    queryKey: ['all-branches'],
+    queryFn: async () => {
+      const res = await fetch('/api/branches')
+      if (!res.ok) return []
+      return res.json() as Promise<string[]>
+    },
+    staleTime: 60_000,
+  })
+
+  // Extract models from loaded pages (acceptable for MVP — model diversity is low)
+  const availableModels = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of sessionsWithLiveCost) {
+      if (s.primaryModel) set.add(s.primaryModel)
+    }
+    return [...set].sort()
+  }, [sessionsWithLiveCost])
+
+  const isFiltered = !!(
+    debouncedSearch ||
+    sidebarProject ||
+    sidebarBranch ||
+    timeRange.preset !== '30d' ||
+    filters.sort !== 'recent' ||
+    filters.hasCommits !== 'any' ||
+    filters.hasSkills !== 'any' ||
+    filters.highReedit !== null ||
+    filters.minDuration !== null ||
+    filters.minFiles !== null ||
+    filters.minTokens !== null ||
+    filters.branches.length > 0 ||
+    filters.models.length > 0
+  )
+
+  const tooManyToGroup = shouldDisableGrouping(sessionsWithLiveCost.length)
+
+  // Auto-reset groupBy when session count exceeds the limit
+  const [groupByAutoReset, setGroupByAutoReset] = useState(false)
+  useEffect(() => {
+    if (tooManyToGroup && filters.groupBy !== 'none') {
+      setFilters({ ...filters, groupBy: 'none' })
+      setGroupByAutoReset(true)
+    } else if (!tooManyToGroup) {
+      setGroupByAutoReset(false)
+    }
+  }, [tooManyToGroup]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Use groupSessions if groupBy is set, otherwise fall back to date-based grouping
+  const groups = useMemo(() => {
+    if (filters.groupBy !== 'none' && !tooManyToGroup) {
+      return groupSessions(sessionsWithLiveCost, filters.groupBy)
+    }
+    // Default behavior: group by date when sort is 'recent', otherwise single group
+    return filters.sort === 'recent'
+      ? groupSessionsByDate(sessionsWithLiveCost)
+      : [{ label: SORT_LABELS[filters.sort], sessions: sessionsWithLiveCost }]
+  }, [sessionsWithLiveCost, filters.groupBy, filters.sort, tooManyToGroup])
+
+  // Collapse state for group headers
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) {
+        next.delete(label)
+      } else {
+        next.add(label)
+      }
+      return next
+    })
+  }, [])
+
+  function clearAll() {
+    setSearchText('')
+    setPreset('all')
+    setFilters(DEFAULT_FILTERS)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-5">
+          <Skeleton label="sessions" rows={5} withHeader={true} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-6 py-5">
+        {/* Deep-link context banner */}
+        {hasDeepLink && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="p-1 -ml-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              {hasDeepLinkSort && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {SORT_ICONS[filters.sort]}
+                  {SORT_LABELS[filters.sort]}
+                </span>
+              )}
+              {hasDeepLinkFilter && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  Filtered
+                </span>
+              )}
+              <span className="text-gray-400 tabular-nums">{total} sessions</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Activity sparkline chart */}
+        <ActivitySparkline />
+
+        {/* Search + Filters bar */}
+        <div className="mt-5 space-y-3">
+          {/* Search input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              ref={searchRef}
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search sessions, files, skills..."
+              className="w-full pl-9 pr-9 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none transition-colors focus:bg-white dark:focus:bg-gray-900 focus:border-gray-400 dark:focus:border-gray-500 focus:ring-1 focus:ring-gray-400/20 dark:focus:ring-gray-500/20 placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
+            />
+            {searchText && (
+              <button
+                type="button"
+                onClick={() => setSearchText('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Sidebar scope indicator (read-only — scope is controlled by sidebar) */}
+          {sidebarProject && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs">
+              <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
+              <span className="text-blue-700 dark:text-blue-300 font-medium truncate">
+                {sidebarProject.split('/').pop()}
+              </span>
+              {sidebarBranch && (
+                <>
+                  <span className="text-blue-300 dark:text-blue-600">/</span>
+                  <span
+                    className={cn(
+                      'text-blue-600 dark:text-blue-400 truncate',
+                      sidebarBranch === NO_BRANCH && 'italic',
+                    )}
+                  >
+                    {sidebarBranch === NO_BRANCH ? '(no branch)' : sidebarBranch}
+                  </span>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams)
+                  params.delete('project')
+                  params.delete('branch')
+                  setSearchParams(params)
+                }}
+                className="ml-auto text-blue-400 hover:text-blue-600 dark:text-blue-500 dark:hover:text-blue-300 transition-colors"
+                aria-label="Clear project scope"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Filter row: session filter/sort + time + project */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* NEW: SessionToolbar with view mode toggle */}
+            <SessionToolbar
+              filters={filters}
+              onFiltersChange={setFilters}
+              onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+              groupByDisabled={tooManyToGroup}
+              branches={availableBranches}
+              models={availableModels}
+            />
+
+            <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+
+            {/* Time filters */}
+            <TimeRangeSelector
+              value={timeRange.preset}
+              onChange={setPreset}
+              options={[
+                { value: 'today', label: isMobile ? 'Today' : 'Today' },
+                { value: '7d', label: isMobile ? '7 days' : '7d' },
+                { value: '30d', label: isMobile ? '30 days' : '30d' },
+                { value: '90d', label: isMobile ? '90 days' : '90d' },
+                { value: 'all', label: isMobile ? 'All time' : 'All' },
+                { value: 'custom', label: 'Custom' },
+              ]}
+            />
+            {timeRange.preset === 'custom' && (
+              <DateRangePicker value={timeRange.customRange} onChange={setCustomRange} />
+            )}
+
+            {/* Active filter summary */}
+            {isFiltered && (
+              <>
+                <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+                <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                  {total} sessions
+                </span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline underline-offset-2"
+                >
+                  Clear all
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Grouping safeguard warning */}
+        {tooManyToGroup && groupByAutoReset && (
+          <div className="mt-3 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+            Grouping disabled — {sessions.length} sessions exceeds the {MAX_GROUPABLE_SESSIONS}{' '}
+            session limit. Use filters to narrow results.
+          </div>
+        )}
+
+        {/* Classify-all banner — disabled (feature flag off) */}
+
+        {/* Bulk action toolbar */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 mt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setBulkMode(!bulkMode)
+              setSelectedIds(new Set())
+            }}
+            className={`text-sm px-2 py-1 rounded transition-colors ${
+              bulkMode
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            {bulkMode ? 'Cancel selection' : 'Select'}
+          </button>
+          {bulkMode && selectedIds.size > 0 && (
+            <>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {selectedIds.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={handleBulkArchive}
+                className="text-sm px-3 py-1 rounded bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors"
+              >
+                Archive
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowArchived(!showArchived)}
+            className={`text-sm px-2 py-1 rounded ml-auto transition-colors ${
+              showArchived
+                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            {showArchived ? 'Showing archived' : 'Show archived'}
+          </button>
+        </div>
+
+        {/* Inline indexing progress — shows during active startup indexing */}
+        {indexingProgress &&
+          (indexingProgress.phase === 'reading-indexes' ||
+            indexingProgress.phase === 'ready' ||
+            indexingProgress.phase === 'deep-indexing') && (
+            <div className="mt-3 flex items-center gap-2.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              <Loader2
+                className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 animate-spin flex-shrink-0"
+                aria-hidden="true"
+              />
+              <span className="text-xs text-blue-700 dark:text-blue-300">
+                {indexingProgress.phase === 'reading-indexes' && 'Scanning sessions...'}
+                {indexingProgress.phase === 'ready' &&
+                  `Found ${indexingProgress.sessions.toLocaleString()} sessions. Starting index...`}
+                {indexingProgress.phase === 'deep-indexing' &&
+                  (indexingProgress.total > 0
+                    ? `Indexing: ${indexingProgress.indexed.toLocaleString()} / ${indexingProgress.total.toLocaleString()} sessions...`
+                    : `Indexing: ${indexingProgress.indexed.toLocaleString()} sessions...`)}
+              </span>
+              {indexingProgress.phase === 'deep-indexing' && indexingProgress.total > 0 && (
+                <div className="flex-1 max-w-32 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300 ease-out"
+                    style={{
+                      width: `${Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))}%`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+        {/* Session List or Table */}
+        <div className="mt-5">
+          {sessionsWithLiveCost.length > 0 ? (
+            filters.viewMode === 'table' ? (
+              /* Table view */
+              <CompactSessionTable
+                sessions={sessionsWithLiveCost}
+                liveSessionIds={liveSessionIds}
+                onSort={(column) => {
+                  // Map table column to SessionSort
+                  const sortMap: Record<SortColumn, SessionSort> = {
+                    time: 'recent',
+                    branch: 'recent', // No direct branch sort yet
+                    prompts: 'prompts',
+                    files: 'files_edited',
+                    commits: 'recent', // No direct commits sort yet
+                    duration: 'duration',
+                  }
+                  const newSort = sortMap[column] || 'recent'
+                  setFilters({ ...filters, sort: newSort })
+                }}
+                sortColumn={
+                  filters.sort === 'prompts'
+                    ? 'prompts'
+                    : filters.sort === 'tokens'
+                      ? 'prompts'
+                      : filters.sort === 'files_edited'
+                        ? 'files'
+                        : filters.sort === 'duration'
+                          ? 'duration'
+                          : 'time'
+                }
+                sortDirection="desc"
+                onArchive={(id) => archive.mutate(id)}
+                selectable={bulkMode}
+                selected={selectedIds}
+                onSelectToggle={toggleSelect}
+              />
+            ) : (
+              /* Timeline view */
+              <div>
+                {groups.map((group) => {
+                  const isCollapsed = collapsedGroups.has(group.label)
+                  return (
+                    <div key={group.label}>
+                      {/* Group header (collapsible) */}
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.label)}
+                        className="sticky top-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur-sm py-2 flex items-center gap-3 cursor-pointer group/header"
+                        aria-expanded={!isCollapsed}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            'w-3.5 h-3.5 text-gray-400 transition-transform duration-150',
+                            isCollapsed && '-rotate-90',
+                          )}
+                        />
+                        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
+                          {group.label}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <span
+                          className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap"
+                          aria-label={`${group.sessions.length} sessions`}
+                        >
+                          {group.sessions.length}
+                        </span>
+                      </button>
+
+                      {/* Cards (hidden when collapsed) */}
+                      {!isCollapsed && (
+                        <div className="space-y-1.5 pb-3">
+                          {group.sessions.map((session, idx) => {
+                            const metric =
+                              filters.sort !== 'recent'
+                                ? formatSortMetric(session, filters.sort)
+                                : null
+                            return (
+                              <div key={session.id} className="relative">
+                                {/* Rank badge for non-default sorts */}
+                                {filters.sort !== 'recent' && (
+                                  <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
+                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">
+                                      {idx + 1}
+                                    </span>
+                                  </div>
+                                )}
+                                <Link
+                                  to={buildSessionUrl(session.id, searchParams)}
+                                  className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 rounded-lg"
+                                >
+                                  <SessionCard
+                                    session={session}
+                                    isSelected={false}
+                                    isLive={liveSessionIds.has(session.id)}
+                                    projectDisplayName={projectDisplayNames.get(session.project)}
+                                    onResumeClick={setResumeSessionId}
+                                    onArchive={(id) => archive.mutate(id)}
+                                    selectable={bulkMode}
+                                    selected={selectedIds.has(session.id)}
+                                    onSelectToggle={toggleSelect}
+                                  />
+                                </Link>
+                                {/* Sort metric badge overlay */}
+                                {metric && (
+                                  <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                    {metric}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          ) : (
+            <SessionsEmptyState isFiltered={isFiltered} onClearFilters={clearAll} />
+          )}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+          {isFetchingNextPage && (
+            <div className="flex justify-center py-4">
+              <div className="w-5 h-5 border-2 border-gray-300 dark:border-gray-600 border-t-gray-600 dark:border-t-gray-300 rounded-full animate-spin" />
+            </div>
+          )}
+          {!hasNextPage && sessionsWithLiveCost.length > 0 && (
+            <div className="text-center py-4 text-xs text-gray-400">
+              All {total} sessions loaded
+            </div>
+          )}
+        </div>
+
+        {/* Resume pre-flight modal */}
+        {resumeSessionId && (
+          <ResumePreFlight
+            sessionId={resumeSessionId}
+            open={!!resumeSessionId}
+            onOpenChange={(open) => {
+              if (!open) setResumeSessionId(null)
+            }}
+            onResume={(sid) => {
+              navigate(`/?focus=${encodeURIComponent(sid)}`)
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}

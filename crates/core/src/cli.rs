@@ -5,9 +5,9 @@
 //! path via the user's login shell so that nvm, mise, asdf, ~/.local/bin, and
 //! other non-standard PATH entries are picked up correctly.
 //!
-//! Auth is checked by reading `~/.claude/.credentials.json` directly — the
-//! same file the CLI reads internally. This avoids spawning `claude auth
-//! status`, which gets SIGKILL'd when run inside a Claude Code session.
+//! Auth is checked via the shared `credentials` module (file first, then
+//! macOS Keychain fallback). This avoids spawning `claude auth status`,
+//! which gets SIGKILL'd when run inside a Claude Code session.
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
@@ -19,23 +19,6 @@ use ts_rs::TS;
 /// Timeout for each CLI subprocess call (prevents hangs when claude is already running).
 const CLI_TIMEOUT: Duration = Duration::from_secs(3);
 
-// --- Credentials file structures ---
-
-/// Top-level `~/.claude/.credentials.json`.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CredentialsFile {
-    claude_ai_oauth: Option<OAuthCredentials>,
-}
-
-/// The `claudeAiOauth` section of the credentials file.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OAuthCredentials {
-    subscription_type: Option<String>,
-    expires_at: Option<u64>,
-}
-
 /// Cached resolved path to the `claude` binary (process-lifetime singleton).
 static RESOLVED_CLI_PATH: OnceLock<Option<String>> = OnceLock::new();
 
@@ -45,13 +28,13 @@ static RESOLVED_CLI_PATH: OnceLock<Option<String>> = OnceLock::new();
 /// server process was started (npx, cargo run, launchd, etc.).
 pub fn resolved_cli_path() -> Option<&'static str> {
     RESOLVED_CLI_PATH
-        .get_or_init(|| ClaudeCliStatus::find_claude_path())
+        .get_or_init(ClaudeCliStatus::find_claude_path)
         .as_deref()
 }
 
 /// Claude CLI status information.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub struct ClaudeCliStatus {
@@ -130,7 +113,7 @@ impl ClaudeCliStatus {
     /// 3. Filesystem scan of known install locations
     fn find_claude_path() -> Option<String> {
         // Step 1: Login shell resolution (the fix-path pattern from VS Code/Electron)
-        if let Some(shell) = std::env::var("SHELL").ok() {
+        if let Ok(shell) = std::env::var("SHELL") {
             if let Some(path) = Self::which_via_shell(&shell) {
                 return Some(path);
             }
@@ -147,9 +130,7 @@ impl ClaudeCliStatus {
 
     /// Resolve `claude` via the user's login shell.
     fn which_via_shell(shell: &str) -> Option<String> {
-        let output = Self::run_with_timeout(
-            Command::new(shell).args(["-lc", "which claude"]),
-        )?;
+        let output = Self::run_with_timeout(Command::new(shell).args(["-lc", "which claude"]))?;
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() && std::path::Path::new(&path).exists() {
@@ -205,7 +186,11 @@ impl ClaudeCliStatus {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let trimmed = stderr.trim();
             if let Some(v) = trimmed.split_whitespace().last() {
-                if v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                if v.chars()
+                    .next()
+                    .map(|c| c.is_ascii_digit())
+                    .unwrap_or(false)
+                {
                     return Some(v.to_string());
                 }
             }
@@ -229,40 +214,26 @@ impl ClaudeCliStatus {
             }
         };
 
-        let creds_path = std::path::Path::new(&home).join(".claude/.credentials.json");
-        let data = match std::fs::read(&creds_path) {
-            Ok(d) => d,
-            Err(_) => {
-                tracing::debug!("CLI auth: no credentials file at {}", creds_path.display());
+        let home_path = std::path::Path::new(&home);
+        let data = match crate::credentials::load_credentials_bytes(home_path) {
+            Some(d) => d,
+            None => {
+                tracing::debug!("CLI auth: no credentials found (file or keychain)");
                 return (false, None);
             }
         };
 
-        let creds: CredentialsFile = match serde_json::from_slice(&data) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("CLI auth: failed to parse credentials: {e}");
+        let oauth = match crate::credentials::parse_credentials(&data) {
+            Some(o) => o,
+            None => {
+                tracing::debug!("CLI auth: no valid claudeAiOauth in credentials");
                 return (false, None);
             }
         };
 
-        let Some(oauth) = creds.claude_ai_oauth else {
-            tracing::debug!("CLI auth: no claudeAiOauth in credentials");
+        if crate::credentials::is_token_expired(oauth.expires_at) {
+            tracing::debug!("CLI auth: token expired");
             return (false, None);
-        };
-
-        // Check token expiry (expiresAt is milliseconds since epoch)
-        if let Some(expires_at) = oauth.expires_at {
-            if expires_at > 0 {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                if expires_at < now_ms {
-                    tracing::debug!("CLI auth: token expired");
-                    return (false, None);
-                }
-            }
         }
 
         let subscription = oauth
@@ -316,59 +287,60 @@ mod tests {
     // --- Credentials file parsing ---
 
     fn parse_creds(json: &str) -> (bool, Option<String>) {
-        let creds: Result<CredentialsFile, _> = serde_json::from_str(json);
-        let Ok(creds) = creds else {
-            return (false, None);
+        let oauth = match crate::credentials::parse_credentials(json.as_bytes()) {
+            Some(o) => o,
+            None => return (false, None),
         };
-        let Some(oauth) = creds.claude_ai_oauth else {
+        if crate::credentials::is_token_expired(oauth.expires_at) {
             return (false, None);
-        };
-        if let Some(expires_at) = oauth.expires_at {
-            if expires_at > 0 {
-                let now_ms = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-                if expires_at < now_ms {
-                    return (false, None);
-                }
-            }
         }
-        let sub = oauth.subscription_type.map(|s| s.to_lowercase()).filter(|s| !s.is_empty());
+        let sub = oauth
+            .subscription_type
+            .map(|s| s.to_lowercase())
+            .filter(|s| !s.is_empty());
         (true, sub)
     }
 
     #[test]
     fn test_creds_max_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"max","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("max"));
     }
 
     #[test]
     fn test_creds_pro_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Pro","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"Pro","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("pro"));
     }
 
     #[test]
     fn test_creds_free_subscription() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"Free","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"Free","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("free"));
     }
 
     #[test]
     fn test_creds_no_subscription_type() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"expiresAt":9999999999999}}"#);
+        let (auth, sub) =
+            parse_creds(r#"{"claudeAiOauth":{"accessToken":"sk-test","expiresAt":9999999999999}}"#);
         assert!(auth);
         assert_eq!(sub, None);
     }
 
     #[test]
     fn test_creds_expired_token() {
-        let (auth, _) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":1000}}"#);
+        let (auth, _) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"max","expiresAt":1000}}"#,
+        );
         assert!(!auth);
     }
 
@@ -392,21 +364,26 @@ mod tests {
 
     #[test]
     fn test_creds_zero_expiry_treated_as_no_expiry() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"max","expiresAt":0}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"max","expiresAt":0}}"#,
+        );
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("max"));
     }
 
     #[test]
     fn test_creds_missing_expiry_treated_as_valid() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"pro"}}"#);
+        let (auth, sub) =
+            parse_creds(r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"pro"}}"#);
         assert!(auth);
         assert_eq!(sub.as_deref(), Some("pro"));
     }
 
     #[test]
     fn test_creds_empty_subscription_type_filtered() {
-        let (auth, sub) = parse_creds(r#"{"claudeAiOauth":{"subscriptionType":"","expiresAt":9999999999999}}"#);
+        let (auth, sub) = parse_creds(
+            r#"{"claudeAiOauth":{"accessToken":"sk-test","subscriptionType":"","expiresAt":9999999999999}}"#,
+        );
         assert!(auth);
         assert_eq!(sub, None);
     }
