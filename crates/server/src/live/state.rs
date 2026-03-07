@@ -195,6 +195,35 @@ pub struct HookEvent {
     /// Optional context JSON (tool_input, error, prompt snippet, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<String>,
+    /// Origin channel: "hook" (Channel B), "hook_progress" (Channel A), "synthesized".
+    pub source: String,
+}
+
+/// Maximum hook events kept in memory per session.
+pub(crate) const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
+
+/// Append a hook event, draining oldest 100 events if at capacity.
+pub(crate) fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEvent, max: usize) {
+    if dst.len() >= max {
+        dst.drain(..100.min(dst.len()));
+    }
+    dst.push(event);
+}
+
+/// Append multiple hook events, draining overflow from the front.
+pub(crate) fn append_capped_hook_events(
+    dst: &mut Vec<HookEvent>,
+    mut events: Vec<HookEvent>,
+    max: usize,
+) {
+    if events.is_empty() {
+        return;
+    }
+    dst.append(&mut events);
+    if dst.len() > max {
+        let overflow = dst.len() - max;
+        dst.drain(..overflow);
+    }
 }
 
 /// Binding from observation (LiveSession) → control (sidecar SDK session).
