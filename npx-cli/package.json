@@ -10,6 +10,10 @@
     "type": "git",
     "url": "https://github.com/tombelieber/claude-view"
   },
+  "homepage": "https://claudeview.ai",
+  "bugs": {
+    "url": "https://github.com/tombelieber/claude-view/issues"
+  },
   "keywords": [
     "claude",
     "claude-code",

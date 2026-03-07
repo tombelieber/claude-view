@@ -32,5 +32,9 @@
     "url": "https://github.com/tombelieber/claude-view",
     "directory": "packages/plugin"
   },
+  "homepage": "https://claudeview.ai",
+  "bugs": {
+    "url": "https://github.com/tombelieber/claude-view/issues"
+  },
   "license": "MIT"
 }

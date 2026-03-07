@@ -6,6 +6,8 @@
 
 <p>
   <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
+  <a href="https://www.npmjs.com/package/@claude-view/plugin"><img src="https://img.shields.io/npm/v/@claude-view/plugin.svg?label=plugin" alt="plugin version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
@@ -281,7 +283,8 @@ This keeps the database, search index, and lock files in `.data/` inside the rep
 
 ## Community
 
-Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature requests, and discussion.
+- **Website:** [claudeview.ai](https://claudeview.ai) — docs, changelog, blog
+- **Discord:** [Join the server](https://discord.gg/G7wdZTpRfu) for support, feature requests, and discussion
 
 ---
 
@@ -372,6 +375,8 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 
 ## Related
 
+- **[claudeview.ai](https://claudeview.ai)** — Official website, docs, and changelog
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 8 MCP tools and 3 skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 
 ---

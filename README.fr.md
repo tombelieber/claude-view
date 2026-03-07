@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
@@ -294,6 +296,14 @@ git push origin main --tags    # déclenche CI → compile toutes les plateforme
 | macOS (Intel) | Disponible |
 | Linux (x64) | Planifié |
 | Windows (x64) | Planifié |
+
+---
+
+## Liens Connexes
+
+- **[claudeview.ai](https://claudeview.ai)** — Site officiel, documentation et journal des modifications
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Plugin Claude Code avec 8 outils MCP et 3 skills. `claude plugin add @claude-view/plugin`
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code supprime vos sessions après 30 jours. Cet outil les sauvegarde. `npx claude-backup`
 
 ---
 
