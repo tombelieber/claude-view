@@ -3266,7 +3266,7 @@ struct IndexedSession {
 /// after the filesystem walk, before any parsing begins. This is the single
 /// source of truth for "total sessions to process" — callers should use it
 /// to set their progress total instead of guessing from external sources.
-pub async fn scan_and_index_all<F, T>(
+pub async fn scan_and_index_all<F, T, W>(
     claude_dir: &Path,
     db: &Database,
     hints: &HashMap<String, IndexHints>,
@@ -3274,10 +3274,12 @@ pub async fn scan_and_index_all<F, T>(
     registry: Option<Arc<Registry>>,
     on_file_done: F,
     on_total_known: T,
+    on_finalize_start: W,
 ) -> Result<(usize, usize), String>
 where
     F: Fn(&str) + Send + Sync + 'static,
     T: FnOnce(usize),
+    W: FnOnce(),
 {
     let projects_dir = claude_dir.join("projects");
     if !projects_dir.exists() {
@@ -3648,14 +3650,16 @@ where
         handles.push(handle);
     }
 
-    // Collect all parse results — fire on_file_done for every file (parsed or skipped)
-    // so the progress counter reaches 100%.
+    // Collect all parse results.
+    // Fire on_file_done immediately for skipped/errored files (they need no further work).
+    // Defer on_file_done for parsed files until Phase 2 chunk commit — this ensures
+    // the progress counter tracks the real bottleneck (SQLite writes), not just parsing.
     let on_file_done = Arc::new(on_file_done);
     let mut indexed_sessions: Vec<IndexedSession> = Vec::with_capacity(handles.len());
     for h in handles {
         match h.await {
             Ok(Ok((Some(session), _id))) => {
-                on_file_done(&session.parsed.id);
+                // Parsed — defer progress until Phase 2 DB write completes
                 indexed_sessions.push(session);
             }
             Ok(Ok((None, id))) => {
@@ -3810,6 +3814,11 @@ where
             .await
             .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
 
+        // Fire deferred progress — these sessions are now written to DB.
+        for session in chunk {
+            on_file_done(&session.parsed.id);
+        }
+
         indexed_count += chunk.len();
 
         // Yield between chunks so live manager writes can slip through
@@ -3853,6 +3862,9 @@ where
         indexed = indexed_count,
         "Phase 2 SQLite write complete, starting Phase 3 search index"
     );
+
+    // Signal callers that DB writes are done and search indexing is starting.
+    on_finalize_start();
 
     // ══════════════════════════════════════════════════════════════════════
     // Phase 3: SEARCH INDEX (sequential, after SQLite success)
@@ -6234,18 +6246,34 @@ mod scan_and_index_tests {
         )).unwrap();
 
         // First scan: should parse and insert
-        let (indexed, skipped) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
-                .await
-                .unwrap();
+        let (indexed, skipped) = scan_and_index_all(
+            tmp.path(),
+            &db,
+            &HashMap::new(),
+            None,
+            None,
+            |_| {},
+            |_| {},
+            || {},
+        )
+        .await
+        .unwrap();
         assert_eq!(indexed, 1, "first scan should index 1 file");
         assert_eq!(skipped, 0, "first scan should skip 0 files");
 
         // Second scan without file changes: should skip
-        let (indexed2, skipped2) =
-            scan_and_index_all(tmp.path(), &db, &HashMap::new(), None, None, |_| {}, |_| {})
-                .await
-                .unwrap();
+        let (indexed2, skipped2) = scan_and_index_all(
+            tmp.path(),
+            &db,
+            &HashMap::new(),
+            None,
+            None,
+            |_| {},
+            |_| {},
+            || {},
+        )
+        .await
+        .unwrap();
         assert_eq!(indexed2, 0, "second scan should index 0 files");
         assert_eq!(skipped2, 1, "second scan should skip 1 file");
     }
