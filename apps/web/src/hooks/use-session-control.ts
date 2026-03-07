@@ -1,5 +1,5 @@
 // apps/web/src/hooks/use-session-control.ts
-// Unified hook for session control lifecycle — owns resume, WS, messages, health.
+// Unified hook for session control lifecycle — owns WS, messages, health.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { InputBarState } from '../components/chat/ChatInputBar'
 import type {
@@ -16,14 +16,7 @@ import { type ControlStatus, useControlSession } from './use-control-session'
 // Phase state machine
 // ---------------------------------------------------------------------------
 
-export type SessionPhase =
-  | 'idle'
-  | 'resuming'
-  | 'connecting'
-  | 'ready'
-  | 'reconnecting'
-  | 'completed'
-  | 'error'
+export type SessionPhase = 'idle' | 'connecting' | 'ready' | 'reconnecting' | 'completed' | 'error'
 
 export type ConnectionHealth = 'ok' | 'degraded' | 'lost'
 
@@ -35,12 +28,32 @@ function nextLocalId(): string {
   return crypto.randomUUID()
 }
 
+function controlStatusToSessionPhase(status: ControlStatus): SessionPhase {
+  switch (status) {
+    case 'idle':
+      return 'idle'
+    case 'connecting':
+      return 'connecting'
+    case 'active':
+    case 'waiting_input':
+    case 'waiting_permission':
+      return 'ready'
+    case 'reconnecting':
+      return 'reconnecting'
+    case 'completed':
+      return 'completed'
+    case 'fatal':
+    case 'failed':
+      return 'error'
+    default:
+      return 'idle'
+  }
+}
+
 function phaseToInputBarState(phase: SessionPhase, controlStatus: ControlStatus): InputBarState {
   switch (phase) {
     case 'idle':
       return 'dormant'
-    case 'resuming':
-      return 'resuming'
     case 'connecting':
       return 'connecting'
     case 'reconnecting':
@@ -96,15 +109,13 @@ export interface UseSessionControlReturn {
 }
 
 export function useSessionControl(sessionId: string): UseSessionControlReturn {
-  const [phase, setPhase] = useState<SessionPhase>('idle')
-  const [controlId, setControlId] = useState<string | null>(null)
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessageWithStatus[]>([])
   const [error, setError] = useState<string | null>(null)
 
   // Refs for synchronous access (avoids stale closures)
   const pendingQueueRef = useRef<string[]>([])
   const messagesRef = useRef<ChatMessageWithStatus[]>([])
-  const resumeInFlightRef = useRef(false)
   const messageTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   // Keep messagesRef in sync
@@ -121,43 +132,30 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
     }
   }, [])
 
-  // Internal WS hook — only connects when controlId is set
-  const controlSession = useControlSession(controlId)
+  // Internal WS hook — only connects when activeSessionId is set
+  const controlSession = useControlSession(activeSessionId)
 
   // ---------------------------------------------------------------------------
-  // Phase transitions driven by controlSession.status
+  // Phase derived from controlSession.status (no more local phase state)
+  // ---------------------------------------------------------------------------
+  const phase = controlStatusToSessionPhase(controlSession.status)
+
+  // ---------------------------------------------------------------------------
+  // Error side effects — set error message and fail pending messages
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!controlId) return
-
-    const s = controlSession.status
-    if (s === 'active' || s === 'waiting_input') {
-      setPhase('ready')
-    } else if (s === 'reconnecting') {
-      setPhase('reconnecting')
-    } else if (s === 'completed') {
-      setPhase('completed')
-    } else if (s === 'error') {
-      setPhase('error')
-      setError(controlSession.error ?? 'Session error')
-    } else if (s === 'disconnected' && controlId) {
-      // WS hasn't opened yet — don't treat initial 'disconnected' as error
-      // while we're still in 'connecting' phase (controlId was just set).
-      if (phase === 'connecting') return
-      setPhase('error')
-      setError('Connection lost — session may have ended')
-      // Mark all pending messages as failed
-      if (pendingQueueRef.current.length > 0) {
-        const pendingIds = new Set(pendingQueueRef.current)
-        setMessages((prev) =>
-          prev.map((m) =>
-            pendingIds.has(m.localId) ? { ...m, status: 'failed' as MessageStatus } : m,
-          ),
-        )
-        pendingQueueRef.current = []
-      }
+    if (controlSession.status !== 'fatal' && controlSession.status !== 'failed') return
+    setError(controlSession.error ?? 'Connection lost')
+    if (pendingQueueRef.current.length > 0) {
+      const pendingIds = new Set(pendingQueueRef.current)
+      setMessages((prev) =>
+        prev.map((m) =>
+          pendingIds.has(m.localId) ? { ...m, status: 'failed' as MessageStatus } : m,
+        ),
+      )
+      pendingQueueRef.current = []
     }
-  }, [controlId, controlSession.status, controlSession.error, phase])
+  }, [controlSession.status, controlSession.error])
 
   // ---------------------------------------------------------------------------
   // Drain pending messages when WS reaches waiting_input
@@ -203,9 +201,7 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
   const connectionHealth: ConnectionHealth =
     phase === 'reconnecting'
       ? 'degraded'
-      : phase !== 'connecting' &&
-          (controlSession.status === 'error' ||
-            (controlSession.status === 'disconnected' && controlId != null))
+      : controlSession.status === 'fatal' || controlSession.status === 'failed'
         ? 'lost'
         : 'ok'
 
@@ -248,7 +244,6 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
 
   // ---------------------------------------------------------------------------
   // send()
-  // Uses resumeInFlightRef (not phase state) to guard against double-resume.
   // ---------------------------------------------------------------------------
   const send = useCallback(
     (text: string) => {
@@ -264,36 +259,10 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
       setError(null)
       scheduleTimeout(localId)
 
-      if ((phase === 'idle' || phase === 'error') && !resumeInFlightRef.current) {
-        // Need to resume first — guard with ref to prevent double-resume
-        resumeInFlightRef.current = true
+      if (phase === 'idle' || phase === 'error') {
+        // Trigger WS connection — sets activeSessionId which triggers useControlSession
         pendingQueueRef.current.push(localId)
-        setPhase('resuming')
-
-        fetch('/api/control/resume', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId }),
-        })
-          .then(async (res) => {
-            if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
-            const data = await res.json()
-            setControlId(data.controlId)
-            setPhase('connecting')
-          })
-          .catch(() => {
-            setPhase('error')
-            setError('Failed to resume session')
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.localId === localId ? { ...m, status: 'failed' as MessageStatus } : m,
-              ),
-            )
-            pendingQueueRef.current = pendingQueueRef.current.filter((id) => id !== localId)
-          })
-          .finally(() => {
-            resumeInFlightRef.current = false
-          })
+        setActiveSessionId(sessionId)
       } else if (phase === 'ready' && controlSession.status === 'waiting_input') {
         // Already connected — send immediately
         setMessages((prev) =>
@@ -303,7 +272,7 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
         )
         controlSession.sendMessage(text)
       } else {
-        // Queue for later drain (e.g. during connecting/resuming)
+        // Queue for later drain (connecting phase)
         pendingQueueRef.current.push(localId)
       }
     },
