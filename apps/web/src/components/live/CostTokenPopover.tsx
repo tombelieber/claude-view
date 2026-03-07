@@ -123,12 +123,14 @@ function Row({
   dot?: string
 }) {
   return (
-    <div className={`flex items-center justify-between ${className}`}>
+    <div className="flex items-center justify-between">
       <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
         {dot && <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${dot}`} />}
         {label}
       </span>
-      <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300">{value}</span>
+      <span className={`font-mono tabular-nums ${className || 'text-gray-700 dark:text-gray-300'}`}>
+        {value}
+      </span>
     </div>
   )
 }
