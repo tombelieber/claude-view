@@ -44,7 +44,8 @@ pub struct SessionAccumulator {
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RichSessionData {
     pub tokens: TokenUsage,
@@ -52,6 +53,7 @@ pub struct RichSessionData {
     pub cache_status: CacheStatus,
     pub sub_agents: Vec<SubAgentInfo>,
     pub progress_items: Vec<ProgressItem>,
+    #[ts(type = "number")]
     pub context_window_tokens: u64,
     pub model: Option<String>,
     pub git_branch: Option<String>,
@@ -59,6 +61,7 @@ pub struct RichSessionData {
     pub first_user_message: Option<String>,
     pub last_user_message: Option<String>,
     pub last_user_file: Option<String>,
+    #[ts(type = "number | null")]
     pub last_cache_hit_at: Option<i64>,
 }
 

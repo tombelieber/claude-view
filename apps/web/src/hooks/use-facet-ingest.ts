@@ -75,7 +75,10 @@ export function useFacetIngest(): UseFacetIngestResult {
   }, [])
 
   const trigger = useCallback(async () => {
-    await fetch(`${apiBase()}/api/facets/ingest/trigger`, { method: 'POST' })
+    const res = await fetch(`${apiBase()}/api/facets/ingest/trigger`, { method: 'POST' })
+    if (!res.ok) {
+      console.error('facet ingest trigger failed:', res.status)
+    }
     connectStream()
   }, [connectStream])
 

@@ -13,7 +13,10 @@ import { TOAST_DURATION } from '../lib/notify'
 export function usePatternAlert() {
   useEffect(() => {
     fetch('/api/facets/pattern-alert')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`pattern-alert: ${r.status}`)
+        return r.json()
+      })
       .then((data) => {
         if (!data.pattern) return
         const key = `pattern-alert-${data.pattern}-${new Date().toISOString().slice(0, 10)}`
@@ -28,6 +31,6 @@ export function usePatternAlert() {
           onAutoClose: persistDismiss,
         })
       })
-      .catch(() => {})
+      .catch((e) => console.error('pattern-alert fetch failed:', e))
   }, [])
 }

@@ -49,14 +49,21 @@ pub struct TokenBreakdown {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
+    #[ts(type = "number")]
     pub input_tokens: u64,
+    #[ts(type = "number")]
     pub output_tokens: u64,
+    #[ts(type = "number")]
     pub cache_read_tokens: u64,
+    #[ts(type = "number")]
     pub cache_creation_tokens: u64,
     /// Cache creation tokens with 5-minute TTL (from JSONL ephemeral_5m_input_tokens).
+    #[ts(type = "number")]
     pub cache_creation_5m_tokens: u64,
     /// Cache creation tokens with 1-hour TTL (from JSONL ephemeral_1h_input_tokens).
+    #[ts(type = "number")]
     pub cache_creation_1hr_tokens: u64,
+    #[ts(type = "number")]
     pub total_tokens: u64,
 }
 
@@ -80,9 +87,13 @@ pub struct CostBreakdown {
     /// True when any tokens were excluded from USD due to missing model pricing.
     pub has_unpriced_usage: bool,
     /// Tokens excluded from USD totals (no pricing match).
+    #[ts(type = "number")]
     pub unpriced_input_tokens: u64,
+    #[ts(type = "number")]
     pub unpriced_output_tokens: u64,
+    #[ts(type = "number")]
     pub unpriced_cache_read_tokens: u64,
+    #[ts(type = "number")]
     pub unpriced_cache_creation_tokens: u64,
     /// Fraction of all tokens priced with real model rates [0.0, 1.0].
     pub priced_token_coverage: f64,

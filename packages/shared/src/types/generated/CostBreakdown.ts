@@ -17,10 +17,10 @@ export type CostBreakdown = {
   /**
    * Tokens excluded from USD totals (no pricing match).
    */
-  unpricedInputTokens: bigint
-  unpricedOutputTokens: bigint
-  unpricedCacheReadTokens: bigint
-  unpricedCacheCreationTokens: bigint
+  unpricedInputTokens: number
+  unpricedOutputTokens: number
+  unpricedCacheReadTokens: number
+  unpricedCacheCreationTokens: number
   /**
    * Fraction of all tokens priced with real model rates [0.0, 1.0].
    */

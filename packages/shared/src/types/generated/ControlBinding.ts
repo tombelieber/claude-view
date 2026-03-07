@@ -12,5 +12,5 @@ export type ControlBinding = {
   /**
    * Unix timestamp when this binding was created.
    */
-  boundAt: bigint
+  boundAt: number
 }

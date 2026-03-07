@@ -1195,8 +1195,11 @@ mod tests {
         .await
         .unwrap();
 
-        // Migration 49 is the second-to-last entry in MIGRATIONS (index = len - 2).
-        let migration_49 = &super::MIGRATIONS[super::MIGRATIONS.len() - 2];
+        // Find migration 49 by content rather than index — immune to new migrations being appended.
+        let migration_49 = super::MIGRATIONS
+            .iter()
+            .find(|m| m.contains("classification_jobs_v2"))
+            .expect("migration 49 (classification_jobs drop estimate) not found");
         sqlx::raw_sql(migration_49)
             .execute(&pool)
             .await
