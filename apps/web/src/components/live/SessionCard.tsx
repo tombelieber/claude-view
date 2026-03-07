@@ -15,6 +15,7 @@ import {
   Shield,
   Sparkles,
   Terminal,
+  TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { formatCostUsd } from '../../lib/format-utils'
@@ -28,6 +29,7 @@ import { SessionToolChips } from './SessionToolChips'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
 import { hasUnavailableCost } from './cost-display'
+import { getEffectiveBranch } from './effective-branch'
 import type { AgentState } from './types'
 import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
@@ -135,15 +137,32 @@ export function SessionCard({
               >
                 {session.projectDisplayName || session.project}
               </span>
-              {session.gitBranch && (
-                <span
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded max-w-[120px]"
-                  title={session.gitBranch}
-                >
-                  <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
-                  <span className="truncate">{session.gitBranch}</span>
-                </span>
-              )}
+              {(() => {
+                const { branch, driftOrigin, isWorktree } = getEffectiveBranch(
+                  session.gitBranch,
+                  session.worktreeBranch ?? null,
+                  session.isWorktree ?? false,
+                )
+                if (!branch) return null
+                return (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded"
+                    title={driftOrigin ? `${branch} (worktree, started on ${driftOrigin})` : branch}
+                  >
+                    <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
+                    <span className="truncate">{branch}</span>
+                    {isWorktree && (
+                      <TreePine className="w-2.5 h-2.5 flex-shrink-0 text-green-600 dark:text-green-400" />
+                    )}
+                    {driftOrigin && (
+                      <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-0.5">
+                        {'↗'}
+                        {driftOrigin}
+                      </span>
+                    )}
+                  </span>
+                )
+              })()}
             </>
           )}
         </div>

@@ -3,6 +3,7 @@ import { groupSessionsByProjectBranch } from './use-kanban-grouping'
 import type { LiveSession } from './use-live-sessions'
 
 function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSession {
+  const gitBranch = overrides.gitBranch !== undefined ? overrides.gitBranch : 'main'
   return {
     project: 'test-project',
     projectDisplayName: 'test-project',
@@ -10,7 +11,10 @@ function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSess
     filePath: '',
     status: 'working',
     agentState: { group: 'autonomous', state: 'thinking', label: 'Thinking' },
-    gitBranch: 'main',
+    gitBranch,
+    worktreeBranch: null,
+    isWorktree: false,
+    effectiveBranch: gitBranch,
     pid: 1234,
     title: 'Test',
     lastUserMessage: 'test',

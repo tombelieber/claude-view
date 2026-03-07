@@ -19,6 +19,9 @@ export interface SessionPanelData {
   projectDisplayName: string
   projectPath: string
   gitBranch: string | null
+  worktreeBranch: string | null
+  isWorktree: boolean
+  effectiveBranch: string | null
 
   // Status
   status: 'working' | 'paused' | 'done'
@@ -93,6 +96,9 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     projectDisplayName: session.projectDisplayName,
     projectPath: session.projectPath,
     gitBranch: session.gitBranch,
+    worktreeBranch: session.worktreeBranch,
+    isWorktree: session.isWorktree,
+    effectiveBranch: session.effectiveBranch,
     status: session.status,
     model: session.model,
     turnCount: session.turnCount,
@@ -156,6 +162,9 @@ export function historyToPanelData(
     projectDisplayName: sessionDetail.displayName,
     projectPath: sessionDetail.projectPath,
     gitBranch: richData?.gitBranch ?? sessionDetail.gitBranch ?? null,
+    worktreeBranch: null,
+    isWorktree: false,
+    effectiveBranch: richData?.gitBranch ?? sessionDetail.gitBranch ?? null,
     status: 'done',
     model: richData?.model ?? sessionDetail.primaryModel ?? null,
     turnCount: richData?.turnCount ?? sessionDetail.turnCount,

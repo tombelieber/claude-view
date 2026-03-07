@@ -31,7 +31,7 @@ export function groupSessionsByProjectBranch(sessions: LiveSession[]): ProjectGr
 
   for (const s of sessions) {
     const projectKey = s.projectDisplayName || s.project
-    const branchKey = s.gitBranch ?? '__null__'
+    const branchKey = s.effectiveBranch ?? '__null__'
 
     let branchMap = projectMap.get(projectKey)
     if (!branchMap) {

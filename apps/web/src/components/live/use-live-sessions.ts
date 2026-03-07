@@ -15,6 +15,9 @@ export interface LiveSession {
   status: 'working' | 'paused' | 'done'
   agentState: AgentState
   gitBranch: string | null
+  worktreeBranch: string | null
+  isWorktree: boolean
+  effectiveBranch: string | null
   pid: number | null
   title: string
   lastUserMessage: string
