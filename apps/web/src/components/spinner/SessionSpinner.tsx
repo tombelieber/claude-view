@@ -22,7 +22,7 @@ interface LiveSpinnerProps extends BaseSpinnerProps {
   inputTokens: number
   outputTokens: number
   isStalled?: boolean
-  agentStateGroup?: 'needs_you' | 'autonomous' | 'delivered'
+  agentStateGroup?: 'needs_you' | 'autonomous'
   agentStateLabel?: string
   /** The raw agent state key (e.g. "acting", "compacting"). Used for precise state detection. */
   agentStateKey?: string

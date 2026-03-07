@@ -8,7 +8,7 @@
 
 // -- Agent state (matches crates/server/src/live/state.rs AgentState) --
 
-export type AgentStateGroup = 'needs_you' | 'autonomous' | 'delivered'
+export type AgentStateGroup = 'needs_you' | 'autonomous'
 
 export interface AgentState {
   group: AgentStateGroup

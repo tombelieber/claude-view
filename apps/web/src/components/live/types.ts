@@ -3,14 +3,14 @@
 export type LiveViewMode = 'grid' | 'list' | 'kanban' | 'monitor'
 
 /** Agent state group — the operator's mental model */
-export type AgentStateGroup = 'needs_you' | 'autonomous' | 'delivered'
+export type AgentStateGroup = 'needs_you' | 'autonomous'
 
 /** The universal agent state — core protocol */
 export interface AgentState {
   group: AgentStateGroup
   state: string // open string — v1 states listed above, more added over time
   label: string
-  context?: Record<string, unknown>
+  context?: Record<string, unknown> | null
 }
 
 // v1 known states (for icon/color mapping, but unknown states render with generic style)
@@ -29,21 +29,18 @@ export const KNOWN_STATES: Record<string, { icon: string; color: string }> = {
   // Terminal
   task_complete: { icon: 'CheckCircle2', color: 'gray' },
   session_ended: { icon: 'LogOut', color: 'gray' },
-  work_delivered: { icon: 'Package', color: 'gray' },
 }
 
 // Unknown states get a generic icon/color for their group
 export const GROUP_DEFAULTS: Record<AgentStateGroup, { icon: string; color: string }> = {
   needs_you: { icon: 'Bell', color: 'amber' },
   autonomous: { icon: 'Loader', color: 'green' },
-  delivered: { icon: 'Package', color: 'gray' },
 }
 
 /** Custom sort order for agent state groups */
 export const GROUP_ORDER: Record<AgentStateGroup, number> = {
   needs_you: 0,
   autonomous: 1,
-  delivered: 2,
 }
 
 export const LIVE_VIEW_MODES = [
