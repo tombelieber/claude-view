@@ -598,7 +598,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count,
                     SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
@@ -631,9 +631,12 @@ impl Database {
         };
 
         // Get commit counts for today (from session_commits joined with commits)
-        let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) =
-            if let Some(pid) = project_id {
-                sqlx::query_as(
+        let (commits_count, commit_insertions, commit_deletions): (i64, i64, i64) = if let Some(
+            pid,
+        ) =
+            project_id
+        {
+            sqlx::query_as(
                     r#"
                     SELECT
                         COUNT(DISTINCT c.hash) as commits_count,
@@ -642,7 +645,7 @@ impl Database {
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN valid_sessions s ON sc.session_id = s.id
-                    WHERE s.project_id = ?1
+                    WHERE (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                       AND datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND (?3 IS NULL OR s.git_branch = ?3)
                     "#,
@@ -652,9 +655,9 @@ impl Database {
                 .bind(branch)
                 .fetch_one(self.pool())
                 .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+        } else {
+            sqlx::query_as(
+                r#"
                     SELECT
                         COUNT(DISTINCT c.hash) as commits_count,
                         COALESCE(SUM(c.insertions), 0) as commit_insertions,
@@ -665,12 +668,12 @@ impl Database {
                     WHERE datetime(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                       AND (?2 IS NULL OR s.git_branch = ?2)
                     "#,
-                )
-                .bind(&today_start)
-                .bind(branch)
-                .fetch_one(self.pool())
-                .await?
-            };
+            )
+            .bind(&today_start)
+            .bind(branch)
+            .fetch_one(self.pool())
+            .await?
+        };
 
         let cost_cents = usd_opt_to_cents(row.6, row.0);
 
@@ -709,7 +712,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count,
                     SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND (?2 IS NULL OR git_branch = ?2)
                 "#,
             )
@@ -728,7 +731,7 @@ impl Database {
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN valid_sessions s ON sc.session_id = s.id
-                    WHERE s.project_id = ?1
+                    WHERE (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                       AND (?2 IS NULL OR s.git_branch = ?2)
                     "#,
                 )
@@ -873,7 +876,7 @@ impl Database {
                     COALESCE(SUM(files_edited_count), 0) as files_edited_count,
                     SUM(total_cost_usd) as total_cost_usd
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
@@ -896,7 +899,7 @@ impl Database {
                     FROM session_commits sc
                     JOIN commits c ON sc.commit_hash = c.hash
                     JOIN valid_sessions s ON sc.session_id = s.id
-                    WHERE s.project_id = ?1
+                    WHERE (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
@@ -1087,7 +1090,7 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                       INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
-                      WHERE s2.project_id = ?1
+                      WHERE (s2.project_id = ?1 OR (s2.git_root IS NOT NULL AND s2.git_root <> '' AND s2.git_root = ?1))
                         AND s2.is_sidechain = 0
                         AND (?4 IS NULL OR s2.git_branch = ?4)
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') = date(s.last_message_at, 'unixepoch', 'localtime')
@@ -1096,7 +1099,7 @@ impl Database {
                     COALESCE(SUM(s.total_input_tokens + s.total_output_tokens), 0) as tokens_used,
                     COALESCE(SUM(s.total_cost_usd), 0.0) as total_cost_usd
                 FROM valid_sessions s
-                WHERE s.project_id = ?1
+                WHERE (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                   AND s.is_sidechain = 0
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -1285,7 +1288,7 @@ impl Database {
                     COALESCE(SUM(s.ai_lines_removed), 0) as lines_removed,
                     COALESCE((SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                       INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
-                      WHERE s2.project_id = ?1
+                      WHERE (s2.project_id = ?1 OR (s2.git_root IS NOT NULL AND s2.git_root <> '' AND s2.git_root = ?1))
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') >= ?2
                         AND date(s2.last_message_at, 'unixepoch', 'localtime') <= ?3
                         AND s2.git_branch IS s.git_branch
@@ -1293,7 +1296,7 @@ impl Database {
                     COALESCE(SUM(s.files_edited_count), 0) as files_edited,
                     MAX(s.last_message_at) as last_activity
                 FROM valid_sessions s
-                WHERE s.project_id = ?1
+                WHERE (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR s.git_branch = ?4)
@@ -1435,10 +1438,11 @@ impl Database {
             Some(branch)
         };
 
-        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> =
-            if let Some(pid) = project_id {
-                if let Some(b) = branch_filter {
-                    sqlx::query_as(
+        let rows: Vec<(String, Option<String>, i64, i64, i64, i64, i64)> = if let Some(pid) =
+            project_id
+        {
+            if let Some(b) = branch_filter {
+                sqlx::query_as(
                         r#"
                     SELECT
                         id,
@@ -1449,7 +1453,7 @@ impl Database {
                         COALESCE(commit_count, 0),
                         last_message_at
                     FROM valid_sessions
-                    WHERE project_id = ?1
+                    WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                       AND git_branch = ?2
                       AND date(last_message_at, 'unixepoch', 'localtime') >= ?3
                       AND date(last_message_at, 'unixepoch', 'localtime') <= ?4
@@ -1464,8 +1468,8 @@ impl Database {
                     .bind(limit)
                     .fetch_all(self.pool())
                     .await?
-                } else {
-                    sqlx::query_as(
+            } else {
+                sqlx::query_as(
                         r#"
                     SELECT
                         id,
@@ -1476,7 +1480,7 @@ impl Database {
                         COALESCE(commit_count, 0),
                         last_message_at
                     FROM valid_sessions
-                    WHERE project_id = ?1
+                    WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                       AND git_branch IS NULL
                       AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
@@ -1490,10 +1494,10 @@ impl Database {
                     .bind(limit)
                     .fetch_all(self.pool())
                     .await?
-                }
-            } else if let Some(b) = branch_filter {
-                sqlx::query_as(
-                    r#"
+            }
+        } else if let Some(b) = branch_filter {
+            sqlx::query_as(
+                r#"
                 SELECT
                     id,
                     work_type,
@@ -1509,16 +1513,16 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?4
                 "#,
-                )
-                .bind(b)
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+            )
+            .bind(b)
+            .bind(&from)
+            .bind(&to)
+            .bind(limit)
+            .fetch_all(self.pool())
+            .await?
+        } else {
+            sqlx::query_as(
+                r#"
                 SELECT
                     id,
                     work_type,
@@ -1534,13 +1538,13 @@ impl Database {
                 ORDER BY last_message_at DESC
                 LIMIT ?3
                 "#,
-                )
-                .bind(&from)
-                .bind(&to)
-                .bind(limit)
-                .fetch_all(self.pool())
-                .await?
-            };
+            )
+            .bind(&from)
+            .bind(&to)
+            .bind(limit)
+            .fetch_all(self.pool())
+            .await?
+        };
 
         Ok(rows
             .into_iter()
@@ -1679,9 +1683,10 @@ impl Database {
         let (from, to) = self.date_range_from_time_range(range, from_date, to_date);
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> =
-            if let Some(pid) = project_id {
-                sqlx::query_as(
+        let rows: Vec<(String, i64, i64, i64, i64, i64, i64, i64, i64)> = if let Some(pid) =
+            project_id
+        {
+            sqlx::query_as(
                     r#"
                 WITH token_agg AS (
                     SELECT
@@ -1694,7 +1699,7 @@ impl Database {
                     FROM valid_sessions s
                     JOIN turns t ON t.session_id = s.id
                     WHERE t.model_id IS NOT NULL
-                      AND s.project_id = ?1
+                      AND (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
@@ -1709,7 +1714,7 @@ impl Database {
                         COALESCE(SUM(s.files_edited_count), 0) AS files_edited
                     FROM valid_sessions s
                     WHERE s.primary_model IS NOT NULL
-                      AND s.project_id = ?1
+                      AND (s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
                       AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?2
                       AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?3
                       AND (?4 IS NULL OR s.git_branch = ?4)
@@ -1736,9 +1741,9 @@ impl Database {
                 .bind(branch)
                 .fetch_all(self.pool())
                 .await?
-            } else {
-                sqlx::query_as(
-                    r#"
+        } else {
+            sqlx::query_as(
+                r#"
                 WITH token_agg AS (
                     SELECT
                         t.model_id AS model,
@@ -1783,13 +1788,13 @@ impl Database {
                 LEFT JOIN session_agg sa ON sa.model = t.model
                 ORDER BY t.input_tokens + t.output_tokens DESC
                 "#,
-                )
-                .bind(&from)
-                .bind(&to)
-                .bind(branch)
-                .fetch_all(self.pool())
-                .await?
-            };
+            )
+            .bind(&from)
+            .bind(&to)
+            .bind(branch)
+            .fetch_all(self.pool())
+            .await?
+        };
 
         Ok(rows
             .into_iter()
@@ -1858,7 +1863,7 @@ impl Database {
                     COALESCE(SUM(reedited_files_count), 0) as reedited,
                     COALESCE(SUM(files_edited_count), 0) as files_edited
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND last_message_at >= strftime('%s', 'now', '-6 months')
                   AND (?2 IS NULL OR git_branch = ?2)
                 GROUP BY period
@@ -1980,7 +1985,7 @@ impl Database {
                 JOIN valid_sessions s ON ss.session_id = s.id
                 WHERE date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND s.project_id = ?3
+                  AND (s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
                   AND (?4 IS NULL OR s.git_branch = ?4)
                 GROUP BY ss.skill_name
                 ORDER BY session_count DESC
@@ -2059,7 +2064,7 @@ impl Database {
                 WHERE skill_sessions.session_id IS NULL
                   AND date(s.last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(s.last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND s.project_id = ?3
+                  AND (s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
                   AND (?4 IS NULL OR s.git_branch = ?4)
                 "#,
             )
@@ -2694,7 +2699,7 @@ impl Database {
                     COALESCE(SUM(reedited_files_count), 0),
                     COALESCE(SUM(files_edited_count), 0)
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
@@ -2776,7 +2781,7 @@ impl Database {
                     SUM(CASE WHEN commit_count > 0 THEN 1 ELSE 0 END),
                     COUNT(*)
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
@@ -2852,7 +2857,7 @@ impl Database {
                 r#"
                 SELECT COALESCE(SUM(user_prompt_count), 0)
                 FROM valid_sessions
-                WHERE project_id = ?1
+                WHERE (project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1))
                   AND date(last_message_at, 'unixepoch', 'localtime') >= ?2
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?3
                   AND (?4 IS NULL OR git_branch = ?4)
