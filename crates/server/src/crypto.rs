@@ -89,7 +89,13 @@ pub fn load_paired_devices() -> Vec<PairedDevice> {
         Err(_) => return Vec::new(),
     };
     match fs::read(&path) {
-        Ok(data) => serde_json::from_slice(&data).unwrap_or_default(),
+        Ok(data) => match serde_json::from_slice(&data) {
+            Ok(devices) => devices,
+            Err(e) => {
+                tracing::error!("paired-devices.json corrupted, cannot load devices: {e}");
+                Vec::new()
+            }
+        },
         Err(_) => Vec::new(),
     }
 }
@@ -187,7 +193,7 @@ pub fn sign_auth_challenge(identity: &DeviceIdentity) -> Result<(u64, String), S
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+        .expect("system clock before Unix epoch")
         .as_secs();
 
     let payload = format!("{}:{}", timestamp, identity.device_id);

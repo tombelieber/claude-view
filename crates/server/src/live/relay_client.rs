@@ -176,7 +176,9 @@ async fn connect_and_stream(
                 if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
                 {
                     let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
-                    let _ = sink.send(Message::Text(envelope.to_string().into())).await;
+                    if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
+                        tracing::warn!(error = %e, "failed to send WebSocket message to relay");
+                    }
                 }
             }
         }
@@ -214,7 +216,9 @@ async fn connect_and_stream(
                         for device in paired_devices {
                             if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
                                 let envelope = build_envelope(&device.device_id, &encrypted, None);
-                                let _ = sink.send(Message::Text(envelope.to_string().into())).await;
+                                if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
+                                    tracing::warn!(error = %e, "failed to send WebSocket message to relay");
+                                }
                             }
                         }
                     }
@@ -232,7 +236,9 @@ async fn connect_and_stream(
                             for device in paired_devices {
                                 if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
                                     let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
-                                    let _ = sink.send(Message::Text(envelope.to_string().into())).await;
+                                    if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
+                                        tracing::warn!(error = %e, "failed to send WebSocket message to relay");
+                                    }
                                 }
                             }
                         }
@@ -304,7 +310,7 @@ async fn connect_and_stream(
                                                     name: format!("Phone {}", &did[..did.len().min(12)]),
                                                     paired_at: std::time::SystemTime::now()
                                                         .duration_since(std::time::UNIX_EPOCH)
-                                                        .unwrap_or_default()
+                                                        .expect("system clock before Unix epoch")
                                                         .as_secs(),
                                                 };
                                                 if let Err(e) = add_paired_device(device) {

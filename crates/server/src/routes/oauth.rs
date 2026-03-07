@@ -211,7 +211,13 @@ async fn fetch_usage(
         .map_err(|e| format!("Network error: {e}"))?;
 
     let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
+    let body = match resp.text().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to read Anthropic API response body");
+            String::new()
+        }
+    };
 
     if !status.is_success() {
         return Err(format!("API error {status}: {body}"));
