@@ -1,4 +1,4 @@
-import { CheckCircle2, HardDrive, Loader2, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, HardDrive, Loader2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 
@@ -8,6 +8,7 @@ import type { IndexingProgress } from '../hooks/use-indexing-progress'
 export function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
   if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)} KB`
   return `${bytes} bytes`
 }
 
@@ -128,7 +129,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
               />
             )}
             {progress.phase === 'error' && (
-              <X className="w-4 h-4 text-red-500 dark:text-red-400" aria-hidden="true" />
+              <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400" aria-hidden="true" />
             )}
           </div>
 
