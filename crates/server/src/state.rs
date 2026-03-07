@@ -2,6 +2,7 @@
 //! Application state for the Axum server.
 
 use crate::auth::supabase::JwksCache;
+use crate::cache::CachedUpstream;
 use crate::classify_state::ClassifyState;
 use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
@@ -9,6 +10,7 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
+use crate::routes::oauth::OAuthUsageResponse;
 use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
 use claude_view_core::Registry;
@@ -109,6 +111,8 @@ pub struct AppState {
     pub share: Option<ShareConfig>,
     /// Cached auth identity from `claude auth status` (lazy, one-shot).
     pub auth_identity: OnceCell<Option<AuthIdentity>>,
+    /// Cached Anthropic OAuth usage response (5-min TTL).
+    pub oauth_usage_cache: CachedUpstream<OAuthUsageResponse>,
 }
 
 impl AppState {
@@ -146,6 +150,7 @@ impl AppState {
             jwks: None,
             share: None,
             auth_identity: OnceCell::new(),
+            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
         })
     }
 
@@ -182,6 +187,7 @@ impl AppState {
             jwks: None,
             share: None,
             auth_identity: OnceCell::new(),
+            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
         })
     }
 
@@ -221,6 +227,7 @@ impl AppState {
             jwks: None,
             share: None,
             auth_identity: OnceCell::new(),
+            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
         })
     }
 
