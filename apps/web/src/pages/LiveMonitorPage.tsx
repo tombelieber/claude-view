@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
+import { CostTokenPopover } from '../components/live/CostTokenPopover'
 import { KanbanView } from '../components/live/KanbanView'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { ListView } from '../components/live/ListView'
@@ -26,7 +27,6 @@ import {
   sessionTotalCost,
 } from '../components/live/use-live-sessions'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
-import { formatCostUsd, formatTokenCount } from '../lib/format-utils'
 import { useLiveCommandStore } from '../store/live-command-context'
 import { useMonitorStore } from '../store/monitor-store'
 
@@ -117,6 +117,15 @@ export function LiveMonitorPage() {
     let autonomousCount = 0
     let totalCostTodayUsd = 0
     let totalTokensToday = 0
+    let inputTokens = 0
+    let outputTokens = 0
+    let cacheReadTokens = 0
+    let cacheCreationTokens = 0
+    let inputCostUsd = 0
+    let outputCostUsd = 0
+    let cacheReadCostUsd = 0
+    let cacheCreationCostUsd = 0
+    let cacheSavingsUsd = 0
     for (const s of sessions) {
       switch (s.agentState.group) {
         case 'needs_you':
@@ -128,6 +137,15 @@ export function LiveMonitorPage() {
       }
       totalCostTodayUsd += sessionTotalCost(s)
       totalTokensToday += s.tokens?.totalTokens ?? 0
+      inputTokens += s.tokens?.inputTokens ?? 0
+      outputTokens += s.tokens?.outputTokens ?? 0
+      cacheReadTokens += s.tokens?.cacheReadTokens ?? 0
+      cacheCreationTokens += s.tokens?.cacheCreationTokens ?? 0
+      inputCostUsd += s.cost?.inputCostUsd ?? 0
+      outputCostUsd += s.cost?.outputCostUsd ?? 0
+      cacheReadCostUsd += s.cost?.cacheReadCostUsd ?? 0
+      cacheCreationCostUsd += s.cost?.cacheCreationCostUsd ?? 0
+      cacheSavingsUsd += s.cost?.cacheSavingsUsd ?? 0
     }
     return {
       needsYouCount,
@@ -135,6 +153,15 @@ export function LiveMonitorPage() {
       totalCostTodayUsd,
       totalTokensToday,
       processCount: serverSummary?.processCount ?? sessions.length,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
+      inputCostUsd,
+      outputCostUsd,
+      cacheReadCostUsd,
+      cacheCreationCostUsd,
+      cacheSavingsUsd,
     }
   }, [sessions, serverSummary])
 
@@ -251,37 +278,81 @@ export function LiveMonitorPage() {
     return <LiveMonitorSkeleton />
   }
 
+  // "Updated Xs ago" — only show when stale (>30s) to reduce noise
+  const isStale = lastUpdate ? Date.now() - lastUpdate.getTime() > 30_000 : false
+
+  // Compute indexing percent once for filter bar
+  const indexingPercent = indexingProgress
+    ? indexingProgress.bytesTotal > 0
+      ? Math.min(
+          100,
+          Math.round((indexingProgress.bytesProcessed / indexingProgress.bytesTotal) * 100),
+        )
+      : indexingProgress.total > 0
+        ? Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))
+        : 0
+    : 0
+
   return (
     <div className="h-full flex flex-col">
       {/* Pinned header — never scrolls */}
-      <div className="flex-shrink-0 px-6 pt-6 space-y-4">
-        <div className="max-w-7xl mx-auto space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Live Monitor
-              </h1>
+      <div className="shrink-0 px-6 pt-4 space-y-3">
+        <div className="max-w-7xl mx-auto space-y-3">
+          {/* Row 1: Command bar — title, view tabs, stats, status */}
+          <div className="flex items-center gap-3">
+            {/* Left: status dot + title + view tabs + session counts */}
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full shrink-0 ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}
+                  title={isConnected ? 'Connected — live updates' : 'Reconnecting...'}
+                />
+                <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  Live Monitor
+                </h1>
+              </div>
               <ViewModeSwitcher mode={viewMode} onChange={handleViewModeChange} />
+
+              {/* Session count badges — stick with title group */}
+              {summary && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium tabular-nums ${
+                      summary.needsYouCount > 0
+                        ? 'bg-amber-500/15 text-amber-500'
+                        : 'text-gray-400 dark:text-gray-500'
+                    }`}
+                  >
+                    {summary.needsYouCount > 0 && (
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    )}
+                    <span>{summary.needsYouCount}</span>
+                    <span className="font-normal opacity-70">needs you</span>
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-green-500 font-medium tabular-nums">
+                    <span>{summary.autonomousCount}</span>
+                    <span className="font-normal opacity-70">autonomous</span>
+                  </span>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-              />
-              {isConnected ? 'Live' : 'Reconnecting...'}
-              {lastUpdate && <span className="ml-2">Updated {formatRelativeTime(lastUpdate)}</span>}
+
+            {/* Right: cost, tokens, stale indicator, usage — stays right-aligned */}
+            <div className="flex items-center gap-3 ml-auto text-xs shrink-0">
+              {isStale && lastUpdate && (
+                <span className="text-amber-500/80 tabular-nums">
+                  {formatRelativeTime(lastUpdate)}
+                </span>
+              )}
+
+              {summary && <CostTokenPopover summary={summary} />}
+
               <OAuthUsagePill />
             </div>
           </div>
 
-          {/* Summary bar */}
-          <SummaryBar
-            summary={summary}
-            filteredCount={filteredSessions.length}
-            totalCount={sessions.length}
-          />
-
-          {/* Filter bar */}
+          {/* Row 2: Filter bar */}
           <LiveFilterBar
             filters={filters}
             onStatusChange={filterActions.setStatus}
@@ -295,23 +366,11 @@ export function LiveMonitorPage() {
             availableBranches={availableBranches}
             searchInputRef={searchInputRef}
             indexingPhase={indexingProgress?.phase}
-            indexingPercent={
-              indexingProgress
-                ? indexingProgress.bytesTotal > 0
-                  ? Math.min(
-                      100,
-                      Math.round(
-                        (indexingProgress.bytesProcessed / indexingProgress.bytesTotal) * 100,
-                      ),
-                    )
-                  : indexingProgress.total > 0
-                    ? Math.min(
-                        100,
-                        Math.round((indexingProgress.indexed / indexingProgress.total) * 100),
-                      )
-                    : 0
-                : 0
-            }
+            indexingPercent={indexingPercent}
+            filteredCount={filteredSessions.length}
+            totalCount={sessions.length}
+            groupByValue={viewMode === 'kanban' ? groupBy : undefined}
+            onGroupByChange={viewMode === 'kanban' ? handleGroupByChange : undefined}
           />
         </div>
       </div>
@@ -360,7 +419,6 @@ export function LiveMonitorPage() {
               stalledSessions={stalledSessions}
               currentTime={currentTime}
               groupBy={groupBy}
-              onGroupByChange={handleGroupByChange}
               projectGroups={projectGroups}
               isCollapsed={isCollapsed}
               toggleCollapse={toggleCollapse}
@@ -448,47 +506,6 @@ export function LiveMonitorPage() {
 
       {/* Keyboard shortcut help */}
       <KeyboardShortcutHelp isOpen={showHelp} onClose={() => setShowHelp(false)} />
-    </div>
-  )
-}
-
-interface SummaryBarProps {
-  summary: LiveSummary | null
-  filteredCount: number
-  totalCount: number
-}
-
-function SummaryBar({ summary, filteredCount, totalCount }: SummaryBarProps) {
-  if (!summary) return null
-
-  const showFiltered = filteredCount !== totalCount
-
-  return (
-    <div className="flex flex-wrap gap-x-6 gap-y-2 p-3 rounded-lg bg-gray-100/50 dark:bg-gray-800/50 text-sm">
-      <div>
-        <span className="text-amber-500 font-medium">{summary.needsYouCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">needs you</span>
-      </div>
-      <div>
-        <span className="text-green-500 font-medium">{summary.autonomousCount}</span>
-        <span className="text-gray-500 dark:text-gray-400 ml-1">autonomous</span>
-      </div>
-      {showFiltered && (
-        <div>
-          <span className="text-indigo-400 font-medium">{filteredCount}</span>
-          <span className="text-gray-500 dark:text-gray-400 ml-1">of {totalCount} shown</span>
-        </div>
-      )}
-      <div className="ml-auto flex gap-4">
-        <span className="text-gray-600 dark:text-gray-300 font-mono tabular-nums">
-          {formatCostUsd(summary.totalCostTodayUsd)}
-          <span className="text-gray-400 dark:text-gray-500 font-sans ml-1">today</span>
-        </span>
-        <span className="text-gray-600 dark:text-gray-300 font-mono tabular-nums">
-          {formatTokenCount(summary.totalTokensToday)}
-          <span className="text-gray-400 dark:text-gray-500 font-sans ml-1">tokens</span>
-        </span>
-      </div>
     </div>
   )
 }
