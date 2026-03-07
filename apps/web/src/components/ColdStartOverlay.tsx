@@ -57,7 +57,8 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
     const isActive =
       progress.phase === 'reading-indexes' ||
       progress.phase === 'ready' ||
-      progress.phase === 'deep-indexing'
+      progress.phase === 'deep-indexing' ||
+      progress.phase === 'finalizing'
 
     if (wasTerminal && isActive) {
       setDismissed(false)
@@ -106,7 +107,10 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
         : 0
 
   const canDismiss =
-    progress.phase === 'ready' || progress.phase === 'deep-indexing' || progress.phase === 'done'
+    progress.phase === 'ready' ||
+    progress.phase === 'deep-indexing' ||
+    progress.phase === 'finalizing' ||
+    progress.phase === 'done'
 
   const isDone = progress.phase === 'done'
 
@@ -142,6 +146,12 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
             )}
             {(progress.phase === 'ready' || progress.phase === 'deep-indexing') && (
               <HardDrive className="w-4 h-4 text-blue-500 dark:text-blue-400" aria-hidden="true" />
+            )}
+            {progress.phase === 'finalizing' && (
+              <Loader2
+                className="w-4 h-4 text-blue-500 dark:text-blue-400 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             )}
             {isDone && (
               <CheckCircle2
@@ -213,6 +223,10 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
                   completes.
                 </p>
               </div>
+            )}
+
+            {progress.phase === 'finalizing' && (
+              <p className="text-sm text-blue-700 dark:text-blue-300">Building search index...</p>
             )}
 
             {isDone && (
