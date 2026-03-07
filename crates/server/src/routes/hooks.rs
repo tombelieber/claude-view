@@ -222,6 +222,7 @@ async fn handle_hook(
                         tools_used: Vec::new(),
                         last_cache_hit_at: None,
                         compact_count: 0,
+                        control: None,
                         hook_events: Vec::new(),
                     };
                     append_capped_hook_events(
@@ -355,6 +356,7 @@ async fn handle_hook(
                     tools_used: Vec::new(),
                     last_cache_hit_at: None,
                     compact_count: 0,
+                    control: None,
                     hook_events: Vec::new(),
                 };
                 append_capped_hook_events(
@@ -1091,6 +1093,7 @@ mod tests {
             tools_used: Vec::new(),
             last_cache_hit_at: None,
             compact_count: 0,
+            control: None,
             hook_events: Vec::new(),
         }
     }
