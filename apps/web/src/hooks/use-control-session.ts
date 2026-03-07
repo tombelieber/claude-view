@@ -1,5 +1,5 @@
 // apps/web/src/hooks/use-control-session.ts
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
 import type {
   AskUserQuestionMsg,
@@ -9,19 +9,21 @@ import type {
   PlanApprovalMsg,
   ServerMessage,
 } from '../types/control'
+import { CLOSE_CODES } from '../types/control'
+import { type ConnectionState, connectionReducer } from './connection-reducer'
 
 export type ControlStatus =
+  | 'idle'
   | 'connecting'
   | 'active'
   | 'waiting_input'
   | 'waiting_permission'
-  | 'completed'
-  | 'error'
-  | 'disconnected'
   | 'reconnecting'
+  | 'completed'
+  | 'fatal'
+  | 'failed'
 
 interface ControlSessionState {
-  status: ControlStatus
   messages: ChatMessage[]
   streamingContent: string
   streamingMessageId: string
@@ -36,8 +38,7 @@ interface ControlSessionState {
   error: string | null
 }
 
-const initialState: ControlSessionState = {
-  status: 'disconnected',
+const initialUIState: ControlSessionState = {
   messages: [],
   streamingContent: '',
   streamingMessageId: '',
@@ -52,50 +53,113 @@ const initialState: ControlSessionState = {
   error: null,
 }
 
-export function useControlSession(controlId: string | null) {
-  const [state, setState] = useState<ControlSessionState>(initialState)
-  const wsRef = useRef<WebSocket | null>(null)
-  const intentionalCloseRef = useRef(false)
-  const reconnectAttemptRef = useRef(0)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const unmountedRef = useRef(false)
-  const MAX_RECONNECT_ATTEMPTS = 10
-  const INITIAL_BACKOFF_MS = 1000
-  const MAX_BACKOFF_MS = 30_000
+const INITIAL_BACKOFF_MS = 1000
+const MAX_BACKOFF_MS = 30_000
 
+export function useControlSession(sessionId: string | null) {
+  const [connState, dispatch] = useReducer(connectionReducer, { phase: 'idle' } as ConnectionState)
+  const [ui, setUI] = useState<ControlSessionState>(initialUIState)
+  const [sessionStatus, setSessionStatus] = useState<string>('idle')
+
+  const wsRef = useRef<WebSocket | null>(null)
+  const unmountedRef = useRef(false)
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pongReceivedRef = useRef(true)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // --- Heartbeat management ---
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current)
+      heartbeatTimerRef.current = null
+    }
+  }, [])
+
+  const startHeartbeat = useCallback(
+    (intervalMs: number) => {
+      clearHeartbeat()
+      pongReceivedRef.current = true
+      heartbeatTimerRef.current = setInterval(() => {
+        if (!pongReceivedRef.current) {
+          // No pong since last ping — connection dead
+          const ws = wsRef.current
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.close(CLOSE_CODES.HEARTBEAT_TIMEOUT, 'heartbeat_timeout')
+          }
+          clearHeartbeat()
+          return
+        }
+        pongReceivedRef.current = false
+        const ws = wsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }))
+        }
+      }, intervalMs)
+    },
+    [clearHeartbeat],
+  )
+
+  // --- Connect effect ---
   useEffect(() => {
-    if (!controlId) {
-      // No control session — reset to disconnected so the input bar is enabled (dormant)
-      setState({ ...initialState, status: 'disconnected' })
+    if (!sessionId) {
+      setUI(initialUIState)
+      setSessionStatus('idle')
+      dispatch({ type: 'reset' })
       return
     }
-    unmountedRef.current = false
-    intentionalCloseRef.current = false
-    setState((prev) => ({ ...prev, status: 'connecting' }))
 
-    function connect() {
-      // Clean up previous WS before creating new one (prevents leaked connections on reconnect)
+    unmountedRef.current = false
+    dispatch({ type: 'connect', sessionId })
+
+    function openWs() {
+      // Clean up previous WS
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
-      const ws = new WebSocket(wsUrl(`/api/control/sessions/${controlId}/stream`))
+
+      const ws = new WebSocket(wsUrl(`/api/control/connect?sessionId=${sessionId}`))
       wsRef.current = ws
 
+      ws.onopen = () => {
+        if (wsRef.current !== ws) return // stale guard
+        dispatch({ type: 'ws_open' })
+
+        // On reconnect, send resume with lastSeq
+        // connState is captured via closure but we need the latest value
+        // We'll handle this in the reconnect effect instead
+      }
+
       ws.onmessage = (event) => {
-        // Stale guard per CLAUDE.md rules
-        if (wsRef.current !== ws) return
+        if (wsRef.current !== ws) return // stale guard
 
-        const msg: ServerMessage = JSON.parse(event.data)
+        const raw = JSON.parse(event.data)
 
-        setState((prev) => {
+        // heartbeat_config has NO seq — intercept before reducer
+        if (raw.type === 'heartbeat_config') {
+          startHeartbeat(raw.intervalMs)
+          return
+        }
+
+        // pong — reset heartbeat counter, no reducer dispatch needed
+        if (raw.type === 'pong') {
+          pongReceivedRef.current = true
+          return
+        }
+
+        // All other messages have seq from emitSequenced
+        const seq: number = raw.seq ?? -1
+        const msg = raw as ServerMessage
+        dispatch({ type: 'ws_message', msg, seq })
+
+        // Accumulate UI state
+        setUI((prev) => {
           switch (msg.type) {
             case 'assistant_chunk':
               return {
                 ...prev,
                 streamingContent: prev.streamingContent + msg.content,
                 streamingMessageId: msg.messageId,
-                status: 'active',
               }
 
             case 'assistant_done':
@@ -114,7 +178,6 @@ export function useControlSession(controlId: string | null) {
                 streamingMessageId: '',
                 sessionCost: msg.totalCost,
                 lastTurnCost: msg.cost,
-                status: 'waiting_input',
               }
 
             case 'tool_use_start':
@@ -146,122 +209,237 @@ export function useControlSession(controlId: string | null) {
               }
 
             case 'permission_request':
-              return {
-                ...prev,
-                permissionRequest: msg,
-                status: 'waiting_permission',
-              }
+              // Dedup replayed requests
+              if (prev.permissionRequest?.requestId === msg.requestId) return prev
+              return { ...prev, permissionRequest: msg }
 
             case 'ask_user_question':
-              return {
-                ...prev,
-                askQuestion: msg,
-                status: 'waiting_permission',
-              }
+              // Dedup replayed requests
+              if (prev.askQuestion?.requestId === msg.requestId) return prev
+              return { ...prev, askQuestion: msg }
 
             case 'plan_approval':
-              return {
-                ...prev,
-                planApproval: msg,
-                status: 'waiting_permission',
-              }
+              if (prev.planApproval?.requestId === msg.requestId) return prev
+              return { ...prev, planApproval: msg }
 
             case 'elicitation':
-              return {
-                ...prev,
-                elicitation: msg,
-                status: 'waiting_permission',
-              }
+              if (prev.elicitation?.requestId === msg.requestId) return prev
+              return { ...prev, elicitation: msg }
 
             case 'session_status':
               return {
                 ...prev,
-                status: msg.status,
                 contextUsage: msg.contextUsage,
                 turnCount: msg.turnCount,
               }
 
             case 'error':
-              return {
-                ...prev,
-                status: msg.fatal ? 'error' : prev.status,
-                error: msg.message,
-              }
-
-            case 'pong':
-              return prev // no state change
+              return { ...prev, error: msg.message }
 
             default:
               return prev
           }
         })
-      }
 
-      // Non-recoverable close codes — don't attempt reconnect
-      const NON_RECOVERABLE_CODES = [4004, 4500] // session not found, server shutdown
-
-      ws.onclose = (event) => {
-        if (wsRef.current !== ws) return // stale guard
-        if (unmountedRef.current) return // unmount guard
-        const canReconnect =
-          !intentionalCloseRef.current &&
-          reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS &&
-          !NON_RECOVERABLE_CODES.includes(event.code)
-        if (canReconnect) {
-          const backoff = Math.min(
-            INITIAL_BACKOFF_MS * 2 ** reconnectAttemptRef.current,
-            MAX_BACKOFF_MS,
-          )
-          reconnectTimerRef.current = setTimeout(connect, backoff)
-          reconnectAttemptRef.current++
-          setState((prev) => ({ ...prev, status: 'reconnecting' as ControlStatus }))
-        } else {
-          setState((prev) => ({
-            ...prev,
-            status: prev.status === 'completed' ? 'completed' : 'disconnected',
-          }))
+        // Track session sub-status separately for ControlStatus derivation
+        if (msg.type === 'session_status') {
+          setSessionStatus(msg.status)
         }
       }
 
-      ws.onopen = () => {
+      ws.onclose = (event) => {
         if (wsRef.current !== ws) return // stale guard
-        reconnectAttemptRef.current = 0 // reset on successful connect
-        // Don't set any session status here — leave as 'connecting'.
-        // The sidecar sends an initial 'session_status' message immediately
-        // after WS handshake which will set the correct status
-        // ('waiting_input', 'active', etc.). Setting status here would
-        // race with that message and could show wrong state briefly.
+        if (unmountedRef.current) return
+        clearHeartbeat()
+        dispatch({ type: 'ws_close', code: event.code, reason: event.reason })
       }
 
       ws.onerror = () => {
         if (wsRef.current !== ws) return
-        setState((prev) => ({ ...prev, error: 'WebSocket connection error' }))
+        dispatch({ type: 'ws_error', error: 'WebSocket connection error' })
       }
-    } // end connect()
+    }
 
-    connect()
+    openWs()
 
-    // Close WS BEFORE nulling the ref -- otherwise the stale guard in
-    // onclose fires (wsRef.current !== ws) and skips the state update.
     return () => {
       unmountedRef.current = true
+      clearHeartbeat()
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      intentionalCloseRef.current = true
       wsRef.current?.close()
       wsRef.current = null
     }
-  }, [controlId])
+  }, [sessionId, startHeartbeat, clearHeartbeat])
 
+  // --- Reconnect effect: schedule reconnect when state enters 'reconnecting' ---
+  // Destructure attempt/lastSeq so the linter sees explicit deps.
+  // The early return guarantees these are only read when phase === 'reconnecting'.
+  const reconnectAttempt = connState.phase === 'reconnecting' ? connState.attempt : 0
+  const reconnectLastSeq = connState.phase === 'reconnecting' ? connState.lastSeq : -1
+
+  useEffect(() => {
+    if (connState.phase !== 'reconnecting') return
+    if (!sessionId) return
+
+    const backoff = Math.min(INITIAL_BACKOFF_MS * 2 ** (reconnectAttempt - 1), MAX_BACKOFF_MS)
+
+    reconnectTimerRef.current = setTimeout(() => {
+      if (unmountedRef.current) return
+      // Clean up and create new WS
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+
+      const ws = new WebSocket(wsUrl(`/api/control/connect?sessionId=${sessionId}`))
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        if (wsRef.current !== ws) return
+        dispatch({ type: 'ws_open' })
+
+        // Send resume to replay missed events
+        if (reconnectLastSeq >= 0) {
+          ws.send(JSON.stringify({ type: 'resume', lastSeq: reconnectLastSeq }))
+        }
+      }
+
+      ws.onmessage = (event) => {
+        if (wsRef.current !== ws) return
+        const raw = JSON.parse(event.data)
+
+        if (raw.type === 'heartbeat_config') {
+          startHeartbeat(raw.intervalMs)
+          return
+        }
+        if (raw.type === 'pong') {
+          pongReceivedRef.current = true
+          return
+        }
+
+        const seq: number = raw.seq ?? -1
+        const msg = raw as ServerMessage
+        dispatch({ type: 'ws_message', msg, seq })
+
+        setUI((prev) => {
+          switch (msg.type) {
+            case 'assistant_chunk':
+              return {
+                ...prev,
+                streamingContent: prev.streamingContent + msg.content,
+                streamingMessageId: msg.messageId,
+              }
+            case 'assistant_done':
+              return {
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    role: 'assistant',
+                    content: prev.streamingContent,
+                    messageId: msg.messageId,
+                    usage: msg.usage,
+                  },
+                ],
+                streamingContent: '',
+                streamingMessageId: '',
+                sessionCost: msg.totalCost,
+                lastTurnCost: msg.cost,
+              }
+            case 'tool_use_start':
+              return {
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    role: 'tool_use',
+                    toolName: msg.toolName,
+                    toolInput: msg.toolInput,
+                    toolUseId: msg.toolUseId,
+                  },
+                ],
+              }
+            case 'tool_use_result':
+              return {
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    role: 'tool_result',
+                    toolUseId: msg.toolUseId,
+                    output: msg.output,
+                    isError: msg.isError,
+                  },
+                ],
+              }
+            case 'permission_request':
+              if (prev.permissionRequest?.requestId === msg.requestId) return prev
+              return { ...prev, permissionRequest: msg }
+            case 'ask_user_question':
+              if (prev.askQuestion?.requestId === msg.requestId) return prev
+              return { ...prev, askQuestion: msg }
+            case 'plan_approval':
+              if (prev.planApproval?.requestId === msg.requestId) return prev
+              return { ...prev, planApproval: msg }
+            case 'elicitation':
+              if (prev.elicitation?.requestId === msg.requestId) return prev
+              return { ...prev, elicitation: msg }
+            case 'session_status':
+              return { ...prev, contextUsage: msg.contextUsage, turnCount: msg.turnCount }
+            case 'error':
+              return { ...prev, error: msg.message }
+            default:
+              return prev
+          }
+        })
+
+        if (msg.type === 'session_status') {
+          setSessionStatus(msg.status)
+        }
+      }
+
+      ws.onclose = (event) => {
+        if (wsRef.current !== ws) return
+        if (unmountedRef.current) return
+        clearHeartbeat()
+        dispatch({ type: 'ws_close', code: event.code, reason: event.reason })
+      }
+
+      ws.onerror = () => {
+        if (wsRef.current !== ws) return
+        dispatch({ type: 'ws_error', error: 'WebSocket connection error' })
+      }
+    }, backoff)
+
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+    }
+  }, [
+    connState.phase,
+    reconnectAttempt,
+    reconnectLastSeq,
+    sessionId,
+    startHeartbeat,
+    clearHeartbeat,
+  ])
+
+  // --- Derive exported status ---
+  const status: ControlStatus =
+    connState.phase === 'active'
+      ? (sessionStatus as ControlStatus)
+      : (connState.phase as ControlStatus)
+
+  // --- Send callbacks ---
   const sendMessage = useCallback((content: string) => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-
     ws.send(JSON.stringify({ type: 'user_message', content }))
-
-    setState((prev) => ({
+    setUI((prev) => ({
       ...prev,
       messages: [...prev.messages, { role: 'user', content }],
-      status: 'active',
     }))
   }, [])
 
@@ -274,20 +452,14 @@ export function useControlSession(controlId: string | null) {
   const respondPermission = useCallback((requestId: string, allowed: boolean) => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
-
     ws.send(JSON.stringify({ type: 'permission_response', requestId, allowed }))
-
-    setState((prev) => ({
-      ...prev,
-      permissionRequest: null,
-      status: 'active',
-    }))
+    setUI((prev) => ({ ...prev, permissionRequest: null }))
   }, [])
 
   const answerQuestion = useCallback(
     (requestId: string, answers: Record<string, string>) => {
       sendRaw({ type: 'question_response', requestId, answers })
-      setState((prev) => ({ ...prev, askQuestion: null }))
+      setUI((prev) => ({ ...prev, askQuestion: null }))
     },
     [sendRaw],
   )
@@ -295,7 +467,7 @@ export function useControlSession(controlId: string | null) {
   const approvePlan = useCallback(
     (requestId: string, approved: boolean, feedback?: string) => {
       sendRaw({ type: 'plan_response', requestId, approved, feedback })
-      setState((prev) => ({ ...prev, planApproval: null }))
+      setUI((prev) => ({ ...prev, planApproval: null }))
     },
     [sendRaw],
   )
@@ -303,13 +475,25 @@ export function useControlSession(controlId: string | null) {
   const submitElicitation = useCallback(
     (requestId: string, response: string) => {
       sendRaw({ type: 'elicitation_response', requestId, response })
-      setState((prev) => ({ ...prev, elicitation: null }))
+      setUI((prev) => ({ ...prev, elicitation: null }))
     },
     [sendRaw],
   )
 
   return {
-    ...state,
+    status,
+    messages: ui.messages,
+    streamingContent: ui.streamingContent,
+    streamingMessageId: ui.streamingMessageId,
+    contextUsage: ui.contextUsage,
+    turnCount: ui.turnCount,
+    sessionCost: ui.sessionCost,
+    lastTurnCost: ui.lastTurnCost,
+    permissionRequest: ui.permissionRequest,
+    askQuestion: ui.askQuestion,
+    planApproval: ui.planApproval,
+    elicitation: ui.elicitation,
+    error: ui.error,
     sendMessage,
     sendRaw,
     respondPermission,
