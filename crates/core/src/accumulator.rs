@@ -594,6 +594,7 @@ mod tests {
             timestamp: None,
             stop_reason: None,
             git_branch: None,
+            cwd: None,
             is_meta: false,
             is_tool_result_continuation: false,
             has_system_prefix: false,
