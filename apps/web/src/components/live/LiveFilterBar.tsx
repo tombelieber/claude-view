@@ -1,7 +1,8 @@
-import { ChevronDown, Filter, Loader2, Search, X } from 'lucide-react'
+import { ChevronDown, Filter, Layers, Loader2, Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { IndexingPhase } from '../../hooks/use-indexing-progress'
 import type { LiveSessionFilters } from './live-filter'
+import type { KanbanGroupBy } from './types'
 
 interface LiveFilterBarProps {
   filters: LiveSessionFilters
@@ -19,9 +20,22 @@ interface LiveFilterBarProps {
   indexingPhase?: IndexingPhase
   /** Indexing percentage (0-100) shown in placeholder during deep-indexing. */
   indexingPercent?: number
+  /** Number of sessions after filtering. */
+  filteredCount?: number
+  /** Total number of sessions before filtering. */
+  totalCount?: number
+  /** Kanban group-by value (only shown when in kanban view). */
+  groupByValue?: KanbanGroupBy
+  /** Callback when kanban group-by changes. */
+  onGroupByChange?: (value: KanbanGroupBy) => void
 }
 
-type DropdownType = 'status' | 'project' | 'branch' | null
+type DropdownType = 'status' | 'project' | 'branch' | 'groupBy' | null
+
+const GROUP_BY_OPTIONS: { value: KanbanGroupBy; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'project-branch', label: 'Project + Branch' },
+]
 
 export function LiveFilterBar({
   filters,
@@ -37,6 +51,10 @@ export function LiveFilterBar({
   searchInputRef,
   indexingPhase,
   indexingPercent = 0,
+  filteredCount,
+  totalCount,
+  groupByValue,
+  onGroupByChange,
 }: LiveFilterBarProps) {
   const [localSearch, setLocalSearch] = useState(filters.search)
   const [openDropdown, setOpenDropdown] = useState<DropdownType>(null)
@@ -52,6 +70,9 @@ export function LiveFilterBar({
       ? 'Preparing search...'
       : `Search (indexing ${indexingPercent}%)...`
     : 'Search sessions...'
+
+  const showFiltered =
+    filteredCount !== undefined && totalCount !== undefined && filteredCount !== totalCount
 
   // Sync local search from external changes (e.g. clearAll)
   useEffect(() => {
@@ -110,10 +131,10 @@ export function LiveFilterBar({
 
   return (
     <div ref={barRef} className="space-y-2">
-      {/* Row 1: Search + filter buttons + clear */}
+      {/* Row 1: Search + filter buttons + group-by + clear */}
       <div className="flex items-center gap-2">
-        {/* Search input */}
-        <div className="relative flex-1 max-w-xs">
+        {/* Search input — grows but capped to keep filters close */}
+        <div className="relative flex-1 max-w-sm min-w-0">
           {isIndexing ? (
             <Loader2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-blue-400 dark:text-blue-500 animate-spin motion-reduce:animate-none" />
           ) : (
@@ -130,11 +151,12 @@ export function LiveFilterBar({
           />
           {localSearch && (
             <button
+              type="button"
               onClick={() => {
                 setLocalSearch('')
                 onSearchChange('')
               }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -172,19 +194,70 @@ export function LiveFilterBar({
           onItemToggle={(item) => toggleItem(filters.branches, item, onBranchChange)}
         />
 
+        {/* Group-by dropdown — only in kanban view */}
+        {groupByValue !== undefined && onGroupByChange && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => toggleDropdown('groupBy')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+                groupByValue !== 'none'
+                  ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                  : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
+              }`}
+            >
+              <Layers className="h-3 w-3" />
+              <span className="hidden sm:inline">Group</span>
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${openDropdown === 'groupBy' ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {openDropdown === 'groupBy' && (
+              <div className="absolute z-20 mt-1 right-0 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-2 min-w-40">
+                {GROUP_BY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      onGroupByChange(opt.value)
+                      setOpenDropdown(null)
+                    }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition-colors ${
+                      groupByValue === opt.value
+                        ? 'text-indigo-400 bg-indigo-500/10'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Filtered count — sticks with filter buttons */}
+        {showFiltered && (
+          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap">
+            {filteredCount} of {totalCount}
+          </span>
+        )}
+
         {/* Clear all */}
         {activeCount > 0 && (
           <button
+            type="button"
             onClick={onClear}
-            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 whitespace-nowrap"
+            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 whitespace-nowrap cursor-pointer"
           >
             <Filter className="h-3 w-3" />
-            Clear all ({activeCount})
+            Clear ({activeCount})
           </button>
         )}
       </div>
 
-      {/* Row 2: Active filter pills */}
+      {/* Row 2: Active filter pills — only when filters are active */}
       {activeCount > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {filters.statuses.map((s) => (
@@ -245,8 +318,9 @@ function FilterDropdownButton({
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={onToggle}
-        className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+        className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer ${
           count > 0
             ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
             : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
@@ -262,7 +336,7 @@ function FilterDropdownButton({
       </button>
 
       {isOpen && (
-        <div className="absolute z-20 mt-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-2 min-w-[160px]">
+        <div className="absolute z-20 mt-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-2 min-w-40">
           {options.length === 0 ? (
             <div className="text-xs text-gray-400 dark:text-gray-500 px-2 py-1">No options</div>
           ) : (
@@ -295,9 +369,9 @@ function FilterPill({
   onRemove: () => void
 }) {
   return (
-    <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+    <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
       {label}
-      <button onClick={onRemove} className="ml-1 hover:text-red-400 cursor-pointer">
+      <button type="button" onClick={onRemove} className="ml-1 hover:text-red-400 cursor-pointer">
         <X className="h-3 w-3" />
       </button>
     </span>

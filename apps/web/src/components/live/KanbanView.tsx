@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { cn } from '../../lib/utils'
-import { KanbanGroupByControl } from './KanbanGroupByControl'
 import { BranchHeader, ProjectHeader } from './KanbanSwimLaneHeader'
 import { SessionCard } from './SessionCard'
 import type { AgentStateGroup, KanbanGroupBy } from './types'
@@ -17,7 +16,6 @@ interface KanbanViewProps {
   onCardClick?: (sessionId: string) => void
   // Grouping
   groupBy: KanbanGroupBy
-  onGroupByChange: (value: KanbanGroupBy) => void
   projectGroups: ProjectGroup[]
   isCollapsed: (key: string) => boolean
   toggleCollapse: (key: string) => void
@@ -99,19 +97,17 @@ function ColumnHeaders({
       <div className="flex-1 min-w-0">
         <div className="relative bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
           <div className="h-0.5 rounded-t-lg bg-amber-500" />
-          <div className="px-3 py-2 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Needs You
-              <NeedsYouSubCount sessions={needsYouSessions} />
-            </span>
+          <div className="px-3 py-2 flex items-center gap-1.5">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Needs You</span>
             <span className="text-xs text-gray-400 dark:text-gray-500">({needsYouCount})</span>
+            <NeedsYouSubCount sessions={needsYouSessions} />
           </div>
         </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="relative bg-gray-50/50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-800">
           <div className="h-0.5 rounded-t-lg bg-green-500" />
-          <div className="px-3 py-2 flex items-center justify-between">
+          <div className="px-3 py-2 flex items-center gap-1.5">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Running</span>
             <span className="text-xs text-gray-400 dark:text-gray-500">({autonomousCount})</span>
           </div>
@@ -393,15 +389,12 @@ export function KanbanView({
   currentTime,
   onCardClick,
   groupBy,
-  onGroupByChange,
   projectGroups,
   isCollapsed,
   toggleCollapse,
 }: KanbanViewProps) {
   return (
-    <div className="flex flex-col h-full min-h-0 gap-2 pb-4">
-      <KanbanGroupByControl value={groupBy} onChange={onGroupByChange} />
-
+    <div className="flex flex-col h-full min-h-0 pb-4">
       {groupBy === 'none' ? (
         <FlatKanban
           sessions={sessions}
