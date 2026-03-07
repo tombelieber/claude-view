@@ -44,6 +44,7 @@ export function useLiveSessionMessages(
             label: json.label,
             group: json.group,
             context: json.context,
+            source: json.source,
           },
         ])
         // Insert hook event at correct chronological position
@@ -66,6 +67,7 @@ export function useLiveSessionMessages(
                 label: json.label,
                 group: json.group,
                 context: json.context,
+                source: json.source,
               },
             },
           }
