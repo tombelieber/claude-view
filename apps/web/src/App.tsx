@@ -7,13 +7,13 @@ import { ColdStartOverlay } from './components/ColdStartOverlay'
 import { CommandPalette } from './components/CommandPalette'
 import { Header } from './components/Header'
 import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
-import { PatternAlert } from './components/PatternAlert'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSessions } from './components/live/use-live-sessions'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
+import { usePatternAlert } from './hooks/use-pattern-alert'
 import { useProjectSummaries } from './hooks/use-projects'
 import { useTheme } from './hooks/use-theme'
 import { useAppStore } from './store/app-store'
@@ -38,6 +38,7 @@ export default function App() {
     audioUnlocked,
   } = useNotificationSound(liveSessions.sessions)
   const liveContext = useLiveCommandStore((s) => s.context)
+  usePatternAlert()
 
   // Provide shiki-based code renderers to shared components via context
   const codeRenderValue = useMemo<CodeRenderContextValue>(
@@ -116,8 +117,6 @@ export default function App() {
           projects={summaries ?? []}
           liveContext={liveContext ?? undefined}
         />
-
-        <PatternAlert />
       </div>
     </CodeRenderProvider>
   )
