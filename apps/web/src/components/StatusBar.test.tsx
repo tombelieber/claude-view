@@ -323,7 +323,7 @@ describe('StatusBar', () => {
           'Sync already in progress',
           expect.objectContaining({
             description: 'Please wait for the current sync to complete.',
-            duration: 3000,
+            duration: 2000,
           }),
         )
       })
