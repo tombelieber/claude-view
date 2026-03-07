@@ -77,6 +77,14 @@ pub struct SubAgentResult {
     pub usage_cache_creation_tokens: Option<u64>,
 }
 
+/// Extracted from a `type: "progress"` line with `data.type: "hook_progress"`.
+#[derive(Debug, Clone)]
+pub struct HookProgressData {
+    pub hook_event: String,
+    pub tool_name: Option<String>,
+    pub source: Option<String>,
+}
+
 /// A single parsed JSONL line from the session log.
 #[derive(Debug, Clone)]
 pub struct LiveLine {
@@ -130,6 +138,8 @@ pub struct LiveLine {
     pub message_id: Option<String>,
     /// `requestId` from the JSONL entry (for dedup: combined with message_id).
     pub request_id: Option<String>,
+    /// If this is a hook_progress line, the extracted event data.
+    pub hook_progress: Option<HookProgressData>,
 }
 
 /// Broad classification of a JSONL line.
@@ -161,6 +171,7 @@ pub struct TailFinders {
     pub task_update_key: memmem::Finder<'static>,
     pub task_notification_key: memmem::Finder<'static>,
     pub compact_boundary_key: memmem::Finder<'static>,
+    pub hook_progress_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -181,6 +192,7 @@ impl TailFinders {
             task_update_key: memmem::Finder::new(b"\"name\":\"TaskUpdate\""),
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
             compact_boundary_key: memmem::Finder::new(b"\"compact_boundary\""),
+            hook_progress_key: memmem::Finder::new(b"\"hook_progress\""),
         }
     }
 }
@@ -448,6 +460,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 ide_file: None,
                 message_id: None,
                 request_id: None,
+                hook_progress: None,
             };
         }
     };
@@ -716,6 +729,32 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
             None
         };
 
+    // --- Hook progress detection (progress lines with hook_progress) ---
+    let mut result_hook_progress = None;
+    if line_type == LineType::Progress && finders.hook_progress_key.find(raw).is_some() {
+        if let Some(hook_event) = parsed.pointer("/data/hookEvent").and_then(|v| v.as_str()) {
+            let hook_name = parsed
+                .pointer("/data/hookName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let (tool_name, source) = if let Some(pos) = hook_name.find(':') {
+                let suffix = &hook_name[pos + 1..];
+                if hook_event == "SessionStart" {
+                    (None, Some(suffix.to_string()))
+                } else {
+                    (Some(suffix.to_string()), None)
+                }
+            } else {
+                (None, None)
+            };
+            result_hook_progress = Some(HookProgressData {
+                hook_event: hook_event.to_string(),
+                tool_name,
+                source,
+            });
+        }
+    }
+
     // --- TodoWrite detection (assistant lines with TodoWrite tool_use) ---
     let todo_write =
         if line_type == LineType::Assistant && finders.todo_write_key.find(raw).is_some() {
@@ -909,6 +948,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         ide_file,
         message_id,
         request_id,
+        hook_progress: result_hook_progress,
     }
 }
 
@@ -2175,5 +2215,61 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].content_preview, "continue");
         assert_eq!(lines[0].ide_file.as_deref(), Some("auth.rs"));
+    }
+
+    #[test]
+    fn test_hook_progress_pre_tool_use() {
+        let line = br#"{"type":"progress","timestamp":"2026-03-07T12:00:00Z","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"PreToolUse:Read","hookId":"h1","command":"curl ...","status":"success"}}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert_eq!(result.line_type, LineType::Progress);
+        let hp = result.hook_progress.expect("hook_progress should be Some");
+        assert_eq!(hp.hook_event, "PreToolUse");
+        assert_eq!(hp.tool_name, Some("Read".to_string()));
+        assert_eq!(hp.source, None);
+    }
+
+    #[test]
+    fn test_hook_progress_session_start_compact() {
+        let line = br#"{"type":"progress","timestamp":"2026-03-07T12:00:00Z","data":{"type":"hook_progress","hookEvent":"SessionStart","hookName":"SessionStart:compact","hookId":"h2","command":"curl ...","status":"success"}}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        let hp = result.hook_progress.expect("hook_progress should be Some");
+        assert_eq!(hp.hook_event, "SessionStart");
+        assert_eq!(hp.tool_name, None);
+        assert_eq!(hp.source, Some("compact".to_string()));
+    }
+
+    #[test]
+    fn test_hook_progress_stop_no_colon() {
+        let line = br#"{"type":"progress","timestamp":"2026-03-07T12:00:00Z","data":{"type":"hook_progress","hookEvent":"Stop","hookName":"Stop","hookId":"h3","command":"curl ...","status":"success"}}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        let hp = result.hook_progress.expect("hook_progress should be Some");
+        assert_eq!(hp.hook_event, "Stop");
+        assert_eq!(hp.tool_name, None);
+        assert_eq!(hp.source, None);
+    }
+
+    #[test]
+    fn test_hook_progress_malformed_json() {
+        let line = br#"{"type":"progress","data":{"type":"hook_progress","broken"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert!(
+            result.hook_progress.is_none(),
+            "Malformed JSON should be None"
+        );
+    }
+
+    #[test]
+    fn test_hook_progress_empty_hook_name() {
+        let line = br#"{"type":"progress","timestamp":"2026-03-07T12:00:00Z","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"","hookId":"h4","command":"curl ...","status":"success"}}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        let hp = result.hook_progress.expect("hook_progress should be Some");
+        assert_eq!(hp.hook_event, "PreToolUse");
+        assert_eq!(hp.tool_name, None);
+        assert_eq!(hp.source, None);
     }
 }
