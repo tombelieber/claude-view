@@ -43,12 +43,12 @@ export const COST_CATEGORY_COLORS = {
     dot: 'bg-amber-500 dark:bg-amber-400',
   },
 
-  /** Positive indicator — cache savings amount */
+  /** Positive indicator — cache savings amount (bright green for clarity) */
   savings: {
-    light: 'bg-emerald-500 text-white',
-    dark: 'dark:bg-emerald-400 dark:text-emerald-950',
-    text: 'text-emerald-600 dark:text-emerald-400',
-    dot: 'bg-emerald-500 dark:bg-emerald-400',
+    light: 'bg-green-500 text-white',
+    dark: 'dark:bg-green-500 dark:text-white',
+    text: 'text-green-600 dark:text-green-400',
+    dot: 'bg-green-500 dark:bg-green-500',
   },
 
   /** Warning state — unavailable pricing or unpriced usage */
@@ -73,6 +73,14 @@ export const COST_CATEGORY_COLORS = {
     dark: 'dark:text-gray-400',
     text: 'text-gray-500 dark:text-gray-400',
     dot: 'bg-gray-400 dark:bg-gray-500',
+  },
+
+  /** Optional: Expensive/high-cost indicator (for future use) */
+  expensive: {
+    light: 'bg-red-50 border-red-200 text-red-700',
+    dark: 'dark:bg-red-950/20 dark:border-red-900/60 dark:text-red-400',
+    text: 'text-red-600 dark:text-red-400',
+    dot: 'bg-red-500 dark:bg-red-500',
   },
 } as const
 
