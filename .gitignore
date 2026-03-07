@@ -102,15 +102,9 @@ __pycache__/
 # Auto-generated claude-mem files
 **/CLAUDE.md
 
-# Internal docs — HOW we build (secret), not WHAT we built
+# Internal docs
 docs/plans/
 docs/internal/
-docs/AUDIT_REDESIGN_SUMMARY.md
-docs/DESIGN_PHILOSOPHY_7TYPE_UI.md
-docs/UI_REDESIGN_7TYPE_PARSER.md
-docs/cost-ui-design-system.md
-docs/cost-ui-audit-*.md
-docs/TODO-*.md
 .playwright-mcp/
 
 # Astro build artifacts (apps/landing)
