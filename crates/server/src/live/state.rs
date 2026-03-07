@@ -116,6 +116,8 @@ pub struct LiveSession {
     pub worktree_branch: Option<String>,
     /// Whether this session is running inside a git worktree.
     pub is_worktree: bool,
+    /// Computed: worktree_branch ?? git_branch. Always use this for display.
+    pub effective_branch: Option<String>,
     /// PID of the running Claude process, if any.
     pub pid: Option<u32>,
     /// Session title derived from the first non-meta user message.
