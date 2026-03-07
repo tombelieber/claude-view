@@ -4,6 +4,7 @@ import { MonitorPane, type MonitorPaneProps } from './MonitorPane'
 import type { LiveSession } from './use-live-sessions'
 
 function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
+  const gitBranch = overrides.gitBranch !== undefined ? overrides.gitBranch : 'feature/cool-stuff'
   return {
     id: 'session-1',
     project: 'my-project',
@@ -16,7 +17,10 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       state: 'tool_use',
       label: 'Working',
     },
-    gitBranch: 'feature/cool-stuff',
+    gitBranch,
+    worktreeBranch: null,
+    isWorktree: false,
+    effectiveBranch: gitBranch,
     pid: 12345,
     title: 'Test Session',
     lastUserMessage: 'Fix the bug',

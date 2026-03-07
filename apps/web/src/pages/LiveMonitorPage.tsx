@@ -177,7 +177,7 @@ export function LiveMonitorPage() {
   }, [sessions])
 
   const availableBranches = useMemo(() => {
-    const set = new Set(sessions.filter((s) => s.gitBranch).map((s) => s.gitBranch!))
+    const set = new Set(sessions.filter((s) => s.effectiveBranch).map((s) => s.effectiveBranch!))
     return Array.from(set).sort()
   }, [sessions])
 

@@ -109,13 +109,13 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             {session.projectDisplayName || session.project}
           </span>
 
-          {session.gitBranch && (
+          {session.effectiveBranch && (
             <span
               className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[160px]"
-              title={session.gitBranch}
+              title={session.effectiveBranch}
             >
               <GitBranch className="w-3 h-3 flex-shrink-0" />
-              {session.gitBranch}
+              {session.effectiveBranch}
             </span>
           )}
 

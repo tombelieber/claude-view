@@ -230,7 +230,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
     if (query.trim()) {
       const q = query.toLowerCase()
       for (const session of liveContext.sessions.slice(0, 5)) {
-        const branchLabel = session.gitBranch ?? 'no branch'
+        const branchLabel = session.effectiveBranch ?? 'no branch'
         const projectLabel = session.projectDisplayName || session.project
         if (projectLabel.toLowerCase().includes(q) || branchLabel.toLowerCase().includes(q)) {
           items.push({
@@ -240,7 +240,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
             icon: null,
             actionType: 'select-session',
             actionPayload: session.id,
-            keywords: [session.project, session.gitBranch ?? '', session.id].filter(Boolean),
+            keywords: [session.project, session.effectiveBranch ?? '', session.id].filter(Boolean),
           })
         }
       }
