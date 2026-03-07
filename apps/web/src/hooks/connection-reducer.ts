@@ -69,7 +69,7 @@ export function connectionReducer(
 
     case 'ws_close': {
       // Non-recoverable close code → fatal
-      if (NON_RECOVERABLE_CODES.has(action.code)) {
+      if ((NON_RECOVERABLE_CODES as ReadonlySet<number>).has(action.code)) {
         if (
           state.phase === 'connecting' ||
           state.phase === 'active' ||
