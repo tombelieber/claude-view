@@ -30,10 +30,26 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
               Cost
             </h4>
             <div className="space-y-1">
-              <Row label="Input" value={formatCostUsd(summary.inputCostUsd)} />
-              <Row label="Output" value={formatCostUsd(summary.outputCostUsd)} />
-              <Row label="Cache read" value={formatCostUsd(summary.cacheReadCostUsd)} />
-              <Row label="Cache creation" value={formatCostUsd(summary.cacheCreationCostUsd)} />
+              <Row
+                label="Input"
+                value={formatCostUsd(summary.inputCostUsd)}
+                dot="bg-gray-400 dark:bg-gray-500"
+              />
+              <Row
+                label="Output"
+                value={formatCostUsd(summary.outputCostUsd)}
+                dot="bg-blue-600 dark:bg-blue-400"
+              />
+              <Row
+                label="Cache read"
+                value={formatCostUsd(summary.cacheReadCostUsd)}
+                dot="bg-emerald-500 dark:bg-emerald-400"
+              />
+              <Row
+                label="Cache creation"
+                value={formatCostUsd(summary.cacheCreationCostUsd)}
+                dot="bg-amber-500 dark:bg-amber-400"
+              />
               {summary.cacheSavingsUsd > 0 && (
                 <Row
                   label="Cache savings"
@@ -57,10 +73,26 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
               Tokens
             </h4>
             <div className="space-y-1">
-              <Row label="Input" value={formatTokenCount(summary.inputTokens)} />
-              <Row label="Output" value={formatTokenCount(summary.outputTokens)} />
-              <Row label="Cache read" value={formatTokenCount(summary.cacheReadTokens)} />
-              <Row label="Cache creation" value={formatTokenCount(summary.cacheCreationTokens)} />
+              <Row
+                label="Input"
+                value={formatTokenCount(summary.inputTokens)}
+                dot="bg-gray-400 dark:bg-gray-500"
+              />
+              <Row
+                label="Output"
+                value={formatTokenCount(summary.outputTokens)}
+                dot="bg-blue-600 dark:bg-blue-400"
+              />
+              <Row
+                label="Cache read"
+                value={formatTokenCount(summary.cacheReadTokens)}
+                dot="bg-emerald-500 dark:bg-emerald-400"
+              />
+              <Row
+                label="Cache creation"
+                value={formatTokenCount(summary.cacheCreationTokens)}
+                dot="bg-amber-500 dark:bg-amber-400"
+              />
               <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
                 <Row
                   label="Total"
@@ -82,14 +114,19 @@ function Row({
   label,
   value,
   className = '',
+  dot,
 }: {
   label: string
   value: string
   className?: string
+  dot?: string
 }) {
   return (
-    <div className={`flex justify-between ${className}`}>
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+    <div className={`flex items-center justify-between ${className}`}>
+      <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+        {dot && <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${dot}`} />}
+        {label}
+      </span>
       <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300">{value}</span>
     </div>
   )
