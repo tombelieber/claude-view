@@ -12,6 +12,7 @@ repository = "https://github.com/tombelieber/claude-view"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full", "test-util"] }
+tokio-util = "0.7"
 tokio-stream = "0.1"
 async-stream = "0.3"
 
