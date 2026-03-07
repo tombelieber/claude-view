@@ -344,7 +344,7 @@ CREATE TABLE IF NOT EXISTS hook_events (
     event_name  TEXT NOT NULL,            -- See §4.2
     tool_name   TEXT,                     -- Tool involved (if applicable)
     label       TEXT NOT NULL,            -- Human-readable description
-    group_name  TEXT NOT NULL,            -- "autonomous" | "needs_you" | "delivered"
+    group_name  TEXT NOT NULL,            -- "autonomous" | "needs_you"
     context     TEXT                      -- JSON blob with event-specific data
 );
 CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, timestamp);
@@ -354,7 +354,6 @@ CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, ti
 
 - `"autonomous"` — agent is working independently
 - `"needs_you"` — agent is waiting for user input
-- `"delivered"` — reserved for future use (`#[allow(dead_code)]` in AgentStateGroup enum)
 
 ### 4.2 All Event Names (15)
 
