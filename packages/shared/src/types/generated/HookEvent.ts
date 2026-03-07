@@ -28,4 +28,8 @@ export type HookEvent = {
    * Optional context JSON (tool_input, error, prompt snippet, etc.).
    */
   context: string | null
+  /**
+   * Origin channel: "hook" (Channel B), "hook_progress" (Channel A), "synthesized".
+   */
+  source: string
 }

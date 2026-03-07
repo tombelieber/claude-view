@@ -40,7 +40,8 @@ use crate::Database;
 /// Version 19: Remove JSONL top-level cost-field parsing path; compute from token usage only.
 /// Version 20: Strict cost integrity: if any turn model is unpriced, session total_cost_usd is NULL.
 /// Version 21: Source-message integrity hardening (role filtering, summary exclusion, strict tool_use LOC/path extraction).
-pub const CURRENT_PARSE_VERSION: i32 = 21;
+/// Version 22: Extract hook_progress events into hook_events table for backfill.
+pub const CURRENT_PARSE_VERSION: i32 = 22;
 
 /// Complete parsed session data — the sole input to any DB write.
 /// Every field is populated by the parser. No field is ever set from
@@ -272,6 +273,7 @@ pub struct ExtendedMetadata {
     pub agent_spawn_count: u32,
     pub bash_progress_count: u32,
     pub hook_progress_count: u32,
+    pub hook_progress_events: Vec<crate::queries::hook_events::HookEventRow>,
     pub mcp_progress_count: u32,
 
     // Summary text (from summary lines)
@@ -800,6 +802,10 @@ fn merge_subagent_parse_result(parent: &mut ParseResult, subagent: ParseResult) 
         .files_touched
         .extend(subagent.deep.files_touched);
     parent.deep.skills_used.extend(subagent.deep.skills_used);
+    parent
+        .deep
+        .hook_progress_events
+        .extend(subagent.deep.hook_progress_events);
 
     for model in subagent.models_seen {
         if !parent.models_seen.contains(&model) {
@@ -868,6 +874,69 @@ fn merge_subagent_workload(parent_jsonl_path: &Path, result: &mut ParseResult) {
     }
 
     recompute_merged_productivity_metrics(result);
+}
+
+/// Extract a structured `HookEventRow` from a raw JSONL line with `"type":"progress"` /
+/// `"data":{"type":"hook_progress", ...}`.  Returns `None` if the line doesn't contain
+/// the expected hook_progress shape.
+fn parse_hook_progress_line(line: &[u8]) -> Option<crate::queries::hook_events::HookEventRow> {
+    let json: serde_json::Value = serde_json::from_slice(line).ok()?;
+    let hook_event = json.pointer("/data/hookEvent")?.as_str()?;
+    let hook_name = json
+        .pointer("/data/hookName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let (tool_name, source) = if let Some(pos) = hook_name.find(':') {
+        let suffix = &hook_name[pos + 1..];
+        if hook_event == "SessionStart" {
+            (None, Some(suffix))
+        } else {
+            (Some(suffix), None)
+        }
+    } else {
+        (None, None)
+    };
+
+    let group = match hook_event {
+        "SessionStart" if source == Some("compact") => "autonomous",
+        "SessionStart" => "needs_you",
+        "PreToolUse"
+            if matches!(
+                tool_name,
+                Some("AskUserQuestion") | Some("EnterPlanMode") | Some("ExitPlanMode")
+            ) =>
+        {
+            "needs_you"
+        }
+        "PostToolUseFailure" | "PostToolUse" | "PreToolUse" => "autonomous",
+        "Stop" => "needs_you",
+        _ => "autonomous",
+    };
+
+    let label = match tool_name {
+        Some(t) => format!("{}: {}", hook_event, t),
+        None => hook_event.to_string(),
+    };
+
+    // Extract timestamp from JSON directly — SIMD fast path skips timestamp
+    // extraction for progress lines, so caller's last_timestamp would be stale.
+    let timestamp = json
+        .get("timestamp")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.timestamp())
+        .unwrap_or(0);
+
+    Some(crate::queries::hook_events::HookEventRow {
+        timestamp,
+        event_name: hook_event.to_string(),
+        tool_name: tool_name.map(|s| s.to_string()),
+        label,
+        group_name: group.to_string(),
+        context: None,
+        source: "hook_progress".to_string(),
+    })
 }
 
 pub fn parse_bytes(data: &[u8]) -> ParseResult {
@@ -984,6 +1053,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 result.deep.bash_progress_count += 1;
             } else if subtype_hook.find(line).is_some() {
                 result.deep.hook_progress_count += 1;
+                if let Some(hook_event) = parse_hook_progress_line(line) {
+                    result.deep.hook_progress_events.push(hook_event);
+                }
             } else if subtype_mcp.find(line).is_some() {
                 result.deep.mcp_progress_count += 1;
             }
@@ -1385,7 +1457,12 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 match data_type {
                     "agent_progress" => result.deep.agent_spawn_count += 1,
                     "bash_progress" => result.deep.bash_progress_count += 1,
-                    "hook_progress" => result.deep.hook_progress_count += 1,
+                    "hook_progress" => {
+                        result.deep.hook_progress_count += 1;
+                        if let Some(hook_event) = parse_hook_progress_line(line) {
+                            result.deep.hook_progress_events.push(hook_event);
+                        }
+                    }
                     "mcp_progress" => result.deep.mcp_progress_count += 1,
                     _ => {}
                 }
@@ -2822,6 +2899,39 @@ where
         0
     };
 
+    // ── Hook events persist (after write_results_sqlx commit) ────────
+    // insert_hook_events starts its own transaction — must run AFTER
+    // write_results_sqlx returns (no nested BEGIN).
+    for result in &results {
+        if !result.parse_result.deep.hook_progress_events.is_empty() {
+            let mut events = result.parse_result.deep.hook_progress_events.clone();
+            events.sort_by(|a, b| {
+                a.timestamp
+                    .cmp(&b.timestamp)
+                    .then(a.event_name.cmp(&b.event_name))
+                    .then(a.tool_name.cmp(&b.tool_name))
+                    .then(a.source.cmp(&b.source))
+            });
+            events.dedup_by(|a, b| {
+                a.timestamp == b.timestamp
+                    && a.event_name == b.event_name
+                    && a.tool_name == b.tool_name
+                    && a.source == b.source
+            });
+
+            if let Err(e) =
+                crate::queries::hook_events::insert_hook_events(db, &result.session_id, &events)
+                    .await
+            {
+                tracing::warn!(
+                    session_id = %result.session_id,
+                    error = %e,
+                    "Failed to persist hook_progress events"
+                );
+            }
+        }
+    }
+
     // ── Search index phase (after SQLite commit) ──────────────────────
     // Write collected search messages to Tantivy. Runs after SQLite succeeds.
     // If Tantivy fails, we only log a warning — search index will be rebuilt
@@ -3137,6 +3247,8 @@ struct IndexedSession {
     project_for_search: String,
     /// Per-session parse diagnostics for integrity counter aggregation
     diagnostics: ParseDiagnostics,
+    /// Hook progress events extracted from JSONL for backfill into hook_events table
+    hook_progress_events: Vec<crate::queries::hook_events::HookEventRow>,
 }
 
 /// 3-phase startup scan: parse (parallel) → SQLite write (chunked) → search index.
@@ -3527,6 +3639,7 @@ where
                     git_root,
                     project_for_search,
                     diagnostics: parse_result.diagnostics,
+                    hook_progress_events: parse_result.deep.hook_progress_events,
                 }),
                 sid,
             ))
@@ -3701,6 +3814,39 @@ where
 
         // Yield between chunks so live manager writes can slip through
         tokio::task::yield_now().await;
+    }
+
+    // ── Hook events persist (after all chunked transactions commit) ────
+    // insert_hook_events starts its own transaction — must run AFTER
+    // the chunked write loop returns (no nested BEGIN).
+    for session in &indexed_sessions {
+        if !session.hook_progress_events.is_empty() {
+            let mut events = session.hook_progress_events.clone();
+            events.sort_by(|a, b| {
+                a.timestamp
+                    .cmp(&b.timestamp)
+                    .then(a.event_name.cmp(&b.event_name))
+                    .then(a.tool_name.cmp(&b.tool_name))
+                    .then(a.source.cmp(&b.source))
+            });
+            events.dedup_by(|a, b| {
+                a.timestamp == b.timestamp
+                    && a.event_name == b.event_name
+                    && a.tool_name == b.tool_name
+                    && a.source == b.source
+            });
+
+            if let Err(e) =
+                crate::queries::hook_events::insert_hook_events(db, &session.parsed.id, &events)
+                    .await
+            {
+                tracing::warn!(
+                    session_id = %session.parsed.id,
+                    error = %e,
+                    "Failed to persist hook_progress events"
+                );
+            }
+        }
     }
 
     tracing::info!(

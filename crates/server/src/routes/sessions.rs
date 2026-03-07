@@ -565,6 +565,7 @@ async fn get_session_hook_events(
                             "label": e.label,
                             "group": e.group,
                             "context": e.context,
+                            "source": e.source,
                         })
                     })
                     .collect();
@@ -586,6 +587,7 @@ async fn get_session_hook_events(
                         "label": e.label,
                         "group": e.group_name,
                         "context": e.context,
+                        "source": e.source,
                     })
                 })
                 .collect();
@@ -1808,6 +1810,7 @@ mod tests {
                 label: "Waiting for first prompt".into(),
                 group_name: "needs_you".into(),
                 context: None,
+                source: "hook".into(),
             },
             claude_view_db::HookEventRow {
                 timestamp: 1001,
@@ -1816,6 +1819,7 @@ mod tests {
                 label: "Running: git status".into(),
                 group_name: "autonomous".into(),
                 context: Some(r#"{"command":"git status"}"#.into()),
+                source: "hook".into(),
             },
         ];
         claude_view_db::hook_events_queries::insert_hook_events(&db, "hook-test", &events)
@@ -1907,6 +1911,7 @@ mod tests {
             label: "Waiting for prompt".to_string(),
             group: "needs_you".to_string(),
             context: None,
+            source: "hook".to_string(),
         });
         session.hook_events.push(HookEvent {
             timestamp: 1001,
@@ -1915,6 +1920,7 @@ mod tests {
             label: "Reading file".to_string(),
             group: "autonomous".to_string(),
             context: Some(r#"{"file_path":"/foo/bar.rs"}"#.to_string()),
+            source: "hook".to_string(),
         });
 
         state
