@@ -3,7 +3,7 @@
 export type LiveViewMode = 'grid' | 'list' | 'kanban' | 'monitor'
 
 /** Agent state group — the operator's mental model */
-export type AgentStateGroup = 'needs_you' | 'autonomous'
+export type AgentStateGroup = 'needs_you' | 'autonomous' | 'delivered'
 
 /** The universal agent state — core protocol */
 export interface AgentState {
@@ -36,12 +36,14 @@ export const KNOWN_STATES: Record<string, { icon: string; color: string }> = {
 export const GROUP_DEFAULTS: Record<AgentStateGroup, { icon: string; color: string }> = {
   needs_you: { icon: 'Bell', color: 'amber' },
   autonomous: { icon: 'Loader', color: 'green' },
+  delivered: { icon: 'Package', color: 'gray' },
 }
 
 /** Custom sort order for agent state groups */
 export const GROUP_ORDER: Record<AgentStateGroup, number> = {
   needs_you: 0,
   autonomous: 1,
+  delivered: 2,
 }
 
 export const LIVE_VIEW_MODES = [
