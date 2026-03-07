@@ -289,7 +289,53 @@ async fn ws_connect(
             .into_response();
     }
 
-    // 2. Resume session via sidecar (reject with HTTP 502 on failure)
+    // 2. Validate session exists in LiveSessionManager (if available)
+    if let Some(ref live_manager) = state.live_manager {
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get(&query.session_id);
+        match session {
+            None => {
+                return (
+                    axum::http::StatusCode::NOT_FOUND,
+                    format!("Session {} not found in live monitor", query.session_id),
+                )
+                    .into_response();
+            }
+            Some(s)
+                if s.pid.is_none() || !crate::live::process::is_pid_alive(s.pid.unwrap_or(0)) =>
+            {
+                return (
+                    axum::http::StatusCode::GONE,
+                    format!("Session {} process is no longer alive", query.session_id),
+                )
+                    .into_response();
+            }
+            Some(s) if s.control.is_some() => {
+                // Already controlled — reuse existing binding (idempotent reconnect)
+                let control_id = s.control.as_ref().unwrap().control_id.clone();
+                let cancel = s.control.as_ref().unwrap().cancel.clone();
+                drop(sessions);
+                let socket_path = match state.sidecar.ensure_running().await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        return (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            format!("Sidecar unavailable: {e}"),
+                        )
+                            .into_response();
+                    }
+                };
+                return ws.on_upgrade(move |socket| {
+                    handle_ws_relay_with_close_codes(socket, control_id, socket_path, state, cancel)
+                });
+            }
+            _ => {} // Session exists, PID alive, no control — proceed to resume
+        }
+        drop(sessions);
+        let _ = live_manager; // suppress unused warning after drop
+    }
+
+    // 3. Resume session via sidecar (reject with HTTP 502 on failure)
     //    proxy_resume internally calls ensure_running() via proxy_to_sidecar
     let control_id = match proxy_resume(&state, &query.session_id, query.model.as_deref()).await {
         Ok(id) => id,
@@ -303,7 +349,33 @@ async fn ws_connect(
         }
     };
 
-    // 3. Get socket_path for the WS relay (sidecar guaranteed running after resume)
+    // CAS bind: only succeeds if no one else bound between our check and now
+    if let Some(ref live_manager) = state.live_manager {
+        let bound = live_manager
+            .bind_control(&query.session_id, control_id.clone(), None)
+            .await;
+        if !bound {
+            // Lost the race — terminate orphaned SDK session
+            let _ = proxy_to_sidecar(
+                &state,
+                "DELETE",
+                &format!("/control/sessions/{control_id}"),
+                None,
+            )
+            .await;
+            return (
+                axum::http::StatusCode::CONFLICT,
+                format!(
+                    "Session {} is already controlled by another connection",
+                    query.session_id
+                ),
+            )
+                .into_response();
+        }
+        live_manager.request_snapshot_save();
+    }
+
+    // 4. Get socket_path for the WS relay (sidecar guaranteed running after resume)
     let socket_path = match state.sidecar.ensure_running().await {
         Ok(p) => p,
         Err(e) => {
@@ -316,9 +388,21 @@ async fn ws_connect(
         }
     };
 
-    // 4. Only NOW upgrade — session is guaranteed to exist
+    // Get cancel token from the binding we just created
+    let cancel = if state.live_manager.is_some() {
+        let sessions = state.live_sessions.read().await;
+        sessions
+            .get(&query.session_id)
+            .and_then(|s| s.control.as_ref())
+            .map(|c| c.cancel.clone())
+            .unwrap_or_default()
+    } else {
+        tokio_util::sync::CancellationToken::new()
+    };
+
+    // 5. Only NOW upgrade — session is guaranteed to exist
     ws.on_upgrade(move |socket| {
-        handle_ws_relay_with_close_codes(socket, control_id, socket_path, state)
+        handle_ws_relay_with_close_codes(socket, control_id, socket_path, state, cancel)
     })
 }
 
@@ -327,6 +411,7 @@ async fn handle_ws_relay_with_close_codes(
     control_id: String,
     socket_path: String,
     state: Arc<AppState>,
+    cancel: tokio_util::sync::CancellationToken,
 ) {
     let _ = state; // kept for future use (e.g. metrics), suppress unused warning
     let sidecar_path = format!("/control/sessions/{control_id}/stream");
@@ -434,6 +519,15 @@ async fn handle_ws_relay_with_close_codes(
     };
 
     tokio::select! {
+        _ = cancel.cancelled() => {
+            // Session was unbound (stale detection, terminate, or re-bind)
+            let _ = fe_sink
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4001,
+                    reason: "session_rebound".into(),
+                })))
+                .await;
+        }
         _ = fe_to_sc => {},
         _ = sc_to_fe => {},
     }
@@ -457,6 +551,19 @@ async fn terminate_session(
     State(state): State<Arc<AppState>>,
     Path(control_id): Path<String>,
 ) -> Result<Response, ApiError> {
+    // Unbind from LiveSessionManager before telling sidecar to terminate
+    if let Some(ref live_manager) = state.live_manager {
+        let controlled = live_manager.controlled_session_ids().await;
+        for (session_id, cid) in &controlled {
+            if cid == &control_id {
+                live_manager
+                    .unbind_control_if(session_id, &control_id)
+                    .await;
+                live_manager.request_snapshot_save();
+                break;
+            }
+        }
+    }
     proxy_to_sidecar(
         &state,
         "DELETE",
