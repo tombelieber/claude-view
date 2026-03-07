@@ -206,11 +206,11 @@ async fn proxy_to_sidecar(
         .await
         .map_err(|e| ApiError::Internal(format!("Read sidecar response: {e}")))?
         .to_bytes();
-    Ok(Response::builder()
+    Response::builder()
         .status(status)
         .header("content-type", "application/json")
         .body(Body::from(bytes))
-        .unwrap())
+        .map_err(|e| ApiError::Internal(format!("Build response: {e}")))
 }
 
 /// POST /api/control/resume — proxy to sidecar
