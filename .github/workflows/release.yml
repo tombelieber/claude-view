@@ -84,7 +84,7 @@ jobs:
       - name: Build sidecar
         run: |
           cd sidecar
-          npm install --omit=dev
+          npm install
           npm run build
 
       - name: Build Rust binary
