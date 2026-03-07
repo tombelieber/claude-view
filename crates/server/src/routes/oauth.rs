@@ -6,9 +6,10 @@
 
 use std::sync::Arc;
 
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{extract::State, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::cache::CacheError;
 use crate::state::AppState;
 
 // ── Response types (sent to frontend) ───────────────────────────────────
@@ -26,7 +27,7 @@ pub struct UsageTier {
     pub spent: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthUsageResponse {
     pub has_auth: bool,
@@ -339,27 +340,19 @@ pub async fn get_auth_identity(State(state): State<Arc<AppState>>) -> Json<AuthI
     }
 }
 
-/// GET /api/oauth/usage
-pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
-    // 1. Read credentials (file → keychain fallback).
-    let home = match dirs::home_dir() {
-        Some(h) => h,
-        None => return Json(no_auth()),
-    };
+/// The inner fetch logic — reads credentials, calls Anthropic API.
+/// Extracted so it can be passed as the `fetcher` closure to `CachedUpstream`.
+async fn fetch_oauth_usage_inner() -> Result<OAuthUsageResponse, String> {
+    let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
 
-    let creds_bytes = match claude_view_core::credentials::load_credentials_bytes(&home) {
-        Some(b) => b,
-        None => return Json(no_auth()),
-    };
+    let creds_bytes = claude_view_core::credentials::load_credentials_bytes(&home)
+        .ok_or_else(|| "no credentials".to_string())?;
 
-    let oauth = match claude_view_core::credentials::parse_credentials(&creds_bytes) {
-        Some(o) => o,
-        None => return Json(no_auth()),
-    };
+    let oauth = claude_view_core::credentials::parse_credentials(&creds_bytes)
+        .ok_or_else(|| "invalid credentials".to_string())?;
 
-    // 2. Check expiry — we never refresh, just report the error.
     if claude_view_core::credentials::is_token_expired(oauth.expires_at) {
-        return Json(auth_error(
+        return Ok(auth_error(
             "Token expired. Run 'claude' to re-authenticate.",
         ));
     }
@@ -372,19 +365,16 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
         }
     });
 
-    // 3. Fetch usage with the current token (no refresh, no retry).
     let client = reqwest::Client::new();
-    let result = fetch_usage(&client, &oauth.access_token).await;
-
-    let usage = match result {
+    let usage = match fetch_usage(&client, &oauth.access_token).await {
         Ok(u) => u,
         Err(e) if e.contains("401") => {
-            return Json(auth_error(
+            return Ok(auth_error(
                 "Token expired. Run 'claude' to re-authenticate.",
             ));
         }
         Err(e) => {
-            return Json(OAuthUsageResponse {
+            return Ok(OAuthUsageResponse {
                 has_auth: true,
                 error: Some(e),
                 plan,
@@ -393,19 +383,66 @@ pub async fn get_oauth_usage(State(_state): State<Arc<AppState>>) -> Json<OAuthU
         }
     };
 
-    let tiers = build_tiers(&usage);
-
-    Json(OAuthUsageResponse {
+    Ok(OAuthUsageResponse {
         has_auth: true,
         error: None,
         plan,
-        tiers,
+        tiers: build_tiers(&usage),
     })
+}
+
+/// GET /api/oauth/usage
+///
+/// Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.
+pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
+    match state
+        .oauth_usage_cache
+        .get_or_fetch(|| fetch_oauth_usage_inner())
+        .await
+    {
+        Ok(resp) => Json(resp),
+        Err(_) => Json(no_auth()),
+    }
+}
+
+/// Minimum interval between force refreshes (spam guard).
+const FORCE_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// POST /api/oauth/usage/refresh
+///
+/// Bypass TTL cache and fetch fresh data from Anthropic.
+/// Returns 429 + Retry-After header if called within 60s of the last attempt.
+pub async fn post_oauth_usage_refresh(
+    State(state): State<Arc<AppState>>,
+) -> axum::response::Response {
+    match state
+        .oauth_usage_cache
+        .force_refresh(FORCE_REFRESH_MIN_INTERVAL, || fetch_oauth_usage_inner())
+        .await
+    {
+        Ok(resp) => Json(resp).into_response(),
+        Err(CacheError::TooSoon { wait_secs }) => (
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, wait_secs.to_string())],
+        )
+            .into_response(),
+        Err(CacheError::Fetch(e)) => Json(OAuthUsageResponse {
+            has_auth: true,
+            error: Some(e),
+            plan: None,
+            tiers: vec![],
+        })
+        .into_response(),
+    }
 }
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/oauth/usage", get(get_oauth_usage))
+        .route(
+            "/oauth/usage/refresh",
+            axum::routing::post(post_oauth_usage_refresh),
+        )
         .route("/oauth/identity", get(get_auth_identity))
 }
 
