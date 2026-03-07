@@ -52,3 +52,8 @@ export const LIVE_VIEW_MODES = [
 ] as const
 
 export const LIVE_VIEW_STORAGE_KEY = 'claude-view:live-view-mode'
+
+export type KanbanGroupBy = 'none' | 'project-branch'
+
+export const KANBAN_GROUP_BY_STORAGE_KEY = 'claude-view:kanban-group-by'
+export const KANBAN_COLLAPSE_STORAGE_KEY = 'claude-view:kanban-collapse'
