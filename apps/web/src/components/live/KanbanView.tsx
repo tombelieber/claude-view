@@ -65,7 +65,6 @@ function splitByGroup(sessions: LiveSession[]): Record<AgentStateGroup, LiveSess
   const groups: Record<AgentStateGroup, LiveSession[]> = {
     needs_you: [],
     autonomous: [],
-    delivered: [],
   }
   for (const s of sessions) {
     groups[s.agentState.group].push(s)
@@ -149,8 +148,16 @@ function CardSlot({
       {sessions.map((session) => (
         <div
           key={session.id}
+          role="button"
+          tabIndex={0}
           data-session-id={session.id}
           onClick={() => onSelect(session.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onSelect(session.id)
+            }
+          }}
           className={cn(
             'cursor-pointer rounded-lg transition-opacity',
             session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg',
