@@ -61,7 +61,9 @@ impl SidecarManager {
     /// If the child died (crash), restarts it.
     pub async fn ensure_running(&self) -> Result<String, SidecarError> {
         {
-            let mut guard = self.child.lock().unwrap();
+            let mut guard = self.child.lock().map_err(|_| {
+                SidecarError::RequestError("sidecar mutex poisoned, another thread panicked".into())
+            })?;
 
             // Check if existing child is still alive
             if let Some(ref mut child) = *guard {
@@ -136,7 +138,10 @@ impl SidecarManager {
     /// 2. The child is already killed, so wait() returns almost immediately
     /// 3. Making this async would require spawn_blocking and complicate Drop
     pub fn shutdown(&self) {
-        let mut guard = self.child.lock().unwrap();
+        let Ok(mut guard) = self.child.lock() else {
+            tracing::error!("sidecar mutex poisoned, another thread panicked");
+            return;
+        };
         if let Some(ref mut child) = *guard {
             tracing::info!(pid = child.id(), "Shutting down sidecar");
             let _ = child.kill();
@@ -150,7 +155,10 @@ impl SidecarManager {
 
     /// Check if the sidecar is currently running.
     pub fn is_running(&self) -> bool {
-        let mut guard = self.child.lock().unwrap();
+        let Ok(mut guard) = self.child.lock() else {
+            tracing::error!("sidecar mutex poisoned, another thread panicked");
+            return false;
+        };
         if let Some(ref mut child) = *guard {
             matches!(child.try_wait(), Ok(None))
         } else {

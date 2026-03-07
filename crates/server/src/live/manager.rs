@@ -481,7 +481,7 @@ impl LiveSessionManager {
             }
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
+                .expect("system clock before Unix epoch")
                 .as_secs() as i64;
             session.control = Some(super::state::ControlBinding {
                 control_id,
@@ -574,13 +574,17 @@ impl LiveSessionManager {
                 })
             })
             .collect();
-        save_session_snapshot(
-            &pid_snapshot_path(),
-            &SessionSnapshot {
-                version: 2,
-                sessions: entries,
-            },
-        );
+        if let Some(snap_path) = pid_snapshot_path() {
+            save_session_snapshot(
+                &snap_path,
+                &SessionSnapshot {
+                    version: 2,
+                    sessions: entries,
+                },
+            );
+        } else {
+            tracing::error!("could not determine home directory for snapshot save");
+        }
     }
 
     /// Run a one-shot process count scan (display metric only).
@@ -635,8 +639,8 @@ impl LiveSessionManager {
             // 3. Promote sessions from crash-recovery snapshot.
             //    Sessions with alive PIDs get full LiveSession entries immediately,
             //    populated with metrics from accumulators and agent_state from snapshot.
-            {
-                let snapshot = load_session_snapshot(&pid_snapshot_path());
+            if let Some(snap_path) = pid_snapshot_path() {
+                let snapshot = load_session_snapshot(&snap_path);
                 if !snapshot.sessions.is_empty() {
                     let mut promoted = 0u32;
                     let mut dead = 0u32;
@@ -916,7 +920,11 @@ impl LiveSessionManager {
                     }
                     FileEvent::Rescan => {
                         tracing::info!("Overflow detected — triggering full reconciliation scan");
-                        let claude_dir = dirs::home_dir().expect("home dir").join(".claude");
+                        let Some(home) = dirs::home_dir() else {
+                            tracing::warn!("HOME not set, skipping rescan");
+                            continue;
+                        };
+                        let claude_dir = home.join(".claude");
                         let hints = build_index_hints(&claude_dir);
                         let search_for_rescan = manager.search_index.read().unwrap().clone();
                         let registry_for_rescan = manager
@@ -1978,7 +1986,7 @@ fn extract_project_info(
 fn seconds_since_modified_from_timestamp(last_activity_at: i64) -> u64 {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+        .expect("system clock before Unix epoch")
         .as_secs() as i64;
 
     (now - last_activity_at).max(0) as u64
@@ -1999,11 +2007,12 @@ fn parse_timestamp_to_unix(ts: &str) -> Option<i64> {
 }
 
 /// Path to the PID snapshot file for server restart recovery.
-fn pid_snapshot_path() -> PathBuf {
-    dirs::home_dir()
-        .expect("home dir exists")
-        .join(".claude")
-        .join("live-monitor-pids.json")
+fn pid_snapshot_path() -> Option<PathBuf> {
+    Some(
+        dirs::home_dir()?
+            .join(".claude")
+            .join("live-monitor-pids.json"),
+    )
 }
 
 /// Save the extended session snapshot to disk atomically.
@@ -2017,7 +2026,9 @@ fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
     };
     let tmp = path.with_extension("json.tmp");
     if std::fs::write(&tmp, &content).is_ok() {
-        let _ = std::fs::rename(&tmp, path);
+        if let Err(e) = std::fs::rename(&tmp, path) {
+            tracing::error!(error = %e, "failed to persist session snapshot");
+        }
     }
 }
 

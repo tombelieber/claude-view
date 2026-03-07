@@ -46,16 +46,22 @@ pub async fn backfill_git_roots(db: Arc<Database>) {
                 let _permit = sem.acquire().await.unwrap();
                 // Strategy 1: live git resolution (directory must exist)
                 if let Some(root) = resolve_git_root(&cwd).await {
-                    let _ = db.set_git_root(&id, &root).await;
+                    if let Err(e) = db.set_git_root(&id, &root).await {
+                        tracing::error!(session_id = %id, error = %e, "failed to set git root");
+                    }
                     return true;
                 }
                 // Strategy 2: extract parent from worktree path patterns
                 if let Some(root) = infer_git_root_from_worktree_path(&cwd) {
-                    let _ = db.set_git_root(&id, &root).await;
+                    if let Err(e) = db.set_git_root(&id, &root).await {
+                        tracing::error!(session_id = %id, error = %e, "failed to set git root");
+                    }
                     return true;
                 }
                 // Unresolvable — mark with sentinel to prevent re-processing
-                let _ = db.set_git_root(&id, "").await;
+                if let Err(e) = db.set_git_root(&id, "").await {
+                    tracing::error!(session_id = %id, error = %e, "failed to set git root");
+                }
                 false
             }));
         }
