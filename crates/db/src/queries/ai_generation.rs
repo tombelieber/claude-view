@@ -37,7 +37,7 @@ impl Database {
                 FROM valid_sessions
                 WHERE last_message_at >= ?1
                   AND last_message_at <= ?2
-                  AND (?3 IS NULL OR project_id = ?3)
+                  AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3))
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
         )
@@ -58,7 +58,7 @@ impl Database {
             JOIN turns t ON t.session_id = s.id
             WHERE s.last_message_at >= ?1
               AND s.last_message_at <= ?2
-              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
               AND (?4 IS NULL OR s.git_branch = ?4)
               AND t.model_id IS NOT NULL
             GROUP BY t.model_id
@@ -90,7 +90,7 @@ impl Database {
             FROM valid_sessions
             WHERE last_message_at >= ?1
               AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3))
               AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY (COALESCE(SUM(total_input_tokens), 0) + COALESCE(SUM(total_output_tokens), 0)) DESC
@@ -176,7 +176,7 @@ impl Database {
             JOIN turns t ON t.session_id = s.id
             WHERE s.last_message_at >= ?1
               AND s.last_message_at <= ?2
-              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
               AND (?4 IS NULL OR s.git_branch = ?4)
               AND t.model_id IS NOT NULL
             GROUP BY t.model_id
