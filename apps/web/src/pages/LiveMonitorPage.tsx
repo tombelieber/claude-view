@@ -13,8 +13,10 @@ import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
 import { TerminalOverlay } from '../components/live/TerminalOverlay'
 import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
 import { filterLiveSessions } from '../components/live/live-filter'
+import type { KanbanGroupBy } from '../components/live/types'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
+import { useKanbanGrouping } from '../components/live/use-kanban-grouping'
 import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
 import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
 import {
@@ -85,6 +87,27 @@ export function LiveMonitorPage() {
 
   // Filtered sessions
   const filteredSessions = useMemo(() => filterLiveSessions(sessions, filters), [sessions, filters])
+
+  // Kanban grouping
+  const urlGroupBy = searchParams.get('groupBy') as KanbanGroupBy | null
+  const { groupBy, setGroupBy, projectGroups, isCollapsed, toggleCollapse } = useKanbanGrouping(
+    filteredSessions,
+    urlGroupBy,
+  )
+
+  const handleGroupByChange = useCallback(
+    (value: KanbanGroupBy) => {
+      setGroupBy(value)
+      const params = new URLSearchParams(searchParams)
+      if (value === 'none') {
+        params.delete('groupBy')
+      } else {
+        params.set('groupBy', value)
+      }
+      setSearchParams(params, { replace: true })
+    },
+    [searchParams, setSearchParams, setGroupBy],
+  )
 
   // Derive summary from current sessions so it always matches the kanban/grid.
   // Server-side summary is only used for cost/tokens (which may include cleaned-up sessions).
@@ -336,6 +359,11 @@ export function LiveMonitorPage() {
               onCardClick={handleSelectSession}
               stalledSessions={stalledSessions}
               currentTime={currentTime}
+              groupBy={groupBy}
+              onGroupByChange={handleGroupByChange}
+              projectGroups={projectGroups}
+              isCollapsed={isCollapsed}
+              toggleCollapse={toggleCollapse}
             />
           )}
 
