@@ -713,7 +713,7 @@ export function HistoryView() {
             onOpenChange={(open) => {
               if (!open) setResumeSessionId(null)
             }}
-            onResume={(_controlId, sid) => {
+            onResume={(sid) => {
               navigate(`/?focus=${encodeURIComponent(sid)}`)
             }}
           />

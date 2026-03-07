@@ -2,13 +2,12 @@ import { Navigate, createBrowserRouter, useParams } from 'react-router-dom'
 import App from './App'
 import { ConversationView } from './components/ConversationView'
 import { HistoryView } from './components/HistoryView'
+import { InsightsPage } from './components/InsightsPage'
 import { SearchResults } from './components/SearchResults'
 import { SettingsPage } from './components/SettingsPage'
-import { InsightsPage } from './components/InsightsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
-import { ControlPage } from './pages/ControlPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { ReportsPage } from './pages/ReportsPage'
 
@@ -59,7 +58,6 @@ export const router = createBrowserRouter([
       { path: 'activity', element: <ActivityPage /> },
       { path: 'reports', element: <ReportsPage /> },
       { path: 'settings', element: <SettingsPage /> },
-      { path: 'control/:controlId', element: <ControlPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
         path: 'project/:projectId',
