@@ -397,7 +397,7 @@ async fn fetch_oauth_usage_inner() -> Result<OAuthUsageResponse, String> {
 pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
     match state
         .oauth_usage_cache
-        .get_or_fetch(|| fetch_oauth_usage_inner())
+        .get_or_fetch(fetch_oauth_usage_inner)
         .await
     {
         Ok(resp) => Json(resp),
@@ -417,7 +417,7 @@ pub async fn post_oauth_usage_refresh(
 ) -> axum::response::Response {
     match state
         .oauth_usage_cache
-        .force_refresh(FORCE_REFRESH_MIN_INTERVAL, || fetch_oauth_usage_inner())
+        .force_refresh(FORCE_REFRESH_MIN_INTERVAL, fetch_oauth_usage_inner)
         .await
     {
         Ok(resp) => Json(resp).into_response(),
