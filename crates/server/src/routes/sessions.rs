@@ -1906,6 +1906,7 @@ mod tests {
             label: "Waiting for prompt".to_string(),
             group: "needs_you".to_string(),
             context: None,
+            source: "hook".to_string(),
         });
         session.hook_events.push(HookEvent {
             timestamp: 1001,
@@ -1914,6 +1915,7 @@ mod tests {
             label: "Reading file".to_string(),
             group: "autonomous".to_string(),
             context: Some(r#"{"file_path":"/foo/bar.rs"}"#.to_string()),
+            source: "hook".to_string(),
         });
 
         state
