@@ -132,7 +132,9 @@ export function HistoryView() {
   const searchPlaceholder = isIndexing
     ? indexingProgress?.phase === 'reading-indexes' || indexingProgress?.phase === 'ready'
       ? 'Preparing search...'
-      : `Search (indexing ${indexingPercent}%)...`
+      : indexingProgress?.phase === 'finalizing'
+        ? 'Building search index...'
+        : `Search (indexing ${indexingPercent}%)...`
     : 'Search sessions, files, skills...'
   const { ids: liveSessionIds, costById: liveSessionCosts } = useLiveSessionPresence()
 

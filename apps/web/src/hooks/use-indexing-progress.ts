@@ -5,6 +5,7 @@ export type IndexingPhase =
   | 'reading-indexes'
   | 'ready'
   | 'deep-indexing'
+  | 'finalizing'
   | 'done'
   | 'error'
 
@@ -133,6 +134,27 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
         bytesProcessed,
         bytesTotal: data.bytes_total ?? 0,
         throughputBytesPerSec: throughput,
+      }))
+    })
+
+    es.addEventListener('finalizing', (e: MessageEvent) => {
+      let data
+      try {
+        data = JSON.parse(e.data)
+      } catch {
+        setProgress({
+          ...INITIAL_STATE,
+          phase: 'error',
+          errorMessage: 'Received malformed progress data from server',
+        })
+        es.close()
+        return
+      }
+      setProgress((prev) => ({
+        ...prev,
+        phase: 'finalizing',
+        indexed: data.indexed ?? prev.indexed,
+        total: data.total ?? prev.total,
       }))
     })
 

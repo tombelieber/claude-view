@@ -68,7 +68,9 @@ export function LiveFilterBar({
   const searchPlaceholder = isIndexing
     ? indexingPhase === 'reading-indexes' || indexingPhase === 'ready'
       ? 'Preparing search...'
-      : `Search (indexing ${indexingPercent}%)...`
+      : indexingPhase === 'finalizing'
+        ? 'Building search index...'
+        : `Search (indexing ${indexingPercent}%)...`
     : 'Search sessions...'
 
   const showFiltered =
