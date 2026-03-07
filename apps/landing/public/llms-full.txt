@@ -52,6 +52,66 @@ npx claude-view
 [Read the docs →](/docs/) · [GitHub →](https://github.com/tombelieber/claude-view)
 
 
+--- blog/v0-10-0-kanban-and-polish.mdx ---
+
+---
+title: "Managing Multiple AI Agents: Why We Built the Kanban View"
+description: When you're running 3-5 Claude Code agents at once, a flat list doesn't cut it. v0.10.0 adds Kanban swimlanes, cost popovers, worktree drift detection, and more.
+date: 2026-03-08
+author: claude-view team
+---
+
+You're running five Claude Code agents. One is refactoring auth in your API server. Another is writing tests for the frontend. A third is debugging a migration in a git worktree. You glance at your session list and see... five rows. No grouping, no spatial context. Which agent belongs to which project?
+
+A flat list doesn't match how you think about parallel work. **v0.10.0 fixes that.**
+
+## Kanban swimlanes
+
+The live dashboard now supports a Kanban view that groups running sessions into swimlane columns by project or branch. Instead of scanning a list and mentally sorting "this one is my API repo, that one is frontend," you see it at a glance — each column is a project, and the sessions within it are the agents working in that context.
+
+A **group-by dropdown** lets you switch perspectives instantly. Group by project to see workload distribution across repos. Group by branch to track feature work across worktrees. The view you need depends on the question you're asking, so we let you switch without losing state.
+
+This matters most when you're running agents across 3+ projects simultaneously. The spatial layout gives you the same kind of overview a physical Kanban board gives a team — except each card is an AI agent doing real work.
+
+## Cost and token breakdown popover
+
+Hover any session card — in the Kanban view or the list view — and a popover shows the full cost breakdown: input tokens, output tokens, cache read vs. cache creation, and the dollar cost per category. No more navigating into a session detail page just to check if an agent is burning through your budget.
+
+This is especially useful in the Kanban layout. You can scan across projects and quickly spot which project's agents are the most expensive.
+
+## Worktree branch drift detection
+
+If you use git worktrees to run agents on separate branches simultaneously, you've probably hit this: an agent starts on `feat/auth`, but somewhere during its work the worktree's HEAD drifts to a different branch. Maybe a rebase went wrong, maybe another tool switched it.
+
+claude-view now detects when a worktree's current branch doesn't match the branch it was on when the session started. You'll see a visual indicator on the session card so you can intervene before the agent commits to the wrong branch.
+
+## Hook event tracking
+
+Claude Code hooks — pre/post-tool scripts that run alongside your agent — now get full visibility in the dashboard. You can see which hooks fired, when they ran, and whether they succeeded or failed. When an agent's behavior looks off, check the hook log before digging into the conversation.
+
+## Bulk select and archive
+
+Session history grows fast when you're running multiple agents daily. You can now select multiple sessions and archive them in bulk. Shift-click for ranges, checkbox for individual picks. Keeps your history manageable without deleting anything — archived sessions are still searchable.
+
+## Crash recovery
+
+The sidecar process that bridges Claude Code sessions to the dashboard now auto-recovers from crashes. If the sidecar dies — OOM, signal, panic — it restarts and reconnects to all active sessions without losing data. You shouldn't have to babysit the tool that's supposed to help you babysit your agents.
+
+## Zero-config local mode
+
+This has always been a goal, but worth restating: `npx claude-view` works with zero environment files, zero signup, zero configuration. The server starts, your browser opens, and you see your sessions. Every cloud feature (sharing, auth, sync) is additive — the core experience is fully local and fully free.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you're already running claude-view, that's all you need. The Kanban view is available immediately in the live dashboard.
+
+[Full changelog on GitHub](https://github.com/tombelieber/claude-view/releases) · [Read the docs](/docs/)
+
+
 --- changelog/v0.8.0.md ---
 
 ---
@@ -76,6 +136,43 @@ version: v0.8.0
 - Cost tracking includes cache read/write breakdown
 - Session browser shows model and git commit per session
 - Performance: ~15MB binary with sub-second startup
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.9.0.md ---
+
+---
+title: v0.9.0 — Activity & Sharing
+date: 2026-03-08
+version: v0.9.0
+---
+
+## New features
+
+**Activity Page** — calendar heatmap, project breakdown, daily timeline, and summary stats. See your Claude Code usage patterns at a glance.
+
+**Conversation Sharing** — share any session via end-to-end encrypted link on share.claudeview.ai. Recipients view in-browser with zero setup. Your data is never readable by our servers.
+
+**Content-based Session Classification** — sessions are automatically classified using SIMD pre-filter for fast, accurate categorization.
+
+**Kanban Swimlane View** — organize sessions visually with drag-and-drop swimlanes.
+
+**Bulk Select & Archive** — select multiple sessions and archive them in one action.
+
+**Hook Event Tracking** — monitor Claude Code hook events (SessionStart, tool calls) directly in the dashboard.
+
+## Improvements
+
+- Session topology and cwd resolution from JSONL — project paths are sandbox-proof
+- `CLAUDE_VIEW_DATA_DIR` env var for sandbox and corporate environments
+- Mobile app pivot from PWA to Expo/React Native (Tamagui v2)
+- Unified pipeline with batch reliability fixes (fixes 1–6)
+- Project path resolution no longer depends on encoded directory names
 
 ## Getting started
 
@@ -241,6 +338,14 @@ The dashboard shows:
 - **Per-session cost** in the session browser
 - **Running total** in Mission Control (live updates)
 
+## Cost & token breakdown popover
+
+Hover over any cost figure in the live monitor or session detail to see a full breakdown:
+- **Color-coded categories** — input tokens, output tokens, cache read tokens, and cache creation tokens each have a distinct color
+- **Per-category estimated cost** based on current model pricing
+- **Cache savings** highlighted in green, showing how much you saved from prompt cache hits
+- Available in both the live monitor agent cards and the session detail panel
+
 ## MCP tools
 
 Access cost data programmatically via the MCP server:
@@ -275,6 +380,7 @@ Mission Control offers three layout modes:
 - **Grid** — compact card grid for monitoring many agents at once
 - **List** — detailed single-column view with more information per session
 - **Monitor** — live chat grid showing streaming conversations side by side
+- **Kanban swimlanes** — group running sessions into visual swimlanes by project or branch. Use the group-by dropdown to switch between project grouping, branch grouping, or flat view. Swimlane headers show the project/branch name with session counts.
 
 You can also create **custom layouts** using drag-and-drop panels (powered by dockview). Save and load layout presets.
 
@@ -295,9 +401,17 @@ From Mission Control, you can:
 - **Review plans** before the agent implements them
 - **Stop a session** (with confirmation)
 
+## Hook events
+
+Mission Control tracks hook events from two sources — live events captured in real-time via the file watcher (Channel A) and historical events backfilled from JSONL files (Channel B). Events are deduplicated automatically, so you see a complete timeline even for sessions that started before claude-view.
+
 ## Real-time updates
 
 Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically with exponential backoff.
+
+## Crash recovery
+
+If the sidecar process crashes, Mission Control automatically detects stale bindings and recovers on the next startup. Active sessions resume monitoring without manual intervention.
 
 ## Related
 
@@ -378,6 +492,14 @@ Filter sessions by:
 - **Model** — filter by Claude model used
 - **Date range** — sessions from a specific period
 - **Status** — active, completed, or error sessions
+
+## Bulk select & archive
+
+Select multiple sessions using checkboxes (click the checkbox on each row, or use the bulk select mode toggle). An archive toolbar appears with options to archive the selected sessions. Filter state persists in the URL, so you can bookmark filtered views.
+
+## Collapsible sidebar sections
+
+The sidebar uses VS Code-style collapsible sections. Click any section header to collapse or expand it. Collapse state persists across sessions.
 
 ## Session detail
 
