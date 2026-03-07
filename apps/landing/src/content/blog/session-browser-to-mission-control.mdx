@@ -1,0 +1,55 @@
+---
+title: "From Session Browser to Mission Control: Evolving a Developer Tool"
+description: "How claude-view evolved from a simple JSONL viewer into a real-time multi-agent monitoring dashboard in 25 days."
+date: 2026-02-19
+author: claude-view team
+---
+
+claude-view started as a weekend project to browse Claude Code sessions. Twenty-five days later it was a real-time multi-agent monitoring dashboard. The evolution from session browser to Mission Control wasn't planned — each phase was driven by a pain point that made the previous version insufficient.
+
+## Phase 1: Session browser (days 1-2)
+
+The original problem was simple: Claude Code stores conversations as JSONL files in `~/.claude/projects/`, but there's no way to browse them. You can `cat` the files, but they're raw JSON with nested content blocks and base64-encoded images. We built a session list, a message viewer with syntax highlighting, and HTML export. That was v0.1.
+
+The architecture was minimal — Rust reads JSONL files on startup, serves a React SPA from embedded static assets, exposes two API endpoints. No database, no indexing, no background processes.
+
+## Phase 2: Search and analytics (days 3-8)
+
+Once you have 200+ sessions, you need search. Substring matching on in-memory data worked for a week, then we hit sessions with 1,000+ messages and search took 800ms. We integrated Tantivy, a Rust full-text search engine (think Lucene but without the JVM), and got query times under 5ms.
+
+Analytics came from the same data. Every assistant message includes token usage — `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`. Aggregate those across sessions and you have cost tracking. Plot them over time and you have trend charts. The data was always there; we just started computing over it.
+
+The architecture gained SQLite for persistent metadata and Tantivy for the search index. Both rebuild from JSONL source files on startup if the schema version changes.
+
+## Phase 3: Git integration (days 9-14)
+
+A natural question after browsing sessions: "What did this session actually produce?" We added git log scanning to link sessions with commits by timestamp correlation. If a commit happened during or shortly after a session in the same project directory, it's associated with that session.
+
+This phase also added contribution analysis — what percentage of your git output involved AI assistance, broken down by project and time period. The data model expanded from "conversations" to "conversations + their real-world outputs."
+
+## Phase 4: Live monitoring (days 15-22)
+
+This was the inflection point. Everything before this was historical — browsing past sessions, analyzing completed work. Live monitoring meant watching active sessions in real time.
+
+The technical jump was significant. We added:
+
+- **Process discovery** — scanning the process table for running Claude Code instances, associating them with project directories via `lsof`
+- **JSONL tail watching** — using `notify` (inotify/kqueue) to detect new messages as they're written
+- **Server-Sent Events** — pushing session state updates to the browser in real time
+- **Session state classification** — inferring whether each agent is autonomous, waiting for input, or done
+
+The architecture went from request-response to event-driven. SSE streams replaced polling. A background task continuously monitors process liveness and file changes, broadcasting state transitions to connected clients.
+
+## Phase 5: Plugin and relay (days 23-25)
+
+Two extensions emerged from the monitoring work. The Claude Code plugin (`@claude-view/plugin`) exposes session data as MCP tools — so Claude itself can answer "what did I work on today?" by querying its own session history. The WebSocket relay enables the mobile app to receive live updates from the local server without port forwarding.
+
+## The key inflection
+
+When live monitoring became the primary use case, we moved Mission Control to the home page. Session history became a secondary view, accessible from the sidebar. This was a product decision driven by usage: we opened claude-view 10x more often to check on running agents than to browse past conversations.
+
+## What the evolution taught us
+
+Every architecture decision from Phase 1 became either a foundation or a liability in Phase 4. mmap-based JSONL parsing (foundation) — same code reads historical and live files. Embedded static assets (foundation) — one binary, no build step for users. No database (liability) — had to add SQLite when in-memory data didn't scale. No real-time layer (liability) — had to add SSE and background workers.
+
+The lesson: if your tool reads data that changes over time, build the real-time path early. Retrofitting event-driven architecture onto a request-response system is possible but expensive. We did it in 7 days; starting with SSE from day 1 would have saved 3 of those days.

@@ -1,0 +1,55 @@
+---
+title: "Monitoring Multiple AI Agents: The Problem Nobody Talks About"
+description: "When you run 3-5 Claude Code agents simultaneously, you lose track of what each one is doing, how much it costs, and whether it needs your input."
+date: 2026-02-14
+author: claude-view team
+---
+
+You have three Claude Code agents running. One is refactoring your auth middleware. Another is writing integration tests. A third is fixing a CSS regression in a git worktree. You switch between terminal tabs trying to remember which is which. Monitoring multiple AI agents is the operational problem that emerges the moment you go from one agent to two.
+
+## The three questions
+
+Every developer running parallel agents asks the same three questions, constantly:
+
+1. **What is each agent working on right now?** Not what you told it to do 20 minutes ago — what is it actually doing at this moment?
+2. **How much have I spent?** Token costs accumulate silently. A long-running agent with low cache hit rates can burn through $5-10 before you notice.
+3. **Does any agent need me?** Claude Code sometimes needs user approval for tool calls, or gets stuck and asks a clarifying question. If you don't see the prompt, the agent just waits indefinitely.
+
+Existing tools don't solve this. Your terminal shows one session at a time. `tmux` panes give you parallel visibility but no aggregation — you're scanning raw output across four panes trying to mentally parse which agent is autonomous and which is blocked.
+
+## State classification
+
+The core abstraction we landed on is **session state classification**. Every running agent is in one of a few states:
+
+- **Needs You** — the agent asked a question or is waiting for tool approval
+- **Autonomous** — actively working, no human input needed
+- **Idle** — process is alive but no recent activity
+- **Done** — session ended, process exited
+
+Classifying state sounds simple until you try to implement it. Claude Code doesn't expose a structured "I'm waiting for input" signal. We infer it from a combination of process liveness checks, JSONL tail watching, and message type analysis. If the last message is from the assistant and contains a question mark with no subsequent user message, it's likely in a "needs you" state.
+
+Process liveness itself is tricky on macOS. We use `kill(pid, 0)` as the primary check (returns 0 if the process exists, regardless of signal delivery). But `sysinfo` on macOS doesn't reliably report process working directories or command lines, so we fall back to `lsof -a -p <pid> -d cwd -Fn` to get the actual cwd for project association.
+
+## Cost tracking with cache awareness
+
+Token costs aren't as simple as `input_tokens * price + output_tokens * price`. Claude's prompt caching creates three pricing tiers:
+
+- **Cache creation** — tokens written to cache, billed at 1.25x the base input price
+- **Cache read** — tokens read from an existing cache, billed at 0.1x the base price
+- **No cache** — standard input pricing
+
+A session with a 90% cache hit rate costs roughly 10x less per input token than one with 0% hits. Reporting raw token counts without cache breakdown is misleading — you'd think two sessions with the same token count cost the same, when one might be 8x cheaper.
+
+We compute cost per session using the model's pricing table and the four usage fields that Claude Code logs on every assistant message: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, and `cache_creation_input_tokens`.
+
+## The Kanban layout
+
+A flat list of sessions doesn't match how you think about parallel work. We added a Kanban view that groups sessions into swimlane columns — by project or by branch. This is the same spatial metaphor that Kubernetes dashboards use for pod distribution across nodes, or that Grafana uses for service health across clusters. The difference is that each card is an AI agent on your laptop, not a container in a data center.
+
+The Kanban view makes the "what is each agent working on" question answerable at a glance. Your API project column has two agents — one is green (autonomous), one is yellow (needs you). Your frontend column has one agent, and it's done.
+
+## Why this matters now
+
+The trend toward multi-agent workflows is accelerating. Today it's 3-5 agents. Next year it might be 10-20, working across repos, branches, and even machines. The monitoring problem doesn't scale linearly — it scales combinatorially. Every new agent multiplies the state you need to track.
+
+We built claude-view's Mission Control specifically for this problem. But regardless of the tooling you use, the pattern is clear: once you run more than one AI agent, you need the same observability infrastructure that DevOps teams built for distributed systems. Dashboards, state classification, cost aggregation, and alerting. The only difference is that your "cluster" is a set of AI processes on your dev machine.

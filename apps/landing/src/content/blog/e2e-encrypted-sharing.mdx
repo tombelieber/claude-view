@@ -1,0 +1,67 @@
+---
+title: "End-to-End Encrypted Sharing Without a Backend Database"
+description: "How we built zero-knowledge conversation sharing using client-side encryption, Cloudflare R2, and a static SPA viewer."
+date: 2026-02-25
+author: claude-view team
+---
+
+You want to share a Claude Code conversation with a teammate. But the session contains API keys, internal architecture discussions, and code from a private repo. End-to-end encrypted sharing solves this: the server stores ciphertext it can never read, and the decryption key lives only in the URL you send.
+
+Here's how we built zero-knowledge conversation sharing with client-side encryption and a static viewer SPA.
+
+## The architecture
+
+The sharing flow has four components:
+
+1. **Rust server** (local) — serializes the session, generates a random key, encrypts with AES-256-GCM, uploads ciphertext
+2. **Cloudflare Worker** (API at `api-share.claudeview.ai`) — receives encrypted blob, stores in R2, stores metadata in D1
+3. **R2 bucket** — blob storage for encrypted session data
+4. **Viewer SPA** (static site at `share.claudeview.ai`) — fetches the encrypted blob, decrypts in the browser, renders the conversation
+
+The critical property: **the Worker never sees plaintext**. Encryption happens on the user's machine before the data leaves localhost. Decryption happens in the recipient's browser. The server is a dumb pipe for ciphertext.
+
+## Why the URL fragment matters
+
+When you share a session, the URL looks like:
+
+```
+https://share.claudeview.ai/s/abc123#key=base64encodedkey
+```
+
+The part after `#` is the **fragment identifier**. This is not a design accident — it's the security model. URL fragments are never sent to the server. When the viewer SPA loads at `share.claudeview.ai/s/abc123`, the web server receives a request for `/s/abc123` but never sees `#key=base64encodedkey`. The key exists only in the browser's address bar and JavaScript runtime.
+
+Compare this to a query parameter (`?key=...`), which would be sent to the server in the HTTP request, logged in access logs, cached by CDNs, and visible to any network intermediary.
+
+## The encryption details
+
+Key generation uses the Web Crypto API (in Rust, via the `aes-gcm` crate on the server side):
+
+- Generate a 256-bit random key
+- Generate a 96-bit random nonce (IV)
+- Encrypt the serialized session JSON with AES-256-GCM
+- Prepend the 12-byte nonce to the ciphertext (the recipient needs it to decrypt)
+- Base64url-encode the key for URL-safe embedding
+
+AES-GCM provides both confidentiality and integrity — if anyone tampers with the ciphertext on R2, decryption fails with an authentication error rather than producing garbage output.
+
+## No accounts needed
+
+Viewers don't need an account, an API key, or even JavaScript beyond what the static SPA provides. Click the link, the SPA fetches the blob from the Worker API, extracts the nonce, decrypts with the key from the URL fragment, and renders. The entire viewer is a static site on Cloudflare Pages — no server-side processing, no session cookies, no tracking.
+
+This was a deliberate constraint. Requiring accounts for viewers kills sharing adoption. The person you're sharing with might be a contractor, a friend helping you debug, or a Stack Overflow user. They shouldn't need to create an account to see a conversation.
+
+## The trade-off: lose the link, lose the data
+
+If the URL is lost — browser history cleared, Slack message deleted, no copy saved — the encrypted blob on R2 is permanently unrecoverable. There's no "forgot password" flow because there's no password. The key exists only in the URL fragment.
+
+This is a feature, not a bug. The same property that prevents the server from reading your data also prevents anyone (including us) from recovering it. It's the same trade-off made by Firefox Send (RIP), Bitwarden Send, and PrivateBin. Users who need durability can bookmark the link or save it to a password manager.
+
+## Expiration and cleanup
+
+Shared sessions expire after a configurable TTL (default: 7 days). A scheduled Worker runs daily to delete expired blobs from R2 and metadata from D1. This bounds storage costs and limits the exposure window — even if a URL leaks, the ciphertext won't be there forever.
+
+The D1 metadata table stores only: share ID, creation timestamp, expiration timestamp, and blob size. No session content, no user identifiers, no IP addresses.
+
+## Takeaway
+
+Zero-knowledge sharing is surprisingly straightforward to implement. The hard part isn't the cryptography — AES-GCM is well-understood and available in every platform's standard library. The hard part is resisting the urge to add features that break the security model. Account systems, server-side search, preview thumbnails — every "nice to have" either requires server-side decryption or leaks metadata. We chose to keep the server blind and let the URL fragment carry the trust.

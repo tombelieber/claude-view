@@ -1,0 +1,69 @@
+---
+title: "The Claude Code Plugin: Ask Your Agent About Your Work"
+description: "v0.8.0 ships the claude-view plugin with 8 MCP tools, 3 skills, and a Tantivy-powered unified search engine."
+date: 2026-02-22
+author: claude-view team
+---
+
+Sometimes you don't want to leave your terminal. You're in the middle of a Claude Code session and you think, "What did I work on yesterday?" or "How much have I spent this week?" Opening a browser tab breaks your flow. You want the answer right here, inside the agent conversation.
+
+v0.8.0 ships the **claude-view plugin** — a native Claude Code plugin that brings your session data into the agent itself.
+
+## Install and go
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+That's it. The plugin auto-starts the claude-view server if it isn't already running. No separate process management needed.
+
+## 8 MCP tools
+
+The plugin exposes 8 read-only MCP tools that Claude Code can call during conversations:
+
+- **list-sessions** — recent sessions with metadata
+- **get-session** — full detail for a specific session
+- **search-sessions** — full-text search across all sessions
+- **get-costs** — token usage and cost breakdown
+- **get-activity** — session counts by day/week
+- **get-contributions** — git commits linked to AI sessions
+- **get-projects** — all tracked projects
+- **get-status** — server health and indexing status
+
+These are read-only by design. The plugin never modifies your session data, never writes files, never changes state. It observes.
+
+## 3 skills
+
+Skills are pre-built prompts you can invoke with a `/` command:
+
+**`/session-recap`** — summarizes your most recent session: what was accomplished, which files were changed, how many tokens were used. Useful when you pick up work the next morning and need context.
+
+**`/daily-cost`** — shows today's total spend across all sessions, broken down by model. Run this at end of day to know your burn rate.
+
+**`/standup`** — generates a standup-style summary of your last 24 hours of AI-assisted work. Sessions, commits, projects touched, total cost. Copy-paste it into your team's standup channel.
+
+## Unified Tantivy search
+
+The search engine got a major upgrade in v0.8.0. Previous versions indexed session metadata (title, project, date). Now the full conversation content is indexed — every user message, every assistant response, every tool call result.
+
+The Tantivy engine supports fuzzy matching, so `refactr` finds results for "refactor." Queries return ranked results with highlighted snippets showing the matching text in context. On a machine with 1,000+ sessions, queries return in under 10ms.
+
+## Rich message rendering
+
+Conversation history now renders with **paired tool cards**. When Claude calls a tool and gets a result, both the call and the result are displayed as a single visual unit. File reads show the file content inline. Shell commands show the command and its output together. This makes it dramatically easier to follow what an agent actually did versus reading raw JSON blocks.
+
+**Hook events** are also visible in conversation history. If a pre-tool hook modified the agent's behavior, you'll see it in the timeline where it happened, not buried in a separate log.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Then install the plugin:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+Ask your agent "what did I work on this week?" and get a real answer backed by real data.

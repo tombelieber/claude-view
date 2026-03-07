@@ -1,0 +1,42 @@
+---
+title: "Security First: Hardening claude-view Before Launch"
+description: "v0.2.0 adds security hardening across CI, CORS, and error handling, plus a semantic card UI redesign for conversation browsing."
+date: 2026-01-30
+author: claude-view team
+---
+
+Most tools ship features first and patch security later. We did the opposite. Before adding a single analytics feature, v0.2.0 locks down the foundation.
+
+## Why security before features
+
+claude-view runs a local web server on your machine. It reads your Claude Code session files — full conversation histories, tool calls, code snippets. If the server leaks data through verbose error messages, accepts requests from any origin, or runs CI without dependency auditing, none of the features on top matter. You wouldn't trust a monitoring tool that's itself a liability.
+
+## What we hardened
+
+**CORS lockdown** — the Axum server now rejects cross-origin requests by default. Only `localhost` origins on the expected port are allowed. This prevents a malicious page in another tab from querying your session data through the local server.
+
+**Error response sanitization** — before this release, server errors could leak internal paths, stack traces, and file system structure. Every error response now returns a generic message to the client while logging the full details server-side. Debugging stays easy; information disclosure stops.
+
+**CI security pipeline** — every PR now runs `cargo deny` for dependency auditing and `cargo audit` for known vulnerabilities. Supply chain attacks against Rust crates are rare but not zero, and we'd rather catch them in CI than in production.
+
+**Input validation** — query parameters and path segments are validated before they hit any handler. Malformed session IDs, path traversal attempts, and oversized payloads are rejected at the edge.
+
+## Semantic card UI
+
+The other half of v0.2.0 is a full UI redesign for conversation browsing. The old layout dumped raw messages into a scrolling list — functional but hard to scan.
+
+The new design uses **semantic cards** that group messages by context. Each card shows the session's project, duration, model, and a preview of the first user message. You can scan 50 sessions and find the one you want in seconds instead of scrolling through raw transcript dumps.
+
+Cards are interactive — click to expand into the full conversation view, hover for metadata. The visual hierarchy makes it obvious which sessions are long multi-turn conversations and which are quick one-shot questions.
+
+## The philosophy
+
+Ship safe defaults. A user who runs `npx claude-view` for the first time shouldn't need to think about CORS policies or error leakage. Those decisions are made for them, correctly, from day one. The 1% who need to customize can override — but the defaults protect everyone.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Security isn't a feature you market. It's a foundation you build on.

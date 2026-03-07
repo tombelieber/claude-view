@@ -1,0 +1,44 @@
+---
+title: "Dashboard Analytics: Measuring Your AI Fluency"
+description: "v0.4.0 transforms claude-view from a session browser into an analytics platform with time filters, heatmaps, and model usage breakdowns."
+date: 2026-02-10
+author: claude-view team
+---
+
+Until now, claude-view answered "what happened in this session?" With v0.4.0, it answers a bigger question: "how am I using AI over time?"
+
+## From browser to analytics platform
+
+The session list was useful for reviewing individual conversations. But if you've been using Claude Code daily for weeks, you need patterns, not transcripts. How many sessions did you run last week? Which model are you using most? Are you getting more efficient or just running more sessions?
+
+v0.4.0 adds a full analytics dashboard that surfaces these patterns automatically.
+
+## Time range filters with URL state
+
+Every chart and metric on the dashboard respects a time range selector — last 7 days, 30 days, 90 days, or a custom range. The selected range is persisted in URL parameters, so you can bookmark a specific view or share a link with a colleague and they see the same data window.
+
+Internally, this uses a copy-then-modify pattern for URL params. The filter state is the single source of truth, and every component reads from it rather than maintaining its own date range. One filter, applied everywhere.
+
+## Contribution heatmap
+
+A GitHub-style heatmap shows your daily Claude Code activity over the past year. Each cell is a day, colored by session count. Hover any cell to see the exact count and date.
+
+This sounds simple, but the implementation required careful timestamp handling. Session timestamps in Claude Code JSONL files are strings, not numbers. Every timestamp conversion guards against `ts <= 0` to prevent `new Date(0)` from rendering as January 1, 1970.
+
+## Model usage breakdown
+
+A breakdown chart shows which models you've used and how tokens distribute across them. If you're running a mix of Sonnet and Opus sessions, you'll see the cost implications immediately — Opus sessions use more tokens per turn but often finish tasks in fewer turns.
+
+## Performance gains
+
+v0.4.0 also consolidates database queries. The previous version made separate queries for sessions, contributions, and metadata. Now a single query returns everything the dashboard needs, reducing database round-trips by roughly 65%. On a machine with 500+ sessions, the dashboard loads noticeably faster.
+
+The test suite grew to 922 tests across the Rust backend and React frontend, covering edge cases like zero-duration sessions, sessions with no commits, and time ranges that span timezone boundaries.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the dashboard tab and see your AI usage patterns for the first time. The data was always there — now it's visible.
