@@ -33,11 +33,8 @@ const HOOK_EVENTS: &[&str] = &[
     "SessionEnd",         // async
 ];
 
-fn settings_path() -> PathBuf {
-    dirs::home_dir()
-        .expect("home dir exists")
-        .join(".claude")
-        .join("settings.json")
+fn settings_path() -> Option<PathBuf> {
+    Some(dirs::home_dir()?.join(".claude").join("settings.json"))
 }
 
 /// Build a hook handler (the inner object inside a matcher group's `hooks` array).
@@ -113,11 +110,20 @@ fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
 /// Removes any previous Live Monitor hooks first (idempotent).
 /// Called from create_app_full() on server startup.
 pub fn register(port: u16) {
-    let path = settings_path();
+    let Some(path) = settings_path() else {
+        tracing::error!("could not determine home directory");
+        return;
+    };
 
     // Read existing or create minimal settings
     let mut settings: serde_json::Value = if path.exists() {
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %path.display(), "failed to read settings.json, treating as empty");
+                String::new()
+            }
+        };
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         // Ensure parent dir exists
@@ -154,7 +160,10 @@ pub fn register(port: u16) {
 
     // Validate the JSON is well-formed before writing (Claude Code skips
     // files with errors entirely, not just the invalid settings).
-    let content = serde_json::to_string_pretty(&settings).expect("serialize settings");
+    let Ok(content) = serde_json::to_string_pretty(&settings) else {
+        tracing::error!("failed to serialize settings.json");
+        return;
+    };
     if serde_json::from_str::<serde_json::Value>(&content).is_err() {
         tracing::error!("Generated invalid JSON for settings.json — aborting hook registration");
         return;
@@ -163,7 +172,9 @@ pub fn register(port: u16) {
     // Write atomically (temp file + rename)
     let tmp_path = path.with_extension("json.tmp");
     if std::fs::write(&tmp_path, &content).is_ok() {
-        let _ = std::fs::rename(&tmp_path, &path);
+        if let Err(e) = std::fs::rename(&tmp_path, &path) {
+            tracing::error!(error = %e, "failed to rename settings.json");
+        }
         tracing::info!(
             "Registered {} Live Monitor hooks on port {}",
             HOOK_EVENTS.len(),
@@ -180,7 +191,10 @@ pub fn register(port: u16) {
 pub fn cleanup(port: u16) -> Vec<String> {
     let _ = port; // port param reserved for future multi-instance support
     let mut removed = Vec::new();
-    let path = settings_path();
+    let Some(path) = settings_path() else {
+        tracing::error!("could not determine home directory");
+        return removed;
+    };
 
     if path.exists() {
         let content = match std::fs::read_to_string(&path) {
@@ -212,9 +226,14 @@ pub fn cleanup(port: u16) -> Vec<String> {
             }
 
             let tmp_path = path.with_extension("json.tmp");
-            let serialized = serde_json::to_string_pretty(&settings).expect("serialize settings");
+            let Ok(serialized) = serde_json::to_string_pretty(&settings) else {
+                tracing::error!("failed to serialize settings.json");
+                return removed;
+            };
             if std::fs::write(&tmp_path, &serialized).is_ok() {
-                let _ = std::fs::rename(&tmp_path, &path);
+                if let Err(e) = std::fs::rename(&tmp_path, &path) {
+                    tracing::error!(error = %e, "failed to rename settings.json");
+                }
                 removed.push("Removed hooks from ~/.claude/settings.json".to_string());
                 tracing::info!("Cleaned up Live Monitor hooks");
             }
