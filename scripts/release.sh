@@ -5,36 +5,64 @@ set -euo pipefail
 # Default: patch (0.1.0 → 0.1.1)
 
 BUMP="${1:-patch}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-cd "$(dirname "$0")/../npx-cli"
+cd "$ROOT/npx-cli"
 
 # Bump version in npx-cli/package.json (no git tag from npm)
 npm version "$BUMP" --no-git-tag-version
 VERSION=$(node -p "require('./package.json').version")
 
-cd ..
+cd "$ROOT"
 
 # Bump Cargo.toml workspace version to match
 sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
 
-# Bump root package.json and apps/web/package.json versions to match
-node -e "
-const fs = require('fs');
-for (const p of ['package.json', 'apps/web/package.json']) {
-  const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-  pkg.version = '${VERSION}';
-  fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-}
-"
+# Bump ALL workspace package.json files that have a "version" field.
+# Excludes: node_modules, .git, .tmp, .worktrees, apps/landing (separate release track).
+BUMPED_PKGS=()
+while IFS= read -r pkg; do
+  # Skip files without a top-level "version" field
+  if ! node -e "
+    const p = JSON.parse(require('fs').readFileSync('$pkg','utf8'));
+    if (!p.version) process.exit(1);
+  " 2>/dev/null; then
+    continue
+  fi
+
+  node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('$pkg', 'utf8'));
+    pkg.version = '${VERSION}';
+    fs.writeFileSync('$pkg', JSON.stringify(pkg, null, 2) + '\n');
+  "
+  BUMPED_PKGS+=("$pkg")
+done < <(find "$ROOT" -name package.json \
+  -not -path '*/node_modules/*' \
+  -not -path '*/.git/*' \
+  -not -path '*/.tmp/*' \
+  -not -path '*/.worktrees/*' \
+  -not -path '*/apps/landing/*' \
+  | sort)
+
+# Bump landing page VERSION constant (stays in sync even though landing has its own release tag)
+SITE_TS="$ROOT/apps/landing/src/data/site.ts"
+if [ -f "$SITE_TS" ]; then
+  sed -i '' "s/VERSION = '.*'/VERSION = '${VERSION}'/" "$SITE_TS"
+  BUMPED_PKGS+=("$SITE_TS")
+fi
 
 # Regenerate Cargo.lock with new version
 cargo generate-lockfile --quiet
 
-# Commit and tag
-git add npx-cli/package.json Cargo.toml package.json apps/web/package.json Cargo.lock
+# Commit and tag — include Cargo files + all bumped package.json files + site.ts
+git add Cargo.toml Cargo.lock "${BUMPED_PKGS[@]}"
 git commit -m "release: v${VERSION}"
 git tag "v${VERSION}"
 
+echo ""
+echo "Bumped ${#BUMPED_PKGS[@]} files to v${VERSION}:"
+printf '  %s\n' "${BUMPED_PKGS[@]}"
 echo ""
 echo "Tagged v${VERSION}. Next steps:"
 echo "  git push origin main --tags    # triggers CI build + auto npm publish"

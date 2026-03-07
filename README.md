@@ -54,9 +54,10 @@ npx claude-view
 | **Notification sounds** | Get pinged when a session finishes or needs your input — stop polling terminals |
 | **Context gauge** | Real-time context window usage per session — see which ones are in the danger zone |
 | **Cache warm countdown** | Know exactly when prompt cache expires so you can time your next message to save tokens |
-| **Cost tracking** | Per-session and aggregate spend with cache savings breakdown |
+| **Cost tracking** | Per-session and aggregate spend — hover for token/cost breakdown with cache savings by category |
 | **Sub-agent visualization** | See the full agent tree — sub-agents, their status, and what tools they're calling |
-| **Multiple views** | Grid, List, or Monitor mode (live chat grid) — pick what fits your workflow |
+| **Multiple views** | Grid, List, Kanban, or Monitor mode — pick what fits your workflow |
+| **Kanban swimlanes** | Group sessions by project or branch — visual swimlane layout for multi-project workflows |
 
 ### Rich Chat History
 
@@ -67,6 +68,8 @@ npx claude-view
 | **Compact / verbose toggle** | Skim the conversation or drill into every tool call |
 | **Thread view** | Follow agent conversations with sub-agent hierarchies |
 | **Export** | Markdown export for context resumption or sharing |
+| **Bulk select & archive** | Select multiple sessions for batch archiving with persistent filter state |
+| **Encrypted sharing** | Share any session via E2E encrypted link — zero server trust |
 
 ### Advanced Search
 
@@ -87,7 +90,8 @@ Claude Code does a lot behind `"thinking..."` that never shows in your terminal.
 | **Sub-agent conversations** | See the full tree of spawned agents, their prompts, and their outputs |
 | **MCP server calls** | See which MCP tools are being invoked and their results |
 | **Skill / hook / plugin tracking** | Know which skills fired, which hooks ran, what plugins are active |
-| **Hook event recording** | Every hook event captured and browsable *(requires claude-view running during session)* |
+| **Hook event recording** | Dual-channel hook capture (live + JSONL backfill) — every hook event recorded and browsable, even for past sessions |
+| **Worktree branch drift** | Detects when git worktree branches diverge — shown in live monitor and history |
 | **Tool use timeline** | Action log of every tool_use/tool_result pair with timing |
 | **Error surfacing** | Errors bubble up to the session card — no more buried failures |
 | **Raw message inspector** | Drill into any message's raw JSON when you need the full picture |
@@ -154,6 +158,7 @@ claude-view is for the developer who:
 - Needs to context-switch fast without losing track of what's running
 - Wants to **optimize token spend** by timing messages around cache windows
 - Gets frustrated by <kbd>Cmd</kbd>+<kbd>Tab</kbd>-bing through terminals to check on agents
+- **Worktree-aware** — detects branch drift across git worktrees
 
 ---
 
@@ -162,9 +167,9 @@ claude-view is for the developer who:
 | | |
 |---|---|
 | **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
-| **Real-time** | File watcher + SSE + WebSocket for sub-second live updates across all sessions |
+| **Real-time** | File watcher + SSE + unified WebSocket with heartbeat, event replay, and crash recovery |
 | **Tiny footprint** | ~10 MB download, ~27 MB on disk. No runtime dependencies, no background daemons |
-| **100% local** | All data stays on your machine. Zero telemetry, zero cloud, zero network requests |
+| **100% local** | All data stays on your machine. Zero telemetry, zero required accounts. Optional encrypted sharing available. |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
 
 <details>
@@ -264,7 +269,7 @@ Opens at `http://localhost:47892`.
 If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP):
 
 ```bash
-cp .env.example .env
+cp crates/server/.env.example .env
 # Uncomment the CLAUDE_VIEW_DATA_DIR line
 ```
 
@@ -296,10 +301,15 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | Path | Package | Purpose |
 |------|---------|---------|
 | `apps/web/` | `@claude-view/web` | React SPA (Vite) — main web frontend |
+| `apps/share/` | `@claude-view/share` | Share viewer SPA (Vite) — Cloudflare Pages |
 | `apps/mobile/` | `@claude-view/mobile` | Expo native app |
 | `apps/landing/` | `@claude-view/landing` | Static HTML landing page |
 | `packages/shared/` | `@claude-view/shared` | Shared types & theme tokens |
+| `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
+| `packages/mcp/` | `@claude-view/mcp` | MCP server integration |
+| `packages/plugin/` | `@claude-view/plugin` | Claude Code plugin (tools + skills) |
 | `crates/` | — | Rust backend (Axum) |
+| `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
 
 ### Dev Commands
 

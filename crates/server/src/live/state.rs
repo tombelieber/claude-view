@@ -131,14 +131,17 @@ pub struct LiveSession {
     /// Number of user/assistant turn pairs.
     pub turn_count: u32,
     /// Unix timestamp when the session started, if known.
+    #[ts(type = "number | null")]
     pub started_at: Option<i64>,
     /// Unix timestamp of the most recent file modification.
+    #[ts(type = "number")]
     pub last_activity_at: i64,
     /// The primary model used in this session.
     pub model: Option<String>,
     /// Accumulated token usage for this session (cumulative, for cost).
     pub tokens: TokenUsage,
     /// Current context window fill: total input tokens from the last assistant turn.
+    #[ts(type = "number")]
     pub context_window_tokens: u64,
     /// Computed cost breakdown in USD.
     pub cost: CostBreakdown,
@@ -146,6 +149,7 @@ pub struct LiveSession {
     pub cache_status: CacheStatus,
     /// Unix timestamp when the current user turn started (real prompt detected).
     /// Used by frontend to compute live elapsed time for autonomous sessions.
+    #[ts(type = "number | null")]
     pub current_turn_started_at: Option<i64>,
     /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
     /// Used by frontend to show task time for needs_you sessions.
@@ -165,6 +169,7 @@ pub struct LiveSession {
     /// Unix timestamp when the last cache hit or creation occurred.
     /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
+    #[ts(type = "number | null")]
     pub last_cache_hit_at: Option<i64>,
     /// Number of context compactions in this session (compact_boundary system messages).
     pub compact_count: u32,
@@ -189,6 +194,7 @@ pub struct LiveSession {
 #[serde(rename_all = "camelCase")]
 pub struct HookEvent {
     /// Unix timestamp (seconds).
+    #[ts(type = "number")]
     pub timestamp: i64,
     /// Hook event name: "PreToolUse", "PostToolUse", "Stop", etc.
     pub event_name: String,
@@ -247,6 +253,7 @@ pub struct ControlBinding {
     /// The sidecar's internal control ID (UUID).
     pub control_id: String,
     /// Unix timestamp when this binding was created.
+    #[ts(type = "number")]
     pub bound_at: i64,
     /// Cancellation token to abort the WS relay task on unbind.
     /// Not serialized — runtime-only.

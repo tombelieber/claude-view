@@ -38,24 +38,36 @@
             <div class="ms-val">$4.21</div>
           </div>
         </div>
-        <div class="mock-agents">
-          <div class="mock-agent-row">
-            <div class="dot g"></div>
-            <span class="name">feature-auth</span>
-            <span class="status">Running &mdash; editing src/auth.ts</span>
-            <span class="tokens">48,291 tok</span>
+        <div class="mock-swimlanes">
+          <div class="swimlane">
+            <div class="swimlane-header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18"/><path d="M18 9l-6-6-6 6"/><path d="M18 3v18"/></svg>
+              claude-view/main
+            </div>
+            <div class="mock-agent-row">
+              <div class="dot g"></div>
+              <span class="name">feature-auth</span>
+              <span class="status">Running &mdash; editing src/auth.ts</span>
+              <span class="tokens">48,291 tok</span>
+            </div>
+            <div class="mock-agent-row">
+              <div class="dot off"></div>
+              <span class="name">docs-update</span>
+              <span class="status">Idle</span>
+              <span class="tokens">71,452 tok</span>
+            </div>
           </div>
-          <div class="mock-agent-row">
-            <div class="dot y"></div>
-            <span class="name">test-runner</span>
-            <span class="status">Waiting for approval</span>
-            <span class="tokens">23,104 tok</span>
-          </div>
-          <div class="mock-agent-row">
-            <div class="dot off"></div>
-            <span class="name">docs-update</span>
-            <span class="status">Idle</span>
-            <span class="tokens">71,452 tok</span>
+          <div class="swimlane">
+            <div class="swimlane-header">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 3v18"/><path d="M18 9l-6-6-6 6"/><path d="M18 3v18"/></svg>
+              api-server/feat/auth
+            </div>
+            <div class="mock-agent-row">
+              <div class="dot y"></div>
+              <span class="name">test-runner</span>
+              <span class="status">Waiting for approval</span>
+              <span class="tokens">23,104 tok</span>
+            </div>
           </div>
         </div>
       </div>
@@ -166,10 +178,32 @@
     color: var(--accent);
   }
 
-  .mock-agents {
+  .mock-swimlanes {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .swimlane {
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .swimlane-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--accent-text);
+    letter-spacing: 0.01em;
+  }
+  .swimlane-header svg {
+    color: var(--accent);
+    flex-shrink: 0;
   }
   .mock-agent-row {
     display: flex;

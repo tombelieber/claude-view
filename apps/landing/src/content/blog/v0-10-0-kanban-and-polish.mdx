@@ -1,0 +1,56 @@
+---
+title: "Managing Multiple AI Agents: Why We Built the Kanban View"
+description: When you're running 3-5 Claude Code agents at once, a flat list doesn't cut it. v0.10.0 adds Kanban swimlanes, cost popovers, worktree drift detection, and more.
+date: 2026-03-08
+author: claude-view team
+---
+
+You're running five Claude Code agents. One is refactoring auth in your API server. Another is writing tests for the frontend. A third is debugging a migration in a git worktree. You glance at your session list and see... five rows. No grouping, no spatial context. Which agent belongs to which project?
+
+A flat list doesn't match how you think about parallel work. **v0.10.0 fixes that.**
+
+## Kanban swimlanes
+
+The live dashboard now supports a Kanban view that groups running sessions into swimlane columns by project or branch. Instead of scanning a list and mentally sorting "this one is my API repo, that one is frontend," you see it at a glance — each column is a project, and the sessions within it are the agents working in that context.
+
+A **group-by dropdown** lets you switch perspectives instantly. Group by project to see workload distribution across repos. Group by branch to track feature work across worktrees. The view you need depends on the question you're asking, so we let you switch without losing state.
+
+This matters most when you're running agents across 3+ projects simultaneously. The spatial layout gives you the same kind of overview a physical Kanban board gives a team — except each card is an AI agent doing real work.
+
+## Cost and token breakdown popover
+
+Hover any session card — in the Kanban view or the list view — and a popover shows the full cost breakdown: input tokens, output tokens, cache read vs. cache creation, and the dollar cost per category. No more navigating into a session detail page just to check if an agent is burning through your budget.
+
+This is especially useful in the Kanban layout. You can scan across projects and quickly spot which project's agents are the most expensive.
+
+## Worktree branch drift detection
+
+If you use git worktrees to run agents on separate branches simultaneously, you've probably hit this: an agent starts on `feat/auth`, but somewhere during its work the worktree's HEAD drifts to a different branch. Maybe a rebase went wrong, maybe another tool switched it.
+
+claude-view now detects when a worktree's current branch doesn't match the branch it was on when the session started. You'll see a visual indicator on the session card so you can intervene before the agent commits to the wrong branch.
+
+## Hook event tracking
+
+Claude Code hooks — pre/post-tool scripts that run alongside your agent — now get full visibility in the dashboard. You can see which hooks fired, when they ran, and whether they succeeded or failed. When an agent's behavior looks off, check the hook log before digging into the conversation.
+
+## Bulk select and archive
+
+Session history grows fast when you're running multiple agents daily. You can now select multiple sessions and archive them in bulk. Shift-click for ranges, checkbox for individual picks. Keeps your history manageable without deleting anything — archived sessions are still searchable.
+
+## Crash recovery
+
+The sidecar process that bridges Claude Code sessions to the dashboard now auto-recovers from crashes. If the sidecar dies — OOM, signal, panic — it restarts and reconnects to all active sessions without losing data. You shouldn't have to babysit the tool that's supposed to help you babysit your agents.
+
+## Zero-config local mode
+
+This has always been a goal, but worth restating: `npx claude-view` works with zero environment files, zero signup, zero configuration. The server starts, your browser opens, and you see your sessions. Every cloud feature (sharing, auth, sync) is additive — the core experience is fully local and fully free.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you're already running claude-view, that's all you need. The Kanban view is available immediately in the live dashboard.
+
+[Full changelog on GitHub](https://github.com/tombelieber/claude-view/releases) · [Read the docs](/docs/)
