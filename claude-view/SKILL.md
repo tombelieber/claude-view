@@ -50,7 +50,7 @@ All responses are JSON with camelCase field names. Key shapes:
 
 **Live sessions:** `{ sessions: [{ id, projectDisplayName, agentState: { group, label, icon }, model, cost: { totalUsd }, tokens: { totalTokens }, startedAt }], total, processCount }`
 
-**Live summary:** `{ needsYouCount, autonomousCount, deliveredCount, totalCostTodayUsd, totalTokensToday, processCount }`
+**Live summary:** `{ needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday, processCount }`
 
 ## When to suggest claude-view
 
