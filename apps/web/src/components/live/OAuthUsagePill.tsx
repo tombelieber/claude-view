@@ -1,4 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthIdentity } from '../../hooks/use-auth-identity'
 import { type UsageTier, useOAuthUsage } from '../../hooks/use-oauth-usage'
@@ -123,7 +124,7 @@ function isRedundantOrgName(orgName: string, email: string | null): boolean {
 }
 
 export function OAuthUsagePill() {
-  const { data, isLoading, error, refetch, dataUpdatedAt } = useOAuthUsage()
+  const { data, isLoading, error, refetch, dataUpdatedAt, forceRefresh } = useOAuthUsage()
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const { data: identity } = useAuthIdentity(tooltipOpen)
 
@@ -253,10 +254,28 @@ export function OAuthUsagePill() {
               ))}
             </div>
 
-            {/* Last refreshed */}
+            {/* Last refreshed + force refresh */}
             {dataUpdatedAt > 0 && (
-              <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500">
-                {formatUpdatedAgo(dataUpdatedAt)}
+              <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                  {forceRefresh.isError
+                    ? (forceRefresh.error?.message ?? 'Try again later')
+                    : formatUpdatedAgo(dataUpdatedAt)}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    forceRefresh.mutate()
+                  }}
+                  disabled={forceRefresh.isPending}
+                  className="p-0.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-40 transition-colors"
+                  title="Refresh usage"
+                >
+                  <RefreshCw
+                    className={`h-3 w-3 ${forceRefresh.isPending ? 'animate-spin' : ''}`}
+                  />
+                </button>
               </div>
             )}
 
