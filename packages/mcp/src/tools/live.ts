@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ClaudeViewClient } from '../client.js'
 
-interface ToolDef<TSchema extends z.ZodObject<any> = z.ZodObject<any>> {
+interface ToolDef<TSchema extends z.ZodObject<z.ZodRawShape> = z.ZodObject<z.ZodRawShape>> {
   name: string
   description: string
   inputSchema: TSchema
@@ -17,8 +17,8 @@ export const liveTools: ToolDef[] = [
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client) => {
-      const data = await client.get<any>('/api/live/sessions')
-      const sessions = (data.sessions ?? []).map((s: any) => ({
+      const data = await client.get<Record<string, unknown>>('/api/live/sessions')
+      const sessions = (data.sessions ?? []).map((s: Record<string, unknown>) => ({
         id: s.id,
         project: s.projectDisplayName,
         agent_state: s.agentState?.label ?? s.agentState?.group,
@@ -44,12 +44,11 @@ export const liveTools: ToolDef[] = [
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client) => {
-      const data = await client.get<any>('/api/live/summary')
+      const data = await client.get<Record<string, unknown>>('/api/live/summary')
       return JSON.stringify(
         {
           needs_attention: data.needsYouCount,
           autonomous: data.autonomousCount,
-          delivered: data.deliveredCount,
           total_cost_today_usd: data.totalCostTodayUsd,
           total_tokens_today: data.totalTokensToday,
           process_count: data.processCount,

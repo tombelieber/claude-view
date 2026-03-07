@@ -41,8 +41,6 @@ pub struct AgentState {
 pub enum AgentStateGroup {
     NeedsYou,
     Autonomous,
-    #[allow(dead_code)]
-    Delivered,
 }
 
 /// The current status of a live Claude Code session.
@@ -202,7 +200,7 @@ pub struct HookEvent {
     pub tool_name: Option<String>,
     /// Human-readable label (from resolve_state_from_hook).
     pub label: String,
-    /// Agent state group: "autonomous", "needs_you", or "delivered".
+    /// Agent state group: "autonomous" or "needs_you".
     pub group: String,
     /// Optional context JSON (tool_input, error, prompt snippet, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,9 +304,6 @@ pub enum SessionEvent {
         needs_you_count: usize,
         #[serde(rename = "autonomousCount")]
         autonomous_count: usize,
-        #[serde(rename = "deliveredCount")]
-        #[allow(dead_code)]
-        delivered_count: usize,
         #[serde(rename = "totalCostTodayUsd")]
         total_cost_today_usd: f64,
         #[serde(rename = "totalTokensToday")]
@@ -322,7 +317,7 @@ pub fn status_from_agent_state(agent_state: &AgentState) -> SessionStatus {
         "session_ended" => SessionStatus::Done,
         _ => match agent_state.group {
             AgentStateGroup::Autonomous => SessionStatus::Working,
-            AgentStateGroup::NeedsYou | AgentStateGroup::Delivered => SessionStatus::Paused,
+            AgentStateGroup::NeedsYou => SessionStatus::Paused,
         },
     }
 }

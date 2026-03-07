@@ -21,7 +21,7 @@ export type HookEvent = {
    */
   label: string
   /**
-   * Agent state group: "autonomous", "needs_you", or "delivered".
+   * Agent state group: "autonomous" or "needs_you".
    */
   group: string
   /**
