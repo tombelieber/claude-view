@@ -20,7 +20,6 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useProjectBranches } from '../hooks/use-branches'
 import type { ProjectSummary } from '../hooks/use-projects'
@@ -55,11 +54,30 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const sidebarRecentCollapsed = useAppStore((s) => s.sidebarRecentCollapsed)
   const toggleSidebarSection = useAppStore((s) => s.toggleSidebarSection)
 
-  const { defaultLayout } = useDefaultLayout({
-    id: 'sidebar-panels',
-    panelIds: ['tabs', 'scope', 'recent'],
-    storage: localStorage,
-  })
+  const [recentHeight, setRecentHeight] = useState(160)
+  const recentHeightRef = useRef(160)
+
+  const handleSectionResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = recentHeightRef.current
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = startY - ev.clientY
+      const newHeight = Math.round(Math.max(40, Math.min(400, startH + delta)))
+      recentHeightRef.current = newHeight
+      setRecentHeight(newHeight)
+    }
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
+
   const [isResizing, setIsResizing] = useState(false)
   const widthRef = useRef(sidebarWidth)
 
@@ -551,135 +569,113 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
       >
         <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
       </div>
-      <Group orientation="vertical" defaultLayout={defaultLayout} className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 flex flex-col">
         {/* ─── Zone 1: Navigation Tabs ─── */}
-        <Panel
-          id="tabs"
-          collapsible
-          minSize={5}
-          defaultSize={20}
-          collapsedSize={0}
-          onResize={(size) => {
-            const isCollapsed = size.asPercentage === 0
-            if (isCollapsed !== sidebarTabsCollapsed) toggleSidebarSection('tabs')
-          }}
-        >
+        <div className="flex-none">
           <SectionHeader
             title="Navigation"
             collapsed={sidebarTabsCollapsed}
             onToggle={() => toggleSidebarSection('tabs')}
           />
-          {!sidebarTabsCollapsed && (
-            <nav
-              aria-label="Main navigation"
-              className="flex flex-col gap-0.5 px-2 py-1 overflow-y-auto"
-            >
-              {(() => {
-                // Build preserved params string for nav links
-                const preservedParams = new URLSearchParams()
-                if (searchParams.get('project'))
-                  preservedParams.set('project', searchParams.get('project')!)
-                if (searchParams.get('branch'))
-                  preservedParams.set('branch', searchParams.get('branch')!)
-                const paramString = preservedParams.toString()
+          <div
+            className="grid transition-[grid-template-rows] duration-200 ease-out"
+            style={{ gridTemplateRows: sidebarTabsCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className="overflow-hidden min-h-0">
+              <nav aria-label="Main navigation" className="flex flex-col gap-0.5 px-2 py-1">
+                {(() => {
+                  const preservedParams = new URLSearchParams()
+                  if (searchParams.get('project'))
+                    preservedParams.set('project', searchParams.get('project')!)
+                  if (searchParams.get('branch'))
+                    preservedParams.set('branch', searchParams.get('branch')!)
+                  const paramString = preservedParams.toString()
 
-                return (
-                  <>
-                    <Link
-                      to={`/${paramString ? `?${paramString}` : ''}`}
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                        location.pathname === '/'
-                          ? 'bg-blue-500 text-white'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                      )}
-                    >
-                      <Monitor className="w-4 h-4" />
-                      <span className="font-medium">Live Monitor</span>
-                    </Link>
-                    <Link
-                      to={`/sessions${paramString ? `?${paramString}` : ''}`}
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                        location.pathname.startsWith('/sessions')
-                          ? 'bg-blue-500 text-white'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                      )}
-                    >
-                      <Clock className="w-4 h-4" />
-                      <span className="font-medium">Sessions</span>
-                    </Link>
-                    <Link
-                      to={`/analytics${paramString ? `?${paramString}` : ''}`}
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                        location.pathname === '/analytics'
-                          ? 'bg-blue-500 text-white'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                      )}
-                    >
-                      <BarChart3 className="w-4 h-4" />
-                      <span className="font-medium">Analytics</span>
-                    </Link>
-                    <Link
-                      to={`/activity${paramString ? `?${paramString}` : ''}`}
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                        location.pathname === '/activity'
-                          ? 'bg-blue-500 text-white'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                      )}
-                    >
-                      <CalendarDays className="w-4 h-4" />
-                      <span className="font-medium">Activity</span>
-                    </Link>
-                    <Link
-                      to={`/reports${paramString ? `?${paramString}` : ''}`}
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                        location.pathname === '/reports'
-                          ? 'bg-blue-500 text-white'
-                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
-                      )}
-                    >
-                      <FileText className="w-4 h-4" />
-                      <span className="font-medium">Reports</span>
-                    </Link>
-                    <span
-                      className={cn(
-                        'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
-                        'text-gray-600 dark:text-gray-400',
-                      )}
-                    >
-                      <Cpu className="w-4 h-4" />
-                      <span className="font-medium">Agent SDK Studio</span>
-                      <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
-                        Coming Soon
+                  return (
+                    <>
+                      <Link
+                        to={`/${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <Monitor className="w-4 h-4" />
+                        <span className="font-medium">Live Monitor</span>
+                      </Link>
+                      <Link
+                        to={`/sessions${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname.startsWith('/sessions')
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <Clock className="w-4 h-4" />
+                        <span className="font-medium">Sessions</span>
+                      </Link>
+                      <Link
+                        to={`/analytics${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/analytics'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        <span className="font-medium">Analytics</span>
+                      </Link>
+                      <Link
+                        to={`/activity${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/activity'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <CalendarDays className="w-4 h-4" />
+                        <span className="font-medium">Activity</span>
+                      </Link>
+                      <Link
+                        to={`/reports${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/reports'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span className="font-medium">Reports</span>
+                      </Link>
+                      <span
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-not-allowed opacity-60',
+                          'text-gray-600 dark:text-gray-400',
+                        )}
+                      >
+                        <Cpu className="w-4 h-4" />
+                        <span className="font-medium">Agent SDK Studio</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                          Coming Soon
+                        </span>
                       </span>
-                    </span>
-                  </>
-                )
-              })()}
-            </nav>
-          )}
-        </Panel>
-
-        <Separator className="group h-1 shrink-0 flex items-center justify-center">
-          <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:h-0.5 group-hover:bg-blue-400 dark:group-hover:bg-blue-500 group-active:bg-blue-500 transition-all" />
-        </Separator>
+                    </>
+                  )
+                })()}
+              </nav>
+            </div>
+          </div>
+          <div className="h-px bg-gray-200 dark:bg-gray-700" />
+        </div>
 
         {/* ─── Zone 2: Scope Panel ─── */}
-        <Panel
-          id="scope"
-          collapsible
-          minSize={10}
-          defaultSize={55}
-          collapsedSize={0}
-          onResize={(size) => {
-            const isCollapsed = size.asPercentage === 0
-            if (isCollapsed !== sidebarScopeCollapsed) toggleSidebarSection('scope')
-          }}
-        >
+        <div className={cn('flex flex-col min-h-0', !sidebarScopeCollapsed && 'flex-1')}>
           <SectionHeader
             title="Scope"
             collapsed={sidebarScopeCollapsed}
@@ -703,8 +699,11 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               ) : undefined
             }
           />
-          {!sidebarScopeCollapsed && (
-            <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+          <div
+            className="grid transition-[grid-template-rows] duration-200 ease-out flex-1 min-h-0"
+            style={{ gridTemplateRows: sidebarScopeCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className="overflow-hidden min-h-0 flex flex-col">
               {/* View mode toggle + expand/collapse controls */}
               <div className="px-3 py-2">
                 <div className="flex items-center gap-2">
@@ -794,47 +793,43 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                 {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
               </div>
             </div>
-          )}
-        </Panel>
+          </div>
+        </div>
 
-        <Separator className="group h-1 shrink-0 flex items-center justify-center">
+        {/* Draggable resize handle between Scope and Recent */}
+        <div
+          onPointerDown={handleSectionResizeStart}
+          className="h-1.5 shrink-0 flex items-center justify-center cursor-row-resize group"
+        >
           <div className="h-px w-full bg-gray-200 dark:bg-gray-700 group-hover:h-0.5 group-hover:bg-blue-400 dark:group-hover:bg-blue-500 group-active:bg-blue-500 transition-all" />
-        </Separator>
+        </div>
 
         {/* ─── Zone 3: Recent / Quick Jump ─── */}
-        <Panel
-          id="recent"
-          collapsible
-          minSize={5}
-          defaultSize={25}
-          collapsedSize={0}
-          onResize={(size) => {
-            const isCollapsed = size.asPercentage === 0
-            if (isCollapsed !== sidebarRecentCollapsed) toggleSidebarSection('recent')
-          }}
+        <div
+          className="flex-none"
+          style={{ height: sidebarRecentCollapsed ? undefined : recentHeight }}
         >
           <SectionHeader
             title="Recent"
             collapsed={sidebarRecentCollapsed}
             onToggle={() => toggleSidebarSection('recent')}
           />
-          {!sidebarRecentCollapsed &&
-            (selectedProjectId ? (
-              <QuickJumpZone project={selectedProjectId} branch={searchParams.get('branch')} />
-            ) : (
-              <div className="px-3 py-4 text-xs text-gray-400 text-center">
-                Select a project to see recent sessions
-              </div>
-            ))}
-        </Panel>
-      </Group>
-
-      {/* All sections collapsed hint */}
-      {sidebarTabsCollapsed && sidebarScopeCollapsed && sidebarRecentCollapsed && (
-        <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
-          Click a header to expand
+          <div
+            className="grid transition-[grid-template-rows] duration-200 ease-out"
+            style={{ gridTemplateRows: sidebarRecentCollapsed ? '0fr' : '1fr' }}
+          >
+            <div className="overflow-hidden min-h-0">
+              {selectedProjectId ? (
+                <QuickJumpZone project={selectedProjectId} branch={searchParams.get('branch')} />
+              ) : (
+                <div className="px-3 py-4 text-xs text-gray-400 text-center">
+                  Select a project to see recent sessions
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
     </aside>
   )
 }
