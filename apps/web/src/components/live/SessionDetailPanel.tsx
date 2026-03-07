@@ -24,6 +24,7 @@ import { controlStatusToInputState } from '../../lib/control-status-map'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
+import { COST_CATEGORY_COLORS } from '../../theme'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
@@ -475,7 +476,9 @@ export function SessionDetailPanel({
                   </div>
                 )}
                 {(data.cost?.cacheSavingsUsd ?? 0) > 0 && (
-                  <div className="text-[10px] font-mono text-green-600 dark:text-green-400 mt-0.5">
+                  <div
+                    className={`text-[10px] font-mono ${COST_CATEGORY_COLORS.savings.text} mt-0.5`}
+                  >
                     Saved: ${(data.cost?.cacheSavingsUsd ?? 0).toFixed(2)}
                   </div>
                 )}
