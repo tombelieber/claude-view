@@ -131,6 +131,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
             ? 'bg-green-50 dark:bg-green-950/40 border-green-200 dark:border-green-800'
             : 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',
         ].join(' ')}
+        // biome-ignore lint/a11y/useSemanticElements: status bar is a div with ARIA, not an <output> form element
         role="status"
         aria-live="polite"
         aria-label="Indexing progress"

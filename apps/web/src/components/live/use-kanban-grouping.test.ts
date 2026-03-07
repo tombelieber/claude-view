@@ -10,7 +10,7 @@ function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSess
     projectPath: '/Users/test/test-project',
     filePath: '',
     status: 'working',
-    agentState: { group: 'autonomous', state: 'thinking', label: 'Thinking' },
+    agentState: { group: 'autonomous', state: 'thinking', label: 'Thinking', context: null },
     gitBranch,
     worktreeBranch: null,
     isWorktree: false,
