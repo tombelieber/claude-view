@@ -1,0 +1,216 @@
+---
+/**
+ * Browser chrome frame mockup of the claude-view dashboard.
+ * Shows sidebar, stats row, and agent rows — purely decorative.
+ */
+---
+
+<section class="product-section">
+  <div class="product-frame">
+    <div class="frame-bar">
+      <div class="d"></div><div class="d"></div><div class="d"></div>
+      <div class="url">localhost:47892</div>
+    </div>
+    <div class="mock-dash">
+      <div class="mock-sidebar">
+        <div class="sb-item active">Dashboard</div>
+        <div class="sb-item">Sessions</div>
+        <div class="sb-item">Search</div>
+        <div class="sb-item">Patterns</div>
+        <div class="sb-item">Settings</div>
+      </div>
+      <div class="mock-main">
+        <div class="mock-stat-row">
+          <div class="mock-stat">
+            <div class="ms-label">Active Agents</div>
+            <div class="ms-val accent">3</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Tokens Today</div>
+            <div class="ms-val">142,847</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Sessions</div>
+            <div class="ms-val">23</div>
+          </div>
+          <div class="mock-stat">
+            <div class="ms-label">Est. Cost</div>
+            <div class="ms-val">$4.21</div>
+          </div>
+        </div>
+        <div class="mock-agents">
+          <div class="mock-agent-row">
+            <div class="dot g"></div>
+            <span class="name">feature-auth</span>
+            <span class="status">Running &mdash; editing src/auth.ts</span>
+            <span class="tokens">48,291 tok</span>
+          </div>
+          <div class="mock-agent-row">
+            <div class="dot y"></div>
+            <span class="name">test-runner</span>
+            <span class="status">Waiting for approval</span>
+            <span class="tokens">23,104 tok</span>
+          </div>
+          <div class="mock-agent-row">
+            <div class="dot off"></div>
+            <span class="name">docs-update</span>
+            <span class="status">Idle</span>
+            <span class="tokens">71,452 tok</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .product-section {
+    position: relative;
+    z-index: 1;
+    max-width: 920px;
+    margin: 64px auto 0;
+    padding: 0 24px;
+  }
+  .product-frame {
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.03),
+      0 8px 32px rgba(0, 0, 0, 0.04),
+      0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+  }
+  .frame-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.02);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .frame-bar .d {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .frame-bar .d:nth-child(1) { background: #ff5f57; }
+  .frame-bar .d:nth-child(2) { background: #febc2e; }
+  .frame-bar .d:nth-child(3) { background: #28c840; }
+  .frame-bar .url {
+    flex: 1;
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-body);
+  }
+
+  .mock-dash {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 0;
+    min-height: 320px;
+  }
+  .mock-sidebar {
+    padding: 14px 10px;
+    background: rgba(0, 0, 0, 0.015);
+    border-right: 1px solid var(--color-border);
+  }
+  .sb-item {
+    padding: 7px 12px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    margin-bottom: 1px;
+    cursor: default;
+    transition: background 0.1s;
+  }
+  .sb-item.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-weight: 500;
+  }
+
+  .mock-main {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .mock-stat-row {
+    display: flex;
+    gap: 10px;
+  }
+  .mock-stat {
+    flex: 1;
+    padding: 14px 16px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.03);
+  }
+  .ms-label {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    margin-bottom: 4px;
+  }
+  .ms-val {
+    font-family: var(--font-heading);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text);
+    letter-spacing: -0.03em;
+  }
+  .ms-val.accent {
+    color: var(--accent);
+  }
+
+  .mock-agents {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mock-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.03);
+    font-size: 12px;
+  }
+  .mock-agent-row .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot.g { background: #22c55e; box-shadow: 0 0 6px rgba(34, 197, 94, 0.3); }
+  .dot.y { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.3); }
+  .dot.off { background: #d4d4d8; }
+  .mock-agent-row .name {
+    font-weight: 500;
+    color: var(--color-text);
+    width: 100px;
+  }
+  .mock-agent-row .status {
+    color: var(--color-text-tertiary);
+    flex: 1;
+  }
+  .mock-agent-row .tokens {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+  }
+
+  @media (max-width: 768px) {
+    .mock-dash { grid-template-columns: 1fr; }
+    .mock-sidebar { display: none; }
+  }
+  @media (max-width: 480px) {
+    .mock-stat-row { flex-wrap: wrap; }
+    .mock-stat { min-width: calc(50% - 5px); }
+  }
+</style>

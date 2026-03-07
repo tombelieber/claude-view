@@ -1,0 +1,100 @@
+---
+title: Installation
+description: Install claude-view on macOS. Zero config — one command.
+---
+
+import { DEFAULT_PORT, PLATFORM } from '../../../data/site';
+
+<script is:inline type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Install claude-view",
+  "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
+  "totalTime": "PT15S",
+  "tool": [{"@type": "HowToTool", "name": `Node.js (v${PLATFORM.nodeMin} or later)`}],
+  "step": [
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": `claude-view starts a local server and opens your browser to http://localhost:${DEFAULT_PORT}. You'll see all active Claude Code sessions automatically detected.`}
+  ]
+})} />
+
+## Quick install
+
+```bash
+npx claude-view
+```
+
+That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+
+## Claude Code plugin (recommended)
+
+If you use Claude Code, install the plugin for the best experience — it auto-starts the server, adds 8 MCP tools, and 3 skills:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+After installing, every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed. See the [plugin guide](/docs/guides/plugin/) for details.
+
+## Requirements
+
+<table>
+  <thead>
+    <tr><th>Requirement</th><th>Version</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>macOS</td><td>{PLATFORM.macosMin} or later</td></tr>
+    <tr><td>Node.js</td><td>{PLATFORM.nodeMin} or later</td></tr>
+    <tr><td>Claude Code</td><td>Latest</td></tr>
+  </tbody>
+</table>
+
+> **Linux:** Supported in {PLATFORM.linuxVersion} (coming soon). Windows in {PLATFORM.windowsVersion}.
+
+## What happens on first run
+
+1. `npx` downloads the pre-built `claude-view` binary for your platform
+2. The binary starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
+3. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
+4. claude-view scans for active Claude Code processes automatically
+
+## Configuration
+
+### Change the port
+
+```bash
+CLAUDE_VIEW_PORT=8080 npx claude-view
+```
+
+Or set permanently in your shell profile:
+
+```bash
+export CLAUDE_VIEW_PORT=8080
+```
+
+If port <code>{DEFAULT_PORT}</code> is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
+
+### Persistent binary (faster startup)
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+Global install skips the `npx` download step on subsequent runs.
+
+## Verify it's running
+
+Open <code>http://localhost:{DEFAULT_PORT}</code> in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
+
+## Troubleshooting
+
+**"Port {DEFAULT_PORT} already in use"**
+Another instance is running. Kill it with `pkill claude-view` or use a different port.
+
+**"No sessions found"**
+Start a Claude Code session in another terminal: `claude`. Sessions appear within a few seconds.
+
+**Binary download fails**
+Check your Node.js version: `node --version`. Requires v{PLATFORM.nodeMin}+. If behind a proxy, set `HTTPS_PROXY`.

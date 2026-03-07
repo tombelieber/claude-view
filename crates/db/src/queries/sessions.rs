@@ -3,8 +3,8 @@
 
 use crate::{Database, DbResult};
 use chrono::Utc;
-use std::collections::HashMap;
 use claude_view_core::{ProjectInfo, SessionInfo};
+use std::collections::HashMap;
 
 use super::row_types::SessionRow;
 use super::IndexerEntry;
@@ -129,41 +129,41 @@ where
     let indexed_at = chrono::Utc::now().timestamp();
 
     sqlx::query(UPSERT_SESSION_SQL)
-        .bind(&s.id)              // ?1
-        .bind(&s.project_id)      // ?2
+        .bind(&s.id) // ?1
+        .bind(&s.project_id) // ?2
         .bind(&s.project_display_name) // ?3
-        .bind(&s.project_path)    // ?4
-        .bind(&s.file_path)       // ?5
-        .bind(&s.preview)         // ?6
-        .bind(&s.summary)         // ?7
-        .bind(s.message_count)    // ?8
-        .bind(s.last_message_at)  // ?9
+        .bind(&s.project_path) // ?4
+        .bind(&s.file_path) // ?5
+        .bind(&s.preview) // ?6
+        .bind(&s.summary) // ?7
+        .bind(s.message_count) // ?8
+        .bind(s.last_message_at) // ?9
         .bind(s.first_message_at) // ?10
-        .bind(&s.git_branch)      // ?11
-        .bind(s.is_sidechain)     // ?12
-        .bind(s.size_bytes)       // ?13
-        .bind(indexed_at)         // ?14
-        .bind(&s.last_message)    // ?15
-        .bind(&s.files_touched)   // ?16
-        .bind(&s.skills_used)     // ?17
+        .bind(&s.git_branch) // ?11
+        .bind(s.is_sidechain) // ?12
+        .bind(s.size_bytes) // ?13
+        .bind(indexed_at) // ?14
+        .bind(&s.last_message) // ?15
+        .bind(&s.files_touched) // ?16
+        .bind(&s.skills_used) // ?17
         .bind(s.tool_counts_edit) // ?18
         .bind(s.tool_counts_read) // ?19
         .bind(s.tool_counts_bash) // ?20
         .bind(s.tool_counts_write) // ?21
-        .bind(s.turn_count)       // ?22
-        .bind(s.parse_version)    // ?23
+        .bind(s.turn_count) // ?22
+        .bind(s.parse_version) // ?23
         .bind(s.file_size_at_index) // ?24
         .bind(s.file_mtime_at_index) // ?25
         .bind(s.user_prompt_count) // ?26
-        .bind(s.api_call_count)   // ?27
-        .bind(s.tool_call_count)  // ?28
-        .bind(&s.files_read)      // ?29
-        .bind(&s.files_edited)    // ?30
+        .bind(s.api_call_count) // ?27
+        .bind(s.tool_call_count) // ?28
+        .bind(&s.files_read) // ?29
+        .bind(&s.files_edited) // ?30
         .bind(s.files_read_count) // ?31
         .bind(s.files_edited_count) // ?32
         .bind(s.reedited_files_count) // ?33
         .bind(s.duration_seconds) // ?34
-        .bind(s.commit_count)     // ?35
+        .bind(s.commit_count) // ?35
         .bind(s.total_input_tokens) // ?36
         .bind(s.total_output_tokens) // ?37
         .bind(s.cache_read_tokens) // ?38
@@ -172,26 +172,26 @@ where
         .bind(s.turn_duration_avg_ms) // ?41
         .bind(s.turn_duration_max_ms) // ?42
         .bind(s.turn_duration_total_ms) // ?43
-        .bind(s.api_error_count)  // ?44
-        .bind(s.api_retry_count)  // ?45
+        .bind(s.api_error_count) // ?44
+        .bind(s.api_retry_count) // ?45
         .bind(s.compaction_count) // ?46
         .bind(s.hook_blocked_count) // ?47
         .bind(s.agent_spawn_count) // ?48
         .bind(s.bash_progress_count) // ?49
         .bind(s.hook_progress_count) // ?50
         .bind(s.mcp_progress_count) // ?51
-        .bind(&s.summary_text)    // ?52
-        .bind(s.lines_added)      // ?53
-        .bind(s.lines_removed)    // ?54
-        .bind(s.loc_source)       // ?55
-        .bind(s.ai_lines_added)   // ?56
+        .bind(&s.summary_text) // ?52
+        .bind(s.lines_added) // ?53
+        .bind(s.lines_removed) // ?54
+        .bind(s.loc_source) // ?55
+        .bind(s.ai_lines_added) // ?56
         .bind(s.ai_lines_removed) // ?57
-        .bind(&s.work_type)       // ?58
-        .bind(&s.primary_model)   // ?59
+        .bind(&s.work_type) // ?58
+        .bind(&s.primary_model) // ?59
         .bind(s.total_task_time_seconds) // ?60
-        .bind(s.longest_task_seconds)    // ?61
-        .bind(&s.longest_task_preview)   // ?62
-        .bind(s.total_cost_usd)          // ?63
+        .bind(s.longest_task_seconds) // ?61
+        .bind(&s.longest_task_preview) // ?62
+        .bind(s.total_cost_usd) // ?63
         .execute(executor)
         .await?;
 
@@ -251,22 +251,22 @@ impl Database {
                 tool_counts_bash = ?15, tool_counts_write = ?16
             WHERE id = ?1",
         )
-        .bind(session_id)           // ?1
-        .bind(message_count)        // ?2
-        .bind(turn_count)           // ?3
-        .bind(last_message_at)      // ?4
-        .bind(last_message)         // ?5
-        .bind(size_bytes)           // ?6
-        .bind(file_size_at_index)   // ?7
-        .bind(file_mtime_at_index)  // ?8
-        .bind(total_input_tokens)   // ?9
-        .bind(total_output_tokens)  // ?10
-        .bind(cache_read_tokens)    // ?11
+        .bind(session_id) // ?1
+        .bind(message_count) // ?2
+        .bind(turn_count) // ?3
+        .bind(last_message_at) // ?4
+        .bind(last_message) // ?5
+        .bind(size_bytes) // ?6
+        .bind(file_size_at_index) // ?7
+        .bind(file_mtime_at_index) // ?8
+        .bind(total_input_tokens) // ?9
+        .bind(total_output_tokens) // ?10
+        .bind(cache_read_tokens) // ?11
         .bind(cache_creation_tokens) // ?12
-        .bind(tool_counts_edit)     // ?13
-        .bind(tool_counts_read)     // ?14
-        .bind(tool_counts_bash)     // ?15
-        .bind(tool_counts_write)    // ?16
+        .bind(tool_counts_edit) // ?13
+        .bind(tool_counts_read) // ?14
+        .bind(tool_counts_bash) // ?15
+        .bind(tool_counts_write) // ?16
         .execute(self.pool())
         .await?;
         Ok(())
@@ -283,14 +283,14 @@ impl Database {
         project_encoded: &str,
         project_display_name: &str,
     ) -> DbResult<()> {
-        let files_touched = serde_json::to_string(&session.files_touched)
-            .unwrap_or_else(|_| "[]".to_string());
-        let skills_used = serde_json::to_string(&session.skills_used)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_read = serde_json::to_string(&session.files_read)
-            .unwrap_or_else(|_| "[]".to_string());
-        let files_edited = serde_json::to_string(&session.files_edited)
-            .unwrap_or_else(|_| "[]".to_string());
+        let files_touched =
+            serde_json::to_string(&session.files_touched).unwrap_or_else(|_| "[]".to_string());
+        let skills_used =
+            serde_json::to_string(&session.skills_used).unwrap_or_else(|_| "[]".to_string());
+        let files_read =
+            serde_json::to_string(&session.files_read).unwrap_or_else(|_| "[]".to_string());
+        let files_edited =
+            serde_json::to_string(&session.files_edited).unwrap_or_else(|_| "[]".to_string());
         let indexed_at = Utc::now().timestamp();
         let size_bytes = session.size_bytes as i64;
         let message_count = session.message_count as i32;
@@ -441,7 +441,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -509,12 +510,14 @@ impl Database {
         .fetch_optional(self.pool())
         .await?;
 
-        Ok(row.map(|(file_path, file_size, modified_at, indexed_at)| IndexerEntry {
-            file_path,
-            file_size,
-            modified_at,
-            indexed_at,
-        }))
+        Ok(row.map(
+            |(file_path, file_size, modified_at, indexed_at)| IndexerEntry {
+                file_path,
+                file_size,
+                modified_at,
+                indexed_at,
+            },
+        ))
     }
 
     /// Batch-load all indexer states into a HashMap keyed by file_path.
@@ -574,7 +577,9 @@ impl Database {
     /// and does NOT overwrite Pass 2 fields (tool_counts, files_touched, etc.)
     /// if they already have data.
     #[allow(clippy::too_many_arguments)]
-    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+    #[deprecated(
+        note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+    )]
     pub async fn insert_session_from_index(
         &self,
         id: &str,
@@ -676,7 +681,9 @@ impl Database {
     /// Sets `deep_indexed_at` to the current timestamp to mark the session
     /// as having been fully indexed. Includes all Phase 3 atomic unit metrics.
     #[allow(clippy::too_many_arguments)]
-    #[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+    #[deprecated(
+        note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+    )]
     pub async fn update_session_deep_fields(
         &self,
         id: &str,
@@ -735,7 +742,7 @@ impl Database {
         total_task_time_seconds: i32,
         longest_task_seconds: Option<i32>,
         longest_task_preview: Option<&str>,
-        total_cost_usd: f64,
+        total_cost_usd: Option<f64>,
     ) -> DbResult<()> {
         let deep_indexed_at = Utc::now().timestamp();
 
@@ -865,18 +872,28 @@ impl Database {
     /// based on: (1) never deep-indexed, (2) stale parse version, (3) file changed
     /// since last index (size or mtime differs).
     ///
-    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project)`
+    /// Tuple: `(id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, project, archived_at)`
     ///
-    /// The `project` value is the display name (e.g. `claude-view`) rather than
-    /// the encoded path (`-Users-foo-claude-view`), so that search qualifiers
-    /// like `project:claude-view` match what users naturally type.
+    /// The `project` value is the effective project identity: `COALESCE(NULLIF(git_root, ''), project_id)`.
+    /// This matches what the sidebar sends as the project filter, so search scope filters align.
     pub async fn get_sessions_needing_deep_index(
         &self,
-    ) -> DbResult<Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)>> {
+    ) -> DbResult<
+        Vec<(
+            String,
+            String,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            i32,
+            String,
+            Option<String>,
+        )>,
+    > {
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String)> =
+        let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String, Option<String>)> =
             sqlx::query_as(
-                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(project_display_name, project_id, '') FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(NULLIF(git_root, ''), project_id, ''), archived_at FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
             )
             .fetch_all(self.pool())
             .await?;
@@ -903,12 +920,10 @@ impl Database {
     /// Returns `None` if the session doesn't exist in the DB.
     /// The returned path is always absolute (set during indexing).
     pub async fn get_session_file_path(&self, session_id: &str) -> DbResult<Option<String>> {
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT file_path FROM sessions WHERE id = ?1",
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
+        let row: Option<(String,)> = sqlx::query_as("SELECT file_path FROM sessions WHERE id = ?1")
+            .bind(session_id)
+            .fetch_optional(self.pool())
+            .await?;
         Ok(row.map(|(p,)| p))
     }
 
@@ -943,7 +958,8 @@ impl Database {
         }
 
         // Build placeholders for the IN clause
-        let placeholders: Vec<String> = (1..=valid_paths.len()).map(|i| format!("?{}", i)).collect();
+        let placeholders: Vec<String> =
+            (1..=valid_paths.len()).map(|i| format!("?{}", i)).collect();
         let in_clause = placeholders.join(", ");
 
         let delete_sessions_sql = format!(
@@ -1032,12 +1048,148 @@ impl Database {
         .await?;
         Ok(())
     }
+
+    /// Look up a single session by its UUID.
+    ///
+    /// Used by the cost estimation endpoint to fetch session metadata
+    /// (token counts, model, timestamps) for a specific session.
+    pub async fn get_session_by_id(&self, id: &str) -> DbResult<Option<SessionInfo>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"SELECT
+                s.id, s.project_id, s.preview, s.turn_count,
+                s.last_message_at, s.file_path,
+                s.project_path, s.git_root, s.project_display_name,
+                s.size_bytes, s.last_message, s.files_touched, s.skills_used,
+                s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
+                s.message_count,
+                COALESCE(s.summary_text, s.summary) AS summary,
+                s.git_branch, s.is_sidechain, s.deep_indexed_at,
+                s.total_input_tokens,
+                s.total_output_tokens,
+                s.cache_read_tokens AS total_cache_read_tokens,
+                s.cache_creation_tokens AS total_cache_creation_tokens,
+                s.api_call_count AS turn_count_api,
+                s.primary_model,
+                s.user_prompt_count, s.api_call_count, s.tool_call_count,
+                s.files_read, s.files_edited,
+                s.files_read_count, s.files_edited_count, s.reedited_files_count,
+                s.duration_seconds, s.first_message_at, s.commit_count,
+                s.thinking_block_count, s.turn_duration_avg_ms, s.turn_duration_max_ms,
+                s.api_error_count, s.compaction_count, s.agent_spawn_count,
+                s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
+                s.lines_added, s.lines_removed, s.loc_source,
+                s.summary_text, s.parse_version,
+                s.category_l1, s.category_l2, s.category_l3,
+                s.category_confidence, s.category_source, s.classified_at,
+                s.prompt_word_count, s.correction_count, s.same_file_edit_count,
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
+            FROM sessions s WHERE s.id = ?1"#,
+        )
+        .bind(id)
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row.map(|r| {
+            let pid = r.project_id.clone();
+            r.into_session_info(&pid)
+        }))
+    }
+
+    /// Archive a session: set archived_at timestamp.
+    /// Returns the file_path so the caller can move the file.
+    pub async fn archive_session(&self, session_id: &str) -> DbResult<Option<String>> {
+        let now = Utc::now().to_rfc3339();
+        let result = sqlx::query_scalar::<_, String>(
+            "UPDATE sessions SET archived_at = ?1 WHERE id = ?2 AND archived_at IS NULL RETURNING file_path",
+        )
+        .bind(&now)
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(result)
+    }
+
+    /// Unarchive a session: clear archived_at, update file_path to new location.
+    pub async fn unarchive_session(&self, session_id: &str, new_file_path: &str) -> DbResult<bool> {
+        let rows = sqlx::query(
+            "UPDATE sessions SET archived_at = NULL, file_path = ?1 WHERE id = ?2 AND archived_at IS NOT NULL",
+        )
+        .bind(new_file_path)
+        .bind(session_id)
+        .execute(self.pool())
+        .await?
+        .rows_affected();
+        Ok(rows > 0)
+    }
+
+    /// Archive multiple sessions in a single transaction.
+    /// Returns vec of (session_id, file_path) for file moves.
+    pub async fn archive_sessions_bulk(
+        &self,
+        session_ids: &[String],
+    ) -> DbResult<Vec<(String, String)>> {
+        let now = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let mut results = Vec::new();
+        for id in session_ids {
+            let result = sqlx::query_scalar::<_, String>(
+                "UPDATE sessions SET archived_at = ?1 WHERE id = ?2 AND archived_at IS NULL RETURNING file_path",
+            )
+            .bind(&now)
+            .bind(id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            if let Some(path) = result {
+                results.push((id.clone(), path));
+            }
+        }
+        tx.commit().await?;
+        Ok(results)
+    }
+
+    /// Update a session's file_path in the DB (e.g. after moving to/from archive).
+    pub async fn update_session_file_path(
+        &self,
+        session_id: &str,
+        new_path: &str,
+    ) -> DbResult<bool> {
+        let rows = sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
+            .bind(new_path)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?
+            .rows_affected();
+        Ok(rows > 0)
+    }
+
+    /// Bulk unarchive: clear archived_at for multiple sessions.
+    pub async fn unarchive_sessions_bulk(
+        &self,
+        file_paths: &[(String, String)],
+    ) -> DbResult<usize> {
+        let mut tx = self.pool().begin().await?;
+        let mut count = 0usize;
+        for (id, new_path) in file_paths {
+            let rows = sqlx::query(
+                "UPDATE sessions SET archived_at = NULL, file_path = ?1 WHERE id = ?2 AND archived_at IS NOT NULL",
+            )
+            .bind(new_path)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+            count += rows as usize;
+        }
+        tx.commit().await?;
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
 mod upsert_tests {
-    use crate::Database;
     use crate::indexer_parallel::{ParsedSession, CURRENT_PARSE_VERSION};
+    use crate::Database;
 
     fn make_parsed_session(id: &str, message_count: i32) -> ParsedSession {
         ParsedSession {
@@ -1102,7 +1254,7 @@ mod upsert_tests {
             total_task_time_seconds: Some(0),
             longest_task_seconds: Some(0),
             longest_task_preview: None,
-            total_cost_usd: 0.05,
+            total_cost_usd: Some(0.05),
         }
     }
 
@@ -1120,10 +1272,10 @@ mod upsert_tests {
         .await
         .unwrap();
 
-        assert_eq!(row.0, 42);    // message_count
-        assert_eq!(row.1, 5);     // turn_count
+        assert_eq!(row.0, 42); // message_count
+        assert_eq!(row.1, 5); // turn_count
         assert_eq!(row.2, 10000); // total_input_tokens
-        assert_eq!(row.3, 5000);  // total_output_tokens
+        assert_eq!(row.3, 5000); // total_output_tokens
     }
 
     #[tokio::test]
@@ -1141,15 +1293,15 @@ mod upsert_tests {
         db.upsert_parsed_session(&session2).await.unwrap();
 
         let row = sqlx::query_as::<_, (i32, i32, i64)>(
-            "SELECT message_count, turn_count, total_input_tokens FROM sessions WHERE id = ?1"
+            "SELECT message_count, turn_count, total_input_tokens FROM sessions WHERE id = ?1",
         )
         .bind("sess-002")
         .fetch_one(db.pool())
         .await
         .unwrap();
 
-        assert_eq!(row.0, 50);    // message_count updated, not stuck at 10
-        assert_eq!(row.1, 25);    // turn_count updated
+        assert_eq!(row.0, 50); // message_count updated, not stuck at 10
+        assert_eq!(row.1, 25); // turn_count updated
         assert_eq!(row.2, 99999); // tokens updated
     }
 
@@ -1161,19 +1313,17 @@ mod upsert_tests {
         db.upsert_parsed_session(&session).await.unwrap();
 
         // Query via valid_sessions — must be visible
-        let count: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions WHERE id = ?1"
-        )
-        .bind("sess-003")
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE id = ?1")
+            .bind("sess-003")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
 
         assert_eq!(count.0, 1);
 
         // Verify no zero-count rows exist
         let ghosts: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0"
+            "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0",
         )
         .fetch_one(db.pool())
         .await

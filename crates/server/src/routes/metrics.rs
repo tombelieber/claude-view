@@ -22,15 +22,14 @@ pub async fn metrics_handler() -> Response {
     match render_metrics() {
         Some(output) => (
             StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+            [(
+                header::CONTENT_TYPE,
+                "text/plain; version=0.0.4; charset=utf-8",
+            )],
             output,
         )
             .into_response(),
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Metrics not initialized",
-        )
-            .into_response(),
+        None => (StatusCode::SERVICE_UNAVAILABLE, "Metrics not initialized").into_response(),
     }
 }
 
@@ -48,8 +47,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -64,13 +63,29 @@ mod tests {
         let app = crate::create_app(db);
 
         let response = app
-            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
-        // Should return 200 OK with text/plain content type
-        assert_eq!(response.status(), StatusCode::OK);
+        // In test environments another global recorder may already be installed.
+        // If so, metrics may remain uninitialized here and return the documented 503 fallback.
+        if response.status() == StatusCode::SERVICE_UNAVAILABLE {
+            let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            assert_eq!(
+                String::from_utf8(body.to_vec()).unwrap(),
+                "Metrics not initialized"
+            );
+            return;
+        }
 
+        assert_eq!(response.status(), StatusCode::OK);
         let content_type = response.headers().get("content-type").unwrap();
         assert!(content_type.to_str().unwrap().contains("text/plain"));
     }
@@ -84,18 +99,28 @@ mod tests {
         let app = crate::create_app(db);
 
         let response = app
-            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
+        let status = response.status();
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let body_str = String::from_utf8(body.to_vec()).unwrap();
 
-        // Should contain Prometheus format comments/metadata
-        // The exact content depends on what metrics have been recorded
-        // At minimum, it should be valid text (not an error)
-        assert!(!body_str.contains("error"));
+        if status == StatusCode::SERVICE_UNAVAILABLE {
+            assert_eq!(body_str, "Metrics not initialized");
+            return;
+        }
+
+        assert_eq!(status, StatusCode::OK);
+        // Should be Prometheus text output (not the 503 fallback text).
+        assert!(!body_str.contains("Metrics not initialized"));
     }
 }

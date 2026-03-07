@@ -25,7 +25,7 @@ use crate::state::AppState;
 
 /// A single turn in the session breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TurnInfo {
     /// 1-based turn index.
@@ -208,7 +208,11 @@ fn scan_turns(data: &[u8]) -> Vec<TurnInfo> {
                         }
 
                         // Check isMeta flag
-                        if parsed.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if parsed
+                            .get("isMeta")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                        {
                             if let Some(t) = ts {
                                 last_timestamp = Some(t);
                             }
@@ -301,9 +305,8 @@ pub async fn get_session_turns(
 
     // Read + parse in blocking thread (file I/O)
     let turns = tokio::task::spawn_blocking(move || {
-        let data = std::fs::read(&path).map_err(|e| {
-            ApiError::Internal(format!("Failed to read session file: {}", e))
-        })?;
+        let data = std::fs::read(&path)
+            .map_err(|e| ApiError::Internal(format!("Failed to read session file: {}", e)))?;
         Ok::<Vec<TurnInfo>, ApiError>(scan_turns(&data))
     })
     .await
@@ -332,9 +335,9 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_core::{SessionInfo, ToolCounts};
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -361,6 +364,7 @@ mod tests {
             id: id.to_string(),
             project: "test-project".to_string(),
             project_path: "/home/user/test-project".to_string(),
+            display_name: "test-project".to_string(),
             git_root: None,
             file_path: file_path.to_string(),
             modified_at: 1700000000,
@@ -418,6 +422,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -520,7 +525,10 @@ mod tests {
         // The turn_duration system message at 10:03:05 is the last message before turn 2 at 10:05:00.
         let wall1 = turns[0]["wallClockSeconds"].as_i64().unwrap();
         // Turn 1: started 10:00:00, last timestamp before turn 2 is 10:03:05 = 185 seconds
-        assert_eq!(wall1, 185, "Wall clock should be from turn start to last message before next turn");
+        assert_eq!(
+            wall1, 185,
+            "Wall clock should be from turn start to last message before next turn"
+        );
 
         // Wall clock for turn 2: from 10:05:00 to 10:07:05 = 125 seconds
         let wall2 = turns[1]["wallClockSeconds"].as_i64().unwrap();
@@ -555,10 +563,19 @@ mod tests {
         // Verify all expected fields are present
         assert!(turn.get("index").is_some(), "Must have index");
         assert!(turn.get("startedAt").is_some(), "Must have startedAt");
-        assert!(turn.get("wallClockSeconds").is_some(), "Must have wallClockSeconds");
+        assert!(
+            turn.get("wallClockSeconds").is_some(),
+            "Must have wallClockSeconds"
+        );
         // ccDurationMs is optional — should be absent (not null) when no turn_duration message
-        assert!(turn.get("ccDurationMs").is_none(), "ccDurationMs should be absent when not available");
-        assert!(turn.get("promptPreview").is_some(), "Must have promptPreview");
+        assert!(
+            turn.get("ccDurationMs").is_none(),
+            "ccDurationMs should be absent when not available"
+        );
+        assert!(
+            turn.get("promptPreview").is_some(),
+            "Must have promptPreview"
+        );
     }
 
     #[tokio::test]
@@ -591,7 +608,10 @@ mod tests {
         let preview = turns[0]["promptPreview"].as_str().unwrap();
         // 60 chars + "..." = 63 total
         assert_eq!(preview.len(), 63, "Preview should be 60 chars + '...'");
-        assert!(preview.ends_with("..."), "Truncated preview should end with '...'");
+        assert!(
+            preview.ends_with("..."),
+            "Truncated preview should end with '...'"
+        );
     }
 
     // ========================================================================
@@ -612,7 +632,11 @@ mod tests {
 {"type":"assistant","uuid":"a2","timestamp":1700000120,"message":{"role":"assistant","content":[{"type":"text","text":"Ok."}]}}
 "#;
         let turns = scan_turns(data);
-        assert_eq!(turns.len(), 1, "System-prefix user messages should not start a new turn");
+        assert_eq!(
+            turns.len(),
+            1,
+            "System-prefix user messages should not start a new turn"
+        );
         assert_eq!(turns[0].prompt_preview, "Hello world");
         // Wall clock: 1700000000 → 1700000120 = 120s
         assert_eq!(turns[0].wall_clock_seconds, 120);
@@ -626,7 +650,11 @@ mod tests {
 {"type":"assistant","uuid":"a2","timestamp":1700000060,"message":{"role":"assistant","content":[{"type":"text","text":"Fixed!"}]}}
 "#;
         let turns = scan_turns(data);
-        assert_eq!(turns.len(), 1, "Tool result continuation should not start a new turn");
+        assert_eq!(
+            turns.len(),
+            1,
+            "Tool result continuation should not start a new turn"
+        );
         assert_eq!(turns[0].prompt_preview, "Fix the bug");
     }
 
@@ -659,7 +687,11 @@ mod tests {
 {"type":"assistant","uuid":"a1","timestamp":1700000060,"message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}]}}
 "#;
         let turns = scan_turns(data);
-        assert_eq!(turns.len(), 1, "isMeta user message should not start a turn");
+        assert_eq!(
+            turns.len(),
+            1,
+            "isMeta user message should not start a turn"
+        );
         assert_eq!(turns[0].prompt_preview, "Real prompt");
     }
 

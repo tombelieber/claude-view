@@ -1,9 +1,9 @@
 // crates/db/src/queries/invocables.rs
 // Invocable + Invocation CRUD operations.
 
-use crate::{Database, DbResult};
 use super::row_types::batch_insert_invocations_tx;
 use super::{InvocableWithCount, StatsOverview};
+use crate::{Database, DbResult};
 
 impl Database {
     /// Insert or update a single invocable.
@@ -123,15 +123,13 @@ impl Database {
     /// Returns total sessions, total invocations, unique invocables used,
     /// and the top 10 invocables by usage count.
     pub async fn get_stats_overview(&self) -> DbResult<StatsOverview> {
-        let (total_sessions,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-                .fetch_one(self.pool())
-                .await?;
+        let (total_sessions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
 
-        let (total_invocations,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM invocations")
-                .fetch_one(self.pool())
-                .await?;
+        let (total_invocations,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM invocations")
+            .fetch_one(self.pool())
+            .await?;
 
         let (unique_invocables_used,): (i64,) =
             sqlx::query_as("SELECT COUNT(DISTINCT invocable_id) FROM invocations")

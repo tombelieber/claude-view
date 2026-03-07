@@ -14,10 +14,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use claude_view_core::ClaudeCliStatus;
+use claude_view_db::{
+    ClassificationStatus, HealthStats, HealthStatus, IndexRunIntegrityCounters, SystemStorageStats,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use claude_view_core::ClaudeCliStatus;
-use claude_view_db::{ClassificationStatus, HealthStats, HealthStatus, SystemStorageStats};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -28,12 +30,13 @@ use crate::state::AppState;
 
 /// Full system status response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemResponse {
     pub storage: StorageInfo,
     pub performance: PerformanceInfo,
     pub health: HealthInfo,
+    pub integrity: IntegrityInfo,
     pub index_history: Vec<IndexRunInfo>,
     pub classification: ClassificationInfo,
     pub claude_cli: ClaudeCliStatus,
@@ -41,7 +44,7 @@ pub struct SystemResponse {
 
 /// Storage section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StorageInfo {
     #[ts(type = "number")]
@@ -70,7 +73,7 @@ impl From<SystemStorageStats> for StorageInfo {
 
 /// Performance section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceInfo {
     /// Duration of last successful index in milliseconds.
@@ -85,7 +88,7 @@ pub struct PerformanceInfo {
 
 /// Health section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthInfo {
     #[ts(type = "number")]
@@ -118,9 +121,59 @@ impl From<HealthStats> for HealthInfo {
     }
 }
 
+/// Integrity section of system response.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityInfo {
+    pub counters: IntegrityCounterInfo,
+}
+
+/// Integrity counter values from the latest index run.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityCounterInfo {
+    #[ts(type = "number")]
+    pub unknown_top_level_type_count: i64,
+    #[ts(type = "number")]
+    pub unknown_required_path_count: i64,
+    #[ts(type = "number")]
+    pub imaginary_path_access_count: i64,
+    #[ts(type = "number")]
+    pub legacy_fallback_path_count: i64,
+    #[ts(type = "number")]
+    pub dropped_line_invalid_json_count: i64,
+    #[ts(type = "number")]
+    pub schema_mismatch_count: i64,
+    #[ts(type = "number")]
+    pub unknown_source_role_count: i64,
+    #[ts(type = "number")]
+    pub derived_source_message_doc_count: i64,
+    #[ts(type = "number")]
+    pub source_message_non_source_provenance_count: i64,
+}
+
+impl From<IndexRunIntegrityCounters> for IntegrityCounterInfo {
+    fn from(c: IndexRunIntegrityCounters) -> Self {
+        Self {
+            unknown_top_level_type_count: c.unknown_top_level_type_count,
+            unknown_required_path_count: c.unknown_required_path_count,
+            imaginary_path_access_count: c.imaginary_path_access_count,
+            legacy_fallback_path_count: c.legacy_fallback_path_count,
+            dropped_line_invalid_json_count: c.dropped_line_invalid_json_count,
+            schema_mismatch_count: c.schema_mismatch_count,
+            unknown_source_role_count: c.unknown_source_role_count,
+            derived_source_message_doc_count: c.derived_source_message_doc_count,
+            source_message_non_source_provenance_count: c
+                .source_message_non_source_provenance_count,
+        }
+    }
+}
+
 /// Index history entry in system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRunInfo {
     pub timestamp: String,
@@ -137,7 +190,7 @@ pub struct IndexRunInfo {
 
 /// Classification section of system response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationInfo {
     #[ts(type = "number")]
@@ -174,7 +227,7 @@ impl From<ClassificationStatus> for ClassificationInfo {
 
 /// Generic action response for POST endpoints.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActionResponse {
     pub status: String,
@@ -184,7 +237,7 @@ pub struct ActionResponse {
 
 /// Clear cache response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClearCacheResponse {
     pub status: String,
@@ -210,20 +263,28 @@ pub async fn get_system_status(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<SystemResponse>> {
     // Run independent queries in parallel
-    let (storage_result, health_result, metadata_result, index_runs_result, classification_result) =
-        tokio::join!(
-            state.db.get_storage_stats(),
-            state.db.get_health_stats(),
-            state.db.get_index_metadata(),
-            state.db.get_recent_index_runs(),
-            state.db.get_classification_status(),
-        );
+    let (
+        storage_result,
+        health_result,
+        metadata_result,
+        index_runs_result,
+        classification_result,
+        integrity_result,
+    ) = tokio::join!(
+        state.db.get_storage_stats(),
+        state.db.get_health_stats(),
+        state.db.get_index_metadata(),
+        state.db.get_recent_index_runs(),
+        state.db.get_classification_status(),
+        state.db.get_latest_integrity_counters(),
+    );
 
     let storage_stats = storage_result?;
     let health_stats = health_result?;
     let metadata = metadata_result?;
     let index_runs = index_runs_result?;
     let classification = classification_result?;
+    let integrity_counters = integrity_result?;
 
     // Detect Claude CLI (runs shell commands - fast enough for API call)
     let claude_cli = tokio::task::spawn_blocking(ClaudeCliStatus::detect)
@@ -250,6 +311,9 @@ pub async fn get_system_status(
         storage: storage_stats.into(),
         performance,
         health: health_stats.into(),
+        integrity: IntegrityInfo {
+            counters: integrity_counters.into(),
+        },
         index_history,
         classification: classification.into(),
         claude_cli,
@@ -296,7 +360,7 @@ pub async fn trigger_reindex(
     // Record the index run in the database
     let _run_id = state
         .db
-        .create_index_run("full", None)
+        .create_index_run("full", None, None)
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to create index run: {}", e)))?;
 
@@ -406,8 +470,7 @@ pub async fn reset_all(
     // Require exact confirmation string
     if body.confirm != "RESET_ALL_DATA" {
         return Err(ApiError::BadRequest(
-            "Invalid confirmation. Send {\"confirm\": \"RESET_ALL_DATA\"} to confirm."
-                .to_string(),
+            "Invalid confirmation. Send {\"confirm\": \"RESET_ALL_DATA\"} to confirm.".to_string(),
         ));
     }
 
@@ -502,8 +565,8 @@ mod tests {
         body::Body,
         http::{Method, Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -525,11 +588,7 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap())
     }
 
-    async fn do_post_json(
-        app: axum::Router,
-        uri: &str,
-        json_body: &str,
-    ) -> (StatusCode, String) {
+    async fn do_post_json(app: axum::Router, uri: &str, json_body: &str) -> (StatusCode, String) {
         let response = app
             .oneshot(
                 Request::builder()
@@ -594,6 +653,28 @@ mod tests {
         assert_eq!(json["health"]["commitsCount"], 0);
         assert_eq!(json["health"]["projectsCount"], 0);
         assert_eq!(json["health"]["status"], "healthy");
+
+        // Integrity counters should exist and default to zero
+        assert!(json["integrity"].is_object());
+        assert!(json["integrity"]["counters"].is_object());
+        assert_eq!(json["integrity"]["counters"]["unknownTopLevelTypeCount"], 0);
+        assert_eq!(json["integrity"]["counters"]["unknownRequiredPathCount"], 0);
+        assert_eq!(json["integrity"]["counters"]["imaginaryPathAccessCount"], 0);
+        assert_eq!(json["integrity"]["counters"]["legacyFallbackPathCount"], 0);
+        assert_eq!(
+            json["integrity"]["counters"]["droppedLineInvalidJsonCount"],
+            0
+        );
+        assert_eq!(json["integrity"]["counters"]["schemaMismatchCount"], 0);
+        assert_eq!(json["integrity"]["counters"]["unknownSourceRoleCount"], 0);
+        assert_eq!(
+            json["integrity"]["counters"]["derivedSourceMessageDocCount"],
+            0
+        );
+        assert_eq!(
+            json["integrity"]["counters"]["sourceMessageNonSourceProvenanceCount"],
+            0
+        );
 
         // Index history should be empty
         assert!(json["indexHistory"].is_array());
@@ -673,8 +754,19 @@ mod tests {
         let db = test_db().await;
 
         // Create an index run
-        let run_id = db.create_index_run("full", Some(0)).await.unwrap();
-        db.complete_index_run(run_id, Some(100), 2500, Some(5.2))
+        let run_id = db.create_index_run("full", Some(0), None).await.unwrap();
+        let counters = IndexRunIntegrityCounters {
+            unknown_top_level_type_count: 1,
+            unknown_required_path_count: 2,
+            imaginary_path_access_count: 3,
+            legacy_fallback_path_count: 4,
+            dropped_line_invalid_json_count: 5,
+            schema_mismatch_count: 6,
+            unknown_source_role_count: 7,
+            derived_source_message_doc_count: 8,
+            source_message_non_source_provenance_count: 9,
+        };
+        db.complete_index_run(run_id, Some(100), 2500, Some(5.2), Some(&counters))
             .await
             .unwrap();
 
@@ -690,6 +782,25 @@ mod tests {
         assert_eq!(history[0]["status"], "completed");
         assert_eq!(history[0]["sessionsCount"], 100);
         assert_eq!(history[0]["durationMs"], 2500);
+
+        assert_eq!(json["integrity"]["counters"]["unknownTopLevelTypeCount"], 1);
+        assert_eq!(json["integrity"]["counters"]["unknownRequiredPathCount"], 2);
+        assert_eq!(json["integrity"]["counters"]["imaginaryPathAccessCount"], 3);
+        assert_eq!(json["integrity"]["counters"]["legacyFallbackPathCount"], 4);
+        assert_eq!(
+            json["integrity"]["counters"]["droppedLineInvalidJsonCount"],
+            5
+        );
+        assert_eq!(json["integrity"]["counters"]["schemaMismatchCount"], 6);
+        assert_eq!(json["integrity"]["counters"]["unknownSourceRoleCount"], 7);
+        assert_eq!(
+            json["integrity"]["counters"]["derivedSourceMessageDocCount"],
+            8
+        );
+        assert_eq!(
+            json["integrity"]["counters"]["sourceMessageNonSourceProvenanceCount"],
+            9
+        );
     }
 
     // ========================================================================
@@ -737,7 +848,10 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["status"], "not_implemented");
-        assert!(json["message"].as_str().unwrap().contains("not yet available"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("not yet available"));
     }
 
     // ========================================================================
@@ -748,12 +862,8 @@ mod tests {
     async fn test_reset_requires_confirmation() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, _body) = do_post_json(
-            app,
-            "/api/system/reset",
-            r#"{"confirm": "wrong"}"#,
-        )
-        .await;
+        let (status, _body) =
+            do_post_json(app, "/api/system/reset", r#"{"confirm": "wrong"}"#).await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
@@ -785,12 +895,8 @@ mod tests {
         assert_eq!(health.sessions_count, 1);
 
         let app = build_app(db.clone());
-        let (status, body) = do_post_json(
-            app,
-            "/api/system/reset",
-            r#"{"confirm": "RESET_ALL_DATA"}"#,
-        )
-        .await;
+        let (status, body) =
+            do_post_json(app, "/api/system/reset", r#"{"confirm": "RESET_ALL_DATA"}"#).await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -930,7 +1036,7 @@ mod tests {
         let db = test_db().await;
 
         // Create one failed index run
-        let run_id = db.create_index_run("full", None).await.unwrap();
+        let run_id = db.create_index_run("full", None, None).await.unwrap();
         db.fail_index_run(run_id, "test error").await.unwrap();
 
         let health = db.get_health_stats().await.unwrap();
@@ -944,7 +1050,7 @@ mod tests {
 
         // Create 10+ failed index runs
         for _ in 0..10 {
-            let run_id = db.create_index_run("full", None).await.unwrap();
+            let run_id = db.create_index_run("full", None, None).await.unwrap();
             db.fail_index_run(run_id, "test error").await.unwrap();
         }
 
@@ -1007,7 +1113,7 @@ mod tests {
 
         // Create a running classification job
         let _job_id = db
-            .create_classification_job(1, "claude-cli", "haiku", None)
+            .create_classification_job(1, "claude-cli", "haiku")
             .await
             .unwrap();
 
@@ -1043,8 +1149,8 @@ mod tests {
         .unwrap();
 
         // Create an index run
-        let run_id = db.create_index_run("full", Some(0)).await.unwrap();
-        db.complete_index_run(run_id, Some(1), 100, None)
+        let run_id = db.create_index_run("full", Some(0), None).await.unwrap();
+        db.complete_index_run(run_id, Some(1), 100, None, None)
             .await
             .unwrap();
 

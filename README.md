@@ -287,23 +287,38 @@ Join the [Discord server](https://discord.gg/G7wdZTpRfu) for support, feature re
 Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo install cargo-watch`
 
 ```bash
-bun install        # Install frontend dependencies
-bun dev            # Start full-stack dev (Rust + Vite with hot reload)
+bun install        # Install all workspace dependencies
+bun dev            # Start full-stack dev (Rust + Web with hot reload)
 ```
+
+### Workspace Layout
+
+| Path | Package | Purpose |
+|------|---------|---------|
+| `apps/web/` | `@claude-view/web` | React SPA (Vite) — main web frontend |
+| `apps/mobile/` | `@claude-view/mobile` | Expo native app |
+| `apps/landing/` | `@claude-view/landing` | Static HTML landing page |
+| `packages/shared/` | `@claude-view/shared` | Shared types & theme tokens |
+| `crates/` | — | Rust backend (Axum) |
+
+### Dev Commands
 
 | Command | Description |
 |---------|-------------|
-| `bun dev` | Full-stack dev — Rust auto-restarts on changes, Vite HMR |
-| `bun dev:server` | Rust backend only (with cargo-watch) |
-| `bun dev:client` | Vite frontend only (assumes backend running) |
-| `bun run build` | Build frontend for production |
-| `bun run preview` | Build + serve via release binary |
-| `bun run lint` | Lint both frontend (ESLint) and backend (Clippy) |
+| `bun dev` | Full-stack dev — Rust server (cargo-watch) + Web frontend (Vite HMR) |
+| `bun run dev:web` | Web frontend only (assumes Rust server already running) |
+| `bun run dev:server` | Rust backend only (with cargo-watch) |
+| `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
+| `bun run build` | Build all workspaces |
+| `bun run preview` | Build web + serve via release binary |
+| `bun run lint` | Lint all JS/TS workspaces |
+| `bun run lint:all` | Lint JS/TS + Rust (Clippy) |
+| `bun run typecheck` | TypeScript type checking |
+| `bun run test` | Run all tests (Turbo) |
+| `bun run test:rust` | Run Rust tests (`cargo test --workspace`) |
+| `cd apps/web && bunx vitest run` | Run web frontend tests only |
 | `bun run fmt` | Format Rust code |
-| `bun run check` | Typecheck + lint + test (pre-commit gate) |
-| `bun test` | Run Rust test suite (`cargo test --workspace`) |
-| `bun test:client` | Run frontend tests (vitest) |
-| `bun run test:e2e` | Run Playwright end-to-end tests |
+| `bun run cleanupport` | Kill processes on dev ports (47892, 5173) |
 
 **Testing Production Distribution:**
 

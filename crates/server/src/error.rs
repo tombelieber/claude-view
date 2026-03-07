@@ -4,15 +4,15 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use claude_view_core::{DiscoveryError, ParseError};
+use claude_view_db::DbError;
 use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
-use claude_view_core::{DiscoveryError, ParseError};
-use claude_view_db::DbError;
 
 /// Structured JSON error response for API errors
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ErrorResponse {
     pub error: String,
@@ -68,6 +68,9 @@ pub enum ApiError {
 
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
+
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for ApiError {
@@ -105,7 +108,11 @@ impl IntoResponse for ApiError {
                         tracing::error!(path = %path.display(), line = %line, "Invalid UTF-8");
                         (StatusCode::INTERNAL_SERVER_ERROR, "Invalid file encoding")
                     }
-                    ParseError::MalformedJson { path, line, message } => {
+                    ParseError::MalformedJson {
+                        path,
+                        line,
+                        message,
+                    } => {
                         tracing::error!(path = %path.display(), line = %line, message = %message, "Malformed JSON");
                         (StatusCode::INTERNAL_SERVER_ERROR, "Malformed session data")
                     }
@@ -137,7 +144,10 @@ impl IntoResponse for ApiError {
                     }
                 };
                 // Return generic error message without file paths to avoid information leakage
-                (StatusCode::INTERNAL_SERVER_ERROR, ErrorResponse::new(error_msg))
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ErrorResponse::new(error_msg),
+                )
             }
             ApiError::Database(db_err) => {
                 tracing::error!(error = %db_err, "Database error");
@@ -180,6 +190,10 @@ impl IntoResponse for ApiError {
                     StatusCode::SERVICE_UNAVAILABLE,
                     ErrorResponse::with_details("Service unavailable", msg.clone()),
                 )
+            }
+            ApiError::Unauthorized(msg) => {
+                tracing::warn!(message = %msg, "Unauthorized");
+                (StatusCode::UNAUTHORIZED, ErrorResponse::new(msg.clone()))
             }
         };
 

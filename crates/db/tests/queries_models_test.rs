@@ -11,7 +11,9 @@ async fn test_get_stats_overview() {
 
     // Insert a session so total_sessions > 0
     let s1 = make_session("sess-1", "project-a", 1000);
-    db.insert_session(&s1, "project-a", "Project A").await.unwrap();
+    db.insert_session(&s1, "project-a", "Project A")
+        .await
+        .unwrap();
 
     // Insert invocables
     db.upsert_invocable("tool::Read", None, "Read", "tool", "")
@@ -23,9 +25,30 @@ async fn test_get_stats_overview() {
 
     // Insert invocations
     let invocations = vec![
-        ("f1.jsonl".to_string(), 10, "tool::Read".to_string(), "sess-1".to_string(), "p".to_string(), 1000),
-        ("f1.jsonl".to_string(), 20, "tool::Read".to_string(), "sess-1".to_string(), "p".to_string(), 1001),
-        ("f1.jsonl".to_string(), 30, "tool::Edit".to_string(), "sess-1".to_string(), "p".to_string(), 1002),
+        (
+            "f1.jsonl".to_string(),
+            10,
+            "tool::Read".to_string(),
+            "sess-1".to_string(),
+            "p".to_string(),
+            1000,
+        ),
+        (
+            "f1.jsonl".to_string(),
+            20,
+            "tool::Read".to_string(),
+            "sess-1".to_string(),
+            "p".to_string(),
+            1001,
+        ),
+        (
+            "f1.jsonl".to_string(),
+            30,
+            "tool::Edit".to_string(),
+            "sess-1".to_string(),
+            "p".to_string(),
+            1002,
+        ),
     ];
     db.batch_insert_invocations(&invocations).await.unwrap();
 

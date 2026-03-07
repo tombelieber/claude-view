@@ -20,9 +20,7 @@ use ts_rs::TS;
 use crate::classify_state::ClassifyStatus;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
-use claude_view_core::classification::{
-    self, ClassificationInput, BATCH_SIZE,
-};
+use claude_view_core::classification::{ClassificationInput, BATCH_SIZE};
 use claude_view_core::llm::{ClassificationRequest, LlmProvider};
 
 // ============================================================================
@@ -42,23 +40,19 @@ pub struct ClassifyRequest {
 
 /// Response for POST /api/classify (202 Accepted).
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyResponse {
     #[ts(type = "number")]
     pub job_id: i64,
     #[ts(type = "number")]
     pub total_sessions: i64,
-    #[ts(type = "number")]
-    pub estimated_cost_cents: i64,
-    #[ts(type = "number")]
-    pub estimated_duration_secs: i64,
     pub status: String,
 }
 
 /// Response for POST /api/classify/cancel.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CancelResponse {
     #[ts(type = "number")]
@@ -70,7 +64,7 @@ pub struct CancelResponse {
 
 /// Response for GET /api/classify/status.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyStatusResponse {
     pub status: String,
@@ -93,7 +87,7 @@ pub struct ClassifyStatusResponse {
 
 /// Progress information for a running classification.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyProgressInfo {
     #[ts(type = "number")]
@@ -108,7 +102,7 @@ pub struct ClassifyProgressInfo {
 
 /// Information about the last completed classification run.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyLastRun {
     #[ts(type = "number")]
@@ -127,7 +121,7 @@ pub struct ClassifyLastRun {
 
 /// Error information for failed classification.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyErrorInfo {
     pub message: String,
@@ -136,7 +130,7 @@ pub struct ClassifyErrorInfo {
 
 /// Response for POST /api/classify/single/:session_id.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifySingleResponse {
     pub session_id: String,
@@ -195,38 +189,32 @@ async fn start_classification(
     };
 
     if session_count == 0 {
-        return Err(ApiError::BadRequest(
-            "No sessions to classify".to_string(),
-        ));
+        return Err(ApiError::BadRequest("No sessions to classify".to_string()));
     }
 
-    let batch_size = BATCH_SIZE as i64;
-    let estimated_cost = classification::estimate_cost_cents(session_count, batch_size);
-    let estimated_duration = classification::estimate_duration_secs(session_count, batch_size);
-
-    // Dry run: just return estimates without starting
+    // Dry run: strict mode returns scope only (no synthetic pre-run estimates).
     if body.dry_run {
         return Ok((
             StatusCode::OK,
             Json(ClassifyResponse {
                 job_id: 0,
                 total_sessions: session_count,
-                estimated_cost_cents: estimated_cost,
-                estimated_duration_secs: estimated_duration,
                 status: "dry_run".to_string(),
             }),
         ));
     }
 
     // Create the job in the database
-    let settings = state.db.get_app_settings().await.map_err(|e| {
-        ApiError::Internal(format!("Failed to read LLM settings: {e}"))
-    })?;
+    let settings = state
+        .db
+        .get_app_settings()
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to read LLM settings: {e}")))?;
     let provider_name = "claude-cli";
     let model_name = settings.llm_model.clone();
     let db_job_id = state
         .db
-        .create_classification_job(session_count, provider_name, &model_name, Some(estimated_cost))
+        .create_classification_job(session_count, provider_name, &model_name)
         .await?;
 
     let job_id_str = format!("cls_{}", db_job_id);
@@ -246,8 +234,6 @@ async fn start_classification(
         Json(ClassifyResponse {
             job_id: db_job_id,
             total_sessions: session_count,
-            estimated_cost_cents: estimated_cost,
-            estimated_duration_secs: estimated_duration,
             status: "running".to_string(),
         }),
     ))
@@ -260,9 +246,15 @@ async fn get_classification_status(
     let classify_state = &state.classify;
     let current_status = classify_state.status();
 
-    let total_sessions = state.db.count_all_sessions().await
+    let total_sessions = state
+        .db
+        .count_all_sessions()
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to count sessions: {e}")))?;
-    let classified_sessions = state.db.count_classified_sessions().await
+    let classified_sessions = state
+        .db
+        .count_classified_sessions()
+        .await
         .map_err(|e| ApiError::Internal(format!("Failed to count classified sessions: {e}")))?;
     let unclassified_sessions = total_sessions - classified_sessions;
 
@@ -307,7 +299,11 @@ async fn get_classification_status(
 
     let job_id = if current_status == ClassifyStatus::Running {
         let id = classify_state.db_job_id();
-        if id > 0 { Some(id) } else { None }
+        if id > 0 {
+            Some(id)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -564,7 +560,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let total = sessions.len();
     if total == 0 {
         classify_state.set_completed();
-        if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+        if let Err(e) = db.complete_classification_job(db_job_id, None).await {
             tracing::error!(error = %e, "Failed to complete classification job with 0 sessions");
         }
         return;
@@ -590,6 +586,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     let mut classified_total = 0u64;
     let mut failed_total = 0u64;
     let mut batch_num = 0usize;
+    let mut total_tokens_used: i64 = 0;
+    let mut total_cost_usd: f64 = 0.0;
+    let mut tokens_known = true;
+    let mut cost_known = true;
 
     for batch in inputs.chunks(BATCH_SIZE) {
         // Check for cancellation
@@ -651,6 +651,31 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                         "claude-cli".to_string(),
                     ));
                     classified_total += 1;
+
+                    match resp.total_tokens_used() {
+                        Some(tokens) => {
+                            let tokens_i64 = tokens.min(i64::MAX as u64) as i64;
+                            total_tokens_used = total_tokens_used.saturating_add(tokens_i64);
+                        }
+                        None => {
+                            tokens_known = false;
+                        }
+                    }
+
+                    if let Some(cost_usd) = resp.total_cost_usd {
+                        if !cost_usd.is_finite() || cost_usd < 0.0 {
+                            cost_known = false;
+                            tracing::warn!(
+                                session_id = %input.session_id,
+                                cost_usd,
+                                "Invalid classification cost telemetry; falling back to NULL"
+                            );
+                            continue;
+                        }
+                        total_cost_usd += cost_usd;
+                    } else {
+                        cost_known = false;
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -660,13 +685,18 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                     );
                     failed_total += 1;
                     classify_state.increment_errors();
+                    tokens_known = false;
+                    cost_known = false;
                 }
             }
         }
 
         // Batch write to database (single transaction)
         let batch_persisted = if !batch_updates.is_empty() {
-            match db.batch_update_session_classifications(&batch_updates).await {
+            match db
+                .batch_update_session_classifications(&batch_updates)
+                .await
+            {
                 Ok(_) => true,
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to persist batch classifications");
@@ -688,6 +718,12 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
             classify_state.increment_classified(batch_updates.len() as u64);
         }
 
+        let tokens_for_progress = if tokens_known {
+            Some(total_tokens_used)
+        } else {
+            None
+        };
+
         // Update job progress in database
         if let Err(e) = db
             .update_classification_job_progress(
@@ -695,7 +731,7 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
                 classified_total as i64,
                 0,
                 failed_total as i64,
-                None,
+                tokens_for_progress,
             )
             .await
         {
@@ -705,16 +741,25 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 
     // Job completed
     classify_state.set_completed();
-    if let Err(e) = db.complete_classification_job(db_job_id, Some(0)).await {
+    let actual_cost_cents = actual_cost_cents_from_total(total_cost_usd, cost_known);
+    if let Err(e) = db
+        .complete_classification_job(db_job_id, actual_cost_cents)
+        .await
+    {
         tracing::error!(error = %e, "Failed to complete classification job");
     }
+    let tokens_for_progress = if tokens_known {
+        Some(total_tokens_used)
+    } else {
+        None
+    };
     if let Err(e) = db
         .update_classification_job_progress(
             db_job_id,
             classified_total as i64,
             0,
             failed_total as i64,
-            None,
+            tokens_for_progress,
         )
         .await
     {
@@ -728,6 +773,30 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
     );
 }
 
+fn actual_cost_cents_from_total(total_cost_usd: f64, cost_known: bool) -> Option<i64> {
+    if !cost_known || !total_cost_usd.is_finite() {
+        return None;
+    }
+
+    let cents = (total_cost_usd * 100.0).round();
+    if cents > i64::MAX as f64 {
+        tracing::warn!(
+            total_cost_usd,
+            "Classification cost overflow; storing NULL actual_cost_cents"
+        );
+        return None;
+    }
+    if cents < i64::MIN as f64 {
+        tracing::warn!(
+            total_cost_usd,
+            "Classification cost underflow; storing NULL actual_cost_cents"
+        );
+        return None;
+    }
+
+    Some(cents as i64)
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -736,7 +805,10 @@ async fn run_classification(state: Arc<AppState>, db_job_id: i64, mode: &str) {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/classify", post(start_classification))
-        .route("/classify/single/{session_id}", post(classify_single_session))
+        .route(
+            "/classify/single/{session_id}",
+            post(classify_single_session),
+        )
         .route("/classify/status", get(get_classification_status))
         .route("/classify/stream", get(stream_classification))
         .route("/classify/cancel", post(cancel_classification))
@@ -749,6 +821,76 @@ pub fn router() -> Router<Arc<AppState>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use claude_view_core::{SessionInfo, ToolCounts};
+    use claude_view_db::Database;
+    use tower::ServiceExt;
+
+    fn make_unclassified_session(id: &str, modified_at: i64) -> SessionInfo {
+        SessionInfo {
+            id: id.to_string(),
+            project: "project-a".to_string(),
+            project_path: "/home/user/project-a".to_string(),
+            display_name: "project-a".to_string(),
+            git_root: None,
+            file_path: format!("/tmp/{id}.jsonl"),
+            modified_at,
+            size_bytes: 1024,
+            preview: "Preview".to_string(),
+            last_message: "Last message".to_string(),
+            files_touched: vec![],
+            skills_used: vec![],
+            tool_counts: ToolCounts::default(),
+            message_count: 1,
+            turn_count: 1,
+            summary: None,
+            git_branch: None,
+            is_sidechain: false,
+            deep_indexed: false,
+            total_input_tokens: None,
+            total_output_tokens: None,
+            total_cache_read_tokens: None,
+            total_cache_creation_tokens: None,
+            turn_count_api: Some(1),
+            primary_model: None,
+            user_prompt_count: 1,
+            api_call_count: 0,
+            tool_call_count: 0,
+            files_read: vec![],
+            files_edited: vec![],
+            files_read_count: 0,
+            files_edited_count: 0,
+            reedited_files_count: 0,
+            duration_seconds: 0,
+            commit_count: 0,
+            thinking_block_count: 0,
+            turn_duration_avg_ms: None,
+            turn_duration_max_ms: None,
+            api_error_count: 0,
+            compaction_count: 0,
+            agent_spawn_count: 0,
+            bash_progress_count: 0,
+            hook_progress_count: 0,
+            mcp_progress_count: 0,
+            parse_version: 0,
+            lines_added: 0,
+            lines_removed: 0,
+            loc_source: 0,
+            category_l1: None,
+            category_l2: None,
+            category_l3: None,
+            category_confidence: None,
+            category_source: None,
+            classified_at: None,
+            prompt_word_count: None,
+            correction_count: 0,
+            same_file_edit_count: 0,
+            total_task_time_seconds: None,
+            longest_task_seconds: None,
+            longest_task_preview: None,
+            first_message_at: Some(modified_at),
+            total_cost_usd: None,
+        }
+    }
 
     #[test]
     fn test_router_creation() {
@@ -776,8 +918,6 @@ mod tests {
         let resp = ClassifyResponse {
             job_id: 42,
             total_sessions: 100,
-            estimated_cost_cents: 5,
-            estimated_duration_secs: 40,
             status: "running".to_string(),
         };
         let json = serde_json::to_string(&resp).unwrap();
@@ -819,15 +959,11 @@ mod tests {
     async fn test_start_classification_empty_db() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
-        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -849,15 +985,11 @@ mod tests {
     async fn test_get_status_idle() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
-        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -883,15 +1015,11 @@ mod tests {
     async fn test_cancel_when_not_running() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
-        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -928,15 +1056,11 @@ mod tests {
     async fn test_classify_single_session_not_found() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
-        use claude_view_db::Database;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -951,5 +1075,66 @@ mod tests {
 
         // Should return 404 because session doesn't exist
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_start_classification_dry_run_returns_scope_only_and_creates_no_job() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+        let session = make_unclassified_session("sess-dry-run", now);
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        let app = Router::new()
+            .nest("/api", router())
+            .with_state(AppState::new(db.clone()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/classify")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"mode":"unclassified","dryRun":true}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "dry_run");
+        assert_eq!(json["jobId"], 0);
+        assert_eq!(json["totalSessions"], 1);
+
+        let jobs_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM classification_jobs")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            jobs_count.0, 0,
+            "dry run must not create classification job"
+        );
+    }
+
+    #[test]
+    fn test_actual_cost_cents_from_total_null_when_unknown_or_invalid() {
+        assert_eq!(actual_cost_cents_from_total(1.23, false), None);
+        assert_eq!(actual_cost_cents_from_total(f64::NAN, true), None);
+        assert_eq!(actual_cost_cents_from_total(f64::INFINITY, true), None);
+        assert_eq!(actual_cost_cents_from_total(1.0e20, true), None);
+    }
+
+    #[test]
+    fn test_actual_cost_cents_from_total_known_finite() {
+        assert_eq!(actual_cost_cents_from_total(0.0, true), Some(0));
+        assert_eq!(actual_cost_cents_from_total(1.234, true), Some(123));
     }
 }

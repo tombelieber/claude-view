@@ -2,6 +2,7 @@
 name = "claude-view-relay"
 version.workspace = true
 edition.workspace = true
+publish = false
 
 [dependencies]
 axum = { workspace = true }
@@ -12,13 +13,16 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tower = { workspace = true }
+tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
 dashmap = "6"
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
-dotenvy = { workspace = true }
-
-[dev-dependencies]
-tower = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+anyhow = { workspace = true }
+sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
+sentry-tracing = "0.38"
+axum-extra = { version = "0.10", features = ["typed-header"] }

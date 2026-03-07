@@ -1,7 +1,7 @@
 //! Pricing data management: litellm fetch + merge with defaults.
 
-use std::collections::HashMap;
 use claude_view_core::pricing::ModelPricing;
+use std::collections::HashMap;
 
 const LITELLM_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
@@ -118,11 +118,21 @@ pub fn merge_pricing(
                     output_cost_per_token: litellm_pricing.output_cost_per_token,
                     cache_creation_cost_per_token: litellm_pricing.cache_creation_cost_per_token,
                     cache_read_cost_per_token: litellm_pricing.cache_read_cost_per_token,
-                    input_cost_per_token_above_200k: litellm_pricing.input_cost_per_token_above_200k.or(existing.input_cost_per_token_above_200k),
-                    output_cost_per_token_above_200k: litellm_pricing.output_cost_per_token_above_200k.or(existing.output_cost_per_token_above_200k),
-                    cache_creation_cost_per_token_above_200k: litellm_pricing.cache_creation_cost_per_token_above_200k.or(existing.cache_creation_cost_per_token_above_200k),
-                    cache_read_cost_per_token_above_200k: litellm_pricing.cache_read_cost_per_token_above_200k.or(existing.cache_read_cost_per_token_above_200k),
-                    cache_creation_cost_per_token_1hr: litellm_pricing.cache_creation_cost_per_token_1hr.or(existing.cache_creation_cost_per_token_1hr),
+                    input_cost_per_token_above_200k: litellm_pricing
+                        .input_cost_per_token_above_200k
+                        .or(existing.input_cost_per_token_above_200k),
+                    output_cost_per_token_above_200k: litellm_pricing
+                        .output_cost_per_token_above_200k
+                        .or(existing.output_cost_per_token_above_200k),
+                    cache_creation_cost_per_token_above_200k: litellm_pricing
+                        .cache_creation_cost_per_token_above_200k
+                        .or(existing.cache_creation_cost_per_token_above_200k),
+                    cache_read_cost_per_token_above_200k: litellm_pricing
+                        .cache_read_cost_per_token_above_200k
+                        .or(existing.cache_read_cost_per_token_above_200k),
+                    cache_creation_cost_per_token_1hr: litellm_pricing
+                        .cache_creation_cost_per_token_1hr
+                        .or(existing.cache_creation_cost_per_token_1hr),
                 },
             );
         } else {
@@ -146,14 +156,12 @@ pub async fn save_pricing_cache(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    sqlx::query(
-        "INSERT OR REPLACE INTO pricing_cache (id, data, fetched_at) VALUES (1, ?, ?)",
-    )
-    .bind(&json)
-    .bind(now)
-    .execute(db.pool())
-    .await
-    .map_err(|e| format!("save pricing cache: {e}"))?;
+    sqlx::query("INSERT OR REPLACE INTO pricing_cache (id, data, fetched_at) VALUES (1, ?, ?)")
+        .bind(&json)
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .map_err(|e| format!("save pricing cache: {e}"))?;
 
     Ok(())
 }
@@ -164,11 +172,10 @@ pub async fn save_pricing_cache(
 pub async fn load_pricing_cache(
     db: &crate::Database,
 ) -> Result<Option<HashMap<String, ModelPricing>>, String> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT data FROM pricing_cache WHERE id = 1")
-            .fetch_optional(db.pool())
-            .await
-            .map_err(|e| format!("load pricing cache: {e}"))?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT data FROM pricing_cache WHERE id = 1")
+        .fetch_optional(db.pool())
+        .await
+        .map_err(|e| format!("load pricing cache: {e}"))?;
 
     match row {
         Some((json,)) => {
@@ -228,7 +235,10 @@ mod tests {
         assert_eq!(merged_model.input_cost_per_token, 4e-6);
         assert_eq!(merged_model.output_cost_per_token, 20e-6);
         assert_eq!(merged_model.input_cost_per_token_above_200k, Some(10e-6));
-        assert_eq!(merged_model.output_cost_per_token_above_200k, Some(25e-6 * 1.5));
+        assert_eq!(
+            merged_model.output_cost_per_token_above_200k,
+            Some(25e-6 * 1.5)
+        );
         assert_eq!(merged_model.cache_creation_cost_per_token_above_200k, None);
         assert_eq!(merged_model.cache_read_cost_per_token_above_200k, None);
         assert_eq!(merged_model.cache_creation_cost_per_token_1hr, None);
@@ -339,31 +349,37 @@ mod tests {
         let db = crate::Database::new_in_memory().await.unwrap();
 
         let mut map1 = HashMap::new();
-        map1.insert("model-a".to_string(), ModelPricing {
-            input_cost_per_token: 1e-6,
-            output_cost_per_token: 5e-6,
-            cache_creation_cost_per_token: 1.25e-6,
-            cache_read_cost_per_token: 0.1e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        });
+        map1.insert(
+            "model-a".to_string(),
+            ModelPricing {
+                input_cost_per_token: 1e-6,
+                output_cost_per_token: 5e-6,
+                cache_creation_cost_per_token: 1.25e-6,
+                cache_read_cost_per_token: 0.1e-6,
+                input_cost_per_token_above_200k: None,
+                output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
+            },
+        );
         save_pricing_cache(&db, &map1).await.unwrap();
 
         let mut map2 = HashMap::new();
-        map2.insert("model-b".to_string(), ModelPricing {
-            input_cost_per_token: 2e-6,
-            output_cost_per_token: 10e-6,
-            cache_creation_cost_per_token: 2.5e-6,
-            cache_read_cost_per_token: 0.2e-6,
-            input_cost_per_token_above_200k: None,
-            output_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_above_200k: None,
-            cache_read_cost_per_token_above_200k: None,
-            cache_creation_cost_per_token_1hr: None,
-        });
+        map2.insert(
+            "model-b".to_string(),
+            ModelPricing {
+                input_cost_per_token: 2e-6,
+                output_cost_per_token: 10e-6,
+                cache_creation_cost_per_token: 2.5e-6,
+                cache_read_cost_per_token: 0.2e-6,
+                input_cost_per_token_above_200k: None,
+                output_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_above_200k: None,
+                cache_read_cost_per_token_above_200k: None,
+                cache_creation_cost_per_token_1hr: None,
+            },
+        );
         save_pricing_cache(&db, &map2).await.unwrap();
 
         let loaded = load_pricing_cache(&db).await.unwrap().unwrap();

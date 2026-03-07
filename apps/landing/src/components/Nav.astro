@@ -1,0 +1,101 @@
+---
+import { GITHUB_URL } from '../data/site';
+---
+<nav
+  class="sticky top-0 z-50 max-w-[1080px] mx-auto px-4 sm:px-6 pt-3"
+  id="site-nav"
+>
+  <div
+    class="flex items-center justify-between px-5 py-2.5 bg-[rgba(255,255,255,0.55)] backdrop-blur-xl border border-[rgba(0,0,0,0.06)] rounded-[14px] shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+  >
+    <!-- Logo -->
+    <a
+      href="/"
+      class="font-heading text-[15px] font-semibold tracking-[-0.02em] text-[var(--color-text)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+    >
+      claude-view
+    </a>
+
+    <!-- Desktop links -->
+    <div class="hidden md:flex items-center gap-7">
+      <a href="/#features" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Features</a>
+      <a href="/docs/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Blog</a>
+      <a
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+      >
+        GitHub
+      </a>
+      <a
+        href="/#waitlist"
+        class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg px-4 py-2 text-xs font-semibold transition-all hover:-translate-y-[0.5px] cursor-pointer"
+      >
+        Get Started
+      </a>
+    </div>
+
+    <!-- Mobile hamburger -->
+    <button
+      class="md:hidden text-[var(--color-text-secondary)] hover:text-[var(--color-text)] cursor-pointer"
+      aria-label="Toggle menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+      id="mobile-menu-btn"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M3 12h18M3 6h18M3 18h18" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- Mobile menu -->
+  <div
+    class="md:hidden hidden mt-2 rounded-[14px] border border-[var(--color-border)] bg-white/95 backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+    id="mobile-menu"
+  >
+    <div class="px-5 py-4 flex flex-col gap-4">
+      <a href="/#features" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Features</a>
+      <a href="/docs/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Docs</a>
+      <a href="/pricing/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Pricing</a>
+      <a href="/blog/" class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer">Blog</a>
+      <a
+        href={GITHUB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-[13px] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+      >
+        GitHub
+      </a>
+      <a
+        href="/#waitlist"
+        class="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-lg px-4 py-2 text-xs font-semibold text-center transition-all cursor-pointer"
+      >
+        Get Started
+      </a>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // Mobile menu toggle
+  const btn = document.getElementById('mobile-menu-btn');
+  const menu = document.getElementById('mobile-menu');
+  btn?.addEventListener('click', () => {
+    menu?.classList.toggle('hidden');
+    const isOpen = !menu?.classList.contains('hidden');
+    btn?.setAttribute('aria-expanded', String(isOpen));
+  });
+
+  // Close mobile menu on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !menu?.classList.contains('hidden')) {
+      menu?.classList.add('hidden');
+      btn?.setAttribute('aria-expanded', 'false');
+      btn?.focus();
+    }
+  });
+</script>

@@ -1,11 +1,11 @@
 // crates/core/src/llm/factory.rs
 //! Provider factory — creates an LlmProvider from configuration.
 
-use std::sync::Arc;
+use super::claude_cli::ClaudeCliProvider;
 use super::config::{LlmConfig, ProviderType};
 use super::provider::LlmProvider;
 use super::types::LlmError;
-use super::claude_cli::ClaudeCliProvider;
+use std::sync::Arc;
 
 /// Create an LLM provider based on the given configuration.
 ///

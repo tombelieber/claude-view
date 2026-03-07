@@ -1,0 +1,54 @@
+---
+// Click-to-copy install command — vanilla JS, no React
+---
+<button
+  class="install-cmd group inline-flex items-center justify-center gap-3 bg-white/55 border border-[var(--color-border)] rounded-lg px-6 py-3 font-mono text-lg text-[var(--color-text)] hover:border-[rgba(0,0,0,0.12)] hover:bg-white/80 backdrop-blur-sm transition-colors cursor-pointer mx-auto"
+  title="Click to copy"
+  data-command="npx claude-view"
+  aria-label="$ npx claude-view — click to copy"
+>
+  <span class="text-[var(--color-text-tertiary)]">$</span>
+  <span>npx claude-view</span>
+  <span class="install-icon ml-2 text-[var(--color-text-tertiary)] group-hover:text-[var(--accent)] transition-colors">
+    <!-- Lucide Clipboard SVG (inline, no dependency) -->
+    <svg class="icon-clipboard" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    </svg>
+    <!-- Lucide Check SVG (hidden by default, shown on copy) -->
+    <svg class="icon-check hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5"/>
+    </svg>
+  </span>
+</button>
+
+<script>
+  document.querySelectorAll('.install-cmd').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const command = btn.getAttribute('data-command') ?? '';
+      const clipboardIcon = btn.querySelector('.icon-clipboard');
+      const checkIcon = btn.querySelector('.icon-check');
+      try {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(command);
+        } else {
+          const el = document.createElement('textarea');
+          el.value = command;
+          el.style.position = 'fixed';
+          el.style.opacity = '0';
+          document.body.appendChild(el);
+          el.select();
+          document.execCommand('copy');
+          document.body.removeChild(el);
+        }
+        clipboardIcon?.classList.add('hidden');
+        checkIcon?.classList.remove('hidden');
+        setTimeout(() => {
+          clipboardIcon?.classList.remove('hidden');
+          checkIcon?.classList.add('hidden');
+        }, 2000);
+      } catch {
+        btn.setAttribute('title', 'Copy failed — try selecting manually');
+      }
+    });
+  });
+</script>

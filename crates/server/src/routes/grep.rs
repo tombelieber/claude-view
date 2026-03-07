@@ -5,11 +5,7 @@
 
 use std::sync::Arc;
 
-use axum::{
-    extract::Query,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::Query, routing::get, Json, Router};
 use serde::Deserialize;
 use tokio::task::spawn_blocking;
 
@@ -47,9 +43,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// - `limit`: Max matches to return (default 200, capped at 1000)
 /// - `caseSensitive`: Whether the search is case-sensitive (default false)
 /// - `wholeWord`: Whether to match whole words only (default false)
-async fn grep_handler(
-    Query(params): Query<GrepQuery>,
-) -> ApiResult<Json<GrepResponse>> {
+async fn grep_handler(Query(params): Query<GrepQuery>) -> ApiResult<Json<GrepResponse>> {
     let pattern = params
         .pattern
         .filter(|p| !p.trim().is_empty())
@@ -64,8 +58,8 @@ async fn grep_handler(
     // Move all blocking filesystem I/O into spawn_blocking to avoid blocking
     // the Tokio event loop (directory scan + grep search).
     let result = spawn_blocking(move || {
-        let projects_dir = claude_projects_dir()
-            .map_err(|e| ApiError::Internal(format!("Projects dir: {e}")))?;
+        let projects_dir =
+            claude_projects_dir().map_err(|e| ApiError::Internal(format!("Projects dir: {e}")))?;
 
         let mut files: Vec<JsonlFile> = Vec::new();
 
@@ -126,8 +120,7 @@ async fn grep_handler(
         grep_files(&files, &opts).map_err(|e| ApiError::BadRequest(format!("{e}")))
     })
     .await
-    .map_err(|e| ApiError::Internal(format!("Grep task failed: {e}")))?
-    ?;
+    .map_err(|e| ApiError::Internal(format!("Grep task failed: {e}")))??;
 
     Ok(Json(result))
 }

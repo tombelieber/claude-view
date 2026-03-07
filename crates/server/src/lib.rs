@@ -4,6 +4,7 @@
 //! This crate provides the Axum-based HTTP server for the claude-view application.
 //! It serves a REST API for listing Claude Code projects and retrieving session data.
 
+pub mod auth;
 pub mod backfill;
 pub mod classify_state;
 pub mod crypto;
@@ -17,8 +18,11 @@ pub mod jobs;
 pub mod live;
 pub mod metrics;
 pub mod routes;
+pub mod share_serializer;
+pub mod sidecar;
 pub mod state;
 pub mod terminal_state;
+pub mod time_range;
 
 pub use error::*;
 pub use facet_ingest::{FacetIngestState, IngestStatus};
@@ -28,7 +32,8 @@ pub use live::manager::LiveSessionMap;
 pub use live::state::SessionEvent;
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
-pub use state::{AppState, RegistryHolder, SearchIndexHolder};
+pub use sidecar::SidecarManager;
+pub use state::{AppState, RegistryHolder, SearchIndexHolder, ShareConfig};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -127,6 +132,10 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         search_index: Arc::new(std::sync::RwLock::new(None)),
         shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        sidecar: Arc::new(sidecar::SidecarManager::new()),
+        jwks: None,
+        share: None,
+        auth_identity: tokio::sync::OnceCell::new(),
     });
     api_routes(state)
 }
@@ -136,6 +145,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
 ///
 /// This is the most flexible constructor — all other `create_app*` functions
 /// delegate to this one. Starts the `LiveSessionManager` for Live Monitor.
+#[allow(clippy::too_many_arguments)]
 pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
@@ -143,13 +153,21 @@ pub fn create_app_full(
     search_index: SearchIndexHolder,
     shutdown: tokio::sync::watch::Receiver<bool>,
     static_dir: Option<PathBuf>,
+    sidecar: Arc<sidecar::SidecarManager>,
+    jwks: Option<Arc<tokio::sync::RwLock<auth::supabase::JwksCache>>>,
+    share: Option<state::ShareConfig>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
     claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
     let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
-    let (manager, live_sessions, live_tx) =
-        live::manager::LiveSessionManager::start(pricing.clone(), db.clone(), search_index.clone(), registry.clone());
+    let (manager, live_sessions, live_tx) = live::manager::LiveSessionManager::start(
+        pricing.clone(),
+        db.clone(),
+        search_index.clone(),
+        registry.clone(),
+        Some(sidecar.clone()),
+    );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
     live::hook_registrar::register(
@@ -180,6 +198,10 @@ pub fn create_app_full(
         search_index,
         shutdown,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        sidecar,
+        jwks,
+        share,
+        auth_identity: tokio::sync::OnceCell::new(),
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
@@ -229,7 +251,10 @@ async fn refresh_pricing(
             }
 
             *pricing.write().expect("pricing lock poisoned") = merged;
-            tracing::info!(models = count, "Pricing refreshed from litellm + cached to SQLite");
+            tracing::info!(
+                models = count,
+                "Pricing refreshed from litellm + cached to SQLite"
+            );
         }
         Err(e) => {
             tracing::warn!("litellm fetch failed: {e}");
