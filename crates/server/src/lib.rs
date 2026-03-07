@@ -6,6 +6,7 @@
 
 pub mod auth;
 pub mod backfill;
+pub mod cache;
 pub mod classify_state;
 pub mod crypto;
 pub mod error;
