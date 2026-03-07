@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 /// Time-series data point for metric trends.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MetricDataPoint {
     pub date: String,
@@ -24,7 +24,7 @@ pub struct MetricDataPoint {
 
 /// Category evolution data point.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryDataPoint {
     pub date: String,
@@ -35,7 +35,7 @@ pub struct CategoryDataPoint {
 
 /// Activity heatmap cell.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HeatmapCell {
     pub day_of_week: u8,
@@ -47,7 +47,7 @@ pub struct HeatmapCell {
 
 /// Full trends response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsTrendsResponse {
     pub metric: String,
@@ -95,9 +95,11 @@ impl Database {
                 "COALESCE(CAST(SUM(reedited_files_count) AS REAL) / NULLIF(SUM(files_edited_count), 0), 0.0)"
             }
             "sessions" => "CAST(COUNT(*) AS REAL)",
-            "lines" => "CAST(SUM(files_edited_count * 50) AS REAL)",
+            "lines" => {
+                "CAST(SUM(COALESCE(ai_lines_added, 0) + COALESCE(ai_lines_removed, 0)) AS REAL)"
+            }
             "cost_per_line" => {
-                "COALESCE(CAST(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)) AS REAL) / NULLIF(SUM(files_edited_count * 50), 0) * 0.00001, 0.0)"
+                "COALESCE(SUM(total_cost_usd) / NULLIF(SUM(CASE WHEN total_cost_usd IS NOT NULL THEN (COALESCE(ai_lines_added, 0) + COALESCE(ai_lines_removed, 0)) ELSE 0 END), 0), 0.0)"
             }
             "prompts" => "COALESCE(CAST(SUM(user_prompt_count) AS REAL) / NULLIF(COUNT(*), 0), 0.0)",
             _ => {
@@ -193,11 +195,7 @@ impl Database {
     }
 
     /// Get activity heatmap data: session count and avg re-edit rate by day-of-week and hour.
-    pub async fn get_activity_heatmap(
-        &self,
-        from: i64,
-        to: i64,
-    ) -> DbResult<Vec<HeatmapCell>> {
+    pub async fn get_activity_heatmap(&self, from: i64, to: i64) -> DbResult<Vec<HeatmapCell>> {
         let rows: Vec<(i64, i64, i64, f64)> = sqlx::query_as(
             r#"
             SELECT
@@ -236,11 +234,7 @@ impl Database {
     }
 
     /// Get total session count within a time range.
-    pub async fn get_session_count_in_range(
-        &self,
-        from: i64,
-        to: i64,
-    ) -> DbResult<i64> {
+    pub async fn get_session_count_in_range(&self, from: i64, to: i64) -> DbResult<i64> {
         let (count,): (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM valid_sessions WHERE last_message_at >= ?1 AND last_message_at <= ?2",
         )
@@ -377,7 +371,8 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
     }
 
     let min_sessions: i64 = 5;
-    let best_slots: Vec<&HeatmapCell> = data.iter().filter(|c| c.sessions >= min_sessions).collect();
+    let best_slots: Vec<&HeatmapCell> =
+        data.iter().filter(|c| c.sessions >= min_sessions).collect();
 
     if best_slots.is_empty() {
         return "Build more history to see your peak productivity times".to_string();
@@ -385,20 +380,12 @@ pub fn generate_heatmap_insight(data: &[HeatmapCell]) -> String {
 
     let best = best_slots
         .iter()
-        .min_by(|a, b| {
-            a.avg_reedit_rate
-                .partial_cmp(&b.avg_reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .min_by(|a, b| a.avg_reedit_rate.total_cmp(&b.avg_reedit_rate))
         .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let worst = best_slots
         .iter()
-        .max_by(|a, b| {
-            a.avg_reedit_rate
-                .partial_cmp(&b.avg_reedit_rate)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .max_by(|a, b| a.avg_reedit_rate.total_cmp(&b.avg_reedit_rate))
         .expect("best_slots guaranteed non-empty by is_empty check above");
 
     let days = [
@@ -493,6 +480,75 @@ mod tests {
             .await
             .unwrap();
         assert!(!data.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_metric_timeseries_lines_uses_canonical_ai_line_fields() {
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, last_message_at,
+                files_edited_count, ai_lines_added, ai_lines_removed
+            )
+            VALUES
+                ('lines-1', 'proj', '/tmp/lines-1.jsonl', 'test', ?1, 10, 7, 3),
+                ('lines-2', 'proj', '/tmp/lines-2.jsonl', 'test', ?1, 2, 1, 1)
+            "#,
+        )
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let data = db
+            .get_metric_timeseries("lines", now - 3600, now + 3600, "day")
+            .await
+            .unwrap();
+
+        assert_eq!(data.len(), 1);
+        assert!(
+            (data[0].value - 12.0).abs() < 0.0001,
+            "lines must use ai_lines_added + ai_lines_removed (expected 12, got {})",
+            data[0].value
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_metric_timeseries_cost_per_line_uses_priced_lines_denominator() {
+        let db = Database::new_in_memory().await.unwrap();
+        let now = chrono::Utc::now().timestamp();
+
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, last_message_at,
+                files_edited_count, ai_lines_added, ai_lines_removed, total_cost_usd
+            )
+            VALUES
+                ('cpl-1', 'proj', '/tmp/cpl-1.jsonl', 'test', ?1, 40, 9, 3, 1.2),
+                ('cpl-2', 'proj', '/tmp/cpl-2.jsonl', 'test', ?1, 20, 2, 1, 0.3),
+                ('cpl-3', 'proj', '/tmp/cpl-3.jsonl', 'test', ?1, 1, 100, 0, NULL)
+            "#,
+        )
+        .bind(now)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let data = db
+            .get_metric_timeseries("cost_per_line", now - 3600, now + 3600, "day")
+            .await
+            .unwrap();
+
+        assert_eq!(data.len(), 1);
+        assert!(
+            (data[0].value - 0.1).abs() < 0.0001,
+            "cost_per_line should use SUM(total_cost_usd) / priced lines (expected 0.1, got {})",
+            data[0].value
+        );
     }
 
     #[tokio::test]

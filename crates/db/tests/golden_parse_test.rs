@@ -39,8 +39,14 @@ fn golden_full_conversation() {
     assert_eq!(result.deep.tool_counts.edit, 1);
     assert_eq!(result.deep.tool_counts.bash, 1);
     assert_eq!(result.deep.tool_counts.write, 0);
-    assert!(result.deep.files_touched.contains(&"/src/main.rs".to_string()));
-    assert!(result.deep.files_touched.contains(&"/src/lib.rs".to_string()));
+    assert!(result
+        .deep
+        .files_touched
+        .contains(&"/src/main.rs".to_string()));
+    assert!(result
+        .deep
+        .files_touched
+        .contains(&"/src/lib.rs".to_string()));
 }
 
 #[test]
@@ -83,11 +89,14 @@ fn golden_realistic_session() {
     assert_eq!(result.deep.tool_counts.write, 1);
     assert_eq!(result.deep.tool_counts.bash, 2);
     assert_eq!(result.deep.tool_counts.edit, 0);
-    assert!(result.deep.files_touched.contains(&"/src/app.ts".to_string()));
-    assert!(
-        result.deep.files_touched
-            .contains(&"/tests/app.test.ts".to_string())
-    );
+    assert!(result
+        .deep
+        .files_touched
+        .contains(&"/src/app.ts".to_string()));
+    assert!(result
+        .deep
+        .files_touched
+        .contains(&"/tests/app.test.ts".to_string()));
 }
 
 #[test]
@@ -123,8 +132,12 @@ fn golden_turns_extracted_from_assistant_with_usage() {
     assert_eq!(result.turns[1].content_type, "tool_use");
 
     // Models seen
-    assert!(result.models_seen.contains(&"claude-opus-4-5-20251101".to_string()));
-    assert!(result.models_seen.contains(&"claude-sonnet-4-20250514".to_string()));
+    assert!(result
+        .models_seen
+        .contains(&"claude-opus-4-5-20251101".to_string()));
+    assert!(result
+        .models_seen
+        .contains(&"claude-sonnet-4-20250514".to_string()));
 }
 
 #[test]
@@ -166,20 +179,29 @@ const PHASE3_GOLDEN_FIXTURE: &[u8] = br#"{"type":"user","timestamp":"2026-01-27T
 #[test]
 fn golden_phase3_user_prompt_count() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
-    assert_eq!(result.deep.user_prompt_count, 4, "Should count exactly 4 user prompts");
+    assert_eq!(
+        result.deep.user_prompt_count, 4,
+        "Should count exactly 4 user prompts"
+    );
 }
 
 #[test]
 fn golden_phase3_api_call_count() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
-    assert_eq!(result.deep.api_call_count, 5, "Should count exactly 5 API calls (assistant messages)");
+    assert_eq!(
+        result.deep.api_call_count, 5,
+        "Should count exactly 5 API calls (assistant messages)"
+    );
 }
 
 #[test]
 fn golden_phase3_tool_call_count() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
     // Read x3 + Edit x3 + Write x1 + Skill x1 = 8
-    assert_eq!(result.deep.tool_call_count, 8, "Should count exactly 8 tool calls");
+    assert_eq!(
+        result.deep.tool_call_count, 8,
+        "Should count exactly 8 tool calls"
+    );
 }
 
 #[test]
@@ -187,10 +209,16 @@ fn golden_phase3_files_read() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
     // 3 unique files read: /src/main.rs, /src/lib.rs, /src/config.rs
-    assert_eq!(result.deep.files_read_count, 3, "Should have 3 unique files read");
+    assert_eq!(
+        result.deep.files_read_count, 3,
+        "Should have 3 unique files read"
+    );
     assert!(result.deep.files_read.contains(&"/src/main.rs".to_string()));
     assert!(result.deep.files_read.contains(&"/src/lib.rs".to_string()));
-    assert!(result.deep.files_read.contains(&"/src/config.rs".to_string()));
+    assert!(result
+        .deep
+        .files_read
+        .contains(&"/src/config.rs".to_string()));
 }
 
 #[test]
@@ -199,10 +227,17 @@ fn golden_phase3_files_edited() {
 
     // files_edited stores ALL occurrences (not deduplicated)
     // Edit /src/main.rs x2, Edit /src/lib.rs x1, Write /src/new.rs x1 = 4 total
-    assert_eq!(result.deep.files_edited.len(), 4, "Should store all 4 edit occurrences");
+    assert_eq!(
+        result.deep.files_edited.len(),
+        4,
+        "Should store all 4 edit occurrences"
+    );
 
     // Unique files: main.rs, lib.rs, new.rs = 3
-    assert_eq!(result.deep.files_edited_count, 3, "Should have 3 unique files edited");
+    assert_eq!(
+        result.deep.files_edited_count, 3,
+        "Should have 3 unique files edited"
+    );
 }
 
 #[test]
@@ -210,7 +245,10 @@ fn golden_phase3_reedited_files() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
     // Only /src/main.rs was edited 2+ times
-    assert_eq!(result.deep.reedited_files_count, 1, "Only main.rs was re-edited");
+    assert_eq!(
+        result.deep.reedited_files_count, 1,
+        "Only main.rs was re-edited"
+    );
 }
 
 #[test]
@@ -218,7 +256,10 @@ fn golden_phase3_duration() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
     // 10:00:00 to 10:30:00 = 30 minutes = 1800 seconds
-    assert_eq!(result.deep.duration_seconds, 1800, "Duration should be 1800 seconds (30 minutes)");
+    assert_eq!(
+        result.deep.duration_seconds, 1800,
+        "Duration should be 1800 seconds (30 minutes)"
+    );
     assert!(result.deep.first_timestamp.is_some());
     assert!(result.deep.last_timestamp.is_some());
 }
@@ -228,17 +269,32 @@ fn golden_phase3_turn_count() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
     // turn_count = min(user_count, assistant_count) = min(4, 5) = 4
-    assert_eq!(result.deep.turn_count, 4, "Turn count should be 4 (min of user/assistant)");
+    assert_eq!(
+        result.deep.turn_count, 4,
+        "Turn count should be 4 (min of user/assistant)"
+    );
 }
 
 #[test]
 fn golden_phase3_tool_counts() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
-    assert_eq!(result.deep.tool_counts.read, 3, "Should have 3 Read tool uses");
-    assert_eq!(result.deep.tool_counts.edit, 3, "Should have 3 Edit tool uses");
-    assert_eq!(result.deep.tool_counts.write, 1, "Should have 1 Write tool use");
-    assert_eq!(result.deep.tool_counts.bash, 0, "Should have 0 Bash tool uses");
+    assert_eq!(
+        result.deep.tool_counts.read, 3,
+        "Should have 3 Read tool uses"
+    );
+    assert_eq!(
+        result.deep.tool_counts.edit, 3,
+        "Should have 3 Edit tool uses"
+    );
+    assert_eq!(
+        result.deep.tool_counts.write, 1,
+        "Should have 1 Write tool use"
+    );
+    assert_eq!(
+        result.deep.tool_counts.bash, 0,
+        "Should have 0 Bash tool uses"
+    );
 }
 
 #[test]
@@ -246,17 +302,27 @@ fn golden_phase3_raw_invocations() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
     // Total tool_use blocks: 8
-    assert_eq!(result.raw_invocations.len(), 8, "Should extract 8 raw invocations");
+    assert_eq!(
+        result.raw_invocations.len(),
+        8,
+        "Should extract 8 raw invocations"
+    );
 
     // Verify Skill invocation for commit detection
-    let skill_invocations: Vec<_> = result.raw_invocations.iter()
+    let skill_invocations: Vec<_> = result
+        .raw_invocations
+        .iter()
         .filter(|inv| inv.name == "Skill")
         .collect();
     assert_eq!(skill_invocations.len(), 1, "Should have 1 Skill invocation");
 
     let skill = &skill_invocations[0];
     assert_eq!(
-        skill.input.as_ref().and_then(|v| v.get("skill")).and_then(|v| v.as_str()),
+        skill
+            .input
+            .as_ref()
+            .and_then(|v| v.get("skill"))
+            .and_then(|v| v.as_str()),
         Some("commit"),
         "Skill invocation should be for 'commit'"
     );
@@ -285,7 +351,9 @@ fn golden_phase3_models_seen() {
 
     // All turns use claude-opus-4-5-20251101
     assert_eq!(result.models_seen.len(), 1, "Should see 1 unique model");
-    assert!(result.models_seen.contains(&"claude-opus-4-5-20251101".to_string()));
+    assert!(result
+        .models_seen
+        .contains(&"claude-opus-4-5-20251101".to_string()));
 }
 
 #[test]
@@ -330,7 +398,7 @@ fn golden_phase3_complete_metrics() {
 #[test]
 fn golden_phase3_derived_metrics() {
     use claude_view_core::metrics::{
-        tokens_per_prompt, reedit_rate, tool_density, edit_velocity, read_to_edit_ratio
+        edit_velocity, read_to_edit_ratio, reedit_rate, tokens_per_prompt, tool_density,
     };
 
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
@@ -344,7 +412,10 @@ fn golden_phase3_derived_metrics() {
     assert_eq!(tpp, Some(395.0));
 
     // A2.2 Re-edit Rate: 1 / 3 = 0.333...
-    let rr = reedit_rate(result.deep.reedited_files_count, result.deep.files_edited_count);
+    let rr = reedit_rate(
+        result.deep.reedited_files_count,
+        result.deep.files_edited_count,
+    );
     assert!(rr.is_some());
     assert!((rr.unwrap() - 0.333333).abs() < 0.001);
 
@@ -375,7 +446,8 @@ fn golden_git_branch_extracted() {
 
 #[test]
 fn golden_git_branch_none_when_absent() {
-    let data = br#"{"type":"user","message":{"content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}"#;
+    let data =
+        br#"{"type":"user","message":{"content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}"#;
     let result = parse_bytes(data);
     assert_eq!(result.git_branch, None);
 }

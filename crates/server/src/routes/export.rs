@@ -9,9 +9,9 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use claude_view_core::SessionInfo;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use claude_view_core::SessionInfo;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -26,7 +26,7 @@ pub struct ExportQuery {
 
 /// Exported session data for JSON format (A5.2 schema).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedSession {
     pub id: String,
@@ -79,7 +79,7 @@ impl From<&SessionInfo> for ExportedSession {
 
 /// JSON export response wrapper.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportResponse {
     pub sessions: Vec<ExportedSession>,
@@ -111,10 +111,7 @@ pub async fn export_sessions(
 
     // Fetch all sessions from all projects
     let projects = state.db.list_projects().await?;
-    let sessions: Vec<&SessionInfo> = projects
-        .iter()
-        .flat_map(|p| p.sessions.iter())
-        .collect();
+    let sessions: Vec<&SessionInfo> = projects.iter().flat_map(|p| p.sessions.iter()).collect();
 
     let exported_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -163,10 +160,22 @@ fn build_csv(sessions: &[&SessionInfo]) -> String {
         let project_path = escape_csv_field(&s.project_path);
 
         // Calculate derived metrics
-        let reedit_rate = s.reedit_rate().map(|r| format!("{:.4}", r)).unwrap_or_default();
-        let tokens_per_prompt = s.tokens_per_prompt().map(|t| format!("{:.2}", t)).unwrap_or_default();
-        let total_input = s.total_input_tokens.map(|t| t.to_string()).unwrap_or_default();
-        let total_output = s.total_output_tokens.map(|t| t.to_string()).unwrap_or_default();
+        let reedit_rate = s
+            .reedit_rate()
+            .map(|r| format!("{:.4}", r))
+            .unwrap_or_default();
+        let tokens_per_prompt = s
+            .tokens_per_prompt()
+            .map(|t| format!("{:.2}", t))
+            .unwrap_or_default();
+        let total_input = s
+            .total_input_tokens
+            .map(|t| t.to_string())
+            .unwrap_or_default();
+        let total_output = s
+            .total_output_tokens
+            .map(|t| t.to_string())
+            .unwrap_or_default();
 
         csv.push_str(&format!(
             "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
@@ -197,7 +206,12 @@ fn build_csv(sessions: &[&SessionInfo]) -> String {
 /// If the field contains comma, double quote, newline, or pipe, wrap in double quotes
 /// and escape any internal double quotes by doubling them.
 fn escape_csv_field(field: &str) -> String {
-    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') || field.contains('|') {
+    if field.contains(',')
+        || field.contains('"')
+        || field.contains('\n')
+        || field.contains('\r')
+        || field.contains('|')
+    {
         // Wrap in quotes and escape internal quotes
         format!("\"{}\"", field.replace('"', "\"\""))
     } else {
@@ -217,9 +231,9 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_core::ToolCounts;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -246,6 +260,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            display_name: project.to_string(),
             git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
@@ -304,6 +319,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -417,9 +433,6 @@ mod tests {
     #[test]
     fn test_escape_csv_field_combined() {
         // Multiple special chars including quotes
-        assert_eq!(
-            escape_csv_field("a,b\"c\nd"),
-            "\"a,b\"\"c\nd\""
-        );
+        assert_eq!(escape_csv_field("a,b\"c\nd"), "\"a,b\"\"c\nd\"");
     }
 }

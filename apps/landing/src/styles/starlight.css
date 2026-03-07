@@ -1,0 +1,168 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Starlight Docs — Warm Aurora Theme
+   Aligns docs site typography, colors, and feel with the landing page.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Self-hosted fonts — same declarations as landing page global.css ─── */
+
+/* Space Grotesk — headings (variable weight 400–700) */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Inter — body text (variable weight 300–700) */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url('/fonts/inter-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* JetBrains Mono — code/terminal (variable weight 400–600) */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Metric-matched fallback fonts — prevents CLS during font swap */
+@font-face {
+  font-family: 'Space Grotesk Fallback';
+  src: local('Arial');
+  size-adjust: 109%;
+  ascent-override: 96%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial');
+  size-adjust: 107%;
+  ascent-override: 90%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'JetBrains Mono Fallback';
+  src: local('Courier New');
+  size-adjust: 112.3%;
+  ascent-override: 79%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
+/* ─── Font smoothing — match landing page rendering ─── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Starlight CSS custom properties — Warm Aurora palette ─── */
+
+/* Dark mode (Starlight's :root = dark mode defaults)
+   Gray scale: gray-1 = lightest … gray-6 = darkest
+   --sl-color-white = text color, --sl-color-black = background */
+:root {
+  /* Accent — warm orange, tuned for dark backgrounds */
+  --sl-color-accent-low: rgba(217, 119, 87, 0.15);
+  --sl-color-accent: #d97757;
+  --sl-color-accent-high: #e8a08a; /* lighter coral — readable on dark bg */
+
+  /* Starlight uses --sl-color-text-invert as sidebar active-item TEXT color
+     (maps to accent-low by default). Our accent-low is 15% opacity for bg tints,
+     so we must override this to an opaque dark value for readable text on #e8a08a. */
+  --sl-color-text-invert: #1a1a1a;
+
+  /* Foreground / background */
+  --sl-color-white: #faf9f7;
+  --sl-color-black: #1a1a1a;
+
+  /* Warm gray scale — dark mode (lightest → darkest) */
+  --sl-color-gray-1: #e7e5e4; /* stone-200 */
+  --sl-color-gray-2: #d6d3d1; /* stone-300 */
+  --sl-color-gray-3: #a8a29e; /* stone-400 */
+  --sl-color-gray-4: #78716c; /* stone-500 */
+  --sl-color-gray-5: #57534e; /* stone-600 */
+  --sl-color-gray-6: #44403c; /* stone-700 */
+
+  /* Dark mode surfaces */
+  --sl-color-bg-nav: #1f1f1f;
+  --sl-color-bg-sidebar: #1f1f1f;
+
+  /* Typography — body + mono with metric-matched fallbacks */
+  --sl-font: 'Inter', 'Inter Fallback', sans-serif;
+  --sl-font-system-mono: 'JetBrains Mono', 'JetBrains Mono Fallback', monospace;
+}
+
+/* Light mode — specificity 0-2-0 matches Starlight's own [data-theme=light] block,
+   so our values actually win instead of being overridden by Starlight's cool-blue defaults.
+   Gray scale INVERTS: gray-1 = darkest … gray-6 = lightest */
+:root[data-theme='light'] {
+  /* Accent — warm orange, tuned for light backgrounds */
+  --sl-color-accent-low: rgba(217, 119, 87, 0.08);
+  --sl-color-accent: #d97757;
+  --sl-color-accent-high: #b85a3a; /* darker burnt orange — readable on light bg */
+
+  /* Foreground / background (inverted from dark mode) */
+  --sl-color-white: #1a1a1a;
+  --sl-color-black: #faf9f7;
+
+  /* Warm gray scale — light mode (darkest → lightest)
+     Must match landing page text hierarchy:
+     --color-text = #1a1a1a, --color-text-secondary = rgba(0,0,0,0.45) */
+  --sl-color-gray-1: #1c1917; /* stone-900 — labels, strong UI text */
+  --sl-color-gray-2: #292524; /* stone-800 — body text (= --sl-color-text) */
+  --sl-color-gray-3: #57534e; /* stone-600 — captions, metadata, muted */
+  --sl-color-gray-4: #a8a29e; /* stone-400 — disabled, placeholders */
+  --sl-color-gray-5: #d6d3d1; /* stone-300 — borders, dividers */
+  --sl-color-gray-6: #e7e5e4; /* stone-200 — surfaces, inline code bg */
+  --sl-color-gray-7: #f5f5f4; /* stone-100 — nav bg */
+
+  /* Light mode surfaces — warm cream instead of stark white */
+  --sl-color-bg-nav: #f5f5f4;
+  --sl-color-bg-sidebar: #faf9f7;
+}
+
+/* ─── Heading font — Space Grotesk with tighter tracking ─── */
+/* :root prefix bumps specificity to 0-1-1, beating Starlight's :where() wrappers (0-0-1) */
+:root h1, :root h2, :root h3, :root h4, :root h5, :root h6 {
+  font-family: 'Space Grotesk', 'Space Grotesk Fallback', sans-serif;
+}
+
+:root h1, :root h2, :root h3 {
+  letter-spacing: -0.02em;
+}

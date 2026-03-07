@@ -171,6 +171,7 @@ npx claude-view
 | 環境変数 | デフォルト | 説明 |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` または `PORT` | `47892` | デフォルトポートを上書き |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | データディレクトリを上書き |
 
 ---
 

@@ -128,7 +128,10 @@ mod tests {
     fn test_parse_facet_json() {
         let facet: SessionFacet = serde_json::from_str(sample_facet_json()).unwrap();
 
-        assert_eq!(facet.underlying_goal.as_deref(), Some("Implement a new feature"));
+        assert_eq!(
+            facet.underlying_goal.as_deref(),
+            Some("Implement a new feature")
+        );
         assert_eq!(facet.goal_categories.get("coding"), Some(&3));
         assert_eq!(facet.goal_categories.get("debugging"), Some(&1));
         assert_eq!(facet.outcome.as_deref(), Some("success"));

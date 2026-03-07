@@ -1,0 +1,81 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Scan shared components so Tailwind generates their utility classes */
+@source "../../../packages/shared/src";
+
+/* Dark mode: class-based (matches web app) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design System Fonts (subset of web app) */
+:root {
+  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+/* ── Prose: code block overrides (from web app) ── */
+
+/* Light mode: soft gray bg, dark text */
+.prose pre {
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
+
+.prose :not(pre) > code {
+  background: #eff1f3;
+  color: #24292f;
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+  font-weight: 500;
+}
+
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+  content: none;
+}
+
+/* Dark mode: deep surface bg, light text */
+:where(.dark, .dark *) .prose pre {
+  background: #161b22;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+}
+
+:where(.dark, .dark *) .prose :not(pre) > code {
+  background: #21262d;
+  color: #c9d1d9;
+}
+
+/* ── Diff block: GitHub-style line backgrounds ── */
+.diff-block [data-diff="add"] {
+  background: rgba(46, 160, 67, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="del"] {
+  background: rgba(248, 81, 73, 0.15);
+  display: inline-block;
+  width: 100%;
+}
+.diff-block [data-diff="hunk"] {
+  background: rgba(56, 139, 253, 0.1);
+  display: inline-block;
+  width: 100%;
+}
+
+/* ── Scrollbars ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+:where(.dark, .dark *) * {
+  scrollbar-color: #4b5563 transparent;
+}

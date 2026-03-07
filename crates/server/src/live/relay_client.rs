@@ -8,11 +8,14 @@ use tokio::sync::broadcast;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
+use base64::{engine::general_purpose::STANDARD, Engine};
+
 use super::manager::LiveSessionMap;
-use super::state::SessionEvent;
+use super::state::{AgentStateGroup, LiveSession, SessionEvent};
 use crate::crypto::{
-    box_secret_key, encrypt_for_device, load_or_create_identity, load_paired_devices,
-    sign_auth_challenge, DeviceIdentity, PairedDevice,
+    add_paired_device, box_secret_key, decrypt_from_device, encrypt_for_device,
+    find_and_verify_hmac, load_or_create_identity, load_paired_devices, sign_auth_challenge,
+    DeviceIdentity, PairedDevice,
 };
 
 /// Configuration for the relay client.
@@ -63,20 +66,32 @@ pub fn spawn_relay_client(
         let mut backoff = Duration::from_secs(1);
 
         loop {
+            // Always connect — even with no paired devices.
+            // The relay connection must be open to receive pair_complete
+            // messages for the first-ever pairing (bootstrap).
+            // Session-sending loops are naturally guarded by iterating
+            // over paired_devices (empty list = no sends).
             let paired_devices = load_paired_devices();
-            if paired_devices.is_empty() {
-                // No devices paired — sleep and check again
-                tokio::time::sleep(Duration::from_secs(10)).await;
-                continue;
-            }
 
-            match connect_and_stream(&identity, &paired_devices, &tx, &sessions, &relay_url, &config).await {
+            match connect_and_stream(
+                &identity,
+                &paired_devices,
+                &tx,
+                &sessions,
+                &relay_url,
+                &config,
+            )
+            .await
+            {
                 Ok(()) => {
                     info!("relay connection closed cleanly");
                     backoff = Duration::from_secs(1);
                 }
                 Err(e) => {
-                    warn!(backoff_secs = backoff.as_secs(), "relay connection failed: {e}");
+                    warn!(
+                        backoff_secs = backoff.as_secs(),
+                        "relay connection failed: {e}"
+                    );
                 }
             }
 
@@ -84,6 +99,28 @@ pub fn spawn_relay_client(
             backoff = (backoff * 2).min(config.max_reconnect_delay);
         }
     });
+}
+
+/// Build an envelope JSON for sending to the relay.
+/// Includes unencrypted `push_hint` and `push_title` when the session
+/// is in the NeedsYou group so the relay can trigger push notifications
+/// without decrypting the payload.
+fn build_envelope(
+    device_id: &str,
+    encrypted: &str,
+    session: Option<&LiveSession>,
+) -> serde_json::Value {
+    let mut envelope = serde_json::json!({
+        "to": device_id,
+        "payload": encrypted,
+    });
+    if let Some(s) = session {
+        if s.agent_state.group == AgentStateGroup::NeedsYou {
+            envelope["push_hint"] = serde_json::Value::String(s.agent_state.label.clone());
+            envelope["push_title"] = serde_json::Value::String(s.project_display_name.clone());
+        }
+    }
+    envelope
 }
 
 async fn connect_and_stream(
@@ -131,15 +168,14 @@ async fn connect_and_stream(
     {
         let sessions_map = sessions.read().await;
         for session in sessions_map.values() {
-            let json = serde_json::to_vec(session).unwrap_or_default();
+            let Ok(json) = serde_json::to_vec(session) else {
+                tracing::error!("failed to serialize session for relay");
+                continue;
+            };
             for device in paired_devices {
-                if let Ok(encrypted) =
-                    encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
+                if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
                 {
-                    let envelope = serde_json::json!({
-                        "to": device.device_id,
-                        "payload": encrypted,
-                    });
+                    let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
                     let _ = sink.send(Message::Text(envelope.to_string().into())).await;
                 }
             }
@@ -156,13 +192,13 @@ async fn connect_and_stream(
                 match event {
                     Ok(SessionEvent::SessionDiscovered { session } |
                        SessionEvent::SessionUpdated { session }) => {
-                        let json = serde_json::to_vec(&session).unwrap_or_default();
+                        let Ok(json) = serde_json::to_vec(&session) else {
+                            tracing::error!("failed to serialize session for relay");
+                            continue;
+                        };
                         for device in paired_devices {
                             if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                let envelope = serde_json::json!({
-                                    "to": device.device_id,
-                                    "payload": encrypted,
-                                });
+                                let envelope = build_envelope(&device.device_id, &encrypted, Some(&session));
                                 if sink.send(Message::Text(envelope.to_string().into())).await.is_err() {
                                     return Ok(());
                                 }
@@ -170,14 +206,14 @@ async fn connect_and_stream(
                         }
                     }
                     Ok(SessionEvent::SessionCompleted { session_id }) => {
-                        let msg = serde_json::json!({"type": "session_completed", "session_id": session_id});
-                        let json = serde_json::to_vec(&msg).unwrap_or_default();
+                        let msg = serde_json::json!({"type": "session_completed", "sessionId": session_id});
+                        let Ok(json) = serde_json::to_vec(&msg) else {
+                            tracing::error!("failed to serialize session for relay");
+                            continue;
+                        };
                         for device in paired_devices {
                             if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                let envelope = serde_json::json!({
-                                    "to": device.device_id,
-                                    "payload": encrypted,
-                                });
+                                let envelope = build_envelope(&device.device_id, &encrypted, None);
                                 let _ = sink.send(Message::Text(envelope.to_string().into())).await;
                             }
                         }
@@ -189,13 +225,13 @@ async fn connect_and_stream(
                         warn!(skipped = n, "relay client lagged, will resync");
                         let sessions_map = sessions.read().await;
                         for session in sessions_map.values() {
-                            let json = serde_json::to_vec(session).unwrap_or_default();
+                            let Ok(json) = serde_json::to_vec(session) else {
+                                tracing::error!("failed to serialize session for relay");
+                                continue;
+                            };
                             for device in paired_devices {
                                 if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                    let envelope = serde_json::json!({
-                                        "to": device.device_id,
-                                        "payload": encrypted,
-                                    });
+                                    let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
                                     let _ = sink.send(Message::Text(envelope.to_string().into())).await;
                                 }
                             }
@@ -216,8 +252,74 @@ async fn connect_and_stream(
                     Some(Ok(Message::Text(text))) => {
                         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
                             if val.get("type").and_then(|t| t.as_str()) == Some("pair_complete") {
-                                info!("received pair_complete from relay");
-                                // TODO: decrypt phone pubkey and store in Keychain
+                                let phone_device_id = val.get("device_id").and_then(|v| v.as_str());
+                                let phone_x25519_b64 = val.get("x25519_pubkey").and_then(|v| v.as_str());
+                                let encrypted_blob = val.get("pubkey_encrypted_blob").and_then(|v| v.as_str());
+
+                                let verification_hmac = val.get("verification_hmac").and_then(|v| v.as_str());
+
+                                match (phone_device_id, phone_x25519_b64, encrypted_blob) {
+                                    (Some(did), Some(x_pub), Some(blob)) => {
+                                        // Decrypt blob to verify phone owns the X25519 key
+                                        match decrypt_from_device(blob, x_pub, &box_secret) {
+                                            Ok(decrypted) => {
+                                                let claimed_pubkey = STANDARD.encode(&decrypted);
+                                                if claimed_pubkey != x_pub {
+                                                    warn!("pair_complete: decrypted pubkey doesn't match claimed x25519_pubkey");
+                                                    continue;
+                                                }
+
+                                                // HMAC anti-MITM verification: if the phone
+                                                // sent an HMAC, verify it against our stored
+                                                // verification secret. This proves the phone
+                                                // scanned our QR code directly (the relay
+                                                // cannot forge this without the secret).
+                                                match verification_hmac {
+                                                    Some(hmac) => {
+                                                        match find_and_verify_hmac(x_pub, hmac) {
+                                                            Ok(true) => {
+                                                                info!(phone = %did, "pair_complete: HMAC verified, anti-MITM binding confirmed");
+                                                            }
+                                                            Ok(false) => {
+                                                                warn!(phone = %did, "pair_complete: HMAC verification failed — possible relay key substitution, rejecting");
+                                                                continue;
+                                                            }
+                                                            Err(e) => {
+                                                                warn!(phone = %did, "pair_complete: HMAC verification error: {e}, rejecting");
+                                                                continue;
+                                                            }
+                                                        }
+                                                    }
+                                                    None => {
+                                                        // Backwards compatibility: older phone
+                                                        // clients may not send HMAC yet.
+                                                        warn!(phone = %did, "pair_complete: no verification_hmac provided (legacy client), accepting without HMAC binding");
+                                                    }
+                                                }
+
+                                                info!(phone = %did, "pair_complete: verified and storing paired device");
+                                                let device = PairedDevice {
+                                                    device_id: did.to_string(),
+                                                    x25519_pubkey: x_pub.to_string(),
+                                                    name: format!("Phone {}", &did[..did.len().min(12)]),
+                                                    paired_at: std::time::SystemTime::now()
+                                                        .duration_since(std::time::UNIX_EPOCH)
+                                                        .unwrap_or_default()
+                                                        .as_secs(),
+                                                };
+                                                if let Err(e) = add_paired_device(device) {
+                                                    error!("failed to store paired device: {e}");
+                                                }
+                                            }
+                                            Err(e) => {
+                                                warn!("pair_complete: failed to decrypt phone pubkey blob: {e}");
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        warn!("pair_complete: missing required fields (device_id, x25519_pubkey, pubkey_encrypted_blob)");
+                                    }
+                                }
                             }
                         }
                     }

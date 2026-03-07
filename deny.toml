@@ -1,0 +1,78 @@
+# cargo-deny configuration for claude-view monorepo
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+# Advisory database checks — deny known vulnerabilities
+[advisories]
+git-fetch-with-cli = true
+ignore = [
+    # Transitive deps — unmaintained but no security issue
+    { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dep of indicatif; no replacement available yet" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix is a transitive dep of indicatif; no replacement available yet" },
+    { id = "RUSTSEC-2023-0071", reason = "rsa timing sidechannel via jsonwebtoken; no patch available, we only do JWT verification (public key) not decryption" },
+]
+
+# License allow list — covers all current dependencies
+[licenses]
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSD-1-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "MPL-2.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+
+exceptions = [
+    # r-efi is LGPL-2.1+ but only used on UEFI targets (not relevant for us)
+    { allow = ["LGPL-2.1-or-later"], crate = "r-efi" },
+    # fastdivide uses a Zlib-style acknowledgement license
+    { allow = ["zlib-acknowledgement"], crate = "fastdivide" },
+]
+
+[licenses.private]
+# Skip workspace crates (claude-view-*) — they don't need license checks
+ignore = true
+registries = []
+
+# Crate ban checks
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+# Source checks — only allow crates.io
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []

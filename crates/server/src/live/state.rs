@@ -3,11 +3,19 @@
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
-use serde::{Deserialize, Serialize};
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// The universal agent state — driven by hooks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentState {
     /// Which UI group: NeedsYou or Autonomous
@@ -21,7 +29,14 @@ pub struct AgentState {
     pub context: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentStateGroup {
     NeedsYou,
@@ -34,7 +49,14 @@ pub enum AgentStateGroup {
 ///
 /// 3-state model: Working (actively streaming/tool use), Paused (waiting for
 /// input, task complete, or idle), Done (session over).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
     /// Agent is actively streaming or using tools.
@@ -46,7 +68,14 @@ pub enum SessionStatus {
 }
 
 /// A tool integration (MCP server or skill) detected from actual usage in a session.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolUsed {
     /// Display name: "playwright", "chrome-devtools" for MCP; "commit", "review-pr" for skills.
@@ -56,7 +85,14 @@ pub struct ToolUsed {
 }
 
 /// A live session snapshot broadcast to connected SSE clients.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSession {
     /// Session UUID (filename without .jsonl extension).
@@ -82,6 +118,8 @@ pub struct LiveSession {
     pub title: String,
     /// The last user message text (truncated for display).
     pub last_user_message: String,
+    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
+    pub last_user_file: Option<String>,
     /// Human-readable description of the current activity.
     pub current_activity: String,
     /// Number of user/assistant turn pairs.
@@ -122,6 +160,11 @@ pub struct LiveSession {
     /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
     pub last_cache_hit_at: Option<i64>,
+    /// Number of context compactions in this session (compact_boundary system messages).
+    pub compact_count: u32,
+    /// If Some, this session is being controlled via the sidecar Agent SDK.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control: Option<ControlBinding>,
     /// Hook lifecycle events captured for the event log.
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]
@@ -129,7 +172,14 @@ pub struct LiveSession {
 }
 
 /// A single hook lifecycle event, captured for the event log.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct HookEvent {
     /// Unix timestamp (seconds).
@@ -147,6 +197,29 @@ pub struct HookEvent {
     pub context: Option<String>,
 }
 
+/// Binding from observation (LiveSession) → control (sidecar SDK session).
+/// Present when the user has taken interactive control of this session.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlBinding {
+    /// The sidecar's internal control ID (UUID).
+    pub control_id: String,
+    /// Unix timestamp when this binding was created.
+    pub bound_at: i64,
+    /// Cancellation token to abort the WS relay task on unbind.
+    /// Not serialized — runtime-only.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub cancel: tokio_util::sync::CancellationToken,
+}
+
 /// A per-session snapshot entry persisted to disk for crash recovery.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +232,10 @@ pub struct SnapshotEntry {
     pub agent_state: AgentState,
     /// Unix timestamp of last activity.
     pub last_activity_at: i64,
+    /// Persisted control_id so controlled sessions survive Rust server restart.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub control_id: Option<String>,
 }
 
 /// The on-disk snapshot format (v2).
@@ -314,5 +391,61 @@ mod tests {
             context: None,
         };
         assert_eq!(status_from_agent_state(&state), SessionStatus::Working);
+    }
+
+    #[test]
+    fn test_control_binding_serializes_to_camel_case() {
+        let binding = ControlBinding {
+            control_id: "abc-123".to_string(),
+            bound_at: 1700000000,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        };
+        let json = serde_json::to_value(&binding).unwrap();
+        assert_eq!(json["controlId"], "abc-123");
+        assert_eq!(json["boundAt"], 1700000000);
+    }
+
+    #[test]
+    fn test_snapshot_entry_with_control_id() {
+        let entry = SnapshotEntry {
+            pid: 12345,
+            status: "working".to_string(),
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            last_activity_at: 1700000000,
+            control_id: Some("ctrl-456".to_string()),
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["controlId"], "ctrl-456");
+    }
+
+    #[test]
+    fn test_snapshot_entry_without_control_id_omits_field() {
+        let entry = SnapshotEntry {
+            pid: 12345,
+            status: "working".to_string(),
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            last_activity_at: 1700000000,
+            control_id: None,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert!(json.get("controlId").is_none());
+    }
+
+    #[test]
+    fn test_snapshot_entry_backward_compat_no_control_id() {
+        let json = r#"{"pid":12345,"status":"working","agentState":{"group":"autonomous","state":"acting","label":"Working"},"lastActivityAt":1700000000}"#;
+        let entry: SnapshotEntry = serde_json::from_str(json).unwrap();
+        assert!(entry.control_id.is_none());
+        assert_eq!(entry.pid, 12345);
     }
 }

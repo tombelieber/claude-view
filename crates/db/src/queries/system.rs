@@ -1,13 +1,20 @@
 // crates/db/src/queries/system.rs
 // System-level queries: storage stats, health, classification status, reset.
 
+use super::row_types::IndexRunIntegrityCountersRow;
+use super::{
+    ClassificationStatus, HealthStats, HealthStatus, IndexRunIntegrityCounters, SystemStorageStats,
+};
 use crate::{Database, DbResult};
 use chrono::Utc;
-use super::{SystemStorageStats, HealthStats, HealthStatus, ClassificationStatus};
 
 impl Database {
     /// Get the oldest session date (Unix timestamp).
-    pub async fn get_oldest_session_date(&self, project: Option<&str>, branch: Option<&str>) -> DbResult<Option<i64>> {
+    pub async fn get_oldest_session_date(
+        &self,
+        project: Option<&str>,
+        branch: Option<&str>,
+    ) -> DbResult<Option<i64>> {
         let result: (Option<i64>,) = sqlx::query_as(
             "SELECT MIN(last_message_at) FROM valid_sessions WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
         )
@@ -22,18 +29,22 @@ impl Database {
     ///
     /// Returns (session_count, project_count, commit_count, oldest_session_date).
     pub async fn get_storage_counts(&self) -> DbResult<(i64, i64, i64, Option<i64>)> {
-        let (session_count, project_count, commit_count, oldest_date): (i64, i64, i64, Option<i64>) =
-            sqlx::query_as(
-                r#"
+        let (session_count, project_count, commit_count, oldest_date): (
+            i64,
+            i64,
+            i64,
+            Option<i64>,
+        ) = sqlx::query_as(
+            r#"
                 SELECT
                   (SELECT COUNT(*) FROM valid_sessions),
                   (SELECT COUNT(DISTINCT project_id) FROM valid_sessions),
                   (SELECT COUNT(DISTINCT commit_hash) FROM session_commits),
                   (SELECT MIN(last_message_at) FROM valid_sessions)
                 "#,
-            )
-            .fetch_one(self.pool())
-            .await?;
+        )
+        .fetch_one(self.pool())
+        .await?;
 
         Ok((session_count, project_count, commit_count, oldest_date))
     }
@@ -71,11 +82,10 @@ impl Database {
     /// can be augmented by the server layer with filesystem checks.
     pub async fn get_storage_stats(&self) -> DbResult<SystemStorageStats> {
         // Sum of JSONL file sizes from indexer_state
-        let (jsonl_bytes,): (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(file_size), 0) FROM indexer_state",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (jsonl_bytes,): (i64,) =
+            sqlx::query_as("SELECT COALESCE(SUM(file_size), 0) FROM indexer_state")
+                .fetch_one(self.pool())
+                .await?;
 
         // Database file size
         let db_bytes = if self.db_path().exists() && !self.db_path().as_os_str().is_empty() {
@@ -105,31 +115,26 @@ impl Database {
     /// Get health statistics for the system page.
     pub async fn get_health_stats(&self) -> DbResult<HealthStats> {
         // Count sessions (excluding sidechains)
-        let (sessions_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (sessions_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
 
         // Count unique commits
-        let (commits_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM commits")
+        let (commits_count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM commits")
+            .fetch_one(self.pool())
+            .await?;
+
+        // Count unique projects
+        let (projects_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM valid_sessions")
                 .fetch_one(self.pool())
                 .await?;
 
-        // Count unique projects
-        let (projects_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM valid_sessions",
-        )
-        .fetch_one(self.pool())
-        .await?;
-
         // Count parsing errors from last index run (failed index_runs entries)
-        let (errors_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM index_runs WHERE status = 'failed'",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (errors_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM index_runs WHERE status = 'failed'")
+                .fetch_one(self.pool())
+                .await?;
 
         // Get last sync timestamp
         let metadata = self.get_index_metadata().await?;
@@ -149,10 +154,7 @@ impl Database {
     }
 
     /// Calculate health status based on errors and staleness.
-    fn calculate_health_status(
-        errors_count: i64,
-        last_sync_at: Option<i64>,
-    ) -> HealthStatus {
+    fn calculate_health_status(errors_count: i64, last_sync_at: Option<i64>) -> HealthStatus {
         // Error: 10+ errors or index stale > 24 hours
         if errors_count >= 10 {
             return HealthStatus::Error;
@@ -177,32 +179,31 @@ impl Database {
     /// Get classification status summary for the system page.
     pub async fn get_classification_status(&self) -> DbResult<ClassificationStatus> {
         // Count classified sessions
-        let (classified_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NOT NULL",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (classified_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NOT NULL")
+                .fetch_one(self.pool())
+                .await?;
 
         // Count unclassified sessions
-        let (unclassified_count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NULL",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (unclassified_count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NULL")
+                .fetch_one(self.pool())
+                .await?;
 
         // Get the most recent completed job
         #[allow(clippy::type_complexity)]
-        let last_job: Option<(String, Option<String>, Option<i64>, String, String)> = sqlx::query_as(
-            r#"
+        let last_job: Option<(String, Option<String>, Option<i64>, String, String)> =
+            sqlx::query_as(
+                r#"
             SELECT started_at, completed_at, actual_cost_cents, provider, model
             FROM classification_jobs
             WHERE status = 'completed'
             ORDER BY started_at DESC
             LIMIT 1
             "#,
-        )
-        .fetch_optional(self.pool())
-        .await?;
+            )
+            .fetch_optional(self.pool())
+            .await?;
 
         // Check for active job
         let active_job = self.get_active_classification_job().await?;
@@ -254,6 +255,35 @@ impl Database {
         })
     }
 
+    /// Get integrity counters from the latest index run.
+    ///
+    /// Returns all-zero counters when there are no index runs yet.
+    pub async fn get_latest_integrity_counters(&self) -> DbResult<IndexRunIntegrityCounters> {
+        let row: Option<IndexRunIntegrityCountersRow> = sqlx::query_as(
+            r#"
+            SELECT
+                unknown_top_level_type_count,
+                unknown_required_path_count,
+                imaginary_path_access_count,
+                legacy_fallback_path_count,
+                dropped_line_invalid_json_count,
+                schema_mismatch_count,
+                unknown_source_role_count,
+                derived_source_message_doc_count,
+                source_message_non_source_provenance_count
+            FROM index_runs
+            ORDER BY started_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .fetch_optional(self.pool())
+        .await?;
+
+        Ok(row
+            .map(IndexRunIntegrityCountersRow::into_integrity_counters)
+            .unwrap_or_default())
+    }
+
     /// Reset all application data (factory reset).
     /// Clears sessions, commits, invocables, index runs, etc.
     /// Does NOT delete original JSONL files.
@@ -271,24 +301,18 @@ impl Database {
         sqlx::query("DELETE FROM api_errors")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM turns")
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query("DELETE FROM turns").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM invocations")
             .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM invocables")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM commits")
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query("DELETE FROM commits").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM sessions")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM models")
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query("DELETE FROM models").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM indexer_state")
             .execute(&mut *tx)
             .await?;

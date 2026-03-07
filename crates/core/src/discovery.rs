@@ -53,19 +53,14 @@ pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> R
         };
     }
 
-    // No cwd available — show encoded name as-is. Per design: "show errors,
-    // not guesses." The naive `-` split produces wrong paths for directories
-    // with `@` or `-` in names (e.g. @acme-corp → /@acme/corp).
-    let display = encoded_name
-        .strip_prefix('-')
-        .unwrap_or(encoded_name)
-        .rsplit('-')
-        .next()
-        .unwrap_or(encoded_name);
-
+    // No cwd available — return encoded name verbatim as both fields.
+    // Per design: "no heuristic / guessing, all evidence based."
+    // The naive `-` split produces wrong paths for directories with `@` or
+    // `-` in names (e.g. @acme-corp → /@acme/corp). Without CWD evidence
+    // we show the raw encoded string rather than guessing wrong.
     ResolvedProject {
         full_path: encoded_name.to_string(),
-        display_name: display.to_string(),
+        display_name: encoded_name.to_string(),
     }
 }
 
@@ -100,7 +95,8 @@ pub async fn resolve_git_root(cwd: &str) -> Option<String> {
     use tokio::process::Command;
     let out = Command::new("git")
         .args([
-            "-C", cwd,
+            "-C",
+            cwd,
             "rev-parse",
             "--path-format=absolute",
             "--git-common-dir",
@@ -251,16 +247,17 @@ pub async fn get_projects() -> Result<Vec<ProjectInfo>, DiscoveryError> {
 
     // If the directory doesn't exist, return empty list (not an error)
     if !projects_dir.exists() {
-        debug!("Claude projects directory does not exist: {:?}", projects_dir);
+        debug!(
+            "Claude projects directory does not exist: {:?}",
+            projects_dir
+        );
         return Ok(vec![]);
     }
 
     let mut entries = match fs::read_dir(&projects_dir).await {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(DiscoveryError::PermissionDenied {
-                path: projects_dir,
-            });
+            return Err(DiscoveryError::PermissionDenied { path: projects_dir });
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(vec![]);
@@ -372,6 +369,7 @@ async fn get_project_sessions(
             id: session_id,
             project: encoded_name.to_string(),
             project_path: resolved.full_path.clone(),
+            display_name: resolved.display_name.clone(),
             git_root: None,
             file_path: path.to_string_lossy().to_string(),
             modified_at,
@@ -433,6 +431,7 @@ async fn get_project_sessions(
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         });
     }
 
@@ -493,7 +492,9 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
                             let skill_name = skill.as_str().to_string();
                             // Double-check: skill must start with / and not look like a file path
                             // File paths typically have multiple / like /Users/foo/bar
-                            if skill_name.starts_with('/') && !metadata.skills_used.contains(&skill_name) {
+                            if skill_name.starts_with('/')
+                                && !metadata.skills_used.contains(&skill_name)
+                            {
                                 metadata.skills_used.push(skill_name);
                             }
                         }
@@ -510,7 +511,8 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
                 }
                 last_user_message = Some(content);
             }
-        } else if line.contains(r#""type":"assistant""#) || line.contains(r#""type": "assistant""#) {
+        } else if line.contains(r#""type":"assistant""#) || line.contains(r#""type": "assistant""#)
+        {
             assistant_count += 1;
 
             // Count tool uses
@@ -522,7 +524,8 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
                     for cap in re.captures_iter(line) {
                         if let Some(skill) = cap.get(1) {
                             let skill_name = skill.as_str().to_string();
-                            if !skill_name.is_empty() && !metadata.skills_used.contains(&skill_name) {
+                            if !skill_name.is_empty() && !metadata.skills_used.contains(&skill_name)
+                            {
                                 metadata.skills_used.push(skill_name);
                             }
                         }
@@ -540,11 +543,8 @@ pub async fn extract_session_metadata(file_path: &Path) -> ExtractedMetadata {
                         if let Some(path) = cap.get(1) {
                             // Extract just the filename from the path
                             let path_str = path.as_str();
-                            let filename = path_str
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or(path_str)
-                                .to_string();
+                            let filename =
+                                path_str.rsplit('/').next().unwrap_or(path_str).to_string();
                             if !filename.is_empty() && !metadata.files_touched.contains(&filename) {
                                 metadata.files_touched.push(filename);
                             }
@@ -723,17 +723,18 @@ mod tests {
 
     #[test]
     fn test_resolve_project_path_with_cwd_some() {
-        let result = resolve_project_path_with_cwd("-Users-dev-claude-view", Some("/Users/dev/claude-view"));
+        let result =
+            resolve_project_path_with_cwd("-Users-dev-claude-view", Some("/Users/dev/claude-view"));
         assert_eq!(result.full_path, "/Users/dev/claude-view");
         assert_eq!(result.display_name, "claude-view");
     }
 
     #[test]
     fn test_resolve_project_path_with_cwd_none_returns_encoded_name() {
-        // Without cwd, returns encoded name as-is (no guessing)
+        // Without cwd, returns encoded name verbatim as both fields (no guessing)
         let result = resolve_project_path_with_cwd("-Users-dev-my-project", None);
         assert_eq!(result.full_path, "-Users-dev-my-project");
-        assert_eq!(result.display_name, "project");
+        assert_eq!(result.display_name, "-Users-dev-my-project");
     }
 
     #[test]
@@ -1047,10 +1048,10 @@ mod tests {
             .as_secs() as i64;
 
         let sessions = vec![
-            create_test_session_with_time(now - 60),     // 1 min ago (active)
-            create_test_session_with_time(now - 240),    // 4 min ago (active)
-            create_test_session_with_time(now - 600),    // 10 min ago (not active)
-            create_test_session_with_time(now - 3600),   // 1 hour ago (not active)
+            create_test_session_with_time(now - 60), // 1 min ago (active)
+            create_test_session_with_time(now - 240), // 4 min ago (active)
+            create_test_session_with_time(now - 600), // 10 min ago (not active)
+            create_test_session_with_time(now - 3600), // 1 hour ago (not active)
         ];
 
         let active = count_active_sessions(&sessions);
@@ -1067,12 +1068,15 @@ mod tests {
             .as_secs() as i64;
 
         let sessions = vec![
-            create_test_session_with_time(now - 600),    // 10 min ago
-            create_test_session_with_time(now - 1800),   // 30 min ago
+            create_test_session_with_time(now - 600),  // 10 min ago
+            create_test_session_with_time(now - 1800), // 30 min ago
         ];
 
         let active = count_active_sessions(&sessions);
-        assert_eq!(active, 0, "Should count 0 when no sessions within 5 minutes");
+        assert_eq!(
+            active, 0,
+            "Should count 0 when no sessions within 5 minutes"
+        );
     }
 
     #[test]
@@ -1085,12 +1089,15 @@ mod tests {
             .as_secs() as i64;
 
         let sessions = vec![
-            create_test_session_with_time(now - 299),    // Just under 5 min (active)
-            create_test_session_with_time(now - 301),    // Just over 5 min (not active)
+            create_test_session_with_time(now - 299), // Just under 5 min (active)
+            create_test_session_with_time(now - 301), // Just over 5 min (not active)
         ];
 
         let active = count_active_sessions(&sessions);
-        assert_eq!(active, 1, "Should count session at 4:59 as active, 5:01 as not");
+        assert_eq!(
+            active, 1,
+            "Should count session at 4:59 as active, 5:01 as not"
+        );
     }
 
     fn create_test_session_with_time(modified_at: i64) -> crate::types::SessionInfo {
@@ -1098,6 +1105,7 @@ mod tests {
             id: "test".to_string(),
             project: "test".to_string(),
             project_path: "/test".to_string(),
+            display_name: "test".to_string(),
             git_root: None,
             file_path: "/test/session.jsonl".to_string(),
             modified_at,
@@ -1159,6 +1167,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -1171,9 +1180,18 @@ mod tests {
         };
 
         // Create various files
-        tokio::fs::write(temp_dir.path().join("session.jsonl"), r#"{"type":"user","message":{"content":"Test"}}"#).await.unwrap();
-        tokio::fs::write(temp_dir.path().join("notes.txt"), "some notes").await.unwrap();
-        tokio::fs::write(temp_dir.path().join("config.json"), "{}").await.unwrap();
+        tokio::fs::write(
+            temp_dir.path().join("session.jsonl"),
+            r#"{"type":"user","message":{"content":"Test"}}"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(temp_dir.path().join("notes.txt"), "some notes")
+            .await
+            .unwrap();
+        tokio::fs::write(temp_dir.path().join("config.json"), "{}")
+            .await
+            .unwrap();
 
         let sessions = get_project_sessions(temp_dir.path(), "test", &resolved)
             .await
@@ -1209,13 +1227,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.jsonl");
 
-        let content = r#"{"type":"user","message":{"content":"Run /superpowers:brainstorm please"}}"#;
+        let content =
+            r#"{"type":"user","message":{"content":"Run /superpowers:brainstorm please"}}"#;
         tokio::fs::write(&file_path, content).await.unwrap();
 
         let metadata = extract_session_metadata(&file_path).await;
 
         assert!(
-            metadata.skills_used.contains(&"/superpowers:brainstorm".to_string()),
+            metadata
+                .skills_used
+                .contains(&"/superpowers:brainstorm".to_string()),
             "Should contain /superpowers:brainstorm, got: {:?}",
             metadata.skills_used
         );
@@ -1243,7 +1264,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.jsonl");
 
-        let content = r#"{"type":"user","message":{"content":"Check file at /Users/test/path/file.rs"}}"#;
+        let content =
+            r#"{"type":"user","message":{"content":"Check file at /Users/test/path/file.rs"}}"#;
         tokio::fs::write(&file_path, content).await.unwrap();
 
         let metadata = extract_session_metadata(&file_path).await;
@@ -1359,7 +1381,9 @@ mod tests {
     #[test]
     fn test_worktree_parent_preserves_complex_parent() {
         assert_eq!(
-            resolve_worktree_parent("-Users-dev--myorg-claude-view--worktrees-theme3-contributions"),
+            resolve_worktree_parent(
+                "-Users-dev--myorg-claude-view--worktrees-theme3-contributions"
+            ),
             Some("-Users-dev--myorg-claude-view".to_string())
         );
     }
@@ -1401,7 +1425,9 @@ mod tests {
     #[test]
     fn test_infer_worktree_claude_pattern() {
         assert_eq!(
-            infer_git_root_from_worktree_path("/Users/u/dev/@org/repo/.claude/worktrees/mobile-remote"),
+            infer_git_root_from_worktree_path(
+                "/Users/u/dev/@org/repo/.claude/worktrees/mobile-remote"
+            ),
             Some("/Users/u/dev/@org/repo".to_string())
         );
     }
@@ -1417,7 +1443,10 @@ mod tests {
     #[test]
     fn test_infer_worktree_non_worktree_returns_none() {
         assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo"), None);
-        assert_eq!(infer_git_root_from_worktree_path("/Users/u/dev/repo-cold-start"), None);
+        assert_eq!(
+            infer_git_root_from_worktree_path("/Users/u/dev/repo-cold-start"),
+            None
+        );
         assert_eq!(infer_git_root_from_worktree_path(""), None);
     }
 }

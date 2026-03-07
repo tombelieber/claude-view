@@ -6,7 +6,7 @@ use ts_rs::TS;
 
 /// Branch count for a project.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchCount {
     pub branch: Option<String>,
@@ -25,7 +25,7 @@ pub struct IndexerEntry {
 
 /// An invocable (tool/skill/MCP) with its aggregated invocation count.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InvocableWithCount {
     pub id: String,
@@ -56,7 +56,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for InvocableWithCount {
 
 /// A model record with aggregated usage stats (for GET /api/models).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelWithStats {
     pub id: String,
@@ -89,7 +89,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 
 /// Aggregate token usage statistics (for GET /api/stats/tokens).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
     #[ts(type = "number")]
@@ -109,7 +109,7 @@ pub struct TokenStats {
 
 /// Token usage breakdown by model.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByModel {
     pub model: String,
@@ -121,7 +121,7 @@ pub struct TokensByModel {
 
 /// Token usage breakdown by project.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByProject {
     pub project: String,
@@ -133,7 +133,7 @@ pub struct TokensByProject {
 
 /// Aggregate cost breakdown in USD (computed from per-model token data + pricing engine).
 #[derive(Debug, Clone, Default, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AggregateCostBreakdown {
     pub total_cost_usd: f64,
@@ -142,11 +142,34 @@ pub struct AggregateCostBreakdown {
     pub cache_read_cost_usd: f64,
     pub cache_creation_cost_usd: f64,
     pub cache_savings_usd: f64,
+    /// Sum of cost components computed from models that had a pricing match.
+    pub computed_priced_total_cost_usd: f64,
+    /// Number of models in the query window that had an exact/prefix pricing match.
+    #[ts(type = "number")]
+    pub priced_model_count: i64,
+    /// Number of models in the query window without pricing.
+    #[ts(type = "number")]
+    pub unpriced_model_count: i64,
+    /// Tokens from unpriced models (surfaced explicitly; never converted via fallback rates).
+    #[ts(type = "number")]
+    pub unpriced_input_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_output_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_read_tokens: i64,
+    #[ts(type = "number")]
+    pub unpriced_cache_creation_tokens: i64,
+    /// Fraction of all tokens that were priced with real model rates [0.0, 1.0].
+    pub priced_token_coverage: f64,
+    /// True when any usage lacked model pricing.
+    pub has_unpriced_usage: bool,
+    /// `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+    pub total_cost_source: String,
 }
 
 /// AI Generation statistics (for GET /api/stats/ai-generation).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AIGenerationStats {
     #[ts(type = "number")]
@@ -167,18 +190,13 @@ pub struct AIGenerationStats {
     pub tokens_by_project: Vec<TokensByProject>,
     /// Aggregate cost breakdown (computed server-side using pricing engine).
     pub cost: AggregateCostBreakdown,
-    /// Pre-calculated total cost from JSONL costUSD entries.
-    /// None when sessions haven't been re-indexed yet.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub total_cost_usd_from_jsonl: Option<f64>,
 }
 
 /// Storage statistics for the system page (raw DB layer).
 /// Named SystemStorageStats to avoid ts-rs export collision with the richer
 /// StorageStats in routes/stats.rs (which is the user-facing settings version).
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemStorageStats {
     #[ts(type = "number")]
@@ -195,7 +213,7 @@ pub struct SystemStorageStats {
 
 /// Health status enum for the system page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
     Healthy,
@@ -205,7 +223,7 @@ pub enum HealthStatus {
 
 /// Health statistics for the system page.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthStats {
     #[ts(type = "number")]
@@ -223,7 +241,7 @@ pub struct HealthStats {
 
 /// Classification status summary for the system page.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationStatus {
     #[ts(type = "number")]
@@ -242,9 +260,34 @@ pub struct ClassificationStatus {
     pub progress: Option<i64>,
 }
 
+/// Integrity counters emitted during indexing.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct IndexRunIntegrityCounters {
+    #[ts(type = "number")]
+    pub unknown_top_level_type_count: i64,
+    #[ts(type = "number")]
+    pub unknown_required_path_count: i64,
+    #[ts(type = "number")]
+    pub imaginary_path_access_count: i64,
+    #[ts(type = "number")]
+    pub legacy_fallback_path_count: i64,
+    #[ts(type = "number")]
+    pub dropped_line_invalid_json_count: i64,
+    #[ts(type = "number")]
+    pub schema_mismatch_count: i64,
+    #[ts(type = "number")]
+    pub unknown_source_role_count: i64,
+    #[ts(type = "number")]
+    pub derived_source_message_doc_count: i64,
+    #[ts(type = "number")]
+    pub source_message_non_source_provenance_count: i64,
+}
+
 /// Aggregate statistics overview for the API.
 #[derive(Debug, Clone, serde::Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
     #[ts(type = "number")]

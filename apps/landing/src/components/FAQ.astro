@@ -1,0 +1,149 @@
+---
+/**
+ * FAQ accordion with Schema.org FAQPage JSON-LD.
+ * Vanilla JS — no framework needed.
+ */
+const faqs = [
+  {
+    question: 'Is claude-view free?',
+    answer: 'Yes — claude-view is free and open source for local use. Just run <code>npx claude-view</code>. No signup, no API key, no config. The Pro plan (coming soon) adds cloud relay and mobile app access.',
+  },
+  {
+    question: 'Does it send data to the cloud?',
+    answer: 'No. claude-view runs 100% locally by default. All session data stays on your machine. The optional cloud relay (Pro plan) uses end-to-end encryption — your data is never readable by our servers.',
+  },
+  {
+    question: "What's the difference between plugin and npx?",
+    answer: 'The <strong>Claude Code plugin</strong> (<code>claude plugin add @claude-view/plugin</code>) auto-starts claude-view when Claude Code launches, plus adds MCP tools and skills. <strong>npx</strong> (<code>npx claude-view</code>) runs standalone — great for trying it out. Both use the same dashboard.',
+  },
+  {
+    question: 'Does it work with Cursor or Windsurf?',
+    answer: 'claude-view monitors <strong>Claude Code</strong> sessions specifically — the CLI tool from Anthropic. It reads Claude Code\'s JSONL conversation logs. Other AI coding tools use different formats and aren\'t supported.',
+  },
+  {
+    question: 'How much does it cost?',
+    answer: 'Local use is <strong>free forever</strong>. The Pro plan ($19/mo, coming soon) adds cloud relay access, mobile app, and remote agent control. Team plan ($49/mo) adds shared dashboards and SSO.',
+  },
+];
+
+// Build FAQ JSON-LD for Schema.org
+const faqJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqs.map(({ question, answer }) => ({
+    '@type': 'Question',
+    name: question,
+    acceptedAnswer: {
+      '@type': 'Answer',
+      text: answer.replace(/<[^>]*>/g, ''), // Strip HTML for JSON-LD
+    },
+  })),
+});
+---
+
+<script is:inline type="application/ld+json" set:html={faqJsonLd} />
+
+<section class="faq-section">
+  <div class="section-label">FAQ</div>
+  <h2 class="section-heading">Common questions.</h2>
+  <div class="faq-list">
+    {faqs.map(({ question, answer }, i) => (
+      <details class="faq-item" id={`faq-${i}`}>
+        <summary class="faq-question">
+          <span>{question}</span>
+          <svg class="faq-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </summary>
+        <div class="faq-answer" set:html={answer} />
+      </details>
+    ))}
+  </div>
+</section>
+
+<style>
+  .faq-section {
+    position: relative;
+    z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 100px 24px 0;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent-text);
+    margin-bottom: 12px;
+  }
+  .section-heading {
+    font-family: var(--font-heading);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 48px;
+    color: #111;
+  }
+  .faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .faq-item {
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: background 0.2s;
+  }
+  .faq-item:hover {
+    background: rgba(255, 255, 255, 0.75);
+  }
+  .faq-item[open] {
+    background: rgba(255, 255, 255, 0.75);
+  }
+  .faq-question {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--color-text);
+    list-style: none;
+  }
+  .faq-question::-webkit-details-marker {
+    display: none;
+  }
+  .faq-chevron {
+    flex-shrink: 0;
+    color: var(--color-text-tertiary);
+    transition: transform 0.2s;
+  }
+  .faq-item[open] .faq-chevron {
+    transform: rotate(180deg);
+  }
+  .faq-answer {
+    padding: 0 20px 18px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--color-text-secondary);
+  }
+  .faq-answer :global(code) {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .faq-answer :global(strong) {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+</style>

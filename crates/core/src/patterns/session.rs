@@ -6,10 +6,13 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-use super::{mean, Bucket, best_bucket, relative_improvement, worst_bucket};
+use super::{best_bucket, mean, relative_improvement, worst_bucket, Bucket};
 
 /// Calculate all session patterns from session data.
-pub fn calculate_session_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_session_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = s01_optimal_duration(sessions, time_range_days) {
@@ -29,7 +32,10 @@ pub fn calculate_session_patterns(sessions: &[SessionInfo], time_range_days: u32
 }
 
 /// S01: Optimal Duration - which duration bucket yields the lowest re-edit rate.
-fn s01_optimal_duration(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn s01_optimal_duration(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0 && s.duration_seconds > 0)
@@ -72,7 +78,10 @@ fn s01_optimal_duration(sessions: &[SessionInfo], time_range_days: u32) -> Optio
     let mut vars = HashMap::new();
     vars.insert("optimal_duration".to_string(), best.label.clone());
     vars.insert("worst_duration".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed_buckets {
@@ -93,7 +102,10 @@ fn s01_optimal_duration(sessions: &[SessionInfo], time_range_days: u32) -> Optio
 }
 
 /// S02: Turn Count Sweet Spot - optimal number of turns for lowest re-edit rate.
-fn s02_turn_count_sweet_spot(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn s02_turn_count_sweet_spot(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -136,8 +148,14 @@ fn s02_turn_count_sweet_spot(sessions: &[SessionInfo], time_range_days: u32) -> 
 
     let mut vars = HashMap::new();
     vars.insert("optimal_turns".to_string(), best.label.clone());
-    vars.insert("reedit_rate".to_string(), format!("{:.0}", best.value * 100.0));
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "reedit_rate".to_string(),
+        format!("{:.0}", best.value * 100.0),
+    );
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -200,7 +218,10 @@ fn s04_fatigue_signal(sessions: &[SessionInfo], time_range_days: u32) -> Option<
     let sample_size = (early.len() + late.len()) as u32;
     let mut vars = HashMap::new();
     vars.insert("threshold".to_string(), threshold.to_string());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     comparison.insert("early_reedit_rate".to_string(), early_avg);
@@ -220,7 +241,10 @@ fn s04_fatigue_signal(sessions: &[SessionInfo], time_range_days: u32) -> Option<
 }
 
 /// S08: File Count Correlation - more files = higher re-edit rate?
-fn s08_file_count_correlation(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn s08_file_count_correlation(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -262,7 +286,10 @@ fn s08_file_count_correlation(sessions: &[SessionInfo], time_range_days: u32) ->
 
     let mut vars = HashMap::new();
     vars.insert("threshold".to_string(), worst.label.clone());
-    vars.insert("improvement".to_string(), super::format_improvement(improvement));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {
@@ -295,18 +322,18 @@ mod tests {
         (0..count)
             .map(|i| {
                 let duration = match i % 4 {
-                    0 => 600,    // 10 min
-                    1 => 1800,   // 30 min
-                    2 => 3600,   // 60 min
-                    _ => 7200,   // 120 min
+                    0 => 600,  // 10 min
+                    1 => 1800, // 30 min
+                    2 => 3600, // 60 min
+                    _ => 7200, // 120 min
                 };
                 // 30-min sessions have best reedit rate (1/10 = 0.1)
                 // Others have worse reedit rate but vary in file count for S08 buckets
                 let (files_edited, reedited) = match i % 4 {
-                    0 => (2, 1),   // 2 files -> bucket "1-3", reedit 0.50
-                    1 => (10, 1),  // 10 files -> bucket "8-10", reedit 0.10
-                    2 => (5, 3),   // 5 files -> bucket "4-7", reedit 0.60
-                    _ => (12, 8),  // 12 files -> bucket "11+", reedit 0.67
+                    0 => (2, 1),  // 2 files -> bucket "1-3", reedit 0.50
+                    1 => (10, 1), // 10 files -> bucket "8-10", reedit 0.10
+                    2 => (5, 3),  // 5 files -> bucket "4-7", reedit 0.60
+                    _ => (12, 8), // 12 files -> bucket "11+", reedit 0.67
                 };
                 let turns = match i % 4 {
                     0 => 3,
@@ -336,7 +363,10 @@ mod tests {
     fn test_s01_with_enough_data() {
         let sessions = make_diverse_sessions(200);
         let insight = s01_optimal_duration(&sessions, 30);
-        assert!(insight.is_some(), "Should find optimal duration pattern with 200 sessions");
+        assert!(
+            insight.is_some(),
+            "Should find optimal duration pattern with 200 sessions"
+        );
         let insight = insight.unwrap();
         assert_eq!(insight.pattern_id, "S01");
         assert!(insight.impact_score > 0.0);
@@ -393,6 +423,9 @@ mod tests {
         let sessions = make_diverse_sessions(200);
         let insights = calculate_session_patterns(&sessions, 30);
         // Should produce at least some insights
-        assert!(!insights.is_empty(), "Should generate at least one session pattern");
+        assert!(
+            !insights.is_empty(),
+            "Should generate at least one session pattern"
+        );
     }
 }

@@ -9,7 +9,10 @@ use crate::types::SessionInfo;
 use super::mean;
 
 /// Calculate all behavioral patterns from session data.
-pub fn calculate_behavioral_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_behavioral_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = b01_retry_patterns(sessions, time_range_days) {
@@ -90,14 +93,7 @@ mod tests {
                     _ => 2,
                 };
                 let commits = if reedited > 4 { 0 } else { 1 };
-                make_session_with_stats(
-                    &format!("b{}", i),
-                    600,
-                    5,
-                    reedited,
-                    5,
-                    commits,
-                )
+                make_session_with_stats(&format!("b{}", i), 600, 5, reedited, 5, commits)
             })
             .collect()
     }

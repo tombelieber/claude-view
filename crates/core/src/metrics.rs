@@ -9,7 +9,11 @@
 /// Formula: (total_input_tokens + total_output_tokens) / user_prompt_count
 ///
 /// Returns `None` if `user_prompt_count` is 0 (division by zero).
-pub fn tokens_per_prompt(total_input: u64, total_output: u64, user_prompt_count: u32) -> Option<f64> {
+pub fn tokens_per_prompt(
+    total_input: u64,
+    total_output: u64,
+    user_prompt_count: u32,
+) -> Option<f64> {
     if user_prompt_count == 0 {
         return None;
     }

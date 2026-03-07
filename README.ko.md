@@ -171,6 +171,7 @@ npx claude-view
 | 환경 변수 | 기본값 | 설명 |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` 또는 `PORT` | `47892` | 기본 포트 변경 |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | 데이터 디렉토리 경로 |
 
 ---
 

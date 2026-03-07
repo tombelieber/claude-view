@@ -4,11 +4,13 @@
 
 use crate::DbResult;
 use chrono::Utc;
-use sqlx::Row;
 use claude_view_core::{
     parse_model_id, ClassificationJob, ClassificationJobStatus, IndexRun, IndexRunStatus,
     IndexRunType, RawTurn, SessionInfo, ToolCounts,
 };
+use sqlx::Row;
+
+use super::types::IndexRunIntegrityCounters;
 
 // ============================================================================
 // Theme 4: Internal row types for classification_jobs and index_runs
@@ -27,7 +29,6 @@ pub(crate) struct ClassificationJobRow {
     model: String,
     status: String,
     error_message: Option<String>,
-    cost_estimate_cents: Option<i64>,
     actual_cost_cents: Option<i64>,
     tokens_used: Option<i64>,
 }
@@ -46,7 +47,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ClassificationJobRow {
             model: row.try_get("model")?,
             status: row.try_get("status")?,
             error_message: row.try_get("error_message")?,
-            cost_estimate_cents: row.try_get("cost_estimate_cents")?,
             actual_cost_cents: row.try_get("actual_cost_cents")?,
             tokens_used: row.try_get("tokens_used")?,
         })
@@ -67,7 +67,6 @@ impl ClassificationJobRow {
             model: self.model,
             status: ClassificationJobStatus::from_db_str(&self.status),
             error_message: self.error_message,
-            cost_estimate_cents: self.cost_estimate_cents,
             actual_cost_cents: self.actual_cost_cents,
             tokens_used: self.tokens_used,
         }
@@ -122,6 +121,53 @@ impl IndexRunRow {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct IndexRunIntegrityCountersRow {
+    unknown_top_level_type_count: i64,
+    unknown_required_path_count: i64,
+    imaginary_path_access_count: i64,
+    legacy_fallback_path_count: i64,
+    dropped_line_invalid_json_count: i64,
+    schema_mismatch_count: i64,
+    unknown_source_role_count: i64,
+    derived_source_message_doc_count: i64,
+    source_message_non_source_provenance_count: i64,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for IndexRunIntegrityCountersRow {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            unknown_top_level_type_count: row.try_get("unknown_top_level_type_count")?,
+            unknown_required_path_count: row.try_get("unknown_required_path_count")?,
+            imaginary_path_access_count: row.try_get("imaginary_path_access_count")?,
+            legacy_fallback_path_count: row.try_get("legacy_fallback_path_count")?,
+            dropped_line_invalid_json_count: row.try_get("dropped_line_invalid_json_count")?,
+            schema_mismatch_count: row.try_get("schema_mismatch_count")?,
+            unknown_source_role_count: row.try_get("unknown_source_role_count")?,
+            derived_source_message_doc_count: row.try_get("derived_source_message_doc_count")?,
+            source_message_non_source_provenance_count: row
+                .try_get("source_message_non_source_provenance_count")?,
+        })
+    }
+}
+
+impl IndexRunIntegrityCountersRow {
+    pub(crate) fn into_integrity_counters(self) -> IndexRunIntegrityCounters {
+        IndexRunIntegrityCounters {
+            unknown_top_level_type_count: self.unknown_top_level_type_count,
+            unknown_required_path_count: self.unknown_required_path_count,
+            imaginary_path_access_count: self.imaginary_path_access_count,
+            legacy_fallback_path_count: self.legacy_fallback_path_count,
+            dropped_line_invalid_json_count: self.dropped_line_invalid_json_count,
+            schema_mismatch_count: self.schema_mismatch_count,
+            unknown_source_role_count: self.unknown_source_role_count,
+            derived_source_message_doc_count: self.derived_source_message_doc_count,
+            source_message_non_source_provenance_count: self
+                .source_message_non_source_provenance_count,
+        }
+    }
+}
+
 // ============================================================================
 // Transaction-accepting variants for batch writes (collect-then-write pattern)
 // ============================================================================
@@ -131,7 +177,9 @@ impl IndexRunRow {
 /// Same SQL as `Database::update_session_deep_fields` but executes on the
 /// provided transaction instead of acquiring a new connection from the pool.
 #[allow(clippy::too_many_arguments)]
-#[deprecated(note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead.")]
+#[deprecated(
+    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+)]
 pub async fn update_session_deep_fields_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     id: &str,
@@ -187,7 +235,7 @@ pub async fn update_session_deep_fields_tx(
     total_task_time_seconds: i32,
     longest_task_seconds: Option<i32>,
     longest_task_preview: Option<&str>,
-    total_cost_usd: f64,
+    total_cost_usd: Option<f64>,
 ) -> DbResult<()> {
     let deep_indexed_at = Utc::now().timestamp();
 
@@ -498,6 +546,8 @@ pub(crate) struct SessionRow {
     pub(crate) total_task_time_seconds: Option<i32>,
     pub(crate) longest_task_seconds: Option<i32>,
     pub(crate) longest_task_preview: Option<String>,
+    // Cost (None for sessions indexed before this field existed)
+    pub(crate) total_cost_usd: Option<f64>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -573,6 +623,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             total_task_time_seconds: row.try_get("total_task_time_seconds").ok().flatten(),
             longest_task_seconds: row.try_get("longest_task_seconds").ok().flatten(),
             longest_task_preview: row.try_get("longest_task_preview").ok().flatten(),
+            // Cost — silently None if column not in SELECT or row predates this field
+            total_cost_usd: row.try_get("total_cost_usd").ok().flatten(),
         })
     }
 }
@@ -581,11 +633,9 @@ impl SessionRow {
     pub(crate) fn into_session_info(self, project_encoded: &str) -> SessionInfo {
         let files_touched: Vec<String> =
             serde_json::from_str(&self.files_touched).unwrap_or_default();
-        let skills_used: Vec<String> =
-            serde_json::from_str(&self.skills_used).unwrap_or_default();
+        let skills_used: Vec<String> = serde_json::from_str(&self.skills_used).unwrap_or_default();
         // Phase 3: Deserialize files_read and files_edited from JSON
-        let files_read: Vec<String> =
-            serde_json::from_str(&self.files_read).unwrap_or_default();
+        let files_read: Vec<String> = serde_json::from_str(&self.files_read).unwrap_or_default();
         let files_edited: Vec<String> =
             serde_json::from_str(&self.files_edited).unwrap_or_default();
 
@@ -593,6 +643,7 @@ impl SessionRow {
             id: self.id,
             project: project_encoded.to_string(),
             project_path: self.project_path,
+            display_name: self.project_display_name.clone(),
             git_root: self.git_root,
             file_path: self.file_path,
             modified_at: self.last_message_at.unwrap_or(0),
@@ -661,6 +712,8 @@ impl SessionRow {
             total_task_time_seconds: self.total_task_time_seconds.map(|v| v as u32),
             longest_task_seconds: self.longest_task_seconds.map(|v| v as u32),
             longest_task_preview: self.longest_task_preview,
+            // Cost
+            total_cost_usd: self.total_cost_usd,
         }
     }
 }

@@ -171,6 +171,7 @@ S'ouvre à `http://localhost:47892`.
 | Variable d'Environnement | Défaut | Description |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` ou `PORT` | `47892` | Remplacer le port par défaut |
+| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Répertoire de données |
 
 ---
 

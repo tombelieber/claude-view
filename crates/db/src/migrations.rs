@@ -238,7 +238,7 @@ CREATE TABLE IF NOT EXISTS api_errors (
     // 14a: Add AI contribution metrics to sessions table
     r#"ALTER TABLE sessions ADD COLUMN ai_lines_added INTEGER NOT NULL DEFAULT 0;"#,
     r#"ALTER TABLE sessions ADD COLUMN ai_lines_removed INTEGER NOT NULL DEFAULT 0;"#,
-    r#"ALTER TABLE sessions ADD COLUMN work_type TEXT;"#,  // 'deep_work', 'quick_ask', 'planning', 'bug_fix', 'standard'
+    r#"ALTER TABLE sessions ADD COLUMN work_type TEXT;"#, // 'deep_work', 'quick_ask', 'planning', 'bug_fix', 'standard'
     // 14b: Add diff stats to commits table (nullable: diff stats may not be available initially)
     r#"ALTER TABLE commits ADD COLUMN files_changed INTEGER;"#,
     r#"ALTER TABLE commits ADD COLUMN insertions INTEGER;"#,
@@ -597,7 +597,9 @@ CREATE TABLE IF NOT EXISTS reports (
     // Migration 26: Canonical view for user-facing session queries.
     //
     // All user-facing queries should use `valid_sessions` instead of `sessions`
-    // to ensure consistent filtering (no sidechains, valid timestamps).
+    // to ensure consistent filtering (no sidechains).
+    // Historical note: this migration included a `last_message_at > 0` guard,
+    // which was removed in migration 39.
     // System/classification queries that intentionally count ALL sessions
     // should continue using the `sessions` table directly.
     r#"CREATE VIEW IF NOT EXISTS valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND last_message_at > 0;"#,
@@ -623,8 +625,8 @@ COMMIT;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_model TEXT;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_input_tokens INTEGER;"#,
     r#"ALTER TABLE reports ADD COLUMN generation_output_tokens INTEGER;"#,
-    // Migration 32: costUSD parity — accumulate per-entry costUSD from JSONL
-    // REAL with no NOT NULL DEFAULT: NULL = "not yet parsed with costUSD support",
+    // Migration 32: Session total cost storage.
+    // REAL with no NOT NULL DEFAULT: NULL = "not yet parsed",
     // distinguishable from 0.0 (parsed but zero cost).
     r#"ALTER TABLE sessions ADD COLUMN total_cost_usd REAL;"#,
     // Migrations 33-36: Session topology fields for reliability release.
@@ -646,6 +648,76 @@ COMMIT;"#,
     // No longer needed — the unified pipeline guarantees all rows have real timestamps.
     r#"DROP VIEW IF EXISTS valid_sessions;
 CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0;"#,
+    // Migrations 40-48: Index run integrity counters (non-negative, default zero).
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_top_level_type_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_top_level_type_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_required_path_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_required_path_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN imaginary_path_access_count INTEGER NOT NULL DEFAULT 0 CHECK (imaginary_path_access_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN legacy_fallback_path_count INTEGER NOT NULL DEFAULT 0 CHECK (legacy_fallback_path_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN dropped_line_invalid_json_count INTEGER NOT NULL DEFAULT 0 CHECK (dropped_line_invalid_json_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN schema_mismatch_count INTEGER NOT NULL DEFAULT 0 CHECK (schema_mismatch_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN unknown_source_role_count INTEGER NOT NULL DEFAULT 0 CHECK (unknown_source_role_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN derived_source_message_doc_count INTEGER NOT NULL DEFAULT 0 CHECK (derived_source_message_doc_count >= 0);"#,
+    r#"ALTER TABLE index_runs ADD COLUMN source_message_non_source_provenance_count INTEGER NOT NULL DEFAULT 0 CHECK (source_message_non_source_provenance_count >= 0);"#,
+    // Migration 49: Remove deprecated pre-run estimate field from classification_jobs.
+    // Data-preserving table rebuild to stay compatible across SQLite versions.
+    r#"BEGIN;
+CREATE TABLE classification_jobs_v2 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    total_sessions INTEGER NOT NULL,
+    classified_count INTEGER DEFAULT 0,
+    skipped_count INTEGER DEFAULT 0,
+    failed_count INTEGER DEFAULT 0,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT DEFAULT 'running',
+    error_message TEXT,
+    actual_cost_cents INTEGER,
+    tokens_used INTEGER,
+    CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
+);
+INSERT INTO classification_jobs_v2 (
+    id,
+    started_at,
+    completed_at,
+    total_sessions,
+    classified_count,
+    skipped_count,
+    failed_count,
+    provider,
+    model,
+    status,
+    error_message,
+    actual_cost_cents,
+    tokens_used
+)
+SELECT
+    id,
+    started_at,
+    completed_at,
+    total_sessions,
+    classified_count,
+    skipped_count,
+    failed_count,
+    provider,
+    model,
+    status,
+    error_message,
+    actual_cost_cents,
+    tokens_used
+FROM classification_jobs;
+DROP TABLE classification_jobs;
+ALTER TABLE classification_jobs_v2 RENAME TO classification_jobs;
+CREATE INDEX IF NOT EXISTS idx_classification_jobs_status ON classification_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_classification_jobs_started ON classification_jobs(started_at DESC);
+COMMIT;"#,
+    // Migration 50: Add archived_at column for session archiving
+    r#"BEGIN;
+ALTER TABLE sessions ADD COLUMN archived_at TEXT;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND archived_at IS NULL;
+COMMIT;"#,
 ];
 
 // ============================================================================
@@ -702,26 +774,55 @@ mod tests {
         let pool = setup_db().await;
 
         // Query the sessions table schema
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         // Verify all new Phase 3 columns exist
-        assert!(column_names.contains(&"user_prompt_count"), "Missing user_prompt_count column");
-        assert!(column_names.contains(&"api_call_count"), "Missing api_call_count column");
-        assert!(column_names.contains(&"tool_call_count"), "Missing tool_call_count column");
-        assert!(column_names.contains(&"files_read"), "Missing files_read column");
-        assert!(column_names.contains(&"files_edited"), "Missing files_edited column");
-        assert!(column_names.contains(&"files_read_count"), "Missing files_read_count column");
-        assert!(column_names.contains(&"files_edited_count"), "Missing files_edited_count column");
-        assert!(column_names.contains(&"reedited_files_count"), "Missing reedited_files_count column");
-        assert!(column_names.contains(&"duration_seconds"), "Missing duration_seconds column");
-        assert!(column_names.contains(&"commit_count"), "Missing commit_count column");
+        assert!(
+            column_names.contains(&"user_prompt_count"),
+            "Missing user_prompt_count column"
+        );
+        assert!(
+            column_names.contains(&"api_call_count"),
+            "Missing api_call_count column"
+        );
+        assert!(
+            column_names.contains(&"tool_call_count"),
+            "Missing tool_call_count column"
+        );
+        assert!(
+            column_names.contains(&"files_read"),
+            "Missing files_read column"
+        );
+        assert!(
+            column_names.contains(&"files_edited"),
+            "Missing files_edited column"
+        );
+        assert!(
+            column_names.contains(&"files_read_count"),
+            "Missing files_read_count column"
+        );
+        assert!(
+            column_names.contains(&"files_edited_count"),
+            "Missing files_edited_count column"
+        );
+        assert!(
+            column_names.contains(&"reedited_files_count"),
+            "Missing reedited_files_count column"
+        );
+        assert!(
+            column_names.contains(&"duration_seconds"),
+            "Missing duration_seconds column"
+        );
+        assert!(
+            column_names.contains(&"commit_count"),
+            "Missing commit_count column"
+        );
     }
 
     #[tokio::test]
@@ -729,22 +830,30 @@ mod tests {
         let pool = setup_db().await;
 
         // Query commits table schema
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('commits')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('commits')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"hash"), "Missing hash column");
-        assert!(column_names.contains(&"repo_path"), "Missing repo_path column");
+        assert!(
+            column_names.contains(&"repo_path"),
+            "Missing repo_path column"
+        );
         assert!(column_names.contains(&"message"), "Missing message column");
         assert!(column_names.contains(&"author"), "Missing author column");
-        assert!(column_names.contains(&"timestamp"), "Missing timestamp column");
+        assert!(
+            column_names.contains(&"timestamp"),
+            "Missing timestamp column"
+        );
         assert!(column_names.contains(&"branch"), "Missing branch column");
-        assert!(column_names.contains(&"created_at"), "Missing created_at column");
+        assert!(
+            column_names.contains(&"created_at"),
+            "Missing created_at column"
+        );
     }
 
     #[tokio::test]
@@ -752,20 +861,31 @@ mod tests {
         let pool = setup_db().await;
 
         // Query session_commits table schema
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('session_commits')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('session_commits')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"session_id"), "Missing session_id column");
-        assert!(column_names.contains(&"commit_hash"), "Missing commit_hash column");
+        assert!(
+            column_names.contains(&"session_id"),
+            "Missing session_id column"
+        );
+        assert!(
+            column_names.contains(&"commit_hash"),
+            "Missing commit_hash column"
+        );
         assert!(column_names.contains(&"tier"), "Missing tier column");
-        assert!(column_names.contains(&"evidence"), "Missing evidence column");
-        assert!(column_names.contains(&"created_at"), "Missing created_at column");
+        assert!(
+            column_names.contains(&"evidence"),
+            "Missing evidence column"
+        );
+        assert!(
+            column_names.contains(&"created_at"),
+            "Missing created_at column"
+        );
     }
 
     #[tokio::test]
@@ -773,24 +893,47 @@ mod tests {
         let pool = setup_db().await;
 
         // Query index_metadata table schema
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('index_metadata')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('index_metadata')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"id"), "Missing id column");
-        assert!(column_names.contains(&"last_indexed_at"), "Missing last_indexed_at column");
-        assert!(column_names.contains(&"last_index_duration_ms"), "Missing last_index_duration_ms column");
-        assert!(column_names.contains(&"sessions_indexed"), "Missing sessions_indexed column");
-        assert!(column_names.contains(&"projects_indexed"), "Missing projects_indexed column");
-        assert!(column_names.contains(&"last_git_sync_at"), "Missing last_git_sync_at column");
-        assert!(column_names.contains(&"commits_found"), "Missing commits_found column");
-        assert!(column_names.contains(&"links_created"), "Missing links_created column");
-        assert!(column_names.contains(&"updated_at"), "Missing updated_at column");
+        assert!(
+            column_names.contains(&"last_indexed_at"),
+            "Missing last_indexed_at column"
+        );
+        assert!(
+            column_names.contains(&"last_index_duration_ms"),
+            "Missing last_index_duration_ms column"
+        );
+        assert!(
+            column_names.contains(&"sessions_indexed"),
+            "Missing sessions_indexed column"
+        );
+        assert!(
+            column_names.contains(&"projects_indexed"),
+            "Missing projects_indexed column"
+        );
+        assert!(
+            column_names.contains(&"last_git_sync_at"),
+            "Missing last_git_sync_at column"
+        );
+        assert!(
+            column_names.contains(&"commits_found"),
+            "Missing commits_found column"
+        );
+        assert!(
+            column_names.contains(&"links_created"),
+            "Missing links_created column"
+        );
+        assert!(
+            column_names.contains(&"updated_at"),
+            "Missing updated_at column"
+        );
 
         // Verify singleton row was inserted
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM index_metadata")
@@ -806,7 +949,7 @@ mod tests {
 
         // Query all index names
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'",
         )
         .fetch_all(&pool)
         .await
@@ -815,13 +958,34 @@ mod tests {
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
         // Verify new Phase 3 indexes
-        assert!(index_names.contains(&"idx_commits_repo_ts"), "Missing idx_commits_repo_ts index");
-        assert!(index_names.contains(&"idx_commits_timestamp"), "Missing idx_commits_timestamp index");
-        assert!(index_names.contains(&"idx_session_commits_session"), "Missing idx_session_commits_session index");
-        assert!(index_names.contains(&"idx_session_commits_commit"), "Missing idx_session_commits_commit index");
-        assert!(index_names.contains(&"idx_sessions_commit_count"), "Missing idx_sessions_commit_count index");
-        assert!(index_names.contains(&"idx_sessions_reedit"), "Missing idx_sessions_reedit index");
-        assert!(index_names.contains(&"idx_sessions_duration"), "Missing idx_sessions_duration index");
+        assert!(
+            index_names.contains(&"idx_commits_repo_ts"),
+            "Missing idx_commits_repo_ts index"
+        );
+        assert!(
+            index_names.contains(&"idx_commits_timestamp"),
+            "Missing idx_commits_timestamp index"
+        );
+        assert!(
+            index_names.contains(&"idx_session_commits_session"),
+            "Missing idx_session_commits_session index"
+        );
+        assert!(
+            index_names.contains(&"idx_session_commits_commit"),
+            "Missing idx_session_commits_commit index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_commit_count"),
+            "Missing idx_sessions_commit_count index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_reedit"),
+            "Missing idx_sessions_reedit index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_duration"),
+            "Missing idx_sessions_duration index"
+        );
     }
 
     #[tokio::test]
@@ -829,7 +993,7 @@ mod tests {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'",
         )
         .fetch_all(&pool)
         .await
@@ -838,18 +1002,28 @@ mod tests {
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
         // These unused indexes should be dropped by migration 12
-        assert!(!index_names.contains(&"idx_invocations_session"),
-            "idx_invocations_session should be dropped (unused)");
-        assert!(!index_names.contains(&"idx_invocations_timestamp"),
-            "idx_invocations_timestamp should be dropped (unused)");
+        assert!(
+            !index_names.contains(&"idx_invocations_session"),
+            "idx_invocations_session should be dropped (unused)"
+        );
+        assert!(
+            !index_names.contains(&"idx_invocations_timestamp"),
+            "idx_invocations_timestamp should be dropped (unused)"
+        );
 
         // These used indexes must still exist
-        assert!(index_names.contains(&"idx_invocations_invocable"),
-            "idx_invocations_invocable must still exist (used by skills dashboard)");
-        assert!(index_names.contains(&"idx_turns_session"),
-            "idx_turns_session must still exist (used by session listing)");
-        assert!(index_names.contains(&"idx_turns_model"),
-            "idx_turns_model must still exist (used by models API)");
+        assert!(
+            index_names.contains(&"idx_invocations_invocable"),
+            "idx_invocations_invocable must still exist (used by skills dashboard)"
+        );
+        assert!(
+            index_names.contains(&"idx_turns_session"),
+            "idx_turns_session must still exist (used by session listing)"
+        );
+        assert!(
+            index_names.contains(&"idx_turns_model"),
+            "idx_turns_model must still exist (used by models API)"
+        );
     }
 
     // ========================================================================
@@ -860,78 +1034,338 @@ mod tests {
     async fn test_migration13_classification_columns_exist() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"category_l1"), "Missing category_l1 column");
-        assert!(column_names.contains(&"category_l2"), "Missing category_l2 column");
-        assert!(column_names.contains(&"category_l3"), "Missing category_l3 column");
-        assert!(column_names.contains(&"category_confidence"), "Missing category_confidence column");
-        assert!(column_names.contains(&"category_source"), "Missing category_source column");
-        assert!(column_names.contains(&"classified_at"), "Missing classified_at column");
-        assert!(column_names.contains(&"prompt_word_count"), "Missing prompt_word_count column");
-        assert!(column_names.contains(&"correction_count"), "Missing correction_count column");
-        assert!(column_names.contains(&"same_file_edit_count"), "Missing same_file_edit_count column");
+        assert!(
+            column_names.contains(&"category_l1"),
+            "Missing category_l1 column"
+        );
+        assert!(
+            column_names.contains(&"category_l2"),
+            "Missing category_l2 column"
+        );
+        assert!(
+            column_names.contains(&"category_l3"),
+            "Missing category_l3 column"
+        );
+        assert!(
+            column_names.contains(&"category_confidence"),
+            "Missing category_confidence column"
+        );
+        assert!(
+            column_names.contains(&"category_source"),
+            "Missing category_source column"
+        );
+        assert!(
+            column_names.contains(&"classified_at"),
+            "Missing classified_at column"
+        );
+        assert!(
+            column_names.contains(&"prompt_word_count"),
+            "Missing prompt_word_count column"
+        );
+        assert!(
+            column_names.contains(&"correction_count"),
+            "Missing correction_count column"
+        );
+        assert!(
+            column_names.contains(&"same_file_edit_count"),
+            "Missing same_file_edit_count column"
+        );
     }
 
     #[tokio::test]
     async fn test_migration13_classification_jobs_table_exists() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('classification_jobs')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('classification_jobs')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"id"), "Missing id column");
-        assert!(column_names.contains(&"started_at"), "Missing started_at column");
-        assert!(column_names.contains(&"completed_at"), "Missing completed_at column");
-        assert!(column_names.contains(&"total_sessions"), "Missing total_sessions column");
-        assert!(column_names.contains(&"classified_count"), "Missing classified_count column");
-        assert!(column_names.contains(&"skipped_count"), "Missing skipped_count column");
-        assert!(column_names.contains(&"failed_count"), "Missing failed_count column");
-        assert!(column_names.contains(&"provider"), "Missing provider column");
+        assert!(
+            column_names.contains(&"started_at"),
+            "Missing started_at column"
+        );
+        assert!(
+            column_names.contains(&"completed_at"),
+            "Missing completed_at column"
+        );
+        assert!(
+            column_names.contains(&"total_sessions"),
+            "Missing total_sessions column"
+        );
+        assert!(
+            column_names.contains(&"classified_count"),
+            "Missing classified_count column"
+        );
+        assert!(
+            column_names.contains(&"skipped_count"),
+            "Missing skipped_count column"
+        );
+        assert!(
+            column_names.contains(&"failed_count"),
+            "Missing failed_count column"
+        );
+        assert!(
+            column_names.contains(&"provider"),
+            "Missing provider column"
+        );
         assert!(column_names.contains(&"model"), "Missing model column");
         assert!(column_names.contains(&"status"), "Missing status column");
-        assert!(column_names.contains(&"error_message"), "Missing error_message column");
-        assert!(column_names.contains(&"cost_estimate_cents"), "Missing cost_estimate_cents column");
-        assert!(column_names.contains(&"actual_cost_cents"), "Missing actual_cost_cents column");
-        assert!(column_names.contains(&"tokens_used"), "Missing tokens_used column");
+        assert!(
+            column_names.contains(&"error_message"),
+            "Missing error_message column"
+        );
+        assert!(
+            !column_names.contains(&"cost_estimate_cents"),
+            "cost_estimate_cents should be removed by migration 49"
+        );
+        assert!(
+            column_names.contains(&"actual_cost_cents"),
+            "Missing actual_cost_cents column"
+        );
+        assert!(
+            column_names.contains(&"tokens_used"),
+            "Missing tokens_used column"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_migration49_classification_jobs_drop_estimate_preserves_data() {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        sqlx::query(
+            r#"
+            CREATE TABLE classification_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                total_sessions INTEGER NOT NULL,
+                classified_count INTEGER DEFAULT 0,
+                skipped_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                status TEXT DEFAULT 'running',
+                error_message TEXT,
+                cost_estimate_cents INTEGER,
+                actual_cost_cents INTEGER,
+                tokens_used INTEGER,
+                CONSTRAINT valid_status CHECK (status IN ('running', 'completed', 'cancelled', 'failed'))
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO classification_jobs (
+                id, started_at, completed_at, total_sessions, classified_count, skipped_count, failed_count,
+                provider, model, status, error_message, cost_estimate_cents, actual_cost_cents, tokens_used
+            ) VALUES (
+                7, '2026-03-05T00:00:00Z', '2026-03-05T00:01:00Z', 10, 8, 1, 1,
+                'claude-cli', 'claude-haiku-4-5-20251001', 'completed', NULL, 99, 42, 12345
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Migration 49 is the second-to-last entry in MIGRATIONS (index = len - 2).
+        let migration_49 = &super::MIGRATIONS[super::MIGRATIONS.len() - 2];
+        sqlx::raw_sql(migration_49)
+            .execute(&pool)
+            .await
+            .map(|_| ())
+            .unwrap();
+
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('classification_jobs')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        let column_names: Vec<String> = columns.into_iter().map(|(name,)| name).collect();
+        assert!(
+            !column_names.contains(&"cost_estimate_cents".to_string()),
+            "cost_estimate_cents should be dropped by migration 49"
+        );
+
+        let row: (i64, i64, i64, i64) = sqlx::query_as(
+            "SELECT id, total_sessions, actual_cost_cents, tokens_used FROM classification_jobs WHERE id = 7",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, 7);
+        assert_eq!(row.1, 10);
+        assert_eq!(row.2, 42);
+        assert_eq!(row.3, 12345);
     }
 
     #[tokio::test]
     async fn test_migration13_index_runs_table_exists() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('index_runs')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('index_runs')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"id"), "Missing id column");
-        assert!(column_names.contains(&"started_at"), "Missing started_at column");
-        assert!(column_names.contains(&"completed_at"), "Missing completed_at column");
+        assert!(
+            column_names.contains(&"started_at"),
+            "Missing started_at column"
+        );
+        assert!(
+            column_names.contains(&"completed_at"),
+            "Missing completed_at column"
+        );
         assert!(column_names.contains(&"type"), "Missing type column");
-        assert!(column_names.contains(&"sessions_before"), "Missing sessions_before column");
-        assert!(column_names.contains(&"sessions_after"), "Missing sessions_after column");
-        assert!(column_names.contains(&"duration_ms"), "Missing duration_ms column");
-        assert!(column_names.contains(&"throughput_mb_per_sec"), "Missing throughput_mb_per_sec column");
+        assert!(
+            column_names.contains(&"sessions_before"),
+            "Missing sessions_before column"
+        );
+        assert!(
+            column_names.contains(&"sessions_after"),
+            "Missing sessions_after column"
+        );
+        assert!(
+            column_names.contains(&"duration_ms"),
+            "Missing duration_ms column"
+        );
+        assert!(
+            column_names.contains(&"throughput_mb_per_sec"),
+            "Missing throughput_mb_per_sec column"
+        );
         assert!(column_names.contains(&"status"), "Missing status column");
-        assert!(column_names.contains(&"error_message"), "Missing error_message column");
+        assert!(
+            column_names.contains(&"error_message"),
+            "Missing error_message column"
+        );
+        assert!(
+            column_names.contains(&"unknown_top_level_type_count"),
+            "Missing unknown_top_level_type_count column"
+        );
+        assert!(
+            column_names.contains(&"unknown_required_path_count"),
+            "Missing unknown_required_path_count column"
+        );
+        assert!(
+            column_names.contains(&"imaginary_path_access_count"),
+            "Missing imaginary_path_access_count column"
+        );
+        assert!(
+            column_names.contains(&"legacy_fallback_path_count"),
+            "Missing legacy_fallback_path_count column"
+        );
+        assert!(
+            column_names.contains(&"dropped_line_invalid_json_count"),
+            "Missing dropped_line_invalid_json_count column"
+        );
+        assert!(
+            column_names.contains(&"schema_mismatch_count"),
+            "Missing schema_mismatch_count column"
+        );
+        assert!(
+            column_names.contains(&"unknown_source_role_count"),
+            "Missing unknown_source_role_count column"
+        );
+        assert!(
+            column_names.contains(&"derived_source_message_doc_count"),
+            "Missing derived_source_message_doc_count column"
+        );
+        assert!(
+            column_names.contains(&"source_message_non_source_provenance_count"),
+            "Missing source_message_non_source_provenance_count column"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_migration40_index_runs_integrity_counter_defaults() {
+        let pool = setup_db().await;
+
+        sqlx::query(
+            "INSERT INTO index_runs (started_at, type, status) VALUES ('2026-02-05T12:00:00Z', 'full', 'running')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row: (i64, i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+            r#"
+            SELECT
+                unknown_top_level_type_count,
+                unknown_required_path_count,
+                imaginary_path_access_count,
+                legacy_fallback_path_count,
+                dropped_line_invalid_json_count,
+                schema_mismatch_count,
+                unknown_source_role_count,
+                derived_source_message_doc_count,
+                source_message_non_source_provenance_count
+            FROM index_runs
+            LIMIT 1
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.0, 0);
+        assert_eq!(row.1, 0);
+        assert_eq!(row.2, 0);
+        assert_eq!(row.3, 0);
+        assert_eq!(row.4, 0);
+        assert_eq!(row.5, 0);
+        assert_eq!(row.6, 0);
+        assert_eq!(row.7, 0);
+        assert_eq!(row.8, 0);
+    }
+
+    #[tokio::test]
+    async fn test_migration40_index_runs_integrity_counter_check_constraints() {
+        let pool = setup_db().await;
+
+        let counters = [
+            "unknown_top_level_type_count",
+            "unknown_required_path_count",
+            "imaginary_path_access_count",
+            "legacy_fallback_path_count",
+            "dropped_line_invalid_json_count",
+            "schema_mismatch_count",
+            "unknown_source_role_count",
+            "derived_source_message_doc_count",
+            "source_message_non_source_provenance_count",
+        ];
+
+        for column in counters {
+            let sql = format!(
+                "INSERT INTO index_runs (started_at, type, status, {column}) VALUES ('2026-02-05T12:00:00Z', 'full', 'running', -1)"
+            );
+            let result = sqlx::query(&sql).execute(&pool).await;
+            assert!(
+                result.is_err(),
+                "Negative value should be rejected for {}",
+                column
+            );
+        }
     }
 
     #[tokio::test]
@@ -952,7 +1386,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_err(), "Invalid status should be rejected by CHECK constraint");
+        assert!(
+            result.is_err(),
+            "Invalid status should be rejected by CHECK constraint"
+        );
     }
 
     #[tokio::test]
@@ -965,7 +1402,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_ok(), "Valid type 'full' and status 'running' should be accepted");
+        assert!(
+            result.is_ok(),
+            "Valid type 'full' and status 'running' should be accepted"
+        );
 
         // Invalid type should fail
         let result = sqlx::query(
@@ -973,7 +1413,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_err(), "Invalid type should be rejected by CHECK constraint");
+        assert!(
+            result.is_err(),
+            "Invalid type should be rejected by CHECK constraint"
+        );
 
         // Invalid status should fail
         let result = sqlx::query(
@@ -981,7 +1424,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_err(), "Invalid status should be rejected by CHECK constraint");
+        assert!(
+            result.is_err(),
+            "Invalid status should be rejected by CHECK constraint"
+        );
     }
 
     #[tokio::test]
@@ -989,7 +1435,7 @@ mod tests {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'",
         )
         .fetch_all(&pool)
         .await
@@ -997,11 +1443,26 @@ mod tests {
 
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(index_names.contains(&"idx_sessions_category_l1"), "Missing idx_sessions_category_l1 index");
-        assert!(index_names.contains(&"idx_sessions_classified"), "Missing idx_sessions_classified index");
-        assert!(index_names.contains(&"idx_classification_jobs_status"), "Missing idx_classification_jobs_status index");
-        assert!(index_names.contains(&"idx_classification_jobs_started"), "Missing idx_classification_jobs_started index");
-        assert!(index_names.contains(&"idx_index_runs_started"), "Missing idx_index_runs_started index");
+        assert!(
+            index_names.contains(&"idx_sessions_category_l1"),
+            "Missing idx_sessions_category_l1 index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_classified"),
+            "Missing idx_sessions_classified index"
+        );
+        assert!(
+            index_names.contains(&"idx_classification_jobs_status"),
+            "Missing idx_classification_jobs_status index"
+        );
+        assert!(
+            index_names.contains(&"idx_classification_jobs_started"),
+            "Missing idx_classification_jobs_started index"
+        );
+        assert!(
+            index_names.contains(&"idx_index_runs_started"),
+            "Missing idx_index_runs_started index"
+        );
     }
 
     #[tokio::test]
@@ -1013,27 +1474,31 @@ mod tests {
             r#"
             INSERT INTO sessions (id, project_id, file_path, preview)
             VALUES ('test-sess', 'test-proj', '/tmp/test.jsonl', 'Test')
-            "#
+            "#,
         )
         .execute(&pool)
         .await
         .unwrap();
 
         // Test that negative values are rejected for user_prompt_count
-        let result = sqlx::query(
-            "UPDATE sessions SET user_prompt_count = -1 WHERE id = 'test-sess'"
-        )
-        .execute(&pool)
-        .await;
-        assert!(result.is_err(), "Negative user_prompt_count should be rejected");
+        let result =
+            sqlx::query("UPDATE sessions SET user_prompt_count = -1 WHERE id = 'test-sess'")
+                .execute(&pool)
+                .await;
+        assert!(
+            result.is_err(),
+            "Negative user_prompt_count should be rejected"
+        );
 
         // Test that negative values are rejected for duration_seconds
-        let result = sqlx::query(
-            "UPDATE sessions SET duration_seconds = -1 WHERE id = 'test-sess'"
-        )
-        .execute(&pool)
-        .await;
-        assert!(result.is_err(), "Negative duration_seconds should be rejected");
+        let result =
+            sqlx::query("UPDATE sessions SET duration_seconds = -1 WHERE id = 'test-sess'")
+                .execute(&pool)
+                .await;
+        assert!(
+            result.is_err(),
+            "Negative duration_seconds should be rejected"
+        );
 
         // Test that valid tier values work (1 and 2)
         sqlx::query(
@@ -1056,14 +1521,15 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_err(), "tier=3 should be rejected (only 1 or 2 allowed)");
+        assert!(
+            result.is_err(),
+            "tier=3 should be rejected (only 1 or 2 allowed)"
+        );
 
         // Test index_metadata singleton constraint
-        let result = sqlx::query(
-            "INSERT INTO index_metadata (id) VALUES (2)"
-        )
-        .execute(&pool)
-        .await;
+        let result = sqlx::query("INSERT INTO index_metadata (id) VALUES (2)")
+            .execute(&pool)
+            .await;
         assert!(result.is_err(), "index_metadata should only allow id=1");
     }
 
@@ -1086,7 +1552,7 @@ mod tests {
                    files_read, files_edited, files_read_count, files_edited_count,
                    reedited_files_count, duration_seconds, commit_count
             FROM sessions WHERE id = 'test-sess'
-            "#
+            "#,
         )
         .fetch_one(&pool)
         .await
@@ -1107,29 +1573,79 @@ mod tests {
     #[tokio::test]
     async fn test_migration9_full_parser_columns_exist() {
         let pool = setup_db().await;
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        ).fetch_all(&pool).await.unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
         let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(names.contains(&"parse_version"), "Missing parse_version");
-        assert!(names.contains(&"turn_duration_avg_ms"), "Missing turn_duration_avg_ms");
-        assert!(names.contains(&"turn_duration_max_ms"), "Missing turn_duration_max_ms");
-        assert!(names.contains(&"turn_duration_total_ms"), "Missing turn_duration_total_ms");
-        assert!(names.contains(&"api_error_count"), "Missing api_error_count");
-        assert!(names.contains(&"api_retry_count"), "Missing api_retry_count");
-        assert!(names.contains(&"compaction_count"), "Missing compaction_count");
-        assert!(names.contains(&"hook_blocked_count"), "Missing hook_blocked_count");
-        assert!(names.contains(&"agent_spawn_count"), "Missing agent_spawn_count");
-        assert!(names.contains(&"bash_progress_count"), "Missing bash_progress_count");
-        assert!(names.contains(&"hook_progress_count"), "Missing hook_progress_count");
-        assert!(names.contains(&"mcp_progress_count"), "Missing mcp_progress_count");
+        assert!(
+            names.contains(&"turn_duration_avg_ms"),
+            "Missing turn_duration_avg_ms"
+        );
+        assert!(
+            names.contains(&"turn_duration_max_ms"),
+            "Missing turn_duration_max_ms"
+        );
+        assert!(
+            names.contains(&"turn_duration_total_ms"),
+            "Missing turn_duration_total_ms"
+        );
+        assert!(
+            names.contains(&"api_error_count"),
+            "Missing api_error_count"
+        );
+        assert!(
+            names.contains(&"api_retry_count"),
+            "Missing api_retry_count"
+        );
+        assert!(
+            names.contains(&"compaction_count"),
+            "Missing compaction_count"
+        );
+        assert!(
+            names.contains(&"hook_blocked_count"),
+            "Missing hook_blocked_count"
+        );
+        assert!(
+            names.contains(&"agent_spawn_count"),
+            "Missing agent_spawn_count"
+        );
+        assert!(
+            names.contains(&"bash_progress_count"),
+            "Missing bash_progress_count"
+        );
+        assert!(
+            names.contains(&"hook_progress_count"),
+            "Missing hook_progress_count"
+        );
+        assert!(
+            names.contains(&"mcp_progress_count"),
+            "Missing mcp_progress_count"
+        );
         assert!(names.contains(&"summary_text"), "Missing summary_text");
-        assert!(names.contains(&"total_input_tokens"), "Missing total_input_tokens");
-        assert!(names.contains(&"total_output_tokens"), "Missing total_output_tokens");
-        assert!(names.contains(&"cache_read_tokens"), "Missing cache_read_tokens");
-        assert!(names.contains(&"cache_creation_tokens"), "Missing cache_creation_tokens");
-        assert!(names.contains(&"thinking_block_count"), "Missing thinking_block_count");
+        assert!(
+            names.contains(&"total_input_tokens"),
+            "Missing total_input_tokens"
+        );
+        assert!(
+            names.contains(&"total_output_tokens"),
+            "Missing total_output_tokens"
+        );
+        assert!(
+            names.contains(&"cache_read_tokens"),
+            "Missing cache_read_tokens"
+        );
+        assert!(
+            names.contains(&"cache_creation_tokens"),
+            "Missing cache_creation_tokens"
+        );
+        assert!(
+            names.contains(&"thinking_block_count"),
+            "Missing thinking_block_count"
+        );
     }
 
     #[tokio::test]
@@ -1137,9 +1653,11 @@ mod tests {
         let pool = setup_db().await;
 
         // Verify turn_metrics table
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('turn_metrics')"
-        ).fetch_all(&pool).await.unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('turn_metrics')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
         let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
         assert!(names.contains(&"session_id"));
         assert!(names.contains(&"turn_seq"));
@@ -1148,9 +1666,11 @@ mod tests {
         assert!(names.contains(&"model"));
 
         // Verify api_errors table
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('api_errors')"
-        ).fetch_all(&pool).await.unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('api_errors')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
         let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
         assert!(names.contains(&"session_id"));
         assert!(names.contains(&"timestamp_unix"));
@@ -1164,9 +1684,10 @@ mod tests {
             "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('pv-test', 'proj', '/tmp/pv.jsonl', 'Test')"
         ).execute(&pool).await.unwrap();
 
-        let row: (i64,) = sqlx::query_as(
-            "SELECT parse_version FROM sessions WHERE id = 'pv-test'"
-        ).fetch_one(&pool).await.unwrap();
+        let row: (i64,) = sqlx::query_as("SELECT parse_version FROM sessions WHERE id = 'pv-test'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(row.0, 0, "parse_version default should be 0");
     }
 
@@ -1224,18 +1745,26 @@ mod tests {
     async fn test_migration13_loc_columns_exist() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"lines_added"), "Missing lines_added column");
-        assert!(column_names.contains(&"lines_removed"), "Missing lines_removed column");
-        assert!(column_names.contains(&"loc_source"), "Missing loc_source column");
+        assert!(
+            column_names.contains(&"lines_added"),
+            "Missing lines_added column"
+        );
+        assert!(
+            column_names.contains(&"lines_removed"),
+            "Missing lines_removed column"
+        );
+        assert!(
+            column_names.contains(&"loc_source"),
+            "Missing loc_source column"
+        );
     }
 
     #[tokio::test]
@@ -1250,7 +1779,7 @@ mod tests {
         .unwrap();
 
         let row: (i64, i64, i64) = sqlx::query_as(
-            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'"
+            "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'",
         )
         .fetch_one(&pool)
         .await
@@ -1273,43 +1802,36 @@ mod tests {
         .unwrap();
 
         // Test that negative values are rejected for lines_added
-        let result = sqlx::query(
-            "UPDATE sessions SET lines_added = -1 WHERE id = 'loc-check'"
-        )
-        .execute(&pool)
-        .await;
+        let result = sqlx::query("UPDATE sessions SET lines_added = -1 WHERE id = 'loc-check'")
+            .execute(&pool)
+            .await;
         assert!(result.is_err(), "Negative lines_added should be rejected");
 
         // Test that negative values are rejected for lines_removed
-        let result = sqlx::query(
-            "UPDATE sessions SET lines_removed = -1 WHERE id = 'loc-check'"
-        )
-        .execute(&pool)
-        .await;
+        let result = sqlx::query("UPDATE sessions SET lines_removed = -1 WHERE id = 'loc-check'")
+            .execute(&pool)
+            .await;
         assert!(result.is_err(), "Negative lines_removed should be rejected");
 
         // Test that valid loc_source values work (0, 1, 2)
-        let result = sqlx::query(
-            "UPDATE sessions SET loc_source = 1 WHERE id = 'loc-check'"
-        )
-        .execute(&pool)
-        .await;
+        let result = sqlx::query("UPDATE sessions SET loc_source = 1 WHERE id = 'loc-check'")
+            .execute(&pool)
+            .await;
         assert!(result.is_ok(), "loc_source=1 should be valid");
 
-        let result = sqlx::query(
-            "UPDATE sessions SET loc_source = 2 WHERE id = 'loc-check'"
-        )
-        .execute(&pool)
-        .await;
+        let result = sqlx::query("UPDATE sessions SET loc_source = 2 WHERE id = 'loc-check'")
+            .execute(&pool)
+            .await;
         assert!(result.is_ok(), "loc_source=2 should be valid");
 
         // Test that invalid loc_source value is rejected
-        let result = sqlx::query(
-            "UPDATE sessions SET loc_source = 3 WHERE id = 'loc-check'"
-        )
-        .execute(&pool)
-        .await;
-        assert!(result.is_err(), "loc_source=3 should be rejected (only 0, 1, 2 allowed)");
+        let result = sqlx::query("UPDATE sessions SET loc_source = 3 WHERE id = 'loc-check'")
+            .execute(&pool)
+            .await;
+        assert!(
+            result.is_err(),
+            "loc_source=3 should be rejected (only 0, 1, 2 allowed)"
+        );
     }
 
     // ========================================================================
@@ -1320,63 +1842,105 @@ mod tests {
     async fn test_migration14_sessions_contribution_columns_exist() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
-        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
-        assert!(column_names.contains(&"work_type"), "Missing work_type column");
+        assert!(
+            column_names.contains(&"ai_lines_added"),
+            "Missing ai_lines_added column"
+        );
+        assert!(
+            column_names.contains(&"ai_lines_removed"),
+            "Missing ai_lines_removed column"
+        );
+        assert!(
+            column_names.contains(&"work_type"),
+            "Missing work_type column"
+        );
     }
 
     #[tokio::test]
     async fn test_migration14_commits_diff_stats_columns_exist() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('commits')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('commits')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"files_changed"), "Missing files_changed column");
-        assert!(column_names.contains(&"insertions"), "Missing insertions column");
-        assert!(column_names.contains(&"deletions"), "Missing deletions column");
+        assert!(
+            column_names.contains(&"files_changed"),
+            "Missing files_changed column"
+        );
+        assert!(
+            column_names.contains(&"insertions"),
+            "Missing insertions column"
+        );
+        assert!(
+            column_names.contains(&"deletions"),
+            "Missing deletions column"
+        );
     }
 
     #[tokio::test]
     async fn test_migration14_contribution_snapshots_table_exists() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('contribution_snapshots')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('contribution_snapshots')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"id"), "Missing id column");
         assert!(column_names.contains(&"date"), "Missing date column");
-        assert!(column_names.contains(&"project_id"), "Missing project_id column");
+        assert!(
+            column_names.contains(&"project_id"),
+            "Missing project_id column"
+        );
         assert!(column_names.contains(&"branch"), "Missing branch column");
-        assert!(column_names.contains(&"sessions_count"), "Missing sessions_count column");
-        assert!(column_names.contains(&"ai_lines_added"), "Missing ai_lines_added column");
-        assert!(column_names.contains(&"ai_lines_removed"), "Missing ai_lines_removed column");
-        assert!(column_names.contains(&"commits_count"), "Missing commits_count column");
-        assert!(column_names.contains(&"commit_insertions"), "Missing commit_insertions column");
-        assert!(column_names.contains(&"commit_deletions"), "Missing commit_deletions column");
-        assert!(column_names.contains(&"tokens_used"), "Missing tokens_used column");
-        assert!(column_names.contains(&"cost_cents"), "Missing cost_cents column");
+        assert!(
+            column_names.contains(&"sessions_count"),
+            "Missing sessions_count column"
+        );
+        assert!(
+            column_names.contains(&"ai_lines_added"),
+            "Missing ai_lines_added column"
+        );
+        assert!(
+            column_names.contains(&"ai_lines_removed"),
+            "Missing ai_lines_removed column"
+        );
+        assert!(
+            column_names.contains(&"commits_count"),
+            "Missing commits_count column"
+        );
+        assert!(
+            column_names.contains(&"commit_insertions"),
+            "Missing commit_insertions column"
+        );
+        assert!(
+            column_names.contains(&"commit_deletions"),
+            "Missing commit_deletions column"
+        );
+        assert!(
+            column_names.contains(&"tokens_used"),
+            "Missing tokens_used column"
+        );
+        assert!(
+            column_names.contains(&"cost_cents"),
+            "Missing cost_cents column"
+        );
     }
 
     #[tokio::test]
@@ -1398,7 +1962,10 @@ mod tests {
         .execute(&pool)
         .await;
 
-        assert!(result.is_err(), "Should reject duplicate date+project_id+branch combination");
+        assert!(
+            result.is_err(),
+            "Should reject duplicate date+project_id+branch combination"
+        );
 
         // Insert different date - should succeed
         let result = sqlx::query(
@@ -1461,7 +2028,7 @@ mod tests {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_snapshots%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_snapshots%'",
         )
         .fetch_all(&pool)
         .await
@@ -1469,9 +2036,18 @@ mod tests {
 
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(index_names.contains(&"idx_snapshots_date"), "Missing idx_snapshots_date index");
-        assert!(index_names.contains(&"idx_snapshots_project_date"), "Missing idx_snapshots_project_date index");
-        assert!(index_names.contains(&"idx_snapshots_branch_date"), "Missing idx_snapshots_branch_date index");
+        assert!(
+            index_names.contains(&"idx_snapshots_date"),
+            "Missing idx_snapshots_date index"
+        );
+        assert!(
+            index_names.contains(&"idx_snapshots_project_date"),
+            "Missing idx_snapshots_project_date index"
+        );
+        assert!(
+            index_names.contains(&"idx_snapshots_branch_date"),
+            "Missing idx_snapshots_branch_date index"
+        );
     }
 
     // ========================================================================
@@ -1483,19 +2059,21 @@ mod tests {
         let pool = setup_db().await;
 
         // Verify primary_model column was added
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
-        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
+        assert!(
+            column_names.contains(&"primary_model"),
+            "Missing primary_model column"
+        );
 
         // Verify new indexes were created
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'",
         )
         .fetch_all(&pool)
         .await
@@ -1503,12 +2081,18 @@ mod tests {
 
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(index_names.contains(&"idx_sessions_first_message"),
-            "Missing idx_sessions_first_message index");
-        assert!(index_names.contains(&"idx_sessions_project_first_message"),
-            "Missing idx_sessions_project_first_message index");
-        assert!(index_names.contains(&"idx_sessions_primary_model"),
-            "Missing idx_sessions_primary_model index");
+        assert!(
+            index_names.contains(&"idx_sessions_first_message"),
+            "Missing idx_sessions_first_message index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_project_first_message"),
+            "Missing idx_sessions_project_first_message index"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_primary_model"),
+            "Missing idx_sessions_primary_model index"
+        );
     }
 
     #[tokio::test]
@@ -1524,12 +2108,11 @@ mod tests {
         .unwrap();
 
         // Verify the value
-        let row: (Option<String>,) = sqlx::query_as(
-            "SELECT primary_model FROM sessions WHERE id = 'pm-test'"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let row: (Option<String>,) =
+            sqlx::query_as("SELECT primary_model FROM sessions WHERE id = 'pm-test'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
 
         assert_eq!(row.0, Some("claude-sonnet-4".to_string()));
     }
@@ -1542,27 +2125,43 @@ mod tests {
     async fn test_migration18_file_hash_column_dropped() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         // file_hash should be gone
-        assert!(!column_names.contains(&"file_hash"),
-            "file_hash column should be dropped by migration 18");
+        assert!(
+            !column_names.contains(&"file_hash"),
+            "file_hash column should be dropped by migration 18"
+        );
 
         // All other essential columns should still exist
         assert!(column_names.contains(&"id"), "Missing id column");
-        assert!(column_names.contains(&"project_id"), "Missing project_id column");
-        assert!(column_names.contains(&"file_path"), "Missing file_path column");
+        assert!(
+            column_names.contains(&"project_id"),
+            "Missing project_id column"
+        );
+        assert!(
+            column_names.contains(&"file_path"),
+            "Missing file_path column"
+        );
         assert!(column_names.contains(&"summary"), "Missing summary column");
-        assert!(column_names.contains(&"summary_text"), "Missing summary_text column");
-        assert!(column_names.contains(&"primary_model"), "Missing primary_model column");
-        assert!(column_names.contains(&"work_type"), "Missing work_type column");
+        assert!(
+            column_names.contains(&"summary_text"),
+            "Missing summary_text column"
+        );
+        assert!(
+            column_names.contains(&"primary_model"),
+            "Missing primary_model column"
+        );
+        assert!(
+            column_names.contains(&"work_type"),
+            "Missing work_type column"
+        );
     }
 
     #[tokio::test]
@@ -1570,7 +2169,7 @@ mod tests {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_sessions%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_sessions%'",
         )
         .fetch_all(&pool)
         .await
@@ -1579,17 +2178,50 @@ mod tests {
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
         // All session indexes should be recreated
-        assert!(index_names.contains(&"idx_sessions_project"), "Missing idx_sessions_project");
-        assert!(index_names.contains(&"idx_sessions_last_message"), "Missing idx_sessions_last_message");
-        assert!(index_names.contains(&"idx_sessions_project_branch"), "Missing idx_sessions_project_branch");
-        assert!(index_names.contains(&"idx_sessions_sidechain"), "Missing idx_sessions_sidechain");
-        assert!(index_names.contains(&"idx_sessions_commit_count"), "Missing idx_sessions_commit_count");
-        assert!(index_names.contains(&"idx_sessions_reedit"), "Missing idx_sessions_reedit");
-        assert!(index_names.contains(&"idx_sessions_duration"), "Missing idx_sessions_duration");
-        assert!(index_names.contains(&"idx_sessions_needs_reindex"), "Missing idx_sessions_needs_reindex");
-        assert!(index_names.contains(&"idx_sessions_first_message"), "Missing idx_sessions_first_message");
-        assert!(index_names.contains(&"idx_sessions_project_first_message"), "Missing idx_sessions_project_first_message");
-        assert!(index_names.contains(&"idx_sessions_primary_model"), "Missing idx_sessions_primary_model");
+        assert!(
+            index_names.contains(&"idx_sessions_project"),
+            "Missing idx_sessions_project"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_last_message"),
+            "Missing idx_sessions_last_message"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_project_branch"),
+            "Missing idx_sessions_project_branch"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_sidechain"),
+            "Missing idx_sessions_sidechain"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_commit_count"),
+            "Missing idx_sessions_commit_count"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_reedit"),
+            "Missing idx_sessions_reedit"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_duration"),
+            "Missing idx_sessions_duration"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_needs_reindex"),
+            "Missing idx_sessions_needs_reindex"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_first_message"),
+            "Missing idx_sessions_first_message"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_project_first_message"),
+            "Missing idx_sessions_project_first_message"
+        );
+        assert!(
+            index_names.contains(&"idx_sessions_primary_model"),
+            "Missing idx_sessions_primary_model"
+        );
     }
 
     #[tokio::test]
@@ -1606,7 +2238,7 @@ mod tests {
         .unwrap();
 
         let row: (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
-            "SELECT summary, summary_text, primary_model FROM sessions WHERE id = 'm18-test'"
+            "SELECT summary, summary_text, primary_model FROM sessions WHERE id = 'm18-test'",
         )
         .fetch_one(&pool)
         .await
@@ -1637,18 +2269,35 @@ mod tests {
         ).execute(&pool).await.unwrap();
 
         let row: (Option<String>,) = sqlx::query_as(
-            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-1'"
-        ).fetch_one(&pool).await.unwrap();
-        assert_eq!(row.0.as_deref(), Some("from deep"), "summary_text should win when both present");
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            row.0.as_deref(),
+            Some("from deep"),
+            "summary_text should win when both present"
+        );
 
         let row: (Option<String>,) = sqlx::query_as(
-            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-2'"
-        ).fetch_one(&pool).await.unwrap();
-        assert_eq!(row.0.as_deref(), Some("from index only"), "summary should be fallback");
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-2'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            row.0.as_deref(),
+            Some("from index only"),
+            "summary should be fallback"
+        );
 
         let row: (Option<String>,) = sqlx::query_as(
-            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-3'"
-        ).fetch_one(&pool).await.unwrap();
+            "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-3'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert!(row.0.is_none(), "Both NULL should yield NULL");
     }
 
@@ -1656,18 +2305,26 @@ mod tests {
     async fn test_migration_task_time_columns_exist() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('sessions')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-        assert!(column_names.contains(&"total_task_time_seconds"), "Missing total_task_time_seconds column");
-        assert!(column_names.contains(&"longest_task_seconds"), "Missing longest_task_seconds column");
-        assert!(column_names.contains(&"longest_task_preview"), "Missing longest_task_preview column");
+        assert!(
+            column_names.contains(&"total_task_time_seconds"),
+            "Missing total_task_time_seconds column"
+        );
+        assert!(
+            column_names.contains(&"longest_task_seconds"),
+            "Missing longest_task_seconds column"
+        );
+        assert!(
+            column_names.contains(&"longest_task_preview"),
+            "Missing longest_task_preview column"
+        );
     }
 
     #[tokio::test]
@@ -1688,9 +2345,18 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(row.0.is_none(), "total_task_time_seconds default should be NULL");
-        assert!(row.1.is_none(), "longest_task_seconds default should be NULL");
-        assert!(row.2.is_none(), "longest_task_preview default should be NULL");
+        assert!(
+            row.0.is_none(),
+            "total_task_time_seconds default should be NULL"
+        );
+        assert!(
+            row.1.is_none(),
+            "longest_task_seconds default should be NULL"
+        );
+        assert!(
+            row.2.is_none(),
+            "longest_task_preview default should be NULL"
+        );
     }
 
     #[tokio::test]
@@ -1702,15 +2368,21 @@ mod tests {
         ).execute(&pool).await.unwrap();
 
         // Verify CHECK constraints survived the table recreation
-        let result = sqlx::query(
-            "UPDATE sessions SET lines_added = -1 WHERE id = 'm18-chk'"
-        ).execute(&pool).await;
-        assert!(result.is_err(), "CHECK constraint on lines_added should survive migration 18");
+        let result = sqlx::query("UPDATE sessions SET lines_added = -1 WHERE id = 'm18-chk'")
+            .execute(&pool)
+            .await;
+        assert!(
+            result.is_err(),
+            "CHECK constraint on lines_added should survive migration 18"
+        );
 
-        let result = sqlx::query(
-            "UPDATE sessions SET loc_source = 3 WHERE id = 'm18-chk'"
-        ).execute(&pool).await;
-        assert!(result.is_err(), "CHECK constraint on loc_source should survive migration 18");
+        let result = sqlx::query("UPDATE sessions SET loc_source = 3 WHERE id = 'm18-chk'")
+            .execute(&pool)
+            .await;
+        assert!(
+            result.is_err(),
+            "CHECK constraint on loc_source should survive migration 18"
+        );
     }
 
     // ========================================================================
@@ -1721,27 +2393,59 @@ mod tests {
     async fn test_migration25_reports_table_exists() {
         let pool = setup_db().await;
 
-        let columns: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM pragma_table_info('reports')"
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('reports')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
 
         let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
         assert!(column_names.contains(&"id"), "Missing id column");
-        assert!(column_names.contains(&"report_type"), "Missing report_type column");
-        assert!(column_names.contains(&"date_start"), "Missing date_start column");
-        assert!(column_names.contains(&"date_end"), "Missing date_end column");
-        assert!(column_names.contains(&"content_md"), "Missing content_md column");
-        assert!(column_names.contains(&"context_digest"), "Missing context_digest column");
-        assert!(column_names.contains(&"session_count"), "Missing session_count column");
-        assert!(column_names.contains(&"project_count"), "Missing project_count column");
-        assert!(column_names.contains(&"total_duration_secs"), "Missing total_duration_secs column");
-        assert!(column_names.contains(&"total_cost_cents"), "Missing total_cost_cents column");
-        assert!(column_names.contains(&"generation_ms"), "Missing generation_ms column");
-        assert!(column_names.contains(&"created_at"), "Missing created_at column");
+        assert!(
+            column_names.contains(&"report_type"),
+            "Missing report_type column"
+        );
+        assert!(
+            column_names.contains(&"date_start"),
+            "Missing date_start column"
+        );
+        assert!(
+            column_names.contains(&"date_end"),
+            "Missing date_end column"
+        );
+        assert!(
+            column_names.contains(&"content_md"),
+            "Missing content_md column"
+        );
+        assert!(
+            column_names.contains(&"context_digest"),
+            "Missing context_digest column"
+        );
+        assert!(
+            column_names.contains(&"session_count"),
+            "Missing session_count column"
+        );
+        assert!(
+            column_names.contains(&"project_count"),
+            "Missing project_count column"
+        );
+        assert!(
+            column_names.contains(&"total_duration_secs"),
+            "Missing total_duration_secs column"
+        );
+        assert!(
+            column_names.contains(&"total_cost_cents"),
+            "Missing total_cost_cents column"
+        );
+        assert!(
+            column_names.contains(&"generation_ms"),
+            "Missing generation_ms column"
+        );
+        assert!(
+            column_names.contains(&"created_at"),
+            "Missing created_at column"
+        );
     }
 
     #[tokio::test]
@@ -1754,7 +2458,10 @@ mod tests {
         )
         .execute(&pool)
         .await;
-        assert!(result.is_ok(), "Valid report_type 'daily' should be accepted");
+        assert!(
+            result.is_ok(),
+            "Valid report_type 'daily' should be accepted"
+        );
 
         // Invalid report_type should fail
         let result = sqlx::query(
@@ -1770,15 +2477,21 @@ mod tests {
         let pool = setup_db().await;
 
         let indexes: Vec<(String,)> = sqlx::query_as(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_reports%'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_reports%'",
         )
         .fetch_all(&pool)
         .await
         .unwrap();
 
         let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
-        assert!(index_names.contains(&"idx_reports_date"), "Missing idx_reports_date index");
-        assert!(index_names.contains(&"idx_reports_type"), "Missing idx_reports_type index");
+        assert!(
+            index_names.contains(&"idx_reports_date"),
+            "Missing idx_reports_date index"
+        );
+        assert!(
+            index_names.contains(&"idx_reports_type"),
+            "Missing idx_reports_type index"
+        );
     }
 
     // ========================================================================
@@ -1790,12 +2503,11 @@ mod tests {
         let pool = setup_db().await;
 
         // Table should exist with exactly one default row
-        let row: (String, i64) = sqlx::query_as(
-            "SELECT llm_model, llm_timeout_secs FROM app_settings WHERE id = 1"
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let row: (String, i64) =
+            sqlx::query_as("SELECT llm_model, llm_timeout_secs FROM app_settings WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
 
         assert_eq!(row.0, "haiku");
         assert_eq!(row.1, 120);

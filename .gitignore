@@ -6,6 +6,7 @@ dist/
 
 # Rust/Cargo
 target/
+target-codex*/
 **/*.rs.bk
 *.pdb
 claude-view.db
@@ -15,6 +16,10 @@ claude-view.db-*
 .env
 .env.local
 .env.*.local
+.dev.vars
+
+# Wrangler local state (D1, KV, R2 local dev)
+.wrangler/
 
 # Local data directory (sandbox/dev)
 .data/
@@ -31,6 +36,9 @@ claude-view.db-*
 .DS_Store
 Thumbs.db
 
+# npm lockfile (Bun workspaces use workspace:* which npm can't resolve)
+package-lock.json
+
 # Logs
 *.log
 npm-debug.log*
@@ -43,16 +51,38 @@ coverage/
 # Playwright
 playwright-report/
 test-results/
+target-playwright/
 e2e/screenshots/*
 !e2e/screenshots/.gitkeep
+
+# Turborepo cache
+.turbo/
+
+# Lighthouse reports
+lighthouse*.json
 
 # Temporary files
 .tmp/
 tmp/
 temp/
+artifacts/integrity/
 
-# Screenshots (temporary verification artifacts)
+# Screenshots and placeholder images
 *.png
+!apps/mobile/assets/images/*.png
+
+# Stale pre-monorepo root src/ (ts-rs now exports to apps/web/src/types/generated/)
+/src/
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
 
 # Git worktrees
 .worktrees/
@@ -70,3 +100,9 @@ __pycache__/
 # Auto-generated claude-mem files
 **/CLAUDE.md
 .playwright-mcp/
+
+# Astro build artifacts (apps/landing)
+apps/landing/.astro/
+
+# Allow landing page images (overrides root *.png ignore)
+!apps/landing/public/*.png

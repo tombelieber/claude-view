@@ -14,4 +14,7 @@ pub mod types;
 pub use claude_cli::ClaudeCliProvider;
 pub use config::{LlmConfig, ProviderType};
 pub use provider::LlmProvider;
-pub use types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError, ResponseFormat};
+pub use types::{
+    ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError,
+    ResponseFormat,
+};

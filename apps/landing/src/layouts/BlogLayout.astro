@@ -1,0 +1,53 @@
+---
+import MarketingLayout from './MarketingLayout.astro';
+import { SITE_URL } from '../data/site';
+
+interface Props {
+  title: string;
+  description: string;
+  date: Date;
+  author: string;
+}
+
+const { title, description, date, author } = Astro.props;
+---
+<MarketingLayout
+  title={title}
+  description={description}
+  ogType="article"
+  articleMeta={{ publishedTime: date.toISOString(), author }}
+>
+  <!-- BlogPosting structured data for GEO (Generative Engine Optimization) -->
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": title,
+    "description": description,
+    "datePublished": date.toISOString(),
+    "author": { "@type": "Person", "name": author },
+    "publisher": {
+      "@type": "Organization",
+      "name": "claude-view",
+      "url": SITE_URL
+    },
+    "isPartOf": {
+      "@type": "Blog",
+      "name": "claude-view Blog",
+      "url": `${SITE_URL}/blog`
+    }
+  })} />
+
+  <article class="mx-auto max-w-3xl px-6 py-16">
+    <header class="mb-12">
+      <h1 class="font-heading text-4xl font-bold mb-4">{title}</h1>
+      <div class="flex items-center gap-4 text-sm text-[var(--color-text-secondary)]">
+        <time datetime={date.toISOString()}>{date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</time>
+        <span>·</span>
+        <span>{author}</span>
+      </div>
+    </header>
+    <div class="prose prose-slate max-w-none">
+      <slot />
+    </div>
+  </article>
+</MarketingLayout>

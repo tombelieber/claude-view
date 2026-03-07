@@ -1,6 +1,7 @@
 // crates/server/src/state.rs
 //! Application state for the Axum server.
 
+use crate::auth::supabase::JwksCache;
 use crate::classify_state::ClassifyState;
 use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
@@ -8,15 +9,34 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
+use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
+use claude_view_core::Registry;
+use claude_view_db::{Database, ModelPricing};
+use claude_view_search::SearchIndex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
-use tokio::sync::broadcast;
-use claude_view_core::Registry;
-use claude_view_db::{Database, ModelPricing};
-use claude_view_search::SearchIndex;
+use tokio::sync::{broadcast, OnceCell};
+
+/// Cached identity from `claude auth status` (email, org, plan).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthIdentity {
+    pub email: Option<String>,
+    pub org_name: Option<String>,
+    pub subscription_type: Option<String>,
+    pub auth_method: Option<String>,
+}
+
+/// Configuration for the conversation sharing feature.
+/// Only populated when SHARE_WORKER_URL and SHARE_VIEWER_URL are set.
+pub struct ShareConfig {
+    pub worker_url: String,
+    pub viewer_url: String,
+    pub http_client: reqwest::Client,
+}
 
 /// Type alias for the shared registry holder.
 ///
@@ -73,9 +93,22 @@ pub struct AppState {
     pub shutdown: tokio::sync::watch::Receiver<bool>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
     /// Key: session_id. Created on demand when a WS connects, cleaned up on SessionEnd.
-    pub hook_event_channels: Arc<tokio::sync::RwLock<
-        HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
-    >>,
+    pub hook_event_channels: Arc<
+        tokio::sync::RwLock<
+            HashMap<String, tokio::sync::broadcast::Sender<crate::live::state::HookEvent>>,
+        >,
+    >,
+    /// Node.js sidecar manager for Phase F interactive control.
+    /// Lazy-started on first `/api/control/*` request.
+    pub sidecar: Arc<SidecarManager>,
+    /// Supabase JWKS cache for JWT validation (sharing feature).
+    /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
+    pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
+    /// Sharing configuration (Worker URL, viewer URL, HTTP client).
+    /// `None` when SHARE_WORKER_URL / SHARE_VIEWER_URL are not set.
+    pub share: Option<ShareConfig>,
+    /// Cached auth identity from `claude auth status` (lazy, one-shot).
+    pub auth_identity: OnceCell<Option<AuthIdentity>>,
 }
 
 impl AppState {
@@ -109,6 +142,10 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 
@@ -141,6 +178,10 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 
@@ -176,6 +217,10 @@ impl AppState {
             search_index: Arc::new(RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: OnceCell::new(),
         })
     }
 

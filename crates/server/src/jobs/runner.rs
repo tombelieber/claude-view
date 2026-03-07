@@ -37,12 +37,7 @@ impl JobRunner {
     /// - `oneshot::Receiver<()>` for cancellation detection
     ///
     /// Returns a `JobHandle` that can be used to cancel the job.
-    pub fn start_job<F, Fut>(
-        &self,
-        job_type: impl Into<String>,
-        total: u64,
-        f: F,
-    ) -> JobHandle
+    pub fn start_job<F, Fut>(&self, job_type: impl Into<String>, total: u64, f: F) -> JobHandle
     where
         F: FnOnce(Arc<JobState>, oneshot::Receiver<()>) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
@@ -52,7 +47,9 @@ impl JobRunner {
 
         // Store state
         match self.jobs.write() {
-            Ok(mut jobs) => { jobs.insert(id, Arc::clone(&state)); }
+            Ok(mut jobs) => {
+                jobs.insert(id, Arc::clone(&state));
+            }
             Err(e) => tracing::error!("RwLock poisoned writing jobs map: {e}"),
         }
 
@@ -104,7 +101,9 @@ impl JobRunner {
             Ok(jobs) => jobs
                 .values()
                 .map(|s| s.snapshot())
-                .filter(|p| p.status != "completed" && p.status != "failed" && p.status != "cancelled")
+                .filter(|p| {
+                    p.status != "completed" && p.status != "failed" && p.status != "cancelled"
+                })
                 .collect(),
             Err(e) => {
                 tracing::error!("RwLock poisoned reading jobs: {e}");

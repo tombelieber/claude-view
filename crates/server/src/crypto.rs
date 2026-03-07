@@ -48,9 +48,19 @@ pub fn load_or_create_identity() -> Result<DeviceIdentity, String> {
     // Try to load existing
     if path.exists() {
         let data = fs::read(&path).map_err(|e| format!("read identity: {e}"))?;
-        if let Ok(identity) = serde_json::from_slice::<DeviceIdentity>(&data) {
-            info!("loaded device identity from {}", path.display());
-            return Ok(identity);
+        match serde_json::from_slice::<DeviceIdentity>(&data) {
+            Ok(identity) => {
+                info!("loaded device identity from {}", path.display());
+                return Ok(identity);
+            }
+            Err(e) => {
+                return Err(format!(
+                    "identity.json exists but is corrupt ({}). \
+                     Remove {} manually to regenerate keys (WARNING: this invalidates all pairings).",
+                    e,
+                    path.display()
+                ));
+            }
         }
     }
 
@@ -134,6 +144,37 @@ pub fn encrypt_for_device(
     Ok(STANDARD.encode(wire))
 }
 
+/// Decrypt a NaCl box message from a paired device.
+/// Wire format: nonce (24 bytes) || ciphertext, base64-encoded.
+pub fn decrypt_from_device(
+    encrypted_b64: &str,
+    sender_pubkey_b64: &str,
+    recipient_secret: &BoxSecretKey,
+) -> Result<Vec<u8>, String> {
+    let wire = STANDARD
+        .decode(encrypted_b64)
+        .map_err(|e| format!("bad encrypted base64: {e}"))?;
+    if wire.len() < 24 {
+        return Err("encrypted data too short (need at least nonce)".into());
+    }
+
+    let sender_pubkey_bytes = STANDARD
+        .decode(sender_pubkey_b64)
+        .map_err(|e| format!("bad sender pubkey base64: {e}"))?;
+    let sender_pubkey = BoxPublicKey::from(
+        <[u8; 32]>::try_from(sender_pubkey_bytes.as_slice())
+            .map_err(|_| "sender pubkey must be 32 bytes")?,
+    );
+
+    let nonce = crypto_box::Nonce::from_slice(&wire[..24]);
+    let ciphertext = &wire[24..];
+
+    let salsa_box = SalsaBox::new(&sender_pubkey, recipient_secret);
+    salsa_box
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("decryption failed: {e}"))
+}
+
 /// Sign an auth challenge for relay authentication.
 pub fn sign_auth_challenge(identity: &DeviceIdentity) -> Result<(u64, String), String> {
     let signing_bytes = STANDARD
@@ -161,8 +202,7 @@ pub fn box_secret_key(identity: &DeviceIdentity) -> Result<BoxSecretKey, String>
         .decode(&identity.encryption_key)
         .map_err(|e| format!("bad encryption key: {e}"))?;
     Ok(BoxSecretKey::from(
-        <[u8; 32]>::try_from(bytes.as_slice())
-            .map_err(|_| "encryption key must be 32 bytes")?,
+        <[u8; 32]>::try_from(bytes.as_slice()).map_err(|_| "encryption key must be 32 bytes")?,
     ))
 }
 
@@ -176,4 +216,58 @@ pub fn verifying_key_bytes(identity: &DeviceIdentity) -> Result<Vec<u8>, String>
             .map_err(|_| "signing key must be 32 bytes")?,
     );
     Ok(signing_key.verifying_key().to_bytes().to_vec())
+}
+
+// ---------------------------------------------------------------------------
+// HMAC verification secret storage (anti-MITM pairing binding)
+// ---------------------------------------------------------------------------
+
+/// Store a pairing verification secret (keyed by one-time token).
+/// The secret is known only to the Mac and encoded into the QR URL.
+/// It is never sent to the relay server.
+pub fn store_verification_secret(token: &str, secret: &[u8; 32]) -> Result<(), String> {
+    let dir = storage_dir()?.join("pairing_secrets");
+    fs::create_dir_all(&dir).map_err(|e| format!("create pairing_secrets dir: {e}"))?;
+    fs::write(dir.join(token), secret).map_err(|e| format!("write verification secret: {e}"))?;
+    Ok(())
+}
+
+/// Verify an HMAC-SHA256(verification_secret, phone_x25519_pubkey) against
+/// all stored pairing secrets. On match, the secret file is consumed (deleted).
+///
+/// This prevents relay key substitution attacks: the relay never sees the
+/// verification secret (it's in the QR URL only), so it cannot forge the HMAC.
+pub fn find_and_verify_hmac(phone_x25519_pubkey_b64: &str, hmac_b64: &str) -> Result<bool, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let dir = storage_dir()?.join("pairing_secrets");
+    if !dir.exists() {
+        return Ok(false);
+    }
+    let expected_hmac = STANDARD
+        .decode(hmac_b64)
+        .map_err(|e| format!("bad hmac base64: {e}"))?;
+    let pubkey_bytes = STANDARD
+        .decode(phone_x25519_pubkey_b64)
+        .map_err(|e| format!("bad pubkey base64: {e}"))?;
+
+    let entries = fs::read_dir(&dir).map_err(|e| format!("read pairing_secrets dir: {e}"))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read dir entry: {e}"))?;
+        let secret_bytes = fs::read(entry.path()).map_err(|e| format!("read secret: {e}"))?;
+        if secret_bytes.len() != 32 {
+            continue;
+        }
+        let mut mac =
+            HmacSha256::new_from_slice(&secret_bytes).map_err(|e| format!("hmac init: {e}"))?;
+        mac.update(&pubkey_bytes);
+        if mac.verify_slice(&expected_hmac).is_ok() {
+            // Consume the one-time secret
+            let _ = fs::remove_file(entry.path());
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
