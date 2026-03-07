@@ -14,7 +14,6 @@ import type { SlashCommand } from './commands'
 
 export type InputBarState =
   | 'dormant'
-  | 'resuming'
   | 'active'
   | 'streaming'
   | 'waiting_permission'
@@ -31,7 +30,6 @@ interface StateConfig {
 
 const STATE_CONFIG: Record<InputBarState, StateConfig> = {
   dormant: { placeholder: 'Resume this session...', disabled: false, muted: true },
-  resuming: { placeholder: 'Resuming session...', disabled: true, muted: true },
   connecting: { placeholder: 'Connecting...', disabled: true, muted: true },
   reconnecting: { placeholder: 'Reconnecting...', disabled: true, muted: true },
   active: {
