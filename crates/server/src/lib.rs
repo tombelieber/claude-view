@@ -166,6 +166,7 @@ pub fn create_app_full(
         db.clone(),
         search_index.clone(),
         registry.clone(),
+        Some(sidecar.clone()),
     );
 
     // Register hooks AFTER manager starts, BEFORE building AppState

@@ -204,6 +204,95 @@ impl SidecarManager {
         }
     }
 
+    /// Re-resume all previously controlled sessions after sidecar restart.
+    pub async fn recover_controlled_sessions(
+        &self,
+        session_ids: &[(String, String)], // (session_id, old_control_id)
+    ) -> Vec<(String, String)> {
+        let mut recovered = Vec::new();
+        for (session_id, _old_control_id) in session_ids {
+            match self.resume_session(session_id).await {
+                Ok(new_control_id) => {
+                    tracing::info!(
+                        session_id = %session_id,
+                        new_control_id = %new_control_id,
+                        "Recovered controlled session after sidecar restart"
+                    );
+                    recovered.push((session_id.clone(), new_control_id));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to recover controlled session"
+                    );
+                }
+            }
+        }
+        recovered
+    }
+
+    /// Call sidecar POST /control/resume for a single session.
+    async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
+        use http_body_util::{BodyExt, Full};
+        use hyper::client::conn::http1;
+        use hyper_util::rt::TokioIo;
+
+        let body = serde_json::json!({
+            "sessionId": session_id,
+            "model": "claude-sonnet-4-20250514",
+        });
+        let body_str = serde_json::to_string(&body)
+            .map_err(|e| SidecarError::RequestError(format!("Serialize: {e}")))?;
+
+        let stream = tokio::net::UnixStream::connect(&self.socket_path)
+            .await
+            .map_err(|e| SidecarError::RequestError(format!("Connect: {e}")))?;
+
+        let io = TokioIo::new(stream);
+        let (mut sender, conn) = http1::handshake(io)
+            .await
+            .map_err(|e| SidecarError::RequestError(format!("Handshake: {e}")))?;
+
+        tokio::spawn(async move {
+            let _ = conn.await;
+        });
+
+        let req = hyper::Request::builder()
+            .method("POST")
+            .uri("/control/resume")
+            .header("host", "localhost")
+            .header("content-type", "application/json")
+            .body(Full::new(bytes::Bytes::from(body_str)))
+            .map_err(|e| SidecarError::RequestError(format!("Build request: {e}")))?;
+
+        let resp = sender
+            .send_request(req)
+            .await
+            .map_err(|e| SidecarError::RequestError(format!("Send: {e}")))?;
+
+        if !resp.status().is_success() {
+            return Err(SidecarError::RequestError(format!(
+                "Resume returned {}",
+                resp.status()
+            )));
+        }
+
+        let bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| SidecarError::RequestError(format!("Read body: {e}")))?;
+
+        let data: serde_json::Value = serde_json::from_slice(&bytes.to_bytes())
+            .map_err(|e| SidecarError::RequestError(format!("Parse JSON: {e}")))?;
+
+        data["controlId"]
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| SidecarError::RequestError("No controlId in response".into()))
+    }
+
     /// Locate the sidecar directory.
     ///
     /// Priority:
