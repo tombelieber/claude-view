@@ -186,6 +186,7 @@ fn build_recovered_session(
         git_branch: None,
         worktree_branch: None,
         is_worktree: false,
+        effective_branch: None,
         pid: Some(entry.pid),
         title: String::new(),
         last_user_message: String::new(),
@@ -311,6 +312,7 @@ fn apply_jsonl_metadata(
     session.git_branch = m.git_branch.clone();
     session.worktree_branch = m.worktree_branch.clone();
     session.is_worktree = m.is_worktree;
+    session.effective_branch = m.worktree_branch.clone().or(m.git_branch.clone());
     // PID binding: only assign PID on first discovery. Once bound,
     // the process detector owns liveness checks for that specific PID.
     if session.pid.is_none() {

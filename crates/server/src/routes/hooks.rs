@@ -200,6 +200,7 @@ async fn handle_hook(
                         git_branch: None,
                         worktree_branch: None,
                         is_worktree: false,
+                        effective_branch: None,
                         pid: claude_pid,
                         title: String::new(),
                         last_user_message: payload
@@ -340,6 +341,7 @@ async fn handle_hook(
                     git_branch: None,
                     worktree_branch: None,
                     is_worktree: false,
+                    effective_branch: None,
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
