@@ -37,28 +37,40 @@ async fn no_ghost_sessions_after_restart() {
 
     // First scan (build_index_hints is sync — no .await)
     let hints = build_index_hints(tmp.path());
-    let (indexed, _) = scan_and_index_all(tmp.path(), &db, &hints, None, None, |_| {}).await.unwrap();
+    let (indexed, _) = scan_and_index_all(tmp.path(), &db, &hints, None, None, |_| {}, |_| {})
+        .await
+        .unwrap();
     assert_eq!(indexed, 10);
 
     // Verify all rows have real data
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE message_count > 0")
-        .fetch_one(db.pool()).await.unwrap();
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
     assert_eq!(count.0, 10);
 
     // Simulate restart: scan again without file changes
     let hints2 = build_index_hints(tmp.path());
-    let (indexed2, skipped2) = scan_and_index_all(tmp.path(), &db, &hints2, None, None, |_| {}).await.unwrap();
-    assert_eq!(indexed2, 0);  // nothing changed
+    let (indexed2, skipped2) =
+        scan_and_index_all(tmp.path(), &db, &hints2, None, None, |_| {}, |_| {})
+            .await
+            .unwrap();
+    assert_eq!(indexed2, 0); // nothing changed
     assert_eq!(skipped2, 10); // all skipped
 
     // THE CRITICAL ASSERTION: zero ghost rows
     let ghosts: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0"
-    ).fetch_one(db.pool()).await.unwrap();
+        "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0",
+    )
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
     assert_eq!(ghosts.0, 0, "Ghost sessions detected after restart!");
 
     // All sessions still visible in valid_sessions
     let valid: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-        .fetch_one(db.pool()).await.unwrap();
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
     assert_eq!(valid.0, 10);
 }

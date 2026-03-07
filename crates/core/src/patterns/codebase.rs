@@ -6,10 +6,13 @@ use crate::insights::generator::{generate_insight, GeneratedInsight};
 use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
-use super::{mean, Bucket, best_bucket, relative_improvement, worst_bucket};
+use super::{best_bucket, mean, relative_improvement, worst_bucket, Bucket};
 
 /// Calculate all codebase patterns from session data.
-pub fn calculate_codebase_patterns(sessions: &[SessionInfo], time_range_days: u32) -> Vec<GeneratedInsight> {
+pub fn calculate_codebase_patterns(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Vec<GeneratedInsight> {
     let mut insights = Vec::new();
 
     if let Some(i) = c03_project_complexity(sessions, time_range_days) {
@@ -23,7 +26,10 @@ pub fn calculate_codebase_patterns(sessions: &[SessionInfo], time_range_days: u3
 }
 
 /// C03: Project Complexity - per-project re-edit rates.
-fn c03_project_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Option<GeneratedInsight> {
+fn c03_project_complexity(
+    sessions: &[SessionInfo],
+    time_range_days: u32,
+) -> Option<GeneratedInsight> {
     let editing_sessions: Vec<_> = sessions
         .iter()
         .filter(|s| s.files_edited_count > 0)
@@ -66,7 +72,10 @@ fn c03_project_complexity(sessions: &[SessionInfo], time_range_days: u32) -> Opt
 
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
     let mut vars = HashMap::new();
-    vars.insert("project_name".to_string(), super::format_project_name(&worst.label));
+    vars.insert(
+        "project_name".to_string(),
+        super::format_project_name(&worst.label),
+    );
     vars.insert("multiplier".to_string(), format!("{:.1}", multiplier));
 
     let mut comparison = HashMap::new();
@@ -132,7 +141,10 @@ fn c04_new_vs_existing(sessions: &[SessionInfo], time_range_days: u32) -> Option
     let sample_size: u32 = computed.iter().map(|b| b.count).sum();
 
     let mut vars = HashMap::new();
-    vars.insert("improvement".to_string(), super::format_improvement(improvement * 100.0));
+    vars.insert(
+        "improvement".to_string(),
+        super::format_improvement(improvement * 100.0),
+    );
 
     let mut comparison = HashMap::new();
     for b in &computed {

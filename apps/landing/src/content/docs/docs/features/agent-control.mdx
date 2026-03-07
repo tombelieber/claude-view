@@ -1,0 +1,41 @@
+---
+title: Agent Control
+description: Send messages, approve tool calls, and resume Claude Code sessions from your web dashboard.
+---
+
+Agent Control lets you interact with running Claude Code sessions directly from the web dashboard — approve tool calls, send follow-up messages, review plans, or stop runaway agents.
+
+## What you can do
+
+- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from the dashboard
+- **Send messages** — inject a follow-up message into the agent's conversation
+- **Review plans** — approve or reject agent plans before implementation starts
+- **Answer questions** — respond to agent clarification prompts (AskUserQuestion, Elicitation)
+- **Stop agent** — gracefully stop a running session
+
+## How it works
+
+Agent control uses a Node.js sidecar process powered by the Claude Agent SDK. The sidecar connects to your running Claude Code sessions via IPC and exposes control actions through the claude-view web dashboard.
+
+All control actions work **locally** — no cloud relay needed for web dashboard control.
+
+## Remote control (mobile)
+
+For controlling agents from your phone or a remote browser, the cloud relay is required. The relay forwards encrypted control messages between your device and the desktop server.
+
+> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). The web dashboard is always free.
+
+## Chat interface
+
+The dashboard includes a full chat interface with:
+- Streaming message display
+- Interactive permission cards with countdown auto-deny
+- Plan approval cards
+- Elicitation/question response cards
+- Session resume with cost estimation (ResumePreFlight)
+
+## Related
+
+- [Mission Control →](/docs/features/mission-control/) — live agent monitoring
+- [Mobile Setup →](/docs/guides/mobile-setup/) — iOS and Android app setup
+- [Claude Code Plugin →](/docs/guides/plugin/) — auto-start, 8 tools, 3 skills

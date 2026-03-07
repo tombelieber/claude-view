@@ -11,11 +11,16 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use indicatif::{ProgressBar, ProgressStyle};
-use tracing_subscriber::FmtSubscriber;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
-use claude_view_server::{create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus, SearchIndexHolder};
+use claude_view_server::auth::supabase::fetch_decoding_key;
+use claude_view_server::state::ShareConfig;
+use claude_view_server::{
+    create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus,
+    SearchIndexHolder,
+};
+use indicatif::{ProgressBar, ProgressStyle};
+use tracing_subscriber::FmtSubscriber;
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -33,16 +38,42 @@ fn get_port() -> u16 {
 ///
 /// Priority:
 /// 1. STATIC_DIR environment variable (explicit override)
-/// 2. ./dist directory (if it exists)
-/// 3. None (API-only mode)
+/// 2. Binary-relative ./dist (npx distribution: binary + dist/ are siblings)
+/// 3. CWD-relative ./apps/web/dist (monorepo dev layout via cargo run)
+/// 4. CWD-relative ./dist (legacy flat layout)
+/// 5. None (API-only mode)
 fn get_static_dir() -> Option<PathBuf> {
-    std::env::var("STATIC_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .or_else(|| {
-            let dist = PathBuf::from("dist");
-            dist.exists().then_some(dist)
-        })
+    // 1. Explicit override always wins
+    if let Ok(dir) = std::env::var("STATIC_DIR") {
+        let p = PathBuf::from(&dir);
+        if p.exists() {
+            return Some(p);
+        }
+        tracing::warn!(static_dir = %dir, "STATIC_DIR set but directory does not exist");
+        return None;
+    }
+
+    // 2. Binary-relative: resolves symlinks (Homebrew), works regardless of CWD
+    if let Ok(exe) = std::env::current_exe() {
+        if let Ok(canonical) = exe.canonicalize() {
+            if let Some(exe_dir) = canonical.parent() {
+                let bin_dist = exe_dir.join("dist");
+                if bin_dist.exists() {
+                    return Some(bin_dist);
+                }
+            }
+        }
+    }
+
+    // 3. CWD-relative: monorepo layout (cargo run from repo root)
+    let monorepo_dist = PathBuf::from("apps/web/dist");
+    if monorepo_dist.exists() {
+        return Some(monorepo_dist);
+    }
+
+    // 4. CWD-relative: flat layout fallback
+    let dist = PathBuf::from("dist");
+    dist.exists().then_some(dist)
 }
 
 /// Run git sync with structured logging. Used by both initial and periodic sync.
@@ -127,9 +158,6 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load .env file if present (no-op if missing)
-    dotenvy::dotenv().ok();
-
     // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
     // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
     let subscriber = FmtSubscriber::builder()
@@ -237,7 +265,10 @@ async fn main() -> Result<()> {
                 Arc::new(RwLock::new(Some(Arc::new(idx))))
             }
             Err(e) => {
-                tracing::warn!("Failed to open search index: {}. Search will be unavailable.", e);
+                tracing::warn!(
+                    "Failed to open search index: {}. Search will be unavailable.",
+                    e
+                );
                 Arc::new(RwLock::new(None))
             }
         }
@@ -246,8 +277,42 @@ async fn main() -> Result<()> {
     // Step 3b: Create shutdown channel for SSE stream termination on Ctrl+C
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Step 4: Build the Axum app with indexing state, registry holder, and search index
+    // Step 4: Load Supabase JWKS for JWT validation (sharing feature)
+    let jwks = if let Ok(supabase_url) = std::env::var("SUPABASE_URL") {
+        match fetch_decoding_key(&supabase_url).await {
+            Ok(cache) => {
+                tracing::info!("Supabase JWKS loaded");
+                Some(Arc::new(tokio::sync::RwLock::new(cache)))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load Supabase JWKS: {e}. Auth will be disabled.");
+                None
+            }
+        }
+    } else {
+        tracing::info!("SUPABASE_URL not set — auth disabled (dev mode)");
+        None
+    };
+
+    let share = match (
+        std::env::var("SHARE_WORKER_URL"),
+        std::env::var("SHARE_VIEWER_URL"),
+    ) {
+        (Ok(worker_url), Ok(viewer_url)) => Some(ShareConfig {
+            worker_url,
+            viewer_url,
+            http_client: reqwest::Client::new(),
+        }),
+        _ => {
+            tracing::info!("SHARE_WORKER_URL/SHARE_VIEWER_URL not set — sharing disabled");
+            None
+        }
+    };
+
+    // Step 4b: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
+    let sidecar = Arc::new(claude_view_server::SidecarManager::new());
+    let sidecar_for_shutdown = sidecar.clone();
     let app = create_app_full(
         db.clone(),
         indexing.clone(),
@@ -255,6 +320,9 @@ async fn main() -> Result<()> {
         search_index_holder.clone(),
         shutdown_rx,
         static_dir,
+        sidecar,
+        jwks,
+        share,
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
@@ -281,7 +349,8 @@ async fn main() -> Result<()> {
         let hint_count = hints.len();
         idx_state.set_sessions_found(hint_count);
         // Count unique projects from hints for the "ready" SSE event
-        let unique_projects: std::collections::HashSet<&str> = hints.values()
+        let unique_projects: std::collections::HashSet<&str> = hints
+            .values()
             .filter_map(|h| h.project_display_name.as_deref())
             .collect();
         idx_state.set_projects_found(unique_projects.len());
@@ -315,8 +384,14 @@ async fn main() -> Result<()> {
                 tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
             }
             Ok(stored) => {
-                let reason = if stored.is_none() { "first run" } else { "registry changed" };
-                tracing::info!("Registry hash mismatch ({reason}), marking all sessions for re-index");
+                let reason = if stored.is_none() {
+                    "first run"
+                } else {
+                    "registry changed"
+                };
+                tracing::info!(
+                    "Registry hash mismatch ({reason}), marking all sessions for re-index"
+                );
                 match idx_db.mark_all_sessions_for_reindex().await {
                     Ok(n) => tracing::info!("Marked {n} sessions for re-index"),
                     Err(e) => tracing::warn!("Failed to mark sessions for re-index: {e}"),
@@ -335,20 +410,40 @@ async fn main() -> Result<()> {
         let search_for_scan = idx_search.read().unwrap().clone();
 
         // 3. Single-pass scan: parse + upsert for each changed file
-        idx_state.set_total(hint_count);
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
-        match scan_and_index_all(&claude_dir, &idx_db, &hints, search_for_scan, Some(registry_arc.clone()), move |_session_id| {
-            state_for_progress.increment_indexed();
-        }).await {
+        let state_for_total = idx_state.clone();
+        match scan_and_index_all(
+            &claude_dir,
+            &idx_db,
+            &hints,
+            search_for_scan,
+            Some(registry_arc.clone()),
+            move |_session_id| {
+                state_for_progress.increment_indexed();
+            },
+            move |total| {
+                state_for_total.set_total(total);
+            },
+        )
+        .await
+        {
             Ok((indexed, skipped)) => {
-                tracing::info!(indexed, skipped, elapsed_ms = index_start.elapsed().as_millis() as u64, "Startup scan complete");
+                tracing::info!(
+                    indexed,
+                    skipped,
+                    elapsed_ms = index_start.elapsed().as_millis() as u64,
+                    "Startup scan complete"
+                );
 
                 // Persist index metadata so Settings > Data Status shows real values.
                 let duration_ms = index_start.elapsed().as_millis() as i64;
                 let sessions = idx_db.get_session_count().await.unwrap_or(0);
                 let projects = idx_db.get_project_count().await.unwrap_or(0);
-                if let Err(e) = idx_db.update_index_metadata_on_success(duration_ms, sessions, projects).await {
+                if let Err(e) = idx_db
+                    .update_index_metadata_on_success(duration_ms, sessions, projects)
+                    .await
+                {
                     tracing::warn!(error = %e, "Failed to persist index metadata");
                 }
 
@@ -383,11 +478,25 @@ async fn main() -> Result<()> {
                     let hints = build_index_hints(&claude_dir);
                     let rescan_start = Instant::now();
                     let search_rescan = idx_search.read().unwrap().clone();
-                    match scan_and_index_all(&claude_dir, &idx_db, &hints, search_rescan, Some(registry_arc.clone()), |_| {}).await {
+                    match scan_and_index_all(
+                        &claude_dir,
+                        &idx_db,
+                        &hints,
+                        search_rescan,
+                        Some(registry_arc.clone()),
+                        |_| {},
+                        |_| {},
+                    )
+                    .await
+                    {
                         Ok((indexed, _)) => {
                             if indexed > 0 {
                                 tracing::info!(indexed, "Periodic re-scan indexed new sessions");
-                                record_sync("periodic-rescan", rescan_start.elapsed(), Some(indexed as u64));
+                                record_sync(
+                                    "periodic-rescan",
+                                    rescan_start.elapsed(),
+                                    Some(indexed as u64),
+                                );
                             }
                         }
                         Err(e) => tracing::warn!(error = %e, "Periodic re-scan failed (non-fatal)"),
@@ -436,13 +545,13 @@ async fn main() -> Result<()> {
 
         // Auto-open browser on first startup only (not cargo-watch restarts).
         // We detect restarts via a lock file that persists across restarts.
-        let lock_dir = claude_view_core::paths::lock_dir()
-            .unwrap_or_else(|| std::env::temp_dir());
+        let lock_dir = claude_view_core::paths::lock_dir().unwrap_or_else(std::env::temp_dir);
         let _ = std::fs::create_dir_all(&lock_dir);
         let lock_path = lock_dir.join(format!("claude-view-{}.lock", port));
         let should_open = if lock_path.exists() {
             // Lock exists — check if it's stale (older than 5 seconds means fresh start, not a restart)
-            lock_path.metadata()
+            lock_path
+                .metadata()
                 .and_then(|m| m.modified())
                 .map(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(5))
                 .unwrap_or(true)
@@ -452,7 +561,8 @@ async fn main() -> Result<()> {
         // Touch the lock file
         let _ = std::fs::write(&lock_path, b"");
 
-        if should_open {
+        // Only open browser if not suppressed (hook starts set CLAUDE_VIEW_NO_OPEN=1)
+        if should_open && std::env::var("CLAUDE_VIEW_NO_OPEN").unwrap_or_default() != "1" {
             if let Err(e) = open::that(&browse_url) {
                 tracing::debug!("Could not open browser: {e}");
             }
@@ -565,18 +675,12 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 tracing::info!("Periodic facet re-ingest starting");
-                match claude_view_server::facet_ingest::run_facet_ingest(
-                    &db,
-                    &ingest_state,
-                    None,
-                )
-                .await
+                match claude_view_server::facet_ingest::run_facet_ingest(&db, &ingest_state, None)
+                    .await
                 {
                     Ok(n) => {
                         if n > 0 {
-                            tracing::info!(
-                                "Periodic facet ingest: imported {n} new facets"
-                            );
+                            tracing::info!("Periodic facet ingest: imported {n} new facets");
                         }
                     }
                     Err(e) => tracing::warn!("Periodic facet ingest failed: {e}"),
@@ -608,6 +712,9 @@ async fn main() -> Result<()> {
 
             // Clean up hooks from ~/.claude/settings.json
             claude_view_server::live::hook_registrar::cleanup(shutdown_port);
+
+            // Shut down Node.js sidecar if running
+            sidecar_for_shutdown.shutdown();
 
             // Give SSE streams a moment to see the shutdown signal and break.
             // Second Ctrl+C skips the wait for impatient users.

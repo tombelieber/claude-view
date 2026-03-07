@@ -18,7 +18,7 @@ use crate::state::AppState;
 
 /// JSON snapshot of current indexing progress (for polling).
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexingStatusResponse {
     pub phase: String,
@@ -45,9 +45,7 @@ pub fn router() -> Router<Arc<AppState>> {
 ///
 /// Returns the current phase, indexed count, and total count.
 /// Designed for polling (every 200–300 ms) from the frontend during rebuilds.
-pub async fn indexing_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<IndexingStatusResponse> {
+pub async fn indexing_status(State(state): State<Arc<AppState>>) -> Json<IndexingStatusResponse> {
     let indexing = &state.indexing;
     let status = indexing.status();
 
@@ -214,8 +212,8 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
-    use crate::indexing_state::IndexingState;
     use crate::create_app_with_indexing;
+    use crate::indexing_state::IndexingState;
     use claude_view_db::Database;
 
     #[tokio::test]

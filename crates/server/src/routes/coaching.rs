@@ -49,7 +49,7 @@ pub struct ApplyRuleRequest {
 
 /// A coaching rule parsed from a `coaching-*.md` file.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct CoachingRule {
@@ -64,7 +64,7 @@ pub struct CoachingRule {
 
 /// Response for GET /api/coaching/rules.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct ListRulesResponse {
@@ -75,7 +75,7 @@ pub struct ListRulesResponse {
 
 /// Response for DELETE /api/coaching/rules/{id}.
 #[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct RemoveRuleResponse {
@@ -124,9 +124,7 @@ fn confidence_label(impact: f64) -> &'static str {
 // ============================================================================
 
 /// GET /api/coaching/rules — List all coaching rules from the rules directory.
-async fn list_rules(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<Json<ListRulesResponse>> {
+async fn list_rules(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListRulesResponse>> {
     let rules = read_all_rules(&state.rules_dir);
     let count = rules.len();
     Ok(Json(ListRulesResponse {
@@ -174,7 +172,13 @@ async fn apply_rule(
          ---\n\
          \n\
          {}\n",
-        req.pattern_id, req.title, date, impact_pct, confidence, req.sample_size, req.recommendation,
+        req.pattern_id,
+        req.title,
+        date,
+        impact_pct,
+        confidence,
+        req.sample_size,
+        req.recommendation,
     );
 
     // Write file
@@ -227,10 +231,7 @@ async fn remove_rule(
 
     tracing::info!(pattern_id = %id, file = %file_path.display(), "Coaching rule removed");
 
-    Ok(Json(RemoveRuleResponse {
-        removed: true,
-        id,
-    }))
+    Ok(Json(RemoveRuleResponse { removed: true, id }))
 }
 
 // ============================================================================
@@ -320,9 +321,9 @@ mod tests {
         http::{Method, Request, StatusCode},
         Router,
     };
-    use tower::ServiceExt;
-    use tempfile::TempDir;
     use claude_view_db::Database;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -331,9 +332,7 @@ mod tests {
     fn build_app_with_rules_dir(db: Database, rules_dir: PathBuf) -> Router {
         let mut state = AppState::new(db);
         Arc::get_mut(&mut state).unwrap().rules_dir = rules_dir;
-        Router::new()
-            .nest("/api", router())
-            .with_state(state)
+        Router::new().nest("/api", router()).with_state(state)
     }
 
     async fn do_request(
@@ -506,8 +505,7 @@ mod tests {
 
         // Now delete it
         let app = build_app_with_rules_dir(test_db().await, rules_dir.clone());
-        let (status, body) =
-            do_request(app, Method::DELETE, "/api/coaching/rules/P1", None).await;
+        let (status, body) = do_request(app, Method::DELETE, "/api/coaching/rules/P1", None).await;
         assert_eq!(status, StatusCode::OK);
 
         let resp: RemoveRuleResponse = serde_json::from_str(&body).unwrap();
@@ -597,8 +595,7 @@ mod tests {
         assert_eq!(files.len(), 1, "Should have exactly 1 file, not 2");
 
         // Verify content is the updated version
-        let content =
-            std::fs::read_to_string(rules_dir.join("coaching-P1.md")).unwrap();
+        let content = std::fs::read_to_string(rules_dir.join("coaching-P1.md")).unwrap();
         assert!(content.contains("Updated version."));
     }
 
@@ -635,8 +632,7 @@ mod tests {
 
         let app = build_app_with_rules_dir(test_db().await, rules_dir);
 
-        let (status, _) =
-            do_request(app, Method::DELETE, "/api/coaching/rules/nope", None).await;
+        let (status, _) = do_request(app, Method::DELETE, "/api/coaching/rules/nope", None).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }

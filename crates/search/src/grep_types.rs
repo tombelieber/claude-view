@@ -4,7 +4,10 @@ use ts_rs::TS;
 /// Response from the `/api/grep` endpoint (regex search over raw JSONL files).
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(
+    feature = "codegen",
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 pub struct GrepResponse {
     pub pattern: String,
     pub total_matches: usize,
@@ -17,7 +20,10 @@ pub struct GrepResponse {
 /// One session that matched the grep pattern.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(
+    feature = "codegen",
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 pub struct GrepSessionHit {
     pub session_id: String,
     pub project: String,
@@ -29,7 +35,10 @@ pub struct GrepSessionHit {
 /// One matching line within a session JSONL file.
 #[derive(Debug, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(
+    feature = "codegen",
+    ts(export, export_to = "../../../src/types/generated/")
+)]
 pub struct GrepLineMatch {
     pub line_number: usize,
     pub content: String,

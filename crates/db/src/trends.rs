@@ -64,7 +64,7 @@ pub fn previous_week_bounds() -> (i64, i64) {
 
 /// A single trend metric comparing current vs previous period.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TrendMetric {
     /// Current period value.
@@ -106,7 +106,7 @@ impl TrendMetric {
 
 /// Collection of all week-over-week trend metrics.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekTrends {
     /// Session count trend.
@@ -127,7 +127,7 @@ pub struct WeekTrends {
 
 /// Index metadata for data freshness tracking.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {
     /// Unix timestamp of last successful index completion.
@@ -708,16 +708,16 @@ mod tests {
             0,
             0, // lines_added, lines_removed, loc_source
             0,
-            0,    // ai_lines_added, ai_lines_removed
-            None, // work_type
-            None, // git_branch
-            None, // primary_model
-            None, // last_message_at
-            None, // first_user_prompt
-            0, // total_task_time_seconds
-            None, // longest_task_seconds
-            None, // longest_task_preview
-            0.0,  // total_cost_usd
+            0,         // ai_lines_added, ai_lines_removed
+            None,      // work_type
+            None,      // git_branch
+            None,      // primary_model
+            None,      // last_message_at
+            None,      // first_user_prompt
+            0,         // total_task_time_seconds
+            None,      // longest_task_seconds
+            None,      // longest_task_preview
+            Some(0.0), // total_cost_usd
         )
         .await
         .unwrap();
@@ -904,6 +904,7 @@ mod tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            display_name: project.to_string(),
             git_root: None,
             file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
             modified_at,
@@ -967,6 +968,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 

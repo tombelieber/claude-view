@@ -21,6 +21,9 @@ path = "src/main.rs"
 [features]
 default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
 
+# Gate ts-rs file generation. Not in default — only generate-types.sh enables this.
+codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen"]
+
 # Dashboard time range selector (7d/30d/90d/all-time)
 time-range = []
 
@@ -44,6 +47,7 @@ axum = { workspace = true }
 tower-http = { workspace = true }
 tower = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -74,7 +78,15 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
 base64 = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
-dotenvy = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+aes-gcm = "0.10.3"
+flate2 = "1.1.9"
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

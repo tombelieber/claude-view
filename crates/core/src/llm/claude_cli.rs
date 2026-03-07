@@ -5,7 +5,16 @@ use async_trait::async_trait;
 use tokio::process::Command as TokioCommand;
 
 use super::provider::LlmProvider;
-use super::types::{ClassificationRequest, ClassificationResponse, CompletionRequest, CompletionResponse, LlmError};
+use super::types::{
+    ClassificationRequest, ClassificationResponse, ClassificationUsage, CompletionRequest,
+    CompletionResponse, LlmError,
+};
+
+/// Return type for streaming completions: a text-chunk receiver paired with a task handle.
+type StreamResult = (
+    tokio::sync::mpsc::Receiver<String>,
+    tokio::task::JoinHandle<Result<(), LlmError>>,
+);
 
 /// LLM provider that uses the Claude CLI binary.
 ///
@@ -38,16 +47,7 @@ impl ClaudeCliProvider {
     /// When the CLI exits, the channel closes.
     ///
     /// Uses `--output-format text` (not json) since we want raw text streaming.
-    pub fn stream_completion(
-        &self,
-        prompt: String,
-    ) -> Result<
-        (
-            tokio::sync::mpsc::Receiver<String>,
-            tokio::task::JoinHandle<Result<(), LlmError>>,
-        ),
-        LlmError,
-    > {
+    pub fn stream_completion(&self, prompt: String) -> Result<StreamResult, LlmError> {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         // Strip ALL Claude Code env vars to prevent nested session detection.
@@ -72,8 +72,7 @@ impl ClaudeCliProvider {
             "claude CLI stream_completion(): spawning"
         );
 
-        let mut cmd =
-            tokio::process::Command::new(crate::resolved_cli_path().unwrap_or("claude"));
+        let mut cmd = tokio::process::Command::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
             "-p",
             "--output-format",
@@ -94,9 +93,10 @@ impl ClaudeCliProvider {
             LlmError::SpawnFailed(e.to_string())
         })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            LlmError::SpawnFailed("failed to capture stdout".to_string())
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| LlmError::SpawnFailed("failed to capture stdout".to_string()))?;
 
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
 
@@ -186,7 +186,11 @@ impl ClaudeCliProvider {
         // future CLAUDE-prefixed vars discovered at runtime. Previous approach
         // relied solely on std::env::vars() iteration, which can miss vars with
         // unusual values on macOS.
-        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let known_vars = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_SSE_PORT",
+            "CLAUDE_CODE_ENTRYPOINT",
+        ];
         let extra_vars: Vec<String> = std::env::vars()
             .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
             .map(|(k, _)| k)
@@ -205,15 +209,15 @@ impl ClaudeCliProvider {
 
         let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
-                "-p",
-                "--output-format",
-                "json",
-                "--model",
-                &self.model,
-                prompt,
-            ])
-            // Null stdin so the child never blocks waiting for input
-            .stdin(std::process::Stdio::null());
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            &self.model,
+            prompt,
+        ])
+        // Null stdin so the child never blocks waiting for input
+        .stdin(std::process::Stdio::null());
         // Strip ALL Claude-prefixed env vars to prevent nested session detection
         for var in &all_stripped {
             cmd.env_remove(var);
@@ -223,7 +227,10 @@ impl ClaudeCliProvider {
         let output = timeout(timeout_duration, future)
             .await
             .map_err(|_| {
-                tracing::error!(elapsed_ms = t0.elapsed().as_millis() as u64, "claude CLI: timed out");
+                tracing::error!(
+                    elapsed_ms = t0.elapsed().as_millis() as u64,
+                    "claude CLI: timed out"
+                );
                 LlmError::Timeout(self.timeout_secs)
             })?
             .map_err(|e| {
@@ -240,7 +247,11 @@ impl ClaudeCliProvider {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        tracing::info!(elapsed_ms, stdout_len = stdout.len(), "claude CLI: response received");
+        tracing::info!(
+            elapsed_ms,
+            stdout_len = stdout.len(),
+            "claude CLI: response received"
+        );
 
         serde_json::from_str(&stdout).map_err(|e| {
             tracing::warn!(stdout = %&stdout[..stdout.len().min(500)], "claude CLI: returned non-JSON");
@@ -274,7 +285,11 @@ impl LlmProvider for ClaudeCliProvider {
         };
 
         // Strip ALL Claude Code env vars to prevent nested session detection.
-        let known_vars = ["CLAUDECODE", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_ENTRYPOINT"];
+        let known_vars = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_SSE_PORT",
+            "CLAUDE_CODE_ENTRYPOINT",
+        ];
         let extra_vars: Vec<String> = std::env::vars()
             .filter(|(k, _)| k.starts_with("CLAUDE") && !known_vars.contains(&k.as_str()))
             .map(|(k, _)| k)
@@ -294,14 +309,14 @@ impl LlmProvider for ClaudeCliProvider {
 
         let mut cmd = TokioCommand::new(crate::resolved_cli_path().unwrap_or("claude"));
         cmd.args([
-                "-p",
-                "--output-format",
-                "json",
-                "--model",
-                &self.model,
-                &prompt,
-            ])
-            .stdin(std::process::Stdio::null());
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            &self.model,
+            &prompt,
+        ])
+        .stdin(std::process::Stdio::null());
         for var in &all_stripped {
             cmd.env_remove(var);
         }
@@ -310,7 +325,10 @@ impl LlmProvider for ClaudeCliProvider {
         let output = timeout(timeout_duration, future)
             .await
             .map_err(|_| {
-                tracing::error!(elapsed_ms = start.elapsed().as_millis() as u64, "claude CLI complete(): timed out");
+                tracing::error!(
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "claude CLI complete(): timed out"
+                );
                 LlmError::Timeout(self.timeout_secs)
             })?
             .map_err(|e| {
@@ -404,6 +422,13 @@ L3: feature→new-component|add-functionality|integration, bugfix→error-fix|lo
 pub fn parse_classification_response(
     json: serde_json::Value,
 ) -> Result<ClassificationResponse, LlmError> {
+    let wrapper_usage = extract_cli_usage(&json);
+    let wrapper_total_cost_usd = json.get("total_cost_usd").and_then(|v| v.as_f64());
+    let wrapper_model = json
+        .get("modelUsage")
+        .and_then(|v| v.as_object())
+        .and_then(|m| m.keys().next().cloned());
+
     // Claude CLI wraps output in { "result": "..." } — check for that
     let inner = if let Some(result_str) = json.get("result").and_then(|v| v.as_str()) {
         // Try direct parse first
@@ -422,9 +447,20 @@ pub fn parse_classification_response(
         json
     };
 
-    serde_json::from_value(inner).map_err(|e| {
-        LlmError::InvalidFormat(format!("response missing required fields: {}", e))
-    })
+    let mut parsed: ClassificationResponse = serde_json::from_value(inner)
+        .map_err(|e| LlmError::InvalidFormat(format!("response missing required fields: {}", e)))?;
+
+    if parsed.usage.is_none() {
+        parsed.usage = wrapper_usage;
+    }
+    if parsed.total_cost_usd.is_none() {
+        parsed.total_cost_usd = wrapper_total_cost_usd;
+    }
+    if parsed.model.is_none() {
+        parsed.model = wrapper_model;
+    }
+
+    Ok(parsed)
 }
 
 /// Extract the first JSON object `{...}` from a text string.
@@ -448,6 +484,20 @@ fn extract_json_from_text(text: &str) -> Option<serde_json::Value> {
     }
     let json_str = &text[start..end?];
     serde_json::from_str(json_str).ok()
+}
+
+fn extract_cli_usage(json: &serde_json::Value) -> Option<ClassificationUsage> {
+    let usage = json.get("usage")?;
+    Some(ClassificationUsage {
+        input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()),
+        output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()),
+        cache_creation_input_tokens: usage
+            .get("cache_creation_input_tokens")
+            .and_then(|v| v.as_u64()),
+        cache_read_input_tokens: usage
+            .get("cache_read_input_tokens")
+            .and_then(|v| v.as_u64()),
+    })
 }
 
 #[cfg(test)]
@@ -522,6 +572,34 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_classification_response_wrapper_extracts_telemetry() {
+        let json = serde_json::json!({
+            "type": "result",
+            "subtype": "success",
+            "result": r#"{"category_l1":"code_work","category_l2":"bugfix","category_l3":"error-fix","confidence":0.91}"#,
+            "usage": {
+                "input_tokens": 1200,
+                "output_tokens": 340,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 45000
+            },
+            "modelUsage": {
+                "claude-haiku-4-5-20251001": {
+                    "inputTokens": 1200,
+                    "outputTokens": 340
+                }
+            },
+            "total_cost_usd": 0.006163
+        });
+
+        let resp = parse_classification_response(json).unwrap();
+        assert_eq!(resp.category_l1, "code_work");
+        assert_eq!(resp.total_cost_usd, Some(0.006163));
+        assert_eq!(resp.model.as_deref(), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(resp.total_tokens_used(), Some(46540));
+    }
+
+    #[test]
     fn test_parse_classification_response_missing_fields() {
         let json = serde_json::json!({
             "category_l1": "code_work"
@@ -555,17 +633,13 @@ mod tests {
             "modelUsage": {
                 "claude-haiku-4-5-20251001": {
                     "inputTokens": 1200,
-                    "outputTokens": 340,
-                    "costUSD": 0.006163
+                    "outputTokens": 340
                 }
             },
             "total_cost_usd": 0.006163
         });
 
-        let content = cli_json["result"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let content = cli_json["result"].as_str().unwrap_or("").to_string();
         assert_eq!(content, "Here is the report content...");
 
         let model = cli_json["modelUsage"]

@@ -1,0 +1,88 @@
+---
+title: API Reference
+description: HTTP API endpoints exposed by the claude-view server.
+---
+
+The claude-view server exposes a REST API on `http://localhost:47892/api`. All endpoints return JSON.
+
+## Sessions
+
+### `GET /api/sessions`
+
+Returns a list of sessions.
+
+**Query params:**
+- `limit` — max results (default: 50)
+- `offset` — pagination offset
+- `project` — filter by project name
+- `model` — filter by model ID
+
+### `GET /api/sessions/{id}`
+
+Returns full session detail including messages and metrics.
+
+### `GET /api/sessions/{id}/messages`
+
+Returns all messages for a session.
+
+### `GET /api/sessions/{id}/parsed`
+
+Returns parsed session data.
+
+## Live sessions
+
+### `GET /api/live/sessions`
+
+Returns currently active (running) sessions.
+
+### `GET /api/live/sessions/{id}`
+
+Returns detail for a specific live session.
+
+### `GET /api/live/summary`
+
+Returns aggregate stats for today's sessions.
+
+### `GET /api/live/stream`
+
+Server-Sent Events stream. Connect with `EventSource` for real-time updates.
+
+**Events:**
+- `session_update` — session status changed
+- `live_update` — live session data refreshed
+
+### `GET /api/live/pricing`
+
+Returns current model pricing used for cost calculations.
+
+## Stats
+
+### `GET /api/stats/dashboard`
+
+Returns dashboard overview: total sessions, costs, fluency score, trends.
+
+### `GET /api/stats/storage`
+
+Returns storage usage statistics.
+
+## Search
+
+### `GET /api/search?q=<query>`
+
+Full-text search across all session content.
+
+**Query params:**
+- `q` — search query (required)
+- `limit` — max results (default: 20)
+
+## Score
+
+### `GET /api/score`
+
+Returns the AI Fluency Score (0–100) with breakdown.
+
+## Health
+
+### `GET /api/health`
+
+Health check endpoint. Returns server status.

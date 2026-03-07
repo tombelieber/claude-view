@@ -1,0 +1,41 @@
+name = "claude-view-share-worker-prod"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]  # Required by @sentry/cloudflare (uses Node.js APIs)
+workers_dev = true
+routes = [
+  { pattern = "api-share.claudeview.ai", custom_domain = true }
+]
+
+# Secrets (set via `wrangler secret put`): SUPABASE_URL
+[vars]
+ENVIRONMENT = "production"
+POSTHOG_API_KEY = "" # fill after PostHog setup
+
+[[r2_buckets]]
+binding = "SHARE_BUCKET"
+bucket_name = "claude-view-share-r2-prod"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "claude-view-share-d1-prod"
+database_id = "44aa8a50-580a-4c48-a9b9-84929d51546c"
+
+[triggers]
+crons = ["0 * * * *"] # hourly cleanup of pending shares
+
+[env.dev]
+name = "claude-view-share-worker-dev"
+# Secrets (set via `wrangler secret put --env dev`): SUPABASE_URL
+[env.dev.vars]
+ENVIRONMENT = "development"
+POSTHOG_API_KEY = ""    # fill after PostHog setup
+
+[[env.dev.r2_buckets]]
+binding = "SHARE_BUCKET"
+bucket_name = "claude-view-share-r2-dev"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "claude-view-share-d1-dev"
+database_id = "56106973-bb11-422f-bf17-54165ab4e214"

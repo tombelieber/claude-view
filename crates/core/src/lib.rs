@@ -1,10 +1,12 @@
 // crates/core/src/lib.rs
 pub mod accumulator;
+pub mod analytics_scope_contract;
 pub mod branch_filter;
 pub mod category;
 pub mod classification;
 pub mod cli;
 pub mod contribution;
+pub mod credentials;
 pub mod discovery;
 pub mod error;
 pub mod facets;
@@ -19,14 +21,16 @@ pub mod paths;
 pub mod patterns;
 pub mod pricing;
 pub mod progress;
-pub mod report;
 pub mod registry;
+pub mod report;
 pub mod session_index;
 pub mod subagent;
 pub mod tail;
+pub mod time_range_contract;
 pub mod types;
 pub mod work_type;
 
+pub use analytics_scope_contract::*;
 pub use branch_filter::*;
 pub use category::*;
 pub use cli::{resolved_cli_path, ClaudeCliStatus};
@@ -38,5 +42,6 @@ pub use metrics::*;
 pub use parser::*;
 pub use registry::*;
 pub use session_index::*;
+pub use time_range_contract::*;
 pub use types::*;
 pub use work_type::*;

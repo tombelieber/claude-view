@@ -40,9 +40,8 @@ mod tests {
 
     #[test]
     fn test_resolve_subagent_path() {
-        let parent_jsonl = PathBuf::from(
-            "/home/user/.claude/projects/my-project/abc123-def456.jsonl",
-        );
+        let parent_jsonl =
+            PathBuf::from("/home/user/.claude/projects/my-project/abc123-def456.jsonl");
         let agent_id = "a951849";
         let resolved = resolve_subagent_path(&parent_jsonl, agent_id);
         assert_eq!(

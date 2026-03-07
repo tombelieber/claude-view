@@ -17,9 +17,18 @@ use ts_rs::TS;
 use claude_view_core::insights::generator::GeneratedInsight;
 use claude_view_core::patterns::calculate_all_patterns;
 use claude_view_core::types::SessionInfo;
+use claude_view_core::{
+    AnalyticsScopeMeta, AnalyticsSessionBreakdown, BenchmarksResponse, EffectiveRangeMeta,
+    EffectiveRangeSource,
+};
+use claude_view_db::insights_trends::{CategoryDataPoint, HeatmapCell, MetricDataPoint};
 
 use crate::error::{ApiError, ApiResult};
+use crate::metrics::{record_time_range_resolution, record_time_range_resolution_error};
 use crate::state::AppState;
+use crate::time_range::{
+    resolve_from_to_or_all_time, resolve_range_param_or_all_time, ResolveFromToInput,
+};
 
 // ============================================================================
 // Categories response types (Phase 6)
@@ -27,7 +36,7 @@ use crate::state::AppState;
 
 /// Top-level category breakdown percentages.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryBreakdown {
     pub code_work: CategorySummary,
@@ -38,7 +47,7 @@ pub struct CategoryBreakdown {
 
 /// Count and percentage for a single L1 category.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategorySummary {
     pub count: u32,
@@ -47,7 +56,7 @@ pub struct CategorySummary {
 
 /// Hierarchical category node for treemap.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryNode {
     /// Hierarchical ID: "code_work", "code_work/feature", "code_work/feature/new-component"
@@ -77,7 +86,7 @@ pub struct CategoryNode {
 
 /// Full categories response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesResponse {
     /// High-level breakdown percentages
@@ -86,11 +95,23 @@ pub struct CategoriesResponse {
     pub categories: Vec<CategoryNode>,
     /// User's overall averages for comparison
     pub overall_averages: OverallAverages,
+    /// Response metadata.
+    pub meta: CategoriesMeta,
+}
+
+/// Categories response metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct CategoriesMeta {
+    pub effective_range: EffectiveRangeMeta,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
 }
 
 /// Overall averages across all sessions for comparison.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OverallAverages {
     pub avg_reedit_rate: f64,
@@ -105,7 +126,7 @@ pub struct OverallAverages {
 
 /// Full insights API response.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsResponse {
     /// Hero insight (highest impact).
@@ -122,7 +143,7 @@ pub struct InsightsResponse {
 
 /// Overview statistics for the insights page.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsOverview {
     pub work_breakdown: WorkBreakdown,
@@ -132,7 +153,7 @@ pub struct InsightsOverview {
 
 /// Work type breakdown.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkBreakdown {
     pub total_sessions: u32,
@@ -143,7 +164,7 @@ pub struct WorkBreakdown {
 
 /// Efficiency trend stats.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyStats {
     pub avg_reedit_rate: f64,
@@ -154,7 +175,7 @@ pub struct EfficiencyStats {
 
 /// Best time of day/week stats.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BestTimeStats {
     pub day_of_week: String,
@@ -164,7 +185,7 @@ pub struct BestTimeStats {
 
 /// Patterns grouped by impact tier.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PatternGroups {
     pub high: Vec<GeneratedInsight>,
@@ -174,7 +195,7 @@ pub struct PatternGroups {
 
 /// Classification coverage status.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationCoverage {
     pub classified: u32,
@@ -185,7 +206,7 @@ pub struct ClassificationCoverage {
 
 /// Response metadata.
 #[derive(Debug, Clone, Serialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsMeta {
     #[ts(type = "number")]
@@ -194,8 +215,54 @@ pub struct InsightsMeta {
     pub time_range_start: i64,
     #[ts(type = "number")]
     pub time_range_end: i64,
+    pub effective_range: EffectiveRangeMeta,
     pub patterns_evaluated: u32,
     pub patterns_returned: u32,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
+}
+
+/// Trends response metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsTrendsMeta {
+    pub effective_range: EffectiveRangeMeta,
+    #[serde(flatten)]
+    pub analytics_scope: AnalyticsScopeMeta,
+}
+
+/// Full trends response wrapper with additive metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsTrendsResponse {
+    pub metric: String,
+    pub data_points: Vec<MetricDataPoint>,
+    pub average: f64,
+    pub trend: f64,
+    pub trend_direction: String,
+    pub insight: String,
+    pub category_evolution: Option<Vec<CategoryDataPoint>>,
+    pub category_insight: Option<String>,
+    pub classification_required: bool,
+    pub activity_heatmap: Vec<HeatmapCell>,
+    pub heatmap_insight: String,
+    pub period_start: String,
+    pub period_end: String,
+    #[ts(type = "number")]
+    pub total_sessions: i64,
+    pub meta: InsightsTrendsMeta,
+}
+
+/// Benchmarks response wrapper with additive metadata.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct BenchmarksResponseWithMeta {
+    #[serde(flatten)]
+    pub base: BenchmarksResponse,
+    pub meta: AnalyticsScopeMeta,
 }
 
 // ============================================================================
@@ -204,9 +271,9 @@ pub struct InsightsMeta {
 
 #[derive(Debug, Deserialize)]
 pub struct InsightsQuery {
-    /// Period start (unix timestamp). Defaults to 30 days ago.
+    /// Period start (unix timestamp).
     pub from: Option<i64>,
-    /// Period end (unix timestamp). Defaults to now.
+    /// Period end (unix timestamp).
     pub to: Option<i64>,
     /// Minimum impact score (0.0-1.0). Defaults to 0.3.
     pub min_impact: Option<f64>,
@@ -225,7 +292,6 @@ struct LightSession {
     id: String,
     project_id: String,
     project_path: String,
-    #[allow(dead_code)]
     project_display_name: String,
     file_path: String,
     last_message_at: Option<i64>,
@@ -298,13 +364,13 @@ impl LightSession {
     fn into_session_info(self) -> SessionInfo {
         let files_edited: Vec<String> =
             serde_json::from_str(&self.files_edited).unwrap_or_default();
-        let files_read: Vec<String> =
-            serde_json::from_str(&self.files_read).unwrap_or_default();
+        let files_read: Vec<String> = serde_json::from_str(&self.files_read).unwrap_or_default();
 
         SessionInfo {
             id: self.id,
             project: self.project_id.clone(),
             project_path: self.project_path,
+            display_name: self.project_display_name,
             git_root: None,
             file_path: self.file_path,
             modified_at: self.last_message_at.filter(|&ts| ts > 0).unwrap_or(0),
@@ -367,8 +433,36 @@ impl LightSession {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
+}
+
+async fn fetch_analytics_scope_meta_for_range(
+    state: &Arc<AppState>,
+    from: i64,
+    to: i64,
+) -> ApiResult<AnalyticsScopeMeta> {
+    let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions
+        WHERE last_message_at >= ?1
+          AND last_message_at <= ?2
+        "#,
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_one(state.db.pool())
+    .await
+    .map_err(|e| ApiError::Internal(format!("Failed to fetch insights session breakdown: {e}")))?;
+
+    Ok(AnalyticsScopeMeta::new(AnalyticsSessionBreakdown::new(
+        primary_sessions,
+        sidechain_sessions,
+    )))
 }
 
 // ============================================================================
@@ -381,8 +475,51 @@ pub async fn get_insights(
     Query(query): Query<InsightsQuery>,
 ) -> ApiResult<Json<InsightsResponse>> {
     let now = chrono::Utc::now().timestamp();
-    let from_ts = query.from.unwrap_or(now - 30 * 86400);
-    let to_ts = query.to.unwrap_or(now);
+    let oldest_timestamp = match state.db.get_oldest_session_date(None, None).await {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(
+                endpoint = "insights",
+                error = %e,
+                "Failed to fetch oldest session date for default all-time range"
+            );
+            None
+        }
+    };
+    let effective_range = match resolve_from_to_or_all_time(ResolveFromToInput {
+        endpoint: "insights",
+        from: query.from,
+        to: query.to,
+        now,
+        oldest_timestamp,
+    }) {
+        Ok(resolved) => {
+            record_time_range_resolution("insights", resolved.source);
+            tracing::info!(
+                endpoint = "insights",
+                from = resolved.from,
+                to = resolved.to,
+                source = resolved.source.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Resolved request time range"
+            );
+            resolved
+        }
+        Err(err) => {
+            record_time_range_resolution_error("insights", err.reason.as_str());
+            tracing::warn!(
+                endpoint = "insights",
+                reason = err.reason.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Rejected request time range"
+            );
+            return Err(ApiError::BadRequest(err.message));
+        }
+    };
+    let from_ts = effective_range.from;
+    let to_ts = effective_range.to;
     let min_impact = query.min_impact.unwrap_or(0.3);
     let limit = query.limit.unwrap_or(50) as usize;
 
@@ -425,7 +562,11 @@ pub async fn get_insights(
     // 4. Filter by categories if specified
     if let Some(ref cats) = query.categories {
         let allowed: Vec<&str> = cats.split(',').map(|s| s.trim()).collect();
-        all_insights.retain(|i| allowed.iter().any(|c| i.category.to_lowercase().contains(&c.to_lowercase())));
+        all_insights.retain(|i| {
+            allowed
+                .iter()
+                .any(|c| i.category.to_lowercase().contains(&c.to_lowercase()))
+        });
     }
 
     let patterns_evaluated = all_insights.len() as u32;
@@ -461,6 +602,7 @@ pub async fn get_insights(
 
     // 8. Classification status
     let classification_status = get_classification_status(pool).await?;
+    let analytics_scope = fetch_analytics_scope_meta_for_range(&state, from_ts, to_ts).await?;
 
     Ok(Json(InsightsResponse {
         top_insight,
@@ -475,8 +617,10 @@ pub async fn get_insights(
             computed_at: now,
             time_range_start: from_ts,
             time_range_end: to_ts,
+            effective_range,
             patterns_evaluated,
             patterns_returned,
+            analytics_scope,
         },
     }))
 }
@@ -633,12 +777,8 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
         return (String::new(), String::new(), 0.0);
     }
 
-    let best = averages
-        .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-    let worst = averages
-        .iter()
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    let best = averages.iter().min_by(|a, b| a.1.total_cmp(&b.1));
+    let worst = averages.iter().max_by(|a, b| a.1.total_cmp(&b.1));
 
     if let (Some(best), Some(worst)) = (best, worst) {
         let day_name = match best.0 .0 {
@@ -662,9 +802,7 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
 }
 
 /// Get classification status from the database.
-async fn get_classification_status(
-    pool: &sqlx::SqlitePool,
-) -> ApiResult<ClassificationCoverage> {
+async fn get_classification_status(pool: &sqlx::SqlitePool) -> ApiResult<ClassificationCoverage> {
     let row: (i64, i64) = sqlx::query_as(
         r#"
         SELECT
@@ -724,19 +862,59 @@ pub async fn get_categories(
     State(state): State<Arc<AppState>>,
     Query(query): Query<CategoriesQuery>,
 ) -> ApiResult<Json<CategoriesResponse>> {
-    // Validate time range
-    if let (Some(from), Some(to)) = (query.from, query.to) {
-        if from > to {
-            return Err(ApiError::BadRequest("'from' must be <= 'to'".to_string()));
+    let now = chrono::Utc::now().timestamp();
+    let oldest_timestamp = match state.db.get_oldest_session_date(None, None).await {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(
+                endpoint = "insights_categories",
+                error = %e,
+                "Failed to fetch oldest session date for default all-time range"
+            );
+            None
         }
-    }
+    };
+    let effective_range = match resolve_from_to_or_all_time(ResolveFromToInput {
+        endpoint: "insights_categories",
+        from: query.from,
+        to: query.to,
+        now,
+        oldest_timestamp,
+    }) {
+        Ok(resolved) => {
+            record_time_range_resolution("insights_categories", resolved.source);
+            tracing::info!(
+                endpoint = "insights_categories",
+                from = resolved.from,
+                to = resolved.to,
+                source = resolved.source.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Resolved request time range"
+            );
+            resolved
+        }
+        Err(err) => {
+            record_time_range_resolution_error("insights_categories", err.reason.as_str());
+            tracing::warn!(
+                endpoint = "insights_categories",
+                reason = err.reason.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                "Rejected request time range"
+            );
+            return Err(ApiError::BadRequest(err.message));
+        }
+    };
 
     let pool = state.db.pool();
 
     // Get raw category counts grouped by L1/L2/L3
-    let counts = fetch_category_counts(pool, query.from, query.to).await?;
-    let uncategorized = fetch_uncategorized_count(pool, query.from, query.to).await?;
-    let overall = fetch_overall_averages(pool, query.from, query.to).await?;
+    let from = Some(effective_range.from);
+    let to = Some(effective_range.to);
+    let counts = fetch_category_counts(pool, from, to).await?;
+    let uncategorized = fetch_uncategorized_count(pool, from, to).await?;
+    let overall = fetch_overall_averages(pool, from, to).await?;
 
     // Calculate total
     let categorized_total: u32 = counts.iter().map(|c| c.count).sum();
@@ -747,11 +925,18 @@ pub async fn get_categories(
 
     // Calculate L1 breakdown
     let breakdown = calculate_breakdown(&counts, uncategorized, total);
+    let analytics_scope =
+        fetch_analytics_scope_meta_for_range(&state, effective_range.from, effective_range.to)
+            .await?;
 
     Ok(Json(CategoriesResponse {
         breakdown,
         categories,
         overall_averages: overall,
+        meta: CategoriesMeta {
+            effective_range,
+            analytics_scope,
+        },
     }))
 }
 
@@ -790,16 +975,18 @@ async fn fetch_category_counts(
 
     Ok(rows
         .into_iter()
-        .map(|(l1, l2, l3, count, reedit, dur, prompts, commit)| CategoryCountRow {
-            category_l1: l1,
-            category_l2: l2,
-            category_l3: l3,
-            count: count as u32,
-            avg_reedit_rate: reedit.unwrap_or(0.0),
-            avg_duration: dur.unwrap_or(0.0) as u32,
-            avg_prompts: prompts.unwrap_or(0.0),
-            commit_rate: commit.unwrap_or(0.0),
-        })
+        .map(
+            |(l1, l2, l3, count, reedit, dur, prompts, commit)| CategoryCountRow {
+                category_l1: l1,
+                category_l2: l2,
+                category_l3: l3,
+                count: count as u32,
+                avg_reedit_rate: reedit.unwrap_or(0.0),
+                avg_duration: dur.unwrap_or(0.0) as u32,
+                avg_prompts: prompts.unwrap_or(0.0),
+                commit_rate: commit.unwrap_or(0.0),
+            },
+        )
         .collect())
 }
 
@@ -934,8 +1121,7 @@ fn build_category_tree(counts: &[CategoryCountRow], total: u32) -> Vec<CategoryN
         l2_children.sort_by(|a, b| b.count.cmp(&a.count));
 
         // Calculate L1 aggregates
-        let (avg_reedit, avg_dur, avg_prompts, commit_rate) =
-            aggregate_category_metrics(l1_counts);
+        let (avg_reedit, avg_dur, avg_prompts, commit_rate) = aggregate_category_metrics(l1_counts);
 
         result.push(CategoryNode {
             id: l1_name.clone(),
@@ -1047,7 +1233,12 @@ fn aggregate_category_metrics(counts: &[&CategoryCountRow]) -> (f64, u32, f64, f
         .sum::<f64>()
         / total_f;
 
-    (weighted_reedit, weighted_dur as u32, weighted_prompts, weighted_commit)
+    (
+        weighted_reedit,
+        weighted_dur as u32,
+        weighted_prompts,
+        weighted_commit,
+    )
 }
 
 // ============================================================================
@@ -1059,8 +1250,7 @@ fn aggregate_category_metrics(counts: &[&CategoryCountRow]) -> (f64, u32, f64, f
 pub struct TrendsQuery {
     #[serde(default = "default_metric")]
     pub metric: String,
-    #[serde(default = "default_range")]
-    pub range: String,
+    pub range: Option<String>,
     #[serde(default = "default_granularity")]
     pub granularity: String,
     pub from: Option<i64>,
@@ -1070,14 +1260,17 @@ pub struct TrendsQuery {
 fn default_metric() -> String {
     "reedit_rate".to_string()
 }
-fn default_range() -> String {
-    "6mo".to_string()
-}
 fn default_granularity() -> String {
     "week".to_string()
 }
 
-const VALID_METRICS: &[&str] = &["reedit_rate", "sessions", "lines", "cost_per_line", "prompts"];
+const VALID_METRICS: &[&str] = &[
+    "reedit_rate",
+    "sessions",
+    "lines",
+    "cost_per_line",
+    "prompts",
+];
 const VALID_TREND_RANGES: &[&str] = &["3mo", "6mo", "1yr", "all"];
 const VALID_GRANULARITIES: &[&str] = &["day", "week", "month"];
 
@@ -1085,20 +1278,17 @@ const VALID_GRANULARITIES: &[&str] = &["day", "week", "month"];
 pub async fn get_insights_trends(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TrendsQuery>,
-) -> ApiResult<Json<claude_view_db::insights_trends::InsightsTrendsResponse>> {
-    use claude_view_db::insights_trends::*;
+) -> ApiResult<Json<InsightsTrendsResponse>> {
+    use claude_view_db::insights_trends::{
+        calculate_trend_stats, generate_category_insight, generate_heatmap_insight,
+        generate_metric_insight,
+    };
 
     // Validate inputs
     if !VALID_METRICS.contains(&query.metric.as_str()) {
         return Err(ApiError::BadRequest(format!(
             "Invalid metric. Must be one of: {}",
             VALID_METRICS.join(", ")
-        )));
-    }
-    if !VALID_TREND_RANGES.contains(&query.range.as_str()) {
-        return Err(ApiError::BadRequest(format!(
-            "Invalid range. Must be one of: {}",
-            VALID_TREND_RANGES.join(", ")
         )));
     }
     if !VALID_GRANULARITIES.contains(&query.granularity.as_str()) {
@@ -1108,26 +1298,65 @@ pub async fn get_insights_trends(
         )));
     }
 
-    // Calculate time bounds
     let now = chrono::Utc::now().timestamp();
-    let (from, to) = match (query.from, query.to) {
-        (Some(f), Some(t)) if f > t => {
-            return Err(ApiError::BadRequest(
-                "'from' timestamp must be less than 'to'".to_string(),
-            ));
-        }
-        (Some(f), Some(t)) => (f, t),
-        _ => {
-            let seconds = match query.range.as_str() {
-                "3mo" => 90 * 86400_i64,
-                "6mo" => 180 * 86400_i64,
-                "1yr" => 365 * 86400_i64,
-                "all" => 365 * 10 * 86400_i64,
-                _ => 180 * 86400_i64,
-            };
-            (now - seconds, now)
+    let oldest_timestamp = match state.db.get_oldest_session_date(None, None).await {
+        Ok(value) => value,
+        Err(e) => {
+            tracing::warn!(
+                endpoint = "insights_trends",
+                error = %e,
+                "Failed to fetch oldest session date for default all-time range"
+            );
+            None
         }
     };
+    let effective_range = match resolve_range_param_or_all_time(
+        ResolveFromToInput {
+            endpoint: "insights_trends",
+            from: query.from,
+            to: query.to,
+            now,
+            oldest_timestamp,
+        },
+        query.range.as_deref(),
+        VALID_TREND_RANGES,
+        |range| match range {
+            "3mo" => Some(90 * 86400_i64),
+            "6mo" => Some(180 * 86400_i64),
+            "1yr" => Some(365 * 86400_i64),
+            "all" => Some(365 * 10 * 86400_i64),
+            _ => None,
+        },
+    ) {
+        Ok(resolved) => {
+            record_time_range_resolution("insights_trends", resolved.source);
+            tracing::info!(
+                endpoint = "insights_trends",
+                from = resolved.from,
+                to = resolved.to,
+                source = resolved.source.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                requested_range = query.range.as_deref().unwrap_or(""),
+                "Resolved request time range"
+            );
+            resolved
+        }
+        Err(err) => {
+            record_time_range_resolution_error("insights_trends", err.reason.as_str());
+            tracing::warn!(
+                endpoint = "insights_trends",
+                reason = err.reason.as_str(),
+                requested_from = query.from,
+                requested_to = query.to,
+                requested_range = query.range.as_deref().unwrap_or(""),
+                "Rejected request time range"
+            );
+            return Err(ApiError::BadRequest(err.message));
+        }
+    };
+    let from = effective_range.from;
+    let to = effective_range.to;
 
     // Fetch all data
     let data_points = state
@@ -1156,13 +1385,19 @@ pub async fn get_insights_trends(
 
     // Calculate statistics
     let (average, trend, trend_direction) = calculate_trend_stats(&data_points, &query.metric);
-    let insight = generate_metric_insight(&query.metric, trend, &query.range);
+    let range_label_for_insight = match effective_range.source {
+        EffectiveRangeSource::ExplicitRangeParam => query.range.as_deref().unwrap_or("all"),
+        EffectiveRangeSource::DefaultAllTime => "all",
+        _ => "custom",
+    };
+    let insight = generate_metric_insight(&query.metric, trend, range_label_for_insight);
     let category_insight = category_evolution
         .as_ref()
         .map(|data| generate_category_insight(data));
     let heatmap_insight = generate_heatmap_insight(&activity_heatmap);
 
     let classification_required = category_evolution.is_none();
+    let analytics_scope = fetch_analytics_scope_meta_for_range(&state, from, to).await?;
 
     Ok(Json(InsightsTrendsResponse {
         metric: query.metric,
@@ -1183,6 +1418,10 @@ pub async fn get_insights_trends(
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_default(),
         total_sessions,
+        meta: InsightsTrendsMeta {
+            effective_range,
+            analytics_scope,
+        },
     }))
 }
 
@@ -1201,10 +1440,10 @@ pub struct BenchmarksQuery {
 pub async fn get_benchmarks(
     State(state): State<Arc<AppState>>,
     Query(query): Query<BenchmarksQuery>,
-) -> ApiResult<Json<claude_view_core::BenchmarksResponse>> {
+) -> ApiResult<Json<BenchmarksResponseWithMeta>> {
     use claude_view_core::{
-        BenchmarksResponse, CategoryPerformance, CategoryVerdict, ImprovementMetrics,
-        LearningCurvePoint, PeriodMetrics, ProgressComparison, ReportSummary, SkillAdoption,
+        CategoryPerformance, CategoryVerdict, ImprovementMetrics, LearningCurvePoint,
+        PeriodMetrics, ProgressComparison, ReportSummary, SkillAdoption,
     };
 
     let range = query.range.as_deref().unwrap_or("all");
@@ -1489,11 +1728,7 @@ pub async fn get_benchmarks(
         });
     }
 
-    skill_adoption.sort_by(|a, b| {
-        a.impact_on_reedit
-            .partial_cmp(&b.impact_on_reedit)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    skill_adoption.sort_by(|a, b| a.impact_on_reedit.total_cmp(&b.impact_on_reedit));
     skill_adoption.truncate(10);
 
     // ----------------------------------------------------------------
@@ -1509,13 +1744,15 @@ pub async fn get_benchmarks(
         .and_utc()
         .timestamp();
 
-    let report_row: (i64, i64, i64) = sqlx::query_as(
+    let report_row: (i64, i64, i64, Option<f64>, i64) = sqlx::query_as(
         r#"
         SELECT COUNT(*),
                (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc
                 INNER JOIN valid_sessions s2 ON sc.session_id = s2.id
                 WHERE s2.last_message_at >= ?1),
-               COALESCE(SUM(total_input_tokens + total_output_tokens), 0)
+               COALESCE(SUM(total_input_tokens + total_output_tokens), 0),
+               SUM(total_cost_usd),
+               SUM(CASE WHEN total_cost_usd IS NULL THEN 1 ELSE 0 END)
         FROM valid_sessions WHERE last_message_at >= ?1
         "#,
     )
@@ -1526,15 +1763,25 @@ pub async fn get_benchmarks(
 
     let report_session_count = report_row.0 as u32;
     let report_commit_count = report_row.1 as u32;
-    let total_tokens = report_row.2;
-    let estimated_cost = total_tokens as f64 / 1000.0 * 0.005;
+    let _total_tokens = report_row.2;
+    let total_cost_usd = report_row.3;
+    let has_unpriced_usage = report_row.4 > 0;
 
     let month_name = format!(
         "{} {}",
         match now_dt.month() {
-            1 => "January", 2 => "February", 3 => "March", 4 => "April",
-            5 => "May", 6 => "June", 7 => "July", 8 => "August",
-            9 => "September", 10 => "October", 11 => "November", 12 => "December",
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
             _ => "Unknown",
         },
         now_dt.year()
@@ -1543,7 +1790,7 @@ pub async fn get_benchmarks(
     let top_wins = bench_top_wins(&progress, &by_category, &skill_adoption);
     let focus_areas = bench_focus_areas(&by_category);
 
-    Ok(Json(BenchmarksResponse {
+    let base = BenchmarksResponse {
         progress,
         by_category,
         user_average_reedit_rate,
@@ -1554,11 +1801,15 @@ pub async fn get_benchmarks(
             lines_added: 0,
             lines_removed: 0,
             commit_count: report_commit_count,
-            estimated_cost,
+            total_cost_usd,
+            has_unpriced_usage,
             top_wins,
             focus_areas,
         },
-    }))
+    };
+    let meta = fetch_analytics_scope_meta_for_range(&state, data_start, now).await?;
+
+    Ok(Json(BenchmarksResponseWithMeta { base, meta }))
 }
 
 // ============================================================================
@@ -1583,9 +1834,15 @@ fn bench_progress_insight(
 
     let mut parts = Vec::new();
     if imp.reedit_rate < -30.0 {
-        parts.push(format!("You've cut re-edits by {:.0}%", imp.reedit_rate.abs()));
+        parts.push(format!(
+            "You've cut re-edits by {:.0}%",
+            imp.reedit_rate.abs()
+        ));
     } else if imp.reedit_rate < -10.0 {
-        parts.push(format!("Re-edit rate improved by {:.0}%", imp.reedit_rate.abs()));
+        parts.push(format!(
+            "Re-edit rate improved by {:.0}%",
+            imp.reedit_rate.abs()
+        ));
     }
     if imp.commit_rate > 20.0 {
         parts.push(format!("commit rate up {:.0}%", imp.commit_rate));
@@ -1597,7 +1854,10 @@ fn bench_progress_insight(
     if parts.is_empty() {
         "Your metrics are stable -- consistency is a strength!".to_string()
     } else {
-        format!("{} -- your prompts are significantly more effective than when you started", parts.join(" and "))
+        format!(
+            "{} -- your prompts are significantly more effective than when you started",
+            parts.join(" and ")
+        )
     }
 }
 
@@ -1621,24 +1881,49 @@ fn bench_top_wins(
     let mut wins = Vec::new();
 
     if let Some(ref imp) = progress.improvement {
-        if imp.reedit_rate < -20.0 { wins.push(format!("Re-edit rate improved by {:.0}%", imp.reedit_rate.abs())); }
-        if imp.commit_rate > 20.0 { wins.push(format!("Commit rate up {:.0}%", imp.commit_rate)); }
-        if imp.prompts_per_task < -15.0 { wins.push(format!("Prompts per task reduced by {:.0}%", imp.prompts_per_task.abs())); }
+        if imp.reedit_rate < -20.0 {
+            wins.push(format!(
+                "Re-edit rate improved by {:.0}%",
+                imp.reedit_rate.abs()
+            ));
+        }
+        if imp.commit_rate > 20.0 {
+            wins.push(format!("Commit rate up {:.0}%", imp.commit_rate));
+        }
+        if imp.prompts_per_task < -15.0 {
+            wins.push(format!(
+                "Prompts per task reduced by {:.0}%",
+                imp.prompts_per_task.abs()
+            ));
+        }
     }
 
-    let excellent_count = categories.iter().filter(|c| c.verdict == CV::Excellent).count();
+    let excellent_count = categories
+        .iter()
+        .filter(|c| c.verdict == CV::Excellent)
+        .count();
     if excellent_count > 0 {
-        wins.push(format!("{} categor{} rated excellent", excellent_count, if excellent_count == 1 { "y" } else { "ies" }));
+        wins.push(format!(
+            "{} categor{} rated excellent",
+            excellent_count,
+            if excellent_count == 1 { "y" } else { "ies" }
+        ));
     }
 
     if let Some(best) = skills.first() {
         if best.impact_on_reedit < -20.0 {
-            wins.push(format!("{} skill reduced re-edits by {:.0}%", best.skill, best.impact_on_reedit.abs()));
+            wins.push(format!(
+                "{} skill reduced re-edits by {:.0}%",
+                best.skill,
+                best.impact_on_reedit.abs()
+            ));
         }
     }
 
     wins.truncate(3);
-    if wins.is_empty() { wins.push("Keep using Claude Code to build your track record".to_string()); }
+    if wins.is_empty() {
+        wins.push("Keep using Claude Code to build your track record".to_string());
+    }
     wins
 }
 
@@ -1647,10 +1932,18 @@ fn bench_focus_areas(categories: &[claude_view_core::CategoryPerformance]) -> Ve
     let mut areas: Vec<String> = categories
         .iter()
         .filter(|c| c.verdict == CV::NeedsWork)
-        .map(|c| format!("{} sessions have high re-edit rate ({:.2})", c.category.replace('_', " "), c.reedit_rate))
+        .map(|c| {
+            format!(
+                "{} sessions have high re-edit rate ({:.2})",
+                c.category.replace('_', " "),
+                c.reedit_rate
+            )
+        })
         .collect();
     areas.truncate(3);
-    if areas.is_empty() { areas.push("All categories performing well -- maintain your current approach".to_string()); }
+    if areas.is_empty() {
+        areas.push("All categories performing well -- maintain your current approach".to_string());
+    }
     areas
 }
 
@@ -1677,8 +1970,8 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use claude_view_db::Database;
+    use tower::ServiceExt;
 
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
@@ -1698,6 +1991,40 @@ mod tests {
             .await
             .unwrap();
         (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    async fn insert_session(db: &Database, id: &str, ts: i64, category_l1: Option<&str>) {
+        sqlx::query(
+            r#"
+            INSERT INTO sessions (
+                id, project_id, file_path, preview, project_path,
+                duration_seconds, files_edited_count, reedited_files_count,
+                files_read_count, user_prompt_count, api_call_count,
+                tool_call_count, commit_count, turn_count,
+                last_message_at, size_bytes, last_message,
+                files_touched, skills_used, files_read, files_edited,
+                category_l1, category_l2, category_l3
+            )
+            VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
+                1800, 5, 1, 5, 10, 10, 20, 1, 10,
+                ?2, 1024, '', '[]', '[]', '[]', '[]',
+                ?3, 'feature', 'new-component')
+            "#,
+        )
+        .bind(id)
+        .bind(ts)
+        .bind(category_l1)
+        .execute(db.pool())
+        .await
+        .unwrap();
+    }
+
+    async fn mark_session_sidechain(db: &Database, id: &str) {
+        sqlx::query("UPDATE sessions SET is_sidechain = 1 WHERE id = ?1")
+            .bind(id)
+            .execute(db.pool())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1725,7 +2052,10 @@ mod tests {
         // patterns should be empty arrays
         assert_eq!(json["patterns"]["high"].as_array().unwrap().len(), 0);
         assert_eq!(json["patterns"]["medium"].as_array().unwrap().len(), 0);
-        assert_eq!(json["patterns"]["observations"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            json["patterns"]["observations"].as_array().unwrap().len(),
+            0
+        );
 
         // classification status
         assert_eq!(json["classificationStatus"]["total"], 0);
@@ -1734,6 +2064,45 @@ mod tests {
         // meta
         assert!(json["meta"]["computedAt"].is_number());
         assert!(json["meta"]["patternsEvaluated"].is_number());
+    }
+
+    #[tokio::test]
+    async fn test_insights_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_insights_includes_session_breakdown_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "ins-meta-primary", now - 120, Some("code_work")).await;
+        insert_session(&db, "ins-meta-sidechain", now - 60, Some("code_work")).await;
+        mark_session_sidechain(&db, "ins-meta-sidechain").await;
+
+        let app = build_app(db);
+        let from = now - 3600;
+        let to = now;
+        let (status, body) = do_get(app, &format!("/api/insights?from={}&to={}", from, to)).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -1750,6 +2119,77 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["meta"]["timeRangeStart"], 1700000000);
         assert_eq!(json["meta"]["timeRangeEnd"], 1700100000);
+    }
+
+    #[tokio::test]
+    async fn test_insights_default_all_time_includes_old_data() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        let old_ts = now - (120 * 86400);
+
+        insert_session(&db, "ins-old", old_ts, None).await;
+        insert_session(&db, "ins-new", now - 3600, None).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["overview"]["workBreakdown"]["totalSessions"], 2);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "default_all_time");
+        assert!(json["meta"]["timeRangeStart"].as_i64().unwrap() <= old_ts);
+    }
+
+    #[tokio::test]
+    async fn test_insights_one_sided_range_rejected_in_strict_mode() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (from_status, from_body) = do_get(app.clone(), "/api/insights?from=1700000000").await;
+        assert_eq!(from_status, StatusCode::BAD_REQUEST);
+        let from_json: serde_json::Value = serde_json::from_str(&from_body).unwrap();
+        assert!(from_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+
+        let (to_status, to_body) = do_get(app, "/api/insights?to=1700000000").await;
+        assert_eq!(to_status, StatusCode::BAD_REQUEST);
+        let to_json: serde_json::Value = serde_json::from_str(&to_body).unwrap();
+        assert!(to_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+    }
+
+    #[tokio::test]
+    async fn test_insights_inverted_range_rejected() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights?from=1700100000&to=1700000000").await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(json["details"]
+            .as_str()
+            .unwrap()
+            .contains("'from' must be <= 'to'"));
+    }
+
+    #[tokio::test]
+    async fn test_insights_equality_range_valid() {
+        let db = test_db().await;
+        let ts = chrono::Utc::now().timestamp();
+        insert_session(&db, "ins-eq", ts, None).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, &format!("/api/insights?from={}&to={}", ts, ts)).await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["timeRangeStart"], ts);
+        assert_eq!(json["meta"]["timeRangeEnd"], ts);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "explicit_from_to");
     }
 
     #[tokio::test]
@@ -1803,7 +2243,10 @@ mod tests {
 
         // Should have some sessions in overview
         assert!(
-            json["overview"]["workBreakdown"]["totalSessions"].as_u64().unwrap() > 0,
+            json["overview"]["workBreakdown"]["totalSessions"]
+                .as_u64()
+                .unwrap()
+                > 0,
             "Should have sessions: {}",
             body
         );
@@ -1840,6 +2283,9 @@ mod tests {
         assert!(json["classificationStatus"]["total"].is_number());
         assert!(json["classificationStatus"]["pendingClassification"].is_number());
         assert!(json["classificationStatus"]["classificationPct"].is_number());
+        assert!(json["meta"]["effectiveRange"]["from"].is_number());
+        assert!(json["meta"]["effectiveRange"]["to"].is_number());
+        assert!(json["meta"]["effectiveRange"]["source"].is_string());
     }
 
     // ========================================================================
@@ -1868,6 +2314,24 @@ mod tests {
 
         // Categories should be empty
         assert!(json["categories"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_categories_includes_data_scope_meta() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/categories").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
     }
 
     #[tokio::test]
@@ -1935,6 +2399,9 @@ mod tests {
         assert!(json["overallAverages"]["avgDuration"].is_number());
         assert!(json["overallAverages"]["avgPrompts"].is_number());
         assert!(json["overallAverages"]["commitRate"].is_number());
+        assert!(json["meta"]["effectiveRange"]["from"].is_number());
+        assert!(json["meta"]["effectiveRange"]["to"].is_number());
+        assert!(json["meta"]["effectiveRange"]["source"].is_string());
     }
 
     #[tokio::test]
@@ -1991,6 +2458,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_categories_default_all_time_includes_old_data() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        let old_ts = now - (180 * 86400);
+
+        insert_session(&db, "cat-old", old_ts, Some("code_work")).await;
+        insert_session(&db, "cat-new", now - 3600, Some("support_work")).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/categories").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["breakdown"]["codeWork"]["count"], 1);
+        assert_eq!(json["breakdown"]["supportWork"]["count"], 1);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "default_all_time");
+        assert!(json["meta"]["effectiveRange"]["from"].as_i64().unwrap() <= old_ts);
+    }
+
+    #[tokio::test]
+    async fn test_categories_one_sided_range_rejected_in_strict_mode() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (from_status, from_body) =
+            do_get(app.clone(), "/api/insights/categories?from=1700000000").await;
+        assert_eq!(from_status, StatusCode::BAD_REQUEST);
+        let from_json: serde_json::Value = serde_json::from_str(&from_body).unwrap();
+        assert!(from_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+
+        let (to_status, to_body) = do_get(app, "/api/insights/categories?to=1700000000").await;
+        assert_eq!(to_status, StatusCode::BAD_REQUEST);
+        let to_json: serde_json::Value = serde_json::from_str(&to_body).unwrap();
+        assert!(to_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+    }
+
+    #[tokio::test]
     async fn test_categories_invalid_range() {
         let db = test_db().await;
         let app = build_app(db);
@@ -2006,6 +2516,27 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("'from' must be <= 'to'"));
+    }
+
+    #[tokio::test]
+    async fn test_categories_equality_range_valid() {
+        let db = test_db().await;
+        let ts = chrono::Utc::now().timestamp();
+        insert_session(&db, "cat-eq", ts, Some("code_work")).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(
+            app,
+            &format!("/api/insights/categories?from={}&to={}", ts, ts),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["breakdown"]["codeWork"]["count"], 1);
+        assert_eq!(json["meta"]["effectiveRange"]["from"], ts);
+        assert_eq!(json["meta"]["effectiveRange"]["to"], ts);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "explicit_from_to");
     }
 
     #[tokio::test]
@@ -2028,6 +2559,33 @@ mod tests {
         assert!(json["overallAverages"]["avgDuration"].is_number());
         assert!(json["overallAverages"]["avgPrompts"].is_number());
         assert!(json["overallAverages"]["commitRate"].is_number());
+    }
+
+    #[tokio::test]
+    async fn test_benchmarks_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "bench-meta-primary", now - 3600, Some("code_work")).await;
+        insert_session(&db, "bench-meta-sidechain", now - 1800, Some("code_work")).await;
+        mark_session_sidechain(&db, "bench-meta-sidechain").await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/benchmarks?range=all").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     // ========================================================================
@@ -2054,8 +2612,45 @@ mod tests {
         assert!(json["periodStart"].is_string());
         assert!(json["periodEnd"].is_string());
         assert!(json["totalSessions"].is_number());
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "default_all_time");
         assert_eq!(json["classificationRequired"], true);
         assert!(json["categoryEvolution"].is_null());
+    }
+
+    #[tokio::test]
+    async fn test_insights_trends_includes_data_scope_meta() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        insert_session(&db, "trend-meta-primary", now - 120, Some("code_work")).await;
+        insert_session(&db, "trend-meta-sidechain", now - 60, Some("code_work")).await;
+        mark_session_sidechain(&db, "trend-meta-sidechain").await;
+
+        let app = build_app(db);
+        let from = now - 3600;
+        let to = now;
+        let (status, body) = do_get(
+            app,
+            &format!(
+                "/api/insights/trends?metric=sessions&from={}&to={}",
+                from, to
+            ),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["dataScope"]["sessions"],
+            "primary_sessions_only"
+        );
+        assert_eq!(
+            json["meta"]["dataScope"]["workload"],
+            "primary_plus_subagent_work"
+        );
+        assert_eq!(json["meta"]["sessionBreakdown"]["primarySessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["sidechainSessions"], 1);
+        assert_eq!(json["meta"]["sessionBreakdown"]["otherSessions"], 0);
+        assert_eq!(json["meta"]["sessionBreakdown"]["totalObservedSessions"], 2);
     }
 
     #[tokio::test]
@@ -2080,8 +2675,7 @@ mod tests {
     async fn test_trends_invalid_granularity() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, _body) =
-            do_get(app, "/api/insights/trends?granularity=quarter").await;
+        let (status, _body) = do_get(app, "/api/insights/trends?granularity=quarter").await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
@@ -2094,6 +2688,46 @@ mod tests {
             do_get(app, "/api/insights/trends?from=1700100000&to=1700000000").await;
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_trends_one_sided_range_rejected_in_strict_mode() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (from_status, from_body) =
+            do_get(app.clone(), "/api/insights/trends?from=1700000000").await;
+        assert_eq!(from_status, StatusCode::BAD_REQUEST);
+        let from_json: serde_json::Value = serde_json::from_str(&from_body).unwrap();
+        assert!(from_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+
+        let (to_status, to_body) = do_get(app, "/api/insights/trends?to=1700000000").await;
+        assert_eq!(to_status, StatusCode::BAD_REQUEST);
+        let to_json: serde_json::Value = serde_json::from_str(&to_body).unwrap();
+        assert!(to_json["details"]
+            .as_str()
+            .unwrap()
+            .contains("Both 'from' and 'to' must be provided together"));
+    }
+
+    #[tokio::test]
+    async fn test_trends_default_all_time_includes_old_data_beyond_six_months() {
+        let db = test_db().await;
+        let now = chrono::Utc::now().timestamp();
+        let old_ts = now - (300 * 86400);
+        insert_session(&db, "trend-old", old_ts, Some("code_work")).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/trends?metric=sessions").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["totalSessions"], 1);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "default_all_time");
+        assert!(json["meta"]["effectiveRange"]["from"].as_i64().unwrap() <= old_ts);
     }
 
     #[tokio::test]
@@ -2113,14 +2747,69 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["periodStart"].is_string());
         assert!(json["periodEnd"].is_string());
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "explicit_from_to");
+    }
+
+    #[tokio::test]
+    async fn test_trends_explicit_range_source() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        let (status, body) = do_get(app, "/api/insights/trends?range=3mo").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            json["meta"]["effectiveRange"]["source"],
+            "explicit_range_param"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_trends_explicit_from_to_takes_precedence_over_range() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let now = chrono::Utc::now().timestamp();
+        let from = now - 86400;
+        let to = now - 3600;
+
+        let (status, body) = do_get(
+            app,
+            &format!("/api/insights/trends?from={}&to={}&range=2yr", from, to),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "explicit_from_to");
+        assert_eq!(json["meta"]["effectiveRange"]["from"], from);
+        assert_eq!(json["meta"]["effectiveRange"]["to"], to);
+    }
+
+    #[tokio::test]
+    async fn test_trends_equality_range_valid() {
+        let db = test_db().await;
+        let ts = chrono::Utc::now().timestamp();
+        insert_session(&db, "trend-eq", ts, Some("code_work")).await;
+
+        let app = build_app(db);
+        let (status, body) = do_get(
+            app,
+            &format!("/api/insights/trends?from={}&to={}&metric=sessions", ts, ts),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["meta"]["effectiveRange"]["from"], ts);
+        assert_eq!(json["meta"]["effectiveRange"]["to"], ts);
+        assert_eq!(json["meta"]["effectiveRange"]["source"], "explicit_from_to");
     }
 
     #[tokio::test]
     async fn test_trends_sessions_metric() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) =
-            do_get(app, "/api/insights/trends?metric=sessions").await;
+        let (status, body) = do_get(app, "/api/insights/trends?metric=sessions").await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -2131,11 +2820,7 @@ mod tests {
     async fn test_trends_day_granularity() {
         let db = test_db().await;
         let app = build_app(db);
-        let (status, body) = do_get(
-            app,
-            "/api/insights/trends?granularity=day&range=3mo",
-        )
-        .await;
+        let (status, body) = do_get(app, "/api/insights/trends?granularity=day&range=3mo").await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();

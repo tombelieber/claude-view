@@ -18,6 +18,9 @@ grep-matcher = { workspace = true }
 grep-regex = { workspace = true }
 grep-searcher = { workspace = true }
 
+[features]
+codegen = ["claude-view-core/codegen"]
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = { workspace = true }

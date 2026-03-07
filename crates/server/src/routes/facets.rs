@@ -114,9 +114,7 @@ pub async fn facet_ingest_stream(
 /// POST /api/facets/ingest/trigger — Start facet ingest from the Claude Code
 /// insights cache. Returns immediately with `{"status": "started"}` or
 /// `{"status": "already_running"}` if an ingest is already in progress.
-pub async fn trigger_facet_ingest(
-    State(state): State<Arc<AppState>>,
-) -> Json<TriggerResponse> {
+pub async fn trigger_facet_ingest(State(state): State<Arc<AppState>>) -> Json<TriggerResponse> {
     if state.facet_ingest.is_running() {
         return Json(TriggerResponse {
             status: "already_running".to_string(),
@@ -321,15 +319,13 @@ mod tests {
     async fn test_facet_stats_endpoint() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -354,15 +350,13 @@ mod tests {
     async fn test_facet_badges_endpoint_empty() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -387,15 +381,13 @@ mod tests {
     async fn test_pattern_alert_endpoint_empty() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -419,15 +411,13 @@ mod tests {
     async fn test_trigger_ingest_endpoint() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(
@@ -452,15 +442,13 @@ mod tests {
     async fn test_sse_ingest_stream_returns_event_stream() {
         use axum::body::Body;
         use axum::http::{Request, StatusCode};
-        use tower::ServiceExt;
         use claude_view_db::Database;
+        use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
         let state = AppState::new(db);
 
-        let app = Router::new()
-            .nest("/api", router())
-            .with_state(state);
+        let app = Router::new().nest("/api", router()).with_state(state);
 
         let response = app
             .oneshot(

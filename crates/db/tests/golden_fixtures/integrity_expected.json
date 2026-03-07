@@ -1,0 +1,15 @@
+{
+  "report_version": 1,
+  "required_source_fields": ["role", "content", "timestamp"],
+  "counters": {
+    "unknown_source_role_count": 0,
+    "unknown_top_level_type_count": 0,
+    "unknown_required_path_count": 0,
+    "legacy_fallback_path_count": 1,
+    "min_files_touched_extraction_count": 2
+  },
+  "rates": {
+    "min_loc_nonzero_rate_edit_write": 1,
+    "min_source_field_completeness_rate": 1
+  }
+}

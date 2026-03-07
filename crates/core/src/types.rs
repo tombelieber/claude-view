@@ -4,7 +4,7 @@ use ts_rs::TS;
 
 /// Tool usage statistics for a session
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct ToolCounts {
     pub edit: usize,
     pub read: usize,
@@ -24,7 +24,7 @@ impl ToolCounts {
 
 /// Message role in a conversation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     /// Real user prompt (string content)
@@ -45,7 +45,7 @@ pub enum Role {
 
 /// A tool call made by the assistant
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct ToolCall {
     pub name: String,
     pub count: usize,
@@ -58,7 +58,7 @@ pub struct ToolCall {
 
 /// A message in a conversation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct Message {
     pub role: Role,
     pub content: String,
@@ -95,13 +95,27 @@ impl Message {
         }
     }
 
-    pub fn user(content: impl Into<String>) -> Self { Self::new_with_role(Role::User, content) }
-    pub fn assistant(content: impl Into<String>) -> Self { Self::new_with_role(Role::Assistant, content) }
-    pub fn system(content: impl Into<String>) -> Self { Self::new_with_role(Role::System, content) }
-    pub fn tool_use(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolUse, content) }
-    pub fn tool_result(content: impl Into<String>) -> Self { Self::new_with_role(Role::ToolResult, content) }
-    pub fn progress(content: impl Into<String>) -> Self { Self::new_with_role(Role::Progress, content) }
-    pub fn summary(content: impl Into<String>) -> Self { Self::new_with_role(Role::Summary, content) }
+    pub fn user(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::User, content)
+    }
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Assistant, content)
+    }
+    pub fn system(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::System, content)
+    }
+    pub fn tool_use(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::ToolUse, content)
+    }
+    pub fn tool_result(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::ToolResult, content)
+    }
+    pub fn progress(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Progress, content)
+    }
+    pub fn summary(content: impl Into<String>) -> Self {
+        Self::new_with_role(Role::Summary, content)
+    }
 
     pub fn with_timestamp(mut self, timestamp: impl Into<String>) -> Self {
         self.timestamp = Some(timestamp.into());
@@ -154,7 +168,7 @@ pub struct SearchableMessage {
 
 /// Session metadata extracted from parsing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionMetadata {
     pub total_messages: usize,
@@ -163,7 +177,7 @@ pub struct SessionMetadata {
 
 /// A parsed session with messages and metadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct ParsedSession {
     pub messages: Vec<Message>,
     pub metadata: SessionMetadata,
@@ -185,15 +199,93 @@ impl ParsedSession {
     }
 
     pub fn turn_count(&self) -> usize {
-        let user_count = self.messages.iter().filter(|m| m.role == Role::User).count();
-        let assistant_count = self.messages.iter().filter(|m| m.role == Role::Assistant).count();
+        let user_count = self
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::User)
+            .count();
+        let assistant_count = self
+            .messages
+            .iter()
+            .filter(|m| m.role == Role::Assistant)
+            .count();
         user_count.min(assistant_count)
     }
 }
 
+/// Extended payload for share blobs — includes session metadata alongside messages.
+/// Backward-compatible: the share viewer checks for `share_metadata` presence
+/// and falls back to the basic `metadata` field if missing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharePayload {
+    pub messages: Vec<Message>,
+    pub metadata: SessionMetadata,
+    /// Rich session metadata for the share viewer's info panel.
+    /// Optional for backward compat with old share blobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_metadata: Option<ShareSessionMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareSessionMetadata {
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_output_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_prompt_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_read_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_edited_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_title: Option<String>,
+    /// Tool name -> invocation count
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools_used: Vec<ToolUsageSummary>,
+    /// Files read during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_read: Vec<String>,
+    /// Files edited during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files_edited: Vec<String>,
+    /// Commits made during the session
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commits: Vec<ShareCommit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUsageSummary {
+    pub name: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareCommit {
+    pub hash: String,
+    pub message: String,
+}
+
 /// A paginated slice of session messages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PaginatedMessages {
     pub messages: Vec<Message>,
@@ -205,12 +297,16 @@ pub struct PaginatedMessages {
 
 /// Session info for listing (without full message content)
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: String,
     pub project: String,
     pub project_path: String,
+    /// Human-readable project name (e.g. "claude-backup"), derived from CWD
+    /// evidence at index time. When no CWD is available, falls back to the
+    /// raw encoded directory name (no guessing).
+    pub display_name: String,
     /// Canonical git repository root resolved from session_cwd at index time.
     /// None for non-git directories or sessions indexed before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -303,7 +399,7 @@ pub struct SessionInfo {
     #[serde(default)]
     pub lines_removed: u32,
     #[serde(default)]
-    pub loc_source: u8,  // 0 = not computed, 1 = tool-call estimate, 2 = git diff
+    pub loc_source: u8, // 0 = not computed, 1 = tool-call estimate, 2 = git diff
     #[serde(default)]
     pub parse_version: u32,
     // Theme 4: Classification
@@ -329,12 +425,15 @@ pub struct SessionInfo {
     // Wall-clock task time metrics
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
-    pub total_task_time_seconds: Option<u32>,    // sum of all turn wall-clock durations
+    pub total_task_time_seconds: Option<u32>, // sum of all turn wall-clock durations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
-    pub longest_task_seconds: Option<u32>,       // single longest turn (wall clock)
+    pub longest_task_seconds: Option<u32>, // single longest turn (wall clock)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub longest_task_preview: Option<String>,    // first 60 chars of the prompt that started it
+    pub longest_task_preview: Option<String>, // first 60 chars of the prompt that started it
+    // Cost
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_cost_usd: Option<f64>,
 }
 
 impl SessionInfo {
@@ -378,7 +477,7 @@ impl SessionInfo {
 
 /// Project info with sessions
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
     pub name: String,
@@ -400,7 +499,7 @@ impl ProjectInfo {
 
 /// Lightweight project summary for sidebar — no sessions array.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
     pub name: String,
@@ -415,7 +514,7 @@ pub struct ProjectSummary {
 
 /// Paginated sessions response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsPage {
     pub sessions: Vec<SessionInfo>,
@@ -424,7 +523,7 @@ pub struct SessionsPage {
 
 /// Pre-computed dashboard statistics.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardStats {
     pub total_sessions: usize,
@@ -441,7 +540,7 @@ pub struct DashboardStats {
 
 /// A single day in the activity heatmap.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DayActivity {
     pub date: String,
@@ -450,7 +549,7 @@ pub struct DayActivity {
 
 /// A skill with its usage count.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillStat {
     pub name: String,
@@ -459,7 +558,7 @@ pub struct SkillStat {
 
 /// A project with its session count (for dashboard top projects).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectStat {
     pub name: String,
@@ -469,7 +568,7 @@ pub struct ProjectStat {
 
 /// A session entry for the "Longest Tasks" dashboard card.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDurationStat {
     pub id: String,
@@ -495,6 +594,8 @@ pub struct RawTurn {
     pub output_tokens: Option<u64>,
     pub cache_read_tokens: Option<u64>,
     pub cache_creation_tokens: Option<u64>,
+    pub cache_creation_5m_tokens: Option<u64>,
+    pub cache_creation_1hr_tokens: Option<u64>,
     pub service_tier: Option<String>,
     pub timestamp: Option<i64>,
 }
@@ -586,7 +687,7 @@ pub enum ContentBlock {
 
 /// Status of a classification job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ClassificationJobStatus {
     Running,
@@ -620,7 +721,7 @@ impl ClassificationJobStatus {
 
 /// A classification job record.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationJob {
     #[ts(type = "number")]
@@ -640,8 +741,6 @@ pub struct ClassificationJob {
     pub status: ClassificationJobStatus,
     pub error_message: Option<String>,
     #[ts(type = "number | null")]
-    pub cost_estimate_cents: Option<i64>,
-    #[ts(type = "number | null")]
     pub actual_cost_cents: Option<i64>,
     #[ts(type = "number | null")]
     pub tokens_used: Option<i64>,
@@ -653,7 +752,7 @@ pub struct ClassificationJob {
 
 /// Type of index run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunType {
     Full,
@@ -684,7 +783,7 @@ impl IndexRunType {
 
 /// Status of an index run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunStatus {
     Running,
@@ -715,7 +814,7 @@ impl IndexRunStatus {
 
 /// An index run record.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRun {
     #[ts(type = "number")]
@@ -740,7 +839,7 @@ pub struct IndexRun {
 
 /// Metrics for a time period (used in Then vs Now comparison).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PeriodMetrics {
     /// Re-edit rate: files re-edited / files edited (0.0-1.0)
@@ -755,7 +854,7 @@ pub struct PeriodMetrics {
 
 /// Improvement percentages between two periods.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ImprovementMetrics {
     /// Re-edit rate change (negative = improvement)
@@ -770,7 +869,7 @@ pub struct ImprovementMetrics {
 
 /// Progress comparison between first and last month.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressComparison {
     pub first_month: Option<PeriodMetrics>,
@@ -781,7 +880,7 @@ pub struct ProgressComparison {
 
 /// Verdict for category performance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum CategoryVerdict {
     Excellent,
@@ -792,7 +891,7 @@ pub enum CategoryVerdict {
 
 /// Performance metrics for a single category.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryPerformance {
     pub category: String,
@@ -805,7 +904,7 @@ pub struct CategoryPerformance {
 
 /// Learning curve data point.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurvePoint {
     pub session: u32,
@@ -814,7 +913,7 @@ pub struct LearningCurvePoint {
 
 /// Skill adoption with impact metrics.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillAdoption {
     pub skill: String,
@@ -827,7 +926,7 @@ pub struct SkillAdoption {
 
 /// Monthly report summary.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSummary {
     pub month: String,
@@ -837,14 +936,16 @@ pub struct ReportSummary {
     #[ts(type = "number")]
     pub lines_removed: i64,
     pub commit_count: u32,
-    pub estimated_cost: f64,
+    pub total_cost_usd: Option<f64>,
+    /// True when some sessions in this period had unpriced usage (NULL total_cost_usd).
+    pub has_unpriced_usage: bool,
     pub top_wins: Vec<String>,
     pub focus_areas: Vec<String>,
 }
 
 /// Full benchmarks response.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../src/types/generated/")]
+#[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarksResponse {
     pub progress: ProgressComparison,
@@ -879,14 +980,16 @@ mod tests {
         let counts = ToolCounts::default();
         assert!(counts.is_empty());
 
-        let counts = ToolCounts { edit: 1, ..Default::default() };
+        let counts = ToolCounts {
+            edit: 1,
+            ..Default::default()
+        };
         assert!(!counts.is_empty());
     }
 
     #[test]
     fn test_message_builders() {
-        let msg = Message::user("Hello")
-            .with_timestamp("2026-01-27T10:00:00Z");
+        let msg = Message::user("Hello").with_timestamp("2026-01-27T10:00:00Z");
 
         assert_eq!(msg.role, Role::User);
         assert_eq!(msg.content, "Hello");
@@ -895,8 +998,12 @@ mod tests {
 
     #[test]
     fn test_message_with_tools() {
-        let msg = Message::assistant("Let me help")
-            .with_tools(vec![ToolCall { name: "Read".to_string(), count: 2, input: None, category: None }]);
+        let msg = Message::assistant("Let me help").with_tools(vec![ToolCall {
+            name: "Read".to_string(),
+            count: 2,
+            input: None,
+            category: None,
+        }]);
 
         assert_eq!(msg.role, Role::Assistant);
         assert!(msg.tool_calls.is_some());
@@ -929,12 +1036,27 @@ mod tests {
     #[test]
     fn test_role_serialization() {
         assert_eq!(serde_json::to_string(&Role::User).unwrap(), "\"user\"");
-        assert_eq!(serde_json::to_string(&Role::Assistant).unwrap(), "\"assistant\"");
-        assert_eq!(serde_json::to_string(&Role::ToolUse).unwrap(), "\"tool_use\"");
-        assert_eq!(serde_json::to_string(&Role::ToolResult).unwrap(), "\"tool_result\"");
+        assert_eq!(
+            serde_json::to_string(&Role::Assistant).unwrap(),
+            "\"assistant\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::ToolUse).unwrap(),
+            "\"tool_use\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::ToolResult).unwrap(),
+            "\"tool_result\""
+        );
         assert_eq!(serde_json::to_string(&Role::System).unwrap(), "\"system\"");
-        assert_eq!(serde_json::to_string(&Role::Progress).unwrap(), "\"progress\"");
-        assert_eq!(serde_json::to_string(&Role::Summary).unwrap(), "\"summary\"");
+        assert_eq!(
+            serde_json::to_string(&Role::Progress).unwrap(),
+            "\"progress\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Role::Summary).unwrap(),
+            "\"summary\""
+        );
     }
 
     #[test]
@@ -1024,10 +1146,13 @@ mod tests {
 
     #[test]
     fn test_message_with_thinking() {
-        let msg = Message::assistant("Here's the answer")
-            .with_thinking("Let me reason about this...");
+        let msg =
+            Message::assistant("Here's the answer").with_thinking("Let me reason about this...");
 
-        assert_eq!(msg.thinking, Some("Let me reason about this...".to_string()));
+        assert_eq!(
+            msg.thinking,
+            Some("Let me reason about this...".to_string())
+        );
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"thinking\":\"Let me reason about this...\""));
     }
@@ -1042,6 +1167,7 @@ mod tests {
             id: "test-123".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            display_name: "project".to_string(),
             git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1769482232, // Unix timestamp
@@ -1103,6 +1229,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1114,25 +1241,69 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_classification_job_serde_round_trip_with_nullable_cost_and_tokens() {
+        let job = ClassificationJob {
+            id: 42,
+            started_at: "2026-03-05T00:00:00Z".to_string(),
+            completed_at: Some("2026-03-05T00:01:00Z".to_string()),
+            total_sessions: 10,
+            classified_count: 8,
+            skipped_count: 1,
+            failed_count: 1,
+            provider: "claude-cli".to_string(),
+            model: "claude-haiku-4-5-20251001".to_string(),
+            status: ClassificationJobStatus::Completed,
+            error_message: None,
+            actual_cost_cents: None,
+            tokens_used: None,
+        };
+
+        let json = serde_json::to_string(&job).unwrap();
+        assert!(json.contains("\"actualCostCents\":null"));
+        assert!(json.contains("\"tokensUsed\":null"));
+
+        let parsed: ClassificationJob = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, 42);
+        assert_eq!(parsed.actual_cost_cents, None);
+        assert_eq!(parsed.tokens_used, None);
+        assert_eq!(parsed.status, ClassificationJobStatus::Completed);
+    }
+
     // ============================================================================
     // parse_model_id tests
     // ============================================================================
 
     #[test]
     fn test_parse_model_id_anthropic_opus() {
-        assert_eq!(parse_model_id("claude-opus-4-5-20251101"), ("anthropic", "opus"));
-        assert_eq!(parse_model_id("claude-opus-4-20250514"), ("anthropic", "opus"));
+        assert_eq!(
+            parse_model_id("claude-opus-4-5-20251101"),
+            ("anthropic", "opus")
+        );
+        assert_eq!(
+            parse_model_id("claude-opus-4-20250514"),
+            ("anthropic", "opus")
+        );
     }
 
     #[test]
     fn test_parse_model_id_anthropic_sonnet() {
-        assert_eq!(parse_model_id("claude-sonnet-4-20250514"), ("anthropic", "sonnet"));
-        assert_eq!(parse_model_id("claude-sonnet-4-5-20260130"), ("anthropic", "sonnet"));
+        assert_eq!(
+            parse_model_id("claude-sonnet-4-20250514"),
+            ("anthropic", "sonnet")
+        );
+        assert_eq!(
+            parse_model_id("claude-sonnet-4-5-20260130"),
+            ("anthropic", "sonnet")
+        );
     }
 
     #[test]
     fn test_parse_model_id_anthropic_haiku() {
-        assert_eq!(parse_model_id("claude-haiku-4-20250514"), ("anthropic", "haiku"));
+        assert_eq!(
+            parse_model_id("claude-haiku-4-20250514"),
+            ("anthropic", "haiku")
+        );
     }
 
     #[test]
@@ -1158,7 +1329,10 @@ mod tests {
     #[test]
     fn test_parse_model_id_unknown() {
         assert_eq!(parse_model_id("llama-3-70b"), ("unknown", "llama-3-70b"));
-        assert_eq!(parse_model_id("mistral-large"), ("unknown", "mistral-large"));
+        assert_eq!(
+            parse_model_id("mistral-large"),
+            ("unknown", "mistral-large")
+        );
         assert_eq!(parse_model_id(""), ("unknown", ""));
     }
 
@@ -1171,6 +1345,7 @@ mod tests {
             id: "test-session".to_string(),
             project: "test-project".to_string(),
             project_path: "/path/to/project".to_string(),
+            display_name: "project".to_string(),
             git_root: None,
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1700000000,
@@ -1231,6 +1406,7 @@ mod tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -1332,4 +1508,41 @@ pub fn is_system_user_content(content: &str) -> bool {
         || trimmed.starts_with("<local-command-stdout>")
         || trimmed.starts_with("<system-reminder>")
         || trimmed.starts_with("{\"type\":\"tool_result\"")
+}
+
+/// Returns true if a tool_result content string represents direct user input
+/// to an interactive question flow (instead of automated tool output).
+pub fn is_human_tool_result_content(content: &str) -> bool {
+    let trimmed = content.trim();
+    trimmed.starts_with("User has answered your questions:")
+        || trimmed.starts_with("The user doesn't want to proceed with this tool use.")
+}
+
+#[cfg(test)]
+mod system_user_content_tests {
+    use super::{is_human_tool_result_content, is_system_user_content};
+
+    #[test]
+    fn detects_system_user_content_markers() {
+        assert!(is_system_user_content(
+            "<command-name>/model</command-name>"
+        ));
+        assert!(is_system_user_content(
+            "<local-command-stdout>Set model to opus</local-command-stdout>"
+        ));
+        assert!(!is_system_user_content("real user prompt"));
+    }
+
+    #[test]
+    fn detects_human_tool_result_content_markers() {
+        assert!(is_human_tool_result_content(
+            "User has answered your questions: \"Scope?\"=\"Full\". You can now continue."
+        ));
+        assert!(is_human_tool_result_content(
+            "The user doesn't want to proceed with this tool use. STOP what you are doing."
+        ));
+        assert!(!is_human_tool_result_content(
+            "Web search results for query: NVDA stock price"
+        ));
+    }
 }
