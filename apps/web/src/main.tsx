@@ -29,7 +29,13 @@ createRoot(document.getElementById('root')!).render(
     <AuthProvider>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
-        <Toaster position="top-right" richColors />
+        <Toaster
+          position="bottom-right"
+          richColors
+          toastOptions={{
+            style: { fontFamily: 'var(--font-sans)' },
+          }}
+        />
       </QueryClientProvider>
     </AuthProvider>
   </StrictMode>,
