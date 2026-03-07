@@ -30,17 +30,15 @@ export function ProjectHeader({
         'transition-colors',
       )}
     >
-      <Chevron className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+      <Chevron className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
       <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">
         {projectName}
       </span>
-      <span className="ml-auto flex items-center gap-3 flex-shrink-0">
-        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-          {formatCostUsd(totalCostUsd)}
-        </span>
-        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-          {sessionCount}
-        </span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+        ({sessionCount})
+      </span>
+      <span className="ml-auto text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
+        {formatCostUsd(totalCostUsd)}
       </span>
     </button>
   )
@@ -71,13 +69,13 @@ export function BranchHeader({
         'transition-colors',
       )}
     >
-      <Chevron className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-      <GitBranch className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+      <Chevron className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+      <GitBranch className="w-3 h-3 text-gray-400 dark:text-gray-500 shrink-0" />
       <span className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
         {branchName ?? '(no branch)'}
       </span>
-      <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
-        {sessionCount}
+      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+        ({sessionCount})
       </span>
     </button>
   )

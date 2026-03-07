@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
 
+use claude_view_core::discovery::resolve_worktree_branch;
 use claude_view_core::live_parser::{parse_tail, LineType, TailFinders};
 use claude_view_core::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
@@ -54,6 +55,8 @@ struct SessionAccumulator {
     last_user_file: Option<String>,
     /// Git branch name extracted from user messages.
     git_branch: Option<String>,
+    /// Latest cwd from user messages (for worktree branch resolution).
+    latest_cwd: Option<String>,
     /// The timestamp of the first line (session start).
     started_at: Option<i64>,
     /// Unix timestamp when the current user turn started (real prompt, not meta/tool-result/system).
@@ -106,6 +109,7 @@ impl SessionAccumulator {
             last_user_message: String::new(),
             last_user_file: None,
             git_branch: None,
+            latest_cwd: None,
             started_at: None,
             current_turn_started_at: None,
             last_turn_task_seconds: None,
@@ -132,6 +136,8 @@ impl SessionAccumulator {
 /// Metadata extracted from JSONL processing — never touches agent_state or status.
 struct JsonlMetadata {
     git_branch: Option<String>,
+    worktree_branch: Option<String>,
+    is_worktree: bool,
     pid: Option<u32>,
     title: String,
     last_user_message: String,
@@ -178,6 +184,8 @@ fn build_recovered_session(
         status,
         agent_state: entry.agent_state.clone(),
         git_branch: None,
+        worktree_branch: None,
+        is_worktree: false,
         pid: Some(entry.pid),
         title: String::new(),
         last_user_message: String::new(),
@@ -301,6 +309,8 @@ fn apply_jsonl_metadata(
     session.project_display_name = project_display_name.to_string();
     session.project_path = project_path.to_string();
     session.git_branch = m.git_branch.clone();
+    session.worktree_branch = m.worktree_branch.clone();
+    session.is_worktree = m.is_worktree;
     // PID binding: only assign PID on first discovery. Once bound,
     // the process detector owns liveness checks for that specific PID.
     if session.pid.is_none() {
@@ -1357,9 +1367,12 @@ impl LiveSessionManager {
                 }
             }
 
-            // Track git branch from user messages
+            // Track git branch and cwd from user messages
             if let Some(ref branch) = line.git_branch {
                 acc.git_branch = Some(branch.clone());
+            }
+            if let Some(ref cwd) = line.cwd {
+                acc.latest_cwd = Some(cwd.clone());
             }
 
             // Track user messages (skip meta messages for content)

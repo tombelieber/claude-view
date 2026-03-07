@@ -145,6 +145,17 @@ export const DEEP_LINK_SCHEME = 'claude-view'
 export const DEFAULT_PORT = 47892
 
 // ---------------------------------------------------------------------------
+// Environment
+// ---------------------------------------------------------------------------
+
+/**
+ * Build-time environment flag. Set PUBLIC_ENV=preview to disable SEO
+ * (noindex, no structured data, no sitemap references).
+ * Defaults to 'production'.
+ */
+export const IS_PREVIEW = import.meta.env.PUBLIC_ENV === 'preview'
+
+// ---------------------------------------------------------------------------
 // Waitlist
 // ---------------------------------------------------------------------------
 

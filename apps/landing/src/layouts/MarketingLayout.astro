@@ -2,7 +2,7 @@
 import { ClientRouter } from 'astro:transitions';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
-import { SITE_URL, PLATFORM, TWITTER_HANDLE } from '../data/site';
+import { SITE_URL, PLATFORM, TWITTER_HANDLE, IS_PREVIEW } from '../data/site';
 import '../styles/global.css';
 
 interface Props {
@@ -48,6 +48,7 @@ const breadcrumbJsonLd = JSON.stringify({
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title} | claude-view</title>
   <meta name="description" content={description} />
+  {IS_PREVIEW && <meta name="robots" content="noindex, nofollow" />}
   <link rel="canonical" href={canonicalURL} />
 
   <!-- View Transitions — native CSS page-to-page animations (progressive enhancement) -->
