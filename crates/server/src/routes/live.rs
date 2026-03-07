@@ -362,7 +362,7 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
 
     for session in map.values() {
         match session.agent_state.group {
-            AgentStateGroup::NeedsYou | AgentStateGroup::Delivered => needs_you_count += 1,
+            AgentStateGroup::NeedsYou => needs_you_count += 1,
             AgentStateGroup::Autonomous => autonomous_count += 1,
         }
         total_cost += session.cost.total_usd;
@@ -372,7 +372,6 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
     serde_json::json!({
         "needsYouCount": needs_you_count,
         "autonomousCount": autonomous_count,
-        "deliveredCount": 0,
         "totalCostTodayUsd": total_cost,
         "totalTokensToday": total_tokens,
         "processCount": process_count,
