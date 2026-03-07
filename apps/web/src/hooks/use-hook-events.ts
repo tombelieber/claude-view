@@ -29,6 +29,7 @@ export function useHookEvents(sessionId: string, enabled: boolean): HookEventIte
             label: e.label as string,
             group: e.group as HookEventItem['group'],
             context: e.context as string | undefined,
+            source: e.source as string | undefined,
           }),
         )
         setEvents(items)
