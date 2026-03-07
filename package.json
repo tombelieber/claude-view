@@ -89,6 +89,14 @@
     "axum",
     "sqlite"
   ],
+  "homepage": "https://claudeview.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tombelieber/claude-view"
+  },
+  "bugs": {
+    "url": "https://github.com/tombelieber/claude-view/issues"
+  },
   "author": "",
   "license": "MIT",
   "devDependencies": {

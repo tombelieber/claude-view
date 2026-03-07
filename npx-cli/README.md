@@ -6,6 +6,7 @@
 
 <p>
   <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
   <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
@@ -70,7 +71,9 @@ Everything stays on your machine. Zero telemetry, zero cloud, zero network reque
 
 ## Links
 
+- [Website](https://claudeview.ai) — docs, changelog, blog
 - [GitHub Repository](https://github.com/tombelieber/claude-view) — full feature list, comparison table, architecture details
+- [@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin) — Claude Code plugin with 8 MCP tools and 3 skills
 - [claude-backup](https://github.com/tombelieber/claude-backup) — Claude Code deletes your sessions after 30 days. This saves them.
 - [Report an Issue](https://github.com/tombelieber/claude-view/issues)
 - [Discord](https://discord.gg/G7wdZTpRfu)
