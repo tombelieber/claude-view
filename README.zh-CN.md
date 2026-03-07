@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
@@ -293,6 +295,14 @@ git push origin main --tags    # 触发 CI → 构建所有平台 → 自动发�
 | macOS (Intel) | 可用 |
 | Linux (x64) | 计划中 |
 | Windows (x64) | 计划中 |
+
+---
+
+## 相关项目
+
+- **[claudeview.ai](https://claudeview.ai)** — 官方网站、文档与更新日志
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code 插件，提供 8 个 MCP 工具和 3 个技能。`claude plugin add @claude-view/plugin`
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code 会在 30 天后删除你的会话。这个工具可以保存它们。`npx claude-backup`
 
 ---
 
