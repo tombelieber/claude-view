@@ -2,6 +2,7 @@ import { Minimize2 } from 'lucide-react'
 import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
+import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
 import type { LiveSession } from './use-live-sessions'
@@ -79,9 +80,9 @@ export function CostTooltip({
   }[cacheStatus]
 
   const cacheStatusColor = {
-    warm: 'text-green-500',
-    cold: 'text-red-400',
-    unknown: 'text-gray-400',
+    warm: COST_CATEGORY_COLORS.cacheRead.text,
+    cold: COST_CATEGORY_COLORS.error.text,
+    unknown: COST_CATEGORY_COLORS.neutral.text,
   }[cacheStatus]
 
   // Calculate sub-agent breakdown if applicable
@@ -164,7 +165,7 @@ export function CostTooltip({
                 </div>
               )}
               {cost.cacheSavingsUsd > 0 && (
-                <div className="text-green-600 dark:text-green-400 pt-1">
+                <div className={`pt-1 ${COST_CATEGORY_COLORS.savings.text}`}>
                   Saved {formatCostUsd(cost.cacheSavingsUsd)} via caching
                 </div>
               )}
@@ -173,10 +174,10 @@ export function CostTooltip({
                 <div
                   className={`pt-1 ${
                     compactCount >= 4
-                      ? 'text-red-500'
+                      ? COST_CATEGORY_COLORS.error.text
                       : compactCount >= 2
-                        ? 'text-amber-500 dark:text-amber-400'
-                        : 'text-gray-500 dark:text-gray-400'
+                        ? COST_CATEGORY_COLORS.warning.text
+                        : COST_CATEGORY_COLORS.neutral.text
                   }`}
                 >
                   <Minimize2 className="inline h-3 w-3 mr-0.5" />
@@ -185,7 +186,7 @@ export function CostTooltip({
                 </div>
               )}
               {cost.hasUnpricedUsage && (
-                <div className="text-amber-500 dark:text-amber-400 pt-1 text-[10px]">
+                <div className={`pt-1 text-[10px] ${COST_CATEGORY_COLORS.warning.text}`}>
                   Partial pricing: {formatTokenCount(unpricedTokens)} unpriced tokens excluded from
                   USD totals ({pricedCoverage}% priced coverage).
                 </div>
