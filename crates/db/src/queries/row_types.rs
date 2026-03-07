@@ -631,13 +631,35 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
 
 impl SessionRow {
     pub(crate) fn into_session_info(self, project_encoded: &str) -> SessionInfo {
-        let files_touched: Vec<String> =
-            serde_json::from_str(&self.files_touched).unwrap_or_default();
-        let skills_used: Vec<String> = serde_json::from_str(&self.skills_used).unwrap_or_default();
+        let files_touched: Vec<String> = match serde_json::from_str(&self.files_touched) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "corrupt files_touched in DB, using empty default");
+                Vec::new()
+            }
+        };
+        let skills_used: Vec<String> = match serde_json::from_str(&self.skills_used) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "corrupt skills_used in DB, using empty default");
+                Vec::new()
+            }
+        };
         // Phase 3: Deserialize files_read and files_edited from JSON
-        let files_read: Vec<String> = serde_json::from_str(&self.files_read).unwrap_or_default();
-        let files_edited: Vec<String> =
-            serde_json::from_str(&self.files_edited).unwrap_or_default();
+        let files_read: Vec<String> = match serde_json::from_str(&self.files_read) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "corrupt files_read in DB, using empty default");
+                Vec::new()
+            }
+        };
+        let files_edited: Vec<String> = match serde_json::from_str(&self.files_edited) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "corrupt files_edited in DB, using empty default");
+                Vec::new()
+            }
+        };
 
         SessionInfo {
             id: self.id,

@@ -474,7 +474,13 @@ async fn classify_single_session(
     tracing::info!(session_id = %session_id, preview = %preview_short, "classify/single: calling Claude CLI");
 
     // 3. Parse skills
-    let skills: Vec<String> = serde_json::from_str(&skills_json).unwrap_or_default();
+    let skills: Vec<String> = match serde_json::from_str(&skills_json) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "corrupt skills_json in DB, using empty default");
+            Vec::new()
+        }
+    };
 
     // 4. Classify via Claude CLI
     let provider = super::settings::create_llm_provider(&state.db).await?;

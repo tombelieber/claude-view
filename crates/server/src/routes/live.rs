@@ -247,7 +247,7 @@ async fn get_live_session_messages(
             .into_response()
         }
         Err(e) => {
-            tracing::warn!(session_id = %id, error = %e, "Failed to parse live session JSONL");
+            tracing::error!(session_id = %id, error = %e, "Failed to parse live session JSONL");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": format!("Failed to parse session: {e}") })),
@@ -310,7 +310,13 @@ async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json
         .map(|m| m.process_count())
         .unwrap_or(0);
     let summary = build_summary(&map, process_count);
-    Json(serde_json::to_value(&summary).unwrap_or_default())
+    match serde_json::to_value(&summary) {
+        Ok(v) => Json(v),
+        Err(e) => {
+            tracing::error!("failed to serialize live summary: {e}");
+            Json(serde_json::json!({ "error": "internal serialization error" }))
+        }
+    }
 }
 
 /// GET /api/live/pricing -- Return the model pricing table.
