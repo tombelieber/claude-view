@@ -23,6 +23,7 @@ import {
   type UseLiveSessionsResult,
   sessionTotalCost,
 } from '../components/live/use-live-sessions'
+import type { IndexingProgress } from '../hooks/use-indexing-progress'
 import { formatCostUsd, formatTokenCount } from '../lib/format-utils'
 import { useLiveCommandStore } from '../store/live-command-context'
 import { useMonitorStore } from '../store/monitor-store'
@@ -40,7 +41,10 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 }
 
 export function LiveMonitorPage() {
-  const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
+  const { liveSessions, indexingProgress } = useOutletContext<{
+    liveSessions: UseLiveSessionsResult
+    indexingProgress?: IndexingProgress
+  }>()
   const {
     sessions,
     summary: serverSummary,
@@ -267,6 +271,24 @@ export function LiveMonitorPage() {
             availableProjects={availableProjects}
             availableBranches={availableBranches}
             searchInputRef={searchInputRef}
+            indexingPhase={indexingProgress?.phase}
+            indexingPercent={
+              indexingProgress
+                ? indexingProgress.bytesTotal > 0
+                  ? Math.min(
+                      100,
+                      Math.round(
+                        (indexingProgress.bytesProcessed / indexingProgress.bytesTotal) * 100,
+                      ),
+                    )
+                  : indexingProgress.total > 0
+                    ? Math.min(
+                        100,
+                        Math.round((indexingProgress.indexed / indexingProgress.total) * 100),
+                      )
+                    : 0
+                : 0
+            }
           />
         </div>
       </div>
