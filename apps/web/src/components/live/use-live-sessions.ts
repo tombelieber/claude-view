@@ -68,6 +68,17 @@ export interface LiveSummary {
   totalCostTodayUsd: number
   totalTokensToday: number
   processCount: number
+  // Token breakdown
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  // Cost breakdown
+  inputCostUsd: number
+  outputCostUsd: number
+  cacheReadCostUsd: number
+  cacheCreationCostUsd: number
+  cacheSavingsUsd: number
 }
 
 export interface UseLiveSessionsResult {
