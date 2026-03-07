@@ -74,9 +74,13 @@ export function filterLiveSessions(
     result = result.filter((s) => filters.statuses.includes(s.agentState.group))
   }
 
-  // Project filter
+  // Project filter (worktree-aware: match projectPath OR projectDisplayName OR encoded project)
   if (filters.projects.length > 0) {
-    result = result.filter((s) => filters.projects.includes(s.projectDisplayName || s.project))
+    result = result.filter((s) =>
+      filters.projects.some(
+        (p) => p === s.projectPath || p === (s.projectDisplayName || s.project),
+      ),
+    )
   }
 
   // Branch filter
