@@ -1,0 +1,48 @@
+---
+title: "Git Integration: Connecting AI Sessions to Your Codebase"
+description: "v0.3.0 adds git integration and AI contribution tracking — see which commits your Claude Code agent helped produce."
+date: 2026-02-09
+author: claude-view team
+---
+
+You finish a Claude Code session. The agent wrote code, you reviewed it, ran tests, iterated. Then you `git commit`. A week later, looking at `git log`, there's no trace that an AI agent was involved. The commit looks like any other. The session that produced it is buried in `~/.claude/projects/`.
+
+v0.3.0 bridges that gap.
+
+## Session discovery follows your projects
+
+claude-view now understands your project structure. Instead of dumping every session into a flat list, sessions are grouped by the project directory they were started in. Open a repo in Claude Code, and claude-view knows which sessions belong to that repo.
+
+This is powered by parsing the JSONL session files, which encode the working directory. No configuration required — claude-view reads what Claude Code already writes.
+
+## AI contribution tracking
+
+The headline feature: claude-view now links Claude Code sessions to the git commits they produced.
+
+When a session ends and commits exist in the repo's history that fall within the session's time window, claude-view attributes them. You can see, per-session, which commits were produced with AI assistance and what percentage of your recent work involved an agent.
+
+**We chose to undercount rather than overcount.** A commit is only attributed to a session if the timing and working directory match. If you were coding manually in the same repo during a session, those commits won't be falsely attributed. Conservative attribution means the numbers you see are trustworthy — when claude-view says a commit was AI-assisted, it was.
+
+This matters for teams thinking about AI adoption metrics. Inflated numbers breed skepticism. Provable-only attribution builds trust.
+
+## How it works
+
+```bash
+npx claude-view
+```
+
+Navigate to any session and you'll see a "Commits" section showing linked git commits with their hashes, messages, and timestamps. The contribution tracking runs automatically — no git hooks to install, no config files to write.
+
+Under the hood, claude-view shells out to `git log` with time-range filters scoped to the session's start and end timestamps. It cross-references the repo path from the session metadata with the actual git repository. If the paths don't match or no commits fall in the window, nothing is shown. No phantom data.
+
+## Why this matters
+
+AI-assisted development is becoming normal, but the tooling hasn't caught up. Your git history doesn't know about AI. Your project management tool doesn't know about AI. claude-view is the connective tissue — it links the AI work to the artifacts it produced.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Your git history now has context. Every commit, every session, connected.

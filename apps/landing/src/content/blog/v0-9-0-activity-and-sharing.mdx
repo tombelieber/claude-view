@@ -1,0 +1,54 @@
+---
+title: "Activity Dashboard and End-to-End Encrypted Sharing"
+description: "v0.9.0 adds a calendar heatmap activity page and zero-knowledge encrypted conversation sharing via share.claudeview.ai."
+date: 2026-02-25
+author: claude-view team
+---
+
+Two features that sound unrelated but share a common thread: making your AI work visible. The activity dashboard makes it visible to you. Encrypted sharing makes it visible to others — on your terms.
+
+## Activity dashboard
+
+The new Activity page shows a **calendar heatmap** of your Claude Code usage over the past year. Each cell is a day, shaded by session count. It answers a question that's surprisingly hard to answer otherwise: "Am I using AI more or less than I was three months ago?"
+
+Below the heatmap, a **daily timeline** expands when you click a specific day. You see every session from that day, ordered chronologically, with project names, durations, and token counts. It's a granular view of how your day was structured — when you started your first session, how long the gaps were, whether you ran agents in parallel or sequentially.
+
+A **project breakdown** panel shows the distribution of work across repositories. If 80% of your sessions last week were in one project, you'll see it immediately. This is useful for weekly retrospectives or when deciding where to allocate more agent time.
+
+## End-to-end encrypted sharing
+
+You found a Claude Code session that perfectly demonstrates a technique — a clean refactoring approach, a debugging workflow, a prompt pattern that worked well. You want to share it with a colleague. But the session contains your file paths, your code, your project structure. Pasting raw JSONL into Slack isn't an option.
+
+v0.9.0 adds encrypted sharing. Click the share button on any session, and claude-view:
+
+1. **Encrypts the session client-side** using AES-256-GCM with a randomly generated key
+2. **Uploads the encrypted blob** to our infrastructure (Cloudflare R2)
+3. **Gives you a URL** like `share.claudeview.ai/s/abc123#key=xyz`
+
+The encryption key is in the URL fragment (after `#`), which browsers never send to the server. The server stores ciphertext it cannot decrypt. This is zero-knowledge architecture — even if our infrastructure were compromised, your session data remains encrypted.
+
+Recipients open the link in their browser. The share viewer SPA downloads the encrypted blob, extracts the key from the URL fragment, decrypts in-browser, and renders the conversation. **No account required.** No install. Just a link.
+
+Shared sessions expire after 30 days by default, or you can delete them immediately from the sharing panel.
+
+## Unified indexing pipeline
+
+Under the hood, v0.9.0 consolidates three separate indexing paths (session metadata, full-text content, git contributions) into a **single three-phase pipeline**: discover, parse, and index. This eliminates race conditions where the search index and the database disagreed about which sessions existed. It also makes startup faster — one pass through the session directory instead of three.
+
+## CLAUDE_VIEW_DATA_DIR
+
+For sandboxed environments (containers, CI runners, managed workstations), you can now point claude-view at a custom data directory:
+
+```bash
+CLAUDE_VIEW_DATA_DIR=/path/to/sessions npx claude-view
+```
+
+This overrides the default `~/.claude` path. Useful if your Claude Code sessions live on a mounted volume or a shared filesystem.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Check the Activity page to see your usage patterns. Share a session to see zero-knowledge encryption in action.

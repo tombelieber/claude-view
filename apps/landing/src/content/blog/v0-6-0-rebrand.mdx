@@ -1,0 +1,56 @@
+---
+title: "From vibe-recall to claude-view: Why We Renamed"
+description: "v0.6.0 officially rebrands the project to claude-view — a name that tells you exactly what it does."
+date: 2026-02-20
+author: claude-view team
+---
+
+The project used to be called **vibe-recall**. It was a fun name — catchy, a nod to the "vibe coding" movement. But every time someone saw the name for the first time, they asked: "What does it do?"
+
+That's a naming failure. A tool's name should answer that question, not raise it.
+
+## Why names matter for developer tools
+
+Developer tools live or die by discoverability. You search "Claude Code dashboard" or "monitor Claude sessions" and you need to find the tool. "vibe-recall" doesn't match any of those queries. It's a brand name, not a descriptor.
+
+**claude-view** tells you exactly what it is: you view your Claude sessions. It's searchable, memorable, and self-explanatory. When someone mentions it in a Slack channel, the person reading doesn't need to click a link to understand what the tool does.
+
+## The scope of the rename
+
+Renaming a project isn't a one-line change. Every reference had to be updated:
+
+- npm package name: `vibe-recall` to `claude-view`
+- Rust crate names: `vibe-recall-server`, `vibe-recall-core`, etc. to `claude-view-server`, `claude-view-core`
+- Binary name: the CLI command itself
+- All import paths in TypeScript and Rust
+- CI/CD pipeline references
+- Documentation, README, and config files
+- The default port stayed at `47892` — some things don't need to change
+
+We scripted most of it with find-and-replace, then manually verified every file. The test suite caught several places we missed on the first pass.
+
+## What else shipped in v0.6.0
+
+The rename was the headline, but v0.6.0 also includes:
+
+**Hook event logging** — Claude Code hooks (pre/post-tool scripts) now emit structured events that claude-view captures. You can see when hooks fire, how long they take, and whether they succeed. This is essential for debugging custom hook workflows where a failing hook silently changes agent behavior.
+
+**Context gauge improvements** — the context window usage indicator is now more accurate. It accounts for cache read tokens separately from fresh input tokens, giving you a clearer picture of how close a session is to the context limit. When a session is approaching the limit, you'll know before the agent starts degrading.
+
+## Going forward
+
+The `npx` command is now:
+
+```bash
+npx claude-view
+```
+
+If you previously installed `vibe-recall`, uninstall it and switch to the new package name. The old name will stop receiving updates.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Same tool, better name. Everything else works exactly as before.

@@ -1,0 +1,61 @@
+---
+title: "Building a Rust + React Developer Tool in 48 Hours"
+description: "How we went from zero to a working session browser with a Rust Axum backend and React frontend in two days of focused development."
+date: 2026-01-27
+author: claude-view team
+---
+
+On January 25th we wrote an implementation plan. By January 27th we had v0.1.1 shipping — a working session browser with full JSONL parsing, syntax highlighting, HTML export, and pre-built binaries for four platforms. Building a Rust and React developer tool in 48 hours meant making a hundred small decisions fast and getting most of them right.
+
+## Start with the data model
+
+The first thing we built was the JSONL parser. Claude Code stores conversations as newline-delimited JSON files — one line per message, with nested content blocks for text, tool calls, and thinking. Getting the parser right before touching any UI code was the single best decision of the sprint.
+
+We spent roughly 6 hours on the parser alone. Every message has a `type` field (`user`, `assistant`, `system`, `summary`) and content blocks that can be `text`, `tool_use`, `tool_result`, `thinking`, or `image`. Some fields are optional. Timestamps are strings, not numbers. The `usage` object on assistant messages contains token counts across four categories.
+
+Once the parser was solid, every downstream feature — search, export, analytics — was just a different view of the same data.
+
+## Axum for the HTTP layer
+
+We chose Axum because it's the thinnest Rust web framework that doesn't make you fight the type system. The entire HTTP layer is about 200 lines: serve the React SPA from embedded static files, expose `/api/sessions` for the list and `/api/sessions/:id` for detail, and a health check endpoint.
+
+Memory-mapped file reading (`mmap`) let us parse JSONL files without copying them into heap memory. For a tool that scans hundreds of session files on startup, this matters — we measured 3x lower peak RSS compared to `std::fs::read_to_string`.
+
+```rust
+let mmap = unsafe { Mmap::map(&file)? };
+let finder = memmem::Finder::new(b"\"type\"");
+for line in mmap.split(|&b| b == b'\n') {
+    if finder.find(line).is_some() {
+        // only parse lines that look like messages
+    }
+}
+```
+
+The SIMD pre-filter (`memmem::Finder`) skips lines that can't possibly be message objects, which cuts parse time by roughly 40% on large session files.
+
+## React with Virtuoso for long conversations
+
+Some Claude Code sessions have 500+ messages. Rendering all of them at once is a non-starter. We used `react-virtuoso` to virtualize the message list — only DOM nodes visible in the viewport are rendered, with smooth scrolling for everything else.
+
+Syntax highlighting uses `shiki` with lazy-loaded grammars. We highlight code blocks inside messages but skip the highlighting pass entirely for messages without triple-backtick fences. This shaved about 200ms off initial render for typical sessions.
+
+## What we cut
+
+The 48-hour constraint forced ruthless prioritization. We cut:
+
+- **Full-text search** — shipped as a simple substring filter in v0.1, Tantivy integration came later
+- **Analytics** — no charts, no cost tracking, just raw session browsing
+- **Settings page** — hardcoded everything, including the port (47892)
+- **Incremental parsing** — we re-parsed all files on every server restart; fine for ~100 sessions, painful for 1,000+
+
+Every cut became a v0.2 or v0.3 feature. The key insight: none of these were needed for the core experience of "browse and read your Claude Code sessions."
+
+## The binary distribution trick
+
+We wanted `npx claude-view` to work on day one, which meant cross-compiling Rust for macOS ARM64, macOS Intel, Linux x86_64, and Linux ARM64. GitHub Actions builds all four targets on every tag push, uploads them as release assets, and the npm wrapper downloads the right one at runtime.
+
+Total binary size: ~15MB. No runtime dependencies. No Docker. No Node.js runtime embedded.
+
+## Takeaway
+
+The 48-hour build taught us that developer tools benefit enormously from "parser first, UI second." If your data layer is solid, the frontend can iterate in minutes. If your data layer is wrong, every frontend change is debugging in disguise. We've carried that lesson through every subsequent version — get the data right, then make it look good.
