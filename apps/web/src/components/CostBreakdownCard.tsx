@@ -1,5 +1,6 @@
 import { DollarSign } from 'lucide-react'
 import { formatCostUsd } from '../lib/format-utils'
+import { COST_CATEGORY_COLORS, COST_SEGMENT_CONFIG } from '../theme'
 import type { AggregateCostBreakdown } from '../types/generated/AggregateCostBreakdown'
 import { MetricCard, StackedBar } from './ui'
 import type { StackedBarSegment } from './ui/StackedBar'
@@ -8,54 +9,14 @@ interface CostBreakdownCardProps {
   cost: AggregateCostBreakdown
 }
 
-const SEGMENTS: Array<{
-  key: keyof Pick<
-    AggregateCostBreakdown,
-    'cacheReadCostUsd' | 'cacheCreationCostUsd' | 'outputCostUsd' | 'inputCostUsd'
-  >
-  label: string
-  cardLabel: string
-  color: string
-  darkColor: string
-}> = [
-  {
-    key: 'cacheReadCostUsd',
-    label: 'Cache Read',
-    cardLabel: 'Cache Read',
-    color: 'bg-emerald-500',
-    darkColor: 'dark:bg-emerald-400',
-  },
-  {
-    key: 'cacheCreationCostUsd',
-    label: 'Cache Write',
-    cardLabel: 'Cache Write',
-    color: 'bg-amber-500',
-    darkColor: 'dark:bg-amber-400',
-  },
-  {
-    key: 'outputCostUsd',
-    label: 'Output',
-    cardLabel: 'Output',
-    color: 'bg-blue-600',
-    darkColor: 'dark:bg-blue-400',
-  },
-  {
-    key: 'inputCostUsd',
-    label: 'Fresh Input',
-    cardLabel: 'Fresh Input',
-    color: 'bg-gray-400',
-    darkColor: 'dark:bg-gray-500',
-  },
-]
-
 export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
   if (cost.totalCostUsd === 0) return null
 
-  const segments: StackedBarSegment[] = SEGMENTS.map((s) => ({
+  const segments: StackedBarSegment[] = COST_SEGMENT_CONFIG.map((s) => ({
     label: s.label,
     value: cost[s.key],
-    color: s.color,
-    darkColor: s.darkColor,
+    color: s.color.light,
+    darkColor: s.color.dark,
   }))
 
   return (
@@ -73,7 +34,7 @@ export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
 
         {/* Cache savings callout */}
         {cost.cacheSavingsUsd > 0 && (
-          <p className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">
+          <p className={`mt-3 text-sm ${COST_CATEGORY_COLORS.savings.text}`}>
             Saved {formatCostUsd(cost.cacheSavingsUsd)} via prompt caching
           </p>
         )}
@@ -81,13 +42,13 @@ export function CostBreakdownCard({ cost }: CostBreakdownCardProps) {
 
       {/* Detail cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {SEGMENTS.map((s) => {
+        {COST_SEGMENT_CONFIG.map((s) => {
           const value = cost[s.key]
           const pct = cost.totalCostUsd > 0 ? ((value / cost.totalCostUsd) * 100).toFixed(1) : '0.0'
           return (
             <MetricCard
               key={s.key}
-              label={s.cardLabel}
+              label={s.label}
               value={formatCostUsd(value)}
               subValue={`${pct}% of total`}
             />

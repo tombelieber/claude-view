@@ -1,4 +1,5 @@
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
+import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
 import type { LiveSession } from './use-live-sessions'
@@ -60,7 +61,8 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
             label="Cache read"
             tokens={tokens?.cacheReadTokens}
             cost={cost.cacheReadCostUsd}
-            tokenClassName="text-green-600 dark:text-green-400"
+            dot={COST_CATEGORY_COLORS.cacheRead.dot}
+            textClassName={COST_CATEGORY_COLORS.cacheRead.text}
           />
         )}
         {(cost.cacheCreationCostUsd > 0 || (tokens?.cacheCreationTokens ?? 0) > 0) && (
@@ -92,10 +94,12 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
         )}
 
         {cost.cacheSavingsUsd > 0 && (
-          <div className="flex items-center text-sm pt-1 border-t border-gray-100 dark:border-gray-800">
-            <span className="flex-1 text-green-600 dark:text-green-400">Cache savings</span>
+          <div
+            className={`flex items-center text-sm pt-1 border-t border-gray-100 dark:border-gray-800 ${COST_CATEGORY_COLORS.savings.text}`}
+          >
+            <span className="flex-1">Cache savings</span>
             <span className="w-20" />
-            <span className="w-20 text-right font-mono tabular-nums text-green-600 dark:text-green-400">
+            <span className="w-20 text-right font-mono tabular-nums">
               -{formatCostUsd(cost.cacheSavingsUsd)}
             </span>
           </div>
@@ -160,17 +164,24 @@ function CostTokenRow({
   tokens,
   cost,
   tokenClassName,
+  dot,
+  textClassName,
 }: {
   label: string
   tokens?: number
   cost?: number
   tokenClassName?: string
+  dot?: string
+  textClassName?: string
 }) {
   return (
     <div className="flex items-center text-sm">
-      <span className="flex-1 text-gray-500 dark:text-gray-400 truncate mr-2">{label}</span>
+      <span className="flex-1 flex items-center gap-1.5 text-gray-500 dark:text-gray-400 truncate mr-2">
+        {dot && <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${dot}`} />}
+        {label}
+      </span>
       <span
-        className={`w-20 text-right font-mono tabular-nums ${tokenClassName ?? 'text-gray-500 dark:text-gray-400'}`}
+        className={`w-20 text-right font-mono tabular-nums ${textClassName ?? tokenClassName ?? 'text-gray-500 dark:text-gray-400'}`}
       >
         {tokens != null ? formatTokenCount(tokens) : '--'}
       </span>
