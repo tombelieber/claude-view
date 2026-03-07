@@ -198,6 +198,8 @@ async fn handle_hook(
                         status: status_from_agent_state(&agent_state),
                         agent_state: agent_state.clone(),
                         git_branch: None,
+                        worktree_branch: None,
+                        is_worktree: false,
                         pid: claude_pid,
                         title: String::new(),
                         last_user_message: payload
@@ -336,6 +338,8 @@ async fn handle_hook(
                     status: status_from_agent_state(&agent_state),
                     agent_state: agent_state.clone(),
                     git_branch: None,
+                    worktree_branch: None,
+                    is_worktree: false,
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),

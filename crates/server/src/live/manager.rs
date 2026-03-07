@@ -683,8 +683,13 @@ impl LiveSessionManager {
                                     None => CacheStatus::Unknown,
                                 };
 
+                                let wt_branch =
+                                    acc.latest_cwd.as_deref().and_then(resolve_worktree_branch);
+
                                 let metadata = JsonlMetadata {
                                     git_branch: acc.git_branch.clone(),
+                                    is_worktree: wt_branch.is_some(),
+                                    worktree_branch: wt_branch,
                                     pid: Some(entry.pid),
                                     title: acc.first_user_message.clone(),
                                     last_user_message: acc.last_user_message.clone(),
@@ -1661,8 +1666,12 @@ impl LiveSessionManager {
 
         // Collect metadata from accumulator (snapshot while lock is held).
         // PID is not set here — hooks deliver PIDs via SessionStart.
+        let wt_branch = acc.latest_cwd.as_deref().and_then(resolve_worktree_branch);
+
         let metadata = JsonlMetadata {
             git_branch: acc.git_branch.clone(),
+            is_worktree: wt_branch.is_some(),
+            worktree_branch: wt_branch,
             pid: None,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
