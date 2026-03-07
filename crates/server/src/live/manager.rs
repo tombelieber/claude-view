@@ -14,7 +14,7 @@ use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::{error, info, warn};
 
 use claude_view_core::discovery::resolve_worktree_branch;
-use claude_view_core::live_parser::{parse_tail, LineType, TailFinders};
+use claude_view_core::live_parser::{parse_tail, HookProgressData, LineType, TailFinders};
 use claude_view_core::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
@@ -25,8 +25,9 @@ use claude_view_db::Database;
 
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
-    status_from_agent_state, AgentState, AgentStateGroup, LiveSession, SessionEvent,
-    SessionSnapshot, SessionStatus, SnapshotEntry,
+    append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, HookEvent,
+    LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
+    MAX_HOOK_EVENTS_PER_SESSION,
 };
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
@@ -1251,6 +1252,8 @@ impl LiveSessionManager {
             acc.seen_api_calls.clear();
         }
 
+        let mut channel_a_events: Vec<HookEvent> = Vec::new();
+
         for line in &new_lines {
             // Content-block dedup (same policy as core SessionAccumulator):
             // only count tokens/cost once per API response.
@@ -1645,6 +1648,67 @@ impl LiveSessionManager {
                     }
                 }
             }
+
+            // Channel A: hook_progress events from JSONL
+            if let Some(ref hp) = line.hook_progress {
+                channel_a_events.push(resolve_hook_event_from_progress(hp, &line.timestamp));
+            }
+
+            // Synthesized events from existing JSONL signals
+            if line.line_type == LineType::User
+                && !line.is_meta
+                && !line.is_tool_result_continuation
+                && !line.has_system_prefix
+            {
+                channel_a_events.push(make_synthesized_event(
+                    &line.timestamp,
+                    "UserPromptSubmit",
+                    None,
+                    "autonomous",
+                ));
+            }
+            if line.line_type == LineType::Result {
+                channel_a_events.push(make_synthesized_event(
+                    &line.timestamp,
+                    "SessionEnd",
+                    None,
+                    "needs_you",
+                ));
+            }
+            if line.is_compact_boundary {
+                channel_a_events.push(make_synthesized_event(
+                    &line.timestamp,
+                    "PreCompact",
+                    None,
+                    "autonomous",
+                ));
+            }
+            for spawn in &line.sub_agent_spawns {
+                channel_a_events.push(make_synthesized_event(
+                    &line.timestamp,
+                    "SubagentStart",
+                    Some(&spawn.agent_type),
+                    "autonomous",
+                ));
+            }
+            if line.sub_agent_result.is_some() {
+                channel_a_events.push(make_synthesized_event(
+                    &line.timestamp,
+                    "SubagentStop",
+                    None,
+                    "autonomous",
+                ));
+            }
+            for tu in &line.task_updates {
+                if tu.status.as_deref() == Some("completed") {
+                    channel_a_events.push(make_synthesized_event(
+                        &line.timestamp,
+                        "TaskCompleted",
+                        None,
+                        "autonomous",
+                    ));
+                }
+            }
         }
 
         // Use per-turn accumulated cost (computed in the line processing loop above).
@@ -1748,6 +1812,23 @@ impl LiveSessionManager {
         // Drop accumulators lock before acquiring sessions lock
         drop(accumulators);
 
+        // Self-dedup Channel A events BEFORE acquiring the sessions lock
+        if !channel_a_events.is_empty() {
+            channel_a_events.sort_by(|a, b| {
+                a.timestamp
+                    .cmp(&b.timestamp)
+                    .then(a.event_name.cmp(&b.event_name))
+                    .then(a.tool_name.cmp(&b.tool_name))
+                    .then(a.source.cmp(&b.source))
+            });
+            channel_a_events.dedup_by(|a, b| {
+                a.event_name == b.event_name
+                    && a.timestamp == b.timestamp
+                    && a.tool_name == b.tool_name
+                    && a.source == b.source
+            });
+        }
+
         // Update the shared session map — metadata only, hooks own agent_state/status.
         // NEVER create sessions here. Only hooks (SessionStart) and startup recovery
         // (process-gated) create sessions. If no session exists, the accumulator holds
@@ -1762,6 +1843,17 @@ impl LiveSessionManager {
                 &project_display_name,
                 &project_path,
             );
+
+            // Apply Channel A events to LiveSession (NO cross-channel dedup)
+            if !channel_a_events.is_empty() {
+                for event in channel_a_events {
+                    append_capped_hook_event(
+                        &mut session.hook_events,
+                        event,
+                        MAX_HOOK_EVENTS_PER_SESSION,
+                    );
+                }
+            }
         }
         // else: no session in map — accumulator is populated, metadata will be applied
         // when SessionStart hook or startup recovery creates the session entry.
@@ -1770,6 +1862,66 @@ impl LiveSessionManager {
     // NOTE: Tier 2 AI classification (spawn_ai_classification) was removed.
     // It spawned unbounded `claude -p` processes on startup (40+ sessions discovered
     // simultaneously). Re-add with a Semaphore(1) rate limiter when needed.
+}
+
+// =============================================================================
+// Hook event helpers (Channel A: JSONL-derived events)
+// =============================================================================
+
+/// Wraps existing `parse_timestamp_to_unix` for Option<String> input.
+/// Returns 0 on failure — never SystemTime::now() (would break historical replay dedup).
+fn timestamp_string_to_unix(ts: &Option<String>) -> i64 {
+    ts.as_deref().and_then(parse_timestamp_to_unix).unwrap_or(0)
+}
+
+fn resolve_hook_event_from_progress(hp: &HookProgressData, ts: &Option<String>) -> HookEvent {
+    let group = match hp.hook_event.as_str() {
+        "SessionStart" => {
+            if hp.source.as_deref() == Some("compact") {
+                "autonomous"
+            } else {
+                "needs_you"
+            }
+        }
+        "PreToolUse" => match hp.tool_name.as_deref() {
+            Some("AskUserQuestion") | Some("EnterPlanMode") | Some("ExitPlanMode") => "needs_you",
+            _ => "autonomous",
+        },
+        "PostToolUse" => "autonomous",
+        "PostToolUseFailure" => "autonomous",
+        "Stop" => "needs_you",
+        _ => "autonomous",
+    };
+    let label = match &hp.tool_name {
+        Some(tool) => format!("{}: {}", hp.hook_event, tool),
+        None => hp.hook_event.clone(),
+    };
+    HookEvent {
+        timestamp: timestamp_string_to_unix(ts),
+        event_name: hp.hook_event.clone(),
+        tool_name: hp.tool_name.clone(),
+        label,
+        group: group.to_string(),
+        context: None,
+        source: "hook_progress".to_string(),
+    }
+}
+
+fn make_synthesized_event(
+    ts: &Option<String>,
+    event_name: &str,
+    tool_name: Option<&str>,
+    group: &str,
+) -> HookEvent {
+    HookEvent {
+        timestamp: timestamp_string_to_unix(ts),
+        event_name: event_name.to_string(),
+        tool_name: tool_name.map(|s| s.to_string()),
+        label: event_name.to_string(),
+        group: group.to_string(),
+        context: None,
+        source: "synthesized".to_string(),
+    }
 }
 
 // =============================================================================
@@ -2366,5 +2518,362 @@ mod tests {
 
         let state = derive_agent_state_from_jsonl(&path).await;
         assert!(state.is_none());
+    }
+}
+
+#[cfg(test)]
+mod hook_event_tests {
+    use super::*;
+    use claude_view_core::live_parser::HookProgressData;
+
+    #[test]
+    fn test_resolve_hook_event_session_start_resume() {
+        let hp = HookProgressData {
+            hook_event: "SessionStart".into(),
+            tool_name: None,
+            source: Some("resume".into()),
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.group, "needs_you");
+        assert_eq!(event.event_name, "SessionStart");
+    }
+
+    #[test]
+    fn test_resolve_hook_event_session_start_compact() {
+        let hp = HookProgressData {
+            hook_event: "SessionStart".into(),
+            tool_name: None,
+            source: Some("compact".into()),
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.group, "autonomous");
+    }
+
+    #[test]
+    fn test_resolve_hook_event_pre_tool_ask_user() {
+        let hp = HookProgressData {
+            hook_event: "PreToolUse".into(),
+            tool_name: Some("AskUserQuestion".into()),
+            source: None,
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.group, "needs_you");
+    }
+
+    #[test]
+    fn test_resolve_hook_event_pre_tool_read() {
+        let hp = HookProgressData {
+            hook_event: "PreToolUse".into(),
+            tool_name: Some("Read".into()),
+            source: None,
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.group, "autonomous");
+        assert_eq!(event.label, "PreToolUse: Read");
+    }
+
+    #[test]
+    fn test_resolve_hook_event_stop() {
+        let hp = HookProgressData {
+            hook_event: "Stop".into(),
+            tool_name: None,
+            source: None,
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.group, "needs_you");
+        assert_eq!(event.label, "Stop");
+    }
+
+    #[test]
+    fn test_timestamp_string_to_unix_valid() {
+        let ts = Some("2026-03-07T12:00:00Z".into());
+        let result = timestamp_string_to_unix(&ts);
+        assert!(
+            result > 0,
+            "Valid timestamp should produce positive unix time"
+        );
+    }
+
+    #[test]
+    fn test_timestamp_string_to_unix_none() {
+        let result = timestamp_string_to_unix(&None);
+        assert_eq!(result, 0, "None should return 0 (safe sentinel)");
+    }
+
+    #[test]
+    fn test_source_discrimination_resolve_sets_hook_progress() {
+        let hp = HookProgressData {
+            hook_event: "PreToolUse".into(),
+            tool_name: Some("Read".into()),
+            source: None,
+        };
+        let event = resolve_hook_event_from_progress(&hp, &Some("2026-03-07T12:00:00Z".into()));
+        assert_eq!(event.source, "hook_progress");
+    }
+
+    #[test]
+    fn test_source_discrimination_synthesized_sets_source() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "UserPromptSubmit",
+            None,
+            "autonomous",
+        );
+        assert_eq!(event.source, "synthesized");
+    }
+
+    #[test]
+    fn test_channel_a_and_b_coexist_in_memory() {
+        let mut hook_events: Vec<HookEvent> = Vec::new();
+        let channel_a = HookEvent {
+            timestamp: 100,
+            event_name: "PreToolUse".into(),
+            tool_name: Some("Read".into()),
+            label: "PreToolUse: Read".into(),
+            group: "autonomous".into(),
+            context: None,
+            source: "hook_progress".into(),
+        };
+        hook_events.push(channel_a);
+        let channel_b = HookEvent {
+            timestamp: 100,
+            event_name: "PreToolUse".into(),
+            tool_name: Some("Read".into()),
+            label: "Reading: src/main.rs".into(),
+            group: "autonomous".into(),
+            context: Some(r#"{"file":"src/main.rs"}"#.into()),
+            source: "hook".into(),
+        };
+        hook_events.push(channel_b);
+        assert_eq!(hook_events.len(), 2);
+        assert_eq!(hook_events[0].source, "hook_progress");
+        assert_eq!(hook_events[1].source, "hook");
+    }
+
+    #[test]
+    fn test_self_dedup() {
+        let mut events = vec![
+            HookEvent {
+                timestamp: 100,
+                event_name: "PreToolUse".into(),
+                tool_name: Some("Read".into()),
+                label: "a".into(),
+                group: "autonomous".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+            HookEvent {
+                timestamp: 100,
+                event_name: "PreToolUse".into(),
+                tool_name: Some("Read".into()),
+                label: "b".into(),
+                group: "autonomous".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+            HookEvent {
+                timestamp: 101,
+                event_name: "PostToolUse".into(),
+                tool_name: Some("Read".into()),
+                label: "c".into(),
+                group: "autonomous".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+        ];
+        events.sort_by(|a, b| {
+            a.timestamp
+                .cmp(&b.timestamp)
+                .then(a.event_name.cmp(&b.event_name))
+                .then(a.tool_name.cmp(&b.tool_name))
+                .then(a.source.cmp(&b.source))
+        });
+        events.dedup_by(|a, b| {
+            a.event_name == b.event_name
+                && a.timestamp == b.timestamp
+                && a.tool_name == b.tool_name
+                && a.source == b.source
+        });
+        assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn test_self_dedup_adversarial_interleaving() {
+        let mut events = vec![
+            HookEvent {
+                timestamp: 100,
+                event_name: "Stop".into(),
+                tool_name: None,
+                label: "a".into(),
+                group: "needs_you".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+            HookEvent {
+                timestamp: 100,
+                event_name: "PreToolUse".into(),
+                tool_name: Some("Read".into()),
+                label: "b".into(),
+                group: "autonomous".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+            HookEvent {
+                timestamp: 100,
+                event_name: "Stop".into(),
+                tool_name: None,
+                label: "c".into(),
+                group: "needs_you".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+        ];
+        events.sort_by(|a, b| {
+            a.timestamp
+                .cmp(&b.timestamp)
+                .then(a.event_name.cmp(&b.event_name))
+                .then(a.tool_name.cmp(&b.tool_name))
+                .then(a.source.cmp(&b.source))
+        });
+        events.dedup_by(|a, b| {
+            a.event_name == b.event_name
+                && a.timestamp == b.timestamp
+                && a.tool_name == b.tool_name
+                && a.source == b.source
+        });
+        assert_eq!(events.len(), 2);
+    }
+
+    #[test]
+    fn test_self_dedup_preserves_different_sources_within_channel_a() {
+        let mut events = vec![
+            HookEvent {
+                timestamp: 100,
+                event_name: "SessionEnd".into(),
+                tool_name: None,
+                label: "SessionEnd".into(),
+                group: "needs_you".into(),
+                context: None,
+                source: "hook_progress".into(),
+            },
+            HookEvent {
+                timestamp: 100,
+                event_name: "SessionEnd".into(),
+                tool_name: None,
+                label: "SessionEnd".into(),
+                group: "needs_you".into(),
+                context: None,
+                source: "synthesized".into(),
+            },
+        ];
+        events.sort_by(|a, b| {
+            a.timestamp
+                .cmp(&b.timestamp)
+                .then(a.event_name.cmp(&b.event_name))
+                .then(a.tool_name.cmp(&b.tool_name))
+                .then(a.source.cmp(&b.source))
+        });
+        events.dedup_by(|a, b| {
+            a.event_name == b.event_name
+                && a.timestamp == b.timestamp
+                && a.tool_name == b.tool_name
+                && a.source == b.source
+        });
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].source, "hook_progress");
+        assert_eq!(events[1].source, "synthesized");
+    }
+
+    #[test]
+    fn test_synthesized_user_prompt_submit() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "UserPromptSubmit",
+            None,
+            "autonomous",
+        );
+        assert_eq!(event.event_name, "UserPromptSubmit");
+        assert_eq!(event.group, "autonomous");
+        assert_eq!(event.tool_name, None);
+    }
+
+    #[test]
+    fn test_synthesized_session_end() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "SessionEnd",
+            None,
+            "needs_you",
+        );
+        assert_eq!(event.event_name, "SessionEnd");
+        assert_eq!(event.group, "needs_you");
+    }
+
+    #[test]
+    fn test_synthesized_pre_compact() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "PreCompact",
+            None,
+            "autonomous",
+        );
+        assert_eq!(event.event_name, "PreCompact");
+    }
+
+    #[test]
+    fn test_synthesized_subagent_start() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "SubagentStart",
+            Some("Explore"),
+            "autonomous",
+        );
+        assert_eq!(event.event_name, "SubagentStart");
+        assert_eq!(event.tool_name, Some("Explore".into()));
+    }
+
+    #[test]
+    fn test_synthesized_subagent_stop() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "SubagentStop",
+            None,
+            "autonomous",
+        );
+        assert_eq!(event.event_name, "SubagentStop");
+    }
+
+    #[test]
+    fn test_synthesized_task_completed() {
+        let event = make_synthesized_event(
+            &Some("2026-03-07T12:00:00Z".into()),
+            "TaskCompleted",
+            None,
+            "autonomous",
+        );
+        assert_eq!(event.event_name, "TaskCompleted");
+    }
+
+    #[test]
+    fn test_session_end_persist_preserves_source() {
+        let channel_a = HookEvent {
+            timestamp: 100,
+            event_name: "PreToolUse".into(),
+            tool_name: Some("Read".into()),
+            label: "PreToolUse: Read".into(),
+            group: "autonomous".into(),
+            context: None,
+            source: "hook_progress".into(),
+        };
+        let row = claude_view_db::HookEventRow {
+            timestamp: channel_a.timestamp,
+            event_name: channel_a.event_name.clone(),
+            tool_name: channel_a.tool_name.clone(),
+            label: channel_a.label.clone(),
+            group_name: channel_a.group.clone(),
+            context: channel_a.context.clone(),
+            source: channel_a.source.clone(),
+        };
+        assert_eq!(row.source, "hook_progress");
     }
 }
