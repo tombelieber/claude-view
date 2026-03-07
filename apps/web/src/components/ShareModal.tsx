@@ -1,11 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Copy, Link2, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { useAuth } from '../hooks/use-auth'
 import { useConfig } from '../hooks/use-config'
 import { useCreateShare } from '../hooks/use-share'
 import { getAccessToken } from '../lib/supabase'
-import { showToast } from '../lib/toast'
 import { cn } from '../lib/utils'
 // Use the SAME Message type as ConversationView (generated, not shared)
 import type { Message } from '../types/generated'
@@ -48,14 +48,14 @@ export function ShareModal({ sessionId, messages, projectName }: ShareModalProps
       if (err instanceof Error && err.message === 'AUTH_REQUIRED') {
         const token = await getAccessToken()
         if (token) {
-          showToast('Share failed: server authentication error')
+          toast.error('Share failed', { description: 'Server authentication error' })
         } else {
           openSignIn(() => handleShare())
         }
       } else {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         console.error('[share] failed:', msg)
-        showToast(`Share failed: ${msg}`, 4000)
+        toast.error('Share failed', { description: msg })
       }
     }
   }
