@@ -1,0 +1,65 @@
+---
+title: "Why We Chose Rust Over Node.js for a Local-First CLI Tool"
+description: "Rust gives us a 15MB binary with sub-second startup, mmap file parsing, and zero runtime dependencies. Here's why that matters for developer tools."
+date: 2026-01-30
+author: claude-view team
+---
+
+The first prototype of claude-view was a Node.js script. It worked. We shipped it. Five days later we rewrote the entire backend in Rust. Here's why we chose Rust over Node.js for a local-first CLI tool, and what the numbers actually look like.
+
+## The numbers
+
+| Metric | Node.js prototype | Rust (current) |
+|--------|-------------------|----------------|
+| Binary/bundle size | ~80MB (bundled runtime) | 15MB |
+| Cold startup to listening | 2.3s | 0.4s |
+| Parse 500 JSONL sessions | 4.1s | 0.9s |
+| Peak RSS (500 sessions) | 340MB | 85MB |
+| Runtime dependencies | node_modules tree | Zero |
+
+These aren't synthetic benchmarks. They're measurements from the same MacBook Air M2 with real session data — about 500 JSONL files totaling 180MB.
+
+## Memory-mapped parsing
+
+The biggest win came from `mmap`. In Node, reading a JSONL file means `fs.readFileSync` or streaming — either way the file contents land in V8's heap. With mmap, the OS maps the file directly into the process address space. We scan the bytes in place without copying.
+
+Combined with `memchr`'s SIMD-accelerated byte search, we can pre-filter lines before parsing JSON. Most lines in a JSONL file are message content — only a fraction are the metadata lines we need for session listings. Skipping non-matching lines without JSON parsing saves roughly 40% of parse time.
+
+```rust
+// SIMD pre-filter: only parse lines containing "type"
+let finder = memmem::Finder::new(b"\"type\"");
+for line in mmap_bytes.split(|&b| b == b'\n') {
+    if finder.find(line).is_none() {
+        continue; // skip without parsing
+    }
+    if let Ok(msg) = serde_json::from_slice::<Message>(line) {
+        // process message
+    }
+}
+```
+
+Node.js can't do this. V8 doesn't expose mmap, and even with `Buffer` tricks you're still copying data across the native boundary.
+
+## Zero runtime dependencies
+
+When a user runs `npx claude-view`, the npm wrapper downloads a single static binary from GitHub Releases. No `node_modules`. No Python. No Rust toolchain. The binary has everything baked in — the HTTP server (Axum), the SQLite engine (rusqlite with bundled SQLite), the search index (Tantivy), and the React frontend (embedded as static assets via `rust-embed`).
+
+This matters more than it sounds. `node_modules` introduces supply chain attack surface, version conflicts, and platform-specific native module compilation. A static Rust binary eliminates all three. We verify downloads with SHA256 checksums and publish with npm provenance attestation via Sigstore.
+
+## SQLite without an ORM
+
+Local state lives in SQLite via `rusqlite` — session metadata, search indexes, user preferences. In Node, you'd typically use `better-sqlite3` (which compiles a C extension on install) or Prisma (which downloads a query engine binary). In Rust, `rusqlite` with the `bundled` feature compiles SQLite from source as part of the build — no native module surprises, no download steps.
+
+We batch all writes in transactions. A typical session index update touches 50-200 rows; wrapping them in a single transaction takes it from 200ms to 8ms.
+
+## The trade-offs
+
+Rust is not free. Development velocity is genuinely slower. A refactor that would take 30 minutes in TypeScript takes 2 hours in Rust, mostly fighting the borrow checker on lifetime issues in async code. Compile times on a clean build are about 45 seconds.
+
+We mitigate this with `cargo-watch` for hot reloading (rebuilds only changed crates, usually 3-5s) and by keeping the frontend in React with Vite HMR. The Rust code changes less frequently than the UI — it's the stable core that parses, indexes, and serves data.
+
+## When Node.js is the right call
+
+For web servers, API gateways, or anything where developer velocity matters more than binary size — Node.js is excellent. We still use it for the npx CLI wrapper, the Cloudflare Workers, and our build tooling.
+
+The calculus changes for local-first developer tools. Users install your tool alongside their own projects. A tool that adds 80MB and takes 3 seconds to start competes poorly with one that adds 15MB and starts instantly. Developer tools are judged by the experience of running them, and Rust lets us deliver an experience that feels native because it is native.

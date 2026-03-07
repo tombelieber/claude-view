@@ -1,0 +1,62 @@
+---
+title: "Zero-Config Developer Tools: The UX of npx Distribution"
+description: "How we distribute a Rust binary through npm so users get a native tool with one command and zero configuration."
+date: 2026-02-03
+author: claude-view team
+---
+
+The best developer tools are the ones you don't have to think about installing. Zero-config distribution through npx means a single command — no build tools, no runtime dependencies, no configuration files. Here's how we built that experience for a Rust binary and what we learned about the UX of distribution.
+
+## The distribution problem
+
+claude-view is a Rust binary. Users shouldn't need Rust installed. They shouldn't need Docker. They definitely shouldn't need to clone a repo and compile from source. The installation experience should be:
+
+```bash
+npx claude-view
+```
+
+That's it. Browser opens. You're looking at your sessions.
+
+## How the npx wrapper works
+
+The `claude-view` npm package is a thin Node.js wrapper — about 150 lines of code. When you run `npx claude-view`, it:
+
+1. **Detects your platform** — `process.platform` + `process.arch` gives us `darwin-arm64`, `darwin-x64`, `linux-x64`, or `linux-arm64`
+2. **Checks for a cached binary** — stored in `~/.claude-view/bin/` so repeat runs skip the download
+3. **Downloads from GitHub Releases** — fetches the platform-specific tarball for the matching version
+4. **Verifies the SHA256 checksum** — every release publishes a `checksums.txt` signed by the CI pipeline
+5. **Extracts and executes** — unpacks the tarball, sets the executable bit, and spawns the server process
+
+The entire wrapper is 12KB. The downloaded binary is ~15MB. Total time from `npx` to browser open is about 3 seconds on a first run, sub-second after that.
+
+## Why not the alternatives
+
+**`cargo install`** requires a working Rust toolchain. About 5% of developers have Rust installed. We'd be asking 95% of our users to install a 500MB toolchain to build a 15MB binary.
+
+**Homebrew** is macOS-only (Linuxbrew exists but has low adoption). It also requires us to maintain a tap formula, handle bottle builds, and deal with Homebrew's own update cadence. We added it as a secondary option, but it can't be the primary path.
+
+**Docker** is a non-starter for local-first tools. claude-view reads JSONL files from `~/.claude/projects/` — bind-mounting your home directory into a container raises permission issues, breaks symlinks, and adds latency to file watchers. Plus, Docker Desktop on macOS uses a Linux VM, so file access goes through VirtioFS.
+
+**curl | bash** works but users rightly distrust it. npm's provenance chain (Sigstore attestation, npm audit signatures) gives a stronger trust signal than a raw curl script.
+
+## npm provenance and supply chain security
+
+Every published version of `claude-view` on npm includes a Sigstore provenance attestation. This cryptographically links the published package to a specific GitHub Actions workflow run, commit SHA, and source repo. You can verify it:
+
+```bash
+npm audit signatures
+```
+
+The binary checksums are generated in CI and published alongside the GitHub Release. The npx wrapper verifies the checksum before execution — if someone tampers with the binary on the CDN, the hash won't match and the tool refuses to run.
+
+## The port and auto-open dance
+
+Default port is 47892 — chosen to be unlikely to conflict with anything. If it's taken (maybe you're already running a session), the server tries ephemeral port allocation and prints the actual URL. The npx wrapper captures the server's stdout, parses the port, and opens your default browser with `open` (macOS) or `xdg-open` (Linux).
+
+One subtle detail: the server binds the port and prints the URL *before* starting any background work like indexing. This means the browser opens immediately even if the server is still scanning your session files. The UI shows a loading state until data arrives. Users perceive this as fast because the window appears instantly.
+
+## Lessons from zero-config distribution
+
+The biggest lesson: **every prompt is friction**. We removed the config file. We removed the port selection. We removed the "which sessions directory" question (we auto-detect `~/.claude/projects/`). The default behavior should be correct for 99% of users. The 1% who need custom paths can set `CLAUDE_VIEW_SESSIONS_DIR`.
+
+Developer tools live or die by their first-run experience. If `npx your-tool` doesn't produce a useful result in under 5 seconds, most developers won't try again. Treat distribution as a product feature, not an afterthought.
