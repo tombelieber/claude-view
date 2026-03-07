@@ -445,6 +445,7 @@ async fn handle_hook(
                             label: e.label.clone(),
                             group_name: e.group.clone(),
                             context: e.context.clone(),
+                            source: "hook".into(),
                         })
                         .collect();
                     rows.extend(
@@ -457,6 +458,7 @@ async fn handle_hook(
                                 label: e.label.clone(),
                                 group_name: e.group.clone(),
                                 context: e.context.clone(),
+                                source: "hook".into(),
                             }),
                     );
 
@@ -491,6 +493,7 @@ async fn handle_hook(
                             label: e.label.clone(),
                             group_name: e.group.clone(),
                             context: e.context.clone(),
+                            source: "hook".into(),
                         })
                         .collect();
                     if let Err(e) = claude_view_db::hook_events_queries::insert_hook_events(
