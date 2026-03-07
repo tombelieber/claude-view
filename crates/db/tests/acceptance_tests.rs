@@ -295,6 +295,7 @@ async fn ac9_callbacks_fire_correctly() {
             fdc.fetch_add(1, Ordering::Relaxed);
         },
         |_| {},
+        || {},
     )
     .await
     .unwrap();

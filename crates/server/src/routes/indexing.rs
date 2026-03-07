@@ -55,6 +55,7 @@ pub async fn indexing_status(State(state): State<Arc<AppState>>) -> Json<Indexin
         IndexingStatus::Idle => "idle",
         IndexingStatus::ReadingIndexes => "reading-indexes",
         IndexingStatus::DeepIndexing => "deep-indexing",
+        IndexingStatus::Finalizing => "finalizing",
         IndexingStatus::Done => "done",
         IndexingStatus::Error => "error",
     };
@@ -124,7 +125,7 @@ pub async fn indexing_progress(
                 }
                 IndexingStatus::Done if sessions > 0 && last_status != IndexingStatus::Done => {
                     // Emit ready first if we haven't yet
-                    if last_status != IndexingStatus::DeepIndexing {
+                    if !matches!(last_status, IndexingStatus::DeepIndexing | IndexingStatus::Finalizing) {
                         let data = serde_json::json!({
                             "status": "ready",
                             "projects": projects,
@@ -164,6 +165,17 @@ pub async fn indexing_progress(
                         });
                         yield Ok(Event::default().event("deep-progress").data(data.to_string()));
                         last_indexed = indexed;
+                    }
+                }
+                IndexingStatus::Finalizing => {
+                    if last_status != IndexingStatus::Finalizing {
+                        let data = serde_json::json!({
+                            "status": "finalizing",
+                            "indexed": indexed,
+                            "total": total,
+                        });
+                        yield Ok(Event::default().event("finalizing").data(data.to_string()));
+                        last_status = IndexingStatus::Finalizing;
                     }
                 }
                 IndexingStatus::Error => {

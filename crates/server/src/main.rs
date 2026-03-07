@@ -413,6 +413,7 @@ async fn main() -> Result<()> {
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
         let state_for_total = idx_state.clone();
+        let state_for_finalize = idx_state.clone();
         match scan_and_index_all(
             &claude_dir,
             &idx_db,
@@ -425,6 +426,9 @@ async fn main() -> Result<()> {
             move |total| {
                 state_for_total.set_total(total);
             },
+            move || {
+                state_for_finalize.set_status(IndexingStatus::Finalizing);
+            },
         )
         .await
         {
@@ -435,6 +439,10 @@ async fn main() -> Result<()> {
                     elapsed_ms = index_start.elapsed().as_millis() as u64,
                     "Startup scan complete"
                 );
+
+                // Signal Done immediately — search index is ready.
+                // Post-scan cleanup below is housekeeping, not indexing.
+                idx_state.set_status(IndexingStatus::Done);
 
                 // Persist index metadata so Settings > Data Status shows real values.
                 let duration_ms = index_start.elapsed().as_millis() as i64;
@@ -458,8 +466,6 @@ async fn main() -> Result<()> {
                 if let Err(e) = idx_db.set_registry_hash(&new_hash).await {
                     tracing::warn!("Failed to persist registry hash: {e}");
                 }
-
-                idx_state.set_status(IndexingStatus::Done);
 
                 // 5. Post-index tasks
                 run_git_sync_logged(&idx_db, "initial").await;
@@ -486,6 +492,7 @@ async fn main() -> Result<()> {
                         Some(registry_arc.clone()),
                         |_| {},
                         |_| {},
+                        || {},
                     )
                     .await
                     {
