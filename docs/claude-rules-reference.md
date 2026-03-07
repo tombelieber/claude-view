@@ -77,17 +77,21 @@ Also: `process.cmd()` returns empty on macOS, so Node.js-based install check (`c
 
 ---
 
-## Claude Code Project Directory Encoding
+## Project Path Resolution
 
-**Lesson learned (Feb 2026):** Claude Code encodes paths using `-` replacement, NOT URL encoding. `/Users/foo/dev/@org/project` becomes `-Users-foo-dev--org-project`. `urlencoding::decode()` finds no `%XX` patterns and returns input unchanged.
+**Principle:** Project paths are always derived from the true CWD found in JSONL data — never guessed or decoded from Claude Code's encoded directory names.
+
+Claude Code encodes paths using `-` replacement (e.g. `/Users/foo/dev/@org/project` → `-Users-foo-dev--org-project`). This encoding is ambiguous (`@` and `-` both become `-`), so **never attempt to reverse it**. The CWD is always available in JSONL entries.
 
 ```rust
-// WRONG
+// WRONG — guessing path from encoded directory name
 let project_path = urlencoding::decode(&encoded_name).to_string();
 
-// RIGHT
-let resolved = claude_view_core::discovery::resolve_project_path(&encoded_name);
-let project_path = resolved.full_path;
+// WRONG — trying to reverse the dash encoding
+let project_path = encoded_name.replace('-', "/");
+
+// RIGHT — use CWD from JSONL, which is the true path
+let cwd = entry.cwd.as_deref(); // always present in JSONL
 ```
 
 ---
