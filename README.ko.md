@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
   <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
@@ -293,6 +295,14 @@ git push origin main --tags    # CI 트리거 → 전 플랫폼 빌드 → npm�
 | macOS (Intel) | 사용 가능 |
 | Linux (x64) | 예정 |
 | Windows (x64) | 예정 |
+
+---
+
+## 관련 프로젝트
+
+- **[claudeview.ai](https://claudeview.ai)** — 공식 웹사이트, 문서 및 변경 로그
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code 플러그인. 8개의 MCP 도구와 3개의 스킬 제공. `claude plugin add @claude-view/plugin`
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code는 30일 후 세션을 삭제합니다. 이 도구가 세션을 저장합니다. `npx claude-backup`
 
 ---
 
