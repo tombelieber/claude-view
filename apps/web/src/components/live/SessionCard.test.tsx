@@ -16,7 +16,6 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'needs_you',
       state: 'awaiting_input',
       label: 'Waiting for your next message',
-      context: null,
     },
     gitBranch: 'main',
     worktreeBranch: null,
@@ -86,7 +85,7 @@ describe('SessionCard pulse dot', () => {
   it('shows pulse dot for autonomous (running) sessions', () => {
     const session = createMockSession({
       status: 'working',
-      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working', context: null },
+      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working' },
     })
     renderCard(session)
     expect(screen.getByTestId('pulse-dot')).toBeInTheDocument()
@@ -94,7 +93,7 @@ describe('SessionCard pulse dot', () => {
 
   it('does not show pulse dot for waiting sessions', () => {
     const session = createMockSession({
-      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting', context: null },
+      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting' },
     })
     renderCard(session)
     expect(screen.queryByTestId('pulse-dot')).not.toBeInTheDocument()
@@ -196,7 +195,6 @@ describe('SessionCard question display', () => {
         group: 'needs_you',
         state: 'awaiting_input',
         label: 'Waiting for your next message',
-        context: null,
       },
     })
     renderCard(session)
@@ -209,7 +207,6 @@ describe('SessionCard question display', () => {
         group: 'autonomous',
         state: 'acting',
         label: 'Using tools...',
-        context: null,
       },
     })
     renderCard(session)
