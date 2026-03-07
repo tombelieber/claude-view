@@ -18,13 +18,14 @@ import {
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { type ExportFormat, useExport } from '../hooks/use-export'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useRevokeShare, useShares } from '../hooks/use-share'
 import { formatRelativeTime, useStatus } from '../hooks/use-status'
 import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '../hooks/use-system'
 import { formatNumber } from '../lib/format-utils'
-import { showToast } from '../lib/toast'
+import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { AccountSection } from './AccountSection'
@@ -348,7 +349,7 @@ function SharedLinksSection() {
                   type="button"
                   onClick={() => {
                     if (share.url) navigator.clipboard.writeText(share.url)
-                    showToast('Link copied to clipboard')
+                    toast.success('Copied to clipboard', { duration: TOAST_DURATION.micro })
                   }}
                   className="text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300 truncate max-w-48 text-left"
                   title={share.url}
