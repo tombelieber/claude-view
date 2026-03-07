@@ -941,6 +941,7 @@ impl LiveSessionManager {
                             registry_for_rescan,
                             |_| {},
                             |_| {},
+                            || {},
                         )
                         .await
                         .unwrap_or((0, 0));

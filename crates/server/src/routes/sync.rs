@@ -331,6 +331,7 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
 
                 let indexing_cb = indexing.clone();
                 let indexing_total = indexing.clone();
+                let indexing_finalize = indexing.clone();
                 let search_for_scan = search_holder.read().unwrap().clone();
                 let registry_for_scan = registry_holder
                     .read()
@@ -348,6 +349,10 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                     },
                     move |total| {
                         indexing_total.set_total(total);
+                    },
+                    move || {
+                        indexing_finalize
+                            .set_status(crate::indexing_state::IndexingStatus::Finalizing);
                     },
                 )
                 .await;

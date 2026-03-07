@@ -20,6 +20,8 @@ pub enum IndexingStatus {
     Done = 3,
     /// Indexing terminated with an error (see [`IndexingState::error`]).
     Error = 4,
+    /// All DB writes done, building search index (Tantivy commit + reload).
+    Finalizing = 5,
 }
 
 impl IndexingStatus {
@@ -32,6 +34,7 @@ impl IndexingStatus {
             2 => Some(Self::DeepIndexing),
             3 => Some(Self::Done),
             4 => Some(Self::Error),
+            5 => Some(Self::Finalizing),
             _ => None,
         }
     }
@@ -297,7 +300,7 @@ mod tests {
 
     #[test]
     fn from_u8_invalid_returns_none() {
-        assert!(IndexingStatus::from_u8(5).is_none());
+        assert!(IndexingStatus::from_u8(6).is_none());
         assert!(IndexingStatus::from_u8(255).is_none());
     }
 
