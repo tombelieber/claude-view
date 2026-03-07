@@ -27,8 +27,7 @@ impl crate::Database {
 
         // achievement_rate from DB is 0-100 (percentage); normalize to 0.0-1.0
         let achievement_rate = stats.achievement_rate / 100.0;
-        let friction_rate =
-            stats.friction_session_count as f64 / stats.total_with_facets as f64;
+        let friction_rate = stats.friction_session_count as f64 / stats.total_with_facets as f64;
         let satisfaction_trend =
             stats.satisfied_or_above_count as f64 / stats.total_with_facets as f64;
 

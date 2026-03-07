@@ -1,0 +1,50 @@
+---
+title: Introducing claude-view
+description: Monitor, orchestrate, and command your Claude Code sessions from a web dashboard or your phone.
+date: 2026-02-28
+author: claude-view team
+---
+
+Today we're launching **claude-view** — an open-source tool that brings Mission Control to your Claude Code workflows.
+
+## What it is
+
+claude-view monitors every Claude Code session on your machine in real time. It shows you what each agent is working on, how many tokens it's using, and how much it costs — all in one dashboard.
+
+Run it with one command:
+
+```bash
+npx claude-view
+```
+
+No config. No signup. Your browser opens automatically at `http://localhost:47892`.
+
+## Why we built it
+
+As we started running multiple Claude Code agents simultaneously, we lost visibility. Which agent is working on what? Is that session still running or is it waiting for input? How much have I spent today?
+
+Mission Control answers all of these questions — live.
+
+## What you get
+
+**Session browser** — every Claude Code session, past and present. Full-text search across all conversations. Filter by project, model, or date.
+
+**Live dashboard** — real-time view of all running agents. Watch token counts tick up, see which tools are being called, monitor costs as they accumulate.
+
+**Cost tracking** — per-session and aggregate costs with cache hit ratio. Know exactly where your tokens are going.
+
+**AI Fluency Score** — a 0–100 metric that measures how effectively you collaborate with AI agents. Track your progress over time.
+
+**Claude Code plugin** — ships as a native plugin (`claude plugin add @claude-view/plugin`) with 8 read-only tools, 3 skills (`/session-recap`, `/daily-cost`, `/standup`), and auto-start. Ask Claude "what did I work on last week?" and get a real answer.
+
+## The mobile app (coming soon)
+
+The next milestone is the mobile app — native iOS and Android. Monitor your agents from your phone, receive push notifications when agents need approval, and ship features from anywhere.
+
+## Get started
+
+```bash
+npx claude-view
+```
+
+[Read the docs →](/docs/) · [GitHub →](https://github.com/tombelieber/claude-view)

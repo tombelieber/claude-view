@@ -63,12 +63,15 @@ pub enum FileEvent {
 /// - Tool results: `{project}/{sessionId}/tool-results/*.txt` (depth 4+) ❌
 ///
 /// This is systematic and robust — no string matching, just structural validation.
-pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(RecommendedWatcher, Arc<AtomicU64>)> {
+pub fn start_watcher(
+    tx: mpsc::Sender<FileEvent>,
+) -> notify::Result<(RecommendedWatcher, Arc<AtomicU64>)> {
     let projects_dir = match dirs::home_dir() {
         Some(home) => home.join(".claude").join("projects"),
         None => {
             warn!("Could not determine home directory; file watcher disabled");
-            let w = notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {})?;
+            let w =
+                notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {})?;
             return Ok((w, Arc::new(AtomicU64::new(0))));
         }
     };
@@ -80,76 +83,81 @@ pub fn start_watcher(tx: mpsc::Sender<FileEvent>) -> notify::Result<(Recommended
     let projects_dir_for_filter = projects_dir.clone();
 
     // Create the watcher with a callback that filters and forwards events
-    let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-        match res {
-            Ok(event) => {
-                // Check for OS event queue overflow BEFORE path filtering,
-                // because overflow events have no JSONL paths and would be
-                // filtered out by the jsonl_paths.is_empty() guard.
-                if event.kind == EventKind::Other {
-                    if tx.try_send(FileEvent::Rescan).is_err() {
-                        warn!("File watcher channel full — rescan event dropped");
+    let mut watcher = notify::recommended_watcher(
+        move |res: Result<notify::Event, notify::Error>| {
+            match res {
+                Ok(event) => {
+                    // Check for OS event queue overflow BEFORE path filtering,
+                    // because overflow events have no JSONL paths and would be
+                    // filtered out by the jsonl_paths.is_empty() guard.
+                    if event.kind == EventKind::Other {
+                        if tx.try_send(FileEvent::Rescan).is_err() {
+                            warn!("File watcher channel full — rescan event dropped");
+                        }
+                        return; // Don't process individual paths for overflow events
                     }
-                    return; // Don't process individual paths for overflow events
-                }
 
-                // Filter to only parent session JSONL files (not sub-agents or tool-results)
-                // Parent sessions have path structure: {projects_dir}/{project}/{sessionId}.jsonl
-                // Sub-agents have deeper paths: {projects_dir}/{project}/{sessionId}/subagents/agent-*.jsonl
-                let jsonl_paths: Vec<PathBuf> = event
-                    .paths
-                    .into_iter()
-                    .filter(|p| {
-                        // Must be a .jsonl file
-                        if !p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
-                            return false;
-                        }
+                    // Filter to only parent session JSONL files (not sub-agents or tool-results)
+                    // Parent sessions have path structure: {projects_dir}/{project}/{sessionId}.jsonl
+                    // Sub-agents have deeper paths: {projects_dir}/{project}/{sessionId}/subagents/agent-*.jsonl
+                    let jsonl_paths: Vec<PathBuf> = event
+                        .paths
+                        .into_iter()
+                        .filter(|p| {
+                            // Must be a .jsonl file
+                            if !p.extension().map(|ext| ext == "jsonl").unwrap_or(false) {
+                                return false;
+                            }
 
-                        // Must be exactly 2 path components deep from projects_dir
-                        // Format: {project}/{sessionId}.jsonl
-                        if let Ok(rel_path) = p.strip_prefix(&projects_dir_for_filter) {
-                            rel_path.components().count() == 2
-                        } else {
-                            false
-                        }
-                    })
-                    .collect();
+                            // Must be exactly 2 path components deep from projects_dir
+                            // Format: {project}/{sessionId}.jsonl
+                            if let Ok(rel_path) = p.strip_prefix(&projects_dir_for_filter) {
+                                rel_path.components().count() == 2
+                            } else {
+                                false
+                            }
+                        })
+                        .collect();
 
-                if jsonl_paths.is_empty() {
-                    return;
-                }
+                    if jsonl_paths.is_empty() {
+                        return;
+                    }
 
-                for path in jsonl_paths {
-                    let file_event = match event.kind {
-                        EventKind::Remove(_) => FileEvent::Removed(path),
-                        EventKind::Modify(_) | EventKind::Create(_) => {
-                            FileEvent::Modified(path)
-                        }
-                        _ => continue,
-                    };
-                    if tx.try_send(file_event).is_err() {
-                        let count = dropped_counter.fetch_add(1, Ordering::Relaxed) + 1;
-                        if count == 1 || count.is_multiple_of(100) {
-                            warn!(
+                    for path in jsonl_paths {
+                        let file_event = match event.kind {
+                            EventKind::Remove(_) => FileEvent::Removed(path),
+                            EventKind::Modify(_) | EventKind::Create(_) => {
+                                FileEvent::Modified(path)
+                            }
+                            _ => continue,
+                        };
+                        if tx.try_send(file_event).is_err() {
+                            let count = dropped_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                            if count == 1 || count.is_multiple_of(100) {
+                                warn!(
                                 dropped_total = count,
                                 "File watcher channel full — event dropped (process detector will catch up)"
                             );
+                            }
                         }
                     }
                 }
-            }
-            Err(e) => {
-                error!("File watcher error: {} — triggering rescan", e);
-                if tx.try_send(FileEvent::Rescan).is_err() {
-                    warn!("File watcher channel full — error-triggered rescan dropped");
+                Err(e) => {
+                    error!("File watcher error: {} — triggering rescan", e);
+                    if tx.try_send(FileEvent::Rescan).is_err() {
+                        warn!("File watcher channel full — error-triggered rescan dropped");
+                    }
                 }
             }
-        }
-    })?;
+        },
+    )?;
 
     if projects_dir.exists() {
         watcher.watch(&projects_dir, RecursiveMode::Recursive)?;
-        tracing::info!("Watching {} for parent session JSONL changes (depth-filtered)", projects_dir.display());
+        tracing::info!(
+            "Watching {} for parent session JSONL changes (depth-filtered)",
+            projects_dir.display()
+        );
     } else {
         warn!(
             "Claude projects directory does not exist: {}; file watcher idle",
@@ -185,7 +193,11 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
     let read_dir = match std::fs::read_dir(projects_dir) {
         Ok(rd) => rd,
         Err(e) => {
-            warn!("Failed to read projects dir {}: {}", projects_dir.display(), e);
+            warn!(
+                "Failed to read projects dir {}: {}",
+                projects_dir.display(),
+                e
+            );
             return Vec::new();
         }
     };
@@ -244,12 +256,20 @@ mod tests {
         let parent2 = projects_dir.join("another-project").join("def456.jsonl");
 
         assert_eq!(
-            parent1.strip_prefix(&projects_dir).unwrap().components().count(),
+            parent1
+                .strip_prefix(&projects_dir)
+                .unwrap()
+                .components()
+                .count(),
             2,
             "Parent session should have depth 2"
         );
         assert_eq!(
-            parent2.strip_prefix(&projects_dir).unwrap().components().count(),
+            parent2
+                .strip_prefix(&projects_dir)
+                .unwrap()
+                .components()
+                .count(),
             2,
             "Parent session should have depth 2"
         );
@@ -267,12 +287,20 @@ mod tests {
             .join("agent-b789012.jsonl");
 
         assert_eq!(
-            subagent1.strip_prefix(&projects_dir).unwrap().components().count(),
+            subagent1
+                .strip_prefix(&projects_dir)
+                .unwrap()
+                .components()
+                .count(),
             4,
             "Sub-agent should have depth 4"
         );
         assert_eq!(
-            subagent2.strip_prefix(&projects_dir).unwrap().components().count(),
+            subagent2
+                .strip_prefix(&projects_dir)
+                .unwrap()
+                .components()
+                .count(),
             4,
             "Sub-agent should have depth 4"
         );
@@ -285,7 +313,11 @@ mod tests {
             .join("toolu_xyz.txt");
 
         assert_eq!(
-            tool_result.strip_prefix(&projects_dir).unwrap().components().count(),
+            tool_result
+                .strip_prefix(&projects_dir)
+                .unwrap()
+                .components()
+                .count(),
             4,
             "Tool result should have depth 4"
         );
@@ -310,11 +342,25 @@ mod tests {
 
         // Parent sessions should pass
         assert!(filter(&projects_dir.join("proj").join("session.jsonl")));
-        assert!(filter(&projects_dir.join("another-proj").join("abc123.jsonl")));
+        assert!(filter(
+            &projects_dir.join("another-proj").join("abc123.jsonl")
+        ));
 
         // Sub-agents should be rejected
-        assert!(!filter(&projects_dir.join("proj").join("session").join("subagents").join("agent-a.jsonl")));
-        assert!(!filter(&projects_dir.join("proj").join("session").join("tool-results").join("tool.jsonl")));
+        assert!(!filter(
+            &projects_dir
+                .join("proj")
+                .join("session")
+                .join("subagents")
+                .join("agent-a.jsonl")
+        ));
+        assert!(!filter(
+            &projects_dir
+                .join("proj")
+                .join("session")
+                .join("tool-results")
+                .join("tool.jsonl")
+        ));
 
         // Non-JSONL files should be rejected
         assert!(!filter(&projects_dir.join("proj").join("session.txt")));

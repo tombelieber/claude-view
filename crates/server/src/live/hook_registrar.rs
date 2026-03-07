@@ -17,20 +17,20 @@ const SENTINEL: &str = "# claude-view-hook";
 /// Hook events to register. SessionStart is sync (no "async" field),
 /// all others are async ("async": true).
 const HOOK_EVENTS: &[&str] = &[
-    "SessionStart",        // sync — blocks startup until server acknowledges
-    "UserPromptSubmit",    // async
-    "PreToolUse",          // async — NEW: real-time tool activity
-    "PostToolUse",         // async — NEW: tool completion tracking
-    "PostToolUseFailure",  // async
-    "PermissionRequest",   // async — NEW: richer permission data (tool_name, suggestions)
-    "Stop",                // async
-    "Notification",        // async
-    "SubagentStart",       // async
-    "SubagentStop",        // async
-    "TeammateIdle",        // async — NEW: sub-agent idle tracking
-    "TaskCompleted",       // async — NEW: task completion events
-    "PreCompact",          // async — NEW: context compaction indicator
-    "SessionEnd",          // async
+    "SessionStart",       // sync — blocks startup until server acknowledges
+    "UserPromptSubmit",   // async
+    "PreToolUse",         // async — NEW: real-time tool activity
+    "PostToolUse",        // async — NEW: tool completion tracking
+    "PostToolUseFailure", // async
+    "PermissionRequest",  // async — NEW: richer permission data (tool_name, suggestions)
+    "Stop",               // async
+    "Notification",       // async
+    "SubagentStart",      // async
+    "SubagentStop",       // async
+    "TeammateIdle",       // async — NEW: sub-agent idle tracking
+    "TaskCompleted",      // async — NEW: task completion events
+    "PreCompact",         // async — NEW: context compaction indicator
+    "SessionEnd",         // async
 ];
 
 fn settings_path() -> PathBuf {
@@ -138,7 +138,10 @@ pub fn register(port: u16) {
     }
 
     // Append our 14 hooks in the new matcher-group format
-    let hooks = settings["hooks"].as_object_mut().expect("hooks is object");
+    let Some(hooks) = settings["hooks"].as_object_mut() else {
+        tracing::error!("settings.json has unexpected structure — cannot register hooks");
+        return;
+    };
     for event in HOOK_EVENTS {
         let matcher_group = make_matcher_group(port, event);
         let arr = hooks
@@ -161,7 +164,11 @@ pub fn register(port: u16) {
     let tmp_path = path.with_extension("json.tmp");
     if std::fs::write(&tmp_path, &content).is_ok() {
         let _ = std::fs::rename(&tmp_path, &path);
-        tracing::info!("Registered {} Live Monitor hooks on port {}", HOOK_EVENTS.len(), port);
+        tracing::info!(
+            "Registered {} Live Monitor hooks on port {}",
+            HOOK_EVENTS.len(),
+            port
+        );
     } else {
         tracing::warn!("Failed to write hooks to {:?}", path);
     }
@@ -193,7 +200,7 @@ pub fn cleanup(port: u16) -> Vec<String> {
                 hooks.values().any(|entries| {
                     entries
                         .as_array()
-                        .map(|arr| arr.iter().any(|e| matcher_group_has_sentinel(e)))
+                        .map(|arr| arr.iter().any(matcher_group_has_sentinel))
                         .unwrap_or(false)
                 })
             })

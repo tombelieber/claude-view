@@ -219,7 +219,8 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
 
                 // Track IDs we've seen for this plugin to avoid duplicates
                 // (some plugins register the same name as both skill and command)
-                let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+                let mut seen_ids: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
 
                 // Scan for skills: direct subdirectories containing SKILL.md
                 let skills = scan_skills(&install_path, display_name, plugin_description);
@@ -331,7 +332,10 @@ fn read_installed_plugins(path: &Path) -> Option<InstalledPlugins> {
     let data = match std::fs::read_to_string(path) {
         Ok(d) => d,
         Err(e) => {
-            debug!("Could not read installed_plugins.json at {}: {e}", path.display());
+            debug!(
+                "Could not read installed_plugins.json at {}: {e}",
+                path.display()
+            );
             return None;
         }
     };
@@ -690,7 +694,10 @@ mod tests {
         for &tool in BUILTIN_TOOLS {
             let id = format!("builtin:{tool}");
             let result = registry.lookup(&id);
-            assert!(result.is_some(), "Built-in tool '{tool}' not found in registry");
+            assert!(
+                result.is_some(),
+                "Built-in tool '{tool}' not found in registry"
+            );
             assert_eq!(result.unwrap().kind, InvocableKind::BuiltinTool);
             assert!(result.unwrap().plugin_name.is_none());
         }
@@ -789,7 +796,10 @@ mod tests {
 
         // Check MCP tool
         let mcp = registry.lookup_mcp("test-plugin", "my-server");
-        assert!(mcp.is_some(), "MCP tool 'mcp:test-plugin:my-server' not found");
+        assert!(
+            mcp.is_some(),
+            "MCP tool 'mcp:test-plugin:my-server' not found"
+        );
         assert_eq!(mcp.unwrap().kind, InvocableKind::McpTool);
 
         // Check bare name lookup
@@ -845,10 +855,7 @@ mod tests {
             skill.is_some(),
             "Should find skill using key-derived plugin name"
         );
-        assert_eq!(
-            skill.unwrap().plugin_name.as_deref(),
-            Some("fallback-test")
-        );
+        assert_eq!(skill.unwrap().plugin_name.as_deref(), Some("fallback-test"));
     }
 
     // -----------------------------------------------------------------------
@@ -1050,12 +1057,20 @@ mod tests {
         // Create user-level skill: {claude_dir}/skills/prove-it/SKILL.md
         let skill_dir = claude_dir.join("skills/prove-it");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "# Prove It\nAudit proposed fixes.").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Prove It\nAudit proposed fixes.",
+        )
+        .unwrap();
 
         // Create another user-level skill
         let skill_dir2 = claude_dir.join("skills/shippable");
         fs::create_dir_all(&skill_dir2).unwrap();
-        fs::write(skill_dir2.join("SKILL.md"), "# Shippable\nPost-implementation audit.").unwrap();
+        fs::write(
+            skill_dir2.join("SKILL.md"),
+            "# Shippable\nPost-implementation audit.",
+        )
+        .unwrap();
 
         let registry = build_registry(claude_dir).await;
 
@@ -1064,7 +1079,10 @@ mod tests {
         assert!(prove_it.is_some(), "User skill 'user:prove-it' not found");
         assert_eq!(prove_it.unwrap().kind, InvocableKind::Skill);
         assert_eq!(prove_it.unwrap().name, "prove-it");
-        assert!(prove_it.unwrap().plugin_name.is_none(), "User skills should have no plugin_name");
+        assert!(
+            prove_it.unwrap().plugin_name.is_none(),
+            "User skills should have no plugin_name"
+        );
         assert_eq!(prove_it.unwrap().description, "Audit proposed fixes.");
 
         // User skills should also be found by bare name
@@ -1091,10 +1109,15 @@ mod tests {
         fs::write(
             install_path.join("plugin.json"),
             r#"{"name": "superpowers", "description": "test"}"#,
-        ).unwrap();
+        )
+        .unwrap();
         let plugin_skill = install_path.join("brainstorming");
         fs::create_dir_all(&plugin_skill).unwrap();
-        fs::write(plugin_skill.join("SKILL.md"), "# Brainstorming\nFrom plugin.").unwrap();
+        fs::write(
+            plugin_skill.join("SKILL.md"),
+            "# Brainstorming\nFrom plugin.",
+        )
+        .unwrap();
 
         let plugins_dir = claude_dir.join("plugins");
         fs::write(
@@ -1109,8 +1132,10 @@ mod tests {
                         "installedAt": "2026-01-01T00:00:00Z"
                     }]
                 }
-            }).to_string(),
-        ).unwrap();
+            })
+            .to_string(),
+        )
+        .unwrap();
 
         // Also create a user-level skill with the SAME bare name "brainstorming"
         let user_skill = claude_dir.join("skills/brainstorming");
@@ -1132,8 +1157,11 @@ mod tests {
         // Bare name lookup should return plugin (registered first)
         let bare = registry.lookup("brainstorming");
         assert!(bare.is_some());
-        assert_eq!(bare.unwrap().id, "superpowers:brainstorming",
-            "Plugin skill should win bare-name lookup (registered first)");
+        assert_eq!(
+            bare.unwrap().id,
+            "superpowers:brainstorming",
+            "Plugin skill should win bare-name lookup (registered first)"
+        );
     }
 
     #[tokio::test]

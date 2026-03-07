@@ -25,6 +25,8 @@ pub struct SessionFilterParams {
     pub high_reedit: Option<bool>,
     pub time_after: Option<i64>,
     pub time_before: Option<i64>,
+    pub project: Option<String>,
+    pub show_archived: Option<bool>,
     pub sort: String, // "recent", "tokens", "prompts", "files_edited", "duration"
     pub limit: i64,   // default 30
     pub offset: i64,  // default 0
@@ -107,6 +109,8 @@ impl Database {
         // ?4 is used only for BranchFilter::Named (a concrete branch name).
         // Match by project_id or git_root so sidebar clicks include worktree sessions
         let mut conditions = vec!["(s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ?1))".to_string()];
+        // Always exclude archived sessions from user-facing lists
+        conditions.push("s.archived_at IS NULL".to_string());
         if !include_sidechains {
             conditions.push("s.is_sidechain = 0".to_string());
         }
@@ -167,7 +171,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM sessions s
             WHERE {}
             ORDER BY {}
@@ -234,7 +239,8 @@ impl Database {
                 s.category_l1, s.category_l2, s.category_l3,
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+                s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+                s.total_cost_usd
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -291,7 +297,8 @@ impl Database {
             s.category_l1, s.category_l2, s.category_l3,
             s.category_confidence, s.category_source, s.classified_at,
             s.prompt_word_count, s.correction_count, s.same_file_edit_count,
-            s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview
+            s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
+            s.total_cost_usd
         "#;
 
         // Helper closure: appends all WHERE clauses to a QueryBuilder.
@@ -301,6 +308,12 @@ impl Database {
             params: &'args SessionFilterParams,
         ) {
             qb.push(" WHERE 1=1");
+
+            // When querying FROM sessions (show_archived mode), replicate
+            // the sidechain filter that valid_sessions normally provides.
+            if params.show_archived == Some(true) {
+                qb.push(" AND s.is_sidechain = 0");
+            }
 
             // Tantivy-resolved search: filter by pre-computed session IDs
             if let Some(ids) = &params.search_session_ids {
@@ -327,15 +340,33 @@ impl Database {
                 qb.push(")");
             }
 
-            // Branch filter (IN list)
+            // Branch filter — handle NO_BRANCH sentinel ("~" → git_branch IS NULL)
             if let Some(branches) = &params.branches {
                 if !branches.is_empty() {
-                    qb.push(" AND s.git_branch IN (");
-                    let mut sep = qb.separated(", ");
-                    for b in branches {
-                        sep.push_bind(b.as_str());
+                    let has_no_branch = branches.iter().any(|b| b == "~");
+                    let named: Vec<&str> = branches
+                        .iter()
+                        .filter(|b| b.as_str() != "~")
+                        .map(|b| b.as_str())
+                        .collect();
+
+                    if has_no_branch && named.is_empty() {
+                        qb.push(" AND s.git_branch IS NULL");
+                    } else if has_no_branch {
+                        qb.push(" AND (s.git_branch IS NULL OR s.git_branch IN (");
+                        let mut sep = qb.separated(", ");
+                        for b in &named {
+                            sep.push_bind(*b);
+                        }
+                        sep.push_unseparated("))");
+                    } else {
+                        qb.push(" AND s.git_branch IN (");
+                        let mut sep = qb.separated(", ");
+                        for b in branches {
+                            sep.push_bind(b.as_str());
+                        }
+                        sep.push_unseparated(")");
                     }
-                    sep.push_unseparated(")");
                 }
             }
 
@@ -403,18 +434,34 @@ impl Database {
                 qb.push(" AND s.last_message_at <= ");
                 qb.push_bind(before);
             }
+
+            // Project filter (worktree-aware: match project_id OR git_root)
+            if let Some(ref project) = params.project {
+                qb.push(" AND (s.project_id = ");
+                qb.push_bind(project.as_str());
+                qb.push(" OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ");
+                qb.push_bind(project.as_str());
+                qb.push("))");
+            }
         }
 
+        // Choose base table: show_archived queries `sessions` directly
+        // (with is_sidechain filter in append_filters), default uses `valid_sessions` view.
+        let base_from = if params.show_archived == Some(true) {
+            "sessions s"
+        } else {
+            "valid_sessions s"
+        };
+
         // --- COUNT query ---
-        let mut count_qb = sqlx::QueryBuilder::new("SELECT COUNT(*) FROM valid_sessions s");
+        let mut count_qb = sqlx::QueryBuilder::new(format!("SELECT COUNT(*) FROM {base_from}"));
         append_filters(&mut count_qb, params);
 
         let total: (i64,) = count_qb.build_query_as().fetch_one(self.pool()).await?;
         let total = total.0 as usize;
 
         // --- DATA query ---
-        let mut data_qb =
-            sqlx::QueryBuilder::new(format!("SELECT {} FROM valid_sessions s", select_cols));
+        let mut data_qb = sqlx::QueryBuilder::new(format!("SELECT {select_cols} FROM {base_from}"));
         append_filters(&mut data_qb, params);
 
         // ORDER BY (with s.last_message_at DESC tiebreaker for deterministic order)
@@ -445,21 +492,31 @@ impl Database {
         Ok((sessions, total))
     }
 
-    /// List distinct branches with session counts for a project.
+    /// List distinct branches with session counts for a project identity.
     ///
     /// Returns branches sorted by session count DESC.
     /// Includes sessions with `git_branch = NULL` as a separate entry.
-    pub async fn list_branches_for_project(&self, project_id: &str) -> DbResult<Vec<BranchCount>> {
+    ///
+    /// `project_identity` may be either:
+    /// - `project_id` (legacy per-worktree identity), or
+    /// - `git_root` (effective sidebar identity for merged worktrees).
+    pub async fn list_branches_for_project(
+        &self,
+        project_identity: &str,
+    ) -> DbResult<Vec<BranchCount>> {
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
             r#"
             SELECT NULLIF(git_branch, '') as branch, COUNT(*) as count
             FROM valid_sessions
-            WHERE project_id = ?1
+            WHERE (
+                project_id = ?1
+                OR (git_root IS NOT NULL AND git_root != '' AND git_root = ?1)
+            )
             GROUP BY NULLIF(git_branch, '')
             ORDER BY count DESC
             "#,
         )
-        .bind(project_id)
+        .bind(project_identity)
         .fetch_all(self.pool())
         .await?;
 
@@ -634,7 +691,7 @@ impl Database {
         // Top 5 sessions by longest task time
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
                         WHERE longest_task_seconds > 0
               AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
@@ -788,7 +845,7 @@ impl Database {
         // Top 5 sessions by longest task time (filtered)
         let longest_rows: Vec<(String, String, String, String, i32)> = sqlx::query_as(
             r#"
-            SELECT id, preview, project_id, COALESCE(project_display_name, project_id), longest_task_seconds
+            SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
             WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
               AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
@@ -876,20 +933,18 @@ impl Database {
 
     /// Get the total count of sessions (excluding sidechains).
     pub async fn get_session_count(&self) -> DbResult<i64> {
-        let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-                .fetch_one(self.pool())
-                .await?;
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+            .fetch_one(self.pool())
+            .await?;
         Ok(count)
     }
 
     /// Get the total count of projects.
     pub async fn get_project_count(&self) -> DbResult<i64> {
-        let (count,): (i64,) = sqlx::query_as(
-            "SELECT COUNT(DISTINCT project_id) FROM valid_sessions",
-        )
-        .fetch_one(self.pool())
-        .await?;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(DISTINCT project_id) FROM valid_sessions")
+                .fetch_one(self.pool())
+                .await?;
         Ok(count)
     }
 
@@ -981,6 +1036,7 @@ mod filtered_query_tests {
             id: id.to_string(),
             project: project.to_string(),
             project_path: format!("/home/user/{}", project),
+            display_name: project.to_string(),
             git_root: None,
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
@@ -1038,6 +1094,7 @@ mod filtered_query_tests {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 
@@ -1055,6 +1112,8 @@ mod filtered_query_tests {
             high_reedit: None,
             time_after: None,
             time_before: None,
+            project: None,
+            show_archived: None,
             sort: "recent".to_string(),
             limit: 30,
             offset: 0,

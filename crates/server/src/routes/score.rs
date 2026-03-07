@@ -11,9 +11,7 @@ use crate::state::AppState;
 ///
 /// Returns a composite score (0-100) plus sub-metric breakdown
 /// computed from session facets.
-pub async fn get_fluency_score(
-    State(state): State<Arc<AppState>>,
-) -> Json<serde_json::Value> {
+pub async fn get_fluency_score(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     match state.db.compute_current_fluency_score().await {
         Ok(score) => Json(serde_json::to_value(score).unwrap()),
         Err(e) => Json(serde_json::json!({"error": e.to_string(), "score": null})),

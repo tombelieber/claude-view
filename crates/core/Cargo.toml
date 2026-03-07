@@ -18,6 +18,11 @@ ts-rs = { workspace = true }
 async-trait = "0.1"
 memchr = { workspace = true }
 
+[features]
+# Gate ts-rs file generation behind this feature so `cargo test` alone
+# never overwrites formatted types. Only generate-types.sh enables this.
+codegen = []
+
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = { workspace = true }

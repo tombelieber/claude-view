@@ -1,0 +1,15 @@
+# Site URL sourced from apps/landing/src/data/site.ts (SITE_URL = https://claudeview.ai)
+User-agent: *
+Allow: /
+
+# Explicitly allow AI crawlers (prevents accidental blocking via Cloudflare WAF rules)
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+Sitemap: https://claudeview.ai/sitemap-index.xml

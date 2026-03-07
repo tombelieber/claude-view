@@ -59,7 +59,7 @@ pub fn grep_files(files: &[JsonlFile], opts: &GrepOptions) -> Result<GrepRespons
     let whole_word = opts.whole_word;
 
     std::thread::scope(|scope| {
-        let chunk_size = (files.len() + parallelism - 1) / parallelism;
+        let chunk_size = files.len().div_ceil(parallelism);
         let chunks: Vec<&[JsonlFile]> = files.chunks(chunk_size.max(1)).collect();
 
         for chunk in chunks {
@@ -343,16 +343,8 @@ mod tests {
     #[test]
     fn test_grep_multiple_sessions_sorted_by_modified() {
         let tmp = TempDir::new().unwrap();
-        let file1 = create_test_jsonl(
-            tmp.path(),
-            "old.jsonl",
-            "{\"msg\":\"deploy old\"}\n",
-        );
-        let file2 = create_test_jsonl(
-            tmp.path(),
-            "new.jsonl",
-            "{\"msg\":\"deploy new\"}\n",
-        );
+        let file1 = create_test_jsonl(tmp.path(), "old.jsonl", "{\"msg\":\"deploy old\"}\n");
+        let file2 = create_test_jsonl(tmp.path(), "new.jsonl", "{\"msg\":\"deploy new\"}\n");
 
         let opts = GrepOptions {
             pattern: "deploy".to_string(),
@@ -388,11 +380,7 @@ mod tests {
     #[test]
     fn test_grep_no_matches() {
         let tmp = TempDir::new().unwrap();
-        let file = create_test_jsonl(
-            tmp.path(),
-            "test.jsonl",
-            "{\"msg\":\"hello world\"}\n",
-        );
+        let file = create_test_jsonl(tmp.path(), "test.jsonl", "{\"msg\":\"hello world\"}\n");
 
         let opts = GrepOptions {
             pattern: "nonexistent_pattern_xyz".to_string(),

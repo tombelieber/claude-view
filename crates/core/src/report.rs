@@ -75,13 +75,19 @@ impl ContextDigest {
     pub fn to_prompt_text(&self) -> String {
         let mut out = String::new();
 
-        out.push_str(&format!("Report: {} ({})\n", self.report_type, self.date_range));
+        out.push_str(&format!(
+            "Report: {} ({})\n",
+            self.report_type, self.date_range
+        ));
         out.push_str(&format!("Summary: {}\n\n", self.summary_line));
 
         for project in &self.projects {
             out.push_str(&format!(
                 "## {} — {} sessions, {} commits, {}s total\n",
-                project.name, project.session_count, project.commit_count, project.total_duration_secs
+                project.name,
+                project.session_count,
+                project.commit_count,
+                project.total_duration_secs
             ));
 
             for branch in &project.branches {
@@ -89,7 +95,10 @@ impl ContextDigest {
                 for session in &branch.sessions {
                     let prompt = truncate_prompt(&session.first_prompt, MAX_PROMPT_LEN);
                     let cat = session.category.as_deref().unwrap_or("uncategorized");
-                    out.push_str(&format!("    - [{}] {} ({}s)\n", cat, prompt, session.duration_secs));
+                    out.push_str(&format!(
+                        "    - [{}] {} ({}s)\n",
+                        cat, prompt, session.duration_secs
+                    ));
                 }
             }
             out.push('\n');
@@ -170,7 +179,9 @@ mod tests {
                                 duration_secs: 1800,
                             },
                             SessionDigest {
-                                first_prompt: "Fix search indexer bug where queries with special chars crash".to_string(),
+                                first_prompt:
+                                    "Fix search indexer bug where queries with special chars crash"
+                                        .to_string(),
                                 category: Some("bugfix".to_string()),
                                 duration_secs: 900,
                             },
@@ -238,25 +249,46 @@ mod tests {
     fn test_build_report_prompt_contains_instructions() {
         let digest = sample_digest();
         let prompt = build_report_prompt(&digest);
-        assert!(prompt.contains("5-8 bullet points"), "Should contain bullet point instruction");
-        assert!(prompt.contains("active voice"), "Should contain active voice instruction");
-        assert!(prompt.contains("Do NOT invent work"), "Should contain guardrail");
+        assert!(
+            prompt.contains("5-8 bullet points"),
+            "Should contain bullet point instruction"
+        );
+        assert!(
+            prompt.contains("active voice"),
+            "Should contain active voice instruction"
+        );
+        assert!(
+            prompt.contains("Do NOT invent work"),
+            "Should contain guardrail"
+        );
     }
 
     #[test]
     fn test_build_report_prompt_contains_context() {
         let digest = sample_digest();
         let prompt = build_report_prompt(&digest);
-        assert!(prompt.contains("claude-view"), "Prompt should include project data");
-        assert!(prompt.contains("feat/reports"), "Prompt should include branch data");
+        assert!(
+            prompt.contains("claude-view"),
+            "Prompt should include project data"
+        );
+        assert!(
+            prompt.contains("feat/reports"),
+            "Prompt should include branch data"
+        );
     }
 
     #[test]
     fn test_empty_digest_produces_valid_prompt() {
         let digest = ContextDigest::default();
         let prompt = build_report_prompt(&digest);
-        assert!(prompt.contains("5-8 bullet points"), "Even empty digest should have instructions");
-        assert!(!prompt.contains("Top tools:"), "Empty digest should not have tools section");
+        assert!(
+            prompt.contains("5-8 bullet points"),
+            "Even empty digest should have instructions"
+        );
+        assert!(
+            !prompt.contains("Top tools:"),
+            "Empty digest should not have tools section"
+        );
     }
 
     #[test]

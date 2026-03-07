@@ -4,19 +4,19 @@
 //! Each pattern function examines sessions, computes bucket statistics,
 //! and returns an optional `PatternResult` when sufficient data exists.
 
+pub mod behavioral;
+pub mod codebase;
+pub mod comparative;
+pub mod model;
+pub mod outcome;
 pub mod session;
 pub mod temporal;
 pub mod workflow;
-pub mod model;
-pub mod codebase;
-pub mod outcome;
-pub mod behavioral;
-pub mod comparative;
 
 use std::collections::HashMap;
 
-use crate::insights::scoring::Actionability;
 use crate::insights::generator::GeneratedInsight;
+use crate::insights::scoring::Actionability;
 use crate::types::SessionInfo;
 
 // ============================================================================
@@ -116,7 +116,7 @@ pub fn best_bucket(buckets: &[Bucket]) -> Option<&Bucket> {
     buckets
         .iter()
         .filter(|b| b.count > 0)
-        .min_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))
+        .min_by(|a, b| a.value.total_cmp(&b.value))
 }
 
 /// Helper: find the bucket with the highest value (worst for re-edit rate metrics).
@@ -124,7 +124,7 @@ pub fn worst_bucket(buckets: &[Bucket]) -> Option<&Bucket> {
     buckets
         .iter()
         .filter(|b| b.count > 0)
-        .max_by(|a, b| a.value.partial_cmp(&b.value).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|a, b| a.value.total_cmp(&b.value))
 }
 
 /// Run all pattern calculations on a slice of sessions and return generated insights.
@@ -138,28 +138,49 @@ pub fn calculate_all_patterns(
     let mut insights = Vec::new();
 
     // Session patterns
-    insights.extend(session::calculate_session_patterns(sessions, time_range_days));
+    insights.extend(session::calculate_session_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Temporal patterns
-    insights.extend(temporal::calculate_temporal_patterns(sessions, time_range_days));
+    insights.extend(temporal::calculate_temporal_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Workflow patterns
-    insights.extend(workflow::calculate_workflow_patterns(sessions, time_range_days));
+    insights.extend(workflow::calculate_workflow_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Model patterns
     insights.extend(model::calculate_model_patterns(sessions, time_range_days));
 
     // Codebase patterns
-    insights.extend(codebase::calculate_codebase_patterns(sessions, time_range_days));
+    insights.extend(codebase::calculate_codebase_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Outcome patterns
-    insights.extend(outcome::calculate_outcome_patterns(sessions, time_range_days));
+    insights.extend(outcome::calculate_outcome_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Behavioral patterns
-    insights.extend(behavioral::calculate_behavioral_patterns(sessions, time_range_days));
+    insights.extend(behavioral::calculate_behavioral_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     // Comparative patterns
-    insights.extend(comparative::calculate_comparative_patterns(sessions, time_range_days));
+    insights.extend(comparative::calculate_comparative_patterns(
+        sessions,
+        time_range_days,
+    ));
 
     insights
 }
@@ -178,6 +199,7 @@ pub(crate) mod test_helpers {
             id: id.to_string(),
             project: "test-project".to_string(),
             project_path: "/test/project".to_string(),
+            display_name: "project".to_string(),
             git_root: None,
             file_path: format!("/tmp/{}.jsonl", id),
             modified_at: 1700000000,
@@ -235,6 +257,7 @@ pub(crate) mod test_helpers {
             longest_task_seconds: None,
             longest_task_preview: None,
             first_message_at: None,
+            total_cost_usd: None,
         }
     }
 

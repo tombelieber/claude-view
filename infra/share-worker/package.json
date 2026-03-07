@@ -1,0 +1,20 @@
+{
+  "name": "claude-view-share-worker",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 execute claude-view-share-meta --file=./migrations/001_init.sql",
+    "db:migrate:dev": "wrangler d1 execute claude-view-share-meta-dev --local --file=./migrations/001_init.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/unenv-preset": "^2.14.0",
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "jose": "^5.10.0",
+    "@sentry/cloudflare": "^8.0.0"
+  }
+}

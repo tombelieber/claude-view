@@ -1,0 +1,2 @@
+{"type":"progress","timestamp":"2026-03-01T10:01:00Z","data":{"type":"agent_progress","message":{"message":{"content":[{"type":"tool_use","id":"toolu_3","name":"Read","input":{"file_path":"src/progress.rs"}}]}}}}
+{"type":"progress","timestamp":"2026-03-01T10:01:10Z","data":{"type":"agent_progress","message":{"content":[{"type":"tool_use","id":"toolu_4","name":"Read","input":{"file_path":"src/fallback.rs"}}]}}}

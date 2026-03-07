@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::live_parser::{parse_tail, LineType, TailFinders};
-use crate::pricing::{calculate_cost, CacheStatus, CostBreakdown, ModelPricing, TokenUsage};
+use crate::pricing::{
+    calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
+};
 use crate::progress::{ProgressItem, ProgressSource, ProgressStatus};
 use crate::subagent::{SubAgentInfo, SubAgentStatus};
 
@@ -23,14 +25,22 @@ pub struct SessionAccumulator {
     pub user_turn_count: u32,
     pub first_user_message: String,
     pub last_user_message: String,
+    pub last_user_file: Option<String>,
     pub git_branch: Option<String>,
     pub started_at: Option<i64>,
     pub sub_agents: Vec<SubAgentInfo>,
     pub todo_items: Vec<ProgressItem>,
     pub task_items: Vec<ProgressItem>,
     pub last_cache_hit_at: Option<i64>,
-    /// Accumulated costUSD from JSONL entries (sum of per-entry `costUSD`).
-    pub total_cost_usd: f64,
+    /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
+    /// priced individually (correct: 200k tiering is per-API-request, not
+    /// per-session). This avoids the inflation bug from applying tiered
+    /// pricing to cumulative session totals.
+    pub accumulated_cost: CostBreakdown,
+    /// Dedup: track seen `message.id:requestId` pairs to avoid counting
+    /// tokens/cost multiple times when Claude Code splits one API response into
+    /// multiple JSONL lines (one per content block: thinking, text, tool_use).
+    seen_api_calls: std::collections::HashSet<String>,
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
@@ -48,6 +58,7 @@ pub struct RichSessionData {
     pub turn_count: u32,
     pub first_user_message: Option<String>,
     pub last_user_message: Option<String>,
+    pub last_user_file: Option<String>,
     pub last_cache_hit_at: Option<i64>,
 }
 
@@ -61,13 +72,15 @@ impl SessionAccumulator {
             user_turn_count: 0,
             first_user_message: String::new(),
             last_user_message: String::new(),
+            last_user_file: None,
             git_branch: None,
             started_at: None,
             sub_agents: Vec::new(),
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
-            total_cost_usd: 0.0,
+            accumulated_cost: CostBreakdown::default(),
+            seen_api_calls: std::collections::HashSet::new(),
         }
     }
 
@@ -83,55 +96,42 @@ impl SessionAccumulator {
         pricing: &HashMap<String, ModelPricing>,
     ) {
         // -----------------------------------------------------------------
-        // Token accumulation (cumulative, for cost calculation)
+        // Content-block dedup: Claude Code writes one JSONL line per content
+        // block (thinking, text, tool_use), each carrying the full message-level
+        // usage. Count tokens/cost only once per API response. Important: do NOT
+        // mark a response as seen if this block has no usage/cost fields, so a
+        // later block with actual usage is still counted.
         // -----------------------------------------------------------------
-        if let Some(input) = line.input_tokens {
-            self.tokens.input_tokens += input;
-            self.tokens.total_tokens += input;
-        }
-        if let Some(output) = line.output_tokens {
-            self.tokens.output_tokens += output;
-            self.tokens.total_tokens += output;
-        }
-        if let Some(cache_read) = line.cache_read_tokens {
-            self.tokens.cache_read_tokens += cache_read;
-            self.tokens.total_tokens += cache_read;
-        }
-        if let Some(cache_creation) = line.cache_creation_tokens {
-            self.tokens.cache_creation_tokens += cache_creation;
-            self.tokens.total_tokens += cache_creation;
-        }
-        // Split cache creation by TTL
-        if let Some(tokens_5m) = line.cache_creation_5m_tokens {
-            self.tokens.cache_creation_5m_tokens += tokens_5m;
-        }
-        if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
-            self.tokens.cache_creation_1hr_tokens += tokens_1hr;
-        }
+        let has_measurement_data = line.input_tokens.is_some()
+            || line.output_tokens.is_some()
+            || line.cache_read_tokens.is_some()
+            || line.cache_creation_tokens.is_some()
+            || line.cache_creation_5m_tokens.is_some()
+            || line.cache_creation_1hr_tokens.is_some();
 
-        // -----------------------------------------------------------------
-        // Accumulate costUSD from JSONL entries
-        // -----------------------------------------------------------------
-        if let Some(cost) = line.cost_usd {
-            self.total_cost_usd += cost;
-        }
-
-        // -----------------------------------------------------------------
-        // Track last cache hit time from Anthropic API response tokens
-        // -----------------------------------------------------------------
-        if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
-            || line
-                .cache_creation_tokens
-                .map(|v| v > 0)
-                .unwrap_or(false)
-        {
-            if let Some(ref ts) = line.timestamp {
-                self.last_cache_hit_at = parse_timestamp_to_unix(ts);
+        let should_count_block = match (line.message_id.as_deref(), line.request_id.as_deref()) {
+            (Some(msg_id), Some(req_id)) => {
+                if has_measurement_data {
+                    let key = format!("{}:{}", msg_id, req_id);
+                    self.seen_api_calls.insert(key) // true if newly inserted
+                } else {
+                    false
+                }
             }
+            _ => true, // no IDs available — count it (legacy data / live streaming)
+        };
+
+        // -----------------------------------------------------------------
+        // Model tracking (must happen BEFORE per-turn cost so model is current,
+        // and outside the dedup guard since we want the latest model always)
+        // -----------------------------------------------------------------
+        if let Some(ref model) = line.model {
+            self.model = Some(model.clone());
         }
 
         // -----------------------------------------------------------------
-        // Context window fill from latest assistant turn
+        // Context window fill from latest assistant turn (always update,
+        // even on duplicate blocks — we want the latest context window size)
         // -----------------------------------------------------------------
         if line.line_type == LineType::Assistant {
             let turn_input = line.input_tokens.unwrap_or(0)
@@ -143,10 +143,76 @@ impl SessionAccumulator {
         }
 
         // -----------------------------------------------------------------
-        // Model tracking
+        // Track last cache hit time (always update for accurate cache status)
         // -----------------------------------------------------------------
-        if let Some(ref model) = line.model {
-            self.model = Some(model.clone());
+        if line.cache_read_tokens.map(|v| v > 0).unwrap_or(false)
+            || line.cache_creation_tokens.map(|v| v > 0).unwrap_or(false)
+        {
+            if let Some(ref ts) = line.timestamp {
+                self.last_cache_hit_at = parse_timestamp_to_unix(ts);
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // Token + cost accumulation — guarded by dedup
+        // -----------------------------------------------------------------
+        if should_count_block {
+            if let Some(input) = line.input_tokens {
+                self.tokens.input_tokens += input;
+                self.tokens.total_tokens += input;
+            }
+            if let Some(output) = line.output_tokens {
+                self.tokens.output_tokens += output;
+                self.tokens.total_tokens += output;
+            }
+            if let Some(cache_read) = line.cache_read_tokens {
+                self.tokens.cache_read_tokens += cache_read;
+                self.tokens.total_tokens += cache_read;
+            }
+            if let Some(cache_creation) = line.cache_creation_tokens {
+                self.tokens.cache_creation_tokens += cache_creation;
+                self.tokens.total_tokens += cache_creation;
+            }
+            // Split cache creation by TTL
+            if let Some(tokens_5m) = line.cache_creation_5m_tokens {
+                self.tokens.cache_creation_5m_tokens += tokens_5m;
+            }
+            if let Some(tokens_1hr) = line.cache_creation_1hr_tokens {
+                self.tokens.cache_creation_1hr_tokens += tokens_1hr;
+            }
+
+            // Per-turn cost accumulation
+            let has_tokens = line.input_tokens.is_some()
+                || line.output_tokens.is_some()
+                || line.cache_read_tokens.is_some()
+                || line.cache_creation_tokens.is_some()
+                || line.cache_creation_5m_tokens.is_some()
+                || line.cache_creation_1hr_tokens.is_some();
+            if has_tokens {
+                let turn_tokens = TokenUsage {
+                    input_tokens: line.input_tokens.unwrap_or(0),
+                    output_tokens: line.output_tokens.unwrap_or(0),
+                    cache_read_tokens: line.cache_read_tokens.unwrap_or(0),
+                    cache_creation_tokens: line.cache_creation_tokens.unwrap_or(0),
+                    cache_creation_5m_tokens: line.cache_creation_5m_tokens.unwrap_or(0),
+                    cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
+                    total_tokens: 0, // unused by calculate_cost
+                };
+                let turn_cost = calculate_cost(&turn_tokens, self.model.as_deref(), pricing);
+                self.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
+                self.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
+                self.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
+                self.accumulated_cost.cache_creation_cost_usd += turn_cost.cache_creation_cost_usd;
+                self.accumulated_cost.cache_savings_usd += turn_cost.cache_savings_usd;
+                self.accumulated_cost.total_usd += turn_cost.total_usd;
+                self.accumulated_cost.unpriced_input_tokens += turn_cost.unpriced_input_tokens;
+                self.accumulated_cost.unpriced_output_tokens += turn_cost.unpriced_output_tokens;
+                self.accumulated_cost.unpriced_cache_read_tokens +=
+                    turn_cost.unpriced_cache_read_tokens;
+                self.accumulated_cost.unpriced_cache_creation_tokens +=
+                    turn_cost.unpriced_cache_creation_tokens;
+                self.accumulated_cost.has_unpriced_usage |= turn_cost.has_unpriced_usage;
+            }
         }
 
         // -----------------------------------------------------------------
@@ -166,6 +232,9 @@ impl SessionAccumulator {
                     self.first_user_message = line.content_preview.clone();
                 }
                 self.last_user_message = line.content_preview.clone();
+                if line.ide_file.is_some() {
+                    self.last_user_file = line.ide_file.clone();
+                }
             }
         }
 
@@ -389,14 +458,18 @@ impl SessionAccumulator {
         }
     }
 
-    /// Finalize accumulation: calculate cost, derive cache status, combine
-    /// progress items, and return the complete [`RichSessionData`].
-    pub fn finish(&self, pricing: &HashMap<String, ModelPricing>) -> RichSessionData {
-        let cost = calculate_cost(&self.tokens, self.model.as_deref(), pricing);
+    /// Finalize accumulation: return per-turn accumulated cost, derive cache
+    /// status, combine progress items, and return the complete [`RichSessionData`].
+    ///
+    /// Note: `pricing` is kept in the signature for backward compatibility but is
+    /// no longer used — cost is accumulated per-turn in `process_line()`.
+    pub fn finish(&self, _pricing: &HashMap<String, ModelPricing>) -> RichSessionData {
         let cache_status = derive_cache_status(self.last_cache_hit_at);
 
         let mut progress_items = self.todo_items.clone();
         progress_items.extend(self.task_items.clone());
+        let mut cost = self.accumulated_cost.clone();
+        finalize_cost_breakdown(&mut cost, &self.tokens);
 
         RichSessionData {
             tokens: self.tokens.clone(),
@@ -418,6 +491,7 @@ impl SessionAccumulator {
             } else {
                 Some(self.last_user_message.clone())
             },
+            last_user_file: self.last_user_file.clone(),
             last_cache_hit_at: self.last_cache_hit_at,
         }
     }
@@ -517,7 +591,6 @@ mod tests {
             cache_creation_tokens: None,
             cache_creation_5m_tokens: None,
             cache_creation_1hr_tokens: None,
-            cost_usd: None,
             timestamp: None,
             stop_reason: None,
             git_branch: None,
@@ -533,6 +606,10 @@ mod tests {
             task_updates: Vec::new(),
             task_id_assignments: Vec::new(),
             skill_names: Vec::new(),
+            is_compact_boundary: false,
+            ide_file: None,
+            message_id: None,
+            request_id: None,
         }
     }
 
@@ -579,6 +656,161 @@ mod tests {
         assert_eq!(data.tokens.cache_read_tokens, 200);
         assert_eq!(data.tokens.cache_creation_tokens, 50);
         assert_eq!(data.tokens.total_tokens, 3000 + 1300 + 200 + 50);
+    }
+
+    #[test]
+    fn test_content_block_dedup() {
+        // Claude Code writes one JSONL line per content block (thinking, text, tool_use),
+        // each carrying the same message-level usage tokens. We must only count once per
+        // unique message_id:requestId pair.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // First content block of API response "msg1:req1"
+        let mut block1 = empty_line();
+        block1.line_type = LineType::Assistant;
+        block1.input_tokens = Some(1000);
+        block1.output_tokens = Some(500);
+        block1.message_id = Some("msg1".to_string());
+        block1.request_id = Some("req1".to_string());
+        acc.process_line(&block1, 0, &pricing);
+
+        // Second content block of the SAME API response — should be deduped
+        let mut block2 = empty_line();
+        block2.line_type = LineType::Assistant;
+        block2.input_tokens = Some(1000);
+        block2.output_tokens = Some(500);
+        block2.message_id = Some("msg1".to_string());
+        block2.request_id = Some("req1".to_string());
+        acc.process_line(&block2, 0, &pricing);
+
+        // Third content block, still same response
+        let mut block3 = empty_line();
+        block3.line_type = LineType::Assistant;
+        block3.input_tokens = Some(1000);
+        block3.output_tokens = Some(500);
+        block3.message_id = Some("msg1".to_string());
+        block3.request_id = Some("req1".to_string());
+        acc.process_line(&block3, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        // Should count tokens only once, not 3x
+        assert_eq!(data.tokens.input_tokens, 1000);
+        assert_eq!(data.tokens.output_tokens, 500);
+        assert_eq!(data.tokens.total_tokens, 1500);
+    }
+
+    #[test]
+    fn test_content_block_dedup_different_requests() {
+        // Two different API responses should both be counted
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(1000);
+        line1.output_tokens = Some(500);
+        line1.message_id = Some("msg1".to_string());
+        line1.request_id = Some("req1".to_string());
+        acc.process_line(&line1, 0, &pricing);
+
+        // Duplicate of first response — should be deduped
+        let mut dup = empty_line();
+        dup.line_type = LineType::Assistant;
+        dup.input_tokens = Some(1000);
+        dup.output_tokens = Some(500);
+        dup.message_id = Some("msg1".to_string());
+        dup.request_id = Some("req1".to_string());
+        acc.process_line(&dup, 0, &pricing);
+
+        // Different API response — should be counted
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(2000);
+        line2.output_tokens = Some(800);
+        line2.message_id = Some("msg2".to_string());
+        line2.request_id = Some("req2".to_string());
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 3000); // 1000 + 2000
+        assert_eq!(data.tokens.output_tokens, 1300); // 500 + 800
+    }
+
+    #[test]
+    fn test_content_block_dedup_no_ids_fallback() {
+        // Lines without message_id/request_id should always be counted (legacy/live data)
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(1000);
+        line1.output_tokens = Some(500);
+        // No message_id or request_id set
+        acc.process_line(&line1, 0, &pricing);
+
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(2000);
+        line2.output_tokens = Some(800);
+        // No IDs either
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        // Both counted since no IDs for dedup
+        assert_eq!(data.tokens.input_tokens, 3000);
+        assert_eq!(data.tokens.output_tokens, 1300);
+    }
+
+    #[test]
+    fn test_content_block_dedup_first_block_without_usage() {
+        // If the first block has IDs but no usage/cost fields, it should NOT
+        // consume the dedup key. Later block with usage must still be counted.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut empty_first = empty_line();
+        empty_first.line_type = LineType::Assistant;
+        empty_first.message_id = Some("msg1".to_string());
+        empty_first.request_id = Some("req1".to_string());
+        acc.process_line(&empty_first, 0, &pricing);
+
+        let mut usage_later = empty_line();
+        usage_later.line_type = LineType::Assistant;
+        usage_later.input_tokens = Some(1200);
+        usage_later.output_tokens = Some(300);
+        usage_later.message_id = Some("msg1".to_string());
+        usage_later.request_id = Some("req1".to_string());
+        acc.process_line(&usage_later, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 1200);
+        assert_eq!(data.tokens.output_tokens, 300);
+        assert_eq!(data.tokens.total_tokens, 1500);
+    }
+
+    #[test]
+    fn test_content_block_dedup_partial_ids_fallback() {
+        // Partial IDs are treated as fallback/no-dedup and both lines count.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut line1 = empty_line();
+        line1.line_type = LineType::Assistant;
+        line1.input_tokens = Some(400);
+        line1.message_id = Some("msg-partial".to_string());
+        acc.process_line(&line1, 0, &pricing);
+
+        let mut line2 = empty_line();
+        line2.line_type = LineType::Assistant;
+        line2.input_tokens = Some(600);
+        line2.message_id = Some("msg-partial".to_string());
+        acc.process_line(&line2, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.tokens.input_tokens, 1000);
+        assert_eq!(data.tokens.total_tokens, 1000);
     }
 
     #[test]
@@ -718,11 +950,13 @@ mod tests {
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
         spawn_line.timestamp = Some("2026-02-20T10:00:00Z".to_string());
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search codebase".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search codebase".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents.len(), 1);
@@ -761,11 +995,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01BG".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Backend work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01BG".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Backend work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
 
@@ -802,11 +1038,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01BG2".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Backend work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01BG2".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Backend work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // async_launched (captures agentId)
@@ -831,11 +1069,10 @@ mod tests {
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
         notif_line.timestamp = Some("2026-02-20T11:00:00Z".to_string());
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "ab897bc".to_string(),
-                status: "completed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "ab897bc".to_string(),
+            status: "completed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Complete);
@@ -851,11 +1088,13 @@ mod tests {
         // Spawn + async_launched
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01FAIL".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Failing work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01FAIL".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Failing work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         let mut launch_line = empty_line();
@@ -876,11 +1115,10 @@ mod tests {
         // <task-notification> failed
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "afailed1".to_string(),
-                status: "failed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "afailed1".to_string(),
+            status: "failed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
@@ -894,11 +1132,13 @@ mod tests {
         // Spawn + async_launched
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01KILL".to_string(),
-            agent_type: "general-purpose".to_string(),
-            description: "Killed work".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01KILL".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "Killed work".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         let mut launch_line = empty_line();
@@ -919,11 +1159,10 @@ mod tests {
         // <task-notification> killed
         let mut notif_line = empty_line();
         notif_line.line_type = LineType::User;
-        notif_line.sub_agent_notification =
-            Some(crate::live_parser::SubAgentNotification {
-                agent_id: "akilled1".to_string(),
-                status: "killed".to_string(),
-            });
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "akilled1".to_string(),
+            status: "killed".to_string(),
+        });
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
@@ -936,11 +1175,12 @@ mod tests {
 
         let mut line = empty_line();
         line.line_type = LineType::Assistant;
-        line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search".to_string(),
-        });
+        line.sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search".to_string(),
+            });
 
         // Process same spawn twice (replay resilience)
         acc.process_line(&line, 0, &pricing);
@@ -957,11 +1197,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_01ABC".to_string(),
-            agent_type: "Explore".to_string(),
-            description: "Search".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01ABC".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // Progress event
@@ -975,10 +1217,7 @@ mod tests {
         acc.process_line(&progress_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].agent_id.as_deref(), Some("a951849"));
-        assert_eq!(
-            acc.sub_agents[0].current_activity.as_deref(),
-            Some("Read")
-        );
+        assert_eq!(acc.sub_agents[0].current_activity.as_deref(), Some("Read"));
     }
 
     #[test]
@@ -1133,7 +1372,8 @@ mod tests {
         acc.process_line(&line, 0, &pricing);
 
         let data = acc.finish(&pricing);
-        assert!(!data.cost.is_estimated);
+        assert!(!data.cost.has_unpriced_usage);
+        assert_eq!(data.cost.priced_token_coverage, 1.0);
         assert!(data.cost.total_usd > 0.0);
     }
 
@@ -1150,8 +1390,11 @@ mod tests {
         acc.process_line(&line, 0, &pricing);
 
         let data = acc.finish(&pricing);
-        assert!(data.cost.is_estimated);
-        assert!(data.cost.total_usd > 0.0);
+        assert!(data.cost.has_unpriced_usage);
+        assert_eq!(data.cost.total_usd, 0.0);
+        assert_eq!(data.cost.unpriced_input_tokens, 1000);
+        assert_eq!(data.cost.unpriced_output_tokens, 500);
+        assert_eq!(data.cost.priced_token_coverage, 0.0);
     }
 
     #[test]
@@ -1265,7 +1508,7 @@ mod tests {
         assert_eq!(data.model.as_deref(), Some("claude-sonnet-4-6"));
         assert_eq!(data.tokens.input_tokens, 1000);
         assert_eq!(data.tokens.output_tokens, 200);
-        assert!(!data.cost.is_estimated);
+        assert!(!data.cost.has_unpriced_usage);
     }
 
     #[test]
@@ -1282,11 +1525,13 @@ mod tests {
         // Spawn
         let mut spawn_line = empty_line();
         spawn_line.line_type = LineType::Assistant;
-        spawn_line.sub_agent_spawns.push(crate::live_parser::SubAgentSpawn {
-            tool_use_id: "toolu_cost".to_string(),
-            agent_type: "code".to_string(),
-            description: "Write code".to_string(),
-        });
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_cost".to_string(),
+                agent_type: "code".to_string(),
+                description: "Write code".to_string(),
+            });
         acc.process_line(&spawn_line, 0, &pricing);
 
         // Complete with token usage
