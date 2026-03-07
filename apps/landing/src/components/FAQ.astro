@@ -13,6 +13,10 @@ const faqs = [
     answer: 'No. claude-view runs 100% locally by default. All session data stays on your machine. The optional cloud relay (Pro plan) uses end-to-end encryption — your data is never readable by our servers.',
   },
   {
+    question: 'Do I need to configure anything?',
+    answer: 'No. Run <code>npx claude-view</code> and it works immediately — zero env files, zero accounts, zero database setup. Cloud features like sharing auto-enable when configured, but are completely optional.',
+  },
+  {
     question: "What's the difference between plugin and npx?",
     answer: 'The <strong>Claude Code plugin</strong> (<code>claude plugin add @claude-view/plugin</code>) auto-starts claude-view when Claude Code launches, plus adds MCP tools and skills. <strong>npx</strong> (<code>npx claude-view</code>) runs standalone — great for trying it out. Both use the same dashboard.',
   },

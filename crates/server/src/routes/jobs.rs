@@ -33,7 +33,10 @@ async fn stream_jobs(
                 result = rx.recv() => {
                     match result {
                         Ok(progress) => {
-                            let json = serde_json::to_string(&progress).unwrap_or_default();
+                            let Ok(json) = serde_json::to_string(&progress) else {
+                                tracing::error!("failed to serialize job progress: skipping");
+                                continue;
+                            };
                             yield Ok(Event::default().data(json));
                         }
                         Err(_) => break,

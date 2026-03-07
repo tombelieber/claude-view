@@ -126,7 +126,7 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
       <div class="value-copy">
         <div class="section-label">Visibility</div>
         <h2 class="section-heading">See everything. Miss nothing.</h2>
-        <p class="value-description">Every agent. Every token. Every tool call. Real-time dashboards show costs, cache efficiency, sub-agent trees, and decision history — all updated live.</p>
+        <p class="value-description">Every agent. Every token. Every tool call. Real-time dashboards show costs with hover breakdowns, cache efficiency, hook event timelines, sub-agent trees, and worktree branch drift detection — all updated live.</p>
       </div>
       <div class="value-illustration">
         <!-- Agent cards mock -->
@@ -190,6 +190,20 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
         </div>
         <h3>100% Local</h3>
         <p>All data stays on your machine. Zero telemetry. Zero cloud dependency.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </div>
+        <h3>Kanban Swimlanes</h3>
+        <p>Group running agents by project or branch. Visual swimlane layout for multi-project workflows.</p>
+      </div>
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        </div>
+        <h3>Cost & Token Breakdown</h3>
+        <p>Hover any session for a detailed token breakdown — input, output, cache read, cache write — with color-coded categories.</p>
       </div>
     </div>
   </section>
@@ -621,7 +635,7 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
   }
   .features-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
   }
   .feat-card {

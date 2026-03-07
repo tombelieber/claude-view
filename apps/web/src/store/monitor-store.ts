@@ -115,7 +115,13 @@ export const useMonitorStore = create<MonitorState>()(
         getItem: (name: string): StorageValue<Partial<MonitorState>> | null => {
           const str = localStorage.getItem(name)
           if (!str) return null
-          const parsed = JSON.parse(str) as StorageValue<Record<string, unknown>>
+          let parsed: StorageValue<Record<string, unknown>>
+          try {
+            parsed = JSON.parse(str) as StorageValue<Record<string, unknown>>
+          } catch {
+            console.error('monitor-store: corrupt localStorage, resetting')
+            return null
+          }
           // Convert arrays back to Sets after deserialization
           if (parsed.state) {
             if (Array.isArray(parsed.state.pinnedPaneIds)) {
