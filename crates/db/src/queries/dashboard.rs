@@ -545,7 +545,7 @@ impl Database {
             JOIN invocables inv ON i.invocable_id = inv.id
             INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND (?1 IS NULL OR s.project_id = ?1)
+              AND (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
               AND (?2 IS NULL OR s.git_branch = ?2)
             GROUP BY inv.kind, inv.name
             ORDER BY inv.kind, cnt DESC
@@ -581,7 +581,7 @@ impl Database {
             INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
               AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
-              AND (?3 IS NULL OR s.project_id = ?3)
+              AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
               AND (?4 IS NULL OR s.git_branch = ?4)
             GROUP BY inv.kind, inv.name
             ORDER BY inv.kind, cnt DESC
@@ -624,7 +624,7 @@ impl Database {
               COALESCE(SUM(tool_counts_bash), 0),
               COALESCE(SUM(tool_counts_write), 0)
             FROM valid_sessions
-            WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             "#,
         )
         .bind(project)
@@ -640,7 +640,7 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1
-              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
+              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
@@ -668,7 +668,7 @@ impl Database {
             r#"
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM valid_sessions
-            WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -694,7 +694,7 @@ impl Database {
             SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
                         WHERE longest_task_seconds > 0
-              AND (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)
+              AND (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
@@ -772,7 +772,7 @@ impl Database {
               COALESCE(SUM(tool_counts_write), 0)
             FROM valid_sessions
             WHERE last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             "#,
         )
         .bind(from)
@@ -790,7 +790,7 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1
-              AND (?2 IS NULL OR project_id = ?2) AND (?3 IS NULL OR git_branch = ?3)
+              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
@@ -820,7 +820,7 @@ impl Database {
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -848,7 +848,7 @@ impl Database {
             SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
             WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
@@ -908,14 +908,14 @@ impl Database {
                 r#"
                 SELECT
                   (SELECT COUNT(*) FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COALESCE(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)), 0)
                      FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COALESCE(SUM(files_edited_count), 0) FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc INNER JOIN valid_sessions s ON sc.session_id = s.id
-                     WHERE (?1 IS NULL OR s.project_id = ?1) AND (?2 IS NULL OR s.git_branch = ?2))
+                     WHERE (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1)) AND (?2 IS NULL OR s.git_branch = ?2))
                 "#,
             )
             .bind(project)

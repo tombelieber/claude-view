@@ -16,7 +16,7 @@ impl Database {
         branch: Option<&str>,
     ) -> DbResult<Option<i64>> {
         let result: (Option<i64>,) = sqlx::query_as(
-            "SELECT MIN(last_message_at) FROM valid_sessions WHERE (?1 IS NULL OR project_id = ?1) AND (?2 IS NULL OR git_branch = ?2)",
+            "SELECT MIN(last_message_at) FROM valid_sessions WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)",
         )
         .bind(project)
         .bind(branch)
