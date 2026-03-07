@@ -114,6 +114,26 @@ export function HistoryView() {
   const navigate = useNavigate()
   const { data: summaries } = useProjectSummaries()
   const { indexingProgress } = useOutletContext<{ indexingProgress?: IndexingProgress }>()
+  const isIndexing =
+    indexingProgress &&
+    indexingProgress.phase !== 'done' &&
+    indexingProgress.phase !== 'error' &&
+    indexingProgress.phase !== 'idle'
+  const indexingPercent = indexingProgress
+    ? indexingProgress.bytesTotal > 0
+      ? Math.min(
+          100,
+          Math.round((indexingProgress.bytesProcessed / indexingProgress.bytesTotal) * 100),
+        )
+      : indexingProgress.total > 0
+        ? Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))
+        : 0
+    : 0
+  const searchPlaceholder = isIndexing
+    ? indexingProgress?.phase === 'reading-indexes' || indexingProgress?.phase === 'ready'
+      ? 'Preparing search...'
+      : `Search (indexing ${indexingPercent}%)...`
+    : 'Search sessions, files, skills...'
   const { ids: liveSessionIds, costById: liveSessionCosts } = useLiveSessionPresence()
 
   // URL-persisted filter/sort state
@@ -376,13 +396,22 @@ export function HistoryView() {
         <div className="mt-5 space-y-3">
           {/* Search input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            {isIndexing ? (
+              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400 dark:text-blue-500 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            )}
             <input
               ref={searchRef}
               type="text"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search sessions, files, skills..."
+              placeholder={searchPlaceholder}
+              aria-label={
+                isIndexing
+                  ? 'Search sessions — indexing in progress, results may be limited'
+                  : 'Search sessions, files, skills'
+              }
               className="w-full pl-9 pr-9 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg outline-none transition-colors focus:bg-white dark:focus:bg-gray-900 focus:border-gray-400 dark:focus:border-gray-500 focus:ring-1 focus:ring-gray-400/20 dark:focus:ring-gray-500/20 placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
             />
             {searchText && (
@@ -534,38 +563,6 @@ export function HistoryView() {
             {showArchived ? 'Showing archived' : 'Show archived'}
           </button>
         </div>
-
-        {/* Inline indexing progress — shows during active startup indexing */}
-        {indexingProgress &&
-          (indexingProgress.phase === 'reading-indexes' ||
-            indexingProgress.phase === 'ready' ||
-            indexingProgress.phase === 'deep-indexing') && (
-            <div className="mt-3 flex items-center gap-2.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <Loader2
-                className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 animate-spin flex-shrink-0"
-                aria-hidden="true"
-              />
-              <span className="text-xs text-blue-700 dark:text-blue-300">
-                {indexingProgress.phase === 'reading-indexes' && 'Scanning sessions...'}
-                {indexingProgress.phase === 'ready' &&
-                  `Found ${indexingProgress.sessions.toLocaleString()} sessions. Starting index...`}
-                {indexingProgress.phase === 'deep-indexing' &&
-                  (indexingProgress.total > 0
-                    ? `Indexing: ${indexingProgress.indexed.toLocaleString()} / ${indexingProgress.total.toLocaleString()} sessions...`
-                    : `Indexing: ${indexingProgress.indexed.toLocaleString()} sessions...`)}
-              </span>
-              {indexingProgress.phase === 'deep-indexing' && indexingProgress.total > 0 && (
-                <div className="flex-1 max-w-32 h-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300 ease-out"
-                    style={{
-                      width: `${Math.min(100, Math.round((indexingProgress.indexed / indexingProgress.total) * 100))}%`,
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
 
         {/* Session List or Table */}
         <div className="mt-5">
