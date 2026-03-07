@@ -6,7 +6,8 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
-    status_from_agent_state, AgentState, AgentStateGroup, HookEvent, LiveSession, SessionEvent,
+    append_capped_hook_event, append_capped_hook_events, status_from_agent_state, AgentState,
+    AgentStateGroup, HookEvent, LiveSession, SessionEvent, MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::state::AppState;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
@@ -46,7 +47,6 @@ pub struct HookPayload {
 }
 
 /// Maximum hook events kept in memory per session.
-const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
 /// Maximum unresolved hook events kept in memory per session before promotion.
 const MAX_UNRESOLVED_HOOK_EVENTS_PER_SESSION: usize = 5000;
 
@@ -67,6 +67,7 @@ fn build_hook_event(
     label: &str,
     group: &str,
     context: Option<&serde_json::Value>,
+    source: &str,
 ) -> HookEvent {
     HookEvent {
         timestamp,
@@ -75,6 +76,7 @@ fn build_hook_event(
         label: label.to_string(),
         group: group.to_string(),
         context: context.map(|v| v.to_string()),
+        source: source.to_string(),
     }
 }
 
@@ -91,24 +93,6 @@ fn group_name_from_agent_group(group: &AgentStateGroup) -> &'static str {
         AgentStateGroup::NeedsYou => "needs_you",
         AgentStateGroup::Autonomous => "autonomous",
         AgentStateGroup::Delivered => "delivered",
-    }
-}
-
-fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEvent, max: usize) {
-    if dst.len() >= max {
-        dst.drain(..100.min(dst.len()));
-    }
-    dst.push(event);
-}
-
-fn append_capped_hook_events(dst: &mut Vec<HookEvent>, mut events: Vec<HookEvent>, max: usize) {
-    if events.is_empty() {
-        return;
-    }
-    dst.append(&mut events);
-    if dst.len() > max {
-        let overflow = dst.len() - max;
-        dst.drain(..overflow);
     }
 }
 
@@ -451,6 +435,7 @@ async fn handle_hook(
                             label: e.label.clone(),
                             group_name: e.group.clone(),
                             context: e.context.clone(),
+                            source: e.source.clone(),
                         })
                         .collect();
                     rows.extend(
@@ -463,6 +448,7 @@ async fn handle_hook(
                                 label: e.label.clone(),
                                 group_name: e.group.clone(),
                                 context: e.context.clone(),
+                                source: e.source.clone(),
                             }),
                     );
 
@@ -497,6 +483,7 @@ async fn handle_hook(
                             label: e.label.clone(),
                             group_name: e.group.clone(),
                             context: e.context.clone(),
+                            source: e.source.clone(),
                         })
                         .collect();
                     if let Err(e) = claude_view_db::hook_events_queries::insert_hook_events(
@@ -698,6 +685,7 @@ async fn handle_hook(
                 &agent_state.label,
                 group_name_from_agent_group(&session.agent_state.group),
                 hook_event_context.as_ref(),
+                "hook",
             );
 
             append_capped_hook_event(
@@ -721,6 +709,7 @@ async fn handle_hook(
                 &agent_state.label,
                 group_name_from_agent_group(&agent_state.group),
                 hook_event_context.as_ref(),
+                "hook",
             );
             buffer_unresolved_hook_event(&payload.session_id, hook_event).await;
         }
@@ -1378,6 +1367,7 @@ mod tests {
             "Reading file.rs",
             "autonomous",
             None,
+            "hook",
         );
         assert_eq!(event.event_name, "PreToolUse");
         assert_eq!(event.tool_name, Some("Read".to_string()));
@@ -1385,6 +1375,7 @@ mod tests {
         assert_eq!(event.group, "autonomous");
         assert_eq!(event.timestamp, 1708000000);
         assert!(event.context.is_none());
+        assert_eq!(event.source, "hook");
     }
 
     #[test]
@@ -1397,8 +1388,10 @@ mod tests {
             "Running: git status",
             "autonomous",
             Some(&ctx),
+            "hook",
         );
         assert_eq!(event.context, Some(ctx.to_string()));
+        assert_eq!(event.source, "hook");
     }
 
     #[test]

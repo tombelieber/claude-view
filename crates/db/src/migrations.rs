@@ -718,6 +718,16 @@ ALTER TABLE sessions ADD COLUMN archived_at TEXT;
 DROP VIEW IF EXISTS valid_sessions;
 CREATE VIEW valid_sessions AS SELECT * FROM sessions WHERE is_sidechain = 0 AND archived_at IS NULL;
 COMMIT;"#,
+    // Migration 51: Add source column to hook_events.
+    // Existing rows get 'hook' (they came from Channel B HTTP POST).
+    r#"ALTER TABLE hook_events ADD COLUMN source TEXT NOT NULL DEFAULT 'hook';"#,
+    // Migration 52: Dedup existing hook_events before adding unique constraint.
+    r#"DELETE FROM hook_events WHERE id NOT IN (
+        SELECT MIN(id) FROM hook_events
+        GROUP BY session_id, timestamp, event_name, COALESCE(tool_name, ''), source
+    );"#,
+    // Migration 53: Unique constraint for self-dedup within each source.
+    r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_events_dedup ON hook_events(session_id, timestamp, event_name, COALESCE(tool_name, ''), source);"#,
 ];
 
 // ============================================================================
