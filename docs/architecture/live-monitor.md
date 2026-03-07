@@ -435,7 +435,7 @@ Event types:
 
 | SSE Event | Payload | Trigger |
 |-----------|---------|---------|
-| `summary` | `{ needsYouCount, autonomousCount, deliveredCount, totalCostTodayUsd, totalTokensToday }` | On connect, on lag recovery |
+| `summary` | `{ needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday }` | On connect, on lag recovery |
 | `session_discovered` | Full `LiveSession` JSON | New session detected |
 | `session_updated` | Full `LiveSession` JSON | Session state changed |
 | `session_completed` | `{ sessionId }` | Session removed |
