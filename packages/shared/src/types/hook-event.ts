@@ -11,4 +11,5 @@ export interface HookEventItem {
   label: string
   group: 'autonomous' | 'needs_you' | 'delivered'
   context?: string
+  source?: string
 }

@@ -565,6 +565,7 @@ async fn get_session_hook_events(
                             "label": e.label,
                             "group": e.group,
                             "context": e.context,
+                            "source": e.source,
                         })
                     })
                     .collect();
@@ -586,6 +587,7 @@ async fn get_session_hook_events(
                         "label": e.label,
                         "group": e.group_name,
                         "context": e.context,
+                        "source": e.source,
                     })
                 })
                 .collect();
