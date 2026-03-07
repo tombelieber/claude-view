@@ -1,7 +1,12 @@
 # claude-view plugin
 
-Mission Control for Claude Code. Auto-starts a web dashboard, provides 8 session/cost/fluency
-tools, and adds `/session-recap`, `/daily-cost`, `/standup` skills.
+<p>
+  <a href="https://www.npmjs.com/package/@claude-view/plugin"><img src="https://img.shields.io/npm/v/@claude-view/plugin.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
+  <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 8 session/cost/fluency MCP tools, and adds `/session-recap`, `/daily-cost`, `/standup` skills.
 
 ## Install
 
@@ -51,6 +56,13 @@ is running. If not, it starts it in the background. Web dashboard appears at
 ## Configuration
 
 Set `CLAUDE_VIEW_PORT` to override the default port (47892).
+
+## Links
+
+- [claudeview.ai](https://claudeview.ai) — Website, docs, changelog
+- [claude-view on npm](https://www.npmjs.com/package/claude-view) — The dashboard binary (`npx claude-view`)
+- [GitHub](https://github.com/tombelieber/claude-view) — Source code, issues, discussions
+- [Discord](https://discord.gg/G7wdZTpRfu) — Community support
 
 ## License
 
