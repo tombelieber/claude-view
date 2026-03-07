@@ -134,6 +134,31 @@ pub fn infer_git_root_from_worktree_path(cwd: &str) -> Option<String> {
     None
 }
 
+/// Resolve the actual git branch for a worktree directory.
+///
+/// Reads the worktree's `.git` file to find the gitdir, then reads
+/// `<gitdir>/HEAD` to extract the branch ref. Returns `None` if:
+/// - The directory has no `.git` file (not a worktree)
+/// - HEAD is detached (raw SHA, no `ref:` prefix)
+/// - Any I/O error occurs
+///
+/// This is a pure filesystem operation — no git subprocess.
+pub fn resolve_worktree_branch(worktree_cwd: &str) -> Option<String> {
+    let dot_git_path = std::path::Path::new(worktree_cwd).join(".git");
+    let dot_git_content = std::fs::read_to_string(&dot_git_path).ok()?;
+
+    // .git file contains "gitdir: <path>"
+    let gitdir = dot_git_content.strip_prefix("gitdir: ")?.trim();
+    let head_path = std::path::Path::new(gitdir).join("HEAD");
+    let head_content = std::fs::read_to_string(&head_path).ok()?;
+
+    // HEAD contains "ref: refs/heads/<branch>" or a raw SHA (detached)
+    let head_trimmed = head_content.trim();
+    head_trimmed
+        .strip_prefix("ref: refs/heads/")
+        .map(|branch| branch.to_string())
+}
+
 /// Derive a human-friendly display name from a resolved filesystem path.
 ///
 /// Strategy:
@@ -1448,5 +1473,63 @@ mod tests {
             None
         );
         assert_eq!(infer_git_root_from_worktree_path(""), None);
+    }
+
+    // ========================================================================
+    // resolve_worktree_branch Tests
+    // ========================================================================
+
+    #[test]
+    fn test_resolve_worktree_branch_from_dotgit_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let wt_dir = dir.path().join(".worktrees").join("my-feature");
+        std::fs::create_dir_all(&wt_dir).unwrap();
+
+        // Create a .git file pointing to a gitdir
+        let gitdir_path = dir.path().join(".git").join("worktrees").join("my-feature");
+        std::fs::create_dir_all(&gitdir_path).unwrap();
+        std::fs::write(
+            wt_dir.join(".git"),
+            format!("gitdir: {}", gitdir_path.display()),
+        )
+        .unwrap();
+
+        // Create HEAD file with branch ref
+        std::fs::write(
+            gitdir_path.join("HEAD"),
+            "ref: refs/heads/feat/my-feature\n",
+        )
+        .unwrap();
+
+        let result = resolve_worktree_branch(wt_dir.to_str().unwrap());
+        assert_eq!(result, Some("feat/my-feature".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_worktree_branch_detached_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let wt_dir = dir.path().join(".worktrees").join("detached");
+        std::fs::create_dir_all(&wt_dir).unwrap();
+
+        let gitdir_path = dir.path().join(".git").join("worktrees").join("detached");
+        std::fs::create_dir_all(&gitdir_path).unwrap();
+        std::fs::write(
+            wt_dir.join(".git"),
+            format!("gitdir: {}", gitdir_path.display()),
+        )
+        .unwrap();
+
+        // Detached HEAD — raw SHA, no ref:
+        std::fs::write(gitdir_path.join("HEAD"), "abc123def456\n").unwrap();
+
+        let result = resolve_worktree_branch(wt_dir.to_str().unwrap());
+        assert_eq!(result, None); // No branch for detached HEAD
+    }
+
+    #[test]
+    fn test_resolve_worktree_branch_no_dotgit_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_worktree_branch(dir.path().to_str().unwrap());
+        assert_eq!(result, None);
     }
 }
