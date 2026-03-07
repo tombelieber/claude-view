@@ -22,6 +22,7 @@ Mission Control offers three layout modes:
 - **Grid** — compact card grid for monitoring many agents at once
 - **List** — detailed single-column view with more information per session
 - **Monitor** — live chat grid showing streaming conversations side by side
+- **Kanban swimlanes** — group running sessions into visual swimlanes by project or branch. Use the group-by dropdown to switch between project grouping, branch grouping, or flat view. Swimlane headers show the project/branch name with session counts.
 
 You can also create **custom layouts** using drag-and-drop panels (powered by dockview). Save and load layout presets.
 
@@ -42,9 +43,17 @@ From Mission Control, you can:
 - **Review plans** before the agent implements them
 - **Stop a session** (with confirmation)
 
+## Hook events
+
+Mission Control tracks hook events from two sources — live events captured in real-time via the file watcher (Channel A) and historical events backfilled from JSONL files (Channel B). Events are deduplicated automatically, so you see a complete timeline even for sessions that started before claude-view.
+
 ## Real-time updates
 
 Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically with exponential backoff.
+
+## Crash recovery
+
+If the sidecar process crashes, Mission Control automatically detects stale bindings and recovers on the next startup. Active sessions resume monitoring without manual intervention.
 
 ## Related
 
