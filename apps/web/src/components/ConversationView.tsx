@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { Virtuoso } from 'react-virtuoso'
+import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { useHookEvents } from '../hooks/use-hook-events'
@@ -32,8 +33,8 @@ import {
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
 import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
 import { messagesToRichMessages } from '../lib/message-to-rich'
+import { TOAST_DURATION } from '../lib/notify'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
-import { showToast } from '../lib/toast'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
 import type { Message } from '../types/generated'
@@ -202,10 +203,11 @@ export function ConversationView() {
     if (!session) return
     const markdown = generateMarkdown(session.messages, projectName, sessionId)
     const ok = await copyToClipboard(markdown)
-    showToast(
-      ok ? 'Markdown copied to clipboard' : 'Failed to copy — check browser permissions',
-      ok ? 2000 : 3000,
-    )
+    if (ok) {
+      toast.success('Markdown copied to clipboard', { duration: TOAST_DURATION.micro })
+    } else {
+      toast.error('Copy failed', { description: 'Check browser permissions' })
+    }
   }, [session, projectName, sessionId])
 
   const handleResume = useCallback(async () => {
@@ -215,7 +217,7 @@ export function ConversationView() {
         const res = await fetch(`/api/check-path?path=${encodeURIComponent(projectPath)}`)
         const data = await res.json()
         if (!data.exists) {
-          showToast('Project path no longer exists — worktree may have been removed', 4000)
+          toast.error('Project path unavailable', { description: 'Worktree may have been removed' })
           return
         }
       } catch {
@@ -224,12 +226,11 @@ export function ConversationView() {
     }
     const cmd = `claude --resume ${sessionId}`
     const ok = await copyToClipboard(cmd)
-    showToast(
-      ok
-        ? 'Resume command copied — paste in terminal'
-        : 'Failed to copy — check browser permissions',
-      3000,
-    )
+    if (ok) {
+      toast.success('Resume command copied — paste in terminal', { duration: TOAST_DURATION.micro })
+    } else {
+      toast.error('Copy failed', { description: 'Check browser permissions' })
+    }
   }, [sessionId, sessionDetail])
 
   // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
