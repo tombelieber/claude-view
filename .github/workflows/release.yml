@@ -166,6 +166,14 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish
+      - name: Publish claude-view
         run: npm publish --access public
         working-directory: npx-cli
+
+      - name: Build plugin
+        run: node scripts/bundle-mcp.mjs
+        working-directory: packages/plugin
+
+      - name: Publish @claude-view/plugin
+        run: npm publish --access public
+        working-directory: packages/plugin
