@@ -95,6 +95,8 @@ pub struct LiveLine {
     pub stop_reason: Option<String>,
     /// Git branch extracted from user-type JSONL lines.
     pub git_branch: Option<String>,
+    /// Current working directory extracted from user-type JSONL lines.
+    pub cwd: Option<String>,
     /// Whether this is a meta/system message (not real user content).
     pub is_meta: bool,
     /// Whether this line's content array contains a `tool_result` block,
@@ -432,6 +434,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 timestamp: None,
                 stop_reason: None,
                 git_branch: None,
+                cwd: None,
                 is_meta: false,
                 is_tool_result_continuation: false,
                 has_system_prefix: false,
@@ -580,6 +583,9 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         .get("gitBranch")
         .and_then(|v| v.as_str())
         .map(String::from);
+
+    // Extract cwd from top-level (present on user messages)
+    let cwd = parsed.get("cwd").and_then(|v| v.as_str()).map(String::from);
 
     // Check if this is a meta message (system prompts, hooks, etc.)
     let is_meta = parsed
@@ -893,6 +899,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         timestamp,
         stop_reason,
         git_branch,
+        cwd,
         is_meta,
         is_tool_result_continuation: is_tool_result,
         has_system_prefix,
@@ -1371,6 +1378,28 @@ mod tests {
         assert_eq!(line.content_preview, "Fix the bug");
         assert_eq!(line.git_branch.as_deref(), Some("feature/auth"));
         assert!(!line.is_meta);
+    }
+
+    #[test]
+    fn test_parse_cwd_extraction() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cwd.jsonl");
+        let mut f = File::create(&path).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"user","message":{{"role":"user","content":"hello"}},"cwd":"/Users/u/dev/repo/.worktrees/feat","gitBranch":"main","timestamp":"2026-01-15T10:30:00Z"}}"#
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let finders = TailFinders::new();
+        let (lines, _) = parse_tail(&path, 0, &finders).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(
+            lines[0].cwd.as_deref(),
+            Some("/Users/u/dev/repo/.worktrees/feat")
+        );
+        assert_eq!(lines[0].git_branch.as_deref(), Some("main"));
     }
 
     #[test]
