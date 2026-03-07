@@ -46,6 +46,27 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
     }
   }, [progress.phase])
 
+  // Reset lifecycle when indexing restarts (e.g. manual re-index from Settings)
+  const prevPhaseRef = useRef(progress.phase)
+  useEffect(() => {
+    const prev = prevPhaseRef.current
+    prevPhaseRef.current = progress.phase
+
+    // On mount, prev === progress.phase so wasTerminal && isActive is false — safe.
+    const wasTerminal = prev === 'done' || prev === 'idle'
+    const isActive =
+      progress.phase === 'reading-indexes' ||
+      progress.phase === 'ready' ||
+      progress.phase === 'deep-indexing'
+
+    if (wasTerminal && isActive) {
+      setDismissed(false)
+      setVisible(true)
+      setGone(false)
+      firstShownAt.current = Date.now()
+    }
+  }, [progress.phase])
+
   // Animate-out helper: fade + collapse, then remove from DOM
   const animateOut = useCallback(() => {
     setVisible(false)
