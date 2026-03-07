@@ -8,6 +8,7 @@ import {
   ScrollText,
   Terminal,
   Timer,
+  TreePine,
   Users,
   X,
   Zap,
@@ -41,6 +42,7 @@ import { TimelineView } from './TimelineView'
 import { ViewModeControls } from './ViewModeControls'
 import { ActionLogTab } from './action-log'
 import { hasUnavailableCost } from './cost-display'
+import { getEffectiveBranch } from './effective-branch'
 import type { SessionPanelData } from './session-panel-data'
 import { liveSessionToPanelData } from './session-panel-data'
 import type { LiveSession } from './use-live-sessions'
@@ -322,15 +324,32 @@ export function SessionDetailPanel({
 
         {/* Row 2: Metadata chips */}
         <div className="flex items-center gap-2 px-4 pb-2.5 flex-wrap">
-          {data.gitBranch && (
-            <span
-              className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 dark:text-gray-500 truncate max-w-[180px]"
-              title={data.gitBranch}
-            >
-              <GitBranch className="w-3 h-3 flex-shrink-0" />
-              {data.gitBranch}
-            </span>
-          )}
+          {(() => {
+            const { branch, driftOrigin, isWorktree } = getEffectiveBranch(
+              data.gitBranch,
+              data.worktreeBranch ?? null,
+              data.isWorktree ?? false,
+            )
+            if (!branch) return null
+            return (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 dark:text-gray-500"
+                title={branch}
+              >
+                <GitBranch className="w-3 h-3 flex-shrink-0" />
+                {branch}
+                {isWorktree && (
+                  <TreePine className="w-3 h-3 flex-shrink-0 text-green-600 dark:text-green-400" />
+                )}
+                {driftOrigin && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-0.5">
+                    {'↗'}
+                    {driftOrigin}
+                  </span>
+                )}
+              </span>
+            )
+          })()}
 
           <button
             onClick={copySessionId}
