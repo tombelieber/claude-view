@@ -227,7 +227,7 @@ export function useTimeRange(): UseTimeRangeReturn {
     if (newParams.toString() !== urlKey) {
       setSearchParams(newParams, { replace: true })
     }
-  }, [preset, customRange, urlKey, searchParams, setSearchParams])
+  }, [preset, customRange, urlKey, setSearchParams])
 
   // Handlers
   const setPreset = useCallback((newPreset: TimeRangePreset) => {

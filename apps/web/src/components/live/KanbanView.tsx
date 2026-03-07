@@ -62,7 +62,11 @@ function sortAutonomous(sessions: LiveSession[]): LiveSession[] {
 }
 
 function splitByGroup(sessions: LiveSession[]): Record<AgentStateGroup, LiveSession[]> {
-  const groups: Record<AgentStateGroup, LiveSession[]> = { needs_you: [], autonomous: [] }
+  const groups: Record<AgentStateGroup, LiveSession[]> = {
+    needs_you: [],
+    autonomous: [],
+    delivered: [],
+  }
   for (const s of sessions) {
     groups[s.agentState.group].push(s)
   }
