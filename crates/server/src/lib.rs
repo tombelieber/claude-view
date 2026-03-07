@@ -137,6 +137,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         jwks: None,
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
+        oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
     });
     api_routes(state)
 }
@@ -203,6 +204,7 @@ pub fn create_app_full(
         jwks,
         share,
         auth_identity: tokio::sync::OnceCell::new(),
+        oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
