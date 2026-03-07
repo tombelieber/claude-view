@@ -82,6 +82,8 @@ interface SessionCardProps {
   currentTime: number
   /** When provided, renders as a div instead of Link. Used by Kanban for side panel. */
   onClickOverride?: () => void
+  /** When true, hide project + branch badges (shown in swimlane header instead) */
+  hideProjectBranch?: boolean
 }
 
 export function SessionCard({
@@ -89,6 +91,7 @@ export function SessionCard({
   stalledSessions,
   currentTime,
   onClickOverride,
+  hideProjectBranch,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
@@ -124,20 +127,24 @@ export function SessionCard({
               aria-hidden="true"
             />
           )}
-          <span
-            className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
-            title={session.projectPath || session.projectDisplayName || session.project}
-          >
-            {session.projectDisplayName || session.project}
-          </span>
-          {session.gitBranch && (
-            <span
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded max-w-[120px]"
-              title={session.gitBranch}
-            >
-              <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
-              <span className="truncate">{session.gitBranch}</span>
-            </span>
+          {!hideProjectBranch && (
+            <>
+              <span
+                className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
+                title={session.projectPath || session.projectDisplayName || session.project}
+              >
+                {session.projectDisplayName || session.project}
+              </span>
+              {session.gitBranch && (
+                <span
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded max-w-[120px]"
+                  title={session.gitBranch}
+                >
+                  <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
+                  <span className="truncate">{session.gitBranch}</span>
+                </span>
+              )}
+            </>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
