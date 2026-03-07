@@ -26,31 +26,33 @@ const isCompact = variant === 'compact'
   </p>
 
   <!-- Form state: default -->
-  <form class="waitlist-default flex flex-col sm:flex-row gap-2">
-    <input
-      type="email"
-      name="email"
-      required
-      autocomplete="email"
-      placeholder="you@example.com"
-      class:list={[
-        'flex-1 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors',
-        isCompact ? 'px-3 py-2 text-sm' : 'px-4 py-3',
-      ]}
-    />
-    <!-- Honeypot: invisible to humans, bots fill it -->
-    <input type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0;" />
-    <!-- Turnstile widget container -->
-    <div class="turnstile-container"></div>
-    <button
-      type="submit"
-      class:list={[
-        'waitlist-submit rounded-lg font-semibold transition-all bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
-        isCompact ? 'px-4 py-2 text-sm' : 'px-6 py-3',
-      ]}
-    >
-      Join waitlist
-    </button>
+  <form class="waitlist-default flex flex-col gap-2">
+    <div class="flex flex-col sm:flex-row gap-2">
+      <input
+        type="email"
+        name="email"
+        required
+        autocomplete="email"
+        placeholder="you@example.com"
+        class:list={[
+          'flex-1 rounded-lg border border-[var(--color-border)] bg-white text-[var(--color-text)] placeholder-[var(--color-text-tertiary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors',
+          isCompact ? 'px-3 py-2 text-sm' : 'px-4 py-3',
+        ]}
+      />
+      <!-- Honeypot: invisible to humans, bots fill it -->
+      <input type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;opacity:0;height:0;width:0;" />
+      <button
+        type="submit"
+        class:list={[
+          'waitlist-submit rounded-lg font-semibold transition-all bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
+          isCompact ? 'px-4 py-2 text-sm' : 'px-6 py-3',
+        ]}
+      >
+        Join waitlist
+      </button>
+    </div>
+    <!-- Turnstile widget — below the input row so it doesn't break the layout -->
+    <div class="turnstile-container flex justify-center"></div>
   </form>
 
   <!-- Error message -->

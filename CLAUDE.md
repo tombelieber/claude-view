@@ -56,6 +56,7 @@
 | `crates/db/` | `claude-view-db` | SQLite via sqlx |
 | `crates/search/` | `claude-view-search` | Tantivy full-text indexer + query |
 | `crates/server/` | `claude-view-server` | Axum HTTP routes, **produces the `claude-view` binary** |
+| `crates/relay/` | `claude-view-relay` | Cloud relay server (deployed on Fly) |
 
 **Naming:** The crate is `claude-view-server`, the binary is `claude-view`. Use `cargo test -p claude-view-server` for dev, users run `claude-view`.
 
@@ -247,7 +248,7 @@ NEVER document:
 
 - **Env vars:** Strip all `CLAUDE*` env vars when spawning `claude` CLI — hardcode `CLAUDECODE`, `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_ENTRYPOINT` + dynamic prefix scan + `unset` in `dev:server` script + `.stdin(Stdio::null())`
 - **sysinfo on macOS:** Never rely solely on `sysinfo` for process cwd/cmd — use `lsof -a -p <pid> -d cwd -Fn` fallback
-- **Path decoding:** Use `claude_view_core::discovery::resolve_project_path()` for Claude Code directory names. Never `urlencoding::decode()`
+- **Project paths:** Always derived from true CWD in JSONL — never guess or decode from encoded directory names
 - **Tracing:** Use `EnvFilter`, never `with_max_level()`. Scope RUST_LOG: `warn,claude_view_server=info,claude_view_core=info`
 - **Background processes:** `Semaphore(1)` for external calls. No trigger on first discovery (only real state transitions). Backoff on failure. Kill switch config (`enabled: bool`, default `false` for expensive ops)
 - **mmap:** Parse directly, never `.to_vec()`
