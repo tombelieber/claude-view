@@ -1,0 +1,48 @@
+---
+title: "Crash Recovery: Building a Tool You Don't Have to Babysit"
+description: "v0.7.0 adds server crash recovery with persistent snapshots, work reports with cost analysis, and the cleanup CLI command."
+date: 2026-02-20
+author: claude-view team
+---
+
+Here's a scenario that actually happened: you're running four Claude Code agents overnight. claude-view is monitoring all of them. At 3am, the server crashes — maybe an OOM kill, maybe a panic on a malformed session file. You wake up and check the dashboard. All four sessions show as "unknown." The live state is gone. The agents finished hours ago but you have no record of their final status, token usage, or costs.
+
+v0.7.0 makes sure that never happens again.
+
+## Persistent session snapshots
+
+The live monitor now writes session state to disk using a v2 snapshot format. Every state transition — Autonomous to Needs You, token count update, sub-agent spawn — is persisted. If the server crashes and restarts, it reads the snapshot file and reconstructs the exact state of every session that was running.
+
+This isn't a full replay of the JSONL files (that would be slow). The snapshot is a compact binary format that captures the derived state: current status, accumulated tokens, cost, active sub-agents, and the last known message. Recovery takes milliseconds, not minutes.
+
+The format is versioned so future changes to the state model don't break older snapshots. v1 snapshots (from before this release) are detected and discarded gracefully — you lose the old state but the server doesn't crash on startup.
+
+## Work Reports
+
+A new Work Reports page shows completed sessions with a focus on output: what files were modified, how many commits were produced, and the total cost. Think of it as a daily standup for your AI agents — here's what they did, here's what it cost.
+
+Each report includes a **token breakdown** by category: input tokens, output tokens, cache reads, and cache creation. Cache reads are significantly cheaper than fresh input, so knowing your cache hit ratio tells you whether your sessions are cost-efficient or re-processing context unnecessarily.
+
+**Cost analysis** converts raw token counts into dollar amounts using per-model pricing. You see the actual cost per session, per project, and per day. No more mental math with token counts and pricing pages.
+
+## The cleanup command
+
+Session files accumulate. After months of daily use, `~/.claude/projects/` can grow to gigabytes. The new CLI command handles this:
+
+```bash
+claude-view cleanup --older-than 90d
+```
+
+It removes session files older than the specified duration. It's non-destructive by default — run without `--confirm` to see what would be deleted. The search index is updated automatically after cleanup.
+
+## Philosophy
+
+A monitoring tool should be the most reliable piece of software you run. If it needs babysitting, it's adding overhead instead of removing it. Crash recovery, persistent state, and self-maintenance are not features — they're table stakes. v0.7.0 brings claude-view to that standard.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Start it, forget about it. It'll be there when you need it.
