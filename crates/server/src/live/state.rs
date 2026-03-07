@@ -112,6 +112,10 @@ pub struct LiveSession {
     pub agent_state: AgentState,
     /// Git branch name, if detected.
     pub git_branch: Option<String>,
+    /// Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
+    pub worktree_branch: Option<String>,
+    /// Whether this session is running inside a git worktree.
+    pub is_worktree: bool,
     /// PID of the running Claude process, if any.
     pub pid: Option<u32>,
     /// Session title derived from the first non-meta user message.
