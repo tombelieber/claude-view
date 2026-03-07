@@ -1174,6 +1174,9 @@ mod tests {
             jwks: None,
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),
+            oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
+                300,
+            )),
         });
 
         // Register the session in the live sessions map
@@ -1360,6 +1363,9 @@ mod tests {
             jwks: None,
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),
+            oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
+                300,
+            )),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
