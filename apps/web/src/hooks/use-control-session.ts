@@ -133,11 +133,16 @@ export function useControlSession(sessionId: string | null) {
       ws.onmessage = (event) => {
         if (wsRef.current !== ws) return // stale guard
 
-        const raw = JSON.parse(event.data)
+        let raw: Record<string, unknown>
+        try {
+          raw = JSON.parse(event.data)
+        } catch {
+          return // malformed frame — ignore
+        }
 
         // heartbeat_config has NO seq — intercept before reducer
         if (raw.type === 'heartbeat_config') {
-          startHeartbeat(raw.intervalMs)
+          startHeartbeat(raw.intervalMs as number)
           return
         }
 
@@ -148,8 +153,8 @@ export function useControlSession(sessionId: string | null) {
         }
 
         // All other messages have seq from emitSequenced
-        const seq: number = raw.seq ?? -1
-        const msg = raw as ServerMessage
+        const seq: number = (raw.seq as number) ?? -1
+        const msg = raw as unknown as ServerMessage
         dispatch({ type: 'ws_message', msg, seq })
 
         // Accumulate UI state
@@ -306,10 +311,16 @@ export function useControlSession(sessionId: string | null) {
 
       ws.onmessage = (event) => {
         if (wsRef.current !== ws) return
-        const raw = JSON.parse(event.data)
+
+        let raw: Record<string, unknown>
+        try {
+          raw = JSON.parse(event.data)
+        } catch {
+          return // malformed frame — ignore
+        }
 
         if (raw.type === 'heartbeat_config') {
-          startHeartbeat(raw.intervalMs)
+          startHeartbeat(raw.intervalMs as number)
           return
         }
         if (raw.type === 'pong') {
@@ -317,8 +328,8 @@ export function useControlSession(sessionId: string | null) {
           return
         }
 
-        const seq: number = raw.seq ?? -1
-        const msg = raw as ServerMessage
+        const seq: number = (raw.seq as number) ?? -1
+        const msg = raw as unknown as ServerMessage
         dispatch({ type: 'ws_message', msg, seq })
 
         setUI((prev) => {
