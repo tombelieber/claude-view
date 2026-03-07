@@ -147,9 +147,15 @@ pub fn resolve_worktree_branch(worktree_cwd: &str) -> Option<String> {
     let dot_git_path = std::path::Path::new(worktree_cwd).join(".git");
     let dot_git_content = std::fs::read_to_string(&dot_git_path).ok()?;
 
-    // .git file contains "gitdir: <path>"
+    // .git file contains "gitdir: <path>" (absolute or relative)
     let gitdir = dot_git_content.strip_prefix("gitdir: ")?.trim();
-    let head_path = std::path::Path::new(gitdir).join("HEAD");
+    let gitdir_path = std::path::Path::new(gitdir);
+    let gitdir_abs = if gitdir_path.is_absolute() {
+        gitdir_path.to_path_buf()
+    } else {
+        std::path::Path::new(worktree_cwd).join(gitdir_path)
+    };
+    let head_path = gitdir_abs.join("HEAD");
     let head_content = std::fs::read_to_string(&head_path).ok()?;
 
     // HEAD contains "ref: refs/heads/<branch>" or a raw SHA (detached)
@@ -1503,6 +1509,25 @@ mod tests {
 
         let result = resolve_worktree_branch(wt_dir.to_str().unwrap());
         assert_eq!(result, Some("feat/my-feature".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_worktree_branch_relative_gitdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let wt_dir = dir.path().join(".worktrees").join("rel-feat");
+        std::fs::create_dir_all(&wt_dir).unwrap();
+
+        // Create gitdir at the standard location
+        let gitdir_path = dir.path().join(".git").join("worktrees").join("rel-feat");
+        std::fs::create_dir_all(&gitdir_path).unwrap();
+
+        // .git file uses RELATIVE path (as real git worktree add does)
+        std::fs::write(wt_dir.join(".git"), "gitdir: ../../.git/worktrees/rel-feat").unwrap();
+
+        std::fs::write(gitdir_path.join("HEAD"), "ref: refs/heads/feat/relative\n").unwrap();
+
+        let result = resolve_worktree_branch(wt_dir.to_str().unwrap());
+        assert_eq!(result, Some("feat/relative".to_string()));
     }
 
     #[test]
