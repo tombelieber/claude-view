@@ -82,6 +82,7 @@ describe('OAuthUsagePill', () => {
         isLoading: true,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
       expect(screen.getByText('Loading usage...')).toBeInTheDocument()
@@ -93,6 +94,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       const { container } = render(<OAuthUsagePill />)
       expect(container.innerHTML).toBe('')
@@ -104,6 +106,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       const { container } = render(<OAuthUsagePill />)
       expect(container.innerHTML).toBe('')
@@ -115,6 +118,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: new Error('Network failure'),
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
       const el = screen.getByText('Usage unavailable')
@@ -128,6 +132,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
 
@@ -155,6 +160,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
 
@@ -177,6 +183,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       const { container } = render(<OAuthUsagePill />)
       expect(container.querySelector('.bg-amber-500')).toBeInTheDocument()
@@ -195,6 +202,7 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       const { container } = render(<OAuthUsagePill />)
       expect(container.querySelector('.bg-red-500')).toBeInTheDocument()
@@ -221,6 +229,8 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
 
@@ -255,6 +265,8 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
       render(<OAuthUsagePill />)
 
@@ -284,6 +296,8 @@ describe('OAuthUsagePill', () => {
         isLoading: false,
         error: null,
         refetch: mockRefetch,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
       })
 
       render(<OAuthUsagePill />)
@@ -299,6 +313,36 @@ describe('OAuthUsagePill', () => {
       expect(wrapper.textContent).toContain('alice@example.com')
       // Redundant org name should be hidden
       expect(wrapper.textContent).not.toContain("alice's Organization")
+    })
+
+    it('shows refresh button and calls forceRefresh on click', async () => {
+      const mockForceRefreshMutate = vi.fn()
+      mockUseOAuthUsage.mockReturnValue({
+        data: MULTI_TIER_DATA,
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: mockForceRefreshMutate, isPending: false, isError: false },
+      })
+
+      render(<OAuthUsagePill />)
+
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.hover(screen.getByText('11%'))
+
+      await waitFor(() => {
+        expect(document.querySelector('[data-radix-popper-content-wrapper]')).not.toBeNull()
+      })
+
+      // Find the refresh button inside the visible popper (Radix duplicates content for a11y)
+      const popperWrapper = document.querySelector('[data-radix-popper-content-wrapper]')!
+      const refreshButton = popperWrapper.querySelector(
+        'button[title="Refresh usage"]',
+      ) as HTMLElement
+      await user.click(refreshButton)
+
+      expect(mockForceRefreshMutate).toHaveBeenCalledTimes(1)
     })
   })
 })
