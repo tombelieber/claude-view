@@ -171,6 +171,9 @@ export function historyToPanelData(
     cacheStatus: richData?.cacheStatus ?? 'unknown',
     subAgents: richData?.subAgents,
     progressItems: richData?.progressItems,
+    compactCount: sessionDetail.compactionCount,
+    startedAt: sessionDetail.firstMessageAt ?? undefined,
+    lastActivityAt: sessionDetail.modifiedAt,
     lastUserMessage: richData?.lastUserMessage ?? undefined,
     historyExtras: {
       sessionDetail,

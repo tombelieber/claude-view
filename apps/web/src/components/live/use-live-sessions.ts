@@ -1,3 +1,4 @@
+import type { ControlBinding } from '@claude-view/shared/types/generated'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { sseUrl } from '../../lib/sse-url'
 import type { ProgressItem } from '../../types/generated/ProgressItem'
@@ -60,6 +61,7 @@ export interface LiveSession {
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
   compactCount?: number
+  control?: ControlBinding | null
 }
 
 export interface LiveSummary {
