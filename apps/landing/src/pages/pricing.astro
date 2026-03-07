@@ -1,7 +1,7 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import PricingCards from '../components/PricingCards.astro';
-import { PRICING, PLATFORM } from '../data/site';
+import { PLATFORM } from '../data/site';
 ---
 
 <MarketingLayout title="Pricing" description="Simple, transparent pricing. Free forever for local use.">
@@ -15,7 +15,7 @@ import { PRICING, PLATFORM } from '../data/site';
         "name": "Is claude-view free?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. The Hobby plan is free forever. Just run npx claude-view. No signup, no API key, no config."
+          "text": "Yes. The Free plan is free forever. Just run npx claude-view. No signup, no API key, no config."
         }
       },
       {
@@ -23,15 +23,15 @@ import { PRICING, PLATFORM } from '../data/site';
         "name": "What does the Pro plan include?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": `The Pro plan (${PRICING.pro.price}${PRICING.pro.period}, coming soon) adds unlimited monitoring, cloud relay, the mobile app, remote agent control, and full analytics.`
+          "text": "The Pro plan ($20/mo, coming soon) adds unlimited monitoring, cloud relay, the mobile app, remote agent control, and full analytics."
         }
       },
       {
         "@type": "Question",
-        "name": "What is the difference between Pro, Pro+, and Ultra?",
+        "name": "What is the difference between Pro and Max?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Pro ($20/mo) unlocks all features including plan runner, agent orchestration, and quality gates. Pro+ ($60/mo) gives 3x usage on all features. Ultra ($200/mo) gives 20x usage and priority access to new features."
+          "text": "Pro ($20/mo) unlocks all features including cloud relay, mobile app, and plan runner. Max ($100/mo) gives 5x usage, agent orchestration, quality gates, and priority access to new features."
         }
       },
       {
@@ -56,7 +56,7 @@ import { PRICING, PLATFORM } from '../data/site';
   <section class="py-24 px-6">
     <div class="max-w-6xl mx-auto text-center">
       <h1 class="text-4xl md:text-5xl font-bold text-[var(--color-text)] mb-4">Simple, transparent pricing</h1>
-      <p class="text-lg text-[var(--color-text-secondary)] mb-16">You pay $200/mo for Claude Code. For 10% more, actually control it from anywhere.</p>
+      <p class="text-lg text-[var(--color-text-secondary)] mb-16">Free forever for local use. Upgrade for cloud relay, mobile app, and agent orchestration.</p>
       <PricingCards />
     </div>
   </section>
