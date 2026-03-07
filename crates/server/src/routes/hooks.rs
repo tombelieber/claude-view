@@ -220,6 +220,8 @@ async fn handle_hook(
                     drop(sessions);
                     if let Some(mgr) = &state.live_manager {
                         mgr.create_accumulator_for_hook(&payload.session_id).await;
+                        mgr.enrich_session_from_accumulator(&payload.session_id)
+                            .await;
                     }
                     tracing::info!(
                         session_id = %payload.session_id,
@@ -358,6 +360,11 @@ async fn handle_hook(
                 drop(sessions); // release lock before async manager call
                 if let Some(mgr) = &state.live_manager {
                     mgr.create_accumulator_for_hook(&payload.session_id).await;
+                    // Enrich from pre-existing accumulator (initial scan may have
+                    // already parsed this JSONL). Without this, resumed sessions
+                    // show "(no branch)" until the next file modification.
+                    mgr.enrich_session_from_accumulator(&payload.session_id)
+                        .await;
                 }
                 let _ = state
                     .live_tx
