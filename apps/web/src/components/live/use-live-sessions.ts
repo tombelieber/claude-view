@@ -181,8 +181,26 @@ export function useLiveSessions(): UseLiveSessionsResult {
       es.addEventListener('summary', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          // Backend always sends summary fields at top level (needsYouCount, etc.)
-          setSummary(data)
+          // Server sends only base fields (needsYouCount, autonomousCount, etc.).
+          // Breakdown fields (inputTokens, inputCostUsd, ...) are computed
+          // client-side in LiveMonitorPage's useMemo from individual sessions.
+          // Normalize with ?? 0 so the stored object satisfies LiveSummary fully.
+          setSummary({
+            needsYouCount: data.needsYouCount ?? 0,
+            autonomousCount: data.autonomousCount ?? 0,
+            totalCostTodayUsd: data.totalCostTodayUsd ?? 0,
+            totalTokensToday: data.totalTokensToday ?? 0,
+            processCount: data.processCount ?? 0,
+            inputTokens: data.inputTokens ?? 0,
+            outputTokens: data.outputTokens ?? 0,
+            cacheReadTokens: data.cacheReadTokens ?? 0,
+            cacheCreationTokens: data.cacheCreationTokens ?? 0,
+            inputCostUsd: data.inputCostUsd ?? 0,
+            outputCostUsd: data.outputCostUsd ?? 0,
+            cacheReadCostUsd: data.cacheReadCostUsd ?? 0,
+            cacheCreationCostUsd: data.cacheCreationCostUsd ?? 0,
+            cacheSavingsUsd: data.cacheSavingsUsd ?? 0,
+          })
           setIsInitialized(true)
           setLastUpdate(new Date())
 
