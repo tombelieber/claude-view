@@ -28,3 +28,7 @@ codegen = []
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 pretty_assertions = { workspace = true }
+
+[[bin]]
+name = "evidence-audit"
+path = "src/bin/evidence_audit.rs"
