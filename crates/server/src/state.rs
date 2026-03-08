@@ -13,8 +13,10 @@ use crate::live::state::SessionEvent;
 use crate::routes::oauth::OAuthUsageResponse;
 use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
+use claude_view_core::prompt_history::PromptStats;
 use claude_view_core::Registry;
 use claude_view_db::{Database, ModelPricing};
+use claude_view_search::prompt_index::PromptSearchIndex;
 use claude_view_search::SearchIndex;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -55,6 +57,16 @@ pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
 /// `None` means the index is unavailable (not yet opened, or mid-swap during clear-cache).
 /// Wrapped in `Arc` so `clear_cache` can take-drop-recreate without blocking readers.
 pub type SearchIndexHolder = Arc<RwLock<Option<Arc<SearchIndex>>>>;
+
+/// Type alias for the prompt search index holder.
+pub type PromptIndexHolder = Arc<RwLock<Option<Arc<PromptSearchIndex>>>>;
+
+/// Type alias for the prompt stats holder.
+pub type PromptStatsHolder = Arc<RwLock<Option<PromptStats>>>;
+
+/// Type alias for the prompt templates holder.
+pub type PromptTemplatesHolder =
+    Arc<RwLock<Option<Vec<claude_view_core::prompt_templates::PromptTemplate>>>>;
 
 /// Shared application state accessible from all route handlers.
 pub struct AppState {
@@ -115,6 +127,12 @@ pub struct AppState {
     pub oauth_usage_cache: CachedUpstream<OAuthUsageResponse>,
     /// Parsed teams from ~/.claude/teams/ (read-only, loaded at startup).
     pub teams: Arc<crate::teams::TeamsStore>,
+    /// Prompt history search index (Tantivy).
+    pub prompt_index: PromptIndexHolder,
+    /// Prompt history aggregate stats.
+    pub prompt_stats: PromptStatsHolder,
+    /// Detected prompt templates.
+    pub prompt_templates: PromptTemplatesHolder,
 }
 
 impl AppState {
@@ -154,6 +172,9 @@ impl AppState {
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(RwLock::new(None)),
+            prompt_stats: Arc::new(RwLock::new(None)),
+            prompt_templates: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -192,6 +213,9 @@ impl AppState {
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(RwLock::new(None)),
+            prompt_stats: Arc::new(RwLock::new(None)),
+            prompt_templates: Arc::new(RwLock::new(None)),
         })
     }
 
@@ -233,6 +257,9 @@ impl AppState {
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(RwLock::new(None)),
+            prompt_stats: Arc::new(RwLock::new(None)),
+            prompt_templates: Arc::new(RwLock::new(None)),
         })
     }
 

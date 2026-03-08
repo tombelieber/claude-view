@@ -35,7 +35,10 @@ pub use live::state::SessionEvent;
 pub use metrics::{init_metrics, record_request, record_storage, record_sync, RequestTimer};
 pub use routes::api_routes;
 pub use sidecar::SidecarManager;
-pub use state::{AppState, RegistryHolder, SearchIndexHolder, ShareConfig};
+pub use state::{
+    AppState, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder, RegistryHolder,
+    SearchIndexHolder, ShareConfig,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -140,6 +143,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
         teams: Arc::new(crate::teams::TeamsStore::empty()),
+        prompt_index: Arc::new(std::sync::RwLock::new(None)),
+        prompt_stats: Arc::new(std::sync::RwLock::new(None)),
+        prompt_templates: Arc::new(std::sync::RwLock::new(None)),
     });
     api_routes(state)
 }
@@ -160,6 +166,9 @@ pub fn create_app_full(
     sidecar: Arc<sidecar::SidecarManager>,
     jwks: Option<Arc<tokio::sync::RwLock<auth::supabase::JwksCache>>>,
     share: Option<state::ShareConfig>,
+    prompt_index: PromptIndexHolder,
+    prompt_stats: PromptStatsHolder,
+    prompt_templates: PromptTemplatesHolder,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
@@ -210,6 +219,9 @@ pub fn create_app_full(
         teams: Arc::new(crate::teams::TeamsStore::load(
             &dirs::home_dir().expect("home dir exists").join(".claude"),
         )),
+        prompt_index,
+        prompt_stats,
+        prompt_templates,
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
