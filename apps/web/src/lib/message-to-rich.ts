@@ -34,14 +34,13 @@ function tryParseJson(str: string): unknown | undefined {
 /**
  * Convert paginated Message[] (from JSONL parser) to RichMessage[] (for RichPane).
  *
- * Mapping (lossless — all 7 JSONL types emitted):
+ * Mapping (lossless — all 6 JSONL types emitted):
  * - user → user
  * - assistant → thinking (if has thinking) + assistant (if has content)
  * - tool_use → tool_use (extract tool name from tool_calls[0])
  * - tool_result → tool_result
  * - system → system (with metadata)
  * - progress → progress (with metadata)
- * - summary → summary (with metadata)
  */
 export function messagesToRichMessages(messages: Message[]): RichMessage[] {
   const result: RichMessage[] = []
@@ -145,17 +144,6 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           content: content || '',
           ts,
           category: progressCategory,
-          metadata: msg.metadata ?? undefined,
-        })
-        break
-      }
-
-      case 'summary': {
-        result.push({
-          type: 'summary',
-          content: msg.content || '',
-          ts,
-          category: 'summary' as ActionCategory,
           metadata: msg.metadata ?? undefined,
         })
         break

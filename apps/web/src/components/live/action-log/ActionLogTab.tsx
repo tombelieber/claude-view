@@ -44,9 +44,6 @@ export function ActionLogTab({
       system: 0,
       snapshot: 0,
       queue: 0,
-      context: 0,
-      result: 0,
-      summary: 0,
     }
     for (const item of allItems) {
       if (!isTurnSeparator(item) && !isHookEvent(item)) {

@@ -441,12 +441,6 @@ struct SystemLine {
     prevented_continuation: Option<bool>,
 }
 
-#[derive(Deserialize)]
-struct SummaryLine {
-    timestamp: Option<TimestampValue>,
-    summary: Option<String>,
-}
-
 /// A raw tool_use extracted from JSONL, before classification.
 #[derive(Debug, Clone)]
 pub struct RawInvocation {
@@ -564,9 +558,7 @@ pub struct ParseDiagnostics {
     pub lines_system: u32,
     pub lines_progress: u32,
     pub lines_queue_op: u32,
-    pub lines_summary: u32,
     pub lines_file_snapshot: u32,
-    pub lines_hook_context: u32,
     pub lines_unknown_type: u32,
 
     // Parse outcomes
@@ -977,8 +969,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let type_progress = memmem::Finder::new(b"\"type\":\"progress\"");
     let type_queue_op = memmem::Finder::new(b"\"type\":\"queue-operation\"");
     let type_file_snap = memmem::Finder::new(b"\"type\":\"file-history-snapshot\"");
-    let type_hook_ctx = memmem::Finder::new(b"\"type\":\"saved_hook_context\"");
-
     // Progress subtype detectors
     let subtype_agent = memmem::Finder::new(b"\"type\":\"agent_progress\"");
     let subtype_bash = memmem::Finder::new(b"\"type\":\"bash_progress\"");
@@ -993,7 +983,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     let type_user = memmem::Finder::new(b"\"type\":\"user\"");
     let type_assistant = memmem::Finder::new(b"\"type\":\"assistant\"");
     let type_system = memmem::Finder::new(b"\"type\":\"system\"");
-    let type_summary = memmem::Finder::new(b"\"type\":\"summary\"");
     let timestamp_finder = memmem::Finder::new(b"\"timestamp\":");
 
     // Phase C: LOC estimation - SIMD finders for Edit/Write tool_use blocks
@@ -1096,14 +1085,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             continue;
         }
 
-        if type_hook_ctx.find(line).is_some() {
-            diag.lines_hook_context += 1;
-            continue;
-        }
-
         // ── Type-dispatched parsing ─────────────────────────────────────
         // SIMD pre-filter on raw bytes determines which typed struct to use.
-        // User lines: raw bytes only (no JSON). Assistant/system/summary:
+        // User lines: raw bytes only (no JSON). Assistant/system:
         // typed structs (skip unneeded fields). Fallback: Value for unknowns.
 
         // User lines: raw-byte path (no JSON parse at all)
@@ -1254,26 +1238,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             match serde_json::from_slice::<SystemLine>(line) {
                 Ok(parsed) => {
                     handle_system_line(
-                        parsed,
-                        &mut result.deep,
-                        diag,
-                        &mut first_timestamp,
-                        &mut last_timestamp,
-                    );
-                }
-                Err(_) => {
-                    diag.json_parse_failures += 1;
-                }
-            }
-            continue;
-        }
-
-        // Summary lines: tiny flat struct
-        if type_summary.find(line).is_some() {
-            diag.json_parse_attempts += 1;
-            match serde_json::from_slice::<SummaryLine>(line) {
-                Ok(parsed) => {
-                    handle_summary_line(
                         parsed,
                         &mut result.deep,
                         diag,
@@ -1493,18 +1457,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     _ => {}
                 }
             }
-            "summary" => {
-                diag.lines_summary += 1;
-                if let Some(summary) = value.get("summary").and_then(|s| s.as_str()) {
-                    result.deep.summary_text = Some(summary.to_string());
-                }
-            }
             "file-history-snapshot" => {
                 diag.lines_file_snapshot += 1;
                 result.deep.file_snapshot_count += 1;
-            }
-            "saved_hook_context" => {
-                diag.lines_hook_context += 1;
             }
             _ => {
                 diag.lines_unknown_type += 1;
@@ -2128,29 +2083,6 @@ fn handle_system_line(
             }
         }
         _ => {}
-    }
-}
-
-/// Handle a summary line parsed via typed `SummaryLine` struct.
-fn handle_summary_line(
-    parsed: SummaryLine,
-    deep: &mut ExtendedMetadata,
-    diag: &mut ParseDiagnostics,
-    first_timestamp: &mut Option<i64>,
-    last_timestamp: &mut Option<i64>,
-) {
-    diag.lines_summary += 1;
-
-    if let Some(ts) = parsed.timestamp.as_ref().and_then(|t| t.to_unix()) {
-        diag.timestamps_extracted += 1;
-        if first_timestamp.is_none() {
-            *first_timestamp = Some(ts);
-        }
-        *last_timestamp = Some(ts);
-    }
-
-    if let Some(summary) = parsed.summary {
-        deep.summary_text = Some(summary);
     }
 }
 
@@ -4647,7 +4579,6 @@ mod tests {
 {"type":"queue-operation","uuid":"q1","operation":"enqueue"}
 {"type":"queue-operation","uuid":"q2","operation":"dequeue"}
 {"type":"file-history-snapshot","uuid":"f1","snapshot":{}}
-{"type":"saved_hook_context","uuid":"s1","content":["ctx"]}
 {"type":"user","uuid":"u1","message":{"role":"user","content":"hello"}}
 {"type":"assistant","uuid":"a1","message":{"role":"assistant","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"hi"}]}}
 "#;
@@ -4669,14 +4600,11 @@ mod tests {
         // File snapshot
         assert_eq!(result.deep.file_snapshot_count, 1);
 
-        // Hook context
-        assert_eq!(diag.lines_hook_context, 1);
-
         // User + assistant still parsed correctly
         assert_eq!(diag.lines_user, 1);
         assert_eq!(diag.lines_assistant, 1);
 
-        // JSON parse attempts should be ONLY for assistant + system + summary (not progress/queue/snapshot/hook_context).
+        // JSON parse attempts should be ONLY for assistant + system (not progress/queue/snapshot).
         // User lines use raw-byte extraction (no JSON parse). In this test data: 1 line needs typed parse (assistant).
         assert_eq!(diag.json_parse_attempts, 1);
     }
@@ -5434,13 +5362,12 @@ mod tests {
         let diag = &result.diagnostics;
 
         // Line counts
-        assert_eq!(diag.lines_total, 10);
+        assert_eq!(diag.lines_total, 9);
         assert_eq!(diag.lines_user, 2);
         assert_eq!(diag.lines_assistant, 2);
         assert_eq!(diag.lines_system, 1);
         assert_eq!(diag.lines_progress, 1);
         assert_eq!(diag.lines_queue_op, 2);
-        assert_eq!(diag.lines_summary, 1);
         assert_eq!(diag.lines_file_snapshot, 1);
         assert_eq!(diag.lines_unknown_type, 0);
         assert_eq!(diag.json_parse_failures, 0);
@@ -5469,11 +5396,8 @@ mod tests {
         assert_eq!(result.deep.hook_progress_count, 1);
         assert_eq!(result.deep.agent_spawn_count, 0);
 
-        // Summary
-        assert_eq!(
-            result.deep.summary_text.as_deref(),
-            Some("Fixed authentication bug in auth.rs")
-        );
+        // Summary (no longer populated — "summary" JSONL type had zero real-world occurrences)
+        assert_eq!(result.deep.summary_text, None);
 
         // Queue
         assert_eq!(result.deep.queue_enqueue_count, 1);
@@ -5482,17 +5406,17 @@ mod tests {
         // File snapshot
         assert_eq!(result.deep.file_snapshot_count, 1);
 
-        // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:04:00 = 240s)
+        // Wall-clock task time (single turn: user line 1 at 10:00:00 → last_timestamp at 10:03:05 = 185s)
         assert!(
             result.deep.total_task_time_seconds > 0,
             "total_task_time_seconds should be > 0"
         );
-        assert_eq!(result.deep.total_task_time_seconds, 240);
+        assert_eq!(result.deep.total_task_time_seconds, 185);
         assert!(
             result.deep.longest_task_seconds.is_some(),
             "longest_task_seconds should be Some"
         );
-        assert_eq!(result.deep.longest_task_seconds, Some(240));
+        assert_eq!(result.deep.longest_task_seconds, Some(185));
         assert!(
             result.deep.longest_task_preview.is_some(),
             "longest_task_preview should be Some"
@@ -5698,9 +5622,7 @@ mod tests {
         assert_eq!(diag.lines_system, 0);
         assert_eq!(diag.lines_progress, 0);
         assert_eq!(diag.lines_queue_op, 0);
-        assert_eq!(diag.lines_summary, 0);
         assert_eq!(diag.lines_file_snapshot, 0);
-        assert_eq!(diag.lines_hook_context, 0);
         assert_eq!(diag.lines_unknown_type, 0);
         assert_eq!(diag.json_parse_failures, 0);
         assert_eq!(diag.content_not_array, 0);

@@ -1,8 +1,8 @@
 /**
- * MessageTyped -- Full 7-Type JSONL Parser Support
+ * MessageTyped -- Full 6-Type JSONL Parser Support
  *
  * Comprehensive redesign for new parser schema with visual type hierarchy.
- * Types: user, assistant, tool_use, tool_result, system, progress, summary
+ * Types: user, assistant, tool_use, tool_result, system, progress
  *
  * Design: Editorial/refined with semantic color coding. Each type gets
  * icon + accent color + left border for instant visual recognition.
@@ -11,7 +11,6 @@
 
 import {
   AlertCircle,
-  BookOpen,
   Check,
   CheckCircle,
   Copy,
@@ -51,7 +50,6 @@ import { TaskQueueCard } from './TaskQueueCard'
 import { FileSnapshotCard } from './FileSnapshotCard'
 // Track 4: Queue, Snapshot, Summary cards
 import { MessageQueueEventCard } from './MessageQueueEventCard'
-import { SessionSummaryCard } from './SessionSummaryCard'
 
 /** Maximum nesting depth for thread indentation */
 const MAX_INDENT_LEVEL = 5
@@ -63,14 +61,7 @@ const LANG_PATTERN = /language-(\w+)/
 interface MessageTypedProps {
   message: Message
   messageIndex?: number
-  messageType?:
-    | 'user'
-    | 'assistant'
-    | 'tool_use'
-    | 'tool_result'
-    | 'system'
-    | 'progress'
-    | 'summary'
+  messageType?: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'
   metadata?: Record<string, any>
   /** Parent message UUID for threading */
   parentUuid?: string
@@ -120,12 +111,6 @@ const TYPE_CONFIG = {
     badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
     icon: Zap,
     label: 'Progress',
-  },
-  summary: {
-    accent: 'border-rose-300 dark:border-rose-700',
-    badge: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300',
-    icon: BookOpen,
-    label: 'Summary',
   },
 }
 
@@ -634,17 +619,6 @@ export function MessageTyped({
             (renderProgressSubtype(metadata) ?? (
               <SystemMetadataCard metadata={metadata} type="progress" />
             ))}
-
-          {/* Summary card */}
-          {type === 'summary' && metadata && (
-            <SessionSummaryCard
-              summary={metadata.summary || message.content}
-              leafUuid={metadata.leafUuid || ''}
-              wordCount={
-                (metadata.summary || message.content || '').split(/\s+/).filter(Boolean).length
-              }
-            />
-          )}
 
           {/* Tool calls summary */}
           {message.tool_calls && message.tool_calls.length > 0 && (
