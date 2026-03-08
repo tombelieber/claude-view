@@ -127,6 +127,8 @@ pub struct SessionDetail {
     /// Persistent task data from ~/.claude/tasks/{sessionId}/*.json
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tasks: Vec<TaskItem>,
+    /// Whether plan files exist for this session's slug
+    pub has_plans: bool,
 }
 
 /// A commit linked to a session with its confidence tier
@@ -379,11 +381,19 @@ pub async fn get_session_detail(
         .map(|dir| task_files::parse_session_tasks(&dir, &session_id))
         .unwrap_or_default();
 
+    // Check if plan files exist for this session's slug
+    let has_plans = session.slug.as_ref().map_or(false, |slug| {
+        claude_view_core::plan_files::claude_plans_dir()
+            .map(|dir| claude_view_core::plan_files::has_plan_files(&dir, slug))
+            .unwrap_or(false)
+    });
+
     Ok(Json(SessionDetail {
         info: session,
         commits,
         derived_metrics,
         tasks,
+        has_plans,
     }))
 }
 
