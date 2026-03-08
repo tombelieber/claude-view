@@ -1,8 +1,10 @@
 import {
   Check,
+  CheckSquare,
   Clock,
   Copy,
   DollarSign,
+  FileDiff,
   GitBranch,
   LayoutDashboard,
   ScrollText,
@@ -17,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useControlCallbacks } from '../../hooks/use-control-callbacks'
 import { useControlSession } from '../../hooks/use-control-session'
+import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
@@ -32,12 +35,14 @@ import { SessionMetricsBar } from '../SessionMetricsBar'
 import { ChatInputBar } from '../chat/ChatInputBar'
 import { PermissionCard } from '../chat/cards/PermissionCard'
 import { CacheCountdownBar } from './CacheCountdownBar'
+import { ChangesTab } from './ChangesTab'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { RichPane } from './RichPane'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
+import { TaskDetailTab } from './TaskDetailTab'
 import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
 import { ViewModeControls } from './ViewModeControls'
@@ -52,7 +57,7 @@ import type { LiveSession } from './use-live-sessions'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'cost'
+type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'cost' | 'tasks' | 'changes'
 
 interface SessionDetailPanelProps {
   /** Live session (existing callers) */
@@ -134,6 +139,11 @@ export function SessionDetailPanel({
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
   const hasSubAgents = data.subAgents && data.subAgents.length > 0
+  const hasTasks = data.tasks && data.tasks.length > 0
+
+  // File history (fetched on demand for all sessions)
+  const { data: fileHistory } = useFileHistory(data.id)
+  const hasChanges = fileHistory && fileHistory.files.length > 0
 
   // ---- Control session hooks (unconditional — Rules of Hooks) ----
   const controlSession = useControlSession(controlSessionId ?? null)
@@ -402,6 +412,48 @@ export function SessionDetailPanel({
             </button>
           )
         })}
+
+        {/* Conditional tabs — only shown when data exists */}
+        {hasTasks && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'tasks'}
+            onClick={() => {
+              setActiveTab('tasks')
+              setDrillDownAgent(null)
+            }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
+              activeTab === 'tasks'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+            )}
+          >
+            <CheckSquare className="w-3.5 h-3.5" />
+            Tasks
+          </button>
+        )}
+        {hasChanges && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'changes'}
+            onClick={() => {
+              setActiveTab('changes')
+              setDrillDownAgent(null)
+            }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
+              activeTab === 'changes'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+            )}
+          >
+            <FileDiff className="w-3.5 h-3.5" />
+            Changes
+          </button>
+        )}
 
         {/* Chat / Debug + Rich / JSON — only shown on Terminal tab */}
         {activeTab === 'terminal' && (
@@ -707,6 +759,14 @@ export function SessionDetailPanel({
           <div className="overflow-y-auto h-full">
             <CostBreakdown cost={data.cost} tokens={data.tokens} subAgents={data.subAgents} />
           </div>
+        )}
+
+        {/* ---- Tasks tab ---- */}
+        {activeTab === 'tasks' && hasTasks && <TaskDetailTab tasks={data.tasks!} />}
+
+        {/* ---- Changes tab ---- */}
+        {activeTab === 'changes' && hasChanges && (
+          <ChangesTab fileHistory={fileHistory!} sessionId={data.id} />
         )}
       </div>
     </div>

@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use claude_view_core::accumulator::SessionAccumulator;
+use claude_view_core::task_files::{self, TaskItem};
 use claude_view_core::{ParsedSession, SessionInfo};
 use claude_view_db::git_correlation::GitCommit;
 use serde::{Deserialize, Serialize};
@@ -119,13 +120,13 @@ pub struct SessionActivityResponse {
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDetail {
-    /// Base session info
     #[serde(flatten)]
     pub info: SessionInfo,
-    /// Linked commits with tier
     pub commits: Vec<CommitWithTier>,
-    /// Derived metrics
     pub derived_metrics: DerivedMetrics,
+    /// Persistent task data from ~/.claude/tasks/{sessionId}/*.json
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tasks: Vec<TaskItem>,
 }
 
 /// A commit linked to a session with its confidence tier
@@ -373,10 +374,16 @@ pub async fn get_session_detail(
     // Calculate derived metrics
     let derived_metrics = DerivedMetrics::from(&session);
 
+    // Read persistent task files (if any)
+    let tasks = task_files::claude_tasks_dir()
+        .map(|dir| task_files::parse_session_tasks(&dir, &session_id))
+        .unwrap_or_default();
+
     Ok(Json(SessionDetail {
         info: session,
         commits,
         derived_metrics,
+        tasks,
     }))
 }
 
