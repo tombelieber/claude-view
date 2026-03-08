@@ -295,14 +295,18 @@ describe('SessionCard', () => {
 
   describe('Edge cases and accessibility', () => {
     it('should handle null session gracefully', () => {
-      const { container } = render(<SessionCard session={null} />)
+      const { container } = render(<SessionCard session={null} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText('Session data unavailable')).toBeInTheDocument()
       expect(container.querySelector('article')).toBeInTheDocument()
     })
 
     it('should handle undefined session gracefully', () => {
-      render(<SessionCard session={undefined} />)
+      render(<SessionCard session={undefined} />, {
+        wrapper: createWrapper(),
+      })
 
       expect(screen.getByText('Session data unavailable')).toBeInTheDocument()
     })
