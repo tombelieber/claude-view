@@ -978,6 +978,7 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1023,6 +1024,7 @@ mod tests {
                 tool_use_id: "toolu_01BG".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1066,6 +1068,7 @@ mod tests {
                 tool_use_id: "toolu_01BG2".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1116,6 +1119,7 @@ mod tests {
                 tool_use_id: "toolu_01FAIL".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Failing work".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1160,6 +1164,7 @@ mod tests {
                 tool_use_id: "toolu_01KILL".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Killed work".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1206,6 +1211,7 @@ mod tests {
                 tool_use_id: "toolu_01TEAM".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "landing-sync".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1252,6 +1258,7 @@ mod tests {
                 tool_use_id: "toolu_01FUTURE".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "future-agent".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1302,6 +1309,7 @@ mod tests {
                     tool_use_id: tid.clone(),
                     agent_type: "general-purpose".to_string(),
                     description: format!("{status}-agent"),
+                    team_name: None,
                 });
             acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1350,6 +1358,7 @@ mod tests {
                 tool_use_id: "toolu_01NTERM".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "notif-agent".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1394,6 +1403,7 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
+                team_name: None,
             });
 
         // Process same spawn twice (replay resilience)
@@ -1417,6 +1427,7 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1745,6 +1756,7 @@ mod tests {
                 tool_use_id: "toolu_cost".to_string(),
                 agent_type: "code".to_string(),
                 description: "Write code".to_string(),
+                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
