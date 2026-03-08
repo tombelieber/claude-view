@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { PluginInfo, PluginItem } from '../../types/generated'
@@ -25,45 +25,6 @@ function ScopeBadge({ scope }: { scope: string }) {
   )
 }
 
-function MarketplaceDot({ marketplace }: { marketplace: string }) {
-  return (
-    <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-500">
-      <span className={cn('w-2 h-2 rounded-full inline-block', marketplaceDotColor(marketplace))} />
-      {marketplace}
-    </span>
-  )
-}
-
-function EnableToggle({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      className={cn(
-        'relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0',
-        enabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600',
-      )}
-      title={enabled ? 'Disable plugin' : 'Enable plugin'}
-    >
-      <span
-        className={cn(
-          'absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform',
-          enabled ? 'translate-x-[14px]' : 'translate-x-0.5',
-        )}
-      />
-    </button>
-  )
-}
-
 function ContentsLine({ plugin }: { plugin: PluginInfo }) {
   const parts: string[] = []
   if (plugin.skillCount > 0)
@@ -80,12 +41,14 @@ function ContentsLine({ plugin }: { plugin: PluginInfo }) {
 function UsageLine({ plugin }: { plugin: PluginInfo }) {
   const invocations = Number(plugin.totalInvocations)
   const sessions = Number(plugin.sessionCount)
+  const lastUsed = plugin.lastUsedAt ? formatRelativeTime(Number(plugin.lastUsedAt)) : null
   if (invocations === 0) {
     return <span className="text-xs text-gray-400 dark:text-gray-600">No usage recorded</span>
   }
   return (
     <span className="text-xs text-gray-400 dark:text-gray-600">
       {invocations.toLocaleString()}&times; across {sessions} session{sessions !== 1 ? 's' : ''}
+      {lastUsed && ` · ${lastUsed}`}
     </span>
   )
 }
@@ -100,11 +63,6 @@ function DuplicateWarning({ marketplaces }: { marketplaces: string[] }) {
   )
 }
 
-function VersionDisplay({ version, gitSha }: { version: string; gitSha: string | null }) {
-  const display = gitSha ? gitSha.slice(0, 6) : version
-  return <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">{display}</span>
-}
-
 // ---------------------------------------------------------------------------
 // Expanded items listing
 // ---------------------------------------------------------------------------
@@ -113,12 +71,19 @@ function ItemRow({ item }: { item: PluginItem }) {
   const count = Number(item.invocationCount)
   const lastUsed = item.lastUsedAt ? formatRelativeTime(Number(item.lastUsedAt)) : null
   return (
-    <div className="flex items-center justify-between py-0.5 text-xs">
-      <span className="text-gray-700 dark:text-gray-300 truncate">{item.name}</span>
-      <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap ml-2">
-        {count > 0 ? `${count}\u00d7` : '\u2014'}
-        {lastUsed && <span className="ml-2">{lastUsed}</span>}
-      </span>
+    <div className="py-0.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-gray-700 dark:text-gray-300 truncate">{item.name}</span>
+        <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap ml-2">
+          {count > 0 ? `${count}\u00d7` : '\u2014'}
+          {lastUsed && <span className="ml-2">{lastUsed}</span>}
+        </span>
+      </div>
+      {item.description && (
+        <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+          {item.description}
+        </div>
+      )}
     </div>
   )
 }
@@ -170,9 +135,10 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
   const commands = plugin.items.filter((i) => i.kind === 'command')
   const mcpTools = plugin.items.filter((i) => i.kind === 'mcp_tool')
 
+  const version = plugin.gitSha ? plugin.gitSha.slice(0, 6) : plugin.version
+
   return (
-    <button
-      type="button"
+    <div
       className={cn(
         'group w-full text-left rounded-lg border p-3 transition-colors duration-200 cursor-pointer',
         'border-gray-200 dark:border-gray-800',
@@ -181,34 +147,53 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         !plugin.enabled && 'opacity-50',
       )}
       onClick={() => setExpanded(!expanded)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setExpanded(!expanded)
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
-      {/* Header row: name + toggle + version */}
+      {/* Row 1: name + scope + menu */}
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-          {plugin.name}
-        </h3>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <EnableToggle
-            enabled={plugin.enabled}
-            onToggle={() => onAction(plugin.enabled ? 'disable' : 'enable', plugin.name)}
-          />
-          <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
-          <VersionDisplay version={plugin.version} gitSha={plugin.gitSha} />
-          {expanded ? (
-            <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+            {plugin.name}
+          </h3>
+          {!plugin.enabled && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0">
+              Disabled
+            </span>
           )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <ScopeBadge scope={plugin.scope} />
+          <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
         </div>
       </div>
 
-      {/* Scope + marketplace */}
-      <div className="flex items-center gap-2 mt-1">
-        <ScopeBadge scope={plugin.scope} />
-        <MarketplaceDot marketplace={plugin.marketplace} />
+      {/* Row 2: marketplace + version */}
+      <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 dark:text-gray-500">
+        <span className="flex items-center gap-1">
+          <span
+            className={cn(
+              'w-2 h-2 rounded-full inline-block',
+              marketplaceDotColor(plugin.marketplace),
+            )}
+          />
+          {plugin.marketplace}
+        </span>
+        {version && (
+          <>
+            <span className="text-gray-300 dark:text-gray-700">&middot;</span>
+            <span className="font-mono">{version}</span>
+          </>
+        )}
       </div>
 
-      {/* Contents + usage */}
+      {/* Row 3: contents + usage */}
       <div className="mt-2 flex flex-col gap-0.5">
         <ContentsLine plugin={plugin} />
         <UsageLine plugin={plugin} />
@@ -244,7 +229,7 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
           <ItemsSection kind="MCP Tools" items={mcpTools} />
         </div>
       )}
-    </button>
+    </div>
   )
 }
 

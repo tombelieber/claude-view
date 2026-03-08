@@ -8,6 +8,7 @@ export type AvailablePlugin = {
   name: string
   description: string
   marketplaceName: string
-  version: string
+  version: string | null
+  installCount: bigint | null
   alreadyInstalled: boolean
 }

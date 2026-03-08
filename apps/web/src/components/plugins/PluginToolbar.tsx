@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import type { MarketplaceInfo } from '../../types/generated'
 
 interface PluginToolbarProps {
   search: string
@@ -10,7 +11,7 @@ interface PluginToolbarProps {
   onSourceChange: (source: string | undefined) => void
   kind: string | undefined
   onKindChange: (kind: string | undefined) => void
-  marketplaces: string[]
+  marketplaces: MarketplaceInfo[]
   totalCount: number
 }
 
@@ -92,8 +93,8 @@ export function PluginToolbar({
         >
           <option value="">All Sources</option>
           {marketplaces.map((m) => (
-            <option key={m} value={m}>
-              {m}
+            <option key={m.name} value={m.name}>
+              {m.name}
             </option>
           ))}
         </select>
