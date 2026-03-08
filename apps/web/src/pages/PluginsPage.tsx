@@ -1,5 +1,5 @@
 import { Blocks } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AvailablePluginCard } from '../components/plugins/AvailablePluginCard'
 import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
 import { PluginCard } from '../components/plugins/PluginCard'
@@ -16,7 +16,7 @@ export function PluginsPage() {
 
   // Debounce search to avoid thrashing the API
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  useMemo(() => {
+  useEffect(() => {
     const id = setTimeout(() => setDebouncedSearch(search), 300)
     return () => clearTimeout(id)
   }, [search])
