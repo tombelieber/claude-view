@@ -4,8 +4,8 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "expo start",
-    "dev:clear": "expo start -c",
+    "dev": "npx expo start --dev-client",
+    "dev:clear": "npx expo start -c --dev-client",
     "build:ios": "eas build --platform ios",
     "build:ios:sim": "EAS_NO_VCS=1 eas build --local --platform ios --profile development-simulator",
     "build:ios:dev": "EAS_NO_VCS=1 eas build --local --platform ios --profile development",
