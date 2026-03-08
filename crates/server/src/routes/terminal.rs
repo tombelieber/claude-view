@@ -1180,6 +1180,9 @@ mod tests {
                 300,
             )),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(std::sync::RwLock::new(None)),
+            prompt_stats: Arc::new(std::sync::RwLock::new(None)),
+            prompt_templates: Arc::new(std::sync::RwLock::new(None)),
         });
 
         // Register the session in the live sessions map
@@ -1373,6 +1376,9 @@ mod tests {
                 300,
             )),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(std::sync::RwLock::new(None)),
+            prompt_stats: Arc::new(std::sync::RwLock::new(None)),
+            prompt_templates: Arc::new(std::sync::RwLock::new(None)),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
