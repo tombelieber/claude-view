@@ -338,6 +338,10 @@ pub fn check_file_path_tool_presence(
 }
 
 /// Check 11: Every user/assistant line with text content -> content_preview non-empty.
+///
+/// Correctly handles system-injected noise tags (`<command-message>`, `<task-notification>`,
+/// etc.) which `strip_noise_tags()` intentionally removes. If the raw text is entirely
+/// noise tags, empty `content_preview` is correct parser behavior.
 pub fn check_content_preview(
     raw: &serde_json::Value,
     parsed: &LiveLine,
@@ -345,21 +349,36 @@ pub fn check_content_preview(
     line_num: usize,
     accum: &mut CheckAccum,
 ) {
+    use crate::live_parser::strip_noise_tags;
+
     let raw_type = raw.get("type").and_then(|t| t.as_str()).unwrap_or("");
     if raw_type != "user" && raw_type != "assistant" {
         return;
     }
-    let has_text_content = match raw.get("message").and_then(|m| m.get("content")) {
-        Some(serde_json::Value::String(s)) => !s.is_empty(),
+
+    // Collect raw text content, checking if ANY meaningful text survives noise-tag stripping.
+    let has_meaningful_text = match raw.get("message").and_then(|m| m.get("content")) {
+        Some(serde_json::Value::String(s)) => {
+            if s.is_empty() {
+                false
+            } else {
+                let (stripped, _) = strip_noise_tags(s);
+                !stripped.is_empty()
+            }
+        }
         Some(serde_json::Value::Array(blocks)) => blocks.iter().any(|b| {
             b.get("type").and_then(|t| t.as_str()) == Some("text")
-                && b.get("text")
-                    .and_then(|t| t.as_str())
-                    .is_some_and(|s| !s.is_empty())
+                && b.get("text").and_then(|t| t.as_str()).is_some_and(|text| {
+                    if text.is_empty() {
+                        return false;
+                    }
+                    let (stripped, _) = strip_noise_tags(text);
+                    !stripped.is_empty()
+                })
         }),
         _ => false,
     };
-    if !has_text_content {
+    if !has_meaningful_text {
         return;
     }
     if !parsed.content_preview.is_empty() {
@@ -368,7 +387,7 @@ pub fn check_content_preview(
         accum.record_violation(
             file,
             line_num,
-            "raw has text content but parsed content_preview is empty",
+            "raw has text content (after noise-tag stripping) but parsed content_preview is empty",
         );
     }
 }
@@ -400,6 +419,10 @@ pub fn check_timestamp_extraction(
 }
 
 /// Check 13: Cache creation 5m + 1hr == total when both splits are present.
+///
+/// Handles early API data quirk where `cache_creation` split object exists with
+/// both values at 0 while `cache_creation_input_tokens` total is non-zero.
+/// In this case the split data is unreliable — skip the check for that line.
 pub fn check_cache_token_split(
     parsed: &LiveLine,
     file: &str,
@@ -416,6 +439,9 @@ pub fn check_cache_token_split(
         return; // No split data (older API)
     }
     let sum = t5m.unwrap_or(0) + t1hr.unwrap_or(0);
+    if sum == 0 && total > 0 {
+        return; // Early API data: split object exists but values not populated
+    }
     if sum == total {
         accum.record_pass();
     } else {
@@ -873,5 +899,43 @@ mod tests {
         let mut signals = PipelineSignals::default();
         run_per_session_checks(&parsed_lines, "test.jsonl", &mut signals);
         assert_eq!(signals.token_round_trip.violations.len(), 0);
+    }
+
+    #[test]
+    fn test_check_content_preview_noise_tags_only_not_violation() {
+        let finders = TailFinders::new();
+        let raw = br#"{"type":"user","message":{"role":"user","content":"<command-message>superpowers:dispatching-parallel-agents</command-message>\n<command-args>task1</command-args>"}}"#;
+        let parsed = parse_single_line(raw, &finders);
+        let raw_value: serde_json::Value = serde_json::from_slice(raw).unwrap();
+        let mut accum = CheckAccum::default();
+        check_content_preview(&raw_value, &parsed, "test.jsonl", 1, &mut accum);
+        assert_eq!(
+            accum.violations.len(),
+            0,
+            "noise-tag-only content should not be a violation"
+        );
+        assert_eq!(
+            accum.lines_checked, 0,
+            "noise-tag-only lines should be skipped entirely"
+        );
+    }
+
+    #[test]
+    fn test_check_cache_split_early_api_zero_split_not_violation() {
+        let finders = TailFinders::new();
+        // Early API data: total=730 but split has both values at 0
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":"hi","model":"claude-opus-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":730,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}}"#;
+        let parsed = parse_single_line(raw, &finders);
+        let mut accum = CheckAccum::default();
+        check_cache_token_split(&parsed, "test.jsonl", 1, &mut accum);
+        assert_eq!(
+            accum.violations.len(),
+            0,
+            "early API zero-split should not be a violation"
+        );
+        assert_eq!(
+            accum.lines_checked, 0,
+            "early API zero-split should be skipped"
+        );
     }
 }
