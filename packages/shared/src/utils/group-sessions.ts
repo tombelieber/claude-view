@@ -1,14 +1,14 @@
-import type { RelaySession } from '../types/relay'
+import type { LiveSession } from '../types/generated'
 
 /** Group sessions by whether they need user attention.
  *  NOTE (audit fix B1): Uses agentState.group, NOT status field.
  */
-export function groupByStatus(sessions: RelaySession[]): {
-  needsYou: RelaySession[]
-  autonomous: RelaySession[]
+export function groupByStatus(sessions: LiveSession[]): {
+  needsYou: LiveSession[]
+  autonomous: LiveSession[]
 } {
-  const needsYou: RelaySession[] = []
-  const autonomous: RelaySession[] = []
+  const needsYou: LiveSession[] = []
+  const autonomous: LiveSession[] = []
 
   for (const s of sessions) {
     if (s.agentState.group === 'needs_you') {

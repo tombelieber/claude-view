@@ -1,7 +1,7 @@
-import { type RelaySession, formatUsd, groupByStatus } from '@claude-view/shared'
+import { type LiveSession, formatUsd, groupByStatus } from '@claude-view/shared'
 import { Text, XStack } from 'tamagui'
 
-export function SummaryBar({ sessions }: { sessions: RelaySession[] }) {
+export function SummaryBar({ sessions }: { sessions: LiveSession[] }) {
   const { needsYou, autonomous } = groupByStatus(sessions)
   const totalCost = sessions.reduce((sum, s) => sum + s.cost.totalUsd, 0)
 

@@ -1,4 +1,4 @@
-import { type RelaySession, formatUsd } from '@claude-view/shared'
+import { type LiveSession, formatUsd } from '@claude-view/shared'
 import { FileText } from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { Circle, Text, XStack, YStack } from 'tamagui'
@@ -12,7 +12,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 interface Props {
-  session: RelaySession
+  session: LiveSession
   onPress: () => void
 }
 
