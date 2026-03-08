@@ -3,6 +3,7 @@ import type { ProgressItem } from '../../types/generated/ProgressItem'
 import type { RichSessionData } from '../../types/generated/RichSessionData'
 import type { SessionDetail } from '../../types/generated/SessionDetail'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { TaskItem } from '../../types/generated/TaskItem'
 import type { RichMessage } from './RichPane'
 import type { AgentState } from './types'
 // src/components/live/session-panel-data.ts
@@ -61,6 +62,9 @@ export interface SessionPanelData {
 
   // Progress items (live tasks/todos)
   progressItems?: ProgressItem[]
+
+  // Persistent task data from ~/.claude/tasks/
+  tasks?: TaskItem[]
 
   compactCount?: number
 
@@ -171,6 +175,7 @@ export function historyToPanelData(
     cacheStatus: richData?.cacheStatus ?? 'unknown',
     subAgents: richData?.subAgents,
     progressItems: richData?.progressItems,
+    tasks: sessionDetail.tasks,
     compactCount: sessionDetail.compactionCount,
     startedAt: sessionDetail.firstMessageAt ?? undefined,
     lastActivityAt: sessionDetail.modifiedAt,
