@@ -1,0 +1,22 @@
+# EAS Build — exclude heavy/irrelevant dirs from project archive
+# This file lives at monorepo root because EAS resolves workspace roots.
+
+# Build artifacts & caches
+.tmp/
+target/
+target-codex*/
+target-playwright/
+dist/
+
+# Other apps (not needed for mobile build)
+apps/web/node_modules/
+apps/landing/node_modules/
+apps/share/node_modules/
+
+# Dev tooling
+.claude/
+.git/
+docs/
+
+# Rust source (mobile doesn't need it)
+crates/
