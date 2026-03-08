@@ -215,3 +215,10 @@ export type { DiffStats } from './DiffStats'
 export type { DiffHunk } from './DiffHunk'
 export type { DiffLine } from './DiffLine'
 export type { DiffLineKind } from './DiffLineKind'
+
+// Teams types
+export type { TeamSummary } from './TeamSummary'
+export type { TeamDetail } from './TeamDetail'
+export type { TeamMember } from './TeamMember'
+export type { InboxMessage } from './InboxMessage'
+export type { InboxMessageType } from './InboxMessageType'

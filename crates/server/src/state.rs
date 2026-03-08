@@ -113,6 +113,8 @@ pub struct AppState {
     pub auth_identity: OnceCell<Option<AuthIdentity>>,
     /// Cached Anthropic OAuth usage response (5-min TTL).
     pub oauth_usage_cache: CachedUpstream<OAuthUsageResponse>,
+    /// Parsed teams from ~/.claude/teams/ (read-only, loaded at startup).
+    pub teams: Arc<crate::teams::TeamsStore>,
 }
 
 impl AppState {
@@ -151,6 +153,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         })
     }
 
@@ -188,6 +191,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         })
     }
 
@@ -228,6 +232,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         })
     }
 
