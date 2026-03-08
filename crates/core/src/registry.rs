@@ -95,6 +95,14 @@ impl Registry {
         self.qualified.is_empty()
     }
 
+    /// Get all invocables belonging to a specific plugin.
+    pub fn invocables_for_plugin(&self, plugin_name: &str) -> Vec<&InvocableInfo> {
+        self.qualified
+            .values()
+            .filter(|info| info.plugin_name.as_deref() == Some(plugin_name))
+            .collect()
+    }
+
     /// Compute a stable fingerprint of the registry contents.
     ///
     /// Returns a hex-encoded hash of all sorted qualified IDs.
@@ -992,6 +1000,55 @@ mod tests {
         }]);
         assert_eq!(one.len(), 1);
         assert!(!one.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // invocables_for_plugin()
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn invocables_for_plugin_filters_correctly() {
+        let entries = vec![
+            InvocableInfo {
+                id: "superpowers:brainstorming".to_string(),
+                plugin_name: Some("superpowers".to_string()),
+                name: "brainstorming".to_string(),
+                kind: InvocableKind::Skill,
+                description: String::new(),
+            },
+            InvocableInfo {
+                id: "superpowers:tdd".to_string(),
+                plugin_name: Some("superpowers".to_string()),
+                name: "tdd".to_string(),
+                kind: InvocableKind::Skill,
+                description: String::new(),
+            },
+            InvocableInfo {
+                id: "hookify:format".to_string(),
+                plugin_name: Some("hookify".to_string()),
+                name: "format".to_string(),
+                kind: InvocableKind::Command,
+                description: String::new(),
+            },
+            InvocableInfo {
+                id: "builtin:Bash".to_string(),
+                plugin_name: None,
+                name: "Bash".to_string(),
+                kind: InvocableKind::BuiltinTool,
+                description: String::new(),
+            },
+        ];
+        let registry = registry_from(entries);
+
+        let sp = registry.invocables_for_plugin("superpowers");
+        assert_eq!(sp.len(), 2);
+
+        let hk = registry.invocables_for_plugin("hookify");
+        assert_eq!(hk.len(), 1);
+        assert_eq!(hk[0].id, "hookify:format");
+
+        let none = registry.invocables_for_plugin("nonexistent");
+        assert_eq!(none.len(), 0);
     }
 
     // -----------------------------------------------------------------------
