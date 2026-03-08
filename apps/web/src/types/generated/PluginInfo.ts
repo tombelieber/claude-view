@@ -9,7 +9,7 @@ export type PluginInfo = {
   name: string
   marketplace: string
   scope: string
-  version: string
+  version: string | null
   gitSha: string | null
   enabled: boolean
   installedAt: string

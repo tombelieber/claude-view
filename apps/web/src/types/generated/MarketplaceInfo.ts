@@ -3,4 +3,10 @@
 /**
  * A configured marketplace.
  */
-export type MarketplaceInfo = { name: string; source: string }
+export type MarketplaceInfo = {
+  name: string
+  source: string
+  repo: string | null
+  installedCount: number
+  availableCount: number
+}
