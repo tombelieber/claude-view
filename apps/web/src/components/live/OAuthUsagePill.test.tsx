@@ -259,7 +259,7 @@ describe('OAuthUsagePill', () => {
       expect(wrapper.textContent).toContain('Test Corp')
     })
 
-    it('triggers refetch when tooltip opens', async () => {
+    it('does NOT refetch on tooltip open (server-driven polling only)', async () => {
       mockUseOAuthUsage.mockReturnValue({
         data: MULTI_TIER_DATA,
         isLoading: false,
@@ -277,7 +277,7 @@ describe('OAuthUsagePill', () => {
         expect(getPopperWrapper()).not.toBeNull()
       })
 
-      expect(mockRefetch).toHaveBeenCalled()
+      expect(mockRefetch).not.toHaveBeenCalled()
     })
 
     it('hides redundant org name matching email pattern', async () => {

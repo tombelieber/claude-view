@@ -3,7 +3,7 @@
 //! Usage:
 //! ```ignore
 //! let cache = CachedUpstream::<MyResponse>::new(Duration::from_secs(300));
-//! let value = cache.get_or_fetch(|| async { fetch_from_api().await }).await?;
+//! let (value, remaining_ttl) = cache.get_or_fetch(|| async { fetch_from_api().await }).await?;
 //! ```
 
 use std::future::Future;
@@ -65,12 +65,21 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
         }
     }
 
+    /// The configured TTL for this cache.
+    pub fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
     /// Return cached value if within TTL, otherwise call `fetcher` and cache the result.
+    ///
+    /// Returns `(value, remaining_ttl)` — the caller can use `remaining_ttl` to set
+    /// `Cache-Control: max-age` so downstream consumers (browser, frontend) respect
+    /// the server's TTL without hardcoding their own.
     ///
     /// On fetch error, the cache is NOT updated (stale data is better than no data,
     /// but we don't cache errors). Concurrent cache misses are serialized by a
     /// semaphore — only the first caller fetches, subsequent callers get the result.
-    pub async fn get_or_fetch<F, Fut>(&self, fetcher: F) -> Result<T, String>
+    pub async fn get_or_fetch<F, Fut>(&self, fetcher: F) -> Result<(T, Duration), String>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, String>>,
@@ -79,8 +88,9 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
         {
             let guard = self.inner.read().await;
             if let Some(entry) = guard.as_ref() {
-                if entry.fetched_at.elapsed() < self.ttl {
-                    return Ok(entry.value.clone());
+                let elapsed = entry.fetched_at.elapsed();
+                if elapsed < self.ttl {
+                    return Ok((entry.value.clone(), self.ttl - elapsed));
                 }
             }
         }
@@ -96,8 +106,9 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
         {
             let guard = self.inner.read().await;
             if let Some(entry) = guard.as_ref() {
-                if entry.fetched_at.elapsed() < self.ttl {
-                    return Ok(entry.value.clone());
+                let elapsed = entry.fetched_at.elapsed();
+                if elapsed < self.ttl {
+                    return Ok((entry.value.clone(), self.ttl - elapsed));
                 }
             }
         }
@@ -110,7 +121,7 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
                 fetched_at: Instant::now(),
             });
         }
-        Ok(value)
+        Ok((value, self.ttl))
     }
 
     /// Bypass TTL and fetch fresh data. Returns `Err(CacheError::TooSoon)` if the
@@ -122,7 +133,7 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
         &self,
         min_interval: Duration,
         fetcher: F,
-    ) -> Result<T, CacheError>
+    ) -> Result<(T, Duration), CacheError>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T, String>>,
@@ -153,7 +164,7 @@ impl<T: Clone + Send + Sync> CachedUpstream<T> {
                 fetched_at: Instant::now(),
             });
         }
-        Ok(value)
+        Ok((value, self.ttl))
     }
 
     /// Return the cached value without fetching. `None` if cache is empty or lock contention.
@@ -177,7 +188,7 @@ mod tests {
         let call_count = Arc::new(AtomicU32::new(0));
 
         let cc = call_count.clone();
-        let v1 = cache
+        let (v1, ttl1) = cache
             .get_or_fetch(|| {
                 let cc = cc.clone();
                 async move {
@@ -188,9 +199,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(v1, "hello");
+        assert_eq!(ttl1, Duration::from_secs(60)); // fresh fetch = full TTL
 
         let cc = call_count.clone();
-        let v2 = cache
+        let (v2, ttl2) = cache
             .get_or_fetch(|| {
                 let cc = cc.clone();
                 async move {
@@ -201,6 +213,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(v2, "hello"); // cached, not "world"
+        assert!(ttl2 <= Duration::from_secs(60)); // remaining TTL <= full
         assert_eq!(call_count.load(Ordering::SeqCst), 1);
     }
 
@@ -210,7 +223,7 @@ mod tests {
         let call_count = Arc::new(AtomicU32::new(0));
 
         let cc = call_count.clone();
-        let v1 = cache
+        let (v1, _) = cache
             .get_or_fetch(|| {
                 let cc = cc.clone();
                 async move {
@@ -225,7 +238,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         let cc = call_count.clone();
-        let v2 = cache
+        let (v2, _) = cache
             .get_or_fetch(|| {
                 let cc = cc.clone();
                 async move {
@@ -248,14 +261,14 @@ mod tests {
             .await
             .unwrap();
 
-        let v = cache
+        let (v, _) = cache
             .force_refresh(Duration::ZERO, || async { Ok("new".to_string()) })
             .await
             .unwrap();
         assert_eq!(v, "new");
 
         // Subsequent get_or_fetch should return the force-refreshed value.
-        let v2 = cache
+        let (v2, _) = cache
             .get_or_fetch(|| async { Ok("should not be called".to_string()) })
             .await
             .unwrap();
@@ -312,10 +325,11 @@ mod tests {
     async fn get_cached_returns_value_after_fetch() {
         let cache = CachedUpstream::<String>::new(Duration::from_secs(60));
 
-        cache
+        let (val, _) = cache
             .get_or_fetch(|| async { Ok("cached_value".to_string()) })
             .await
             .unwrap();
+        assert_eq!(val, "cached_value");
 
         assert_eq!(cache.get_cached(), Some("cached_value".to_string()));
     }

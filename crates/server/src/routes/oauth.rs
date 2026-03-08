@@ -400,14 +400,26 @@ async fn fetch_oauth_usage_inner() -> Result<OAuthUsageResponse, String> {
 /// GET /api/oauth/usage
 ///
 /// Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.
-pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> Json<OAuthUsageResponse> {
+/// Sets `Cache-Control: max-age=<remaining_ttl>` so the frontend respects the
+/// server's TTL without hardcoding its own polling interval.
+pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> axum::response::Response {
     match state
         .oauth_usage_cache
         .get_or_fetch(fetch_oauth_usage_inner)
         .await
     {
-        Ok(resp) => Json(resp),
-        Err(_) => Json(no_auth()),
+        Ok((resp, remaining_ttl)) => {
+            let max_age = remaining_ttl.as_secs();
+            (
+                [(
+                    axum::http::header::CACHE_CONTROL,
+                    format!("private, max-age={max_age}"),
+                )],
+                Json(resp),
+            )
+                .into_response()
+        }
+        Err(_) => Json(no_auth()).into_response(),
     }
 }
 
@@ -426,7 +438,17 @@ pub async fn post_oauth_usage_refresh(
         .force_refresh(FORCE_REFRESH_MIN_INTERVAL, fetch_oauth_usage_inner)
         .await
     {
-        Ok(resp) => Json(resp).into_response(),
+        Ok((resp, remaining_ttl)) => {
+            let max_age = remaining_ttl.as_secs();
+            (
+                [(
+                    axum::http::header::CACHE_CONTROL,
+                    format!("private, max-age={max_age}"),
+                )],
+                Json(resp),
+            )
+                .into_response()
+        }
         Err(CacheError::TooSoon { wait_secs }) => (
             axum::http::StatusCode::TOO_MANY_REQUESTS,
             [(axum::http::header::RETRY_AFTER, wait_secs.to_string())],
