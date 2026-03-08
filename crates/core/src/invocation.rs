@@ -34,7 +34,7 @@ pub struct RawToolUse {
 // Built-in agent allowlist
 // ---------------------------------------------------------------------------
 
-/// Known built-in agent types used by the Task tool in Claude Code.
+/// Known built-in agent types used by the Task/Agent tool in Claude Code.
 /// Built-in agent types that get classified as `builtin:{name}`.
 /// Public so the registry can seed these into the invocables table.
 pub const BUILTIN_AGENT_NAMES: &[&str] = &[
@@ -132,8 +132,9 @@ pub fn classify_tool_use(
             }
         }
 
-        // ---- Task tool: extract agent type from input.subagent_type ----
-        "Task" => {
+        // ---- Task/Agent tool: extract agent type from input.subagent_type ----
+        // Claude Code renamed "Task" to "Agent" ~v0.10. Both extract subagent_type.
+        "Task" | "Agent" => {
             let agent_type = input
                 .as_ref()
                 .and_then(|v| v.get("subagent_type"))
@@ -613,8 +614,8 @@ mod tests {
     fn test_all_builtin_tools_classify_as_valid() {
         let registry = builtin_only_registry();
         for &tool in BUILTIN_TOOLS {
-            // Skip "Task" since it has special handling
-            if tool == "Task" {
+            // Skip Task and Agent since they have special handling
+            if tool == "Task" || tool == "Agent" {
                 continue;
             }
             let result = classify_tool_use(tool, &None, &registry);
@@ -625,6 +626,28 @@ mod tests {
                     kind: InvocableKind::BuiltinTool,
                 },
                 "Built-in tool '{tool}' should classify as Valid"
+            );
+        }
+    }
+
+    #[test]
+    fn test_new_builtin_tools_classify_as_valid() {
+        let registry = builtin_only_registry();
+        for tool in [
+            "TodoWrite",
+            "SendMessage",
+            "TeamCreate",
+            "TeamDelete",
+            "CronCreate",
+        ] {
+            let result = classify_tool_use(tool, &None, &registry);
+            assert_eq!(
+                result,
+                ClassifyResult::Valid {
+                    invocable_id: format!("builtin:{tool}"),
+                    kind: InvocableKind::BuiltinTool,
+                },
+                "{tool} should classify as valid builtin"
             );
         }
     }
@@ -683,6 +706,59 @@ mod tests {
             input: None,
         };
         assert!(raw_none.input.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Agent tool classification (Task renamed to Agent in ~v0.10)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_agent_tool_extracts_subagent_type() {
+        let registry = builtin_only_registry();
+        let input = Some(serde_json::json!({
+            "subagent_type": "Explore",
+            "description": "Search codebase",
+            "prompt": "Find all uses of..."
+        }));
+        let result = classify_tool_use("Agent", &input, &registry);
+        assert_eq!(
+            result,
+            ClassifyResult::Valid {
+                invocable_id: "builtin:Explore".to_string(),
+                kind: InvocableKind::BuiltinTool,
+            },
+            "Agent tool should extract subagent_type like Task does"
+        );
+    }
+
+    #[test]
+    fn test_agent_tool_no_input_is_ignored() {
+        let registry = builtin_only_registry();
+        let result = classify_tool_use("Agent", &None, &registry);
+        assert_eq!(result, ClassifyResult::Ignored);
+    }
+
+    #[test]
+    fn test_agent_tool_no_subagent_type_is_ignored() {
+        let registry = builtin_only_registry();
+        let input = Some(serde_json::json!({"description": "do something"}));
+        let result = classify_tool_use("Agent", &input, &registry);
+        assert_eq!(result, ClassifyResult::Ignored);
+    }
+
+    #[test]
+    fn test_agent_tool_plugin_subagent_type() {
+        let registry = registry_with_agent("feature-dev", "code-reviewer");
+        let input = Some(serde_json::json!({
+            "subagent_type": "feature-dev:code-reviewer",
+            "description": "Review code",
+            "prompt": "Check for bugs"
+        }));
+        let result = classify_tool_use("Agent", &input, &registry);
+        assert!(
+            matches!(result, ClassifyResult::Valid { ref invocable_id, .. } if invocable_id.contains("code-reviewer")),
+            "Agent tool should route plugin subagent_types through registry"
+        );
     }
 
     #[test]
