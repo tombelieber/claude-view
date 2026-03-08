@@ -186,6 +186,11 @@ fn main() {
     println!("  {}Threads:{}  {}", BLUE, NC, num_threads);
     println!("  {}Mode:{}     {}", BLUE, NC, mode_label);
 
+    let file_count = files.len();
+    if file_count < 10 && file_count > 0 {
+        println!("  {YELLOW}WARNING: Only {file_count} files — results may be incomplete{NC}");
+    }
+
     if files.is_empty() {
         println!();
         println!(
@@ -220,8 +225,8 @@ fn main() {
         AuditResult {
             passed,
             checks: vec![check],
-            nesting_direct_count: signals.nesting_direct_count,
-            nesting_nested_count: signals.nesting_nested_count,
+            nesting_direct_count: 0,
+            nesting_nested_count: 0,
             files_scanned: signals.files_scanned,
             lines_scanned: signals.lines_scanned,
             errors: signals.errors,
@@ -242,7 +247,7 @@ fn main() {
         } else {
             println!(
                 "  [{}/{}] {}: {}DRIFT{}",
-                idx, total_checks, check.name, RED, NC
+                idx, total_checks, check.name, YELLOW, NC
             );
             for item in &check.new_items {
                 println!("         {}+ {}{}", YELLOW, item, NC);
@@ -256,12 +261,14 @@ fn main() {
         }
     }
 
-    // Nesting stats
-    println!();
-    println!(
-        "  {}Nesting:{} direct={}, nested={}",
-        BLUE, NC, result.nesting_direct_count, result.nesting_nested_count
-    );
+    // Nesting stats (only meaningful in full mode)
+    if !quick_mode {
+        println!();
+        println!(
+            "  {}Nesting:{} direct={}, nested={}",
+            BLUE, NC, result.nesting_direct_count, result.nesting_nested_count
+        );
+    }
 
     let total_elapsed = start.elapsed();
     let elapsed_secs = total_elapsed.as_secs_f64();
@@ -286,10 +293,10 @@ fn main() {
         );
         println!();
         println!("  {}Fix steps:{}", YELLOW, NC);
-        println!("    1. Inspect the new items above");
-        println!("    2. Update evidence-baseline.json to include new types");
-        println!("    3. OR update the parser to handle the new types");
-        println!("    4. Re-run: cargo run -p claude-view-core --bin evidence-audit");
+        println!("    1. Fix the parser to handle new types/fields");
+        println!("    2. Update scripts/integrity/evidence-baseline.json");
+        println!("    3. Update docs/architecture/message-types.md");
+        println!("    4. Re-run this audit to verify");
     }
     println!("{}", "\u{2500}".repeat(59));
     println!();
