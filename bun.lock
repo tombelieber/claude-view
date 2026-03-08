@@ -32,7 +32,7 @@
     },
     "apps/mobile": {
       "name": "@claude-view/mobile",
-      "version": "0.11.3",
+      "version": "0.12.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
@@ -76,7 +76,7 @@
     },
     "apps/share": {
       "name": "@claude-view/share",
-      "version": "0.11.3",
+      "version": "0.12.0",
       "dependencies": {
         "@claude-view/shared": "workspace:*",
         "@sentry/react": "^10.40.0",
@@ -98,7 +98,7 @@
     },
     "apps/web": {
       "name": "@claude-view/web",
-      "version": "0.11.3",
+      "version": "0.12.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
@@ -158,14 +158,11 @@
     },
     "packages/design-tokens": {
       "name": "@claude-view/design-tokens",
-      "version": "0.11.3",
+      "version": "0.12.0",
     },
     "packages/mcp": {
       "name": "@claude-view/mcp",
-      "version": "0.11.3",
-      "bin": {
-        "claude-view-mcp": "./dist/index.js",
-      },
+      "version": "0.12.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "zod": "^3.24",
@@ -177,15 +174,18 @@
     },
     "packages/plugin": {
       "name": "@claude-view/plugin",
-      "version": "0.11.3",
+      "version": "0.12.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "zod": "^3.24",
       },
+      "devDependencies": {
+        "@claude-view/mcp": "workspace:*",
+      },
     },
     "packages/shared": {
       "name": "@claude-view/shared",
-      "version": "0.11.3",
+      "version": "0.12.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@noble/hashes": "^2.0.1",
