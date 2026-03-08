@@ -6,7 +6,15 @@
 export type PromptHit = {
   promptId: string
   display: string
+  /**
+   * HTML snippet with `<b>` tags around matched terms. Present when a
+   * free-text query was used; `None` otherwise (browse/filter-only mode).
+   */
   snippet: string | null
+  /**
+   * Stable hash of the normalized prompt pattern. Non-empty means the prompt
+   * matches a recurring template; empty means it is unique.
+   */
   templateId: string | null
   project: string
   sessionId: string | null

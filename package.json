@@ -48,7 +48,7 @@
     "release:tag": "node -e \"const v=require('./npx-cli/package.json').version; require('child_process').execFileSync('git',['tag','v'+v],{stdio:'inherit'}); console.log('Tagged v'+v);\"",
     "release:push": "git push && git push --tags",
     "postinstall": "cd sidecar && bun install && cd ../infra/share-worker && bun install",
-    "prepare": "node -e \"if(require('fs').statSync('.git').isFile())process.exit(0);require('child_process').execFileSync('lefthook',['install','--force'],{stdio:'inherit'});\""
+    "prepare": "node -e \"try{if(require('fs').statSync('.git').isFile())process.exit(0)}catch(_){process.exit(0)}require('child_process').execFileSync('lefthook',['install','--force'],{stdio:'inherit'});\""
   },
   "keywords": [
     "claude",

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { decodeBase64 } from 'tweetnacl-util'
 import { type PhoneKeys, decryptFromDevice, loadPhoneKeys, signAuthChallenge } from '../crypto/nacl'
 import type { KeyStorage } from '../crypto/storage'
-import type { RelaySession } from '../types/relay'
+import type { LiveSession } from '../types/generated'
 
 // Audit gap #6: Added 'crypto_error' state for key mismatch detection
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'crypto_error'
@@ -12,20 +12,20 @@ export interface UseRelayConnectionOptions {
 }
 
 export interface UseRelayConnectionResult {
-  sessions: Record<string, RelaySession>
+  sessions: Record<string, LiveSession>
   connectionState: ConnectionState
   disconnect: () => void
 }
 
 export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayConnectionResult {
   const { storage } = opts
-  const [sessions, setSessions] = useState<Record<string, RelaySession>>({})
+  const [sessions, setSessions] = useState<Record<string, LiveSession>>({})
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
   const wsRef = useRef<WebSocket | null>(null)
   const keysRef = useRef<PhoneKeys | null>(null)
   const macPubkeyRef = useRef<Uint8Array | null>(null)
   // Audit gap #7: Keep stale sessions during reconnect (Slack desktop pattern)
-  const staleSessions = useRef<Record<string, RelaySession>>({})
+  const staleSessions = useRef<Record<string, LiveSession>>({})
   // Audit gap #6: Track consecutive decrypt failures
   const decryptFailures = useRef(0)
   const DECRYPT_FAILURE_THRESHOLD = 3
@@ -126,7 +126,7 @@ export function useRelayConnection(opts: UseRelayConnectionOptions): UseRelayCon
               return
             }
             if (msg.id && msg.project) {
-              setSessions((prev) => ({ ...prev, [msg.id]: msg as RelaySession }))
+              setSessions((prev) => ({ ...prev, [msg.id]: msg as LiveSession }))
             }
           }
         } catch (e) {
