@@ -6,7 +6,7 @@
 > **Status:** Current (Claude Code CLI as of Mar 2026)
 > **Last Evidence Audit:** 2026-03-08 against real JSONL corpus (5,932 files, ~997,878 lines)
 > **Methodology:** All structural analysis via `jq` JSON parsing — never text grep — to avoid miscategorizing message text content as structural fields
-> **Pre-release guard:** `scripts/integrity/evidence-audit.sh` validates parser against this spec before every release
+> **Pre-release guard:** `cargo run -p claude-view-core --bin evidence-audit` validates parser against this spec before every release
 
 ---
 
@@ -825,10 +825,10 @@ export type ActionCategory =
 | **Rich Pane** | `apps/web/src/components/live/RichPane.tsx` | RichMessage type + `parseRichMessage()` renderer dispatch |
 | **Hook→Message** | `apps/web/src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items |
 | **Action Types** | `apps/web/src/components/live/action-log/types.ts` | ActionCategory, ActionItem, HookEventItem, TimelineItem |
-| **Evidence Guard** | `scripts/integrity/evidence-audit.sh` | Pre-release evidence audit against real JSONL data |
+| **Evidence Guard** | `cargo run -p claude-view-core --bin evidence-audit` | Pre-release evidence audit against real JSONL data |
 | **Invocation Registry** | `crates/core/src/registry.rs` | `BUILTIN_TOOLS` (26 entries) + `classify_tool_use()` — new tools must be added or they get `ClassifyResult::Ignored` |
 
-> **BUILTIN_TOOLS registry** (`registry.rs`): 26 tools as of 2026-03-08. New Claude Code tools must be added here or they silently get `ClassifyResult::Ignored` in invocation tracking. Run `scripts/integrity/evidence-audit.sh` to detect drift.
+> **BUILTIN_TOOLS registry** (`registry.rs`): 26 tools as of 2026-03-08. New Claude Code tools must be added here or they silently get `ClassifyResult::Ignored` in invocation tracking. Run `cargo run -p claude-view-core --bin evidence-audit` to detect drift.
 
 ---
 
