@@ -60,7 +60,7 @@ pub fn drain_cluster(prompts: &[&str], threshold: f64) -> Vec<DrainCluster> {
     for &p in prompts {
         let tokens: Vec<String> = p.split_whitespace().map(|t| t.to_lowercase()).collect();
         let len = tokens.len();
-        if len >= 2 && len <= 40 {
+        if (2..=40).contains(&len) {
             by_length
                 .entry(len)
                 .or_default()
@@ -70,7 +70,7 @@ pub fn drain_cluster(prompts: &[&str], threshold: f64) -> Vec<DrainCluster> {
 
     let mut all_clusters = Vec::new();
 
-    for (_len, items) in &by_length {
+    for items in by_length.values() {
         let mut clusters: Vec<(Vec<String>, Vec<String>)> = Vec::new();
 
         for (tokens, original) in items {
