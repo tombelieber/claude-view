@@ -11,6 +11,7 @@ use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
 use crate::routes::oauth::OAuthUsageResponse;
+use crate::routes::plugins::CliAvailableResponse;
 use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
 use claude_view_core::prompt_history::PromptStats;
@@ -125,6 +126,9 @@ pub struct AppState {
     pub auth_identity: OnceCell<Option<AuthIdentity>>,
     /// Cached Anthropic OAuth usage response (5-min TTL).
     pub oauth_usage_cache: CachedUpstream<OAuthUsageResponse>,
+    /// Cached `claude plugin list --available --json` response (5-min TTL).
+    /// Shared by both `/api/plugins` and `/api/plugins/marketplaces`.
+    pub plugin_cli_cache: CachedUpstream<CliAvailableResponse>,
     /// Parsed teams from ~/.claude/teams/ (read-only, loaded at startup).
     pub teams: Arc<crate::teams::TeamsStore>,
     /// Prompt history search index (Tantivy).
@@ -171,6 +175,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
@@ -212,6 +217,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
@@ -256,6 +262,7 @@ impl AppState {
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
