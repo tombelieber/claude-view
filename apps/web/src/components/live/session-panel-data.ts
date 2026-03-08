@@ -60,6 +60,9 @@ export interface SessionPanelData {
   // Sub-agents
   subAgents?: SubAgentInfo[]
 
+  // Team name if this session is a team lead (from backend)
+  teamName?: string | null
+
   // Progress items (live tasks/todos)
   progressItems?: ProgressItem[]
 
@@ -113,6 +116,7 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     cost: session.cost,
     cacheStatus: session.cacheStatus,
     subAgents: session.subAgents,
+    teamName: session.teamName ?? null,
     progressItems: session.progressItems,
     compactCount: session.compactCount,
     startedAt: session.startedAt,
@@ -181,6 +185,7 @@ export function historyToPanelData(
     cost,
     cacheStatus: richData?.cacheStatus ?? 'unknown',
     subAgents: richData?.subAgents,
+    teamName: richData?.teamName ?? null,
     progressItems: richData?.progressItems,
     tasks: sessionDetail.tasks,
     compactCount: sessionDetail.compactionCount,
