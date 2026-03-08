@@ -142,6 +142,9 @@ pub struct LiveLine {
     pub request_id: Option<String>,
     /// If this is a hook_progress line, the extracted event data.
     pub hook_progress: Option<HookProgressData>,
+    /// Session slug from top-level JSONL field (e.g. "async-greeting-dewdrop").
+    /// Present on every line; extracted once by accumulator.
+    pub slug: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -466,6 +469,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 message_id: None,
                 request_id: None,
                 hook_progress: None,
+                slug: None,
             };
         }
     };
@@ -601,6 +605,12 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
 
     // Extract cwd from top-level (present on user messages)
     let cwd = parsed.get("cwd").and_then(|v| v.as_str()).map(String::from);
+
+    // Extract session slug from top-level (present on every line)
+    let slug = parsed
+        .get("slug")
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
     // Check if this is a meta message (system prompts, hooks, etc.)
     let is_meta = parsed
@@ -964,6 +974,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         message_id,
         request_id,
         hook_progress: result_hook_progress,
+        slug,
     }
 }
 
@@ -2348,5 +2359,21 @@ mod tests {
         assert_eq!(hp.hook_event, "PreToolUse");
         assert_eq!(hp.tool_name, None);
         assert_eq!(hp.source, None);
+    }
+
+    #[test]
+    fn test_slug_extraction() {
+        let finders = TailFinders::new();
+        let line = br#"{"type":"user","slug":"async-greeting-dewdrop","message":{"role":"user","content":"hello"}}"#;
+        let parsed = parse_single_line(line, &finders);
+        assert_eq!(parsed.slug.as_deref(), Some("async-greeting-dewdrop"));
+    }
+
+    #[test]
+    fn test_slug_missing() {
+        let finders = TailFinders::new();
+        let line = br#"{"type":"user","message":{"role":"user","content":"hello"}}"#;
+        let parsed = parse_single_line(line, &finders);
+        assert!(parsed.slug.is_none());
     }
 }
