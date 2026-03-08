@@ -17,6 +17,7 @@ tracing = { workspace = true }
 ts-rs = { workspace = true }
 async-trait = "0.1"
 memchr = { workspace = true }
+similar = { workspace = true }
 
 [features]
 # Gate ts-rs file generation behind this feature so `cargo test` alone
