@@ -171,6 +171,8 @@ pub struct LiveSession {
     pub last_cache_hit_at: Option<i64>,
     /// Number of context compactions in this session (compact_boundary system messages).
     pub compact_count: u32,
+    /// Session slug for plan file association.
+    pub slug: Option<String>,
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
