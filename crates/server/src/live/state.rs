@@ -156,6 +156,11 @@ pub struct LiveSession {
     /// Empty vec if no sub-agents have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
+    /// Team name if this session is a team lead.
+    /// Populated from the first team spawn's `input.team_name` in the JSONL.
+    /// Frontend uses this to show team badge instead of sub-agent pills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_name: Option<String>,
     /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
     /// Empty vec if no progress items have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]

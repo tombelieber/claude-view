@@ -13,6 +13,7 @@ export type RichSessionData = {
   cost: CostBreakdown
   cacheStatus: CacheStatus
   subAgents: Array<SubAgentInfo>
+  teamName: string | null
   progressItems: Array<ProgressItem>
   contextWindowTokens: number
   model: string | null
