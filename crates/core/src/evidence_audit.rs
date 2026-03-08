@@ -663,9 +663,11 @@ pub(crate) fn scan_file(path: &Path) -> AggregatedSignals {
     agg
 }
 
-/// Discover JSONL files in a Claude Code data directory (3-level walk).
+/// Discover JSONL files in a Claude Code data directory (2-level walk).
 ///
-/// Structure: `data_dir/<project>/<session>/*.jsonl`
+/// Structure: `data_dir/<project>/<uuid>.jsonl`
+///
+/// Also descends into `<project>/<uuid>/subagents/*.jsonl` for sub-agent logs.
 pub fn discover_jsonl_files(data_dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -680,26 +682,29 @@ pub fn discover_jsonl_files(data_dir: &Path) -> Vec<PathBuf> {
             continue;
         }
 
-        let sessions = match std::fs::read_dir(&project_path) {
+        let entries = match std::fs::read_dir(&project_path) {
             Ok(rd) => rd,
             Err(_) => continue,
         };
 
-        for session_entry in sessions.flatten() {
-            let session_path = session_entry.path();
-            if !session_path.is_dir() {
-                continue;
-            }
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
 
-            let entries = match std::fs::read_dir(&session_path) {
-                Ok(rd) => rd,
-                Err(_) => continue,
-            };
-
-            for file_entry in entries.flatten() {
-                let file_path = file_entry.path();
-                if file_path.extension().is_some_and(|ext| ext == "jsonl") {
-                    files.push(file_path);
+            if entry_path.extension().is_some_and(|ext| ext == "jsonl") {
+                // Direct session JSONL: <project>/<uuid>.jsonl
+                files.push(entry_path);
+            } else if entry_path.is_dir() {
+                // Session subdirectory: <project>/<uuid>/subagents/*.jsonl
+                let subagents = entry_path.join("subagents");
+                if subagents.is_dir() {
+                    if let Ok(sub_entries) = std::fs::read_dir(&subagents) {
+                        for sub_entry in sub_entries.flatten() {
+                            let sub_path = sub_entry.path();
+                            if sub_path.extension().is_some_and(|ext| ext == "jsonl") {
+                                files.push(sub_path);
+                            }
+                        }
+                    }
                 }
             }
         }
