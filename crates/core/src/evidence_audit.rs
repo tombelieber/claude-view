@@ -619,7 +619,7 @@ fn trim_ascii_bytes(bytes: &[u8]) -> &[u8] {
 }
 
 /// Scan a single JSONL file and return aggregated signals.
-pub fn scan_file(path: &Path) -> AggregatedSignals {
+pub(crate) fn scan_file(path: &Path) -> AggregatedSignals {
     let mut agg = AggregatedSignals {
         files_scanned: 1,
         ..Default::default()
