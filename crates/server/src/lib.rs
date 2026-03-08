@@ -22,6 +22,7 @@ pub mod routes;
 pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
+pub mod teams;
 pub mod terminal_state;
 pub mod time_range;
 
