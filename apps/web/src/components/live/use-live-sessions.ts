@@ -60,6 +60,7 @@ export interface LiveSession {
   progressItems?: ProgressItem[]
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
+  slug?: string | null
   compactCount?: number
   control?: ControlBinding | null
 }
