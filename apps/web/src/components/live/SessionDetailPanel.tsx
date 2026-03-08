@@ -197,10 +197,14 @@ export function SessionDetailPanel({
     return () => cancelAnimationFrame(raf)
   }, [inline])
 
-  // Reset tab and drill-down when session changes
+  // Reset tab and drill-down when session changes (skip initial mount to preserve ?tab= URL param)
+  const prevDataIdRef = useRef(data.id)
   useEffect(() => {
-    setActiveTab('overview')
-    setDrillDownAgent(null)
+    if (prevDataIdRef.current !== data.id) {
+      setActiveTab('overview')
+      setDrillDownAgent(null)
+      prevDataIdRef.current = data.id
+    }
   }, [data.id])
 
   // ESC key handling: drill-down first, then close
