@@ -630,6 +630,28 @@ mod tests {
     }
 
     #[test]
+    fn test_new_builtin_tools_classify_as_valid() {
+        let registry = builtin_only_registry();
+        for tool in [
+            "TodoWrite",
+            "SendMessage",
+            "TeamCreate",
+            "TeamDelete",
+            "CronCreate",
+        ] {
+            let result = classify_tool_use(tool, &None, &registry);
+            assert_eq!(
+                result,
+                ClassifyResult::Valid {
+                    invocable_id: format!("builtin:{tool}"),
+                    kind: InvocableKind::BuiltinTool,
+                },
+                "{tool} should classify as valid builtin"
+            );
+        }
+    }
+
+    #[test]
     fn test_skill_with_bare_name_lookup() {
         let registry = registry_with_skill("superpowers", "brainstorming");
         // Use bare name (without plugin prefix)
