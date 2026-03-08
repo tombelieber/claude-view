@@ -128,6 +128,7 @@ pub const BUILTIN_TOOLS: &[&str] = &[
     "Glob",
     "Grep",
     "Task",
+    "Agent",
     "TaskCreate",
     "TaskUpdate",
     "TaskList",

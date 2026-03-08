@@ -465,7 +465,7 @@ Tool calls and events are categorized for filtering in the Action Log. There are
 |---|---|
 | `skill` | Tool name is `"Skill"` |
 | `mcp` | Tool name starts with `"mcp__"` or `"mcp_"` |
-| `agent` | Tool name is `"Task"` |
+| `agent` | Tool name is `"Task"` or `"Agent"` (renamed ~v0.10) |
 | `builtin` | **Fallback default** — any tool not matching above |
 
 ### Progress Categories (category.rs `categorize_progress()`)
