@@ -191,10 +191,7 @@ build_report() {
       "system",
       "progress",
       "queue-operation",
-      "summary",
-      "file-history-snapshot",
-      "result",
-      "saved_hook_context"
+      "file-history-snapshot"
     ];
 
     def line_count($s):

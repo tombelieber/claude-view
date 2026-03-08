@@ -17,13 +17,6 @@ const CATEGORIES: { id: ActionCategory | 'all'; label: string; color: string }[]
   { id: 'snapshot', label: 'Snapshot', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' },
   { id: 'queue', label: 'Queue', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
   { id: 'error', label: 'Error', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
-  {
-    id: 'context',
-    label: 'Context',
-    color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-  },
-  { id: 'result', label: 'Result', color: 'bg-green-500/10 text-green-400 border-green-500/30' },
-  { id: 'summary', label: 'Summary', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
 ]
 
 interface ActionFilterChipsProps {
