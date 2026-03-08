@@ -166,13 +166,16 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3  # v2.1.2
+
       - name: Publish claude-view
         run: npm publish --access public || echo "Already published, skipping"
         working-directory: npx-cli
 
       - name: Build MCP + plugin
         run: |
-          cd packages/mcp && npm install && npx tsc
+          cd packages/mcp && bun install && bunx tsc
           cd ../plugin && node scripts/bundle-mcp.mjs
 
       - name: Publish @claude-view/plugin
