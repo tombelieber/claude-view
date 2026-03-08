@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, BookOpen, Bot, Brain, User, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowDown, Bot, Brain, User, Zap } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -29,10 +29,6 @@ import { HookSummaryCard } from '../HookSummaryCard'
 import { LocalCommandEventCard } from '../LocalCommandEventCard'
 import { McpProgressCard } from '../McpProgressCard'
 import { MessageQueueEventCard } from '../MessageQueueEventCard'
-import { SavedHookContextCard } from '../SavedHookContextCard'
-import { SessionResultCard } from '../SessionResultCard'
-// Summary card
-import { SessionSummaryCard } from '../SessionSummaryCard'
 import { TaskQueueCard } from '../TaskQueueCard'
 // System event cards (reused from MessageTyped)
 import { TurnDurationCard } from '../TurnDurationCard'
@@ -57,7 +53,6 @@ export interface RichMessage {
     | 'hook'
     | 'system'
     | 'progress'
-    | 'summary'
   content: string
   name?: string // tool name for tool_use
   input?: string // tool input summary for tool_use
@@ -196,24 +191,6 @@ export function parseRichMessage(raw: string): RichMessage | null {
         content: typeof msg.content === 'string' ? msg.content : '',
         ts: parseTimestamp(msg.ts),
         category: (msg.category as ActionCategory) ?? 'system',
-      }
-    }
-    if (msg.type === 'summary') {
-      return {
-        type: 'summary',
-        content: typeof msg.content === 'string' ? msg.content : '',
-        ts: parseTimestamp(msg.ts),
-        category: 'summary' as ActionCategory,
-        metadata: msg.metadata,
-      }
-    }
-    if (msg.type === 'result') {
-      return {
-        type: 'system',
-        content: `Session result: ${msg.subtype || 'unknown'}`,
-        ts: parseTimestamp(msg.ts),
-        category: 'result' as ActionCategory,
-        metadata: msg,
       }
     }
     return null
@@ -569,21 +546,6 @@ function SystemMessageCard({
           />
         )
       }
-      case 'saved_hook_context': {
-        const contentArr = Array.isArray(m.content) ? m.content : []
-        return <SavedHookContextCard content={contentArr} verboseMode={verboseMode} />
-      }
-      case 'result':
-        return (
-          <SessionResultCard
-            subtype={m.subtype}
-            durationMs={m.duration_ms}
-            durationApiMs={m.duration_api_ms}
-            numTurns={m.num_turns}
-            isError={m.is_error}
-            sessionId={m.session_id}
-          />
-        )
       default:
         return null
     }
@@ -751,60 +713,6 @@ function ProgressMessageCard({
   )
 }
 
-function SummaryMessageCard({
-  message,
-  verboseMode,
-}: { message: RichMessage; verboseMode?: boolean }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const m = (message.metadata ?? {}) as Record<string, any>
-  const summary = (m.summary || message.content) as string
-  const leafUuid = (m.leafUuid || '') as string
-  const wordCount = (summary || '').split(/\s+/).filter(Boolean).length
-  const [cardOverride, setCardOverride] = useState<'rich' | 'json' | null>(null)
-  const richRenderMode = useMonitorStore((s) => s.richRenderMode)
-  const effectiveMode = cardOverride ?? richRenderMode
-
-  return (
-    <div className="border-l-2 border-rose-500/30 dark:border-rose-500/20 pl-2 py-0.5">
-      <div className="flex items-center gap-1.5">
-        <BookOpen className="w-3 h-3 text-rose-500/60 dark:text-rose-400/50 flex-shrink-0" />
-        <span className="text-[10px] font-mono text-rose-600 dark:text-rose-400">summary</span>
-        <button
-          onClick={() => setCardOverride(effectiveMode === 'rich' ? 'json' : 'rich')}
-          className={cn(
-            'text-[10px] font-mono px-1 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
-            effectiveMode === 'json'
-              ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
-              : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
-          )}
-          title={effectiveMode === 'rich' ? 'Switch to JSON view' : 'Switch to rich view'}
-        >
-          {'{ }'}
-        </button>
-        <div className="flex-1" />
-        <Timestamp ts={message.ts} />
-      </div>
-      {effectiveMode === 'json' ? (
-        <div className="mt-0.5 ml-5">
-          <CompactCodeBlock
-            code={JSON.stringify(m || { summary, leafUuid, wordCount }, null, 2)}
-            language="json"
-          />
-        </div>
-      ) : (
-        <div className="mt-0.5 ml-5">
-          <SessionSummaryCard
-            summary={summary}
-            leafUuid={leafUuid}
-            wordCount={wordCount}
-            verboseMode={verboseMode}
-          />
-        </div>
-      )}
-    </div>
-  )
-}
-
 // --- Message renderer dispatch ---
 
 function MessageCard({
@@ -829,8 +737,6 @@ function MessageCard({
       return <SystemMessageCard message={message} verboseMode={verboseMode} />
     case 'progress':
       return <ProgressMessageCard message={message} verboseMode={verboseMode} />
-    case 'summary':
-      return <SummaryMessageCard message={message} verboseMode={verboseMode} />
     default:
       return null
   }
@@ -889,9 +795,6 @@ export function RichPane({
       system: 0,
       snapshot: 0,
       queue: 0,
-      context: 0,
-      result: 0,
-      summary: 0,
     }
     if (!verboseMode) return counts
     for (const m of messages) {

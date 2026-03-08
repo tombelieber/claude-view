@@ -9,9 +9,6 @@ export type ActionCategory =
   | 'system'
   | 'snapshot'
   | 'queue'
-  | 'context'
-  | 'result'
-  | 'summary'
 
 export interface ActionItem {
   id: string
