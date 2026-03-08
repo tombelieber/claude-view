@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Plus, RefreshCw, Settings, Trash2, X } from 'lucide-react'
+import { ExternalLink, Plus, RefreshCw, Settings, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { useMarketplaceMutations, useMarketplaces } from '../../hooks/use-marketplaces'
 import { cn } from '../../lib/utils'
@@ -81,33 +81,54 @@ export function MarketplacesDialog() {
             {marketplaces?.map((m) => (
               <div
                 key={m.name}
-                className="flex items-center justify-between py-2 border-b border-gray-50 dark:border-gray-800 last:border-0"
+                className="py-2.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className={cn(
-                      'w-2 h-2 rounded-full flex-shrink-0',
-                      marketplaceDotColor(m.name),
-                    )}
-                  />
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {m.name}
-                    </div>
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                      {m.source}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={cn(
+                        'w-2 h-2 rounded-full flex-shrink-0',
+                        marketplaceDotColor(m.name),
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {m.name}
+                      </div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                        {m.source}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {m.repo && (
+                      <a
+                        href={m.repo.startsWith('http') ? m.repo : `https://github.com/${m.repo}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                        title="Open repository"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(m.name)}
+                      disabled={mutations.isPending}
+                      className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"
+                      title={`Remove ${m.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(m.name)}
-                  disabled={mutations.isPending}
-                  className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
-                  title={`Remove ${m.name}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {/* Counts row */}
+                <div className="flex items-center gap-3 mt-1 ml-4 text-[10px] text-gray-400 dark:text-gray-500">
+                  <span>{m.installedCount} installed</span>
+                  <span>{m.availableCount} available</span>
+                </div>
               </div>
             ))}
           </div>
