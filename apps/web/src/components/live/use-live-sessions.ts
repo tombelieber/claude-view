@@ -57,6 +57,7 @@ export interface LiveSession {
   currentTurnStartedAt?: number | null
   lastTurnTaskSeconds?: number | null
   subAgents?: SubAgentInfo[]
+  teamName?: string | null
   progressItems?: ProgressItem[]
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
