@@ -1,14 +1,25 @@
 import type { KeyStorage } from '@claude-view/shared'
-import * as SecureStore from 'expo-secure-store'
+import { Platform } from 'react-native'
+
+const getSecureStore = () => {
+  if (Platform.OS === 'web') return null
+  return require('expo-secure-store') as typeof import('expo-secure-store')
+}
 
 export const secureStoreAdapter: KeyStorage = {
   async getItem(key: string) {
-    return SecureStore.getItemAsync(key)
+    const store = getSecureStore()
+    if (!store) return null
+    return store.getItemAsync(key)
   },
   async setItem(key: string, value: string) {
-    await SecureStore.setItemAsync(key, value)
+    const store = getSecureStore()
+    if (!store) return
+    await store.setItemAsync(key, value)
   },
   async removeItem(key: string) {
-    await SecureStore.deleteItemAsync(key)
+    const store = getSecureStore()
+    if (!store) return
+    await store.deleteItemAsync(key)
   },
 }
