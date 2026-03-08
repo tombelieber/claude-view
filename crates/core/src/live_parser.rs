@@ -987,7 +987,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
 /// NOTE: The IDE filename extraction regex ("the file\s+(\S+)\s+in the IDE") is
 /// coupled to Claude Code's current hook output format. If the format changes,
 /// extraction gracefully degrades to `None`.
-fn strip_noise_tags(content: &str) -> (String, Option<String>) {
+pub(crate) fn strip_noise_tags(content: &str) -> (String, Option<String>) {
     use regex_lite::Regex;
     use std::sync::OnceLock;
 
