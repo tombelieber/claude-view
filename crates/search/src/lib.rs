@@ -15,6 +15,7 @@
 pub mod grep;
 pub mod grep_types;
 pub mod indexer;
+pub mod prompt_index;
 pub mod query;
 pub mod types;
 
