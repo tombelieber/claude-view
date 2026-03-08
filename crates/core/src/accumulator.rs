@@ -32,6 +32,7 @@ pub struct SessionAccumulator {
     pub todo_items: Vec<ProgressItem>,
     pub task_items: Vec<ProgressItem>,
     pub last_cache_hit_at: Option<i64>,
+    pub slug: Option<String>,
     /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
     /// priced individually (correct: 200k tiering is per-API-request, not
     /// per-session). This avoids the inflation bug from applying tiered
@@ -63,6 +64,7 @@ pub struct RichSessionData {
     pub last_user_file: Option<String>,
     #[ts(type = "number | null")]
     pub last_cache_hit_at: Option<i64>,
+    pub slug: Option<String>,
 }
 
 impl SessionAccumulator {
@@ -82,6 +84,7 @@ impl SessionAccumulator {
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
+            slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
         }
@@ -223,6 +226,15 @@ impl SessionAccumulator {
         // -----------------------------------------------------------------
         if let Some(ref branch) = line.git_branch {
             self.git_branch = Some(branch.clone());
+        }
+
+        // -----------------------------------------------------------------
+        // Slug tracking (set-once: first line wins)
+        // -----------------------------------------------------------------
+        if self.slug.is_none() {
+            if let Some(ref s) = line.slug {
+                self.slug = Some(s.clone());
+            }
         }
 
         // -----------------------------------------------------------------
@@ -496,6 +508,7 @@ impl SessionAccumulator {
             },
             last_user_file: self.last_user_file.clone(),
             last_cache_hit_at: self.last_cache_hit_at,
+            slug: self.slug.clone(),
         }
     }
 
