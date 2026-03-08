@@ -5,14 +5,14 @@
 /// Maps tool names to categories:
 /// - "Skill" → "skill"
 /// - "mcp__*" / "mcp_*" → "mcp"
-/// - "Task" → "agent"
+/// - "Task" / "Agent" → "agent"  (Claude Code renamed Task to Agent ~v0.10)
 /// - everything else → "builtin"
 pub fn categorize_tool(name: &str) -> &'static str {
     if name == "Skill" {
         "skill"
     } else if name.starts_with("mcp__") || name.starts_with("mcp_") {
         "mcp"
-    } else if name == "Task" {
+    } else if name == "Task" || name == "Agent" {
         "agent"
     } else {
         "builtin"
@@ -57,6 +57,7 @@ mod tests {
     #[test]
     fn test_categorize_tool_agent() {
         assert_eq!(categorize_tool("Task"), "agent");
+        assert_eq!(categorize_tool("Agent"), "agent");
     }
 
     #[test]

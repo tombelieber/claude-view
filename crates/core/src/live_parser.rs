@@ -166,6 +166,7 @@ pub struct TailFinders {
     pub name_key: memmem::Finder<'static>,
     pub stop_reason_key: memmem::Finder<'static>,
     pub task_name_key: memmem::Finder<'static>,
+    pub agent_name_key: memmem::Finder<'static>,
     pub tool_use_result_key: memmem::Finder<'static>,
     pub agent_progress_key: memmem::Finder<'static>,
     pub todo_write_key: memmem::Finder<'static>,
@@ -187,6 +188,7 @@ impl TailFinders {
             name_key: memmem::Finder::new(b"\"name\""),
             stop_reason_key: memmem::Finder::new(b"\"stop_reason\""),
             task_name_key: memmem::Finder::new(b"\"name\":\"Task\""),
+            agent_name_key: memmem::Finder::new(b"\"name\":\"Agent\""),
             tool_use_result_key: memmem::Finder::new(b"\"toolUseResult\""),
             agent_progress_key: memmem::Finder::new(b"\"agent_progress\""),
             todo_write_key: memmem::Finder::new(b"\"name\":\"TodoWrite\""),
@@ -606,33 +608,39 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // --- Sub-agent spawn detection (assistant lines with Task tool_use) ---
+    // --- Sub-agent spawn detection (assistant lines with Task/Agent tool_use) ---
+    // Claude Code renamed the tool from "Task" to "Agent" — detect both.
     let mut sub_agent_spawns = Vec::new();
-    if line_type == LineType::Assistant && finders.task_name_key.find(raw).is_some() {
+    if line_type == LineType::Assistant
+        && (finders.task_name_key.find(raw).is_some() || finders.agent_name_key.find(raw).is_some())
+    {
         // Already have `parsed` from JSON parse above
         if let Some(content) = msg
             .and_then(|m| m.get("content"))
             .and_then(|c| c.as_array())
         {
             for block in content {
-                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-                    && block.get("name").and_then(|n| n.as_str()) == Some("Task")
-                {
+                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                    let tool_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                    if tool_name != "Task" && tool_name != "Agent" {
+                        continue;
+                    }
                     let tool_use_id = block
                         .get("id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
                     let input = block.get("input");
+                    // Agent tool uses input.name as display name, Task uses input.description
                     let description = input
-                        .and_then(|i| i.get("description"))
+                        .and_then(|i| i.get("name").or_else(|| i.get("description")))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
                     let agent_type = input
                         .and_then(|i| i.get("subagent_type"))
                         .and_then(|v| v.as_str())
-                        .unwrap_or("Task")
+                        .unwrap_or(tool_name)
                         .to_string();
                     if !tool_use_id.is_empty() {
                         sub_agent_spawns.push(SubAgentSpawn {
@@ -2289,6 +2297,46 @@ mod tests {
             result.hook_progress.is_none(),
             "Malformed JSON should be None"
         );
+    }
+
+    #[test]
+    fn test_sub_agent_spawn_agent_tool() {
+        // Claude Code >= 0.10 renamed "Task" to "Agent" and uses input.name for display.
+        let line = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01ABC","name":"Agent","input":{"name":"Gate 1: Code Quality","description":"General code review","subagent_type":"code-reviewer","prompt":"Review code","run_in_background":true}}]},"timestamp":"2026-03-08T10:00:00Z"}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert_eq!(result.sub_agent_spawns.len(), 1);
+        let spawn = &result.sub_agent_spawns[0];
+        assert_eq!(spawn.tool_use_id, "toolu_01ABC");
+        assert_eq!(spawn.agent_type, "code-reviewer");
+        // Should prefer input.name over input.description
+        assert_eq!(spawn.description, "Gate 1: Code Quality");
+    }
+
+    #[test]
+    fn test_sub_agent_spawn_legacy_task_tool() {
+        // Pre-0.10 format uses "Task" tool name with input.description.
+        let line = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_02DEF","name":"Task","input":{"description":"Search codebase","subagent_type":"Explore"}}]},"timestamp":"2026-02-20T10:00:00Z"}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert_eq!(result.sub_agent_spawns.len(), 1);
+        let spawn = &result.sub_agent_spawns[0];
+        assert_eq!(spawn.tool_use_id, "toolu_02DEF");
+        assert_eq!(spawn.agent_type, "Explore");
+        assert_eq!(spawn.description, "Search codebase");
+    }
+
+    #[test]
+    fn test_sub_agent_spawn_agent_without_name_field() {
+        // Agent tool without input.name — should fall back to input.description.
+        let line = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_03GHI","name":"Agent","input":{"description":"Audit the codebase","prompt":"Do audit"}}]},"timestamp":"2026-03-08T11:00:00Z"}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert_eq!(result.sub_agent_spawns.len(), 1);
+        let spawn = &result.sub_agent_spawns[0];
+        assert_eq!(spawn.tool_use_id, "toolu_03GHI");
+        assert_eq!(spawn.agent_type, "Agent"); // no subagent_type → falls back to tool name
+        assert_eq!(spawn.description, "Audit the codebase");
     }
 
     #[test]
