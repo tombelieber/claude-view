@@ -124,7 +124,7 @@ function isRedundantOrgName(orgName: string, email: string | null): boolean {
 }
 
 export function OAuthUsagePill() {
-  const { data, isLoading, error, refetch, dataUpdatedAt, forceRefresh } = useOAuthUsage()
+  const { data, isLoading, error, dataUpdatedAt, forceRefresh } = useOAuthUsage()
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const { data: identity } = useAuthIdentity(tooltipOpen)
 
@@ -203,7 +203,6 @@ export function OAuthUsagePill() {
       <Tooltip.Root
         onOpenChange={(open) => {
           setTooltipOpen(open)
-          if (open) refetch()
         }}
       >
         <Tooltip.Trigger asChild>
