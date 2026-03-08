@@ -2,6 +2,7 @@ import {
   AlertCircle,
   ArrowRight,
   BarChart3,
+  Blocks,
   CalendarDays,
   ChevronRight,
   ChevronsDownUp,
@@ -563,6 +564,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
         >
           <UsersRound className="w-5 h-5" />
         </Link>
+        <Link
+          to="/plugins"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/plugins'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Plugins"
+        >
+          <Blocks className="w-5 h-5" />
+        </Link>
 
         <div className="flex-1" />
 
@@ -704,6 +718,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <UsersRound className="w-4 h-4" />
                         <span className="font-medium">Teams</span>
+                      </Link>
+                      <Link
+                        to={`/plugins${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/plugins'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <Blocks className="w-4 h-4" />
+                        <span className="font-medium">Plugins</span>
                       </Link>
                       <span
                         className={cn(
