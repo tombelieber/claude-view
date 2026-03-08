@@ -18,12 +18,29 @@ export interface OAuthUsage {
   tiers: UsageTier[]
 }
 
+/** Parse `max-age=N` from Cache-Control header (seconds), defaulting to 300. */
+function parseMaxAgeSecs(response: Response): number {
+  const cc = response.headers.get('Cache-Control')
+  if (cc) {
+    const match = cc.match(/max-age=(\d+)/)
+    if (match) return Number.parseInt(match[1], 10)
+  }
+  return 300
+}
+
+/**
+ * Last server-provided max-age in seconds, used as the baseline for
+ * staleTime and refetchInterval. Updated on every successful fetch.
+ */
+let serverMaxAgeSecs = 300
+
 async function fetchOAuthUsage(): Promise<OAuthUsage> {
   const response = await fetch('/api/oauth/usage')
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Failed to fetch OAuth usage: ${errorText}`)
   }
+  serverMaxAgeSecs = parseMaxAgeSecs(response)
   return response.json()
 }
 
@@ -38,23 +55,28 @@ async function forceRefreshOAuthUsage(): Promise<OAuthUsage> {
     const errorText = await response.text()
     throw new Error(`Failed to refresh OAuth usage: ${errorText}`)
   }
+  serverMaxAgeSecs = parseMaxAgeSecs(response)
   return response.json()
 }
 
 /**
- * Hook to fetch OAuth usage data with background polling.
+ * Hook to fetch OAuth usage data.
  *
- * Returns `refetch` for cache-backed refresh (tooltip hover) and
- * `forceRefresh` mutation for user-initiated bypass of server cache.
+ * Timing is server-driven: the backend sets `Cache-Control: max-age=<ttl>`,
+ * and the module-level `serverMaxAgeSecs` tracks it. TanStack Query re-reads
+ * staleTime/refetchInterval on every render, so it picks up changes naturally.
+ *
+ * `forceRefresh` mutation bypasses the server cache (user-initiated refresh button).
  */
-export function useOAuthUsage(refetchInterval = 300_000) {
+export function useOAuthUsage() {
   const queryClient = useQueryClient()
+  const intervalMs = serverMaxAgeSecs * 1000
 
   const query = useQuery({
     queryKey: ['oauth-usage'],
     queryFn: fetchOAuthUsage,
-    staleTime: 30_000,
-    refetchInterval,
+    staleTime: intervalMs,
+    refetchInterval: intervalMs,
     refetchOnWindowFocus: false,
   })
 
