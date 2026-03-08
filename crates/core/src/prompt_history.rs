@@ -209,7 +209,7 @@ pub fn compute_stats(entries: &[PromptEntry]) -> PromptStats {
     let mut projects = HashSet::new();
     let mut intents: HashMap<String, usize> = HashMap::new();
     let mut hourly = vec![0usize; 24];
-    let mut daily = vec![0usize; 7];
+    let mut daily = [0usize; 7];
     let mut project_counts: HashMap<String, usize> = HashMap::new();
     let mut min_ts = u64::MAX;
     let mut max_ts = 0u64;
