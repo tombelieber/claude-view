@@ -129,22 +129,6 @@ describe('buildActionItems', () => {
     expect(item.toolName).toBe('hook_event')
   })
 
-  it('creates ActionItem for summary messages', () => {
-    const msgs: RichMessage[] = [
-      {
-        type: 'summary',
-        content: 'Session summary text',
-        category: 'system',
-        metadata: { summary: 'Session summary text', leafUuid: 'abc' },
-      },
-    ]
-    const items = buildActionItems(msgs)
-    expect(items).toHaveLength(1)
-    const item = items[0] as ActionItem
-    expect(item.toolName).toBe('summary')
-    expect(item.label).toContain('Session summary')
-  })
-
   it('still pairs tool_use + tool_result correctly', () => {
     const msgs: RichMessage[] = [
       {

@@ -210,24 +210,6 @@ export function buildActionItems(messages: RichMessage[]): TimelineItem[] {
       continue
     }
 
-    // Summary events
-    if (msg.type === 'summary') {
-      const summary = (msg.metadata?.summary as string) || msg.content || ''
-      items.push({
-        id: `action-${actionIndex++}`,
-        timestamp: msg.ts,
-        category: msg.category ?? 'system',
-        toolName: 'summary',
-        label:
-          summary.length > 60
-            ? `Session summary (${summary.split(/\s+/).length}w)`
-            : `Summary: ${summary}`,
-        status: 'success',
-        output: summary,
-      } satisfies ActionItem)
-      continue
-    }
-
     // Hook messages (legacy live path — before Task 0 normalization)
     if (msg.type === 'hook') {
       items.push({
