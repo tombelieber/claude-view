@@ -15,8 +15,6 @@ export interface PromptsQueryParams {
   search?: string
   project?: string
   intents?: string[]
-  branches?: string[]
-  models?: string[]
   hasPaste?: 'any' | 'yes' | 'no'
   complexity?: string
   templateMatch?: string
@@ -35,8 +33,6 @@ function buildSearchParams(params: PromptsQueryParams, offset: number): URLSearc
   if (params.project) sp.set('project', params.project)
 
   if (params.intents && params.intents.length > 0) sp.set('intent', params.intents.join(','))
-  if (params.branches && params.branches.length > 0) sp.set('branches', params.branches.join(','))
-  if (params.models && params.models.length > 0) sp.set('models', params.models.join(','))
 
   if (params.hasPaste === 'yes') sp.set('has_paste', 'true')
   if (params.hasPaste === 'no') sp.set('has_paste', 'false')

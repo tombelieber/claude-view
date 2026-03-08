@@ -6,6 +6,8 @@
 export type PromptHit = {
   promptId: string
   display: string
+  snippet: string | null
+  templateId: string | null
   project: string
   sessionId: string | null
   branch: string
