@@ -67,6 +67,7 @@ fn main() {
         longest_task_preview: None,
         first_message_at: None,
         total_cost_usd: None,
+        slug: None,
     };
 
     let json = serde_json::to_string_pretty(&session).unwrap();

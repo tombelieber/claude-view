@@ -172,7 +172,8 @@ impl Database {
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
-                s.total_cost_usd
+                s.total_cost_usd,
+                s.slug
             FROM sessions s
             WHERE {}
             ORDER BY {}
@@ -240,7 +241,8 @@ impl Database {
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
-                s.total_cost_usd
+                s.total_cost_usd,
+                s.slug
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -298,7 +300,8 @@ impl Database {
             s.category_confidence, s.category_source, s.classified_at,
             s.prompt_word_count, s.correction_count, s.same_file_edit_count,
             s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
-            s.total_cost_usd
+            s.total_cost_usd,
+            s.slug
         "#;
 
         // Helper closure: appends all WHERE clauses to a QueryBuilder.
@@ -1095,6 +1098,7 @@ mod filtered_query_tests {
             longest_task_preview: None,
             first_message_at: None,
             total_cost_usd: None,
+            slug: None,
         }
     }
 
