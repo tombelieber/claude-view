@@ -971,8 +971,10 @@ fn activity_from_pre_tool(tool_name: &str, tool_input: &Option<serde_json::Value
             })
             .unwrap_or_else(|| "Searching code".into()),
         "Glob" => "Finding files".into(),
-        "Task" => input
-            .and_then(|v| v.get("description"))
+        // Claude Code renamed "Task" to "Agent" ~v0.10. Handle both.
+        // Agent uses input.name as display name, Task uses input.description.
+        "Task" | "Agent" => input
+            .and_then(|v| v.get("name").or_else(|| v.get("description")))
             .and_then(|v| v.as_str())
             .map(|d| {
                 let truncated: String = d.chars().take(50).collect();
