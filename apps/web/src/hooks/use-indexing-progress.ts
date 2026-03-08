@@ -104,8 +104,8 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
       setProgress((prev) => ({
         ...prev,
         phase: 'ready',
-        projects: data.projects ?? prev.projects,
-        sessions: data.sessions ?? prev.sessions,
+        projects: typeof data.projects === 'number' ? data.projects : prev.projects,
+        sessions: typeof data.sessions === 'number' ? data.sessions : prev.sessions,
       }))
     })
 
@@ -123,16 +123,16 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
         return
       }
       const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 1
-      const bytesProcessed = data.bytes_processed ?? 0
+      const bytesProcessed = typeof data.bytes_processed === 'number' ? data.bytes_processed : 0
       const throughput = elapsed > 0 ? bytesProcessed / elapsed : 0
 
       setProgress((prev) => ({
         ...prev,
         phase: 'deep-indexing',
-        indexed: data.indexed ?? 0,
-        total: data.total ?? 0,
+        indexed: typeof data.indexed === 'number' ? data.indexed : 0,
+        total: typeof data.total === 'number' ? data.total : 0,
         bytesProcessed,
-        bytesTotal: data.bytes_total ?? 0,
+        bytesTotal: typeof data.bytes_total === 'number' ? data.bytes_total : 0,
         throughputBytesPerSec: throughput,
       }))
     })
@@ -153,8 +153,8 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
       setProgress((prev) => ({
         ...prev,
         phase: 'finalizing',
-        indexed: data.indexed ?? prev.indexed,
-        total: data.total ?? prev.total,
+        indexed: typeof data.indexed === 'number' ? data.indexed : prev.indexed,
+        total: typeof data.total === 'number' ? data.total : prev.total,
       }))
     })
 
@@ -174,10 +174,11 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
       setProgress((prev) => ({
         ...prev,
         phase: 'done',
-        indexed: data.indexed ?? 0,
-        total: data.total ?? 0,
-        bytesProcessed: data.bytes_processed ?? prev.bytesTotal,
-        bytesTotal: data.bytes_total ?? prev.bytesTotal,
+        indexed: typeof data.indexed === 'number' ? data.indexed : 0,
+        total: typeof data.total === 'number' ? data.total : 0,
+        bytesProcessed:
+          typeof data.bytes_processed === 'number' ? data.bytes_processed : prev.bytesTotal,
+        bytesTotal: typeof data.bytes_total === 'number' ? data.bytes_total : prev.bytesTotal,
         isFirstRun: false,
       }))
       es.close()
@@ -202,7 +203,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
         setProgress((prev) => ({
           ...prev,
           phase: 'error',
-          errorMessage: data.message ?? 'Unknown error',
+          errorMessage: typeof data.message === 'string' ? data.message : 'Unknown error',
         }))
       } else if (es.readyState === EventSource.CLOSED) {
         setProgress({
