@@ -212,6 +212,7 @@ fn build_recovered_session(
         current_turn_started_at: None,
         last_turn_task_seconds: None,
         sub_agents: Vec::new(),
+        team_name: None,
         progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
@@ -342,6 +343,7 @@ fn apply_jsonl_metadata(
     session.current_turn_started_at = m.current_turn_started_at;
     session.last_turn_task_seconds = m.last_turn_task_seconds;
     session.sub_agents = m.sub_agents.clone();
+    session.team_name = m.team_name.clone();
     session.progress_items = m.progress_items.clone();
     session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;

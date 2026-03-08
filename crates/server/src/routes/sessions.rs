@@ -1921,6 +1921,7 @@ mod tests {
             current_turn_started_at: None,
             last_turn_task_seconds: None,
             sub_agents: Vec::new(),
+            team_name: None,
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
