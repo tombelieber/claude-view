@@ -7,6 +7,8 @@
     "dev": "expo start",
     "dev:clear": "expo start -c",
     "build:ios": "eas build --platform ios",
+    "build:ios:sim": "EAS_NO_VCS=1 eas build --local --platform ios --profile development-simulator",
+    "build:ios:dev": "EAS_NO_VCS=1 eas build --local --platform ios --profile development",
     "build:android": "eas build --platform android",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit"
@@ -21,6 +23,7 @@
     "expo": "~55.0.0",
     "expo-camera": "~55.0.9",
     "expo-constants": "~55.0.7",
+    "expo-dev-client": "~55.0.11",
     "expo-font": "~55.0.4",
     "expo-haptics": "~55.0.8",
     "expo-image": "~55.0.0",
