@@ -70,6 +70,10 @@ export function Header({
       crumbs.push({ label: 'Settings', path: '/settings' })
     }
 
+    if (location.pathname === '/teams') {
+      crumbs.push({ label: 'Teams', path: '/teams' })
+    }
+
     return crumbs
   }
 

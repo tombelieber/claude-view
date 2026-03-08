@@ -17,6 +17,7 @@ import {
   Monitor,
   PanelLeft,
   PanelLeftClose,
+  UsersRound,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -535,6 +536,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
         >
           <FileText className="w-5 h-5" />
         </Link>
+        <Link
+          to="/teams"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/teams'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Teams"
+        >
+          <UsersRound className="w-5 h-5" />
+        </Link>
 
         <div className="flex-1" />
 
@@ -652,6 +666,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <FileText className="w-4 h-4" />
                         <span className="font-medium">Reports</span>
+                      </Link>
+                      <Link
+                        to={`/teams${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/teams'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <UsersRound className="w-4 h-4" />
+                        <span className="font-medium">Teams</span>
                       </Link>
                       <span
                         className={cn(

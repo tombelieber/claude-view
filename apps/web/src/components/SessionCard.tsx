@@ -10,8 +10,10 @@ import {
   MessageSquare,
   Pencil,
   Terminal,
+  UsersRound,
 } from 'lucide-react'
 import type { SessionInfo } from '../hooks/use-projects'
+import { useTeamForSession } from '../hooks/use-teams'
 import { formatCostUsd, formatNumber } from '../lib/format-utils'
 import { computeWeight, weightBorderClass } from '../lib/session-weight'
 import { getDisplayLongestTaskSeconds, getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
@@ -161,6 +163,9 @@ export function SessionCard({
   selected = false,
   onSelectToggle,
 }: SessionCardProps) {
+  // Hook must be called BEFORE early return to satisfy Rules of Hooks
+  const teamMatch = useTeamForSession(session?.id)
+
   // Null safety: handle null/undefined session
   if (!session) {
     return (
@@ -295,6 +300,12 @@ export function SessionCard({
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                   </span>
                   LIVE
+                </span>
+              )}
+              {teamMatch && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                  <UsersRound className="w-3 h-3" />
+                  Teams &middot; {teamMatch.memberCount} agents
                 </span>
               )}
             </div>
