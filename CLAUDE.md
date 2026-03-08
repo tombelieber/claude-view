@@ -321,6 +321,7 @@ filters.projects.some(p => p === s.projectPath || p === (s.projectDisplayName ||
 
 ### Frontend / React
 
+- **Logic-clean UI:** Frontend NEVER decides what data to show via its own cross-referencing or server-side logic. The backend sends the right data; the frontend renders it. Example: don't call a hook to look up whether a session has a team — the backend includes `teamName` on the session struct. Components are pure display layers.
 - **Source location:** `apps/web/src/` (not root `src/` -- that was the pre-monorepo layout)
 - **useEffect deps:** Never raw parsed objects. `useMemo` on a primitive key
 - **URL params:** Copy-then-modify (`new URLSearchParams(existing)`), never blank constructor
