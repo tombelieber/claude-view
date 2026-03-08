@@ -32,6 +32,8 @@
     "check:fix": "biome check --write .",
     "build:sidecar": "cd sidecar && (bun install --frozen-lockfile 2>/dev/null || bun install) && bun run build",
     "fmt": "cargo fmt --all",
+    "integrity:evidence": "./scripts/integrity/evidence-audit.sh",
+    "integrity:evidence:quick": "EVIDENCE_QUICK=1 ./scripts/integrity/evidence-audit.sh",
     "clean:db": "rm -f ~/Library/Caches/claude-view/claude-view.db*",
     "cleanupport": "PORTS='47892 5173'; for port in $PORTS; do pids=\"$(lsof -ti tcp:$port)\"; if [ -n \"$pids\" ]; then echo \"Killing $pids listening on port $port\"; kill -9 $pids; else echo \"No process found on port $port\"; fi; done",
     "dist:pack": "mkdir -p /tmp/claude-view-staging && cp target/release/claude-view /tmp/claude-view-staging/ && cp -r apps/web/dist /tmp/claude-view-staging/ && tar -czf /tmp/claude-view-darwin-arm64.tar.gz -C /tmp/claude-view-staging . && echo 'Packed: /tmp/claude-view-darwin-arm64.tar.gz'",
