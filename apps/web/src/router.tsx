@@ -10,6 +10,7 @@ import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { TeamsPage } from './pages/TeamsPage'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
 function OldSessionRedirect() {
@@ -57,6 +58,7 @@ export const router = createBrowserRouter([
       { path: 'analytics', element: <AnalyticsPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      { path: 'teams', element: <TeamsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
