@@ -1,4 +1,4 @@
-import { ArrowRight, Copy, Paperclip } from 'lucide-react'
+import { ArrowRight, Copy, FolderOpen, GitBranch, Paperclip } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -55,7 +55,8 @@ export function PromptCard({ prompt }: PromptCardProps) {
       {/* Header row: project badge + intent + timestamp */}
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium truncate max-w-[140px]">
+          <span className="inline-flex items-center gap-1 text-gray-700 dark:text-gray-300 font-medium truncate max-w-35">
+            <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />
             {prompt.projectDisplayName}
           </span>
           <span className={`px-1.5 py-0.5 rounded font-medium ${intentClass}`}>
@@ -78,7 +79,12 @@ export function PromptCard({ prompt }: PromptCardProps) {
 
       {/* Secondary info row: branch, model, paste indicator */}
       <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-        {prompt.branch && <span>{prompt.branch}</span>}
+        {prompt.branch && (
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded">
+            <GitBranch className="w-2.5 h-2.5 shrink-0" />
+            {prompt.branch}
+          </span>
+        )}
         {prompt.branch && prompt.model && <span>&middot;</span>}
         {prompt.model && <span>{prompt.model}</span>}
         {prompt.hasPaste && (

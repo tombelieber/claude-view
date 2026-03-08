@@ -1,4 +1,4 @@
-import { Bell, GitBranch, Loader2, Maximize2, Pause, Pin, X } from 'lucide-react'
+import { Bell, FolderOpen, GitBranch, Loader2, Maximize2, Pause, Pin, X } from 'lucide-react'
 import { type ReactNode, useCallback, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
@@ -212,19 +212,21 @@ function FullHeader({
     >
       {/* Project name */}
       <span
-        className="text-xs font-medium text-gray-800 dark:text-[#C9D1D9] truncate max-w-[20ch]"
+        className="inline-flex items-center gap-1 text-xs font-medium text-gray-800 dark:text-[#C9D1D9] truncate max-w-[20ch]"
         title={session.projectPath || name}
       >
+        <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />
         {name}
       </span>
 
       {/* Branch */}
       {session.effectiveBranch && (
-        <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[15ch]">
-          <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
-          <span className="truncate" title={session.effectiveBranch}>
-            {session.effectiveBranch}
-          </span>
+        <span
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded truncate max-w-[15ch]"
+          title={session.effectiveBranch}
+        >
+          <GitBranch className="w-2.5 h-2.5 shrink-0" />
+          <span className="truncate">{session.effectiveBranch}</span>
         </span>
       )}
 
@@ -320,7 +322,8 @@ function CompactHeader({
       onClick={onClick}
     >
       {/* Project name (shorter truncation) */}
-      <span className="text-[10px] font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
+        <FolderOpen className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400 shrink-0" />
         {name}
       </span>
 

@@ -1,3 +1,4 @@
+import { FolderOpen, GitBranch } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { MatchHit, SessionHit } from '../types/generated'
@@ -64,9 +65,15 @@ export function SearchResultCard({ hit, isSelected, onSelect }: SearchResultCard
       {/* Header row */}
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-900 dark:text-gray-100">{hit.project}</span>
+          <span className="inline-flex items-center gap-1 font-medium text-gray-900 dark:text-gray-100">
+            <FolderOpen className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
+            {hit.project}
+          </span>
           {hit.branch && (
-            <span className="text-gray-500 dark:text-gray-400">&middot; {hit.branch}</span>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded">
+              <GitBranch className="w-2.5 h-2.5 shrink-0" />
+              {hit.branch}
+            </span>
           )}
           <span className="text-gray-400 dark:text-gray-500">
             &middot; {hit.matchCount} {hit.matchCount === 1 ? 'match' : 'matches'}
