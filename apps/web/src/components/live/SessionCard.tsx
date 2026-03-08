@@ -232,12 +232,16 @@ export function SessionCard({
         <TaskProgressList items={session.progressItems} />
       )}
 
-      {/* Sub-agent pills */}
-      {session.subAgents && session.subAgents.length > 0 && (
+      {/* Team badge or Sub-agent pills */}
+      {session.teamName ? (
+        <div className="mb-2 -mx-1 px-2 py-1">
+          <span className="text-xs text-gray-600 dark:text-gray-400">Team: {session.teamName}</span>
+        </div>
+      ) : session.subAgents && session.subAgents.length > 0 ? (
         <div className="mb-2 -mx-1">
           <SubAgentPills subAgents={session.subAgents} />
         </div>
-      )}
+      ) : null}
 
       {/* Tool integrations (MCP servers, Skills) */}
       {session.toolsUsed && session.toolsUsed.length > 0 && (
