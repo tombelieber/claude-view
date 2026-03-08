@@ -1,6 +1,7 @@
 import { Blocks } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AvailablePluginCard } from '../components/plugins/AvailablePluginCard'
+import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
 import { PluginCard } from '../components/plugins/PluginCard'
 import { PluginHealthBanner } from '../components/plugins/PluginHealthBanner'
 import { PluginToolbar } from '../components/plugins/PluginToolbar'
@@ -56,16 +57,19 @@ export function PluginsPage() {
               <span className="text-xs text-gray-400 dark:text-gray-500">{totalCount} total</span>
             )}
           </div>
-          {data && data.updatableCount > 0 && (
-            <button
-              type="button"
-              onClick={handleUpdateAll}
-              disabled={mutations.isPending}
-              className="text-xs px-3 py-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
-            >
-              Update All ({data.updatableCount})
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <MarketplacesDialog />
+            {data && data.updatableCount > 0 && (
+              <button
+                type="button"
+                onClick={handleUpdateAll}
+                disabled={mutations.isPending}
+                className="text-xs px-3 py-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
+              >
+                Update All ({data.updatableCount})
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
