@@ -222,3 +222,6 @@ export type { TeamDetail } from './TeamDetail'
 export type { TeamMember } from './TeamMember'
 export type { InboxMessage } from './InboxMessage'
 export type { InboxMessageType } from './InboxMessageType'
+
+// Plan types
+export type { PlanDocument } from './PlanDocument'

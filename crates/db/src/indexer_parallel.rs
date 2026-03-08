@@ -111,6 +111,7 @@ pub struct ParsedSession {
     pub longest_task_seconds: Option<i64>,
     pub longest_task_preview: Option<String>,
     pub total_cost_usd: Option<f64>,
+    pub slug: Option<String>,
 }
 
 /// Hints from sessions-index.json — merged during parse, never written to DB directly.
@@ -525,6 +526,8 @@ pub struct ParseResult {
     pub git_branch: Option<String>,
     /// Working directory from the first user message's `cwd` field (authoritative source).
     pub cwd: Option<String>,
+    /// Session slug from top-level JSONL field (e.g. "async-greeting-dewdrop").
+    pub slug: Option<String>,
     /// Collected message content for full-text search indexing.
     /// Only user, assistant text, and tool_use inputs are included.
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
@@ -1010,6 +1013,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // cwd extraction from user messages
     let cwd_finder = memmem::Finder::new(b"\"cwd\":\"");
 
+    // slug extraction (top-level field on every JSONL line)
+    let slug_finder = memmem::Finder::new(b"\"slug\":\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -1039,6 +1045,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         if !s.is_empty() {
                             result.cwd = Some(s.to_string());
                         }
+                    }
+                }
+            }
+        }
+
+        // Extract slug (top-level field on every JSONL line — grab first match)
+        if result.slug.is_none() {
+            if let Some(pos) = slug_finder.find(line) {
+                let start = pos + b"\"slug\":\"".len();
+                if let Some(slug_val) = extract_quoted_string(&line[start..]) {
+                    if !slug_val.is_empty() {
+                        result.slug = Some(slug_val);
                     }
                 }
             }
@@ -3605,6 +3623,7 @@ where
                 longest_task_seconds: meta.longest_task_seconds.map(|v| v as i64),
                 longest_task_preview: meta.longest_task_preview.clone(),
                 total_cost_usd,
+                slug: parse_result.slug.clone(),
             };
 
             // Use git_root as project identity for search (matches sidebar filter).
