@@ -7,6 +7,7 @@ pub mod contributions;
 pub mod control;
 pub mod export;
 pub mod facets;
+pub mod file_history;
 pub mod grep;
 pub mod health;
 pub mod hooks;
@@ -121,6 +122,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", contributions::router())
         .nest("/api", score::router())
         .nest("/api", facets::router())
+        .nest("/api", file_history::router())
         .nest("/api", live::router())
         .nest("/api/live", terminal::router())
         .nest("/api", turns::router())
