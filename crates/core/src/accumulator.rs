@@ -29,6 +29,8 @@ pub struct SessionAccumulator {
     pub git_branch: Option<String>,
     pub started_at: Option<i64>,
     pub sub_agents: Vec<SubAgentInfo>,
+    /// Team name if this session is a team lead (captured from first team spawn).
+    pub team_name: Option<String>,
     pub todo_items: Vec<ProgressItem>,
     pub task_items: Vec<ProgressItem>,
     pub last_cache_hit_at: Option<i64>,
@@ -53,6 +55,7 @@ pub struct RichSessionData {
     pub cost: CostBreakdown,
     pub cache_status: CacheStatus,
     pub sub_agents: Vec<SubAgentInfo>,
+    pub team_name: Option<String>,
     pub progress_items: Vec<ProgressItem>,
     #[ts(type = "number")]
     pub context_window_tokens: u64,
@@ -81,6 +84,7 @@ impl SessionAccumulator {
             git_branch: None,
             started_at: None,
             sub_agents: Vec::new(),
+            team_name: None,
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
@@ -266,6 +270,15 @@ impl SessionAccumulator {
         // Sub-agent spawn tracking
         // -----------------------------------------------------------------
         for spawn in &line.sub_agent_spawns {
+            // Team spawns are NOT sub-agents — their lifecycle is managed by
+            // ~/.claude/teams/, not the JSONL sub-agent tracking system.
+            if spawn.team_name.is_some() {
+                if self.team_name.is_none() {
+                    self.team_name = spawn.team_name.clone();
+                }
+                continue;
+            }
+
             // Dedup guard: skip if we already know this tool_use_id
             if self
                 .sub_agents
@@ -494,6 +507,7 @@ impl SessionAccumulator {
             cost,
             cache_status,
             sub_agents: self.sub_agents.clone(),
+            team_name: self.team_name.clone(),
             progress_items,
             context_window_tokens: self.context_window_tokens,
             model: self.model.clone(),
@@ -1782,5 +1796,56 @@ mod tests {
             data.sub_agents[0].cost_usd.unwrap() > 0.0,
             "Sub-agent should have a non-zero cost"
         );
+    }
+
+    #[test]
+    fn test_team_spawn_not_added_to_sub_agents() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Team spawn: has team_name
+        let mut team_line = empty_line();
+        team_line.line_type = LineType::Assistant;
+        team_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01TEAM".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "landing-sync".to_string(),
+                team_name: Some("claude-view-release".to_string()),
+            });
+        acc.process_line(&team_line, 0, &pricing);
+
+        // Team spawn must NOT be added to sub_agents
+        assert_eq!(
+            acc.sub_agents.len(),
+            0,
+            "team spawns should be excluded from sub_agents"
+        );
+
+        // But team_name should be captured on the accumulator
+        assert_eq!(acc.team_name.as_deref(), Some("claude-view-release"));
+    }
+
+    #[test]
+    fn test_regular_spawn_still_added_to_sub_agents() {
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        // Regular spawn: no team_name
+        let mut reg_line = empty_line();
+        reg_line.line_type = LineType::Assistant;
+        reg_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01REG".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search codebase".to_string(),
+                team_name: None,
+            });
+        acc.process_line(&reg_line, 0, &pricing);
+
+        assert_eq!(acc.sub_agents.len(), 1);
+        assert_eq!(acc.team_name, None);
     }
 }
