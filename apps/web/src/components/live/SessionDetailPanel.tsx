@@ -825,7 +825,7 @@ export function SessionDetailPanel({
         )}
 
         {/* ---- Teams tab ---- */}
-        {activeTab === 'teams' && hasTeam && <TeamsTab teamName={data.teamName!} />}
+        {activeTab === 'teams' && data.teamName && <TeamsTab teamName={data.teamName} />}
 
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
