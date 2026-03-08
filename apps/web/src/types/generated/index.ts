@@ -225,3 +225,13 @@ export type { InboxMessageType } from './InboxMessageType'
 
 // Plan types
 export type { PlanDocument } from './PlanDocument'
+
+// Plugin types
+export type { PluginInfo } from './PluginInfo'
+export type { PluginItem } from './PluginItem'
+export type { PluginsResponse } from './PluginsResponse'
+export type { AvailablePlugin } from './AvailablePlugin'
+export type { PluginActionRequest } from './PluginActionRequest'
+export type { PluginActionResponse } from './PluginActionResponse'
+export type { MarketplaceInfo } from './MarketplaceInfo'
+export type { MarketplaceActionRequest } from './MarketplaceActionRequest'
