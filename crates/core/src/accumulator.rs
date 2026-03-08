@@ -615,6 +615,7 @@ mod tests {
             message_id: None,
             request_id: None,
             hook_progress: None,
+            slug: None,
         }
     }
 
