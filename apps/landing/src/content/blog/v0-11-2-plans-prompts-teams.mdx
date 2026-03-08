@@ -1,0 +1,92 @@
+---
+title: "Plan Tabs, Prompt History, and Team Dashboards"
+description: "v0.11.2 brings Claude Code plans, full-text prompt search, and dedicated team intelligence views."
+date: 2026-03-08
+author: claude-view team
+---
+
+Three features that complete the visibility picture: plans you wrote, prompts you sent, and teams you're part of. Together, they answer questions you've never been able to answer before.
+
+## Plan browser
+
+Every session starts with a prompt to Claude Code. That prompt often references a plan — a design doc, an architecture decision, a spec you wrote to guide the conversation.
+
+Before v0.11.2, finding that plan meant digging through `~/.claude/plans/` manually. Now, plans are indexed, linked to sessions by slug, and browsable directly in the session detail panel.
+
+Click the new **Plans** tab in any session, and you see:
+
+- All plans referenced by that session
+- Plan file contents with syntax highlighting
+- Links to jump between related sessions and plans
+- Full-text search across all your plans
+
+This is especially useful for Mission Control sessions, where you may reference multiple phases of the same long-running plan. See the whole context without leaving claude-view.
+
+## Prompt history
+
+You've sent thousands of prompts to Claude Code. Each one is stored in `~/.claude/prompts/`. But without a way to search them, they're effectively invisible.
+
+v0.11.2 adds a **Prompt History** view with:
+
+- **Full-text search** on the display content you saw
+- **Intent classification** — automatically labels prompts as "feature", "debug", "refactor", "review", etc.
+- **Template clustering** — uses Drain clustering to group similar prompts and detect patterns
+- **Statistics** — leaderboards of your top prompt templates, intents, and usage over time
+- **Copy to new session** — find a prompt that worked well and reuse it
+
+The intent classification and template detection happen automatically as prompts are indexed. No configuration needed. The search index is built in Tantivy (the same engine behind Quickwit), so even with 10k+ prompts, searches are instant.
+
+This is powerful for learning: you can see patterns in how you prompt Claude Code. You can identify which prompt structures lead to better outcomes. You can spot when you're repeating yourself and find better ways to phrase things.
+
+## Team dashboards
+
+If you're a team lead in Claude Code, you've seen the magic: spawn a sub-agent, give it a task, and watch it work. But visibility into what your team members are doing — which agents they spawned, what tasks they're running, which files are changing — has been scattered.
+
+v0.11.2 adds a **Teams** page that shows:
+
+- **Team members** — all agents in your teams config
+- **Inbox** — messages from agents, team leads, and system notifications
+- **Tasks** — tasks spawned across all team members, with status and duration
+- **File changes** — which files are being read, edited, created across team sessions
+
+It reads from `~/.claude/teams/` configs and the inbox files automatically. No manual setup. Click any team member to drill into their sessions, or click any task to see the full context.
+
+## Under the hood
+
+The Plan Tab feature required:
+
+- A new plan_files module in Rust to parse `~/.claude/plans/` directory structure
+- A slug field on every session (extracted from JSONL, stored in database)
+- API endpoints to fetch plans and link them to sessions
+- React components with lazy loading so opening a session with 50 plans doesn't tank performance
+
+The Prompt History feature added:
+
+- A complete JSONL parser for the prompt history format
+- Tantivy indexing on prompts with configurable filters (display, paste, clipboard)
+- Drain clustering algorithm for template detection
+- Intent classification via regex patterns + SIMD pre-filter
+
+The Teams Dashboard feature wired:
+
+- A new teams parser that reads config files + inbox JSONL
+- API endpoints for team list, detail, and inbox
+- React hooks for team queries and real-time updates
+- Full TypeScript type generation via ts-rs
+
+All three features share the same architectural philosophy: **index once, query many times**. Plans, prompts, and teams are indexed on startup, then served via fast APIs. Changes are detected and reindexed in the background.
+
+## What's next
+
+- **Mobile team integration** — Expo app will show teams and tasks alongside live sessions
+- **Custom session layouts** — drag-and-drop column resizing for the live monitor
+- **Codex verification protocols** — statistical verification of parsed data across historical and live sessions
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Plans tab on an old session. Search your prompt history. Check the Teams page to see what your agents are up to.
+

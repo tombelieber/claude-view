@@ -81,6 +81,15 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 | **Project & branch filters** | Scope to the project you're working on right now |
 | **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
 
+### Plans, Prompts & Teams
+
+| Feature | Why it matters |
+|---------|---------------|
+| **Plan browser** | View your `.claude/plans/` directly in session detail — no more hunting through files |
+| **Prompt history** | Full-text search across all prompts you've sent to Claude Code with template clustering and intent classification |
+| **Teams dashboard** | See team leads, inbox messages, team tasks, and file changes across all team members |
+| **Prompt analytics** | Leaderboards of prompt templates, intent distribution, and usage statistics |
+
 ---
 
 ### Agent Internals — See What's Hidden
