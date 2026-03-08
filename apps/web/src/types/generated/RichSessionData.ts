@@ -22,4 +22,5 @@ export type RichSessionData = {
   lastUserMessage: string | null
   lastUserFile: string | null
   lastCacheHitAt: number | null
+  slug: string | null
 }
