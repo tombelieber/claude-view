@@ -728,6 +728,8 @@ COMMIT;"#,
     );"#,
     // Migration 53: Unique constraint for self-dedup within each source.
     r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_events_dedup ON hook_events(session_id, timestamp, event_name, COALESCE(tool_name, ''), source);"#,
+    // Migration 54: Add slug column for plan file association
+    r#"ALTER TABLE sessions ADD COLUMN slug TEXT;"#,
 ];
 
 // ============================================================================

@@ -548,6 +548,8 @@ pub(crate) struct SessionRow {
     pub(crate) longest_task_preview: Option<String>,
     // Cost (None for sessions indexed before this field existed)
     pub(crate) total_cost_usd: Option<f64>,
+    // Plan file association
+    pub(crate) slug: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -625,6 +627,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             longest_task_preview: row.try_get("longest_task_preview").ok().flatten(),
             // Cost — silently None if column not in SELECT or row predates this field
             total_cost_usd: row.try_get("total_cost_usd").ok().flatten(),
+            // Plan file association
+            slug: row.try_get("slug").ok().flatten(),
         })
     }
 }
@@ -736,6 +740,8 @@ impl SessionRow {
             longest_task_preview: self.longest_task_preview,
             // Cost
             total_cost_usd: self.total_cost_usd,
+            // Plan file association
+            slug: self.slug,
         }
     }
 }
