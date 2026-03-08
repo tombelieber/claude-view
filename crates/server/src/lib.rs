@@ -139,6 +139,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        teams: Arc::new(crate::teams::TeamsStore::empty()),
     });
     api_routes(state)
 }
@@ -206,6 +207,9 @@ pub fn create_app_full(
         share,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        teams: Arc::new(crate::teams::TeamsStore::load(
+            &dirs::home_dir().expect("home dir exists").join(".claude"),
+        )),
     });
 
     // Refresh pricing table from litellm on startup and every 24h.
