@@ -47,7 +47,10 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 - **Cache warm countdown** — time your messages to save tokens
 - **Cost tracking** — per-session and aggregate spend with cache savings
 - **Sub-agent visualization** — see the full agent tree, tool calls, MCP invocations
-- **Full-text search** — search across all sessions, messages, tool calls, file paths
+- **Plans browser** — view your `.claude/plans/` directly in session detail
+- **Prompt history** — full-text search across all prompts with intent classification and template clustering
+- **Teams dashboard** — track team leads, inbox, tasks, and file changes across team members
+- **Full-text search** — search across all sessions, messages, tool calls, file paths, and plans
 - **Analytics** — activity heatmap, cost ROI, model comparison, AI Fluency Score
 - **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
 
