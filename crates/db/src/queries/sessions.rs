@@ -12,7 +12,7 @@ use crate::indexer_parallel::ParsedSession;
 
 /// The SQL for upserting a fully-parsed session. Shared between
 /// `upsert_parsed_session()` (pool executor) and `flush_batch()` (tx executor).
-/// 63 bind parameters.
+/// 64 bind parameters.
 pub const UPSERT_SESSION_SQL: &str = r#"
     INSERT INTO sessions (
         id, project_id, project_display_name, project_path,
@@ -36,7 +36,8 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         summary_text, lines_added, lines_removed, loc_source,
         ai_lines_added, ai_lines_removed, work_type,
         primary_model, total_task_time_seconds,
-        longest_task_seconds, longest_task_preview, total_cost_usd
+        longest_task_seconds, longest_task_preview, total_cost_usd,
+        slug
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
         NULLIF(TRIM(?11), ''), ?12, ?13, ?14,
@@ -46,7 +47,8 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         ?33, ?34, ?35, ?36, ?37, ?38, ?39, ?40,
         ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48,
         ?49, ?50, ?51, ?52, ?53, ?54, ?55,
-        ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63
+        ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63,
+        ?64
     )
     ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
@@ -111,7 +113,8 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         total_task_time_seconds = excluded.total_task_time_seconds,
         longest_task_seconds = excluded.longest_task_seconds,
         longest_task_preview = excluded.longest_task_preview,
-        total_cost_usd = excluded.total_cost_usd
+        total_cost_usd = excluded.total_cost_usd,
+        slug = excluded.slug
 "#;
 
 /// Execute the upsert SQL for a single ParsedSession against any sqlx executor.
@@ -192,6 +195,7 @@ where
         .bind(s.longest_task_seconds) // ?61
         .bind(&s.longest_task_preview) // ?62
         .bind(s.total_cost_usd) // ?63
+        .bind(&s.slug) // ?64
         .execute(executor)
         .await?;
 
@@ -442,7 +446,8 @@ impl Database {
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
-                s.total_cost_usd
+                s.total_cost_usd,
+                s.slug
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -1083,7 +1088,8 @@ impl Database {
                 s.category_confidence, s.category_source, s.classified_at,
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
-                s.total_cost_usd
+                s.total_cost_usd,
+                s.slug
             FROM sessions s WHERE s.id = ?1"#,
         )
         .bind(id)
@@ -1255,6 +1261,7 @@ mod upsert_tests {
             longest_task_seconds: Some(0),
             longest_task_preview: None,
             total_cost_usd: Some(0.05),
+            slug: None,
         }
     }
 

@@ -90,6 +90,8 @@ struct SessionAccumulator {
     tool_counts_write: u32,
     /// Number of compact_boundary system messages seen.
     compact_count: u32,
+    /// Session slug for plan file association.
+    slug: Option<String>,
     /// Per-turn accumulated cost breakdown. Each assistant turn's tokens are
     /// priced individually (200k tiering is per-API-request, not per-session).
     accumulated_cost: CostBreakdown,
@@ -128,6 +130,7 @@ impl SessionAccumulator {
             tool_counts_bash: 0,
             tool_counts_write: 0,
             compact_count: 0,
+            slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
         }
@@ -158,6 +161,7 @@ struct JsonlMetadata {
     last_cache_hit_at: Option<i64>,
     tools_used: Vec<super::state::ToolUsed>,
     compact_count: u32,
+    slug: Option<String>,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -208,6 +212,7 @@ fn build_recovered_session(
         tools_used: Vec::new(),
         last_cache_hit_at: None,
         compact_count: 0,
+        slug: None,
         control: None,
         hook_events: Vec::new(),
     }
@@ -345,6 +350,7 @@ fn apply_jsonl_metadata(
     session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;
     session.compact_count = m.compact_count;
+    session.slug = m.slug.clone();
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -534,6 +540,7 @@ impl LiveSessionManager {
             },
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
+            slug: acc.slug.clone(),
         };
         drop(accumulators);
 
@@ -860,6 +867,7 @@ impl LiveSessionManager {
                                     },
                                     last_cache_hit_at: acc.last_cache_hit_at,
                                     compact_count: acc.compact_count,
+                                    slug: acc.slug.clone(),
                                 };
                                 drop(accumulators);
 
@@ -1505,12 +1513,17 @@ impl LiveSessionManager {
                 }
             }
 
-            // Track git branch and cwd from user messages
+            // Track git branch, cwd, and slug from user messages
             if let Some(ref branch) = line.git_branch {
                 acc.git_branch = Some(branch.clone());
             }
             if let Some(ref cwd) = line.cwd {
                 acc.latest_cwd = Some(cwd.clone());
+            }
+            if acc.slug.is_none() {
+                if let Some(ref s) = line.slug {
+                    acc.slug = Some(s.clone());
+                }
             }
 
             // Track user messages (skip meta messages for content)
@@ -1908,6 +1921,7 @@ impl LiveSessionManager {
             },
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
+            slug: acc.slug.clone(),
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).

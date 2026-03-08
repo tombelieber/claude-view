@@ -651,6 +651,7 @@ mod tests {
             longest_task_preview: None,
             first_message_at: Some(modified_at),
             total_cost_usd: None,
+            slug: None,
         }
     }
 
