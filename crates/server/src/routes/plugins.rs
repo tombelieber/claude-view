@@ -199,13 +199,14 @@ pub fn apply_filters(
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CliInstalledPlugin {
+pub(crate) struct CliInstalledPlugin {
     id: String,
     #[serde(default)]
     version: Option<String>,
     scope: String,
     enabled: bool,
     #[serde(default)]
+    #[allow(dead_code)]
     install_path: Option<String>,
     installed_at: String,
     #[serde(default)]
@@ -218,7 +219,7 @@ struct CliInstalledPlugin {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CliAvailablePlugin {
+pub(crate) struct CliAvailablePlugin {
     plugin_id: String,
     name: String,
     description: String,
@@ -532,7 +533,7 @@ async fn list_plugins(
         .count();
     let unused_count = installed
         .iter()
-        .filter(|p| p.last_used_at.map_or(true, |t| t < thirty_days_ago))
+        .filter(|p| p.last_used_at.is_none_or(|t| t < thirty_days_ago))
         .count();
     let updatable_count = installed.iter().filter(|p| p.updatable).count();
 
@@ -703,11 +704,7 @@ async fn plugin_action(
 
     match output {
         Ok(stdout) => {
-            // Bust cached plugin data so next GET reflects the change
-            let _ = state
-                .plugin_cli_cache
-                .force_refresh(std::time::Duration::ZERO, fetch_plugin_cli_data)
-                .await;
+            invalidate_plugin_cache(&state).await;
             Ok(Json(PluginActionResponse {
                 success: true,
                 action: req.action,
