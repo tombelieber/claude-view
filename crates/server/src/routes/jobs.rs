@@ -106,6 +106,7 @@ mod tests {
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
                 300,
             )),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         });
 
         let app = Router::new()
