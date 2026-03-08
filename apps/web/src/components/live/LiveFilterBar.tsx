@@ -1,8 +1,8 @@
-import { ChevronDown, Filter, Layers, Loader2, Search, X } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Filter, Layers, Loader2, Search, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { IndexingPhase } from '../../hooks/use-indexing-progress'
 import type { LiveSessionFilters } from './live-filter'
-import type { KanbanGroupBy } from './types'
+import type { KanbanGroupBy, KanbanSort } from './types'
 
 interface LiveFilterBarProps {
   filters: LiveSessionFilters
@@ -28,13 +28,23 @@ interface LiveFilterBarProps {
   groupByValue?: KanbanGroupBy
   /** Callback when kanban group-by changes. */
   onGroupByChange?: (value: KanbanGroupBy) => void
+  /** Kanban sort value (only shown when in kanban view with grouping active). */
+  sortValue?: KanbanSort
+  /** Callback when kanban sort changes. */
+  onSortChange?: (value: KanbanSort) => void
 }
 
-type DropdownType = 'status' | 'project' | 'branch' | 'groupBy' | null
+type DropdownType = 'status' | 'project' | 'branch' | 'groupBy' | 'sort' | null
 
 const GROUP_BY_OPTIONS: { value: KanbanGroupBy; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'project-branch', label: 'Project + Branch' },
+]
+
+const SORT_OPTIONS: { value: KanbanSort; label: string }[] = [
+  { value: 'recent', label: 'Most recent' },
+  { value: 'alphabetical', label: 'Alphabetical' },
+  { value: 'cost', label: 'Highest cost' },
 ]
 
 export function LiveFilterBar({
@@ -55,6 +65,8 @@ export function LiveFilterBar({
   totalCount,
   groupByValue,
   onGroupByChange,
+  sortValue,
+  onSortChange,
 }: LiveFilterBarProps) {
   const [localSearch, setLocalSearch] = useState(filters.search)
   const [openDropdown, setOpenDropdown] = useState<DropdownType>(null)
@@ -227,6 +239,49 @@ export function LiveFilterBar({
                     }}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition-colors ${
                       groupByValue === opt.value
+                        ? 'text-indigo-400 bg-indigo-500/10'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sort dropdown — only in kanban view when grouping is active */}
+        {sortValue !== undefined && onSortChange && groupByValue === 'project-branch' && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => toggleDropdown('sort')}
+              className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
+                sortValue !== 'recent'
+                  ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                  : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
+              }`}
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              <span className="hidden sm:inline">Sort</span>
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${openDropdown === 'sort' ? 'rotate-180' : ''}`}
+              />
+            </button>
+
+            {openDropdown === 'sort' && (
+              <div className="absolute z-20 mt-1 right-0 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-xl p-2 min-w-44">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      onSortChange(opt.value)
+                      setOpenDropdown(null)
+                    }}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition-colors ${
+                      sortValue === opt.value
                         ? 'text-indigo-400 bg-indigo-500/10'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
