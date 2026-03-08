@@ -4,3 +4,7 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# EAS local build artifacts
+build-*.tar.gz
+.tmp/

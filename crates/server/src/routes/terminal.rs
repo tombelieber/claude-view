@@ -1179,6 +1179,9 @@ mod tests {
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
                 300,
             )),
+            plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
+                300,
+            )),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
             prompt_index: Arc::new(std::sync::RwLock::new(None)),
             prompt_stats: Arc::new(std::sync::RwLock::new(None)),
@@ -1375,6 +1378,9 @@ mod tests {
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
+                300,
+            )),
+            plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
                 300,
             )),
             teams: Arc::new(crate::teams::TeamsStore::empty()),
