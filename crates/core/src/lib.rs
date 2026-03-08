@@ -22,6 +22,7 @@ pub mod paths;
 pub mod patterns;
 pub mod pricing;
 pub mod progress;
+pub mod prompt_history;
 pub mod registry;
 pub mod report;
 pub mod session_index;
