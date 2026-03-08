@@ -419,87 +419,6 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 let message = message.with_category("snapshot");
                 messages.push(message);
             }
-            "summary" => {
-                let summary_text = value.get("summary").and_then(|v| v.as_str()).unwrap_or("");
-                let leaf_uuid = value.get("leafUuid").and_then(|v| v.as_str());
-
-                let mut meta = serde_json::Map::new();
-                meta.insert(
-                    "summary".to_string(),
-                    serde_json::Value::String(summary_text.to_string()),
-                );
-                if let Some(lu) = leaf_uuid {
-                    meta.insert(
-                        "leafUuid".to_string(),
-                        serde_json::Value::String(lu.to_string()),
-                    );
-                }
-
-                let message = Message::summary(summary_text.to_string())
-                    .with_metadata(serde_json::Value::Object(meta));
-                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
-                messages.push(message);
-            }
-            "saved_hook_context" => {
-                // Hook-injected context (e.g. claude-mem snapshots)
-                let content_items = value
-                    .get("content")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str())
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                    .unwrap_or_default();
-
-                let preview: String = content_items.chars().take(200).collect();
-                let display = if content_items.is_empty() {
-                    "saved_hook_context".to_string()
-                } else if preview.len() < content_items.len() {
-                    format!("saved_hook_context: {preview}…")
-                } else {
-                    format!("saved_hook_context: {preview}")
-                };
-
-                let mut meta = serde_json::Map::new();
-                meta.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("saved_hook_context".to_string()),
-                );
-                if let Some(content) = value.get("content") {
-                    meta.insert("content".to_string(), content.clone());
-                }
-
-                let message =
-                    Message::system(display).with_metadata(serde_json::Value::Object(meta));
-                let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
-                let message = message.with_category("context");
-                messages.push(message);
-            }
-            "result" => {
-                let mut meta = serde_json::Map::new();
-                meta.insert("type".into(), serde_json::json!("result"));
-                for (k, v) in value.as_object().unwrap_or(&serde_json::Map::new()) {
-                    if k != "type" {
-                        meta.insert(k.clone(), v.clone());
-                    }
-                }
-                let subtype = value
-                    .get("subtype")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let display = format!("Session result: {subtype}");
-                let message = Message::system(display)
-                    .with_metadata(serde_json::json!(meta))
-                    .with_category("result");
-                messages.push(attach_common_fields(
-                    message,
-                    &timestamp,
-                    &uuid,
-                    &parent_uuid,
-                ));
-            }
             _ => {
                 // Silently ignore unknown entry types for forward compatibility
                 debug!(
@@ -1186,7 +1105,7 @@ mod tests {
     // All 8 JSONL Line Types Tests
     // ============================================================================
 
-    /// Fixture: all_types.jsonl has 15 lines:
+    /// Fixture: all_types.jsonl has 12 lines:
     ///   1. user (string content)         → Role::User
     ///   2. assistant (text+thinking+tool) → Role::Assistant
     ///   3. user (tool_result array)       → Role::ToolResult
@@ -1196,18 +1115,15 @@ mod tests {
     ///   7. progress                       → Role::Progress
     ///   8. queue-operation (enqueue)      → Role::System
     ///   9. queue-operation (dequeue)      → Role::System
-    ///  10. summary                        → Role::Summary
-    ///  11. file-history-snapshot          → Role::System
-    ///  12. result                         → Role::System
-    ///  13. saved_hook_context             → Role::System
-    ///  14. user (isMeta=true)             → skipped
-    /// = 13 messages total
+    ///  10. file-history-snapshot          → Role::System
+    ///  11. user (isMeta=true)             → skipped
+    /// = 10 messages total
 
     #[tokio::test]
     async fn test_parse_all_types_count() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
-        assert_eq!(session.messages.len(), 13);
+        assert_eq!(session.messages.len(), 10);
     }
 
     #[tokio::test]
@@ -1325,8 +1241,8 @@ mod tests {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
 
-        // Message index 10 is file-history-snapshot
-        let msg = &session.messages[10];
+        // Message index 9 is file-history-snapshot
+        let msg = &session.messages[9];
         assert_eq!(msg.role, Role::System);
         assert!(msg.content.contains("file-history-snapshot"));
 
@@ -1343,24 +1259,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_summary_role_and_metadata() {
-        let path = fixtures_path().join("all_types.jsonl");
-        let session = parse_session(&path).await.unwrap();
-
-        // Message index 9 is summary
-        let msg = &session.messages[9];
-        assert_eq!(msg.role, Role::Summary);
-        assert_eq!(msg.content, "Fixed authentication bug in auth.rs");
-
-        let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(
-            meta.get("summary").unwrap().as_str().unwrap(),
-            "Fixed authentication bug in auth.rs"
-        );
-        assert_eq!(meta.get("leafUuid").unwrap().as_str().unwrap(), "a2");
-    }
-
-    #[tokio::test]
     async fn test_parse_uuid_passthrough() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
@@ -1373,8 +1271,6 @@ mod tests {
         assert_eq!(session.messages[5].uuid, Some("s1".to_string()));
         // Progress has uuid "p1"
         assert_eq!(session.messages[6].uuid, Some("p1".to_string()));
-        // Summary has uuid "sum1"
-        assert_eq!(session.messages[9].uuid, Some("sum1".to_string()));
     }
 
     #[tokio::test]
@@ -1391,54 +1287,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_result_type() {
-        let path = fixtures_path().join("all_types.jsonl");
-        let session = parse_session(&path).await.unwrap();
-
-        // Message index 11 is result
-        let msg = &session.messages[11];
-        assert_eq!(msg.role, Role::System);
-        assert!(msg.content.contains("Session result: success"));
-        assert_eq!(msg.category.as_deref(), Some("result"));
-
-        let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(meta.get("type").unwrap().as_str().unwrap(), "result");
-        assert_eq!(meta.get("subtype").unwrap().as_str().unwrap(), "success");
-        assert_eq!(meta.get("duration_ms").unwrap().as_i64().unwrap(), 12345);
-        assert_eq!(meta.get("num_turns").unwrap().as_i64().unwrap(), 5);
-        assert_eq!(meta.get("is_error").unwrap().as_bool().unwrap(), false);
-    }
-
-    #[tokio::test]
-    async fn test_parse_saved_hook_context_role() {
-        let path = fixtures_path().join("all_types.jsonl");
-        let session = parse_session(&path).await.unwrap();
-
-        // Message index 12 is saved_hook_context (after result at index 11)
-        let msg = &session.messages[12];
-        assert_eq!(msg.role, Role::System);
-        assert!(msg.content.contains("saved_hook_context"));
-        assert!(msg.content.contains("hook context line 1"));
-        assert_eq!(msg.category.as_deref(), Some("context"));
-
-        let meta = msg.metadata.as_ref().unwrap();
-        assert_eq!(
-            meta.get("type").unwrap().as_str().unwrap(),
-            "saved_hook_context"
-        );
-        let content_arr = meta.get("content").unwrap().as_array().unwrap();
-        assert_eq!(content_arr.len(), 2);
-        assert_eq!(content_arr[0].as_str().unwrap(), "hook context line 1");
-    }
-
-    #[tokio::test]
     async fn test_parse_meta_user_still_skipped() {
         let path = fixtures_path().join("all_types.jsonl");
         let session = parse_session(&path).await.unwrap();
 
         // The last line is a user with isMeta=true, should be skipped.
-        // 14 lines - 1 skipped (isMeta) = 13 parsed messages
-        assert_eq!(session.messages.len(), 13);
+        // 12 lines - 1 skipped (isMeta) - 1 unknown type ignored = 10 parsed messages
+        assert_eq!(session.messages.len(), 10);
         // No message should contain "System init"
         for msg in &session.messages {
             assert!(!msg.content.contains("System init"));

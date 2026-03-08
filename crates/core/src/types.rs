@@ -39,8 +39,6 @@ pub enum Role {
     System,
     /// Progress events (agent, bash, hook, mcp, waiting)
     Progress,
-    /// Auto-generated session summaries
-    Summary,
 }
 
 /// A tool call made by the assistant
@@ -113,10 +111,6 @@ impl Message {
     pub fn progress(content: impl Into<String>) -> Self {
         Self::new_with_role(Role::Progress, content)
     }
-    pub fn summary(content: impl Into<String>) -> Self {
-        Self::new_with_role(Role::Summary, content)
-    }
-
     pub fn with_timestamp(mut self, timestamp: impl Into<String>) -> Self {
         self.timestamp = Some(timestamp.into());
         self
@@ -1056,10 +1050,6 @@ mod tests {
             serde_json::to_string(&Role::Progress).unwrap(),
             "\"progress\""
         );
-        assert_eq!(
-            serde_json::to_string(&Role::Summary).unwrap(),
-            "\"summary\""
-        );
     }
 
     #[test]
@@ -1070,14 +1060,12 @@ mod tests {
         let tool_result: Role = serde_json::from_str("\"tool_result\"").unwrap();
         let system: Role = serde_json::from_str("\"system\"").unwrap();
         let progress: Role = serde_json::from_str("\"progress\"").unwrap();
-        let summary: Role = serde_json::from_str("\"summary\"").unwrap();
         assert_eq!(user, Role::User);
         assert_eq!(assistant, Role::Assistant);
         assert_eq!(tool_use, Role::ToolUse);
         assert_eq!(tool_result, Role::ToolResult);
         assert_eq!(system, Role::System);
         assert_eq!(progress, Role::Progress);
-        assert_eq!(summary, Role::Summary);
     }
 
     #[test]

@@ -3,11 +3,4 @@
 /**
  * Message role in a conversation
  */
-export type Role =
-  | 'user'
-  | 'assistant'
-  | 'tool_use'
-  | 'tool_result'
-  | 'system'
-  | 'progress'
-  | 'summary'
+export type Role = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'

@@ -21,13 +21,11 @@ describe('computeCategoryCounts', () => {
       { type: 'system', content: '', category: 'system' },
       { type: 'progress', content: '', category: 'hook_progress' },
       { type: 'error', content: 'fail', category: 'error' },
-      { type: 'summary', content: 'summary', category: 'summary' },
     ]
     const counts = computeCategoryCounts(messages)
     expect(counts.builtin).toBe(3) // 2 tool_use + 1 tool_result
     expect(counts.skill).toBe(1)
     expect(counts.system).toBe(1)
-    expect(counts.summary).toBe(1)
     expect(counts.hook_progress).toBe(1)
     expect(counts.error).toBe(1)
   })
