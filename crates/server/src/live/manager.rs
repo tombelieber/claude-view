@@ -66,6 +66,8 @@ struct SessionAccumulator {
     last_turn_task_seconds: Option<u32>,
     /// Sub-agents spawned in this session (accumulated across tail polls).
     sub_agents: Vec<SubAgentInfo>,
+    /// Team name if this session is a team lead (from first team spawn).
+    team_name: Option<String>,
     /// Current todo items from the latest TodoWrite call (full replacement).
     todo_items: Vec<claude_view_core::progress::ProgressItem>,
     /// Structured tasks from TaskCreate/TaskUpdate (incremental).
@@ -117,6 +119,7 @@ impl SessionAccumulator {
             current_turn_started_at: None,
             last_turn_task_seconds: None,
             sub_agents: Vec::new(),
+            team_name: None,
             todo_items: Vec::new(),
             task_items: Vec::new(),
             last_cache_hit_at: None,
@@ -157,6 +160,7 @@ struct JsonlMetadata {
     current_turn_started_at: Option<i64>,
     last_turn_task_seconds: Option<u32>,
     sub_agents: Vec<SubAgentInfo>,
+    team_name: Option<String>,
     progress_items: Vec<claude_view_core::progress::ProgressItem>,
     last_cache_hit_at: Option<i64>,
     tools_used: Vec<super::state::ToolUsed>,
@@ -505,6 +509,7 @@ impl LiveSessionManager {
             current_turn_started_at: acc.current_turn_started_at,
             last_turn_task_seconds: acc.last_turn_task_seconds,
             sub_agents: acc.sub_agents.clone(),
+            team_name: acc.team_name.clone(),
             progress_items: {
                 let mut items = acc.todo_items.clone();
                 items.extend(acc.task_items.clone());
@@ -830,6 +835,7 @@ impl LiveSessionManager {
                                     current_turn_started_at: acc.current_turn_started_at,
                                     last_turn_task_seconds: acc.last_turn_task_seconds,
                                     sub_agents: acc.sub_agents.clone(),
+                                    team_name: acc.team_name.clone(),
                                     progress_items: {
                                         let mut items = acc.todo_items.clone();
                                         items.extend(acc.task_items.clone());
@@ -1555,6 +1561,14 @@ impl LiveSessionManager {
 
             // --- Sub-agent spawn tracking ---
             for spawn in &line.sub_agent_spawns {
+                // Team spawns are NOT sub-agents — skip.
+                if spawn.team_name.is_some() {
+                    if acc.team_name.is_none() {
+                        acc.team_name = spawn.team_name.clone();
+                    }
+                    continue;
+                }
+
                 // Guard against re-processing the same spawn line
                 // (can happen if accumulator reset while file exists, or offset tracking bug)
                 if acc
@@ -1593,17 +1607,20 @@ impl LiveSessionManager {
                     .iter_mut()
                     .find(|a| a.tool_use_id == result.tool_use_id)
                 {
-                    // Background agents return "async_launched" immediately — they're
-                    // still running, so only capture the agentId and keep Running status.
-                    if result.status == "async_launched" {
-                        agent.agent_id = result.agent_id.clone();
-                    } else {
-                        agent.status = if result.status == "completed" {
-                            SubAgentStatus::Complete
-                        } else {
-                            SubAgentStatus::Error
-                        };
-                        agent.agent_id = result.agent_id.clone();
+                    // Whitelist known terminal statuses. Everything else
+                    // (async_launched, teammate_spawned, queued, or any future
+                    // non-terminal status) means the agent is still running —
+                    // just capture the agentId and keep Running.
+                    let terminal_status = match result.status.as_str() {
+                        "completed" => Some(SubAgentStatus::Complete),
+                        "failed" | "killed" => Some(SubAgentStatus::Error),
+                        _ => None, // non-terminal: still running
+                    };
+
+                    agent.agent_id = result.agent_id.clone();
+
+                    if let Some(status) = terminal_status {
+                        agent.status = status;
                         agent.completed_at =
                             line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
                         agent.duration_ms = result.total_duration_ms;
@@ -1878,6 +1895,7 @@ impl LiveSessionManager {
             current_turn_started_at: acc.current_turn_started_at,
             last_turn_task_seconds: acc.last_turn_task_seconds,
             sub_agents: acc.sub_agents.clone(),
+            team_name: acc.team_name.clone(),
             progress_items: {
                 let mut items = acc.todo_items.clone();
                 items.extend(acc.task_items.clone());
