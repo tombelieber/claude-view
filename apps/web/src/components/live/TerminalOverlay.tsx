@@ -1,4 +1,4 @@
-import { Check, Copy, GitBranch, X } from 'lucide-react'
+import { Check, Copy, FolderOpen, GitBranch, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../lib/utils'
@@ -103,18 +103,19 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           />
 
           <span
-            className="text-sm font-medium text-gray-900 dark:text-[#E6EDF3] truncate max-w-[200px]"
+            className="inline-flex items-center gap-1 text-sm font-medium text-gray-900 dark:text-[#E6EDF3] truncate max-w-50"
             title={session.projectPath}
           >
+            <FolderOpen className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
             {session.projectDisplayName || session.project}
           </span>
 
           {session.effectiveBranch && (
             <span
-              className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-[#6E7681] truncate max-w-[160px]"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded truncate max-w-40"
               title={session.effectiveBranch}
             >
-              <GitBranch className="w-3 h-3 flex-shrink-0" />
+              <GitBranch className="w-3 h-3 shrink-0" />
               {session.effectiveBranch}
             </span>
           )}

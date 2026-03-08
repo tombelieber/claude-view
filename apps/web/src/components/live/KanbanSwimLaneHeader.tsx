@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
+import { ChevronDown, ChevronRight, FolderOpen, GitBranch } from 'lucide-react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 
@@ -31,6 +31,7 @@ export function ProjectHeader({
       )}
     >
       <Chevron className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
+      <FolderOpen className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
       <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">
         {projectName}
       </span>
@@ -70,9 +71,9 @@ export function BranchHeader({
       )}
     >
       <Chevron className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
-      <GitBranch className="w-3 h-3 text-gray-400 dark:text-gray-500 shrink-0" />
-      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
-        {branchName ?? '(no branch)'}
+      <span className="inline-flex items-center gap-1 bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded text-xs font-mono">
+        <GitBranch className="w-3 h-3 shrink-0" />
+        <span className="truncate">{branchName ?? '(no branch)'}</span>
       </span>
       <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
         ({sessionCount})
