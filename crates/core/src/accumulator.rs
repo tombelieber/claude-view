@@ -305,17 +305,20 @@ impl SessionAccumulator {
                 .iter_mut()
                 .find(|a| a.tool_use_id == result.tool_use_id)
             {
-                // Background agents return "async_launched" immediately — they're
-                // still running, so only capture the agentId and keep Running status.
-                if result.status == "async_launched" {
-                    agent.agent_id = result.agent_id.clone();
-                } else {
-                    agent.status = if result.status == "completed" {
-                        SubAgentStatus::Complete
-                    } else {
-                        SubAgentStatus::Error
-                    };
-                    agent.agent_id = result.agent_id.clone();
+                // Whitelist known terminal statuses. Everything else
+                // (async_launched, teammate_spawned, queued, or any future
+                // non-terminal status) means the agent is still running —
+                // just capture the agentId and keep Running.
+                let terminal_status = match result.status.as_str() {
+                    "completed" => Some(SubAgentStatus::Complete),
+                    "failed" | "killed" => Some(SubAgentStatus::Error),
+                    _ => None, // non-terminal: still running
+                };
+
+                agent.agent_id = result.agent_id.clone();
+
+                if let Some(status) = terminal_status {
+                    agent.status = status;
                     agent.completed_at =
                         line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
                     agent.duration_ms = result.total_duration_ms;
@@ -1184,6 +1187,198 @@ mod tests {
         });
         acc.process_line(&notif_line, 0, &pricing);
 
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
+    }
+
+    #[test]
+    fn test_sub_agent_teammate_spawned_stays_running() {
+        // Regression: team-spawned agents return "teammate_spawned" in
+        // toolUseResult.status. These are async — agent is still running.
+        // Must NOT be marked Error.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01TEAM".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "landing-sync".to_string(),
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+
+        // Team spawn result — agent is running via mailbox
+        let mut result_line = empty_line();
+        result_line.line_type = LineType::User;
+        result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01TEAM".to_string(),
+            agent_id: Some("landing-sync@release-team".to_string()),
+            status: "teammate_spawned".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&result_line, 0, &pricing);
+
+        // MUST stay Running, capture agent_id, no completion fields
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+        assert_eq!(
+            acc.sub_agents[0].agent_id.as_deref(),
+            Some("landing-sync@release-team")
+        );
+        assert_eq!(acc.sub_agents[0].completed_at, None);
+        assert_eq!(acc.sub_agents[0].duration_ms, None);
+    }
+
+    #[test]
+    fn test_sub_agent_unknown_nonterminal_status_stays_running() {
+        // Forward-compatibility: any unrecognized status that isn't a known
+        // terminal ("completed"/"failed"/"killed") should keep the agent Running.
+        // This prevents future protocol additions from breaking the UI.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01FUTURE".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "future-agent".to_string(),
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        for status in ["queued", "delegated", "pending_review", "some_new_status"] {
+            let mut result_line = empty_line();
+            result_line.line_type = LineType::User;
+            result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+                tool_use_id: "toolu_01FUTURE".to_string(),
+                agent_id: Some("afuture1".to_string()),
+                status: status.to_string(),
+                total_duration_ms: None,
+                total_tool_use_count: None,
+                usage_input_tokens: None,
+                usage_output_tokens: None,
+                usage_cache_read_tokens: None,
+                usage_cache_creation_tokens: None,
+            });
+            acc.process_line(&result_line, 0, &pricing);
+
+            assert_eq!(
+                acc.sub_agents[0].status,
+                SubAgentStatus::Running,
+                "status '{status}' should keep agent Running, not mark Error"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sub_agent_terminal_statuses_via_result() {
+        // "completed" → Complete, "failed"/"killed" → Error
+        // These are the ONLY statuses that should trigger state transitions
+        // in the toolUseResult path (non-notification).
+        let pricing = HashMap::new();
+
+        for (status, expected) in [
+            ("completed", SubAgentStatus::Complete),
+            ("failed", SubAgentStatus::Error),
+            ("killed", SubAgentStatus::Error),
+        ] {
+            let mut acc = SessionAccumulator::new();
+            let tid = format!("toolu_{status}");
+
+            let mut spawn_line = empty_line();
+            spawn_line.line_type = LineType::Assistant;
+            spawn_line
+                .sub_agent_spawns
+                .push(crate::live_parser::SubAgentSpawn {
+                    tool_use_id: tid.clone(),
+                    agent_type: "general-purpose".to_string(),
+                    description: format!("{status}-agent"),
+                });
+            acc.process_line(&spawn_line, 0, &pricing);
+
+            let mut result_line = empty_line();
+            result_line.line_type = LineType::User;
+            result_line.timestamp = Some("2026-02-20T10:01:00Z".to_string());
+            result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+                tool_use_id: tid,
+                agent_id: Some(format!("a{status}")),
+                status: status.to_string(),
+                total_duration_ms: Some(5000),
+                total_tool_use_count: Some(3),
+                usage_input_tokens: None,
+                usage_output_tokens: None,
+                usage_cache_read_tokens: None,
+                usage_cache_creation_tokens: None,
+            });
+            acc.process_line(&result_line, 0, &pricing);
+
+            assert_eq!(
+                acc.sub_agents[0].status, expected,
+                "status '{status}' should map to {expected:?}"
+            );
+            // Terminal statuses should populate completion fields
+            assert!(
+                acc.sub_agents[0].completed_at.is_some(),
+                "terminal status '{status}' should set completed_at"
+            );
+            assert_eq!(acc.sub_agents[0].duration_ms, Some(5000));
+        }
+    }
+
+    #[test]
+    fn test_sub_agent_notification_unknown_terminal_is_error() {
+        // The notification path (task-notification) uses the same logic:
+        // "completed" → Complete, everything else → Error.
+        // Unknown terminal statuses in notifications should be Error (safe default).
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_01NTERM".to_string(),
+                agent_type: "general-purpose".to_string(),
+                description: "notif-agent".to_string(),
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        // Give it an agent_id via async_launched
+        let mut launch_line = empty_line();
+        launch_line.line_type = LineType::User;
+        launch_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_01NTERM".to_string(),
+            agent_id: Some("anterm1".to_string()),
+            status: "async_launched".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+        });
+        acc.process_line(&launch_line, 0, &pricing);
+
+        // Notification with unknown terminal status
+        let mut notif_line = empty_line();
+        notif_line.line_type = LineType::User;
+        notif_line.sub_agent_notification = Some(crate::live_parser::SubAgentNotification {
+            agent_id: "anterm1".to_string(),
+            status: "timed_out".to_string(),
+        });
+        acc.process_line(&notif_line, 0, &pricing);
+
+        // Notifications are always terminal — unknown = Error
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
     }
 

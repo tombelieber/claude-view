@@ -26,9 +26,7 @@ async fn get_team(
 ) -> ApiResult<Json<TeamDetail>> {
     state
         .teams
-        .teams
         .get(&name)
-        .cloned()
         .map(Json)
         .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))
 }
@@ -40,9 +38,7 @@ async fn get_team_inbox(
 ) -> ApiResult<Json<Vec<InboxMessage>>> {
     state
         .teams
-        .inboxes
-        .get(&name)
-        .cloned()
+        .inbox(&name)
         .map(Json)
         .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))
 }
