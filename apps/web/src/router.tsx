@@ -9,6 +9,7 @@ import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
+import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { TeamsPage } from './pages/TeamsPage'
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
       { path: 'reports', element: <ReportsPage /> },
       { path: 'prompts', element: <PromptsPage /> },
       { path: 'teams', element: <TeamsPage /> },
+      { path: 'plugins', element: <PluginsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
