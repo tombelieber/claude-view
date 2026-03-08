@@ -147,6 +147,10 @@ export type LiveSession = {
    */
   compactCount: number
   /**
+   * Session slug for plan file association.
+   */
+  slug: string | null
+  /**
    * If Some, this session is being controlled via the sidecar Agent SDK.
    */
   control: ControlBinding | null
