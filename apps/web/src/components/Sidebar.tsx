@@ -14,6 +14,7 @@ import {
   FolderTree,
   GitBranch,
   List,
+  MessageSquareText,
   Monitor,
   PanelLeft,
   PanelLeftClose,
@@ -537,6 +538,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           <FileText className="w-5 h-5" />
         </Link>
         <Link
+          to="/prompts"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/prompts'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Prompts"
+        >
+          <MessageSquareText className="w-5 h-5" />
+        </Link>
+        <Link
           to="/teams"
           className={cn(
             'p-2 rounded-md transition-colors',
@@ -666,6 +680,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <FileText className="w-4 h-4" />
                         <span className="font-medium">Reports</span>
+                      </Link>
+                      <Link
+                        to={`/prompts${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/prompts'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <MessageSquareText className="w-4 h-4" />
+                        <span className="font-medium">Prompts</span>
                       </Link>
                       <Link
                         to={`/teams${paramString ? `?${paramString}` : ''}`}
