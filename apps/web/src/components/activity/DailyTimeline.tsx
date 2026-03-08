@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, GitBranch } from 'lucide-react'
+import { ArrowRight, Clock, FolderOpen, GitBranch } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { DayActivity } from '../../lib/activity-utils'
@@ -150,13 +150,14 @@ export function DailyTimeline({
 
                     {/* Project badge + branch tag */}
                     <span className="flex items-center gap-1 shrink-0">
-                      <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap">
+                        <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />
                         {projectDisplayName(
                           (session.gitRoot || null) ?? session.projectPath ?? session.project,
                         )}
                       </span>
                       {branchLabel(session) && (
-                        <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded whitespace-nowrap flex items-center gap-0.5 max-w-[140px]">
+                        <span className="inline-flex items-center gap-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded whitespace-nowrap max-w-35">
                           <GitBranch className="w-3 h-3 shrink-0" />
                           <span className="truncate">{branchLabel(session)}</span>
                         </span>
