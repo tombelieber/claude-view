@@ -31,6 +31,7 @@ pub mod stats;
 pub mod status;
 pub mod sync;
 pub mod system;
+pub mod teams;
 pub mod terminal;
 pub mod trends;
 pub mod turns;
@@ -99,6 +100,9 @@ use crate::state::AppState;
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)
 /// - POST /api/oauth/usage/refresh - Force-refresh OAuth usage (bypasses cache, 60s spam guard)
 /// - GET /api/oauth/identity - Cached auth identity (email, org, plan)
+/// - GET /api/teams - List all teams (summaries)
+/// - GET /api/teams/:name - Get team detail (config + members)
+/// - GET /api/teams/:name/inbox - Get team inbox messages
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
 pub fn api_routes(state: Arc<AppState>) -> Router {
     Router::new()
@@ -134,6 +138,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", oauth::router())
         .nest("/api", pairing::router())
         .nest("/api", share::router())
+        .nest("/api", teams::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
