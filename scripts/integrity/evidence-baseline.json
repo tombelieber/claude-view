@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "audit_date": "2026-03-08",
+  "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
+  "corpus_stats": {
+    "files": 5932,
+    "lines_approx": 997878
+  },
+  "top_level_types": {
+    "handled": ["assistant", "file-history-snapshot", "queue-operation", "system", "user"],
+    "handled_as_progress": ["progress"],
+    "silently_ignored": ["custom-title", "last-prompt", "pr-link"],
+    "zero_occurrence_but_parser_has_arm": ["result", "saved_hook_context", "summary"],
+    "zero_occurrence_not_in_parser": ["hook_event"]
+  },
+  "content_block_types": {
+    "assistant": ["text", "thinking", "tool_use"],
+    "user": ["image", "text", "tool_result"],
+    "zero_occurrence": ["citation", "redacted_thinking", "server_tool_result", "server_tool_use"]
+  },
+  "thinking_block_keys": {
+    "required": ["signature", "thinking", "type"],
+    "optional": []
+  },
+  "tool_use_block_keys": {
+    "required": ["id", "input", "name", "type"],
+    "optional": ["caller"]
+  },
+  "tool_result_block_keys": {
+    "required": ["content", "tool_use_id", "type"],
+    "optional": ["is_error"]
+  },
+  "system_subtypes": {
+    "known": [
+      "api_error",
+      "compact_boundary",
+      "local_command",
+      "microcompact_boundary",
+      "stop_hook_summary",
+      "turn_duration"
+    ],
+    "zero_occurrence": ["informational"]
+  },
+  "progress_data_types": {
+    "known": [
+      "agent_progress",
+      "bash_progress",
+      "hook_progress",
+      "mcp_progress",
+      "query_update",
+      "search_results_received",
+      "waiting_for_task"
+    ]
+  },
+  "queue_operations": ["dequeue", "enqueue", "popAll", "remove"],
+  "agent_progress_content_path": "data.message.message.content",
+  "agent_progress_content_path_note": "Double-nested: data.message is envelope {uuid,type,timestamp,message}, data.message.message is the API response with .content[]",
+  "assistant_message_keys": {
+    "required": ["content", "id", "model", "role", "stop_reason", "stop_sequence", "type", "usage"],
+    "optional": ["container", "context_management"]
+  },
+  "usage_keys": {
+    "required": [
+      "cache_creation",
+      "cache_creation_input_tokens",
+      "cache_read_input_tokens",
+      "input_tokens",
+      "output_tokens",
+      "service_tier"
+    ],
+    "optional": ["inference_geo", "iterations", "server_tool_use", "speed"],
+    "cache_creation_nested": ["ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens"],
+    "server_tool_use_nested": ["web_fetch_requests", "web_search_requests"]
+  },
+  "stop_reason_values": [null, "end_turn", "stop_sequence", "tool_use"],
+  "user_content_shapes": ["array", "string"],
+  "toolUseResult_json_types": ["array", "object", "string"],
+  "types_without_uuid": [
+    "custom-title",
+    "file-history-snapshot",
+    "last-prompt",
+    "pr-link",
+    "queue-operation"
+  ],
+  "cost_fields_exist": false,
+  "cost_fields_note": "costUSD, cost_usd, total_cost_usd = 0 occurrences. Cost is computed from usage tokens + model pricing."
+}
