@@ -170,9 +170,10 @@ jobs:
         run: npm publish --access public
         working-directory: npx-cli
 
-      - name: Build plugin
-        run: node scripts/bundle-mcp.mjs
-        working-directory: packages/plugin
+      - name: Build MCP + plugin
+        run: |
+          cd packages/mcp && npm install && npx tsc
+          cd ../plugin && node scripts/bundle-mcp.mjs
 
       - name: Publish @claude-view/plugin
         run: npm publish --access public
