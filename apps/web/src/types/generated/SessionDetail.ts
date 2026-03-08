@@ -14,6 +14,10 @@ export type SessionDetail = {
    * Persistent task data from ~/.claude/tasks/{sessionId}/*.json
    */
   tasks?: Array<TaskItem>
+  /**
+   * Whether plan files exist for this session's slug
+   */
+  hasPlans: boolean
   id: string
   project: string
   projectPath: string
@@ -85,4 +89,5 @@ export type SessionDetail = {
   longestTaskSeconds?: number | null
   longestTaskPreview?: string | null
   totalCostUsd?: number | null
+  slug?: string | null
 }
