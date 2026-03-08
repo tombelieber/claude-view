@@ -8,6 +8,9 @@ pre-commit:
     biome:
       glob: "*.{js,ts,jsx,tsx,json}"
       run: bunx biome check --write --no-errors-on-unmatched {staged_files} && git add {staged_files}
+    typecheck:
+      glob: "*.{ts,tsx}"
+      run: bunx turbo typecheck
     cargo-fmt:
       glob: "*.rs"
       run: cargo fmt && git add {staged_files}

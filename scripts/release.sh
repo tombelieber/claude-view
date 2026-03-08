@@ -7,6 +7,20 @@ set -euo pipefail
 BUMP="${1:-patch}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# ─── Pre-release evidence audit ──────────────────────────────────
+# Validates parser/indexer against real JSONL data structure.
+# Catches drift before it ships. Skip with SKIP_EVIDENCE=1.
+if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
+  echo "Running evidence audit (JSONL schema guard)..."
+  if ! EVIDENCE_QUICK=1 "$ROOT/scripts/integrity/evidence-audit.sh"; then
+    echo ""
+    echo "ERROR: Evidence audit failed — parser/indexer may not handle current JSONL schema."
+    echo "Fix the drift or set SKIP_EVIDENCE=1 to bypass (NOT recommended)."
+    exit 1
+  fi
+  echo ""
+fi
+
 cd "$ROOT/npx-cli"
 
 # Bump version in npx-cli/package.json (no git tag from npm)
