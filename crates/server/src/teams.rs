@@ -165,7 +165,7 @@ fn load_inbox(team_dir: &Path) -> Vec<InboxMessage> {
     let mut messages = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.extension().map_or(true, |e| e != "json") {
+        if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(&path) else {
