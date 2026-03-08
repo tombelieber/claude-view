@@ -546,7 +546,7 @@ pub struct AggregatedSignals {
     pub system_subtypes: HashSet<String>,
     pub progress_data_types: HashSet<String>,
     pub assistant_content_block_types: HashSet<String>,
-    pub thinking_key_sets: Vec<BTreeSet<String>>,
+    pub thinking_key_sets: HashSet<BTreeSet<String>>,
     pub nesting_direct_count: usize,
     pub nesting_nested_count: usize,
     pub files_scanned: usize,
@@ -583,22 +583,23 @@ impl AggregatedSignals {
                     if let Some(dt) = signals.data_type {
                         self.progress_data_types.insert(dt);
                     }
+                    if signals.nesting_direct {
+                        self.nesting_direct_count += 1;
+                    }
+                    if signals.nesting_nested {
+                        self.nesting_nested_count += 1;
+                    }
                 }
                 "assistant" => {
                     for bt in &signals.content_block_types {
                         self.assistant_content_block_types.insert(bt.clone());
                     }
-                    self.thinking_key_sets.extend(signals.thinking_key_sets);
+                    for ks in signals.thinking_key_sets {
+                        self.thinking_key_sets.insert(ks);
+                    }
                 }
                 _ => {}
             }
-        }
-
-        if signals.nesting_direct {
-            self.nesting_direct_count += 1;
-        }
-        if signals.nesting_nested {
-            self.nesting_nested_count += 1;
         }
     }
 }
@@ -619,8 +620,10 @@ fn trim_ascii_bytes(bytes: &[u8]) -> &[u8] {
 
 /// Scan a single JSONL file and return aggregated signals.
 pub fn scan_file(path: &Path) -> AggregatedSignals {
-    let mut agg = AggregatedSignals::default();
-    agg.files_scanned = 1;
+    let mut agg = AggregatedSignals {
+        files_scanned: 1,
+        ..Default::default()
+    };
 
     let data = match std::fs::read(path) {
         Ok(d) => d,
@@ -715,7 +718,7 @@ pub fn scan_directory_parallel(data_dir: &Path) -> AggregatedSignals {
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    let chunk_size = (files.len() + num_threads - 1) / num_threads;
+    let chunk_size = files.len().div_ceil(num_threads);
     let chunks: Vec<&[PathBuf]> = files.chunks(chunk_size).collect();
 
     let mut final_agg = AggregatedSignals::default();
@@ -847,15 +850,8 @@ pub fn run_audit_checks(signals: &AggregatedSignals, baseline: &Baseline) -> Aud
         &expected_prog,
     ));
 
-    // 5. Thinking block keys
-    // Union all observed thinking key sets
-    let mut all_thinking_keys = HashSet::new();
-    for key_set in &signals.thinking_key_sets {
-        for key in key_set {
-            all_thinking_keys.insert(key.clone());
-        }
-    }
-    let expected_thinking: HashSet<String> = baseline
+    // 5. Thinking block keys — check each unique key-shape variant
+    let expected_thinking: BTreeSet<String> = baseline
         .thinking_block_keys
         .required
         .iter()
@@ -864,18 +860,48 @@ pub fn run_audit_checks(signals: &AggregatedSignals, baseline: &Baseline) -> Aud
 
     // Empty corpus = pass with note (not drift)
     let thinking_check = if signals.thinking_key_sets.is_empty() {
+        let absent: Vec<String> = expected_thinking.iter().cloned().collect();
         CheckResult {
             name: "Thinking block keys".to_string(),
             passed: true,
             new_items: vec![],
-            absent_items: expected_thinking.iter().cloned().sorted(),
+            absent_items: absent,
         }
     } else {
-        check_set_diff(
-            "Thinking block keys",
-            &all_thinking_keys,
-            &expected_thinking,
-        )
+        // Every observed key-shape must exactly match expected
+        let all_match = signals
+            .thinking_key_sets
+            .iter()
+            .all(|ks| *ks == expected_thinking);
+        if all_match {
+            CheckResult {
+                name: "Thinking block keys".to_string(),
+                passed: true,
+                new_items: vec![],
+                absent_items: vec![],
+            }
+        } else {
+            // Collect deviating variants
+            let mut new_items = Vec::new();
+            for ks in &signals.thinking_key_sets {
+                if *ks != expected_thinking {
+                    let extra: Vec<String> = ks.difference(&expected_thinking).cloned().collect();
+                    let missing: Vec<String> = expected_thinking.difference(ks).cloned().collect();
+                    new_items.push(format!(
+                        "variant {{{}}} — extra: {:?}, missing: {:?}",
+                        ks.iter().cloned().collect::<Vec<_>>().join(", "),
+                        extra,
+                        missing,
+                    ));
+                }
+            }
+            CheckResult {
+                name: "Thinking block keys".to_string(),
+                passed: false,
+                new_items,
+                absent_items: vec![],
+            }
+        }
     };
     checks.push(thinking_check);
 
@@ -1145,7 +1171,7 @@ mod tests {
             !agg.thinking_key_sets.is_empty(),
             "should have thinking key sets"
         );
-        let first_keys = &agg.thinking_key_sets[0];
+        let first_keys = agg.thinking_key_sets.iter().next().unwrap();
         assert!(
             first_keys.contains("type"),
             "thinking keys should include 'type'"
