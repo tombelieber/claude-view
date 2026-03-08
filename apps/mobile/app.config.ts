@@ -18,6 +18,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     bundleIdentifier: 'ai.claudeview.mobile',
     associatedDomains: ['applinks:m.claudeview.ai'],
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     package: 'ai.claudeview.mobile',
