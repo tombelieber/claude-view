@@ -128,7 +128,7 @@ pub struct AppState {
     pub oauth_usage_cache: CachedUpstream<OAuthUsageResponse>,
     /// Cached `claude plugin list --available --json` response (5-min TTL).
     /// Shared by both `/api/plugins` and `/api/plugins/marketplaces`.
-    pub plugin_cli_cache: CachedUpstream<CliAvailableResponse>,
+    pub(crate) plugin_cli_cache: CachedUpstream<CliAvailableResponse>,
     /// Parsed teams from ~/.claude/teams/ (read-only, loaded at startup).
     pub teams: Arc<crate::teams::TeamsStore>,
     /// Prompt history search index (Tantivy).
