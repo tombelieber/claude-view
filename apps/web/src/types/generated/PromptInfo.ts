@@ -3,6 +3,10 @@
 export type PromptInfo = {
   id: string
   display: string
+  /**
+   * HTML snippet with `<b>` tags around matched search terms.
+   * `None` in browse/filter-only mode (no free-text query).
+   */
   snippet: string | null
   project: string
   projectDisplayName: string
