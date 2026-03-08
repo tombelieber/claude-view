@@ -14,7 +14,7 @@ import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
 import { TerminalOverlay } from '../components/live/TerminalOverlay'
 import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
 import { filterLiveSessions } from '../components/live/live-filter'
-import type { KanbanGroupBy } from '../components/live/types'
+import type { KanbanGroupBy, KanbanSort } from '../components/live/types'
 import type { LiveViewMode } from '../components/live/types'
 import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 import { useKanbanGrouping } from '../components/live/use-kanban-grouping'
@@ -90,10 +90,8 @@ export function LiveMonitorPage() {
 
   // Kanban grouping
   const urlGroupBy = searchParams.get('groupBy') as KanbanGroupBy | null
-  const { groupBy, setGroupBy, projectGroups, isCollapsed, toggleCollapse } = useKanbanGrouping(
-    filteredSessions,
-    urlGroupBy,
-  )
+  const { groupBy, setGroupBy, sort, setSort, projectGroups, isCollapsed, toggleCollapse } =
+    useKanbanGrouping(filteredSessions, urlGroupBy)
 
   const handleGroupByChange = useCallback(
     (value: KanbanGroupBy) => {
@@ -107,6 +105,13 @@ export function LiveMonitorPage() {
       setSearchParams(params, { replace: true })
     },
     [searchParams, setSearchParams, setGroupBy],
+  )
+
+  const handleSortChange = useCallback(
+    (value: KanbanSort) => {
+      setSort(value)
+    },
+    [setSort],
   )
 
   // Derive summary from current sessions so it always matches the kanban/grid.
@@ -371,6 +376,8 @@ export function LiveMonitorPage() {
             totalCount={sessions.length}
             groupByValue={viewMode === 'kanban' ? groupBy : undefined}
             onGroupByChange={viewMode === 'kanban' ? handleGroupByChange : undefined}
+            sortValue={viewMode === 'kanban' ? sort : undefined}
+            onSortChange={viewMode === 'kanban' ? handleSortChange : undefined}
           />
         </div>
       </div>
