@@ -638,6 +638,216 @@ async fn plugin_action(
 }
 
 // ---------------------------------------------------------------------------
+// Marketplace types + endpoints
+// ---------------------------------------------------------------------------
+
+/// A configured marketplace.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceInfo {
+    pub name: String,
+    pub source: String,
+}
+
+/// Request body for POST /api/plugins/marketplaces/action.
+#[derive(Debug, Deserialize, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct MarketplaceActionRequest {
+    /// "add" | "remove" | "update"
+    pub action: String,
+    /// For add: GitHub repo URL or owner/repo
+    #[serde(default)]
+    pub source: Option<String>,
+    /// For remove/update: marketplace name
+    #[serde(default)]
+    pub name: Option<String>,
+    /// For add: "user" | "project"
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+/// Validate marketplace source — must be "owner/repo" short form.
+fn validate_marketplace_source(source: &str) -> Result<String, ApiError> {
+    let short = source
+        .trim_start_matches("https://github.com/")
+        .trim_start_matches("http://github.com/")
+        .trim_end_matches('/')
+        .trim_end_matches(".git");
+
+    let parts: Vec<&str> = short.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid marketplace source: {source}. Use 'owner/repo' format."
+        )));
+    }
+
+    for part in &parts {
+        if part
+            .chars()
+            .any(|c| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.')
+        {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid characters in marketplace source: {source}."
+            )));
+        }
+    }
+
+    if short.len() > 256 {
+        return Err(ApiError::BadRequest("Marketplace source too long.".into()));
+    }
+
+    Ok(short.to_string())
+}
+
+/// CLI JSON shape for `claude plugin marketplace list --json`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CliMarketplace {
+    name: String,
+    #[serde(default)]
+    source: String,
+}
+
+/// GET /api/plugins/marketplaces
+async fn list_marketplaces() -> ApiResult<Json<Vec<MarketplaceInfo>>> {
+    let json = run_claude_plugin(&["marketplace", "list", "--json"]).await;
+
+    match json {
+        Ok(data) => {
+            let markets: Vec<CliMarketplace> = serde_json::from_str(&data).unwrap_or_default();
+            Ok(Json(
+                markets
+                    .into_iter()
+                    .map(|m| MarketplaceInfo {
+                        name: m.name,
+                        source: m.source,
+                    })
+                    .collect(),
+            ))
+        }
+        Err(e) => {
+            tracing::warn!("Marketplace list failed: {e}");
+            Ok(Json(vec![]))
+        }
+    }
+}
+
+/// POST /api/plugins/marketplaces/action
+async fn marketplace_action(
+    Json(req): Json<MarketplaceActionRequest>,
+) -> ApiResult<Json<PluginActionResponse>> {
+    let valid_actions = ["add", "remove", "update"];
+    if !valid_actions.contains(&req.action.as_str()) {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid marketplace action: {}. Must be one of: {}",
+            req.action,
+            valid_actions.join(", ")
+        )));
+    }
+
+    // Validate inputs per action
+    match req.action.as_str() {
+        "add" => {
+            let source = req.source.as_deref().ok_or_else(|| {
+                ApiError::BadRequest("'source' is required for add action.".into())
+            })?;
+            let validated = validate_marketplace_source(source)?;
+            validate_scope(&req.scope)?;
+
+            let _guard = get_mutation_lock()
+                .try_lock()
+                .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
+
+            let mut args = vec!["marketplace", "add", &validated];
+            let scope_str;
+            if let Some(ref scope) = req.scope {
+                scope_str = scope.clone();
+                args.push("--scope");
+                args.push(&scope_str);
+            }
+
+            match run_claude_plugin(&args).await {
+                Ok(stdout) => Ok(Json(PluginActionResponse {
+                    success: true,
+                    action: "add".into(),
+                    name: validated,
+                    message: if stdout.trim().is_empty() {
+                        None
+                    } else {
+                        Some(stdout.trim().to_string())
+                    },
+                })),
+                Err(e) => Ok(Json(PluginActionResponse {
+                    success: false,
+                    action: "add".into(),
+                    name: validated,
+                    message: Some(e.to_string()),
+                })),
+            }
+        }
+        "remove" => {
+            let name = req.name.as_deref().ok_or_else(|| {
+                ApiError::BadRequest("'name' is required for remove action.".into())
+            })?;
+            validate_plugin_name(name)?;
+
+            let _guard = get_mutation_lock()
+                .try_lock()
+                .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
+
+            match run_claude_plugin(&["marketplace", "remove", name]).await {
+                Ok(_) => Ok(Json(PluginActionResponse {
+                    success: true,
+                    action: "remove".into(),
+                    name: name.to_string(),
+                    message: None,
+                })),
+                Err(e) => Ok(Json(PluginActionResponse {
+                    success: false,
+                    action: "remove".into(),
+                    name: name.to_string(),
+                    message: Some(e.to_string()),
+                })),
+            }
+        }
+        "update" => {
+            let _guard = get_mutation_lock()
+                .try_lock()
+                .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
+
+            let args = if let Some(ref name) = req.name {
+                validate_plugin_name(name)?;
+                vec!["marketplace", "update", name.as_str()]
+            } else {
+                vec!["marketplace", "update"]
+            };
+
+            match run_claude_plugin(&args).await {
+                Ok(stdout) => Ok(Json(PluginActionResponse {
+                    success: true,
+                    action: "update".into(),
+                    name: req.name.unwrap_or_default(),
+                    message: if stdout.trim().is_empty() {
+                        None
+                    } else {
+                        Some(stdout.trim().to_string())
+                    },
+                })),
+                Err(e) => Ok(Json(PluginActionResponse {
+                    success: false,
+                    action: "update".into(),
+                    name: req.name.unwrap_or_default(),
+                    message: Some(e.to_string()),
+                })),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -645,6 +855,8 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/plugins", get(list_plugins))
         .route("/plugins/action", post(plugin_action))
+        .route("/plugins/marketplaces", get(list_marketplaces))
+        .route("/plugins/marketplaces/action", post(marketplace_action))
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,5 +1229,73 @@ mod tests {
         assert!(validate_plugin_name("foo;rm -rf /").is_err());
         assert!(validate_plugin_name("").is_err());
         assert!(validate_plugin_name(&"a".repeat(129)).is_err());
+    }
+
+    #[test]
+    fn test_validate_marketplace_source() {
+        // Valid sources
+        assert_eq!(
+            validate_marketplace_source("owner/repo").unwrap(),
+            "owner/repo"
+        );
+        assert_eq!(
+            validate_marketplace_source("https://github.com/owner/repo").unwrap(),
+            "owner/repo"
+        );
+        assert_eq!(
+            validate_marketplace_source("https://github.com/owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+        assert_eq!(
+            validate_marketplace_source("https://github.com/owner/repo/").unwrap(),
+            "owner/repo"
+        );
+
+        // Invalid sources
+        assert!(validate_marketplace_source("just-a-name").is_err());
+        assert!(validate_marketplace_source("a/b/c").is_err());
+        assert!(validate_marketplace_source("/repo").is_err());
+        assert!(validate_marketplace_source("owner/").is_err());
+        assert!(validate_marketplace_source("owner/repo;evil").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_action_rejects_add_without_source() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/plugins/marketplaces/action")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"action":"add"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_action_rejects_invalid_action() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/plugins/marketplaces/action")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"action":"destroy"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
