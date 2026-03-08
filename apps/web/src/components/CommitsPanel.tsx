@@ -1,4 +1,4 @@
-import { Check, Clock, Copy, GitCommit } from 'lucide-react'
+import { Check, Clock, Copy, GitBranch, GitCommit } from 'lucide-react'
 import { useState } from 'react'
 import { formatRelativeTime, truncateMessage } from '../lib/format-utils'
 import { cn } from '../lib/utils'
@@ -55,7 +55,12 @@ function CommitRow({ commit }: CommitRowProps) {
         <p className="text-sm text-gray-900 dark:text-gray-100 truncate" title={commit.message}>
           {truncateMessage(commit.message, 50)}
         </p>
-        {commit.branch && <p className="text-xs text-gray-400 truncate">on {commit.branch}</p>}
+        {commit.branch && (
+          <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded">
+            <GitBranch className="w-2.5 h-2.5 shrink-0" />
+            {commit.branch}
+          </span>
+        )}
       </div>
 
       {/* Tier badge and time */}

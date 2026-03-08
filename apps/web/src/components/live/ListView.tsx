@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, GitBranch } from 'lucide-react'
+import { ArrowDown, ArrowUp, FolderOpen, GitBranch } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
@@ -174,8 +174,11 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Project */}
                 <td className="px-2 py-2 w-[140px]">
-                  <span className="text-xs text-gray-700 dark:text-gray-300 truncate block">
-                    {session.projectDisplayName || session.project}
+                  <span className="inline-flex items-center gap-1.5 max-w-full">
+                    <FolderOpen className="h-3 w-3 text-amber-500 dark:text-amber-400 shrink-0" />
+                    <span className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">
+                      {session.projectDisplayName || session.project}
+                    </span>
                   </span>
                 </td>
 
@@ -183,9 +186,9 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 <td className="px-2 py-2 w-[120px]">
                   {session.effectiveBranch ? (
                     <span className="inline-flex items-center gap-1 max-w-full">
-                      <GitBranch className="h-3 w-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded truncate">
-                        {session.effectiveBranch}
+                      <span className="inline-flex items-center gap-1 bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded text-xs font-mono max-w-full">
+                        <GitBranch className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{session.effectiveBranch}</span>
                       </span>
                     </span>
                   ) : (

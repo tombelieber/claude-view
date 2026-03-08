@@ -7,6 +7,7 @@ import {
   Clock,
   FileCheck,
   FileText,
+  FolderOpen,
   GitBranch,
   Loader,
   MessageCircle,
@@ -132,9 +133,10 @@ export function SessionCard({
           {!hideProjectBranch && (
             <>
               <span
-                className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded truncate max-w-[120px]"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-300 rounded truncate max-w-30"
                 title={session.projectPath || session.projectDisplayName || session.project}
               >
+                <FolderOpen className="w-2.5 h-2.5 shrink-0 text-amber-500 dark:text-amber-400" />
                 {session.projectDisplayName || session.project}
               </span>
               {(() => {
@@ -146,16 +148,16 @@ export function SessionCard({
                 if (!branch) return null
                 return (
                   <span
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded"
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded"
                     title={driftOrigin ? `${branch} (worktree, started on ${driftOrigin})` : branch}
                   >
-                    <GitBranch className="w-2.5 h-2.5 flex-shrink-0" />
+                    <GitBranch className="w-2.5 h-2.5 shrink-0" />
                     <span className="truncate">{branch}</span>
                     {isWorktree && (
-                      <TreePine className="w-2.5 h-2.5 flex-shrink-0 text-green-600 dark:text-green-400" />
+                      <TreePine className="w-2.5 h-2.5 shrink-0 text-green-600 dark:text-green-400" />
                     )}
                     {driftOrigin && (
-                      <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-0.5">
+                      <span className="text-[9px] text-violet-400 dark:text-violet-500 ml-0.5">
                         {'↗'}
                         {driftOrigin}
                       </span>
