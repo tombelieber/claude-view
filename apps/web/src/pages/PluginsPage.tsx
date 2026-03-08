@@ -4,6 +4,7 @@ import { AvailablePluginCard } from '../components/plugins/AvailablePluginCard'
 import { PluginCard } from '../components/plugins/PluginCard'
 import { PluginHealthBanner } from '../components/plugins/PluginHealthBanner'
 import { PluginToolbar } from '../components/plugins/PluginToolbar'
+import { usePluginMutations } from '../hooks/use-plugin-mutations'
 import { usePlugins } from '../hooks/use-plugins'
 
 export function PluginsPage() {
@@ -27,6 +28,20 @@ export function PluginsPage() {
     sort: 'usage',
   })
 
+  const mutations = usePluginMutations()
+
+  const handleAction = (action: string, name: string, actionScope?: string) => {
+    mutations.execute({ action, name, scope: actionScope ?? null })
+  }
+
+  const handleUpdateAll = async () => {
+    if (!data) return
+    const updatable = data.installed.filter((p) => p.updatable)
+    for (const plugin of updatable) {
+      await mutations.execute({ action: 'update', name: plugin.name, scope: null })
+    }
+  }
+
   const totalCount = (data?.totalInstalled ?? 0) + (data?.totalAvailable ?? 0)
 
   return (
@@ -44,7 +59,9 @@ export function PluginsPage() {
           {data && data.updatableCount > 0 && (
             <button
               type="button"
-              className="text-xs px-3 py-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              onClick={handleUpdateAll}
+              disabled={mutations.isPending}
+              className="text-xs px-3 py-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
             >
               Update All ({data.updatableCount})
             </button>
@@ -102,13 +119,21 @@ export function PluginsPage() {
 
         {data && totalCount > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Installed cards first (solid border) */}
             {data.installed.map((plugin) => (
-              <PluginCard key={plugin.id} plugin={plugin} />
+              <PluginCard
+                key={plugin.id}
+                plugin={plugin}
+                onAction={handleAction}
+                isPending={mutations.isPending}
+              />
             ))}
-            {/* Available cards after (dashed border) */}
             {data.available.map((plugin) => (
-              <AvailablePluginCard key={plugin.pluginId} plugin={plugin} />
+              <AvailablePluginCard
+                key={plugin.pluginId}
+                plugin={plugin}
+                onInstall={(name, installScope) => handleAction('install', name, installScope)}
+                isPending={mutations.isPending}
+              />
             ))}
           </div>
         )}
