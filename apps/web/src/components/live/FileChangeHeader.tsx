@@ -37,6 +37,7 @@ export function FileChangeHeader({ file, sessionId }: FileChangeHeaderProps) {
     >
       {/* Clickable header */}
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className={cn(
           'flex items-center gap-2 w-full px-3 py-2 text-left transition-colors cursor-pointer',
@@ -81,9 +82,9 @@ export function FileChangeHeader({ file, sessionId }: FileChangeHeaderProps) {
 
           {isLoading && (
             <div className="p-3 space-y-2">
-              {[75, 60, 85, 50].map((w, i) => (
+              {[75, 60, 85, 50].map((w) => (
                 <div
-                  key={i}
+                  key={w}
                   className="animate-pulse bg-gray-200 dark:bg-gray-800 rounded h-3"
                   style={{ width: `${w}%` }}
                 />

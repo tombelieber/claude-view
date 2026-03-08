@@ -54,6 +54,7 @@ export function TaskDetailCard({ task, onScrollTo }: TaskDetailCardProps) {
           <p className={showFull ? '' : 'line-clamp-3'}>{task.description}</p>
           {isLong && (
             <button
+              type="button"
               onClick={() => setExpanded(!expanded)}
               className="text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline mt-0.5 cursor-pointer"
             >
