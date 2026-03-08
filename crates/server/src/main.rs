@@ -17,7 +17,7 @@ use claude_view_server::auth::supabase::fetch_decoding_key;
 use claude_view_server::state::ShareConfig;
 use claude_view_server::{
     create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus,
-    SearchIndexHolder,
+    PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder, SearchIndexHolder,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing_subscriber::FmtSubscriber;
@@ -309,7 +309,12 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Step 4b: Build the Axum app with indexing state, registry holder, and search index
+    // Step 4b: Create prompt history holders
+    let prompt_index_holder: PromptIndexHolder = Arc::new(RwLock::new(None));
+    let prompt_stats_holder: PromptStatsHolder = Arc::new(RwLock::new(None));
+    let prompt_templates_holder: PromptTemplatesHolder = Arc::new(RwLock::new(None));
+
+    // Step 4c: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
     let sidecar = Arc::new(claude_view_server::SidecarManager::new());
     let sidecar_for_shutdown = sidecar.clone();
@@ -323,6 +328,9 @@ async fn main() -> Result<()> {
         sidecar,
         jwks,
         share,
+        prompt_index_holder.clone(),
+        prompt_stats_holder.clone(),
+        prompt_templates_holder.clone(),
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
@@ -340,6 +348,9 @@ async fn main() -> Result<()> {
     let idx_db = db.clone();
     let idx_registry = registry_holder.clone();
     let idx_search = search_index_holder.clone();
+    let idx_prompt_index = prompt_index_holder.clone();
+    let idx_prompt_stats = prompt_stats_holder.clone();
+    let idx_prompt_templates = prompt_templates_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -471,7 +482,116 @@ async fn main() -> Result<()> {
                 run_git_sync_logged(&idx_db, "initial").await;
                 run_snapshot_generation(&idx_db, "initial").await;
 
-                // 5. Periodic sync loop: re-scan changed sessions, git-sync, snapshots.
+                // 6. Prompt History Indexing
+                let ph_start = std::time::Instant::now();
+                let history_path = dirs::home_dir()
+                    .expect("home dir")
+                    .join(".claude")
+                    .join("history.jsonl");
+
+                if history_path.exists() {
+                    match claude_view_core::prompt_history::parse_history(&history_path).await {
+                        Ok(entries) => {
+                            tracing::info!(count = entries.len(), "parsed prompt history");
+
+                            // Compute stats
+                            let stats = claude_view_core::prompt_history::compute_stats(&entries);
+                            *idx_prompt_stats.write().unwrap() = Some(stats);
+
+                            // Compute templates
+                            let prompt_strs: Vec<&str> =
+                                entries.iter().map(|e| e.display.as_str()).collect();
+                            let templates = claude_view_core::prompt_templates::detect_templates(
+                                &prompt_strs,
+                                3,
+                            );
+                            *idx_prompt_templates.write().unwrap() = Some(templates);
+
+                            // Build Tantivy index
+                            let index_path = claude_view_core::paths::prompt_index_dir();
+                            match claude_view_search::prompt_index::PromptSearchIndex::open(
+                                &index_path,
+                            ) {
+                                Ok(index) => {
+                                    let documents: Vec<
+                                        claude_view_search::prompt_index::PromptDocument,
+                                    > = entries
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, e)| {
+                                            claude_view_search::prompt_index::PromptDocument {
+                                                prompt_id: format!(
+                                                    "{}-{}",
+                                                    e.timestamp_ms, i
+                                                ),
+                                                display: e.display.clone(),
+                                                paste_text: e.paste_text(),
+                                                project: e
+                                                    .project_display_name()
+                                                    .to_string(),
+                                                session_id: e.session_id.clone(),
+                                                branch: String::new(),
+                                                model: String::new(),
+                                                git_root: e.project.clone(),
+                                                intent:
+                                                    claude_view_core::prompt_history::classify_intent(
+                                                        &e.display,
+                                                    )
+                                                    .to_string(),
+                                                complexity:
+                                                    claude_view_core::prompt_history::complexity_bucket(
+                                                        &e.display,
+                                                    )
+                                                    .to_string(),
+                                                timestamp: e.timestamp_secs(),
+                                                has_paste: e
+                                                    .pasted_contents
+                                                    .as_ref()
+                                                    .map_or(false, |p| !p.is_empty()),
+                                            }
+                                        })
+                                        .collect();
+
+                                    if let Err(e) = index.index_prompts(&documents) {
+                                        tracing::error!(
+                                            error = %e,
+                                            "failed to index prompts"
+                                        );
+                                    } else if let Err(e) = index.commit() {
+                                        tracing::error!(
+                                            error = %e,
+                                            "failed to commit prompt index"
+                                        );
+                                    } else {
+                                        index.mark_schema_synced();
+                                        *idx_prompt_index.write().unwrap() = Some(Arc::new(index));
+                                        tracing::info!(
+                                            count = documents.len(),
+                                            elapsed_ms = ph_start.elapsed().as_millis() as u64,
+                                            "prompt history indexed"
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        error = %e,
+                                        "failed to open prompt index"
+                                    )
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                "failed to parse prompt history"
+                            )
+                        }
+                    }
+                } else {
+                    tracing::info!("~/.claude/history.jsonl not found, skipping prompt indexing");
+                }
+
+                // 7. Periodic sync loop: re-scan changed sessions, git-sync, snapshots.
                 // No more two-pass polling — the watcher handles incremental updates.
                 // This loop handles periodic git-sync and snapshot generation only,
                 // plus a lightweight re-scan for any files the watcher might have missed.
