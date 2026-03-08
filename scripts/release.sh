@@ -12,7 +12,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Catches drift before it ships. Skip with SKIP_EVIDENCE=1.
 if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
   echo "Running evidence audit (JSONL schema guard)..."
-  if ! EVIDENCE_QUICK=1 "$ROOT/scripts/integrity/evidence-audit.sh"; then
+  if ! EVIDENCE_QUICK=1 cargo run -p claude-view-core --bin evidence-audit --release; then
     echo ""
     echo "ERROR: Evidence audit failed — parser/indexer may not handle current JSONL schema."
     echo "Fix the drift or set SKIP_EVIDENCE=1 to bypass (NOT recommended)."
