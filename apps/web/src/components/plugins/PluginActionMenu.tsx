@@ -6,7 +6,7 @@ import { UninstallConfirmDialog } from './UninstallConfirmDialog'
 
 interface PluginActionMenuProps {
   plugin: PluginInfo
-  onAction: (action: string, name: string) => void
+  onAction: (action: string, name: string, scope?: string) => void
   isPending: boolean
 }
 
@@ -20,7 +20,7 @@ export function PluginActionMenu({ plugin, onAction, isPending }: PluginActionMe
       setConfirmUninstall(true)
       return
     }
-    onAction(action, plugin.name)
+    onAction(action, plugin.name, plugin.scope)
   }
 
   return (
@@ -79,7 +79,7 @@ export function PluginActionMenu({ plugin, onAction, isPending }: PluginActionMe
         onOpenChange={setConfirmUninstall}
         onConfirm={() => {
           setConfirmUninstall(false)
-          onAction('uninstall', plugin.name)
+          onAction('uninstall', plugin.name, plugin.scope)
         }}
       />
     </>
