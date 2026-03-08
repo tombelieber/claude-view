@@ -1179,6 +1179,7 @@ mod tests {
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
                 300,
             )),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         });
 
         // Register the session in the live sessions map
@@ -1371,6 +1372,7 @@ mod tests {
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(
                 300,
             )),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
