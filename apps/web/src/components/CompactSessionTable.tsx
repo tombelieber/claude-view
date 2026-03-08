@@ -162,8 +162,8 @@ function buildColumns(
         return (
           <Link to={sessionUrl(s)} className="block">
             {s.gitBranch ? (
-              <span className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-200/60 dark:border-gray-700/60 text-[11px] font-mono text-gray-600 dark:text-gray-400">
-                <GitBranch className="w-3 h-3 flex-shrink-0 text-gray-400 dark:text-gray-500" />
+              <span className="inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-[11px] font-mono text-violet-700 dark:text-violet-300">
+                <GitBranch className="w-3 h-3 shrink-0" />
                 <span className="truncate">{s.gitBranch}</span>
               </span>
             ) : (

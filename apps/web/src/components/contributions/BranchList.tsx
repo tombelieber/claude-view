@@ -186,8 +186,8 @@ export function BranchList({
         {groupedBranches.map((group) => (
           <div key={group.name || '__all'}>
             {group.name && (
-              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-6 mb-2 first:mt-0 flex items-center gap-2">
-                <FolderOpen className="w-3.5 h-3.5" />
+              <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider mt-6 mb-2 first:mt-0 flex items-center gap-2">
+                <FolderOpen className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                 {group.name}
               </h3>
             )}
