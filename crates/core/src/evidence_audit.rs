@@ -744,6 +744,171 @@ pub fn scan_directory_parallel(data_dir: &Path) -> AggregatedSignals {
     final_agg
 }
 
+// ─── Sorted Trait ────────────────────────────────────────────────
+
+pub(crate) trait Sorted: Iterator {
+    fn sorted(self) -> Vec<Self::Item>
+    where
+        Self: Sized,
+        Self::Item: Ord,
+    {
+        let mut v: Vec<Self::Item> = self.collect();
+        v.sort();
+        v
+    }
+}
+
+impl<I: Iterator> Sorted for I {}
+
+// ─── Audit Comparison ────────────────────────────────────────────
+
+/// Result of a single set-difference check.
+#[derive(Debug)]
+pub struct CheckResult {
+    pub name: String,
+    pub passed: bool,
+    pub new_items: Vec<String>,
+    pub absent_items: Vec<String>,
+}
+
+/// Overall audit result across all checks.
+#[derive(Debug)]
+pub struct AuditResult {
+    pub passed: bool,
+    pub checks: Vec<CheckResult>,
+    pub nesting_direct_count: usize,
+    pub nesting_nested_count: usize,
+    pub files_scanned: usize,
+    pub lines_scanned: usize,
+    pub errors: usize,
+}
+
+/// Compare actual vs expected sets, reporting new (drift) and absent items.
+///
+/// `new_items` = in actual but not expected (potential drift).
+/// `absent_items` = in expected but not actual (may be fine — not all types appear in every corpus).
+/// Only `new_items` being non-empty means `passed = false`.
+pub fn check_set_diff(
+    name: &str,
+    actual: &HashSet<String>,
+    expected: &HashSet<String>,
+) -> CheckResult {
+    let new_items: Vec<String> = actual.difference(expected).cloned().sorted();
+    let absent_items: Vec<String> = expected.difference(actual).cloned().sorted();
+    let passed = new_items.is_empty();
+
+    CheckResult {
+        name: name.to_string(),
+        passed,
+        new_items,
+        absent_items,
+    }
+}
+
+/// Run all 6 audit checks comparing scanned signals against the baseline.
+pub fn run_audit_checks(signals: &AggregatedSignals, baseline: &Baseline) -> AuditResult {
+    let mut checks = Vec::new();
+
+    // 1. Top-level types
+    let expected_top = baseline.top_level_types.all_known();
+    checks.push(check_set_diff(
+        "Top-level types",
+        &signals.top_level_types,
+        &expected_top,
+    ));
+
+    // 2. Assistant content block types
+    let expected_content: HashSet<String> = baseline
+        .content_block_types
+        .assistant
+        .iter()
+        .cloned()
+        .collect();
+    checks.push(check_set_diff(
+        "Assistant content block types",
+        &signals.assistant_content_block_types,
+        &expected_content,
+    ));
+
+    // 3. System subtypes
+    let expected_sys: HashSet<String> = baseline.system_subtypes.known.iter().cloned().collect();
+    checks.push(check_set_diff(
+        "System subtypes",
+        &signals.system_subtypes,
+        &expected_sys,
+    ));
+
+    // 4. Progress data.type values
+    let expected_prog: HashSet<String> =
+        baseline.progress_data_types.known.iter().cloned().collect();
+    checks.push(check_set_diff(
+        "Progress data types",
+        &signals.progress_data_types,
+        &expected_prog,
+    ));
+
+    // 5. Thinking block keys
+    // Union all observed thinking key sets
+    let mut all_thinking_keys = HashSet::new();
+    for key_set in &signals.thinking_key_sets {
+        for key in key_set {
+            all_thinking_keys.insert(key.clone());
+        }
+    }
+    let expected_thinking: HashSet<String> = baseline
+        .thinking_block_keys
+        .required
+        .iter()
+        .cloned()
+        .collect();
+
+    // Empty corpus = pass with note (not drift)
+    let thinking_check = if signals.thinking_key_sets.is_empty() {
+        CheckResult {
+            name: "Thinking block keys".to_string(),
+            passed: true,
+            new_items: vec![],
+            absent_items: expected_thinking.iter().cloned().sorted(),
+        }
+    } else {
+        check_set_diff(
+            "Thinking block keys",
+            &all_thinking_keys,
+            &expected_thinking,
+        )
+    };
+    checks.push(thinking_check);
+
+    // 6. Agent progress nesting
+    // Fail if we see direct agent_progress but never the nested content path
+    let nesting_passed = !(signals.nesting_direct_count > 0 && signals.nesting_nested_count == 0);
+    checks.push(CheckResult {
+        name: "Agent progress nesting".to_string(),
+        passed: nesting_passed,
+        new_items: if nesting_passed {
+            vec![]
+        } else {
+            vec![format!(
+                "direct={} but nested=0 — double-nesting path not validated",
+                signals.nesting_direct_count
+            )]
+        },
+        absent_items: vec![],
+    });
+
+    let passed = checks.iter().all(|c| c.passed);
+
+    AuditResult {
+        passed,
+        checks,
+        nesting_direct_count: signals.nesting_direct_count,
+        nesting_nested_count: signals.nesting_nested_count,
+        files_scanned: signals.files_scanned,
+        lines_scanned: signals.lines_scanned,
+        errors: signals.errors,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -993,5 +1158,60 @@ mod tests {
             first_keys.contains("signature"),
             "thinking keys should include 'signature'"
         );
+    }
+
+    #[test]
+    fn test_check_result_no_drift() {
+        let actual: HashSet<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+        let expected: HashSet<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let result = check_set_diff("test", &actual, &expected);
+
+        assert!(result.passed, "no new items means pass");
+        assert!(result.new_items.is_empty());
+        assert_eq!(result.absent_items, vec!["c".to_string()]);
+    }
+
+    #[test]
+    fn test_check_result_with_drift() {
+        let actual: HashSet<String> = ["a", "b", "new_type"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected: HashSet<String> = ["a", "b"].iter().map(|s| s.to_string()).collect();
+        let result = check_set_diff("test", &actual, &expected);
+
+        assert!(!result.passed, "new items means fail");
+        assert!(result.new_items.contains(&"new_type".to_string()));
+        assert!(result.absent_items.is_empty());
+    }
+
+    #[test]
+    fn test_full_audit_pass() {
+        let baseline_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../scripts/integrity/evidence-baseline.json");
+        let baseline = load_baseline(&baseline_path).expect("should load baseline");
+
+        let fixture_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/all_types.jsonl");
+        let signals = scan_file(&fixture_path);
+
+        let result = run_audit_checks(&signals, &baseline);
+
+        // The fixture covers the basic types — should pass
+        assert!(
+            result.passed,
+            "audit should pass for fixture. Failed checks: {:?}",
+            result
+                .checks
+                .iter()
+                .filter(|c| !c.passed)
+                .map(|c| format!("{}: new={:?}", c.name, c.new_items))
+                .collect::<Vec<_>>()
+        );
+
+        // Verify stats are populated
+        assert_eq!(result.files_scanned, 1);
+        assert!(result.lines_scanned > 0);
+        assert_eq!(result.errors, 0);
     }
 }
