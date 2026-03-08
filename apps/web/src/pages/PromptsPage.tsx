@@ -26,8 +26,6 @@ export function PromptsPage() {
     search: debouncedSearch || undefined,
     project: sidebarProject || undefined,
     intents: filters.intents.length > 0 ? filters.intents : undefined,
-    branches: filters.branches.length > 0 ? filters.branches : undefined,
-    models: filters.models.length > 0 ? filters.models : undefined,
     hasPaste: filters.hasPaste,
     complexity: filters.complexity || undefined,
     templateMatch: filters.templateMatch || undefined,

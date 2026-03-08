@@ -382,7 +382,7 @@ pub async fn get_session_detail(
         .unwrap_or_default();
 
     // Check if plan files exist for this session's slug
-    let has_plans = session.slug.as_ref().map_or(false, |slug| {
+    let has_plans = session.slug.as_ref().is_some_and(|slug| {
         claude_view_core::plan_files::claude_plans_dir()
             .map(|dir| claude_view_core::plan_files::has_plan_files(&dir, slug))
             .unwrap_or(false)
