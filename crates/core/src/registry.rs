@@ -142,6 +142,12 @@ pub const BUILTIN_TOOLS: &[&str] = &[
     "ExitPlanMode",
     "NotebookEdit",
     "ToolSearch",
+    // Added: tools present in real JSONL data but previously missing
+    "TodoWrite",
+    "SendMessage",
+    "TeamCreate",
+    "TeamDelete",
+    "CronCreate",
 ];
 
 // ---------------------------------------------------------------------------
@@ -704,7 +710,7 @@ mod tests {
         }
 
         // Should have all builtin tools + unique builtin agents
-        // (20 tools + 5 unique agents = 25; "Bash" is in both lists)
+        // (26 tools + 5 unique agents = 31; "Bash" is in both lists)
         assert_eq!(registry.len(), num_builtins());
     }
 
@@ -807,7 +813,7 @@ mod tests {
         let bare = registry.lookup("my-skill");
         assert!(bare.is_some(), "Bare name 'my-skill' not found");
 
-        // Total: 1 skill + 1 command + 1 agent + 1 MCP + 25 builtins = 29
+        // Total: 1 skill + 1 command + 1 agent + 1 MCP + 31 builtins = 35
         assert_eq!(registry.len(), 4 + num_builtins());
     }
 
