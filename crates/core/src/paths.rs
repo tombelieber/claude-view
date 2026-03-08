@@ -37,7 +37,11 @@ pub fn lock_dir() -> Option<PathBuf> {
     Some(data_dir().join("locks"))
 }
 
-/// Remove all claude-view cache data (DB, WAL, search index).
+pub fn prompt_index_dir() -> PathBuf {
+    data_dir().join("prompt-index")
+}
+
+/// Remove all claude-view cache data (DB, WAL, search index, prompt index).
 pub fn remove_cache_data() -> Vec<String> {
     let dir = data_dir();
     let mut removed = Vec::new();
@@ -52,6 +56,11 @@ pub fn remove_cache_data() -> Vec<String> {
     let idx = dir.join("search-index");
     if idx.exists() && std::fs::remove_dir_all(&idx).is_ok() {
         removed.push(format!("Removed {}", idx.display()));
+    }
+
+    let prompt_idx = dir.join("prompt-index");
+    if prompt_idx.exists() && std::fs::remove_dir_all(&prompt_idx).is_ok() {
+        removed.push(format!("Removed {}", prompt_idx.display()));
     }
 
     removed
