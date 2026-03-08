@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ActivityCalendar } from './ActivityCalendar'
 import { CodeBlock } from './CodeBlock'
@@ -7,6 +9,13 @@ import { Skeleton } from './LoadingStates'
 import { MetricCard } from './MetricCard'
 import { SessionCard } from './SessionCard'
 import { TierBadge } from './TierBadge'
+
+function createWrapper() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+}
 
 // Suppress console errors for this test suite
 const originalError = console.error
@@ -83,6 +92,7 @@ describe('Component null/undefined safety', () => {
         <SessionCard
           {...({ sessionId: 'test', title: null, created: new Date(), tokens: {} } as any)}
         />,
+        { wrapper: createWrapper() },
       )
 
       expect(container).toBeInTheDocument()
@@ -93,6 +103,7 @@ describe('Component null/undefined safety', () => {
         <SessionCard
           {...({ sessionId: 'test', title: 'Test Session', created: undefined, tokens: {} } as any)}
         />,
+        { wrapper: createWrapper() },
       )
 
       expect(container).toBeInTheDocument()
@@ -108,6 +119,7 @@ describe('Component null/undefined safety', () => {
             tokens: null,
           } as any)}
         />,
+        { wrapper: createWrapper() },
       )
 
       expect(container).toBeInTheDocument()
@@ -123,6 +135,7 @@ describe('Component null/undefined safety', () => {
             tokens: {},
           } as any)}
         />,
+        { wrapper: createWrapper() },
       )
 
       expect(container).toBeInTheDocument()
