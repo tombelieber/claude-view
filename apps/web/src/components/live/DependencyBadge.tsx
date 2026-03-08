@@ -19,6 +19,7 @@ export function DependencyBadge({ task, onScrollTo }: DependencyBadgeProps) {
           <span>blocks</span>
           {task.blocks.map((id) => (
             <button
+              type="button"
               key={id}
               onClick={() => onScrollTo?.(id)}
               className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
@@ -34,6 +35,7 @@ export function DependencyBadge({ task, onScrollTo }: DependencyBadgeProps) {
           <span>blocked by</span>
           {task.blockedBy.map((id) => (
             <button
+              type="button"
               key={id}
               onClick={() => onScrollTo?.(id)}
               className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
