@@ -21,6 +21,7 @@ pub mod metrics;
 pub mod parser;
 pub mod paths;
 pub mod patterns;
+pub mod pipeline_checks;
 pub mod plan_files;
 pub mod pricing;
 pub mod progress;
