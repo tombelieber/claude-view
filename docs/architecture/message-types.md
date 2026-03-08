@@ -3,9 +3,139 @@
 > Definitive catalog of every message type produced by Claude Code, how claude-view parses them, and how they map to the UI.
 >
 > **Date:** 2026-02-27
-> **Status:** Current (Claude Code CLI as of Feb 2026)
-> **Audited:** 2026-02-27 against parser.rs, hooks.rs, RichPane.tsx, category.rs, and 4,716 real JSONL files (728,071 entries)
-> **Data counts:** All occurrence counts in this document are snapshots from the audit date above — not universal ratios. Your corpus will differ.
+> **Status:** Current (Claude Code CLI as of Mar 2026)
+> **Last Evidence Audit:** 2026-03-08 against real JSONL corpus (5,932 files, ~997,878 lines)
+> **Methodology:** All structural analysis via `jq` JSON parsing — never text grep — to avoid miscategorizing message text content as structural fields
+> **Pre-release guard:** `scripts/integrity/evidence-audit.sh` validates parser against this spec before every release
+
+---
+
+## Quick Reference — Type Taxonomy Tree
+
+```
+JSONL Entry (top-level "type" field)
+│
+├── CONVERSATION TYPES ──────────────────────────────────────────────
+│
+│   ├── "user" ──────────────────────── → Role::User | Role::ToolResult
+│   │   ├── message.content: string ──── → Role::User (human prompt)
+│   │   └── message.content: array
+│   │       ├── [tool_result] ─────────── → Role::ToolResult
+│   │       ├── [text] ───────────────── → Role::User
+│   │       └── [image] ──────────────── → Role::User (screenshot)
+│   │
+│   └── "assistant" ─────────────────── → Role::Assistant | Role::ToolUse
+│       └── message.content: array
+│           ├── [text] ───────────────── → Role::Assistant
+│           ├── [thinking] ───────────── (deferred to next assistant)
+│           │   └── keys: {thinking, signature, type}
+│           └── [tool_use] ──────────── → Role::ToolUse (if no text blocks)
+│               └── keys: {id, name, input, type, caller?}
+│
+├── METADATA TYPES ──────────────────────────────────────────────────
+│
+│   ├── "system" ────────────────────── → Role::System (category: "system")
+│   │   └── .subtype:
+│   │       ├── stop_hook_summary ────── Hook execution summary
+│   │       ├── turn_duration ────────── Turn timing metadata
+│   │       ├── compact_boundary ─────── Context compaction marker
+│   │       ├── local_command ────────── CLI command (e.g. /mcp)
+│   │       ├── api_error ────────────── API error with retry info
+│   │       └── microcompact_boundary ── Micro-compaction (rare)
+│   │
+│   └── "progress" ──────────────────── → Role::Progress
+│       └── .data.type:
+│           ├── hook_progress ────────── Hook execution in flight
+│           ├── bash_progress ────────── Bash command output streaming
+│           ├── agent_progress ───────── Sub-agent activity
+│           │   └── content path: data.message.message.content[]
+│           │       (double-nested — .data.message is envelope,
+│           │        .data.message.message is the API response)
+│           ├── mcp_progress ─────────── MCP tool execution
+│           ├── waiting_for_task ─────── Sub-agent waiting
+│           ├── query_update ─────────── Search query executing
+│           └── search_results_received  Search results returned
+│
+├── OPERATIONAL TYPES ───────────────────────────────────────────────
+│
+│   ├── "file-history-snapshot" ──────── → Role::System (category: "snapshot")
+│   │   └── keys: {type, messageId, snapshot, isSnapshotUpdate}
+│   │       (no uuid, no sessionId, no timestamp at top level)
+│   │
+│   ├── "queue-operation" ────────────── → Role::System (category: "queue")
+│   │   └── .operation: enqueue | dequeue | remove | popAll
+│   │       keys: {type, operation, sessionId, timestamp, content?}
+│   │       (no uuid)
+│   │
+│   ├── "last-prompt" ───────────────── → (silently ignored by parser)
+│   │   └── keys: {type, sessionId, lastPrompt}
+│   │       Stores most recent user prompt text for session preview
+│   │
+│   ├── "custom-title" ──────────────── → (silently ignored by parser)
+│   │   └── keys: {type, sessionId, customTitle}
+│   │       User-set custom session title
+│   │
+│   └── "pr-link" ───────────────────── → (silently ignored by parser)
+│       └── keys: {type, sessionId, prNumber, prUrl, prRepository, timestamp}
+│
+└── FORWARD COMPATIBILITY ───────────────────────────────────────────
+    └── Unknown type values → silently ignored via wildcard match
+```
+
+### Mermaid Diagram
+
+```mermaid
+graph TD
+    JSONL["JSONL Entry<br/>(top-level type)"]
+
+    subgraph Conversation
+        USER["user"]
+        ASST["assistant"]
+    end
+
+    subgraph Metadata
+        SYS["system"]
+        PROG["progress"]
+    end
+
+    subgraph Operational
+        FHS["file-history-snapshot"]
+        QOP["queue-operation"]
+        LP["last-prompt"]
+        CT["custom-title"]
+        PRL["pr-link"]
+    end
+
+    JSONL --> USER
+    JSONL --> ASST
+    JSONL --> SYS
+    JSONL --> PROG
+    JSONL --> FHS
+    JSONL --> QOP
+    JSONL --> LP
+    JSONL --> CT
+    JSONL --> PRL
+
+    USER -->|"content: string"| RU["Role::User"]
+    USER -->|"content: array w/ tool_result"| RTR["Role::ToolResult"]
+    USER -->|"content: array w/o tool_result"| RU
+
+    ASST -->|"has text blocks"| RA["Role::Assistant"]
+    ASST -->|"tool_use only"| RTU["Role::ToolUse"]
+    ASST -->|"thinking only"| DEF["deferred → next"]
+
+    SYS --> RS["Role::System"]
+    PROG --> RP["Role::Progress"]
+    FHS --> RS
+    QOP --> RS
+    LP --> IGN["ignored"]
+    CT --> IGN
+    PRL --> IGN
+
+    SYS --- SS["subtypes:<br/>stop_hook_summary<br/>turn_duration<br/>compact_boundary<br/>local_command<br/>api_error<br/>microcompact_boundary"]
+
+    PROG --- PD["data.type:<br/>hook_progress<br/>bash_progress<br/>agent_progress<br/>mcp_progress<br/>waiting_for_task<br/>query_update<br/>search_results_received"]
+```
 
 ---
 
@@ -25,7 +155,7 @@ Claude Code produces messages through **two independent channels**. Claude-view 
 │  • Thinking blocks                    • Permission requests  │
 │  • System metadata                    • Sub-agent lifecycle   │
 │  • Progress indicators                • Task completion       │
-│  • Summaries (context compaction)     • Context compaction    │
+│                                       • Context compaction    │
 └──────────┬───────────────────────────────────┬───────────────┘
            │                                   │
            ▼                                   ▼
@@ -42,8 +172,8 @@ Claude Code produces messages through **two independent channels**. Claude-view 
 
 **Two distinct data types — NOT duplicates:**
 
-- **JSONL `hook_progress`** (Channel A) = progress events. These are real-time activity indicators written by Claude CLI to the session file. They belong to the `progress` category.
-- **SQLite `hook_events`** (Channel B) = lifecycle events captured by claude-view's hook handler. These are structured state transitions received via `POST /api/live/hook`.
+- **JSONL `hook_progress`** (Channel A) = progress events. Real-time activity indicators written by Claude CLI to the session file. They belong to the `progress` category.
+- **SQLite `hook_events`** (Channel B) = lifecycle events captured by claude-view's hook handler. Structured state transitions received via `POST /api/live/hook`.
 
 These are **different data from different channels**. Both are shown in the timeline. Never deduplicate them.
 
@@ -51,7 +181,27 @@ These are **different data from different channels**. Both are shown in the time
 
 ## 2. JSONL Entry Types (Channel A)
 
-Every line in a session JSONL file is a JSON object with a top-level `"type"` field. The parser handles **9 known types** (two additional types, `pr-link` and `hook_event`, exist in JSONL but are silently ignored via the wildcard).
+Every line in a session JSONL file is a JSON object with a top-level `"type"` field. The parser handles **8 known types** plus silently ignores unknown types via a wildcard.
+
+### Evidence Baseline (2026-03-08)
+
+| Type | Count | % of corpus |
+|------|------:|------------:|
+| `progress` | 574,592 | 57.6% |
+| `assistant` | 240,319 | 24.1% |
+| `user` | 167,503 | 16.8% |
+| `file-history-snapshot` | 8,874 | 0.89% |
+| `queue-operation` | 8,829 | 0.88% |
+| `system` | 7,384 | 0.74% |
+| `last-prompt` | 150 | 0.015% |
+| `pr-link` | 12 | 0.001% |
+| `custom-title` | 2 | <0.001% |
+
+**Types with ZERO occurrences** (documented historically but absent from current corpus):
+- `summary` — 0 across 5,932 files. May have existed in older Claude Code versions.
+- `result` — 0. Parser has a match arm for forward compat. Dead code.
+- `saved_hook_context` — 0. May appear in future hook-context-injecting workflows.
+- `hook_event` — 0 in JSONL. These arrive via HTTP Channel B only.
 
 ### 2.1 Core Conversation Types
 
@@ -61,52 +211,79 @@ User-originated messages. The `message.content` shape determines the parsed Role
 
 ```jsonc
 // String content → Role::User (human prompt)
-{"type":"user","uuid":"u1","parentUuid":"p1","timestamp":"…","sessionId":"…","version":"2.1.56","isSidechain":false,"userType":"external","cwd":"/path","gitBranch":"main","message":{"role":"user","content":"Fix the bug in auth.rs"}}
+{"type":"user","uuid":"u1","parentUuid":"p1","timestamp":"…","sessionId":"…",
+ "version":"2.1.56","isSidechain":false,"userType":"external",
+ "cwd":"/path","gitBranch":"main",
+ "message":{"role":"user","content":"Fix the bug in auth.rs"}}
 
 // Array with tool_result blocks → Role::ToolResult (tool output returning to Claude)
-{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"…","sourceToolAssistantUUID":"a1","toolUseResult":"fn auth() {}","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"fn auth() {}","is_error":false}]}}
+{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"…",
+ "sourceToolAssistantUUID":"a1","toolUseResult":"fn auth() {}",
+ "message":{"role":"user","content":[
+   {"type":"tool_result","tool_use_id":"tu1","content":"fn auth() {}"}
+ ]}}
 ```
 
 **Content routing** (parser.rs `parse_user_entry()`):
 
-| `message.content` shape | Parsed Role | Notes |
+| `message.content` shape | Parsed Role | Evidence count |
 |---|---|---|
-| `String` | `Role::User` | Direct string content |
-| `Array` with any `tool_result` block | `Role::ToolResult` | Tool output returning to Claude |
-| `Array` without `tool_result` blocks | `Role::User` | Text extracted, command tags cleaned |
-| Other / missing | `Role::User` | Legacy deserialization fallback |
+| `String` | `Role::User` | 11,064 (7%) |
+| `Array` with any `tool_result` block | `Role::ToolResult` | ~151,917 entries |
+| `Array` without `tool_result` blocks | `Role::User` | ~3,997 entries |
+
+**`.message` sub-object keys:** Always exactly `{role, content}` — no other keys (verified on 167,503 entries).
+
+**Content block types** (within `message.content[]` arrays):
+
+| Block `type` | Count | Fields |
+|---|---|---|
+| `tool_result` | 151,917 | `tool_use_id`, `content`, `type`; `is_error` present on ~26% only |
+| `text` | 4,611 | `text` |
+| `image` | 143 | `source: {type: "base64", media_type, data}` |
+
+**`tool_result` block keys:**
+- Always present: `content`, `tool_use_id`, `type` (152,034 entries)
+- Optional: `is_error` (39,641 entries, ~26%). When no error, the field is **absent** — not `false`.
 
 **Behaviors:**
 
-- `isMeta: true` entries are **skipped** by the parser. These are system init messages injected by Claude Code at session start — they carry injected context (CLAUDE.md contents, system reminders, MCP tool lists) but are not real user prompts. They have `message.content` as an array of `text` blocks. The parser drops them so they don't appear in the conversation timeline.
+- `isMeta: true` entries are **skipped** by the parser. 2,811 entries total (100% user type). Content shapes: 1,882 array, 929 string.
 - Command tags (`<command-name>`, `<command-args>`, `<command-message>`, `<local-command-stdout>`, `<system-reminder>`) are stripped from content.
-- Backslash-newline sequences (`\\\n`) are normalized to `\n`.
+- Backslash-newline sequences (`\\\\\\n`) are normalized to `\\n`.
 
-**Common top-level fields on every `user` entry** (always present in real data):
-`type`, `uuid`, `parentUuid`, `timestamp`, `sessionId`, `version`, `isSidechain`, `userType`, `cwd`, `gitBranch`, `message`
+**Top-level keys on `user` entries:**
 
-`slug` is present on ~92% of user entries (not all).
-
-**Additional fields on tool_result entries:** `toolUseResult` (denormalized summary), `sourceToolAssistantUUID`
-
-**User content block types** (within `message.content[]` arrays):
-
-| Block `type` | Description |
-|---|---|
-| `tool_result` | Tool execution result. Fields: `tool_use_id`, `content`, `is_error?: boolean` |
-| `text` | Text block (appears in `isMeta` entries) |
-| `image` | Screenshot/image block. Fields: `source: {type: "base64", media_type, data}` |
+| Key | Presence | Notes |
+|---|---|---|
+| `type`, `uuid`, `parentUuid`, `timestamp`, `sessionId`, `version`, `isSidechain`, `userType`, `cwd`, `gitBranch`, `message` | Always | Core fields |
+| `slug` | ~98% | Human-readable session slug |
+| `sourceToolAssistantUUID` | ~89% | Links to the assistant message that invoked the tool |
+| `agentId` | ~56% | Present when entry originates from a sub-agent |
+| `toolUseResult` | ~38% | Denormalized summary of tool output |
+| `permissionMode` | ~3% | e.g. `"bypassPermissions"`, `"default"` |
+| `isMeta` | ~0.5% | System init messages (skipped by parser) |
+| `todos` | ~0.7% | Todo list state `[{content, status, activeForm}]` |
 
 #### `assistant`
 
 Claude's responses. Content blocks determine the parsed Role and extracted data.
 
 ```jsonc
-{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"…","sessionId":"…","version":"2.1.56","message":{"role":"assistant","model":"claude-sonnet-4-20250514","id":"msg_xxx","type":"message","stop_reason":"end_turn","usage":{"input_tokens":1234,"output_tokens":567,"cache_creation_input_tokens":0,"cache_read_input_tokens":800},"content":[
-  {"type":"thinking","thinking":"Let me analyze…"},
-  {"type":"text","text":"I'll fix the authentication function."},
-  {"type":"tool_use","id":"tu1","name":"Edit","input":{"file_path":"/src/auth.rs"}}
-]}}
+{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"…",
+ "sessionId":"…","version":"2.1.56","requestId":"req_xxx",
+ "message":{"role":"assistant","model":"claude-opus-4-6",
+  "id":"msg_xxx","type":"message",
+  "stop_reason":"end_turn","stop_sequence":null,
+  "usage":{"input_tokens":1234,"output_tokens":567,
+   "cache_creation_input_tokens":0,"cache_read_input_tokens":800,
+   "service_tier":"standard",
+   "cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}},
+  "content":[
+    {"type":"thinking","thinking":"Let me analyze…","signature":"sig_xxx"},
+    {"type":"text","text":"I'll fix the authentication function."},
+    {"type":"tool_use","id":"tu1","name":"Edit","input":{"file_path":"/src/auth.rs"},"caller":"user"}
+  ]}}
 ```
 
 **Role assignment** (parser.rs `parse_assistant_entry()`):
@@ -119,41 +296,114 @@ Claude's responses. Content blocks determine the parsed Role and extracted data.
 | Empty + no `pending_thinking` | *(skipped)* | Dropped entirely |
 | Empty + has `pending_thinking` | `Role::Assistant` | Created with the deferred thinking attached |
 
-**Content block types within `message.content[]`** (types.rs `ContentBlock` enum):
+**Content block types** (within `message.content[]`):
 
-| Block `type` | Fields | Description |
+| Block `type` | Count | Keys |
 |---|---|---|
-| `text` | `text: String` | Plain text output |
-| `thinking` | `thinking: String` | Extended thinking / chain-of-thought |
-| `tool_use` | `name: String`, `input?: Value` | Tool invocation request |
-| `tool_result` | `content?: Value` | Tool execution result (appears in `user` entries, not assistant) |
-| *(catch-all)* | — | `ContentBlock::Other` via `#[serde(other)]`. Silently drops unknown block types (e.g. `redacted_thinking`, `server_tool_use`, `server_tool_result`, `citation`) for forward compatibility |
+| `tool_use` | 151,934 | Always: `id`, `input`, `name`, `type`. Optional: `caller` (~84%) |
+| `text` | 74,928 | `text`, `type` |
+| `thinking` | 12,732 | Always exactly: `thinking`, `signature`, `type` |
 
-**Key `message`-level fields** (present on every assistant entry):
+**`tool_use` block detail:**
+- `id` — unique identifier for the tool invocation
+- `name` — tool name (e.g. `Edit`, `Read`, `Bash`, `Agent`)
+- `input` — tool input parameters (object)
+- `type` — always `"tool_use"`
+- `caller` — present on ~84% of blocks. Indicates calling context. Added in newer CLI versions.
 
-- `model` — model ID (e.g. `claude-sonnet-4-20250514`)
-- `stop_reason` — `null`, `"tool_use"`, `"stop_sequence"`, or `"end_turn"`
-- `usage` — `{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, cache_creation?: {ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}, service_tier?, inference_geo?}`
+**`thinking` block detail:**
+- `thinking` — the chain-of-thought text
+- `signature` — cryptographic signature string (always present, all 12,732 blocks)
+- `type` — always `"thinking"`
+
+Note: `redacted_thinking`, `server_tool_use`, `server_tool_result`, and `citation` block types have **zero occurrences** in current data. The parser handles them via `ContentBlock::Other` (`#[serde(other)]`) for forward compatibility.
+
+**`message`-level fields** (keys on the `.message` object):
+
+| Key | Count | Notes |
+|---|---|---|
+| `content` | 239,627 | Array of content blocks |
+| `id` | 239,627 | API message ID (`msg_xxx`) |
+| `model` | 239,627 | Model identifier |
+| `role` | 239,627 | Always `"assistant"` |
+| `stop_reason` | 239,627 | See distribution below |
+| `stop_sequence` | 239,627 | Almost always `null` |
+| `type` | 239,627 | Always `"message"` |
+| `usage` | 239,627 | Token usage object |
+| `context_management` | 235 | Rare — context management metadata |
+| `container` | 155 | Rare — container/sandbox metadata |
+
+**`stop_reason` values:**
+
+| Value | Count | % |
+|---|---|---|
+| `null` | 201,907 | 84% |
+| `"tool_use"` | 34,359 | 14% |
+| `"end_turn"` | 3,263 | 1.4% |
+| `"stop_sequence"` | 155 | 0.06% |
+
+Most entries have `null` stop_reason — these are intermediate responses where Claude continues with more tool calls.
+
+**`usage` object structure:**
+
+| Key | Count | Notes |
+|---|---|---|
+| `input_tokens` | 240,006 | Always present |
+| `output_tokens` | 240,006 | Always present |
+| `cache_creation_input_tokens` | 240,006 | Always present |
+| `cache_read_input_tokens` | 240,006 | Always present |
+| `service_tier` | 240,006 | Always present (e.g. `"standard"`) |
+| `cache_creation` | 240,006 | Always present — **nested object** (see below) |
+| `inference_geo` | 214,428 | ~89% — inference geography region |
+| `server_tool_use` | 44,844 | ~19% — **nested object** (see below) |
+| `iterations` | 43,715 | ~18% — iteration count |
+| `speed` | 42,907 | ~18% — speed tier info |
+
+**`usage.cache_creation` nested object** (100% uniform, always present):
+- `ephemeral_5m_input_tokens` — 5-minute cache tier tokens
+- `ephemeral_1h_input_tokens` — 1-hour cache tier tokens
+
+**`usage.server_tool_use` nested object** (~19% of entries):
+- `web_search_requests` — count of web searches
+- `web_fetch_requests` — count of web fetches
+
+**Cost data:** There is NO `costUSD`, `cost_usd`, or `total_cost_usd` field anywhere in real JSONL data (verified: 0 occurrences across 997,878 lines). Cost must be computed from `usage` tokens + model pricing + cache tier split.
+
+**Top-level keys on `assistant` entries:**
+
+| Key | Presence | Notes |
+|---|---|---|
+| `type`, `uuid`, `parentUuid`, `timestamp`, `sessionId`, `version`, `isSidechain`, `userType`, `cwd`, `gitBranch`, `message` | Always | Core fields |
+| `requestId` | ~99.9% | API request ID. Absent on error entries. |
+| `slug` | ~96% | Human-readable session slug |
+| `agentId` | ~57% | Present when response is from a sub-agent |
+| `isApiErrorMessage` | ~0.07% | Boolean flag on error responses (~163 entries) |
+| `error` | ~0.06% | Error details object (~134 entries) |
+| `teamName` | ~0.2% | Team context (~466 entries) |
 
 ### 2.2 Metadata Types
 
 #### `system`
 
-System-level metadata events. Has a `subtype` field.
+System-level metadata events. Polymorphic by `subtype` field.
 
 ```jsonc
-{"type":"system","uuid":"s1","timestamp":"…","subtype":"turn_duration","durationMs":5000,"isMeta":true}
+{"type":"system","uuid":"s1","timestamp":"…","subtype":"turn_duration",
+ "durationMs":5000,"isMeta":true,"sessionId":"…","cwd":"/path",
+ "gitBranch":"main","isSidechain":false,"userType":"external",
+ "parentUuid":"a1","version":"2.1.56","slug":"my-session"}
 ```
 
-| `subtype` | Key Fields | Count in real data | Description |
+| `subtype` | Count | Key extra fields | Description |
 |---|---|---|---|
-| `stop_hook_summary` | `hookCount`, `hookInfos[]`, `hookErrors[]`, `preventedContinuation`, `stopReason`, `hasOutput` | 4,194 | Hook execution summary at session stop |
-| `turn_duration` | `durationMs` | 2,509 | How long a turn took |
-| `local_command` | `content`, `level` | 238 | Local CLI command (e.g. `/mcp`) |
-| `compact_boundary` | `content`, `level`, `compactMetadata: {trigger, preTokens}`, `logicalParentUuid` | 159 | Context compaction boundary marker |
-| `api_error` | `error: {status, headers, requestID}`, `retryInMs`, `retryAttempt`, `maxRetries`, `level` | 137 | API error with retry info |
-| `microcompact_boundary` | `content`, `level`, `microcompactMetadata: {trigger, preTokens, tokensSaved, compactedToolIds[], clearedAttachmentUUIDs[]}` | 4 | Micro-compaction boundary |
-| `informational` | `content`, `level` | 2 | Informational system messages |
+| `stop_hook_summary` | 4,855 | `hookCount`, `hookInfos[]`, `hookErrors[]`, `preventedContinuation`, `stopReason`, `hasOutput`, `level`, `toolUseID` | Hook execution summary at session stop |
+| `turn_duration` | 2,075 | `durationMs`, `isMeta` | How long a turn took |
+| `compact_boundary` | 187 | `content`, `level`, `isMeta`, `compactMetadata: {trigger, preTokens}`, `logicalParentUuid` | Context compaction boundary marker |
+| `local_command` | 181 | `content`, `level`, `isMeta` | Local CLI command (e.g. `/mcp`) |
+| `api_error` | 110 | `error`, `level`, `maxRetries`, `retryAttempt`, `retryInMs`; optional: `cause` | API error with retry info |
+| `microcompact_boundary` | 1 | `content`, `level`, `microcompactMetadata` | Micro-compaction boundary (extremely rare) |
+
+Note: `informational` subtype documented previously has **0 occurrences** in current data.
 
 Mapped to `Role::System` with category `"system"`.
 
@@ -162,41 +412,87 @@ Mapped to `Role::System` with category `"system"`.
 Real-time activity indicators. The actual event kind is in `data.type`.
 
 ```jsonc
-{"type":"progress","uuid":"p1","timestamp":"…","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"lint-check","command":"eslint --fix"}}
+{"type":"progress","uuid":"p1","timestamp":"…","toolUseID":"tu1",
+ "parentToolUseID":"ptu1","data":{"type":"hook_progress",
+ "hookEvent":"PreToolUse","hookName":"lint-check","command":"eslint --fix"}}
 ```
 
-| `data.type` | Description | Rust category (category.rs) | Frontend override |
+| `data.type` | Count | Description | Rust category |
 |---|---|---|---|
-| `hook_progress` | Hook execution progress | `"hook"` | `"hook_progress"` (frontend override, see note below) |
-| `agent_progress` | Sub-agent activity | `"agent"` | — |
-| `bash_progress` | Bash command running | `"builtin"` | — |
-| `mcp_progress` | MCP tool execution | `"mcp"` | — |
-| `waiting_for_task` | Sub-agent waiting | `"agent"` | — |
-| `query_update` | Search query being executed | *(none)* | — |
-| `search_results_received` | Search results returned | *(none)* | — |
+| `hook_progress` | 337,562 | Hook execution progress | `"hook"` (frontend overrides to `"hook_progress"`) |
+| `bash_progress` | 148,890 | Bash command running | `"builtin"` |
+| `agent_progress` | 87,285 | Sub-agent activity | `"agent"` |
+| `mcp_progress` | 1,769 | MCP tool execution | `"mcp"` |
+| `waiting_for_task` | 286 | Sub-agent waiting | `"agent"` |
+| `query_update` | 138 | Search query being executed | *(none)* |
+| `search_results_received` | 138 | Search results returned | *(none)* |
 
-**Note on `hook_progress` category split:** The Rust backend (`categorize_progress()`) maps `hook_progress` to category `"hook"`. The frontend (`message-to-rich.ts`) overrides this to `"hook_progress"` for the Action Log filter chips, so hook progress events appear as a distinct filterable group separate from `hook_event` entries (which keep category `"hook"`).
+**Top-level keys on `progress` entries:**
+- Always present: `cwd`, `data`, `gitBranch`, `isSidechain`, `parentToolUseID`, `parentUuid`, `sessionId`, `timestamp`, `toolUseID`, `type`, `userType`, `uuid`, `version`
+- Optional: `agentId` (~47%), `slug` (~98%), `teamName` (<0.2%)
+
+**`data` keys per `data.type`:**
+
+| `data.type` | `data` keys |
+|---|---|
+| `hook_progress` | `type`, `command`, `hookEvent`, `hookName`; optional: `statusMessage` (~51%) |
+| `bash_progress` | `type`, `elapsedTimeSeconds`, `fullOutput`, `output`, `totalLines`; optional: `taskId`, `totalBytes`, `timeoutMs` |
+| `agent_progress` | `type`, `agentId`, `message`, `prompt`; optional: `normalizedMessages` (~89%), `resume` (<0.2%) |
+| `mcp_progress` | `type`, `serverName`, `status`, `toolName`; optional: `elapsedTimeMs` (~50%) |
+| `waiting_for_task` | `type`, `taskDescription`, `taskType` |
+| `query_update` | `type`, `query` |
+| `search_results_received` | `type`, `query`, `resultCount` |
+
+**Agent progress nesting (CRITICAL):**
+
+The content for `agent_progress` entries lives at `data.message.message.content[]` — **double nested**. This is NOT a typo:
+
+```
+data
+└── message                          ← envelope object
+    ├── uuid: "..."
+    ├── type: "user" | "assistant"   ← agent's message type
+    ├── timestamp: "..."
+    ├── requestId?: "..."            ← present on assistant msgs only
+    ├── toolUseResult?: ...          ← present on ~2% of entries
+    └── message                      ← the actual API message
+        ├── role: "user" | "assistant"
+        ├── content: [...]           ← THIS is where content blocks live
+        ├── id?: "msg_..."
+        ├── model?: "..."
+        ├── stop_reason?: ...
+        ├── stop_sequence?: ...
+        ├── usage?: {...}
+        └── context_management?: {...}
+```
+
+Evidence: `data.message.content` (direct path) = **0 matches**. `data.message.message.content` (double-nested) = **87,288 matches**.
 
 Mapped to `Role::Progress`.
-
-#### `summary`
-
-Context window compression. When the conversation exceeds the context limit, Claude Code compresses earlier messages into a summary.
-
-```jsonc
-{"type":"summary","summary":"Fixed authentication bug in auth.rs","leafUuid":"a2"}
-```
-
-- `summary` — the compressed text
-- `leafUuid` — the last message UUID before compression
-
-Only these 3 keys in real data: `type`, `summary`, `leafUuid`. No `uuid` field.
-
-Mapped to `Role::Summary`.
 
 ### 2.3 Operational Types
 
 These are bookkeeping entries. They carry no conversation content but are needed for state reconstruction.
+
+#### `file-history-snapshot`
+
+Point-in-time file state backups for undo/restore.
+
+```jsonc
+{"type":"file-history-snapshot","messageId":"a2",
+ "snapshot":{"messageId":"a2",
+  "trackedFileBackups":{"/src/auth.rs":{"backupFileName":"be8cf68e@v1",
+   "version":1,"backupTime":"2026-02-21T06:17:55.974Z"}},
+  "timestamp":"2026-02-21T06:16:22.976Z"},
+ "isSnapshotUpdate":true}
+```
+
+- Exactly 4 keys: `type`, `messageId`, `snapshot`, `isSnapshotUpdate`
+- **No `uuid`**, no `sessionId`, no `timestamp` at top level
+- `trackedFileBackups` values are objects `{backupFileName, version, backupTime}`
+- The `snapshot` sub-object contains its own `messageId` and `timestamp`
+
+Mapped to `Role::System` with category `"snapshot"`.
 
 #### `queue-operation`
 
@@ -205,69 +501,79 @@ Message queue management for multi-turn flows.
 ```jsonc
 {"type":"queue-operation","operation":"enqueue","timestamp":"…","sessionId":"…","content":"next task"}
 {"type":"queue-operation","operation":"dequeue","timestamp":"…","sessionId":"…"}
-{"type":"queue-operation","operation":"remove","timestamp":"…","sessionId":"…"}
-{"type":"queue-operation","operation":"popAll","timestamp":"…","sessionId":"…","content":"queued prompt text"}
 ```
 
-| `operation` | Count in real data | Has `content`? |
+| `operation` | Count | Has `content`? |
 |---|---|---|
-| `dequeue` | 10,246 | No |
-| `enqueue` | 2,837 | Yes (the queued prompt) |
-| `remove` | 2,031 | No |
-| `popAll` | 36 | Sometimes |
+| `enqueue` | 4,556 | Yes (the queued prompt) |
+| `dequeue` | 2,464 | No |
+| `remove` | 1,819 | No |
+| `popAll` | 24 | Sometimes |
 
-**Note:** Queue-operation entries have `sessionId` and `timestamp` but **no `uuid` field**.
+- 4-5 keys: `type`, `operation`, `sessionId`, `timestamp`, optional `content`
+- **No `uuid` field**
 
 Mapped to `Role::System` with category `"queue"`.
 
-#### `file-history-snapshot`
+#### `last-prompt`
 
-Point-in-time file state backups for undo/restore.
-
-```jsonc
-{"type":"file-history-snapshot","messageId":"a2","snapshot":{"messageId":"a2","trackedFileBackups":{"/src/auth.rs":{"backupFileName":"be8cf68e@v1","version":1,"backupTime":"2026-02-21T06:17:55.974Z"}},"timestamp":"2026-02-21T06:16:22.976Z"},"isSnapshotUpdate":true}
-```
-
-- `trackedFileBackups` values are objects `{backupFileName, version, backupTime}`, not simple hash strings.
-- The `snapshot` sub-object contains its own `messageId` and `timestamp`.
-- Entries have `messageId` but **no `uuid` field**.
-
-Mapped to `Role::System` with category `"snapshot"`.
-
-#### `saved_hook_context`
-
-Hook-injected context persisted into the conversation (e.g. claude-mem memory snapshots).
+Stores the most recent user prompt text for session preview/resumption. **Not handled by the parser** — falls through to the unknown-type wildcard.
 
 ```jsonc
-{"type":"saved_hook_context","uuid":"shc1","timestamp":"…","parentUuid":"…","sessionId":"…","hookName":"SessionStart","hookEvent":"SessionStart","toolUseID":"SessionStart","cwd":"/path","userType":"external","version":"2.1.27","isSidechain":false,"gitBranch":"main","content":["hook context line 1","hook context line 2"]}
+{"type":"last-prompt","sessionId":"35fe635c-…","lastPrompt":"Fix the auth bug"}
 ```
 
-Has all session metadata fields plus hook-specific: `hookName`, `hookEvent`, `toolUseID`.
+- Exactly 3 keys: `type`, `sessionId`, `lastPrompt`
+- **No `uuid`**, no `timestamp`
+- 150 occurrences across current corpus
 
-Mapped to `Role::System` with category **`"context"`**.
+#### `custom-title`
 
-#### `result`
-
-**Dead code — zero occurrences** across 4,716 real JSONL files (728,071 entries). The parser has a 3-line arm that maps it to `Role::System` with category `"result"`, but no real session has ever produced this type. The example below is **fabricated from the code path**, not from real data.
+User-set custom session title. **Not handled by the parser** — falls through to the unknown-type wildcard.
 
 ```jsonc
-// ⚠️ Fabricated — no real example exists
-{"type":"result","subtype":"success","timestamp":"…"}
+{"type":"custom-title","sessionId":"22deddcb-…","customTitle":"My custom session name"}
 ```
 
-Kept in the parser for forward compatibility. Harmless dead code.
+- Exactly 3 keys: `type`, `sessionId`, `customTitle`
+- **No `uuid`**, no `timestamp`
+- 2 occurrences across current corpus (very rare)
 
 #### `pr-link`
 
-Pull request metadata injected after `gh pr create`. Rare (12 occurrences across all data).
+Pull request metadata injected after `gh pr create`. **Not handled by the parser** — silently ignored.
 
 ```jsonc
-{"type":"pr-link","sessionId":"…","prNumber":9,"prUrl":"https://github.com/user/repo/pull/9","prRepository":"user/repo","timestamp":"…"}
+{"type":"pr-link","sessionId":"…","prNumber":9,
+ "prUrl":"https://github.com/user/repo/pull/9",
+ "prRepository":"user/repo","timestamp":"…"}
 ```
 
-**Not handled by the parser** — falls through to the unknown-type wildcard and is silently ignored.
+- 6 keys: `type`, `sessionId`, `prNumber`, `prUrl`, `prRepository`, `timestamp`
+- **No `uuid`**
+- 12 occurrences across current corpus
 
-### 2.4 Forward Compatibility
+### 2.4 `toolUseResult` Polymorphism
+
+The `toolUseResult` field on user entries (tool output returning to Claude) is polymorphic across 3 JSON types:
+
+| JSON type | Count | % | Example |
+|---|---|---|---|
+| `object` | 60,817 | 90.3% | `{"stdout":"…","stderr":"","interrupted":false}` |
+| `string` | 5,890 | 8.7% | `"File contents here…"` |
+| `array` | 662 | 1.0% | `[{"type":"text","text":"…"}]` |
+
+Common object key signatures:
+
+| Keys | Count | Typical tool |
+|---|---|---|
+| `{file, type}` | 15,599 | Read |
+| `{interrupted, isImage, noOutputExpected, stderr, stdout}` | 13,287 | Bash |
+| `{filePath, newString, oldString, originalFile, replaceAll, structuredPatch, userModified}` | 8,766 | Edit |
+| `{content, filenames, mode, numFiles, numLines}` | 4,613 | Glob |
+| `{agentId, content, prompt, status, totalDurationMs, totalTokens, totalToolUseCount, usage}` | 2,466 | Agent |
+
+### 2.5 Forward Compatibility
 
 Unknown `type` values are **silently ignored** via a wildcard match arm. This allows newer Claude Code versions to add entry types without breaking older claude-view versions.
 
@@ -285,7 +591,7 @@ _ => {
 
 ## 3. Parsed Roles (Internal Representation)
 
-The parser normalizes 9 JSONL types into **7 Roles** used throughout the Rust backend and TypeScript frontend.
+The parser normalizes 8 JSONL types into **7 Roles** used throughout the Rust backend and TypeScript frontend.
 
 ```text
 JSONL type              →  Role              Category
@@ -297,12 +603,10 @@ assistant (has text)    →  Assistant         (from first tool name)
 assistant (tools only)  →  ToolUse           (from first tool name)
 system                  →  System            "system"
 progress                →  Progress          (from data.type, see §2.2)
-summary                 →  Summary           —
-queue-operation         →  System            "queue"
 file-history-snapshot   →  System            "snapshot"
-saved_hook_context      →  System            "context"
-result                  →  System            "result"
-hook_event              →  (ignored)         —
+queue-operation         →  System            "queue"
+last-prompt             →  (ignored)         —
+custom-title            →  (ignored)         —
 pr-link                 →  (ignored)         —
 ```
 
@@ -317,7 +621,7 @@ pub enum Role {
     ToolResult, // User message with tool_result array content
     System,     // System events + queue-ops + file-snapshots
     Progress,   // Progress events (agent, bash, hook, mcp, waiting)
-    Summary,    // Auto-generated session summaries
+    Summary,    // Auto-generated session summaries (0 occurrences in current data)
 }
 ```
 
@@ -359,21 +663,21 @@ CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, ti
 
 | # | `event_name` | Default Group | Overrides | Description |
 |---|---|---|---|---|
-| 1 | `SessionStart` | **needs_you** | `source=="compact"` → autonomous | Session begins. Default: "Waiting for first prompt" |
+| 1 | `SessionStart` | **needs_you** | `source=="compact"` → autonomous | Session begins |
 | 2 | `UserPromptSubmit` | autonomous | — | User submits a prompt |
 | 3 | `PreToolUse` | autonomous | `AskUserQuestion` → needs_you; `ExitPlanMode` → needs_you; `EnterPlanMode` → autonomous | About to invoke a tool |
 | 4 | `PostToolUse` | autonomous | — | Tool completed successfully |
-| 5 | `PostToolUseFailure` | autonomous | `is_interrupt==true` → needs_you | Tool failed. Interrupt = user stopped it |
+| 5 | `PostToolUseFailure` | autonomous | `is_interrupt==true` → needs_you | Tool failed |
 | 6 | `PermissionRequest` | needs_you | — | Awaiting user permission |
-| 7 | `Notification` | **needs_you** | See subtypes below. All resolve to needs_you | See subtypes below |
+| 7 | `Notification` | **needs_you** | See subtypes below | See subtypes below |
 | 8 | `Stop` | needs_you | — | Agent stopped or user interrupted |
-| 9 | `SessionEnd` | — | — | Triggers SQLite flush; **not stored** as an event |
+| 9 | `SessionEnd` | — | — | Triggers SQLite flush; **not stored** as event |
 | 10 | `SubagentStart` | autonomous | — | Sub-agent spawned |
-| 11 | `SubagentStop` | *(metadata only)* | — | Sub-agent completed. Resolves to autonomous but does NOT change parent session state |
-| 12 | `TeammateIdle` | *(metadata only)* | — | Teammate went idle. Same: resolves to autonomous, does not change parent state |
-| 13 | `TaskCompleted` | *(metadata only)* | — | Task marked complete. Same: resolves to autonomous, does not change parent state |
+| 11 | `SubagentStop` | *(metadata only)* | — | Sub-agent completed |
+| 12 | `TeammateIdle` | *(metadata only)* | — | Teammate went idle |
+| 13 | `TaskCompleted` | *(metadata only)* | — | Task marked complete |
 | 14 | `PreCompact` | autonomous | — | Context compaction starting |
-| 15 | *(wildcard)* | autonomous | — | Any unknown event name → generic fallback for forward compat |
+| 15 | *(wildcard)* | autonomous | — | Unknown event → generic fallback |
 
 **Notification subtypes** (via `notification_type` field):
 
@@ -382,8 +686,8 @@ CREATE INDEX IF NOT EXISTS idx_hook_events_session ON hook_events(session_id, ti
 | `permission_prompt` | needs_you | Permission-related notification |
 | `idle_prompt` | needs_you | Session idle notification |
 | `elicitation_dialog` | needs_you | Dialog prompting user for input |
-| `auth_success` | *(filtered out)* | Early return in hook handler — not stored |
-| *(unknown)* | needs_you | Fallback for any unrecognized notification_type |
+| `auth_success` | *(filtered out)* | Not stored |
+| *(unknown)* | needs_you | Fallback |
 
 ### 4.3 Storage Lifecycle
 
@@ -412,11 +716,10 @@ GET /api/sessions/{sessionId}/hook-events
 → { "hookEvents": [ { timestamp, eventName, toolName, label, group, context }, ... ] }
 → Mapped to TypeScript HookEventItem
 → Merged with JSONL messages into unified conversation timeline
-→ Both hook_events AND hook_progress are shown — they are different data, never deduplicated
 ```
 
 **WebSocket (for live sessions):**
-Hook events are pushed in real-time via the terminal WebSocket connection as `{"type": "hook_event", ...}` messages. This is the primary delivery mechanism during active sessions — the REST endpoint is a fallback for completed sessions stored in SQLite.
+Hook events are pushed in real-time via the terminal WebSocket connection as `{"type": "hook_event", ...}` messages.
 
 ---
 
@@ -446,12 +749,12 @@ export interface RichMessage {
 | `tool_result` | JSONL `user` (tool_result[]), or WS `tool_result` | Tool result card |
 | `thinking` | WS `thinking` messages | Collapsible thinking section |
 | `error` | WS `error` messages, hook event errors | Error banner |
-| `hook` | — | Hook event chip (HookMessage component exists but `hookEventsToRichMessages()` maps to `type: 'progress'`, not `'hook'`) |
-| `system` | JSONL `system` / `queue-operation` / `result` / etc., or WS `system`/`result` | System metadata row |
+| `hook` | — | Hook event chip |
+| `system` | JSONL `system` / `queue-operation` / etc., or WS `system`/`result` | System metadata row |
 | `progress` | JSONL `progress`, hook events (via `hookEventsToRichMessages()`), or WS `progress` | Progress indicator |
-| `summary` | JSONL `summary`, or WS `summary` | Summary card |
+| `summary` | JSONL `summary` (currently 0 occurrences), or WS `summary` | Summary card |
 
-**Hook events conversion** (hook-events-to-messages.ts): SQLite hook events are converted to `type: 'progress'` with `category: 'hook'` and `metadata.type: 'hook_event'`. The original `HookEventItem` is carried in `metadata._hookEvent` for the `HookEventRow` component. These are NOT deduplicated against JSONL `hook_progress` — they are different data (see §1).
+**Hook events conversion** (hook-events-to-messages.ts): SQLite hook events are converted to `type: 'progress'` with `category: 'hook'` and `metadata.type: 'hook_event'`. These are NOT deduplicated against JSONL `hook_progress` — they are different data (see §1).
 
 ---
 
@@ -465,7 +768,7 @@ Tool calls and events are categorized for filtering in the Action Log. There are
 |---|---|
 | `skill` | Tool name is `"Skill"` |
 | `mcp` | Tool name starts with `"mcp__"` or `"mcp_"` |
-| `agent` | Tool name is `"Task"` or `"Agent"` (renamed ~v0.10) |
+| `agent` | Tool name is `"Task"` or `"Agent"` |
 | `builtin` | **Fallback default** — any tool not matching above |
 
 ### Progress Categories (category.rs `categorize_progress()`)
@@ -487,10 +790,10 @@ Tool calls and events are categorized for filtering in the Action Log. There are
 | `system` | `system` JSONL entries |
 | `queue` | `queue-operation` entries |
 | `snapshot` | `file-history-snapshot` entries |
-| `context` | `saved_hook_context` entries |
-| `result` | `result` entries |
-| `hook` | Hook events from SQLite (Channel B, converted by hook-events-to-messages.ts) |
-| `summary` | `summary` entries (frontend-assigned) |
+| `context` | `saved_hook_context` entries (0 occurrences currently) |
+| `result` | `result` entries (0 occurrences currently) |
+| `hook` | Hook events from SQLite (Channel B) |
+| `summary` | `summary` entries (frontend-assigned, 0 occurrences currently) |
 | `error` | Error messages (frontend-assigned) |
 
 ### Full ActionCategory TypeScript Type
@@ -510,36 +813,65 @@ export type ActionCategory =
 
 | Layer | File | What it does |
 |---|---|---|
-| **JSONL Parser** | `crates/core/src/parser.rs` | Parses 9 JSONL types → `Vec<Message>` (ignores unknown types) |
+| **JSONL Parser** | `crates/core/src/parser.rs` | Parses 8 JSONL types → `Vec<Message>` (ignores unknown types) |
 | **Live Parser** | `crates/core/src/live_parser.rs` | Streaming parser for active sessions |
-| **Role enum** | `crates/core/src/types.rs` | `Role` enum definition (7 variants), `ContentBlock` enum (5 variants) |
+| **Role enum** | `crates/core/src/types.rs` | `Role` enum definition (7 variants), `ContentBlock` enum |
 | **Category** | `crates/core/src/category.rs` | `categorize_tool()` + `categorize_progress()` |
 | **Hook Handler** | `crates/server/src/routes/hooks.rs` | Receives hook POSTs, resolves agent state, WebSocket broadcast |
 | **Hook DB** | `crates/db/src/queries/hook_events.rs` | SQLite read/write for hook_events |
 | **Schema** | `crates/db/src/migrations.rs` | Migration 24: hook_events table + index |
 | **TS Types (web)** | `apps/web/src/types/generated/Role.ts` | Generated TypeScript Role type |
-| **TS Types (shared)** | `packages/shared/src/types/generated/` | Generated types: HookEvent, LiveSession, AgentState, AgentStateGroup, TokenUsage, SubAgentInfo, etc. |
+| **TS Types (shared)** | `packages/shared/src/types/generated/` | Generated types: HookEvent, LiveSession, AgentState, etc. |
 | **Rich Pane** | `apps/web/src/components/live/RichPane.tsx` | RichMessage type + `parseRichMessage()` renderer dispatch |
-| **Hook→Message** | `apps/web/src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items (both Message and RichMessage formats) |
-| **Action Types** | `apps/web/src/components/live/action-log/types.ts` | ActionCategory (13 variants), ActionItem, HookEventItem, TimelineItem |
+| **Hook→Message** | `apps/web/src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items |
+| **Action Types** | `apps/web/src/components/live/action-log/types.ts` | ActionCategory, ActionItem, HookEventItem, TimelineItem |
+| **Evidence Guard** | `scripts/integrity/evidence-audit.sh` | Pre-release evidence audit against real JSONL data |
 
 ---
 
 ## 8. Common Session Metadata Fields
 
-Every JSONL entry (user, assistant, system, etc.) shares a set of session metadata fields. These are always present in real data but not part of the conversation content:
+Every JSONL entry with session context shares a set of metadata fields. Presence varies by type.
+
+### Always-Present Fields (on `user`, `assistant`, `system`, `progress`)
 
 | Field | Type | Description |
 |---|---|---|
-| `sessionId` | string | Session identifier |
+| `type` | string | Entry type discriminator |
+| `uuid` | string | Entry identifier |
+| `parentUuid` | string | Link to parent message |
 | `timestamp` | string (ISO 8601) | Entry creation time |
+| `sessionId` | string | Session identifier |
 | `version` | string | Claude Code CLI version (e.g. `"2.1.56"`) |
 | `cwd` | string | Working directory |
 | `gitBranch` | string | Current git branch |
 | `isSidechain` | boolean | Whether this is a sidechain message |
 | `userType` | string | Always `"external"` |
-| `slug` | string | Human-readable session slug (~92% of user/assistant entries, not all) |
-| `uuid` | string | Entry identifier (most types, but NOT summary/queue-operation/file-history-snapshot) |
-| `parentUuid` | string | Link to parent message (most types) |
-| `todos` | array \| null | Todo list state `[{content, status, activeForm}]`. **Only present when todo feature is active** — 0.9% of user entries, 0% of assistant entries. Absent (not `null`, not `[]`) on entries without active todos |
-| `permissionMode` | string | Permission mode (e.g. `"bypassPermissions"`, `"default"`). Present on `user` entries only |
+
+### Conditional Fields
+
+| Field | Present on | Frequency | Description |
+|---|---|---|---|
+| `slug` | user, assistant, system, progress | ~96-98% | Human-readable session slug |
+| `agentId` | user, assistant, system, progress | 3-57% | Sub-agent context identifier |
+| `requestId` | assistant | ~99.9% | API request ID (absent on error messages) |
+| `sourceToolAssistantUUID` | user | ~89% | Assistant msg that invoked the tool |
+| `toolUseResult` | user | ~38% | Denormalized tool output summary |
+| `permissionMode` | user | ~3% | e.g. `"bypassPermissions"`, `"default"` |
+| `isMeta` | user, system | <1% | System init messages (parser skips these) |
+| `todos` | user | ~0.7% | Todo list state array |
+| `toolUseID` | progress, system | 100% of progress | Tool invocation identifier |
+| `parentToolUseID` | progress | 100% | Parent tool invocation identifier |
+| `isApiErrorMessage` | assistant | ~0.07% | Boolean flag on error responses |
+| `error` | assistant, system | rare | Error details object |
+| `teamName` | assistant, system, progress | <0.2% | Team context |
+
+### Types WITHOUT Standard Metadata
+
+| Type | Has `uuid`? | Has `sessionId`? | Unique structure |
+|---|---|---|---|
+| `file-history-snapshot` | No | No | Only `{type, messageId, snapshot, isSnapshotUpdate}` |
+| `queue-operation` | No | Yes | Only `{type, operation, sessionId, timestamp, content?}` |
+| `last-prompt` | No | Yes | Only `{type, sessionId, lastPrompt}` |
+| `custom-title` | No | Yes | Only `{type, sessionId, customTitle}` |
+| `pr-link` | No | Yes | Only `{type, sessionId, prNumber, prUrl, prRepository, timestamp}` |

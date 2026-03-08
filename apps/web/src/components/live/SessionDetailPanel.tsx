@@ -24,6 +24,7 @@ import { useControlSession } from '../../hooks/use-control-session'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { useSessionDetail } from '../../hooks/use-session-detail'
 import { useTeamForSession } from '../../hooks/use-teams'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { controlStatusToInputState } from '../../lib/control-status-map'
@@ -123,8 +124,8 @@ function getStoredPanelWidth(isInline: boolean): number {
       const w = Number.parseInt(stored, 10)
       if (w >= MIN_PANEL_WIDTH && !isNaN(w)) return w
     }
-  } catch {
-    /* ignore */
+  } catch (e) {
+    console.debug('[SessionDetailPanel] localStorage access failed:', e)
   }
   return fallback
 }
@@ -144,7 +145,11 @@ export function SessionDetailPanel({
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
   const hasSubAgents = data.subAgents && data.subAgents.length > 0
-  const hasTasks = data.tasks && data.tasks.length > 0
+
+  // For live sessions, fetch tasks from API (the SSE live stream does not include persistent task data)
+  const { data: liveSessionDetail } = useSessionDetail(isLive ? data.id : null)
+  const tasks = isLive ? liveSessionDetail?.tasks : data.tasks
+  const hasTasks = tasks && tasks.length > 0
 
   // File history (fetched on demand for all sessions)
   const { data: fileHistory } = useFileHistory(data.id)
@@ -239,44 +244,52 @@ export function SessionDetailPanel({
   // Copy session ID to clipboard
   const [copied, setCopied] = useState(false)
   const copySessionId = useCallback(() => {
-    navigator.clipboard.writeText(data.id).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
+    navigator.clipboard.writeText(data.id).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      },
+      (err) => {
+        console.debug('[SessionDetailPanel] Clipboard write failed:', err)
+      },
+    )
   }, [data.id])
 
   // Drag-to-resize the left edge
-  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setIsResizing(true)
-    const startX = e.clientX
-    const startW = panelWidthRef.current
+  const handleResizeStart = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      setIsResizing(true)
+      const startX = e.clientX
+      const startW = panelWidthRef.current
 
-    const onMove = (ev: PointerEvent) => {
-      const delta = startX - ev.clientX
-      const maxWidth = window.innerWidth * 0.9
-      const newWidth = Math.round(Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, startW + delta)))
-      panelWidthRef.current = newWidth
-      setPanelWidth(newWidth)
-    }
-
-    const onUp = () => {
-      setIsResizing(false)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      try {
-        localStorage.setItem(
-          inline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY,
-          String(panelWidthRef.current),
-        )
-      } catch {
-        /* ignore */
+      const onMove = (ev: PointerEvent) => {
+        const delta = startX - ev.clientX
+        const maxWidth = window.innerWidth * 0.9
+        const newWidth = Math.round(Math.min(maxWidth, Math.max(MIN_PANEL_WIDTH, startW + delta)))
+        panelWidthRef.current = newWidth
+        setPanelWidth(newWidth)
       }
-    }
 
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }, [])
+      const onUp = () => {
+        setIsResizing(false)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        try {
+          localStorage.setItem(
+            inline ? INLINE_PANEL_WIDTH_KEY : PANEL_WIDTH_KEY,
+            String(panelWidthRef.current),
+          )
+        } catch (e) {
+          console.debug('[SessionDetailPanel] localStorage access failed:', e)
+        }
+      }
+
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [inline],
+  )
 
   // ---- Derived values ----
   const statusLabel =
@@ -341,6 +354,7 @@ export function SessionDetailPanel({
             {data.projectDisplayName || data.project}
           </span>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close detail panel"
             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 flex-shrink-0"
@@ -379,6 +393,7 @@ export function SessionDetailPanel({
           })()}
 
           <button
+            type="button"
             onClick={copySessionId}
             title={`Copy session ID: ${data.id}`}
             className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -409,6 +424,7 @@ export function SessionDetailPanel({
           const Icon = tab.icon
           return (
             <button
+              type="button"
               key={tab.id}
               role="tab"
               aria-selected={activeTab === tab.id}
@@ -519,6 +535,7 @@ export function SessionDetailPanel({
             <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3">
               {/* Cost card (clickable → Cost tab) */}
               <button
+                type="button"
                 onClick={() => setActiveTab('cost')}
                 className="text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
               >
@@ -618,6 +635,7 @@ export function SessionDetailPanel({
             {/* ── Sub-agents (clickable → Sub-Agents tab) ── */}
             {hasSubAgents && (
               <button
+                type="button"
                 onClick={() => setActiveTab('sub-agents')}
                 className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
               >
@@ -634,6 +652,7 @@ export function SessionDetailPanel({
             {/* ── Mini timeline (clickable → Sub-Agents tab) ── */}
             {hasSubAgents && data.startedAt && (
               <button
+                type="button"
                 onClick={() => setActiveTab('sub-agents')}
                 className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 hover:bg-gray-100 dark:hover:bg-gray-800/70 transition-colors cursor-pointer"
               >
@@ -781,7 +800,7 @@ export function SessionDetailPanel({
         )}
 
         {/* ---- Tasks tab ---- */}
-        {activeTab === 'tasks' && hasTasks && <TaskDetailTab tasks={data.tasks!} />}
+        {activeTab === 'tasks' && hasTasks && <TaskDetailTab tasks={tasks!} />}
 
         {/* ---- Changes tab ---- */}
         {activeTab === 'changes' && hasChanges && (
