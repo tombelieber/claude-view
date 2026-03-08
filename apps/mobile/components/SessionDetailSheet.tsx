@@ -1,10 +1,10 @@
-import { type RelaySession, formatUsd } from '@claude-view/shared'
+import { type LiveSession, formatUsd } from '@claude-view/shared'
 import { FileText } from 'lucide-react-native'
 import { ScrollView } from 'react-native'
 import { Separator, Sheet, Text, XStack, YStack } from 'tamagui'
 
 interface Props {
-  session: RelaySession | null
+  session: LiveSession | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
