@@ -224,61 +224,107 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
     Some((detail, inbox))
 }
 
-/// In-memory store of all teams, loaded once at startup.
+/// Live-reloading teams store.
+///
+/// Re-scans `~/.claude/teams/` on every public method call. The directory
+/// typically has <10 entries, each config.json <5KB — total I/O is
+/// microseconds, far cheaper than any staleness/cache-invalidation bug.
 pub struct TeamsStore {
+    /// Path to `~/.claude` (or equivalent). `None` for empty/test stores.
+    claude_dir: Option<std::path::PathBuf>,
+    /// Eagerly loaded snapshot (used for the initial log message at startup).
     pub teams: HashMap<String, TeamDetail>,
     pub inboxes: HashMap<String, Vec<InboxMessage>>,
+}
+
+/// Internal: scan the teams directory and return (teams, inboxes).
+fn scan_teams_dir(
+    claude_dir: &Path,
+) -> (
+    HashMap<String, TeamDetail>,
+    HashMap<String, Vec<InboxMessage>>,
+) {
+    let teams_dir = claude_dir.join("teams");
+    let mut teams = HashMap::new();
+    let mut inboxes = HashMap::new();
+
+    let Ok(entries) = std::fs::read_dir(&teams_dir) else {
+        return (teams, inboxes);
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if let Some((detail, inbox)) = parse_team(&path) {
+            let name = detail.name.clone();
+            teams.insert(name.clone(), detail);
+            inboxes.insert(name, inbox);
+        }
+    }
+
+    (teams, inboxes)
 }
 
 impl TeamsStore {
     /// Create an empty store (used by test constructors that don't need real teams).
     pub fn empty() -> Self {
         Self {
+            claude_dir: None,
             teams: HashMap::new(),
             inboxes: HashMap::new(),
         }
     }
 
     /// Scan ~/.claude/teams/ and load all teams with valid config.json.
+    /// Subsequent calls to `summaries()`, `get()`, etc. will re-scan live.
     pub fn load(claude_dir: &Path) -> Self {
-        let teams_dir = claude_dir.join("teams");
-        let mut teams = HashMap::new();
-        let mut inboxes = HashMap::new();
+        let (teams, inboxes) = scan_teams_dir(claude_dir);
 
-        let Ok(entries) = std::fs::read_dir(&teams_dir) else {
-            tracing::debug!("No teams directory found at {:?}", teams_dir);
-            return Self { teams, inboxes };
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            if let Some((detail, inbox)) = parse_team(&path) {
-                tracing::info!(
-                    "Loaded team '{}': {} members, {} inbox messages",
-                    detail.name,
-                    detail.members.len(),
-                    inbox.len()
-                );
-                let name = detail.name.clone();
-                teams.insert(name.clone(), detail);
-                inboxes.insert(name, inbox);
-            }
+        for (name, detail) in &teams {
+            let msg_count = inboxes.get(name).map_or(0, |i| i.len());
+            tracing::info!(
+                "Loaded team '{}': {} members, {} inbox messages",
+                name,
+                detail.members.len(),
+                msg_count,
+            );
         }
+        tracing::info!(
+            "Loaded {} teams from {:?}",
+            teams.len(),
+            claude_dir.join("teams")
+        );
 
-        tracing::info!("Loaded {} teams from {:?}", teams.len(), teams_dir);
-        Self { teams, inboxes }
+        Self {
+            claude_dir: Some(claude_dir.to_path_buf()),
+            teams,
+            inboxes,
+        }
+    }
+
+    /// Re-scan disk and update the in-memory snapshot.
+    fn refresh(
+        &self,
+    ) -> (
+        HashMap<String, TeamDetail>,
+        HashMap<String, Vec<InboxMessage>>,
+    ) {
+        match &self.claude_dir {
+            Some(dir) => scan_teams_dir(dir),
+            None => (HashMap::new(), HashMap::new()),
+        }
     }
 
     /// Build summary list for the /api/teams index endpoint.
+    /// Re-scans the teams directory to pick up teams created after server start.
     pub fn summaries(&self) -> Vec<TeamSummary> {
-        let mut summaries: Vec<_> = self
-            .teams
+        let (teams, inboxes) = self.refresh();
+        let mut summaries: Vec<_> = teams
             .values()
             .map(|t| {
-                let inbox = self.inboxes.get(&t.name);
+                let inbox = inboxes.get(&t.name);
                 let msg_count = inbox.map_or(0, |i| i.len() as u32);
                 let mut models: Vec<_> = t.members.iter().map(|m| m.model.clone()).collect();
                 models.sort();
@@ -306,6 +352,18 @@ impl TeamsStore {
             .collect();
         summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         summaries
+    }
+
+    /// Look up a team by name (re-scans disk).
+    pub fn get(&self, name: &str) -> Option<TeamDetail> {
+        let (teams, _) = self.refresh();
+        teams.get(name).cloned()
+    }
+
+    /// Look up inbox messages for a team (re-scans disk).
+    pub fn inbox(&self, name: &str) -> Option<Vec<InboxMessage>> {
+        let (_, inboxes) = self.refresh();
+        inboxes.get(name).cloned()
     }
 }
 
@@ -435,6 +493,32 @@ mod tests {
 
         let store = TeamsStore::load(tmp.path());
         assert_eq!(store.teams.len(), 0);
+    }
+
+    #[test]
+    fn test_live_reload_picks_up_new_team() {
+        // Teams created AFTER TeamsStore::load() must be visible on next query.
+        // This is the root cause of /teams page showing "No teams found" for
+        // teams created during the current server session.
+        let tmp = TempDir::new().unwrap();
+
+        // Initial load — no teams yet
+        let store = TeamsStore::load(tmp.path());
+        assert_eq!(store.summaries().len(), 0);
+
+        // Team created after initial load (simulates Claude Code /team command)
+        make_test_team(tmp.path());
+
+        // Must find the new team WITHOUT restarting
+        assert_eq!(
+            store.summaries().len(),
+            1,
+            "TeamsStore should pick up teams created after initial load"
+        );
+        assert!(
+            store.get("test-team").is_some(),
+            "Team detail should be available for newly created team"
+        );
     }
 
     #[test]
