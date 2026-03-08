@@ -263,6 +263,20 @@ NEVER document:
 
 Trace every new field end-to-end: **DB column -> SELECT query -> Rust struct -> JSON -> API response -> TS type -> hook -> component -> browser**. `Option`/`undefined` silently absorbs gaps — manual browser verification catches what tests won't.
 
+### Query Parameter Wiring — EVERY Frontend→Backend Param (RECURRING BUG)
+
+**Every query parameter the frontend sends MUST be declared in the backend's Axum `Query<T>` struct AND consumed in the handler logic.** Axum silently drops undeclared params — so a filter that appears functional in the UI has zero effect on results. This is the most dangerous wiring gap because there's no compiler error, no runtime error, no empty result — just wrong results that look plausible.
+
+**A 2026-03-08 audit of the Prompts page found 7 phantom filters:** `branches`, `models`, `time_after`, `time_before`, `template_match` were never declared in `PromptsListQuery`; `has_paste` and `sort` were declared but never used. Users saw working filter UI that silently did nothing.
+
+**Mandatory checklist when adding ANY query parameter to a frontend hook:**
+1. **Declare it** in the Rust `Query<T>` struct (e.g. `PromptsListQuery`, `SessionListQuery`)
+2. **Consume it** in the handler — add it to the query builder, search call, or SQL clause. A declared-but-unused field is the same bug
+3. **Verify round-trip** — open browser DevTools Network tab, confirm the param appears in the request AND affects the response (change the filter, see different results)
+4. **Search engine filters need explicit query clauses** — Tantivy/SQLite don't auto-filter on params. Every filter needs a `TermQuery`, `RangeQuery`, or `WHERE` clause. If the search method's signature doesn't accept the filter, the wiring is incomplete
+
+**The pattern that causes this:** Frontend is built first (or in parallel) with optimistic params, backend is built with a subset, nobody verifies the full circuit. The fix is: **backend struct is the contract** — if the frontend sends it, the struct must declare it and the handler must use it. If the backend doesn't support a filter yet, the frontend must NOT render the UI for it.
+
 ### TypeScript Types — Generated Types Are Source of Truth (MANDATORY)
 
 **Rust structs with `#[derive(TS)]` are the ONLY source of truth for API types.** Generated types live in `apps/web/src/types/generated/` and `packages/shared/src/types/generated/`. Hand-written TS types that represent API responses or Rust structs are **BANNED** — they silently drift and cause type mismatches the compiler can't catch.

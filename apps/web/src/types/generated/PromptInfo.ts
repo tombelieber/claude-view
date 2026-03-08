@@ -3,6 +3,7 @@
 export type PromptInfo = {
   id: string
   display: string
+  snippet: string | null
   project: string
   projectDisplayName: string
   sessionId: string | null

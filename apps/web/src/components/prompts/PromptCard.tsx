@@ -40,7 +40,7 @@ interface PromptCardProps {
 export function PromptCard({ prompt }: PromptCardProps) {
   const [expanded, setExpanded] = useState(false)
 
-  const ts = formatRelativeTime(Number(prompt.timestamp))
+  const ts = formatRelativeTime(Number(prompt.timestamp) * 1000)
   const intentClass = intentColors[prompt.intent] ?? intentColors.other
 
   function handleCopy(e: React.MouseEvent) {
@@ -68,13 +68,22 @@ export function PromptCard({ prompt }: PromptCardProps) {
         </span>
       </div>
 
-      {/* Prompt text — click to expand/collapse */}
+      {/* Prompt text — click to expand/collapse.
+           When a search snippet is available, render it as HTML (<b> tags from Tantivy). */}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="mt-2 text-left text-sm text-gray-800 dark:text-gray-200 w-full cursor-pointer"
       >
-        <p className={expanded ? 'whitespace-pre-wrap' : 'line-clamp-3'}>{prompt.display}</p>
+        {!expanded && prompt.snippet ? (
+          <p
+            className="line-clamp-3 [&_b]:font-semibold [&_b]:text-blue-600 dark:[&_b]:text-blue-400"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by Tantivy SnippetGenerator
+            dangerouslySetInnerHTML={{ __html: prompt.snippet }}
+          />
+        ) : (
+          <p className={expanded ? 'whitespace-pre-wrap' : 'line-clamp-3'}>{prompt.display}</p>
+        )}
       </button>
 
       {/* Secondary info row: branch, model, paste indicator */}
