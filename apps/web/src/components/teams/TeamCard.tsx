@@ -14,6 +14,7 @@ function formatDuration(secs: number | null | undefined): string {
 }
 
 function formatDate(ms: number): string {
+  if (ms <= 0) return '—'
   const d = new Date(ms)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
