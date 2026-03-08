@@ -76,4 +76,5 @@ export type SessionInfo = {
   longestTaskSeconds?: number | null
   longestTaskPreview?: string | null
   totalCostUsd?: number | null
+  slug?: string | null
 }

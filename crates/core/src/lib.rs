@@ -20,6 +20,7 @@ pub mod metrics;
 pub mod parser;
 pub mod paths;
 pub mod patterns;
+pub mod plan_files;
 pub mod pricing;
 pub mod progress;
 pub mod prompt_history;
