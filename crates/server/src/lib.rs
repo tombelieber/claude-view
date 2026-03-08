@@ -142,6 +142,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
         teams: Arc::new(crate::teams::TeamsStore::empty()),
         prompt_index: Arc::new(std::sync::RwLock::new(None)),
         prompt_stats: Arc::new(std::sync::RwLock::new(None)),
@@ -216,6 +217,7 @@ pub fn create_app_full(
         share,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
         teams: Arc::new(crate::teams::TeamsStore::load(
             &dirs::home_dir().expect("home dir exists").join(".claude"),
         )),
