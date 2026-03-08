@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use claude_view_core::evidence_audit::{
-    check_set_diff, load_baseline, run_audit_checks, scan_directory_parallel, AuditResult,
+    check_set_diff, load_baseline, run_audit_checks, scan_directory_parallel,
+    scan_directory_parallel_with_pipeline, AuditResult,
 };
 
 // ANSI color codes
@@ -177,7 +178,7 @@ fn main() {
     let mode_label = if quick_mode {
         "QUICK (types only)"
     } else {
-        "FULL (6 checks)"
+        "FULL (6 type + 12 pipeline)"
     };
 
     // Print banner (file count filled in after scan)
@@ -195,7 +196,13 @@ fn main() {
     println!("  {}Mode:{}     {}", BLUE, NC, mode_label);
 
     // Scan directory (single walk — no separate discover step)
-    let signals = scan_directory_parallel(&data_dir);
+    let (signals, pipeline_results) = if quick_mode {
+        let signals = scan_directory_parallel(&data_dir);
+        (signals, None)
+    } else {
+        let (signals, pipeline) = scan_directory_parallel_with_pipeline(&data_dir);
+        (signals, Some(pipeline))
+    };
     let scan_elapsed = start.elapsed();
 
     let file_count = signals.files_scanned;
@@ -280,6 +287,59 @@ fn main() {
         );
     }
 
+    let mut overall_passed = result.passed;
+
+    if let Some(pipeline) = pipeline_results {
+        println!();
+        println!("  {BLUE}── Phase 2: Pipeline Invariants ──{NC}");
+        let results = pipeline.into_results();
+        let phase2_total = results.len();
+        let total_checks = result.checks.len();
+        for (i, check) in results.iter().enumerate() {
+            let idx = total_checks + i + 1;
+            let grand_total = total_checks + phase2_total;
+
+            if check.skipped {
+                println!(
+                    "  [{}/{}] {}: {}SKIPPED{} ({})",
+                    idx,
+                    grand_total,
+                    check.name,
+                    YELLOW,
+                    NC,
+                    check
+                        .sample_violations
+                        .first()
+                        .map(|v| v.detail.as_str())
+                        .unwrap_or("deferred")
+                );
+            } else if check.passed {
+                println!(
+                    "  [{}/{}] {}: {}OK{} ({} lines, 0 violations)",
+                    idx, grand_total, check.name, GREEN, NC, check.lines_checked
+                );
+            } else {
+                println!(
+                    "  [{}/{}] {}: {}FAIL{} ({} violations in {} lines)",
+                    idx,
+                    grand_total,
+                    check.name,
+                    RED,
+                    NC,
+                    check.violation_count,
+                    check.lines_checked
+                );
+                for v in &check.sample_violations {
+                    println!("           {}:{}", v.file, v.line_number);
+                    println!("             {}", v.detail);
+                }
+            }
+        }
+
+        let phase2_passed = results.iter().all(|r| r.skipped || r.passed);
+        overall_passed = overall_passed && phase2_passed;
+    }
+
     let total_elapsed = start.elapsed();
     let elapsed_secs = total_elapsed.as_secs_f64();
     let elapsed_ms = elapsed_secs * 1000.0;
@@ -290,7 +350,7 @@ fn main() {
     // Final summary
     println!();
     println!("{}", "\u{2500}".repeat(59));
-    if result.passed {
+    if overall_passed {
         println!(
             "  {}ALL CHECKS PASSED{} \u{2014} parser matches real data ({:.1}ms)",
             GREEN, NC, elapsed_ms
@@ -318,5 +378,5 @@ fn main() {
         );
     }
 
-    std::process::exit(if result.passed { 0 } else { 1 });
+    std::process::exit(if overall_passed { 0 } else { 1 });
 }
