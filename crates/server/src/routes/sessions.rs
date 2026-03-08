@@ -1925,6 +1925,7 @@ mod tests {
             tools_used: Vec::new(),
             last_cache_hit_at: None,
             compact_count: 0,
+            slug: None,
             control: None,
             hook_events: Vec::new(),
         };
