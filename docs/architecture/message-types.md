@@ -306,7 +306,7 @@ Claude's responses. Content blocks determine the parsed Role and extracted data.
 
 **`tool_use` block detail:**
 - `id` — unique identifier for the tool invocation
-- `name` — tool name (e.g. `Edit`, `Read`, `Bash`, `Agent`)
+- `name` — tool name (e.g. `Edit`, `Read`, `Bash`, `Agent`). Note: `Task` was renamed to `Agent` ~v0.10; both appear in historical data.
 - `input` — tool input parameters (object)
 - `type` — always `"tool_use"`
 - `caller` — present on ~84% of blocks. Indicates calling context. Added in newer CLI versions.
@@ -826,6 +826,9 @@ export type ActionCategory =
 | **Hook→Message** | `apps/web/src/lib/hook-events-to-messages.ts` | Converts SQLite hook events to timeline items |
 | **Action Types** | `apps/web/src/components/live/action-log/types.ts` | ActionCategory, ActionItem, HookEventItem, TimelineItem |
 | **Evidence Guard** | `scripts/integrity/evidence-audit.sh` | Pre-release evidence audit against real JSONL data |
+| **Invocation Registry** | `crates/core/src/registry.rs` | `BUILTIN_TOOLS` (26 entries) + `classify_tool_use()` — new tools must be added or they get `ClassifyResult::Ignored` |
+
+> **BUILTIN_TOOLS registry** (`registry.rs`): 26 tools as of 2026-03-08. New Claude Code tools must be added here or they silently get `ClassifyResult::Ignored` in invocation tracking. Run `scripts/integrity/evidence-audit.sh` to detect drift.
 
 ---
 
