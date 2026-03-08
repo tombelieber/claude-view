@@ -20,7 +20,7 @@ export function PluginActionMenu({ plugin, onAction, isPending }: PluginActionMe
       setConfirmUninstall(true)
       return
     }
-    onAction(action, plugin.name, plugin.scope)
+    onAction(action, plugin.id, plugin.scope)
   }
 
   return (
@@ -79,7 +79,7 @@ export function PluginActionMenu({ plugin, onAction, isPending }: PluginActionMe
         onOpenChange={setConfirmUninstall}
         onConfirm={() => {
           setConfirmUninstall(false)
-          onAction('uninstall', plugin.name, plugin.scope)
+          onAction('uninstall', plugin.id, plugin.scope)
         }}
       />
     </>
