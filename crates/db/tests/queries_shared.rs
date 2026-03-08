@@ -75,5 +75,6 @@ pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
         longest_task_preview: None,
         first_message_at: None,
         total_cost_usd: None,
+        slug: None,
     }
 }

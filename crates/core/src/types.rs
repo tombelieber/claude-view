@@ -434,6 +434,9 @@ pub struct SessionInfo {
     // Cost
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_cost_usd: Option<f64>,
+    // Plan file association
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
 }
 
 impl SessionInfo {
@@ -1230,6 +1233,7 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
             total_cost_usd: None,
+            slug: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1407,6 +1411,7 @@ mod tests {
             longest_task_preview: None,
             first_message_at: None,
             total_cost_usd: None,
+            slug: None,
         }
     }
 

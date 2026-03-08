@@ -5,6 +5,7 @@ import {
   Copy,
   DollarSign,
   FileDiff,
+  FileText,
   GitBranch,
   LayoutDashboard,
   ScrollText,
@@ -24,6 +25,7 @@ import { useControlSession } from '../../hooks/use-control-session'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { useTeamForSession } from '../../hooks/use-teams'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
@@ -43,6 +45,7 @@ import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
+import { PlanTab } from './PlanTab'
 import { RichPane } from './RichPane'
 import { SubAgentDrillDown } from './SubAgentDrillDown'
 import { SubAgentPills } from './SubAgentPills'
@@ -62,7 +65,16 @@ import type { LiveSession } from './use-live-sessions'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'teams' | 'cost' | 'tasks' | 'changes'
+type TabId =
+  | 'overview'
+  | 'terminal'
+  | 'log'
+  | 'sub-agents'
+  | 'teams'
+  | 'cost'
+  | 'tasks'
+  | 'changes'
+  | 'plan'
 
 interface SessionDetailPanelProps {
   /** Live session (existing callers) */
@@ -154,6 +166,10 @@ export function SessionDetailPanel({
   // File history (fetched on demand for all sessions)
   const { data: fileHistory } = useFileHistory(data.id)
   const hasChanges = fileHistory && fileHistory.files.length > 0
+
+  // Plan documents — hook takes sessionId (endpoint resolves slug server-side)
+  const { data: planDocuments } = usePlanDocuments(data.id, data.hasPlans || !!data.slug)
+  const hasPlans = planDocuments && planDocuments.length > 0
 
   // ---- Control session hooks (unconditional — Rules of Hooks) ----
   const controlSession = useControlSession(controlSessionId ?? null)
@@ -486,6 +502,26 @@ export function SessionDetailPanel({
             Changes
           </button>
         )}
+        {hasPlans && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'plan'}
+            onClick={() => {
+              setActiveTab('plan')
+              setDrillDownAgent(null)
+            }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
+              activeTab === 'plan'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+            )}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Plan
+          </button>
+        )}
 
         {/* Chat / Debug + Rich / JSON — only shown on Terminal tab */}
         {activeTab === 'terminal' && (
@@ -806,6 +842,9 @@ export function SessionDetailPanel({
         {activeTab === 'changes' && hasChanges && (
           <ChangesTab fileHistory={fileHistory!} sessionId={data.id} />
         )}
+
+        {/* ---- Plan tab ---- */}
+        {activeTab === 'plan' && hasPlans && <PlanTab plans={planDocuments!} />}
       </div>
     </div>
   )
