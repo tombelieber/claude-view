@@ -203,3 +203,10 @@ export type { MatchHit } from './MatchHit'
 export type { GrepResponse } from './GrepResponse'
 export type { GrepSessionHit } from './GrepSessionHit'
 export type { GrepLineMatch } from './GrepLineMatch'
+
+// Teams types
+export type { TeamSummary } from './TeamSummary'
+export type { TeamDetail } from './TeamDetail'
+export type { TeamMember } from './TeamMember'
+export type { InboxMessage } from './InboxMessage'
+export type { InboxMessageType } from './InboxMessageType'
