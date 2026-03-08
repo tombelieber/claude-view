@@ -103,7 +103,8 @@ pub enum DiffLineKind {
 /// Scan ~/.claude/file-history/{sessionId}/ and return file metadata.
 ///
 /// Groups backup files by hash, extracts version numbers, computes aggregate
-/// diff stats by diffing v(N-1) → v(N) for the latest version pair.
+/// diff stats by diffing v(N-1) → v(N) for the latest version pair, or counts
+/// all lines as added for single-version files.
 ///
 /// `file_path_map` maps `backupFileName` → original file path (from JSONL
 /// `file-history-snapshot` entries). If not provided, the file hash is used
@@ -131,7 +132,12 @@ pub fn scan_file_history(
 
     let entries = match std::fs::read_dir(&session_dir) {
         Ok(e) => e,
-        Err(_) => {
+        Err(e) => {
+            tracing::warn!(
+                path = %session_dir.display(),
+                error = %e,
+                "Failed to read session file-history directory"
+            );
             return FileHistoryResponse {
                 session_id: session_id.to_string(),
                 files: Vec::new(),
@@ -140,7 +146,7 @@ pub fn scan_file_history(
                     total_added: 0,
                     total_removed: 0,
                 },
-            }
+            };
         }
     };
 
@@ -188,9 +194,17 @@ pub fn scan_file_history(
             quick_diff_stats(&prev.1, &curr.1)
         } else {
             // Single version — count all lines as added
-            let line_count = std::fs::read_to_string(&versions[0].1)
-                .map(|s| s.lines().count() as u32)
-                .unwrap_or(0);
+            let line_count = match std::fs::read_to_string(&versions[0].1) {
+                Ok(s) => s.lines().count() as u32,
+                Err(e) => {
+                    tracing::warn!(
+                        path = %versions[0].1.display(),
+                        error = %e,
+                        "Failed to read single-version file for line count"
+                    );
+                    0
+                }
+            };
             DiffStats {
                 added: line_count,
                 removed: 0,
@@ -249,11 +263,16 @@ pub fn compute_diff(
     context_lines: usize,
 ) -> Result<FileDiffResponse, String> {
     let session_dir = history_dir.join(session_id);
-    let from_file = session_dir.join(format!("{file_hash}@v{from_version}"));
     let to_file = session_dir.join(format!("{file_hash}@v{to_version}"));
 
-    let from_text = std::fs::read_to_string(&from_file)
-        .map_err(|e| format!("Cannot read v{from_version}: {e}"))?;
+    // from_version=0 means "diff against empty" — shows all lines as added
+    let from_text = if from_version == 0 {
+        String::new()
+    } else {
+        let from_file = session_dir.join(format!("{file_hash}@v{from_version}"));
+        std::fs::read_to_string(&from_file)
+            .map_err(|e| format!("Cannot read v{from_version}: {e}"))?
+    };
     let to_text =
         std::fs::read_to_string(&to_file).map_err(|e| format!("Cannot read v{to_version}: {e}"))?;
 
@@ -357,6 +376,99 @@ pub fn claude_file_history_dir() -> Option<std::path::PathBuf> {
 }
 
 // ============================================================================
+// JSONL snapshot extraction
+// ============================================================================
+
+/// Extract a hash → file_path mapping from `file-history-snapshot` entries in a JSONL file.
+///
+/// Scans the JSONL file for lines with `"file-history-snapshot"` type, extracts
+/// `snapshot.trackedFileBackups`, and builds a map from the hash portion of each
+/// `backupFileName` (stripping the `@vN` suffix) to the original file path.
+///
+/// All snapshots are processed; later entries overwrite earlier ones for the same hash,
+/// reflecting the most recent file path (files may be renamed between snapshots).
+pub fn extract_file_path_map(jsonl_path: &Path) -> HashMap<String, String> {
+    use memchr::memmem;
+    use std::io::{BufRead, BufReader};
+
+    let mut map = HashMap::new();
+
+    let file = match std::fs::File::open(jsonl_path) {
+        Ok(f) => f,
+        Err(e) => {
+            tracing::warn!(
+                path = %jsonl_path.display(),
+                error = %e,
+                "Failed to open JSONL file for file-path extraction"
+            );
+            return map;
+        }
+    };
+
+    let reader = BufReader::new(file);
+    let finder = memmem::Finder::new(b"file-history-snapshot");
+
+    for (line_idx, line) in reader.lines().enumerate() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::debug!(
+                    line_number = line_idx + 1,
+                    error = %e,
+                    "Failed to read line in JSONL file"
+                );
+                continue;
+            }
+        };
+
+        // SIMD-accelerated pre-filter: skip lines that can't be file-history-snapshot
+        if finder.find(line.as_bytes()).is_none() {
+            continue;
+        }
+
+        let value: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::debug!(
+                    line_number = line_idx + 1,
+                    error = %e,
+                    "Failed to parse JSON on line that matched file-history-snapshot pre-filter"
+                );
+                continue;
+            }
+        };
+
+        if value.get("type").and_then(|t| t.as_str()) != Some("file-history-snapshot") {
+            continue;
+        }
+
+        let tracked = match value
+            .get("snapshot")
+            .and_then(|s| s.get("trackedFileBackups"))
+            .and_then(|t| t.as_object())
+        {
+            Some(obj) => obj,
+            None => continue,
+        };
+
+        for (file_path, backup_info) in tracked {
+            let backup_file_name = match backup_info.get("backupFileName").and_then(|b| b.as_str())
+            {
+                Some(name) => name,
+                None => continue,
+            };
+
+            // Extract hash by stripping @vN suffix
+            if let Some((hash, _version)) = parse_backup_filename(backup_file_name) {
+                map.insert(hash, file_path.clone());
+            }
+        }
+    }
+
+    map
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -388,8 +500,28 @@ fn parse_backup_filename(name: &str) -> Option<(String, u32)> {
 
 /// Quick diff stats between two files (just counts, no hunk structure).
 fn quick_diff_stats(from_path: &Path, to_path: &Path) -> DiffStats {
-    let from_text = std::fs::read_to_string(from_path).unwrap_or_default();
-    let to_text = std::fs::read_to_string(to_path).unwrap_or_default();
+    let from_text = match std::fs::read_to_string(from_path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                path = %from_path.display(),
+                error = %e,
+                "Failed to read 'from' file for diff stats"
+            );
+            return DiffStats::default();
+        }
+    };
+    let to_text = match std::fs::read_to_string(to_path) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                path = %to_path.display(),
+                error = %e,
+                "Failed to read 'to' file for diff stats"
+            );
+            return DiffStats::default();
+        }
+    };
     let diff = TextDiff::from_lines(&from_text, &to_text);
 
     let mut added: u32 = 0;
@@ -527,5 +659,111 @@ mod tests {
         assert!(validate_file_hash("hash/with/slashes").is_err());
         assert!(validate_file_hash("hash\\backslash").is_err());
         assert!(validate_file_hash("..").is_err());
+    }
+
+    // ====================================================================
+    // parse_backup_filename edge cases
+    // ====================================================================
+
+    #[test]
+    fn test_parse_backup_filename_edge_cases() {
+        // Empty string
+        assert_eq!(parse_backup_filename(""), None);
+
+        // Hash containing '@' — rfind picks the last '@'
+        assert_eq!(
+            parse_backup_filename("hash@extra@v1"),
+            Some(("hash@extra".to_string(), 1))
+        );
+
+        // Version 0
+        assert_eq!(
+            parse_backup_filename("hash@v0"),
+            Some(("hash".to_string(), 0))
+        );
+
+        // Trailing content after version number — parse fails
+        assert_eq!(parse_backup_filename("hash@v1.bak"), None);
+
+        // Real-world hex hash
+        assert_eq!(
+            parse_backup_filename("be8cf68e283682af@v1"),
+            Some(("be8cf68e283682af".to_string(), 1))
+        );
+    }
+
+    // ====================================================================
+    // extract_file_path_map tests
+    // ====================================================================
+
+    #[test]
+    fn test_extract_file_path_map_happy_path() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let line = r#"{"type":"file-history-snapshot","snapshot":{"trackedFileBackups":{"/src/main.rs":{"backupFileName":"abc123@v1","version":1,"backupTime":"2026-01-01T00:00:00Z"},"/src/lib.rs":{"backupFileName":"def456@v2","version":2,"backupTime":"2026-01-01T00:00:00Z"}}}}"#;
+        fs::write(tmp.path(), format!("{line}\n")).unwrap();
+
+        let map = extract_file_path_map(tmp.path());
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("abc123").unwrap(), "/src/main.rs");
+        assert_eq!(map.get("def456").unwrap(), "/src/lib.rs");
+    }
+
+    #[test]
+    fn test_extract_file_path_map_nonexistent_file() {
+        let map = extract_file_path_map(Path::new("/tmp/does-not-exist-ever-12345.jsonl"));
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_extract_file_path_map_empty_file() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        fs::write(tmp.path(), "").unwrap();
+
+        let map = extract_file_path_map(tmp.path());
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_extract_file_path_map_mixed_valid_invalid_lines() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let valid_snapshot = r#"{"type":"file-history-snapshot","snapshot":{"trackedFileBackups":{"/src/main.rs":{"backupFileName":"abc123@v1","version":1,"backupTime":"2026-01-01T00:00:00Z"}}}}"#;
+        let malformed_json = r#"{broken"#;
+        let assistant_line = r#"{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}"#;
+        let snapshot_missing_tracked = r#"{"type":"file-history-snapshot","snapshot":{}}"#;
+
+        let content = format!(
+            "{valid_snapshot}\n{malformed_json}\n{assistant_line}\n{snapshot_missing_tracked}\n"
+        );
+        fs::write(tmp.path(), content).unwrap();
+
+        let map = extract_file_path_map(tmp.path());
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("abc123").unwrap(), "/src/main.rs");
+    }
+
+    #[test]
+    fn test_extract_file_path_map_later_snapshot_overwrites_earlier() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let snapshot1 = r#"{"type":"file-history-snapshot","snapshot":{"trackedFileBackups":{"/src/old_path.rs":{"backupFileName":"samehash@v1","version":1,"backupTime":"2026-01-01T00:00:00Z"}}}}"#;
+        let snapshot2 = r#"{"type":"file-history-snapshot","snapshot":{"trackedFileBackups":{"/src/new_path.rs":{"backupFileName":"samehash@v2","version":2,"backupTime":"2026-01-01T01:00:00Z"}}}}"#;
+
+        let content = format!("{snapshot1}\n{snapshot2}\n");
+        fs::write(tmp.path(), content).unwrap();
+
+        let map = extract_file_path_map(tmp.path());
+        // Both snapshots map hash "samehash" — second one wins
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("samehash").unwrap(), "/src/new_path.rs");
+    }
+
+    #[test]
+    fn test_extract_file_path_map_missing_backup_file_name() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        // Entry has version and backupTime but no backupFileName
+        let snapshot = r#"{"type":"file-history-snapshot","snapshot":{"trackedFileBackups":{"/src/main.rs":{"version":1,"backupTime":"2026-01-01T00:00:00Z"}}}}"#;
+        fs::write(tmp.path(), format!("{snapshot}\n")).unwrap();
+
+        let map = extract_file_path_map(tmp.path());
+        assert!(map.is_empty());
     }
 }
