@@ -1,5 +1,6 @@
 import Constants from 'expo-constants'
 import { useEffect } from 'react'
+import { Platform } from 'react-native'
 import { OneSignal } from 'react-native-onesignal'
 import { secureStoreAdapter } from '../lib/secure-store-adapter'
 
@@ -7,6 +8,7 @@ const ONESIGNAL_APP_ID = Constants.expoConfig?.extra?.oneSignalAppId || 'YOUR_ON
 
 export function usePushNotifications() {
   useEffect(() => {
+    if (Platform.OS === 'web') return
     OneSignal.initialize(ONESIGNAL_APP_ID)
     OneSignal.Notifications.requestPermission(false)
 
