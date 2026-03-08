@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use claude_view_core::evidence_audit::{
-    check_set_diff, discover_jsonl_files, load_baseline, run_audit_checks, scan_directory_parallel,
-    AuditResult,
+    check_set_diff, load_baseline, run_audit_checks, scan_directory_parallel, AuditResult,
 };
 
 // ANSI color codes
@@ -160,8 +159,18 @@ fn main() {
         }
     };
 
-    // Discover files
-    let files = discover_jsonl_files(&data_dir);
+    // Validate data directory exists before proceeding
+    if !data_dir.is_dir() {
+        eprintln!(
+            "{}MISSING:{} JSONL data directory at {}",
+            RED,
+            NC,
+            data_dir.display()
+        );
+        eprintln!("  Hint: pass a custom path as the first argument");
+        std::process::exit(2);
+    }
+
     let num_threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
@@ -171,7 +180,7 @@ fn main() {
         "FULL (6 checks)"
     };
 
-    // Print banner
+    // Print banner (file count filled in after scan)
     println!();
     println!("{}", "\u{2550}".repeat(59));
     println!(
@@ -182,16 +191,21 @@ fn main() {
     println!();
     println!("  {}Data dir:{}  {}", BLUE, NC, data_dir.display());
     println!("  {}Baseline:{} {}", BLUE, NC, baseline_path.display());
-    println!("  {}Files:{}    {} JSONL files", BLUE, NC, files.len());
     println!("  {}Threads:{}  {}", BLUE, NC, num_threads);
     println!("  {}Mode:{}     {}", BLUE, NC, mode_label);
 
-    let file_count = files.len();
+    // Scan directory (single walk — no separate discover step)
+    let signals = scan_directory_parallel(&data_dir);
+    let scan_elapsed = start.elapsed();
+
+    let file_count = signals.files_scanned;
+    println!("  {}Files:{}    {} JSONL files", BLUE, NC, file_count);
+
     if file_count < 10 && file_count > 0 {
         println!("  {YELLOW}WARNING: Only {file_count} files — results may be incomplete{NC}");
     }
 
-    if files.is_empty() {
+    if file_count == 0 {
         println!();
         println!(
             "  {}No JSONL files found{} in {}",
@@ -202,10 +216,6 @@ fn main() {
         println!();
         std::process::exit(2);
     }
-
-    // Scan
-    let signals = scan_directory_parallel(&data_dir);
-    let scan_elapsed = start.elapsed();
 
     println!();
     println!(
