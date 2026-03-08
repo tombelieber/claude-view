@@ -27,7 +27,6 @@ import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
-import { useTeamForSession } from '../../hooks/use-teams'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { controlStatusToInputState } from '../../lib/control-status-map'
 import { formatCostUsd } from '../../lib/format-utils'
@@ -179,7 +178,7 @@ export function SessionDetailPanel({
   )
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
-  const teamMatch = useTeamForSession(data.id)
+  const hasTeam = !!data.teamName
 
   // ---- URL param: ?tab=teams ----
   const [searchParams] = useSearchParams()
@@ -436,7 +435,7 @@ export function SessionDetailPanel({
         className="flex items-center border-b border-gray-200 dark:border-gray-800 flex-shrink-0 overflow-x-auto"
         role="tablist"
       >
-        {TABS.filter((tab) => tab.id !== 'teams' || teamMatch !== null).map((tab) => {
+        {TABS.filter((tab) => tab.id !== 'teams' || hasTeam).map((tab) => {
           const Icon = tab.icon
           return (
             <button
@@ -826,7 +825,7 @@ export function SessionDetailPanel({
         )}
 
         {/* ---- Teams tab ---- */}
-        {activeTab === 'teams' && teamMatch && <TeamsTab teamName={teamMatch.name} />}
+        {activeTab === 'teams' && hasTeam && <TeamsTab teamName={data.teamName!} />}
 
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
