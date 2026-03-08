@@ -1,4 +1,22 @@
 export * from './types/relay'
+export type {
+  AgentState,
+  AgentStateGroup,
+  CacheStatus,
+  ControlBinding,
+  CostBreakdown,
+  HookEvent,
+  JsonValue,
+  LiveSession,
+  ProgressItem,
+  ProgressSource,
+  ProgressStatus,
+  SessionStatus,
+  SubAgentInfo,
+  SubAgentStatus,
+  TokenUsage,
+  ToolUsed,
+} from './types/generated'
 export * from './theme'
 export * from './crypto/nacl'
 export * from './crypto/storage'
