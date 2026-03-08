@@ -14,9 +14,6 @@ const EMPTY: CategoryCounts = {
   system: 0,
   snapshot: 0,
   queue: 0,
-  context: 0,
-  result: 0,
-  summary: 0,
 }
 
 export function computeCategoryCounts(messages: RichMessage[]): CategoryCounts {

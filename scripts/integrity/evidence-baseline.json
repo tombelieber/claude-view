@@ -10,7 +10,8 @@
     "handled": ["assistant", "file-history-snapshot", "queue-operation", "system", "user"],
     "handled_as_progress": ["progress"],
     "silently_ignored": ["custom-title", "last-prompt", "pr-link"],
-    "zero_occurrence_but_parser_has_arm": ["result", "saved_hook_context", "summary"],
+    "zero_occurrence_but_parser_has_arm": [],
+    "removed_dead_code": ["result", "saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": ["hook_event"]
   },
   "content_block_types": {

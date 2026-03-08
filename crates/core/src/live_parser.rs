@@ -154,8 +154,6 @@ pub enum LineType {
     Assistant,
     System,
     Progress,
-    Summary,
-    Result,
     Other,
 }
 
@@ -480,8 +478,6 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         Some("assistant") => LineType::Assistant,
         Some("system") => LineType::System,
         Some("progress") => LineType::Progress,
-        Some("summary") => LineType::Summary,
-        Some("result") => LineType::Result,
         _ => LineType::Other,
     };
 
@@ -1989,19 +1985,6 @@ mod tests {
             line.line_type,
             LineType::Progress,
             "Progress lines must be classified as Progress, not Assistant"
-        );
-    }
-
-    #[test]
-    fn test_result_line_classified_as_result() {
-        let finders = TailFinders::new();
-        // Claude Code writes this as the final session line
-        let raw = br#"{"type":"result","subtype":"success","duration_ms":12345,"duration_api_ms":10234,"is_error":false,"num_turns":5,"session_id":"abc123"}"#;
-        let line = parse_single_line(raw, &finders);
-        assert_eq!(
-            line.line_type,
-            LineType::Result,
-            "Result lines must be classified as Result"
         );
     }
 

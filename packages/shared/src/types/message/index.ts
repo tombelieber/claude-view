@@ -6,14 +6,7 @@
  * without depending on the web app's generated types.
  */
 
-export type Role =
-  | 'user'
-  | 'assistant'
-  | 'tool_use'
-  | 'tool_result'
-  | 'system'
-  | 'progress'
-  | 'summary'
+export type Role = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'
 
 export type ToolCall = {
   name: string
