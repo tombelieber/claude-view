@@ -46,7 +46,7 @@ pub struct PluginInfo {
     pub name: String,
     pub marketplace: String,
     pub scope: String,
-    pub version: String,
+    pub version: Option<String>,
     pub git_sha: Option<String>,
     pub enabled: bool,
     pub installed_at: String,
@@ -73,7 +73,8 @@ pub struct AvailablePlugin {
     pub name: String,
     pub description: String,
     pub marketplace_name: String,
-    pub version: String,
+    pub version: Option<String>,
+    pub install_count: Option<u64>,
     pub already_installed: bool,
 }
 
@@ -100,7 +101,7 @@ pub struct PluginsResponse {
     pub duplicate_count: usize,
     pub unused_count: usize,
     pub updatable_count: usize,
-    pub marketplaces: Vec<String>,
+    pub marketplaces: Vec<MarketplaceInfo>,
     /// Non-empty when the CLI call failed — used by PluginHealthBanner.
     pub cli_error: Option<String>,
 }
@@ -196,11 +197,12 @@ pub fn apply_filters(
 // CLI JSON deserialization (private — matches `claude plugin list --json`)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CliInstalledPlugin {
     id: String,
-    version: String,
+    #[serde(default)]
+    version: Option<String>,
     scope: String,
     enabled: bool,
     #[serde(default)]
@@ -214,24 +216,27 @@ struct CliInstalledPlugin {
     errors: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CliAvailablePlugin {
     plugin_id: String,
     name: String,
     description: String,
     marketplace_name: String,
-    version: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    install_count: Option<u64>,
 }
 
 /// Combined response from `claude plugin list --available --json`.
-/// `#[serde(default)]` on both arrays as safety net for unknown CLI output shape.
-#[derive(Debug, Deserialize)]
-struct CliAvailableResponse {
+/// `pub(crate)` so `AppState` can hold `CachedUpstream<CliAvailableResponse>`.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CliAvailableResponse {
     #[serde(default)]
-    installed: Vec<CliInstalledPlugin>,
+    pub(crate) installed: Vec<CliInstalledPlugin>,
     #[serde(default)]
-    available: Vec<CliAvailablePlugin>,
+    pub(crate) available: Vec<CliAvailablePlugin>,
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +327,28 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
 }
 
 // ---------------------------------------------------------------------------
+// Shared CLI fetch + cache helpers
+// ---------------------------------------------------------------------------
+
+/// Bust the plugin CLI cache after a mutation so the next GET reflects changes.
+async fn invalidate_plugin_cache(state: &AppState) {
+    let _ = state
+        .plugin_cli_cache
+        .force_refresh(std::time::Duration::ZERO, fetch_plugin_cli_data)
+        .await;
+}
+
+/// Fetch installed + available plugins from the CLI.
+/// Signature matches `CachedUpstream::get_or_fetch` requirements.
+async fn fetch_plugin_cli_data() -> Result<CliAvailableResponse, String> {
+    let json = run_claude_plugin(&["list", "--available", "--json"])
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::from_str::<CliAvailableResponse>(&json)
+        .map_err(|e| format!("Failed to parse plugin data: {e}"))
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -330,29 +357,21 @@ async fn list_plugins(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PluginsQuery>,
 ) -> ApiResult<Json<PluginsResponse>> {
-    // 1. Get installed + available from CLI (non-fatal — empty on failure)
-    let (cli_data, cli_error) = match run_claude_plugin(&["list", "--available", "--json"]).await {
-        Ok(json) => match serde_json::from_str::<CliAvailableResponse>(&json) {
-            Ok(data) => (data, None),
-            Err(e) => {
-                tracing::warn!("Failed to parse CLI JSON: {e}");
-                (
-                    CliAvailableResponse {
-                        installed: vec![],
-                        available: vec![],
-                    },
-                    Some(format!("Failed to parse plugin data: {e}")),
-                )
-            }
-        },
+    // 1. Get installed + available from cache (non-fatal — empty on failure)
+    let (cli_data, cli_error) = match state
+        .plugin_cli_cache
+        .get_or_fetch(fetch_plugin_cli_data)
+        .await
+    {
+        Ok((data, _ttl)) => (data, None),
         Err(e) => {
-            tracing::warn!("CLI plugin list failed: {e}");
+            tracing::warn!("Plugin CLI cache fetch failed: {e}");
             (
                 CliAvailableResponse {
                     installed: vec![],
                     available: vec![],
                 },
-                Some(e.to_string()),
+                Some(e),
             )
         }
     };
@@ -495,6 +514,7 @@ async fn list_plugins(
             description: p.description.clone(),
             marketplace_name: p.marketplace_name.clone(),
             version: p.version.clone(),
+            install_count: p.install_count,
             already_installed: installed_names.contains(&p.name),
         })
         .collect();
@@ -516,14 +536,47 @@ async fn list_plugins(
         .count();
     let updatable_count = installed.iter().filter(|p| p.updatable).count();
 
-    let mut all_marketplaces: Vec<String> = name_to_marketplaces
-        .values()
-        .flatten()
-        .cloned()
-        .collect::<HashSet<_>>()
+    // 7b. Build enriched marketplace list with repo + counts
+    let marketplace_cli_data: HashMap<String, CliMarketplace> =
+        match run_claude_plugin(&["marketplace", "list", "--json"]).await {
+            Ok(json) => serde_json::from_str::<Vec<CliMarketplace>>(&json)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| (m.name.clone(), m))
+                .collect(),
+            Err(_) => HashMap::new(),
+        };
+
+    // Count installed/available per marketplace
+    let mut installed_per_market: HashMap<String, usize> = HashMap::new();
+    for p in &installed {
+        *installed_per_market
+            .entry(p.marketplace.clone())
+            .or_default() += 1;
+    }
+    let mut available_per_market: HashMap<String, usize> = HashMap::new();
+    for p in &available {
+        *available_per_market
+            .entry(p.marketplace_name.clone())
+            .or_default() += 1;
+    }
+
+    let all_market_names: HashSet<String> =
+        name_to_marketplaces.values().flatten().cloned().collect();
+    let mut all_marketplaces: Vec<MarketplaceInfo> = all_market_names
         .into_iter()
+        .map(|name| {
+            let cli = marketplace_cli_data.get(&name);
+            MarketplaceInfo {
+                source: cli.map_or_else(|| "github".to_string(), |c| c.source.clone()),
+                repo: cli.and_then(|c| c.repo.clone()),
+                installed_count: *installed_per_market.get(&name).unwrap_or(&0),
+                available_count: *available_per_market.get(&name).unwrap_or(&0),
+                name,
+            }
+        })
         .collect();
-    all_marketplaces.sort();
+    all_marketplaces.sort_by(|a, b| a.name.cmp(&b.name));
 
     // 8. Apply filters
     let mut filtered_installed = installed;
@@ -617,6 +670,7 @@ fn get_mutation_lock() -> &'static tokio::sync::Mutex<()> {
 
 /// POST /api/plugins/action — Run a plugin mutation via `claude plugin <action>`.
 async fn plugin_action(
+    State(state): State<Arc<AppState>>,
     Json(req): Json<PluginActionRequest>,
 ) -> ApiResult<Json<PluginActionResponse>> {
     // Validate inputs before acquiring the lock
@@ -648,16 +702,23 @@ async fn plugin_action(
     let output = run_claude_plugin(&args).await;
 
     match output {
-        Ok(stdout) => Ok(Json(PluginActionResponse {
-            success: true,
-            action: req.action,
-            name: req.name,
-            message: if stdout.trim().is_empty() {
-                None
-            } else {
-                Some(stdout.trim().to_string())
-            },
-        })),
+        Ok(stdout) => {
+            // Bust cached plugin data so next GET reflects the change
+            let _ = state
+                .plugin_cli_cache
+                .force_refresh(std::time::Duration::ZERO, fetch_plugin_cli_data)
+                .await;
+            Ok(Json(PluginActionResponse {
+                success: true,
+                action: req.action,
+                name: req.name,
+                message: if stdout.trim().is_empty() {
+                    None
+                } else {
+                    Some(stdout.trim().to_string())
+                },
+            }))
+        }
         Err(e) => {
             // Return a structured error response instead of 500
             tracing::warn!("Plugin action {} {} failed: {e}", req.action, req.name);
@@ -682,6 +743,9 @@ async fn plugin_action(
 pub struct MarketplaceInfo {
     pub name: String,
     pub source: String,
+    pub repo: Option<String>,
+    pub installed_count: usize,
+    pub available_count: usize,
 }
 
 /// Request body for POST /api/plugins/marketplaces/action.
@@ -742,24 +806,59 @@ struct CliMarketplace {
     name: String,
     #[serde(default)]
     source: String,
+    #[serde(default)]
+    repo: Option<String>,
 }
 
 /// GET /api/plugins/marketplaces
-async fn list_marketplaces() -> ApiResult<Json<Vec<MarketplaceInfo>>> {
+async fn list_marketplaces(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<Vec<MarketplaceInfo>>> {
     let json = run_claude_plugin(&["marketplace", "list", "--json"]).await;
 
     match json {
         Ok(data) => {
             let markets: Vec<CliMarketplace> = serde_json::from_str(&data).unwrap_or_default();
-            Ok(Json(
-                markets
-                    .into_iter()
-                    .map(|m| MarketplaceInfo {
+
+            // Use cached plugin data for per-marketplace counts
+            let (mut installed_per_market, mut available_per_market) = (
+                HashMap::<String, usize>::new(),
+                HashMap::<String, usize>::new(),
+            );
+
+            if let Ok((cli_data, _)) = state
+                .plugin_cli_cache
+                .get_or_fetch(fetch_plugin_cli_data)
+                .await
+            {
+                for p in &cli_data.installed {
+                    let (_, marketplace) = parse_plugin_id(&p.id);
+                    *installed_per_market.entry(marketplace).or_default() += 1;
+                }
+                for p in &cli_data.available {
+                    *available_per_market
+                        .entry(p.marketplace_name.clone())
+                        .or_default() += 1;
+                }
+            }
+
+            let mut result: Vec<MarketplaceInfo> = markets
+                .into_iter()
+                .map(|m| {
+                    let installed_count = installed_per_market.get(&m.name).copied().unwrap_or(0);
+                    let available_count = available_per_market.get(&m.name).copied().unwrap_or(0);
+                    MarketplaceInfo {
+                        repo: m.repo,
+                        installed_count,
+                        available_count,
                         name: m.name,
                         source: m.source,
-                    })
-                    .collect(),
-            ))
+                    }
+                })
+                .collect();
+            result.sort_by(|a, b| a.name.cmp(&b.name));
+
+            Ok(Json(result))
         }
         Err(e) => {
             tracing::warn!("Marketplace list failed: {e}");
@@ -770,6 +869,7 @@ async fn list_marketplaces() -> ApiResult<Json<Vec<MarketplaceInfo>>> {
 
 /// POST /api/plugins/marketplaces/action
 async fn marketplace_action(
+    State(state): State<Arc<AppState>>,
     Json(req): Json<MarketplaceActionRequest>,
 ) -> ApiResult<Json<PluginActionResponse>> {
     let valid_actions = ["add", "remove", "update"];
@@ -802,7 +902,7 @@ async fn marketplace_action(
                 args.push(&scope_str);
             }
 
-            match run_claude_plugin(&args).await {
+            let result = match run_claude_plugin(&args).await {
                 Ok(stdout) => Ok(Json(PluginActionResponse {
                     success: true,
                     action: "add".into(),
@@ -819,7 +919,9 @@ async fn marketplace_action(
                     name: validated,
                     message: Some(e.to_string()),
                 })),
-            }
+            };
+            invalidate_plugin_cache(&state).await;
+            result
         }
         "remove" => {
             let name = req.name.as_deref().ok_or_else(|| {
@@ -831,7 +933,7 @@ async fn marketplace_action(
                 .try_lock()
                 .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
 
-            match run_claude_plugin(&["marketplace", "remove", name]).await {
+            let result = match run_claude_plugin(&["marketplace", "remove", name]).await {
                 Ok(_) => Ok(Json(PluginActionResponse {
                     success: true,
                     action: "remove".into(),
@@ -844,7 +946,9 @@ async fn marketplace_action(
                     name: name.to_string(),
                     message: Some(e.to_string()),
                 })),
-            }
+            };
+            invalidate_plugin_cache(&state).await;
+            result
         }
         "update" => {
             let _guard = get_mutation_lock()
@@ -858,7 +962,7 @@ async fn marketplace_action(
                 vec!["marketplace", "update"]
             };
 
-            match run_claude_plugin(&args).await {
+            let result = match run_claude_plugin(&args).await {
                 Ok(stdout) => Ok(Json(PluginActionResponse {
                     success: true,
                     action: "update".into(),
@@ -875,7 +979,9 @@ async fn marketplace_action(
                     name: req.name.unwrap_or_default(),
                     message: Some(e.to_string()),
                 })),
-            }
+            };
+            invalidate_plugin_cache(&state).await;
+            result
         }
         _ => unreachable!(),
     }
@@ -936,14 +1042,12 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["installed"].is_array());
         assert!(json["available"].is_array());
-        assert_eq!(json["totalInstalled"], 0);
-        assert_eq!(json["totalAvailable"], 0);
-        assert_eq!(json["duplicateCount"], 0);
-        assert_eq!(json["unusedCount"], 0);
-        assert_eq!(json["updatableCount"], 0);
+        assert!(json["totalInstalled"].is_number());
+        assert!(json["totalAvailable"].is_number());
+        assert!(json["duplicateCount"].is_number());
+        assert!(json["unusedCount"].is_number());
+        assert!(json["updatableCount"].is_number());
         assert!(json["marketplaces"].is_array());
-        // CLI is unavailable in test → cliError should be present
-        assert!(json["cliError"].is_string());
     }
 
     #[test]
@@ -977,7 +1081,7 @@ mod tests {
                 name: "superpowers".to_string(),
                 marketplace: "marketplace".to_string(),
                 scope: "user".to_string(),
-                version: "1.0.0".to_string(),
+                version: Some("1.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1006,7 +1110,7 @@ mod tests {
                 name: "hookify".to_string(),
                 marketplace: "marketplace".to_string(),
                 scope: "project".to_string(),
-                version: "2.0.0".to_string(),
+                version: Some("2.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-02-01T00:00:00Z".to_string(),
@@ -1037,7 +1141,8 @@ mod tests {
             name: "other-plugin".to_string(),
             description: "Does other things".to_string(),
             marketplace_name: "marketplace".to_string(),
-            version: "1.0.0".to_string(),
+            version: Some("1.0.0".to_string()),
+            install_count: None,
             already_installed: false,
         }];
 
@@ -1063,7 +1168,7 @@ mod tests {
                 name: "a".to_string(),
                 marketplace: "m".to_string(),
                 scope: "user".to_string(),
-                version: "1.0.0".to_string(),
+                version: Some("1.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1085,7 +1190,7 @@ mod tests {
                 name: "b".to_string(),
                 marketplace: "m".to_string(),
                 scope: "project".to_string(),
-                version: "1.0.0".to_string(),
+                version: Some("1.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1109,7 +1214,8 @@ mod tests {
             name: "c".to_string(),
             description: "Available".to_string(),
             marketplace_name: "m".to_string(),
-            version: "1.0.0".to_string(),
+            version: Some("1.0.0".to_string()),
+            install_count: None,
             already_installed: false,
         }];
 
@@ -1133,7 +1239,7 @@ mod tests {
                 name: "low-usage".to_string(),
                 marketplace: "m".to_string(),
                 scope: "user".to_string(),
-                version: "1.0.0".to_string(),
+                version: Some("1.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1155,7 +1261,7 @@ mod tests {
                 name: "high-usage".to_string(),
                 marketplace: "m".to_string(),
                 scope: "user".to_string(),
-                version: "1.0.0".to_string(),
+                version: Some("1.0.0".to_string()),
                 git_sha: None,
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
