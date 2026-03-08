@@ -1,12 +1,18 @@
 // crates/server/src/routes/plugins.rs
 //! Plugin management API routes.
 //!
-//! - GET /plugins — Unified view of installed + available plugins
+//! - GET  /plugins        — Unified view of installed + available plugins
+//! - POST /plugins/action — Mutations (install/update/uninstall/enable/disable)
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use axum::{extract::Query, extract::State, routing::get, Json, Router};
+use axum::{
+    extract::Query,
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 use ts_rs::TS;
@@ -507,11 +513,138 @@ async fn list_plugins(
 }
 
 // ---------------------------------------------------------------------------
+// Mutation types + validation
+// ---------------------------------------------------------------------------
+
+/// Request body for POST /api/plugins/action.
+#[derive(Debug, Deserialize, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct PluginActionRequest {
+    /// "install" | "update" | "uninstall" | "enable" | "disable"
+    pub action: String,
+    /// Plugin name or full ID (e.g. "superpowers" or "superpowers@marketplace")
+    pub name: String,
+    /// For install: "user" | "project"
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+/// Response for POST /api/plugins/action.
+#[derive(Debug, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct PluginActionResponse {
+    pub success: bool,
+    pub action: String,
+    pub name: String,
+    pub message: Option<String>,
+}
+
+const VALID_ACTIONS: &[&str] = &["install", "update", "uninstall", "enable", "disable"];
+
+/// Reject CLI flag injection — only [a-zA-Z0-9._@-] allowed, must not start with `-`.
+fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
+    if name.is_empty()
+        || name.len() > 128
+        || name.starts_with('-')
+        || name
+            .chars()
+            .any(|c| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.' && c != '@')
+    {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid plugin name: {name}. Must start with alphanumeric and contain only alphanumeric, hyphens, underscores, dots, and @."
+        )));
+    }
+    Ok(())
+}
+
+fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
+    if let Some(s) = scope {
+        if s != "user" && s != "project" {
+            return Err(ApiError::BadRequest(format!(
+                "Invalid scope: {s}. Must be 'user' or 'project'."
+            )));
+        }
+    }
+    Ok(())
+}
+
+// Single-mutation-at-a-time lock (shared across plugin + marketplace mutations).
+static MUTATION_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+fn get_mutation_lock() -> &'static tokio::sync::Mutex<()> {
+    MUTATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
+// ---------------------------------------------------------------------------
+// Mutation handler
+// ---------------------------------------------------------------------------
+
+/// POST /api/plugins/action — Run a plugin mutation via `claude plugin <action>`.
+async fn plugin_action(
+    Json(req): Json<PluginActionRequest>,
+) -> ApiResult<Json<PluginActionResponse>> {
+    // Validate inputs before acquiring the lock
+    validate_plugin_name(&req.name)?;
+    validate_scope(&req.scope)?;
+
+    if !VALID_ACTIONS.contains(&req.action.as_str()) {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid action: {}. Must be one of: {}",
+            req.action,
+            VALID_ACTIONS.join(", ")
+        )));
+    }
+
+    // try_lock — return 409 if another mutation is running
+    let _guard = get_mutation_lock().try_lock().map_err(|_| {
+        ApiError::Conflict("A plugin mutation is already in progress. Try again shortly.".into())
+    })?;
+
+    // Build CLI args
+    let mut args: Vec<&str> = vec![&req.action, &req.name];
+    let scope_str;
+    if let Some(ref scope) = req.scope {
+        scope_str = scope.clone();
+        args.push("--scope");
+        args.push(&scope_str);
+    }
+
+    let output = run_claude_plugin(&args).await;
+
+    match output {
+        Ok(stdout) => Ok(Json(PluginActionResponse {
+            success: true,
+            action: req.action,
+            name: req.name,
+            message: if stdout.trim().is_empty() {
+                None
+            } else {
+                Some(stdout.trim().to_string())
+            },
+        })),
+        Err(e) => {
+            // Return a structured error response instead of 500
+            tracing::warn!("Plugin action {} {} failed: {e}", req.action, req.name);
+            Ok(Json(PluginActionResponse {
+                success: false,
+                action: req.action,
+                name: req.name,
+                message: Some(e.to_string()),
+            }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/plugins", get(list_plugins))
+    Router::new()
+        .route("/plugins", get(list_plugins))
+        .route("/plugins/action", post(plugin_action))
 }
 
 // ---------------------------------------------------------------------------
@@ -806,5 +939,83 @@ mod tests {
         // Highest usage first
         assert_eq!(installed[0].name, "high-usage");
         assert_eq!(installed[1].name, "low-usage");
+    }
+
+    #[tokio::test]
+    async fn test_plugin_action_rejects_invalid_name() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/plugins/action")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"action":"install","name":"--force"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_action_rejects_invalid_action() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/plugins/action")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(r#"{"action":"rm_rf","name":"test"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_plugin_action_rejects_invalid_scope() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/plugins/action")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"action":"install","name":"test","scope":"global"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn test_validate_plugin_name() {
+        // Valid names
+        assert!(validate_plugin_name("superpowers").is_ok());
+        assert!(validate_plugin_name("my-plugin").is_ok());
+        assert!(validate_plugin_name("my_plugin.v2").is_ok());
+        assert!(validate_plugin_name("plugin@marketplace").is_ok());
+
+        // Invalid names — CLI flag injection attempts
+        assert!(validate_plugin_name("--force").is_err());
+        assert!(validate_plugin_name("-rf").is_err());
+        assert!(validate_plugin_name("foo;rm -rf /").is_err());
+        assert!(validate_plugin_name("").is_err());
+        assert!(validate_plugin_name(&"a".repeat(129)).is_err());
     }
 }
