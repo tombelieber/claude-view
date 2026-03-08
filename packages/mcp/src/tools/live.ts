@@ -17,8 +17,9 @@ export const liveTools: ToolDef[] = [
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client) => {
-      const data = await client.get<Record<string, unknown>>('/api/live/sessions')
-      const sessions = (data.sessions ?? []).map((s: Record<string, unknown>) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- internal API, shape controlled by us
+      const data: any = await client.get('/api/live/sessions')
+      const sessions = (data.sessions ?? []).map((s: any) => ({
         id: s.id,
         project: s.projectDisplayName,
         agent_state: s.agentState?.label ?? s.agentState?.group,
@@ -44,7 +45,8 @@ export const liveTools: ToolDef[] = [
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client) => {
-      const data = await client.get<Record<string, unknown>>('/api/live/summary')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- internal API
+      const data: any = await client.get('/api/live/summary')
       return JSON.stringify(
         {
           needs_attention: data.needsYouCount,
