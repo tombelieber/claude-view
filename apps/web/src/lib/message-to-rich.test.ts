@@ -105,24 +105,6 @@ describe('messagesToRichMessages', () => {
     })
   })
 
-  describe('summary messages (NEW — was skipped)', () => {
-    it('emits type summary with metadata', () => {
-      const result = messagesToRichMessages([
-        makeMsg({
-          role: 'summary',
-          content: 'Session summary text',
-          metadata: { summary: 'Session summary text', leafUuid: 'uuid-123' },
-        }),
-      ])
-      expect(result).toHaveLength(1)
-      expect(result[0]).toMatchObject({
-        type: 'summary',
-        content: 'Session summary text',
-        metadata: { summary: 'Session summary text', leafUuid: 'uuid-123' },
-      })
-    })
-  })
-
   describe('normalization: category defaults', () => {
     it('defaults system category to "system" when not set', () => {
       const result = messagesToRichMessages([
@@ -147,18 +129,6 @@ describe('messagesToRichMessages', () => {
       ])
       expect(result).toHaveLength(1)
       expect(result[0].category).toBe('snapshot')
-    })
-
-    it('sets summary category to "summary"', () => {
-      const result = messagesToRichMessages([
-        makeMsg({
-          role: 'summary',
-          content: 'Session summary',
-          metadata: { summary: 'Session summary', leafUuid: 'abc' },
-        }),
-      ])
-      expect(result).toHaveLength(1)
-      expect(result[0].category).toBe('summary')
     })
   })
 })

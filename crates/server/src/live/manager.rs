@@ -236,16 +236,8 @@ async fn derive_agent_state_from_jsonl(path: &Path) -> Option<AgentState> {
         let parsed = claude_view_core::live_parser::parse_single_line(raw.as_bytes(), &finders);
 
         match parsed.line_type {
-            LineType::Progress | LineType::System | LineType::Summary | LineType::Other => {
+            LineType::Progress | LineType::System | LineType::Other => {
                 continue; // Skip non-meaningful lines
-            }
-            LineType::Result => {
-                return Some(AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "idle".into(),
-                    label: "Waiting for your next prompt".into(),
-                    context: None,
-                });
             }
             LineType::Assistant => {
                 let has_tool_use = !parsed.tool_names.is_empty();
@@ -1808,14 +1800,6 @@ impl LiveSessionManager {
                     "autonomous",
                 ));
             }
-            if line.line_type == LineType::Result {
-                channel_a_events.push(make_synthesized_event(
-                    &line.timestamp,
-                    "SessionEnd",
-                    None,
-                    "needs_you",
-                ));
-            }
             if line.is_compact_boundary {
                 channel_a_events.push(make_synthesized_event(
                     &line.timestamp,
@@ -2610,22 +2594,6 @@ mod tests {
         let state = state.expect("should derive a state");
         assert_eq!(state.group, AgentStateGroup::Autonomous);
         assert_eq!(state.state, "thinking");
-    }
-
-    #[tokio::test]
-    async fn test_derive_state_result_line() {
-        use std::io::Write;
-
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("session.jsonl");
-        let mut f = std::fs::File::create(&path).unwrap();
-        writeln!(f, r#"{{"type":"result","subtype":"success","duration_ms":1234,"is_error":false,"session_id":"abc"}}"#).unwrap();
-        f.flush().unwrap();
-
-        let state = derive_agent_state_from_jsonl(&path).await;
-        let state = state.expect("should derive state from result line");
-        assert_eq!(state.group, AgentStateGroup::NeedsYou);
-        assert_eq!(state.state, "idle");
     }
 
     #[tokio::test]

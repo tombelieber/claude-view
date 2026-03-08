@@ -181,7 +181,7 @@ These are **different data from different channels**. Both are shown in the time
 
 ## 2. JSONL Entry Types (Channel A)
 
-Every line in a session JSONL file is a JSON object with a top-level `"type"` field. The parser handles **8 known types** plus silently ignores unknown types via a wildcard.
+Every line in a session JSONL file is a JSON object with a top-level `"type"` field. The parser handles **6 known types** plus silently ignores unknown types via a wildcard.
 
 ### Evidence Baseline (2026-03-08)
 
@@ -197,11 +197,10 @@ Every line in a session JSONL file is a JSON object with a top-level `"type"` fi
 | `pr-link` | 12 | 0.001% |
 | `custom-title` | 2 | <0.001% |
 
-**Types with ZERO occurrences** (documented historically but absent from current corpus):
-- `summary` — 0 across 5,932 files. May have existed in older Claude Code versions.
-- `result` — 0. Parser has a match arm for forward compat. Dead code.
-- `saved_hook_context` — 0. May appear in future hook-context-injecting workflows.
+**Types with ZERO occurrences:**
 - `hook_event` — 0 in JSONL. These arrive via HTTP Channel B only.
+
+Previously documented types `summary`, `result`, and `saved_hook_context` had 0 occurrences across the entire corpus and their frontend parser/rendering handling was removed as dead code.
 
 ### 2.1 Core Conversation Types
 
@@ -591,7 +590,7 @@ _ => {
 
 ## 3. Parsed Roles (Internal Representation)
 
-The parser normalizes 8 JSONL types into **7 Roles** used throughout the Rust backend and TypeScript frontend.
+The parser normalizes 6 JSONL types into **6 Roles** used throughout the Rust backend and TypeScript frontend.
 
 ```text
 JSONL type              →  Role              Category
@@ -621,14 +620,13 @@ pub enum Role {
     ToolResult, // User message with tool_result array content
     System,     // System events + queue-ops + file-snapshots
     Progress,   // Progress events (agent, bash, hook, mcp, waiting)
-    Summary,    // Auto-generated session summaries (0 occurrences in current data)
 }
 ```
 
 **TypeScript type** (`apps/web/src/types/generated/Role.ts`):
 
 ```typescript
-export type Role = "user" | "assistant" | "tool_use" | "tool_result" | "system" | "progress" | "summary";
+export type Role = "user" | "assistant" | "tool_use" | "tool_result" | "system" | "progress";
 ```
 
 ---
@@ -730,7 +728,7 @@ The frontend transforms both sources into a unified `RichMessage` type for rende
 ```typescript
 export interface RichMessage {
   type: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking'
-      | 'error' | 'hook' | 'system' | 'progress' | 'summary'
+      | 'error' | 'hook' | 'system' | 'progress'
   content: string
   name?: string          // tool name for tool_use
   input?: string         // tool input summary for tool_use
@@ -752,7 +750,6 @@ export interface RichMessage {
 | `hook` | — | Hook event chip |
 | `system` | JSONL `system` / `queue-operation` / etc., or WS `system`/`result` | System metadata row |
 | `progress` | JSONL `progress`, hook events (via `hookEventsToRichMessages()`), or WS `progress` | Progress indicator |
-| `summary` | JSONL `summary` (currently 0 occurrences), or WS `summary` | Summary card |
 
 **Hook events conversion** (hook-events-to-messages.ts): SQLite hook events are converted to `type: 'progress'` with `category: 'hook'` and `metadata.type: 'hook_event'`. These are NOT deduplicated against JSONL `hook_progress` — they are different data (see §1).
 
@@ -760,7 +757,7 @@ export interface RichMessage {
 
 ## 6. Action Categories
 
-Tool calls and events are categorized for filtering in the Action Log. There are **13 categories** total.
+Tool calls and events are categorized for filtering in the Action Log. There are **10 categories** total.
 
 ### Tool Categories (category.rs `categorize_tool()`)
 
@@ -790,10 +787,7 @@ Tool calls and events are categorized for filtering in the Action Log. There are
 | `system` | `system` JSONL entries |
 | `queue` | `queue-operation` entries |
 | `snapshot` | `file-history-snapshot` entries |
-| `context` | `saved_hook_context` entries (0 occurrences currently) |
-| `result` | `result` entries (0 occurrences currently) |
 | `hook` | Hook events from SQLite (Channel B) |
-| `summary` | `summary` entries (frontend-assigned, 0 occurrences currently) |
 | `error` | Error messages (frontend-assigned) |
 
 ### Full ActionCategory TypeScript Type
@@ -804,7 +798,6 @@ export type ActionCategory =
   | 'skill' | 'mcp' | 'builtin' | 'agent'
   | 'hook' | 'hook_progress'
   | 'error' | 'system' | 'snapshot' | 'queue'
-  | 'context' | 'result' | 'summary'
 ```
 
 ---
@@ -813,9 +806,9 @@ export type ActionCategory =
 
 | Layer | File | What it does |
 |---|---|---|
-| **JSONL Parser** | `crates/core/src/parser.rs` | Parses 8 JSONL types → `Vec<Message>` (ignores unknown types) |
+| **JSONL Parser** | `crates/core/src/parser.rs` | Parses 6 JSONL types → `Vec<Message>` (ignores unknown types) |
 | **Live Parser** | `crates/core/src/live_parser.rs` | Streaming parser for active sessions |
-| **Role enum** | `crates/core/src/types.rs` | `Role` enum definition (7 variants), `ContentBlock` enum |
+| **Role enum** | `crates/core/src/types.rs` | `Role` enum definition (6 variants), `ContentBlock` enum |
 | **Category** | `crates/core/src/category.rs` | `categorize_tool()` + `categorize_progress()` |
 | **Hook Handler** | `crates/server/src/routes/hooks.rs` | Receives hook POSTs, resolves agent state, WebSocket broadcast |
 | **Hook DB** | `crates/db/src/queries/hook_events.rs` | SQLite read/write for hook_events |

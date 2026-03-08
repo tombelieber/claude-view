@@ -1137,10 +1137,6 @@ mod tests {
             "should find 'queue-operation' type"
         );
         assert!(
-            agg.top_level_types.contains("summary"),
-            "should find 'summary' type"
-        );
-        assert!(
             agg.top_level_types.contains("file-history-snapshot"),
             "should find 'file-history-snapshot' type"
         );

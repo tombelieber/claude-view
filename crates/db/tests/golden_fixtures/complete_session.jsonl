@@ -6,5 +6,4 @@
 {"type":"progress","uuid":"p1","timestamp":"2026-01-28T10:03:10Z","sessionId":"sess-golden","toolUseID":"tu-hook","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"lint-check","command":"eslint --fix"}}
 {"type":"queue-operation","uuid":"q1","timestamp":"2026-01-28T10:03:15Z","sessionId":"sess-golden","operation":"enqueue","content":"next task"}
 {"type":"queue-operation","uuid":"q2","timestamp":"2026-01-28T10:03:20Z","sessionId":"sess-golden","operation":"dequeue"}
-{"type":"summary","uuid":"sum1","timestamp":"2026-01-28T10:04:00Z","sessionId":"sess-golden","summary":"Fixed authentication bug in auth.rs","leafUuid":"a2"}
 {"type":"file-history-snapshot","uuid":"fhs1","timestamp":"2026-01-28T10:04:05Z","sessionId":"sess-golden","messageId":"a2","snapshot":{"trackedFileBackups":{"/project/src/auth.rs":{"backupFileName":"be8cf68e283682af@v1","version":1,"backupTime":"2026-01-28T10:04:05Z"}},"timestamp":"2026-01-28T10:04:05Z"},"isSnapshotUpdate":false}
