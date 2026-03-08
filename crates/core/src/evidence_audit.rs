@@ -7,7 +7,7 @@ use serde::de::{self, Deserializer as _, IgnoredAny, MapAccess, SeqAccess, Visit
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashSet};
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ─── Baseline Structs ────────────────────────────────────────────
 
@@ -537,6 +537,213 @@ pub fn load_baseline(path: &Path) -> Result<Baseline, String> {
     serde_json::from_slice(&data).map_err(|e| format!("Failed to parse baseline JSON: {}", e))
 }
 
+// ─── Aggregated Signals ──────────────────────────────────────────
+
+/// Accumulated signals across many JSONL lines/files.
+#[derive(Debug, Default)]
+pub struct AggregatedSignals {
+    pub top_level_types: HashSet<String>,
+    pub system_subtypes: HashSet<String>,
+    pub progress_data_types: HashSet<String>,
+    pub assistant_content_block_types: HashSet<String>,
+    pub thinking_key_sets: Vec<BTreeSet<String>>,
+    pub nesting_direct_count: usize,
+    pub nesting_nested_count: usize,
+    pub files_scanned: usize,
+    pub lines_scanned: usize,
+    pub errors: usize,
+}
+
+impl AggregatedSignals {
+    pub fn merge(&mut self, other: AggregatedSignals) {
+        self.top_level_types.extend(other.top_level_types);
+        self.system_subtypes.extend(other.system_subtypes);
+        self.progress_data_types.extend(other.progress_data_types);
+        self.assistant_content_block_types
+            .extend(other.assistant_content_block_types);
+        self.thinking_key_sets.extend(other.thinking_key_sets);
+        self.nesting_direct_count += other.nesting_direct_count;
+        self.nesting_nested_count += other.nesting_nested_count;
+        self.files_scanned += other.files_scanned;
+        self.lines_scanned += other.lines_scanned;
+        self.errors += other.errors;
+    }
+
+    pub fn ingest(&mut self, signals: LineSignals) {
+        if let Some(ref t) = signals.top_level_type {
+            self.top_level_types.insert(t.clone());
+
+            match t.as_str() {
+                "system" => {
+                    if let Some(sub) = signals.subtype {
+                        self.system_subtypes.insert(sub);
+                    }
+                }
+                "progress" => {
+                    if let Some(dt) = signals.data_type {
+                        self.progress_data_types.insert(dt);
+                    }
+                }
+                "assistant" => {
+                    for bt in &signals.content_block_types {
+                        self.assistant_content_block_types.insert(bt.clone());
+                    }
+                    self.thinking_key_sets.extend(signals.thinking_key_sets);
+                }
+                _ => {}
+            }
+        }
+
+        if signals.nesting_direct {
+            self.nesting_direct_count += 1;
+        }
+        if signals.nesting_nested {
+            self.nesting_nested_count += 1;
+        }
+    }
+}
+
+/// Trim leading/trailing ASCII whitespace from a byte slice (MSRV-safe).
+fn trim_ascii_bytes(bytes: &[u8]) -> &[u8] {
+    let start = bytes
+        .iter()
+        .position(|b| !b.is_ascii_whitespace())
+        .unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .rposition(|b| !b.is_ascii_whitespace())
+        .map(|p| p + 1)
+        .unwrap_or(start);
+    &bytes[start..end]
+}
+
+/// Scan a single JSONL file and return aggregated signals.
+pub fn scan_file(path: &Path) -> AggregatedSignals {
+    let mut agg = AggregatedSignals::default();
+    agg.files_scanned = 1;
+
+    let data = match std::fs::read(path) {
+        Ok(d) => d,
+        Err(_) => {
+            agg.errors += 1;
+            return agg;
+        }
+    };
+
+    let newline = b'\n';
+    let mut start = 0;
+    for pos in memchr::memchr_iter(newline, &data) {
+        let line = trim_ascii_bytes(&data[start..pos]);
+        start = pos + 1;
+        if line.is_empty() {
+            continue;
+        }
+        agg.lines_scanned += 1;
+        let signals = extract_line_signals(line);
+        if signals.top_level_type.is_none() {
+            agg.errors += 1;
+        }
+        agg.ingest(signals);
+    }
+
+    // Handle last line (no trailing newline)
+    let last = trim_ascii_bytes(&data[start..]);
+    if !last.is_empty() {
+        agg.lines_scanned += 1;
+        let signals = extract_line_signals(last);
+        if signals.top_level_type.is_none() {
+            agg.errors += 1;
+        }
+        agg.ingest(signals);
+    }
+
+    agg
+}
+
+/// Discover JSONL files in a Claude Code data directory (3-level walk).
+///
+/// Structure: `data_dir/<project>/<session>/*.jsonl`
+pub fn discover_jsonl_files(data_dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    let projects = match std::fs::read_dir(data_dir) {
+        Ok(rd) => rd,
+        Err(_) => return files,
+    };
+
+    for project_entry in projects.flatten() {
+        let project_path = project_entry.path();
+        if !project_path.is_dir() {
+            continue;
+        }
+
+        let sessions = match std::fs::read_dir(&project_path) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+
+        for session_entry in sessions.flatten() {
+            let session_path = session_entry.path();
+            if !session_path.is_dir() {
+                continue;
+            }
+
+            let entries = match std::fs::read_dir(&session_path) {
+                Ok(rd) => rd,
+                Err(_) => continue,
+            };
+
+            for file_entry in entries.flatten() {
+                let file_path = file_entry.path();
+                if file_path.extension().is_some_and(|ext| ext == "jsonl") {
+                    files.push(file_path);
+                }
+            }
+        }
+    }
+
+    files
+}
+
+/// Scan all JSONL files in a data directory in parallel using scoped threads.
+pub fn scan_directory_parallel(data_dir: &Path) -> AggregatedSignals {
+    let files = discover_jsonl_files(data_dir);
+    if files.is_empty() {
+        return AggregatedSignals::default();
+    }
+
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let chunk_size = (files.len() + num_threads - 1) / num_threads;
+    let chunks: Vec<&[PathBuf]> = files.chunks(chunk_size).collect();
+
+    let mut final_agg = AggregatedSignals::default();
+
+    std::thread::scope(|s| {
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                s.spawn(move || {
+                    let mut local = AggregatedSignals::default();
+                    for path in chunk {
+                        local.merge(scan_file(path));
+                    }
+                    local
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            if let Ok(partial) = handle.join() {
+                final_agg.merge(partial);
+            }
+        }
+    });
+
+    final_agg
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -700,5 +907,91 @@ mod tests {
         let signals = extract_line_signals(line);
         assert_eq!(signals.top_level_type, None);
         assert!(signals.content_block_types.is_empty());
+    }
+
+    #[test]
+    fn test_scan_file_aggregates_signals() {
+        let fixture_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/all_types.jsonl");
+        let agg = scan_file(&fixture_path);
+
+        assert_eq!(agg.files_scanned, 1);
+        assert!(agg.lines_scanned >= 10, "should scan multiple lines");
+        assert_eq!(agg.errors, 0, "fixture should have no parse errors");
+
+        // Top-level types from fixture
+        assert!(
+            agg.top_level_types.contains("user"),
+            "should find 'user' type"
+        );
+        assert!(
+            agg.top_level_types.contains("assistant"),
+            "should find 'assistant' type"
+        );
+        assert!(
+            agg.top_level_types.contains("system"),
+            "should find 'system' type"
+        );
+        assert!(
+            agg.top_level_types.contains("progress"),
+            "should find 'progress' type"
+        );
+        assert!(
+            agg.top_level_types.contains("queue-operation"),
+            "should find 'queue-operation' type"
+        );
+        assert!(
+            agg.top_level_types.contains("summary"),
+            "should find 'summary' type"
+        );
+        assert!(
+            agg.top_level_types.contains("file-history-snapshot"),
+            "should find 'file-history-snapshot' type"
+        );
+
+        // Content block types from assistant messages
+        assert!(
+            agg.assistant_content_block_types.contains("thinking"),
+            "should find 'thinking' content block"
+        );
+        assert!(
+            agg.assistant_content_block_types.contains("text"),
+            "should find 'text' content block"
+        );
+        assert!(
+            agg.assistant_content_block_types.contains("tool_use"),
+            "should find 'tool_use' content block"
+        );
+
+        // System subtypes
+        assert!(
+            agg.system_subtypes.contains("turn_duration"),
+            "should find 'turn_duration' subtype"
+        );
+
+        // Progress data types
+        assert!(
+            agg.progress_data_types.contains("hook_progress"),
+            "should find 'hook_progress' data type"
+        );
+
+        // Thinking block key audit
+        assert!(
+            !agg.thinking_key_sets.is_empty(),
+            "should have thinking key sets"
+        );
+        let first_keys = &agg.thinking_key_sets[0];
+        assert!(
+            first_keys.contains("type"),
+            "thinking keys should include 'type'"
+        );
+        assert!(
+            first_keys.contains("thinking"),
+            "thinking keys should include 'thinking'"
+        );
+        assert!(
+            first_keys.contains("signature"),
+            "thinking keys should include 'signature'"
+        );
     }
 }
