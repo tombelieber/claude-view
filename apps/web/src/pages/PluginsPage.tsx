@@ -39,7 +39,7 @@ export function PluginsPage() {
     if (!data) return
     const updatable = data.installed.filter((p) => p.updatable)
     for (const plugin of updatable) {
-      await mutations.execute({ action: 'update', name: plugin.name, scope: null })
+      await mutations.execute({ action: 'update', name: plugin.name, scope: plugin.scope })
     }
   }
 
