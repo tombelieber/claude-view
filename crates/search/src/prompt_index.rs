@@ -8,17 +8,31 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 use tantivy::collector::{Count, TopDocs};
-use tantivy::query::{BooleanQuery, Occur, QueryParser, TermQuery};
+use tantivy::query::{BooleanQuery, Occur, QueryParser, RangeQuery, TermQuery};
 use tantivy::schema::{Field, IndexRecordOption, Schema, Value, FAST, STORED, STRING, TEXT};
+use tantivy::snippet::SnippetGenerator;
 use tantivy::{doc, Index, IndexReader, IndexWriter, ReloadPolicy, Term};
 use ts_rs::TS;
 
+use std::hash::{Hash, Hasher};
+
+use claude_view_core::prompt_templates::normalize_to_template;
+
 use crate::SearchError;
+
+/// Stable u64 hash of a byte slice using `DefaultHasher`.
+fn fxhash(data: &[u8]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut h = DefaultHasher::new();
+    data.hash(&mut h);
+    h.finish()
+}
 
 /// Schema version for the prompt index. Bump when the schema changes
 /// (field types, new fields, removed fields). A mismatch triggers auto-rebuild.
 // Version 1: Initial schema — 12 fields for prompt history
-pub const PROMPT_SCHEMA_VERSION: u32 = 1;
+// Version 2: Added `template_id` field (STRING | STORED) + snippet via SnippetGenerator
+pub const PROMPT_SCHEMA_VERSION: u32 = 2;
 
 /// A document to be indexed into the prompt search index.
 pub struct PromptDocument {
@@ -43,6 +57,12 @@ pub struct PromptDocument {
 pub struct PromptHit {
     pub prompt_id: String,
     pub display: String,
+    /// HTML snippet with `<b>` tags around matched terms. Present when a
+    /// free-text query was used; `None` otherwise (browse/filter-only mode).
+    pub snippet: Option<String>,
+    /// Stable hash of the normalized prompt pattern. Non-empty means the prompt
+    /// matches a recurring template; empty means it is unique.
+    pub template_id: Option<String>,
     pub project: String,
     pub session_id: Option<String>,
     pub branch: String,
@@ -78,6 +98,10 @@ fn build_prompt_schema() -> Schema {
     builder.add_text_field("complexity", STRING | STORED);
     builder.add_i64_field("timestamp", FAST | STORED);
     builder.add_text_field("has_paste", STRING | STORED);
+    // template_id: stable hash of the normalized pattern — empty string = unique prompt.
+    builder.add_text_field("template_id", STRING | STORED);
+    // is_template: "true" if pattern detected, "false" if unique — used for TermQuery filtering.
+    builder.add_text_field("is_template", STRING | STORED);
     builder.build()
 }
 
@@ -108,6 +132,29 @@ pub struct PromptSearchIndex {
     complexity_field: Field,
     timestamp_field: Field,
     has_paste_field: Field,
+    template_id_field: Field,
+    is_template_field: Field,
+}
+
+/// Search parameters for the prompt index.
+#[derive(Debug, Default, Clone)]
+pub struct PromptSearchParams<'a> {
+    /// Free-text query (supports `qualifier:value` tokens).
+    pub query: &'a str,
+    /// Project scope filter (matches `project` or `git_root`).
+    pub scope: Option<&'a str>,
+    /// Filter: only prompts with `has_paste == true/false`.
+    pub has_paste: Option<bool>,
+    /// Filter: only prompts on or after this Unix timestamp (seconds).
+    pub time_after: Option<i64>,
+    /// Filter: only prompts on or before this Unix timestamp (seconds).
+    pub time_before: Option<i64>,
+    /// Sort order: "newest" (default) or "oldest".
+    pub sort: Option<&'a str>,
+    /// Filter by template match: "template" = has template_id, "unique" = no template_id.
+    pub template_match: Option<&'a str>,
+    pub limit: usize,
+    pub offset: usize,
 }
 
 impl PromptSearchIndex {
@@ -192,6 +239,12 @@ impl PromptSearchIndex {
         let complexity_field = schema.get_field("complexity").expect("missing complexity");
         let timestamp_field = schema.get_field("timestamp").expect("missing timestamp");
         let has_paste_field = schema.get_field("has_paste").expect("missing has_paste");
+        let template_id_field = schema
+            .get_field("template_id")
+            .expect("missing template_id");
+        let is_template_field = schema
+            .get_field("is_template")
+            .expect("missing is_template");
 
         Ok(Self {
             index,
@@ -212,6 +265,8 @@ impl PromptSearchIndex {
             complexity_field,
             timestamp_field,
             has_paste_field,
+            template_id_field,
+            is_template_field,
         })
     }
 
@@ -237,6 +292,17 @@ impl PromptSearchIndex {
             if let Some(ref paste) = d.paste_text {
                 tantivy_doc.add_text(self.paste_text_field, paste);
             }
+            // Compute template classification: normalize display text to detect slots.
+            // template_id field stores the stable hash of the normalized pattern (empty = unique).
+            // is_template field stores "true"/"false" for fast TermQuery filtering.
+            let normalized = normalize_to_template(&d.display);
+            let (template_id_val, is_template_val) = if normalized != d.display {
+                (format!("{:x}", fxhash(normalized.as_bytes())), "true")
+            } else {
+                (String::new(), "false")
+            };
+            tantivy_doc.add_text(self.template_id_field, &template_id_val);
+            tantivy_doc.add_text(self.is_template_field, is_template_val);
             writer.add_document(tantivy_doc)?;
         }
         Ok(())
@@ -279,6 +345,24 @@ impl PromptSearchIndex {
         limit: usize,
         offset: usize,
     ) -> Result<PromptSearchResponse, SearchError> {
+        self.search_with(PromptSearchParams {
+            query,
+            scope,
+            limit,
+            offset,
+            ..Default::default()
+        })
+    }
+
+    /// Extended search with full filter support.
+    pub fn search_with(
+        &self,
+        params: PromptSearchParams<'_>,
+    ) -> Result<PromptSearchResponse, SearchError> {
+        let query = params.query;
+        let scope = params.scope;
+        let limit = params.limit;
+        let offset = params.offset;
         let start = std::time::Instant::now();
         let searcher = self.reader.searcher();
 
@@ -341,6 +425,60 @@ impl PromptSearchIndex {
             qualifier_clauses.push((Occur::Must, Box::new(scope_query)));
         }
 
+        // has_paste filter
+        if let Some(hp) = params.has_paste {
+            let val = if hp { "true" } else { "false" };
+            qualifier_clauses.push((
+                Occur::Must,
+                Box::new(TermQuery::new(
+                    Term::from_field_text(self.has_paste_field, val),
+                    IndexRecordOption::Basic,
+                )),
+            ));
+        }
+
+        // Time range filters (FAST i64 field — Tantivy RangeQuery)
+        let time_lower = params.time_after.unwrap_or(i64::MIN);
+        let time_upper = params.time_before.unwrap_or(i64::MAX);
+        if params.time_after.is_some() || params.time_before.is_some() {
+            qualifier_clauses.push((
+                Occur::Must,
+                Box::new(RangeQuery::new_i64_bounds(
+                    "timestamp".to_string(),
+                    std::ops::Bound::Included(time_lower),
+                    std::ops::Bound::Included(time_upper),
+                )),
+            ));
+        }
+
+        // template_match filter:
+        // "template" => only prompts with non-empty template_id (stored as any non-"" value)
+        // "unique"   => only prompts with empty template_id (stored as "")
+        // None / "any" => no filter
+        // template_match filter uses the `is_template` field ("true"/"false")
+        // which was designed for this exact TermQuery pattern.
+        match params.template_match {
+            Some("template") => {
+                qualifier_clauses.push((
+                    Occur::Must,
+                    Box::new(TermQuery::new(
+                        Term::from_field_text(self.is_template_field, "true"),
+                        IndexRecordOption::Basic,
+                    )),
+                ));
+            }
+            Some("unique") => {
+                qualifier_clauses.push((
+                    Occur::Must,
+                    Box::new(TermQuery::new(
+                        Term::from_field_text(self.is_template_field, "false"),
+                        IndexRecordOption::Basic,
+                    )),
+                ));
+            }
+            _ => {}
+        }
+
         // Build final query
         let free_text = free_text_parts.join(" ");
         let final_query: Box<dyn tantivy::query::Query> =
@@ -363,8 +501,43 @@ impl PromptSearchIndex {
                 }
             };
 
+        // Build snippet generator when free-text query is present (TEXT field only).
+        let snippet_gen = if !free_text.is_empty() {
+            SnippetGenerator::create(&searcher, &*final_query, self.display_field).ok()
+        } else {
+            None
+        };
+
         let total_matches = searcher.search(&*final_query, &Count)?;
-        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit + offset))?;
+        // Sort: newest (default) = descending timestamp, oldest = ascending timestamp.
+        // When a free-text query is present we keep relevance score as primary sort
+        // (matches user expectation for search results).
+        let sort_oldest = params.sort.map(|s| s == "oldest").unwrap_or(false);
+        let top_docs = if sort_oldest {
+            searcher
+                .search(
+                    &*final_query,
+                    &TopDocs::with_limit(limit + offset)
+                        .order_by_fast_field::<i64>("timestamp", tantivy::Order::Asc),
+                )?
+                .into_iter()
+                .map(|(_, addr)| (0.0f32, addr))
+                .collect::<Vec<_>>()
+        } else if free_text.is_empty() {
+            // No text query — sort by newest first
+            searcher
+                .search(
+                    &*final_query,
+                    &TopDocs::with_limit(limit + offset)
+                        .order_by_fast_field::<i64>("timestamp", tantivy::Order::Desc),
+                )?
+                .into_iter()
+                .map(|(_, addr)| (0.0f32, addr))
+                .collect::<Vec<_>>()
+        } else {
+            // Text query present — use relevance score (BM25), newest as tiebreaker
+            searcher.search(&*final_query, &TopDocs::with_limit(limit + offset))?
+        };
 
         let mut prompts = Vec::with_capacity(limit.min(top_docs.len()));
         for (_score, doc_addr) in top_docs.into_iter().skip(offset) {
@@ -388,9 +561,28 @@ impl PromptSearchIndex {
                 .unwrap_or(0);
             let has_paste_str = get_text(self.has_paste_field);
 
+            let snippet = snippet_gen.as_ref().and_then(|gen| {
+                let s = gen.snippet_from_doc(&retrieved);
+                let html = s.to_html();
+                if html.is_empty() {
+                    None
+                } else {
+                    Some(html)
+                }
+            });
+
+            let raw_template_id = get_text(self.template_id_field);
+            let template_id = if raw_template_id.is_empty() {
+                None
+            } else {
+                Some(raw_template_id)
+            };
+
             prompts.push(PromptHit {
                 prompt_id: get_text(self.prompt_id_field),
                 display: get_text(self.display_field),
+                snippet,
+                template_id,
                 project: get_text(self.project_field),
                 session_id: if session_id_str.is_empty() {
                     None
@@ -516,6 +708,178 @@ mod tests {
         let results = index.search("intent:fix", None, 10, 0).unwrap();
         assert_eq!(results.total_matches, 1);
         assert_eq!(results.prompts[0].intent, "fix");
+    }
+
+    // ── template_match tests ────────────────────────────────────────────────
+
+    fn make_doc(id: &str, display: &str, ts: i64) -> PromptDocument {
+        PromptDocument {
+            prompt_id: id.into(),
+            display: display.into(),
+            paste_text: None,
+            project: "proj".into(),
+            session_id: None,
+            branch: "".into(),
+            model: "".into(),
+            git_root: "".into(),
+            intent: "fix".into(),
+            complexity: "short".into(),
+            timestamp: ts,
+            has_paste: false,
+        }
+    }
+
+    #[test]
+    fn template_prompts_share_same_template_id() {
+        // Three prompts that normalize to the same pattern get a non-empty, identical template_id.
+        let index = PromptSearchIndex::open_in_ram().unwrap();
+        let docs = vec![
+            make_doc("t1", "review @docs/plan-a.md is this ready", 100),
+            make_doc("t2", "review @docs/plan-b.md is this ready", 200),
+            make_doc("t3", "review @docs/plan-c.md is this ready", 300),
+        ];
+        index.index_prompts(&docs).unwrap();
+        index.commit().unwrap();
+        index.reader.reload().unwrap();
+
+        let results = index.search("review", None, 10, 0).unwrap();
+        assert_eq!(results.total_matches, 3);
+
+        let ids: Vec<&str> = results
+            .prompts
+            .iter()
+            .map(|h| h.template_id.as_deref().unwrap_or(""))
+            .collect();
+        // All three must have the same non-empty template_id
+        assert!(
+            !ids[0].is_empty(),
+            "template prompts must have a non-empty template_id"
+        );
+        assert_eq!(ids[0], ids[1], "same pattern => same template_id");
+        assert_eq!(ids[1], ids[2], "same pattern => same template_id");
+    }
+
+    #[test]
+    fn unique_prompt_has_empty_template_id() {
+        let index = PromptSearchIndex::open_in_ram().unwrap();
+        // Each prompt is completely different — no pattern match
+        let docs = vec![
+            make_doc("u1", "what is the meaning of life", 100),
+            make_doc("u2", "refactor the database connection pool", 200),
+            make_doc("u3", "explain how oauth2 pkce works", 300),
+        ];
+        index.index_prompts(&docs).unwrap();
+        index.commit().unwrap();
+        index.reader.reload().unwrap();
+
+        let results = index.search("", None, 10, 0).unwrap();
+        assert_eq!(results.total_matches, 3);
+
+        for hit in &results.prompts {
+            assert!(
+                hit.template_id.as_deref().unwrap_or("").is_empty(),
+                "unique prompt '{}' should have empty template_id",
+                hit.display
+            );
+        }
+    }
+
+    #[test]
+    fn template_match_filter_returns_only_template_prompts() {
+        let index = PromptSearchIndex::open_in_ram().unwrap();
+        let docs = vec![
+            make_doc("t1", "review @docs/plan-a.md is this ready", 100),
+            make_doc("t2", "review @docs/plan-b.md is this ready", 200),
+            make_doc("t3", "review @docs/plan-c.md is this ready", 300),
+            make_doc("u1", "what is the meaning of life", 400),
+        ];
+        index.index_prompts(&docs).unwrap();
+        index.commit().unwrap();
+        index.reader.reload().unwrap();
+
+        let results = index
+            .search_with(PromptSearchParams {
+                query: "",
+                scope: None,
+                template_match: Some("template"),
+                limit: 10,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(
+            results.total_matches, 3,
+            "only template prompts should be returned"
+        );
+        for hit in &results.prompts {
+            assert!(
+                !hit.template_id.as_deref().unwrap_or("").is_empty(),
+                "all hits should have a template_id"
+            );
+        }
+    }
+
+    #[test]
+    fn template_match_filter_returns_only_unique_prompts() {
+        let index = PromptSearchIndex::open_in_ram().unwrap();
+        let docs = vec![
+            make_doc("t1", "review @docs/plan-a.md is this ready", 100),
+            make_doc("t2", "review @docs/plan-b.md is this ready", 200),
+            make_doc("u1", "what is the meaning of life", 300),
+            make_doc("u2", "explain oauth2 pkce flow", 400),
+        ];
+        index.index_prompts(&docs).unwrap();
+        index.commit().unwrap();
+        index.reader.reload().unwrap();
+
+        let results = index
+            .search_with(PromptSearchParams {
+                query: "",
+                scope: None,
+                template_match: Some("unique"),
+                limit: 10,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+
+        assert_eq!(
+            results.total_matches, 2,
+            "only unique prompts should be returned"
+        );
+        for hit in &results.prompts {
+            assert!(
+                hit.template_id.as_deref().unwrap_or("").is_empty(),
+                "all hits should have empty template_id"
+            );
+        }
+    }
+
+    #[test]
+    fn template_match_any_returns_all_prompts() {
+        let index = PromptSearchIndex::open_in_ram().unwrap();
+        let docs = vec![
+            make_doc("t1", "review @docs/plan-a.md is this ready", 100),
+            make_doc("t2", "review @docs/plan-b.md is this ready", 200),
+            make_doc("u1", "what is the meaning of life", 300),
+        ];
+        index.index_prompts(&docs).unwrap();
+        index.commit().unwrap();
+        index.reader.reload().unwrap();
+
+        // None = "any" — no template filter applied
+        let results = index
+            .search_with(PromptSearchParams {
+                query: "",
+                scope: None,
+                template_match: None,
+                limit: 10,
+                offset: 0,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(results.total_matches, 3);
     }
 
     #[test]
