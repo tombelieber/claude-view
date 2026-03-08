@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Crown } from 'lucide-react'
 import { useState } from 'react'
 import Markdown from 'react-markdown'
 import { useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
+import { markdownComponents } from '../../lib/markdown-components'
 import { cn } from '../../lib/utils'
 import type { InboxMessage, InboxMessageType, TeamMember } from '../../types/generated'
 
@@ -104,7 +105,7 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
           !expanded && isLong && 'line-clamp-6',
         )}
       >
-        <Markdown>{msg.text}</Markdown>
+        <Markdown components={markdownComponents}>{msg.text}</Markdown>
       </div>
       {isLong && (
         <button
@@ -148,7 +149,7 @@ export function TeamsTab({ teamName }: TeamsTabProps) {
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{team.name}</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{team.description}</p>
         <p className="text-[10px] text-gray-400 mt-1">
-          Created {new Date(team.createdAt).toLocaleString()}
+          Created {team.createdAt > 0 ? new Date(team.createdAt).toLocaleString() : '—'}
         </p>
       </div>
 
