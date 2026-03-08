@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { PluginInfo, PluginItem } from '../../types/generated'
+import { PluginActionMenu } from './PluginActionMenu'
 import { marketplaceDotColor } from './marketplace-colors'
 
 // ---------------------------------------------------------------------------
@@ -157,10 +158,11 @@ function ItemsSection({ kind, items }: { kind: string; items: PluginItem[] }) {
 
 interface PluginCardProps {
   plugin: PluginInfo
-  onToggleEnabled?: (plugin: PluginInfo) => void
+  onAction: (action: string, name: string) => void
+  isPending: boolean
 }
 
-export function PluginCard({ plugin, onToggleEnabled }: PluginCardProps) {
+export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
   const [expanded, setExpanded] = useState(false)
 
   const skills = plugin.items.filter((i) => i.kind === 'skill')
@@ -186,7 +188,11 @@ export function PluginCard({ plugin, onToggleEnabled }: PluginCardProps) {
           {plugin.name}
         </h3>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <EnableToggle enabled={plugin.enabled} onToggle={() => onToggleEnabled?.(plugin)} />
+          <EnableToggle
+            enabled={plugin.enabled}
+            onToggle={() => onAction(plugin.enabled ? 'disable' : 'enable', plugin.name)}
+          />
+          <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
           <VersionDisplay version={plugin.version} gitSha={plugin.gitSha} />
           {expanded ? (
             <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
