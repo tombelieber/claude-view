@@ -28,6 +28,7 @@ export function VersionStepper({
   return (
     <div className="flex items-center gap-1 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
       <button
+        type="button"
         onClick={() => canPrev && onSelect(pairs[activeIdx - 1][0], pairs[activeIdx - 1][1])}
         disabled={!canPrev}
         className={cn(
@@ -45,6 +46,7 @@ export function VersionStepper({
         const isActive = f === fromVersion && t === toVersion
         return (
           <button
+            type="button"
             key={`${f}-${t}`}
             onClick={() => onSelect(f, t)}
             className={cn(
@@ -60,6 +62,7 @@ export function VersionStepper({
       })}
 
       <button
+        type="button"
         onClick={() => canNext && onSelect(pairs[activeIdx + 1][0], pairs[activeIdx + 1][1])}
         disabled={!canNext}
         className={cn(
