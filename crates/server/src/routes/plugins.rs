@@ -238,8 +238,38 @@ struct CliAvailableResponse {
 // CLI helper
 // ---------------------------------------------------------------------------
 
+/// Strip ANSI escape sequences (color codes, cursor moves) from CLI output.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if let Some(&next) = chars.peek() {
+                if next == '[' {
+                    chars.next();
+                    // Consume CSI params until final byte (letter, ~, or @)
+                    while let Some(&p) = chars.peek() {
+                        chars.next();
+                        if p.is_ascii_alphabetic() || p == '~' || p == '@' {
+                            break;
+                        }
+                    }
+                } else {
+                    chars.next();
+                    if next == '(' {
+                        chars.next(); // charset designator
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Run a `claude plugin` subcommand and return stdout as String.
-/// Strips ALL CLAUDE* env vars per CLAUDE.md hard rules.
+/// Strips ALL CLAUDE* env vars and ANSI codes per CLAUDE.md hard rules.
 async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
     use std::process::Stdio;
 
@@ -251,6 +281,9 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+
+    // Suppress ANSI color codes in CLI output (https://no-color.org/)
+    cmd.env("NO_COLOR", "1");
 
     // Strip ALL CLAUDE* + ANTHROPIC_API_KEY
     let vars_to_strip: Vec<String> = std::env::vars()
@@ -276,15 +309,16 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
         })?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
         return Err(ApiError::Internal(format!(
             "claude plugin {} failed: {stderr}",
             args.join(" ")
         )));
     }
 
-    String::from_utf8(output.stdout)
-        .map_err(|e| ApiError::Internal(format!("Invalid UTF-8 from CLI: {e}")))
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|e| ApiError::Internal(format!("Invalid UTF-8 from CLI: {e}")))?;
+    Ok(strip_ansi(&stdout))
 }
 
 // ---------------------------------------------------------------------------
