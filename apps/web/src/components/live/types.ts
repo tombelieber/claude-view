@@ -54,5 +54,9 @@ export const LIVE_VIEW_STORAGE_KEY = 'claude-view:live-view-mode'
 
 export type KanbanGroupBy = 'none' | 'project-branch'
 
+/** How project/branch groups are initially ordered when first seen. */
+export type KanbanSort = 'recent' | 'alphabetical' | 'cost'
+
 export const KANBAN_GROUP_BY_STORAGE_KEY = 'claude-view:kanban-group-by'
+export const KANBAN_SORT_STORAGE_KEY = 'claude-view:kanban-sort'
 export const KANBAN_COLLAPSE_STORAGE_KEY = 'claude-view:kanban-collapse'
