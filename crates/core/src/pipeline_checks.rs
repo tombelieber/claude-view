@@ -569,6 +569,7 @@ pub fn run_per_line_checks(
 /// - message_id comes from `message.id` (nested), NOT root `uuid`
 /// - request_id comes from root `requestId`
 /// - dedup key is only inserted when `has_measurement_data` is true
+///
 /// See accumulator.rs:111-128 and live_parser.rs:570-579.
 pub fn run_per_session_checks(
     parsed_lines: &[(&[u8], LiveLine)],
