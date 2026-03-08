@@ -83,6 +83,11 @@ export interface SessionPanelData {
     sessionInfo?: SessionInfo
   }
 
+  /** Session slug for plan file lookup */
+  slug?: string | null
+  /** Whether plan files exist for this session's slug */
+  hasPlans?: boolean
+
   // Terminal messages source
   // - For live: undefined (uses WebSocket via useLiveSessionMessages)
   // - For history: pre-converted RichMessage[] from messagesToRichMessages
@@ -117,6 +122,8 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     agentState: session.agentState,
     pid: session.pid,
     currentActivity: session.currentActivity,
+    slug: session.slug ?? null,
+    hasPlans: false, // Live sessions check on-demand via usePlanDocuments hook
   }
 }
 
@@ -180,6 +187,8 @@ export function historyToPanelData(
     startedAt: sessionDetail.firstMessageAt ?? undefined,
     lastActivityAt: sessionDetail.modifiedAt,
     lastUserMessage: richData?.lastUserMessage ?? undefined,
+    slug: sessionDetail.slug ?? null,
+    hasPlans: sessionDetail.hasPlans ?? false,
     historyExtras: {
       sessionDetail,
       sessionInfo,
