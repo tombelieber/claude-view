@@ -12,9 +12,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Catches drift before it ships. Skip with SKIP_EVIDENCE=1.
 if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
   echo "Running evidence audit (JSONL schema guard)..."
-  if ! EVIDENCE_QUICK=1 cargo run -p claude-view-core --bin evidence-audit --release; then
+  if ! cargo run -p claude-view-core --bin evidence-audit --release; then
     echo ""
-    echo "ERROR: Evidence audit failed — parser/indexer may not handle current JSONL schema."
+    echo "ERROR: Evidence audit failed — parser pipeline invariants violated against real data."
     echo "Fix the drift or set SKIP_EVIDENCE=1 to bypass (NOT recommended)."
     exit 1
   fi
