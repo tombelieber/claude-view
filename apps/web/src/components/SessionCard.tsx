@@ -5,6 +5,7 @@ import {
   DollarSign,
   Eye,
   FileEdit,
+  FolderOpen,
   GitBranch,
   GitCommit,
   MessageSquare,
@@ -280,16 +281,17 @@ export function SessionCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <WeightIndicator tier={weightTier} />
               {projectLabel && (
-                <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded flex-shrink-0">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">
+                  <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />
                   {projectLabel}
                 </span>
               )}
               {gitBranch && (
                 <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded flex-shrink-0 max-w-[160px]"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded shrink-0 max-w-40"
                   title={gitBranch}
                 >
-                  <GitBranch className="w-3 h-3 flex-shrink-0" />
+                  <GitBranch className="w-3 h-3 shrink-0" />
                   <span className="truncate">{gitBranch}</span>
                 </span>
               )}
