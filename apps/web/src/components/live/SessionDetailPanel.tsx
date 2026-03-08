@@ -10,15 +10,18 @@ import {
   Timer,
   TreePine,
   Users,
+  UsersRound,
   X,
   Zap,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useControlCallbacks } from '../../hooks/use-control-callbacks'
 import { useControlSession } from '../../hooks/use-control-session'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { useTeamForSession } from '../../hooks/use-teams'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { controlStatusToInputState } from '../../lib/control-status-map'
 import { formatCostUsd } from '../../lib/format-utils'
@@ -31,6 +34,7 @@ import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
 import { ChatInputBar } from '../chat/ChatInputBar'
 import { PermissionCard } from '../chat/cards/PermissionCard'
+import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
@@ -52,7 +56,7 @@ import type { LiveSession } from './use-live-sessions'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'cost'
+type TabId = 'overview' | 'terminal' | 'log' | 'sub-agents' | 'teams' | 'cost'
 
 interface SessionDetailPanelProps {
   /** Live session (existing callers) */
@@ -75,6 +79,7 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'log', label: 'Log', icon: ScrollText },
   { id: 'sub-agents', label: 'Sub-Agents', icon: Users },
+  { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'cost', label: 'Cost', icon: DollarSign },
 ]
 
@@ -142,8 +147,15 @@ export function SessionDetailPanel({
     controlSession.respondPermission,
   )
 
+  // ---- Teams tab (conditional — only show when session is a team lead) ----
+  const teamMatch = useTeamForSession(data.id)
+
+  // ---- URL param: ?tab=teams ----
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as TabId | null
+
   // ---- Local state ----
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'overview')
   const verboseMode = useMonitorStore((s) => s.verboseMode)
 
   // Live mode: WebSocket messages; History mode: pre-loaded messages
@@ -379,7 +391,7 @@ export function SessionDetailPanel({
         className="flex items-center border-b border-gray-200 dark:border-gray-800 flex-shrink-0 overflow-x-auto"
         role="tablist"
       >
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => tab.id !== 'teams' || teamMatch !== null).map((tab) => {
           const Icon = tab.icon
           return (
             <button
@@ -701,6 +713,9 @@ export function SessionDetailPanel({
             )}
           </div>
         )}
+
+        {/* ---- Teams tab ---- */}
+        {activeTab === 'teams' && teamMatch && <TeamsTab teamName={teamMatch.name} />}
 
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
