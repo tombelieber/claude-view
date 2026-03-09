@@ -178,6 +178,11 @@ pub struct LiveSession {
     pub compact_count: u32,
     /// Session slug for plan file association.
     pub slug: Option<String>,
+    /// Unix timestamp when this session's process exited (None = still running).
+    /// Set by reconciliation loop or SessionEnd hook. Used by frontend for
+    /// "closed Xm ago" display and by recently-closed persistence.
+    #[ts(type = "number | null")]
+    pub closed_at: Option<i64>,
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
