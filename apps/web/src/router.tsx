@@ -13,6 +13,7 @@ import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { TeamsPage } from './pages/TeamsPage'
+import { WorkflowDetailPage } from './pages/WorkflowDetailPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
@@ -64,6 +65,7 @@ export const router = createBrowserRouter([
       { path: 'prompts', element: <PromptsPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },
+      { path: 'workflows/:id', element: <WorkflowDetailPage /> },
       { path: 'plugins', element: <PluginsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
