@@ -305,6 +305,9 @@ pub enum SessionEvent {
     SessionDiscovered { session: LiveSession },
     /// An existing session was updated (new lines appended to JSONL).
     SessionUpdated { session: LiveSession },
+    /// A session's process exited — session moves to "recently closed" on the frontend.
+    /// Carries the full session data so the frontend can display it without a REST call.
+    SessionClosed { session: LiveSession },
     /// A session has been cleaned up (Complete for >10 min).
     SessionCompleted {
         #[serde(rename = "sessionId")]
