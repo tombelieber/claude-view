@@ -992,6 +992,61 @@ impl LiveSessionManager {
                 }
             }
 
+            // 4. Load recently-closed sessions from SQLite (survive server restarts).
+            // These are sessions whose process exited (closed_at IS NOT NULL) but user
+            // hasn't dismissed them yet (dismissed_at IS NULL).
+            let closed_rows: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT id, closed_at FROM sessions WHERE closed_at IS NOT NULL AND dismissed_at IS NULL"
+            )
+            .fetch_all(manager.db.pool())
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "Failed to load recently-closed sessions from SQLite");
+                Vec::new()
+            });
+
+            // Phase 1: Parse JSONL files for closed sessions (OUTSIDE sessions lock)
+            for (session_id, _closed_at) in &closed_rows {
+                if manager.sessions.read().await.contains_key(session_id) {
+                    continue; // Already loaded from snapshot or hook
+                }
+                if let Some(path) = initial_paths
+                    .iter()
+                    .find(|p| extract_session_id(p) == *session_id)
+                {
+                    // process_jsonl_update acquires sessions.write() internally
+                    manager.process_jsonl_update(path).await;
+                }
+            }
+
+            // Phase 2: Mark recovered sessions as closed (with sessions lock)
+            {
+                let mut sessions = manager.sessions.write().await;
+                let mut restored = 0u32;
+                for (session_id, closed_at) in &closed_rows {
+                    if let Some(session) = sessions.get_mut(session_id) {
+                        if session.closed_at.is_none() {
+                            session.status = SessionStatus::Done;
+                            session.closed_at = Some(*closed_at);
+                            session.agent_state = AgentState {
+                                group: AgentStateGroup::NeedsYou,
+                                state: "session_ended".into(),
+                                label: "Session ended".into(),
+                                context: None,
+                            };
+                            session.hook_events.clear();
+                            restored += 1;
+                        }
+                    }
+                }
+                if restored > 0 {
+                    info!(
+                        count = restored,
+                        "Restored recently-closed sessions from SQLite"
+                    );
+                }
+            }
+
             // Start the file system watcher
             let (file_tx, mut file_rx) = mpsc::channel::<FileEvent>(512);
             let (_watcher, dropped_events) = match start_watcher(file_tx) {
@@ -1222,7 +1277,26 @@ impl LiveSessionManager {
                         let _ = manager.tx.send(SessionEvent::SessionClosed { session });
                     }
                 }
-                let _ = dead_sessions_for_db; // suppress unused warning — will be used for DB writes later
+
+                // Persist closed_at to SQLite for restart recovery
+                if !dead_sessions_for_db.is_empty() {
+                    let db = manager.db.clone();
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    tokio::spawn(async move {
+                        for session_id in dead_sessions_for_db {
+                            let _ = sqlx::query(
+                                "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
+                            )
+                            .bind(now)
+                            .bind(&session_id)
+                            .execute(db.pool())
+                            .await;
+                        }
+                    });
+                }
 
                 // =============================================================
                 // Phase 1b: Stale control binding detection
