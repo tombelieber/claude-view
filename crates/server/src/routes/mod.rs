@@ -38,6 +38,7 @@ pub mod teams;
 pub mod terminal;
 pub mod trends;
 pub mod turns;
+pub mod workflows;
 
 use std::sync::Arc;
 
