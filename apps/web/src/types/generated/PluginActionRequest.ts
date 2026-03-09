@@ -13,7 +13,12 @@ export type PluginActionRequest = {
    */
   name: string
   /**
-   * For install: "user" | "project"
+   * "user" | "project"
    */
   scope: string | null
+  /**
+   * For project-scoped plugins: the project directory where it was installed.
+   * Required for uninstall of project-scoped plugins (CLI needs correct CWD).
+   */
+  projectPath: string | null
 }
