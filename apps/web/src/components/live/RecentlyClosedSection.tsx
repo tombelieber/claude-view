@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, X } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { formatRelativeTime } from '../../lib/format-utils'
 import { SessionCard } from './SessionCard'
@@ -70,6 +70,19 @@ export function RecentlyClosedSection({
                 title="Dismiss"
               >
                 <X className="w-3.5 h-3.5 text-zinc-400" />
+              </button>
+              {/* Resume button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  navigator.clipboard.writeText(`claude --resume ${session.id}`)
+                }}
+                className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                title="Copy resume command"
+              >
+                <Copy className="w-3 h-3" />
+                Resume
               </button>
               {/* Closed-time label */}
               {session.closedAt && (
