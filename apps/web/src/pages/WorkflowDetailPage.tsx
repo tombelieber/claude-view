@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { WorkflowChatRail } from '../components/workflows/WorkflowChatRail'
 import { WorkflowRightPanel } from '../components/workflows/WorkflowRightPanel'
+import type { StageAttempt, StageStatus } from '../components/workflows/WorkflowStageColumn'
 import { useWorkflow } from '../hooks/use-workflows'
 
 const MIN_RAIL_PCT = 20
@@ -20,7 +21,17 @@ export function WorkflowDetailPage() {
   const [mode, setMode] = useState<WorkflowMode>('design')
   const [activeTab, setActiveTab] = useState<WorkflowTab>('preview')
   const [generatedYaml, setGeneratedYaml] = useState<string>('')
+  const [stageStatuses, setStageStatuses] = useState<Map<string, StageStatus>>(new Map())
+  const [stageAttempts, setStageAttempts] = useState<Map<string, StageAttempt[]>>(new Map())
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [currentStageIndex, setCurrentStageIndex] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Suppress unused-variable warnings — these setters will be wired in the run-engine task
+  void setStageStatuses
+  void setStageAttempts
+  void setElapsedSeconds
+  void setCurrentStageIndex
 
   // Cmd+B: toggle rail
   useEffect(() => {
@@ -86,6 +97,11 @@ export function WorkflowDetailPage() {
           onTabChange={setActiveTab}
           mode={mode}
           onRun={handleRun}
+          definition={workflow?.definition ?? null}
+          stageStatuses={stageStatuses}
+          stageAttempts={stageAttempts}
+          elapsedSeconds={elapsedSeconds}
+          currentStageIndex={currentStageIndex}
         />
       </div>
     </div>
