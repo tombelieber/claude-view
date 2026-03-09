@@ -218,6 +218,7 @@ fn build_recovered_session(
         last_cache_hit_at: None,
         compact_count: 0,
         slug: None,
+        closed_at: None,
         control: None,
         hook_events: Vec::new(),
     }
