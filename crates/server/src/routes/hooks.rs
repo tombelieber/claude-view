@@ -564,6 +564,19 @@ async fn handle_hook(
                 if let Some(session) = session {
                     let _ = state.live_tx.send(SessionEvent::SessionClosed { session });
                 }
+
+                // Persist closed_at to SQLite for restart recovery
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let _ = sqlx::query(
+                    "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL",
+                )
+                .bind(now)
+                .bind(&session_id)
+                .execute(state.db.pool())
+                .await;
             }
         }
         // ── Metadata-only events ─────────────────────────────────────────
