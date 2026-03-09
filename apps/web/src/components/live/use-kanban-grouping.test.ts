@@ -47,6 +47,7 @@ function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSess
       totalCostSource: 'computed_priced_tokens_full',
     },
     cacheStatus: 'unknown',
+    closedAt: null,
     ...overrides,
   }
 }
