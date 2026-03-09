@@ -62,6 +62,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// | `summary`           | On connect, and when a client lags     |
 /// | `session_discovered`| New session detected                   |
 /// | `session_updated`   | Session state changed                  |
+/// | `session_closed`    | Session process exited (recently closed) |
 /// | `session_completed` | Session ended                          |
 /// | `heartbeat`         | Every 15 seconds to keep connection    |
 ///
@@ -104,6 +105,7 @@ pub async fn live_stream(
                             let event_name = match &session_event {
                                 SessionEvent::SessionDiscovered { .. } => "session_discovered",
                                 SessionEvent::SessionUpdated { .. } => "session_updated",
+                                SessionEvent::SessionClosed { .. } => "session_closed",
                                 SessionEvent::SessionCompleted { .. } => "session_completed",
                                 SessionEvent::Summary { .. } => "summary",
                             };
