@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils'
 import type { WorkflowMode, WorkflowTab } from '../../pages/WorkflowDetailPage'
 import type { WorkflowDetail } from '../../types/generated/WorkflowDetail'
+import { WorkflowPreviewTab } from './WorkflowPreviewTab'
 
 interface WorkflowRightPanelProps {
   workflow: WorkflowDetail | null
@@ -11,7 +12,14 @@ interface WorkflowRightPanelProps {
   onRun: () => void
 }
 
-export function WorkflowRightPanel({ activeTab, onTabChange }: WorkflowRightPanelProps) {
+export function WorkflowRightPanel({
+  workflow,
+  generatedYaml,
+  activeTab,
+  onTabChange,
+  mode,
+  onRun,
+}: WorkflowRightPanelProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 dark:border-gray-800">
@@ -31,9 +39,18 @@ export function WorkflowRightPanel({ activeTab, onTabChange }: WorkflowRightPane
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-hidden p-4 text-sm text-gray-400 dark:text-gray-500">
-        {activeTab === 'preview' ? 'Preview tab (Phase 4)' : 'Runner tab (Phase 7)'}
-      </div>
+      {activeTab === 'preview' ? (
+        <WorkflowPreviewTab
+          definition={workflow?.definition ?? null}
+          yaml={generatedYaml || workflow?.yaml || ''}
+          onGenerate={onRun}
+          canGenerate={!!workflow && mode === 'design'}
+        />
+      ) : (
+        <div className="flex-1 overflow-hidden p-4 text-sm text-gray-400 dark:text-gray-500">
+          Runner tab (Phase 7)
+        </div>
+      )}
     </div>
   )
 }
