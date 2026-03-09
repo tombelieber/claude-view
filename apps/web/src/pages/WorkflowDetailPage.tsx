@@ -25,6 +25,8 @@ export function WorkflowDetailPage() {
   const [stageAttempts, setStageAttempts] = useState<Map<string, StageAttempt[]>>(new Map())
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [currentStageIndex, setCurrentStageIndex] = useState(0)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [autoMessage, setAutoMessage] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Suppress unused-variable warnings — these setters will be wired in the run-engine task
@@ -63,8 +65,17 @@ export function WorkflowDetailPage() {
 
   const handleRun = useCallback(() => {
     setMode('control')
+    setRunId(crypto.randomUUID()) // Placeholder — Task 15 returns real run ID
     setTimeout(() => setActiveTab('runner'), 350)
   }, [])
+
+  const handleRunComplete = useCallback((summary: string) => {
+    setMode('review')
+    setAutoMessage(summary)
+  }, [])
+
+  // Suppress unused-variable warning — wired in run-engine task
+  void handleRunComplete
 
   return (
     <div ref={containerRef} className="h-full flex overflow-hidden">
@@ -78,8 +89,8 @@ export function WorkflowDetailPage() {
           onModeChange={setMode}
           onYamlUpdate={setGeneratedYaml}
           onWorkflowGenerated={handleRun}
-          runId={null}
-          autoMessage={null}
+          runId={runId}
+          autoMessage={autoMessage}
           generatedYaml={generatedYaml}
         />
       </div>
