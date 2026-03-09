@@ -53,6 +53,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       totalCostSource: 'computed_priced_tokens_full',
     },
     cacheStatus: 'warm',
+    closedAt: null,
     ...overrides,
   }
 }
