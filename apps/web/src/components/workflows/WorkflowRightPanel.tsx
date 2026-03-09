@@ -1,7 +1,10 @@
 import { cn } from '../../lib/utils'
 import type { WorkflowMode, WorkflowTab } from '../../pages/WorkflowDetailPage'
+import type { WorkflowDefinition } from '../../types/generated/WorkflowDefinition'
 import type { WorkflowDetail } from '../../types/generated/WorkflowDetail'
 import { WorkflowPreviewTab } from './WorkflowPreviewTab'
+import { WorkflowRunnerTab } from './WorkflowRunnerTab'
+import type { StageAttempt, StageStatus } from './WorkflowStageColumn'
 
 interface WorkflowRightPanelProps {
   workflow: WorkflowDetail | null
@@ -10,6 +13,11 @@ interface WorkflowRightPanelProps {
   onTabChange: (tab: WorkflowTab) => void
   mode: WorkflowMode
   onRun: () => void
+  definition: WorkflowDefinition | null
+  stageStatuses: Map<string, StageStatus>
+  stageAttempts: Map<string, StageAttempt[]>
+  elapsedSeconds: number
+  currentStageIndex: number
 }
 
 export function WorkflowRightPanel({
@@ -19,6 +27,11 @@ export function WorkflowRightPanel({
   onTabChange,
   mode,
   onRun,
+  definition,
+  stageStatuses,
+  stageAttempts,
+  elapsedSeconds,
+  currentStageIndex,
 }: WorkflowRightPanelProps) {
   return (
     <div className="flex flex-col h-full">
@@ -47,9 +60,13 @@ export function WorkflowRightPanel({
           canGenerate={!!workflow && mode === 'design'}
         />
       ) : (
-        <div className="flex-1 overflow-hidden p-4 text-sm text-gray-400 dark:text-gray-500">
-          Runner tab (Phase 7)
-        </div>
+        <WorkflowRunnerTab
+          definition={definition}
+          stageStatuses={stageStatuses}
+          stageAttempts={stageAttempts}
+          elapsedSeconds={elapsedSeconds}
+          currentStageIndex={currentStageIndex}
+        />
       )}
     </div>
   )
