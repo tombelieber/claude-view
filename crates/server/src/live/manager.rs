@@ -546,6 +546,9 @@ impl LiveSessionManager {
 
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
+            if session.closed_at.is_some() {
+                return; // Don't enrich closed sessions
+            }
             let hook_activity = session.last_activity_at;
             apply_jsonl_metadata(
                 session,
@@ -680,6 +683,8 @@ impl LiveSessionManager {
         let sessions = self.sessions.read().await;
         let entries: HashMap<String, SnapshotEntry> = sessions
             .iter()
+            // Done sessions (recently closed) are excluded from PID snapshots.
+            // They persist via SQLite closed_at/dismissed_at columns instead.
             .filter(|(_, s)| s.status != SessionStatus::Done)
             .filter_map(|(id, s)| {
                 s.pid.map(|pid| {
@@ -1037,13 +1042,42 @@ impl LiveSessionManager {
                     }
                     FileEvent::Removed(path) => {
                         let session_id = extract_session_id(&path);
-                        let mut sessions = manager.sessions.write().await;
-                        if sessions.remove(&session_id).is_some() {
-                            let mut accumulators = manager.accumulators.write().await;
-                            accumulators.remove(&session_id);
-                            let _ = manager
-                                .tx
-                                .send(SessionEvent::SessionCompleted { session_id });
+                        let (should_close, already_closed) = {
+                            let sessions = manager.sessions.read().await;
+                            match sessions.get(&session_id) {
+                                Some(session) if session.closed_at.is_some() => (false, true),
+                                Some(_) => (true, false),
+                                None => (false, false),
+                            }
+                        }; // read lock dropped here
+
+                        if already_closed {
+                            tracing::debug!(session_id = %session_id, "JSONL file removed for recently-closed session — keeping in map");
+                        } else if should_close {
+                            // Active session whose file vanished — treat as closure.
+                            let closed_session = {
+                                let mut sessions = manager.sessions.write().await;
+                                if let Some(session) = sessions.get_mut(&session_id) {
+                                    let now = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs()
+                                        as i64;
+                                    session.status = SessionStatus::Done;
+                                    session.closed_at = Some(now);
+                                    session.hook_events.clear();
+                                    Some(session.clone())
+                                } else {
+                                    None
+                                }
+                            }; // write lock dropped here
+
+                            if let Some(session) = closed_session {
+                                let _ = manager.tx.send(SessionEvent::SessionClosed { session });
+                                // Acquire accumulators lock AFTER sessions lock is dropped
+                                let mut accumulators = manager.accumulators.write().await;
+                                accumulators.remove(&session_id);
+                            }
                         }
                     }
                     FileEvent::Rescan => {
@@ -1148,9 +1182,12 @@ impl LiveSessionManager {
                                     context: None,
                                 };
                                 session.status = SessionStatus::Done;
-                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                    session: session.clone(),
-                                });
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs() as i64;
+                                session.closed_at = Some(now);
+                                session.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
                                 dead_sessions.push(session_id.clone());
                                 snapshot_dirty = true;
                                 continue;
@@ -1158,10 +1195,9 @@ impl LiveSessionManager {
                         }
                     }
 
-                    // Remove dead sessions from map
-                    for session_id in &dead_sessions {
-                        sessions.remove(session_id);
-                    }
+                    // Dead sessions stay in the map as "recently closed" —
+                    // they are NOT removed here. The cleanup/reaper task
+                    // handles eviction after the dismiss/TTL window.
                 }
 
                 // Remove accumulators for dead sessions to prevent stale data if
@@ -1178,12 +1214,15 @@ impl LiveSessionManager {
                     manager.save_session_snapshot_from_state().await;
                 }
 
-                // Broadcast completions (outside lock)
-                for session_id in dead_sessions {
-                    let _ = manager
-                        .tx
-                        .send(SessionEvent::SessionCompleted { session_id });
+                // Broadcast closures (outside lock) — frontend moves to recentlyClosed
+                let dead_sessions_for_db = dead_sessions.clone();
+                for session_id in &dead_sessions {
+                    let session = manager.sessions.read().await.get(session_id).cloned();
+                    if let Some(session) = session {
+                        let _ = manager.tx.send(SessionEvent::SessionClosed { session });
+                    }
                 }
+                let _ = dead_sessions_for_db; // suppress unused warning — will be used for DB writes later
 
                 // =============================================================
                 // Phase 1b: Stale control binding detection
@@ -1982,6 +2021,9 @@ impl LiveSessionManager {
         // the metadata until a hook or recovery creates the session entry.
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&session_id) {
+            if session.closed_at.is_some() {
+                return;
+            }
             apply_jsonl_metadata(
                 session,
                 &metadata,
