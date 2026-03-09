@@ -491,3 +491,93 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
         "processCount": process_count,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::live::state::{AgentState, AgentStateGroup, LiveSession, SessionStatus};
+    use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+
+    /// Minimal LiveSession for tests with optional closed flag.
+    fn test_session(id: &str, closed: bool) -> LiveSession {
+        let mut s = LiveSession {
+            id: id.to_string(),
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            pid: None,
+            title: "Test session".into(),
+            last_user_message: String::new(),
+            last_user_file: None,
+            current_activity: "Working".into(),
+            turn_count: 5,
+            started_at: Some(1000),
+            last_activity_at: 1000,
+            model: None,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            compact_count: 0,
+            slug: None,
+            closed_at: None,
+            control: None,
+            hook_events: Vec::new(),
+        };
+        if closed {
+            s.status = SessionStatus::Done;
+            s.closed_at = Some(1_700_000_000);
+        }
+        s
+    }
+
+    #[test]
+    fn test_build_summary_excludes_closed_sessions() {
+        let mut map = HashMap::new();
+        map.insert("active-1".into(), test_session("active-1", false));
+        map.insert("active-2".into(), test_session("active-2", false));
+        map.insert("closed-1".into(), test_session("closed-1", true));
+
+        let summary = build_summary(&map, 2);
+
+        assert_eq!(
+            summary["autonomousCount"], 2,
+            "closed session must not inflate autonomousCount"
+        );
+        assert_eq!(summary["needsYouCount"], 0);
+        assert_eq!(
+            summary["processCount"], 2,
+            "processCount should be passed through"
+        );
+    }
+
+    #[test]
+    fn test_build_summary_empty_map() {
+        let map = HashMap::new();
+        let summary = build_summary(&map, 0);
+
+        assert_eq!(summary["autonomousCount"], 0);
+        assert_eq!(summary["needsYouCount"], 0);
+        assert_eq!(summary["totalCostTodayUsd"], 0.0);
+        assert_eq!(summary["totalTokensToday"], 0);
+    }
+}

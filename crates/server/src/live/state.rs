@@ -500,4 +500,72 @@ mod tests {
         assert!(entry.control_id.is_none());
         assert_eq!(entry.pid, 12345);
     }
+
+    /// Minimal LiveSession for tests.
+    fn minimal_live_session(id: &str) -> LiveSession {
+        LiveSession {
+            id: id.to_string(),
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            pid: None,
+            title: "Test session".into(),
+            last_user_message: String::new(),
+            last_user_file: None,
+            current_activity: "Working".into(),
+            turn_count: 5,
+            started_at: Some(1000),
+            last_activity_at: 1000,
+            model: None,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            compact_count: 0,
+            slug: None,
+            closed_at: None,
+            control: None,
+            hook_events: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_session_closed_event_serializes_with_type_tag() {
+        let mut session = minimal_live_session("abc-123");
+        session.status = SessionStatus::Done;
+        session.closed_at = Some(1_700_000_000);
+
+        let event = SessionEvent::SessionClosed { session };
+        let json = serde_json::to_value(&event).unwrap();
+
+        assert_eq!(
+            json["type"], "session_closed",
+            "serde tag must produce 'session_closed' (snake_case)"
+        );
+        assert!(
+            json["session"].is_object(),
+            "must embed the full session object under 'session' key"
+        );
+        assert_eq!(json["session"]["id"], "abc-123");
+        assert_eq!(json["session"]["closedAt"], 1_700_000_000);
+    }
 }
