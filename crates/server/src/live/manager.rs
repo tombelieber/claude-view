@@ -218,6 +218,7 @@ fn build_recovered_session(
         last_cache_hit_at: None,
         compact_count: 0,
         slug: None,
+        closed_at: None,
         control: None,
         hook_events: Vec::new(),
     }
@@ -545,6 +546,9 @@ impl LiveSessionManager {
 
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
+            if session.closed_at.is_some() {
+                return; // Don't enrich closed sessions
+            }
             let hook_activity = session.last_activity_at;
             apply_jsonl_metadata(
                 session,
@@ -679,6 +683,8 @@ impl LiveSessionManager {
         let sessions = self.sessions.read().await;
         let entries: HashMap<String, SnapshotEntry> = sessions
             .iter()
+            // Done sessions (recently closed) are excluded from PID snapshots.
+            // They persist via SQLite closed_at/dismissed_at columns instead.
             .filter(|(_, s)| s.status != SessionStatus::Done)
             .filter_map(|(id, s)| {
                 s.pid.map(|pid| {
@@ -986,6 +992,61 @@ impl LiveSessionManager {
                 }
             }
 
+            // 4. Load recently-closed sessions from SQLite (survive server restarts).
+            // These are sessions whose process exited (closed_at IS NOT NULL) but user
+            // hasn't dismissed them yet (dismissed_at IS NULL).
+            let closed_rows: Vec<(String, i64)> = sqlx::query_as(
+                "SELECT id, closed_at FROM sessions WHERE closed_at IS NOT NULL AND dismissed_at IS NULL"
+            )
+            .fetch_all(manager.db.pool())
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "Failed to load recently-closed sessions from SQLite");
+                Vec::new()
+            });
+
+            // Phase 1: Parse JSONL files for closed sessions (OUTSIDE sessions lock)
+            for (session_id, _closed_at) in &closed_rows {
+                if manager.sessions.read().await.contains_key(session_id) {
+                    continue; // Already loaded from snapshot or hook
+                }
+                if let Some(path) = initial_paths
+                    .iter()
+                    .find(|p| extract_session_id(p) == *session_id)
+                {
+                    // process_jsonl_update acquires sessions.write() internally
+                    manager.process_jsonl_update(path).await;
+                }
+            }
+
+            // Phase 2: Mark recovered sessions as closed (with sessions lock)
+            {
+                let mut sessions = manager.sessions.write().await;
+                let mut restored = 0u32;
+                for (session_id, closed_at) in &closed_rows {
+                    if let Some(session) = sessions.get_mut(session_id) {
+                        if session.closed_at.is_none() {
+                            session.status = SessionStatus::Done;
+                            session.closed_at = Some(*closed_at);
+                            session.agent_state = AgentState {
+                                group: AgentStateGroup::NeedsYou,
+                                state: "session_ended".into(),
+                                label: "Session ended".into(),
+                                context: None,
+                            };
+                            session.hook_events.clear();
+                            restored += 1;
+                        }
+                    }
+                }
+                if restored > 0 {
+                    info!(
+                        count = restored,
+                        "Restored recently-closed sessions from SQLite"
+                    );
+                }
+            }
+
             // Start the file system watcher
             let (file_tx, mut file_rx) = mpsc::channel::<FileEvent>(512);
             let (_watcher, dropped_events) = match start_watcher(file_tx) {
@@ -1036,13 +1097,53 @@ impl LiveSessionManager {
                     }
                     FileEvent::Removed(path) => {
                         let session_id = extract_session_id(&path);
-                        let mut sessions = manager.sessions.write().await;
-                        if sessions.remove(&session_id).is_some() {
-                            let mut accumulators = manager.accumulators.write().await;
-                            accumulators.remove(&session_id);
-                            let _ = manager
-                                .tx
-                                .send(SessionEvent::SessionCompleted { session_id });
+                        let (should_close, already_closed) = {
+                            let sessions = manager.sessions.read().await;
+                            match sessions.get(&session_id) {
+                                Some(session) if session.closed_at.is_some() => (false, true),
+                                Some(_) => (true, false),
+                                None => (false, false),
+                            }
+                        }; // read lock dropped here
+
+                        if already_closed {
+                            tracing::debug!(session_id = %session_id, "JSONL file removed for recently-closed session — keeping in map");
+                        } else if should_close {
+                            // Active session whose file vanished — treat as closure.
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() as i64;
+                            let closed_session = {
+                                let mut sessions = manager.sessions.write().await;
+                                if let Some(session) = sessions.get_mut(&session_id) {
+                                    session.status = SessionStatus::Done;
+                                    session.closed_at = Some(now);
+                                    session.hook_events.clear();
+                                    Some(session.clone())
+                                } else {
+                                    None
+                                }
+                            }; // write lock dropped here
+
+                            if let Some(session) = closed_session {
+                                let _ = manager.tx.send(SessionEvent::SessionClosed { session });
+                                // Persist closed_at to SQLite for restart recovery
+                                let db = manager.db.clone();
+                                let sid = session_id.clone();
+                                tokio::spawn(async move {
+                                    let _ = sqlx::query(
+                                        "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
+                                    )
+                                    .bind(now)
+                                    .bind(&sid)
+                                    .execute(db.pool())
+                                    .await;
+                                });
+                                // Acquire accumulators lock AFTER sessions lock is dropped
+                                let mut accumulators = manager.accumulators.write().await;
+                                accumulators.remove(&session_id);
+                            }
                         }
                     }
                     FileEvent::Rescan => {
@@ -1143,13 +1244,16 @@ impl LiveSessionManager {
                                 session.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
-                                    label: "Session ended (process exited)".into(),
+                                    label: "Session ended".into(),
                                     context: None,
                                 };
                                 session.status = SessionStatus::Done;
-                                let _ = manager.tx.send(SessionEvent::SessionUpdated {
-                                    session: session.clone(),
-                                });
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs() as i64;
+                                session.closed_at = Some(now);
+                                session.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
                                 dead_sessions.push(session_id.clone());
                                 snapshot_dirty = true;
                                 continue;
@@ -1157,10 +1261,9 @@ impl LiveSessionManager {
                         }
                     }
 
-                    // Remove dead sessions from map
-                    for session_id in &dead_sessions {
-                        sessions.remove(session_id);
-                    }
+                    // Dead sessions stay in the map as "recently closed" —
+                    // they are NOT removed here. Users dismiss them manually
+                    // (design: no time-based auto-dismiss, no TTL).
                 }
 
                 // Remove accumulators for dead sessions to prevent stale data if
@@ -1177,11 +1280,41 @@ impl LiveSessionManager {
                     manager.save_session_snapshot_from_state().await;
                 }
 
-                // Broadcast completions (outside lock)
-                for session_id in dead_sessions {
-                    let _ = manager
-                        .tx
-                        .send(SessionEvent::SessionCompleted { session_id });
+                // Broadcast closures (outside lock) — frontend moves to recentlyClosed
+                let dead_sessions_for_db = dead_sessions.clone();
+                for session_id in &dead_sessions {
+                    let session = manager.sessions.read().await.get(session_id).cloned();
+                    if let Some(session) = session {
+                        let _ = manager.tx.send(SessionEvent::SessionClosed { session });
+                    }
+                }
+
+                // Persist closed_at to SQLite for restart recovery
+                if !dead_sessions_for_db.is_empty() {
+                    let db = manager.db.clone();
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    tokio::spawn(async move {
+                        let mut tx = match db.pool().begin().await {
+                            Ok(tx) => tx,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Failed to begin transaction for closed_at persistence");
+                                return;
+                            }
+                        };
+                        for session_id in dead_sessions_for_db {
+                            let _ = sqlx::query(
+                                "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
+                            )
+                            .bind(now)
+                            .bind(&session_id)
+                            .execute(&mut *tx)
+                            .await;
+                        }
+                        let _ = tx.commit().await;
+                    });
                 }
 
                 // =============================================================
@@ -1981,6 +2114,9 @@ impl LiveSessionManager {
         // the metadata until a hook or recovery creates the session entry.
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&session_id) {
+            if session.closed_at.is_some() {
+                return;
+            }
             apply_jsonl_metadata(
                 session,
                 &metadata,
