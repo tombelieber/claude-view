@@ -13,7 +13,8 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 #[allow(unused_imports)]
 use axum::response::sse::{Event, Sse};
-use axum::routing::get;
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -291,10 +292,65 @@ async fn delete_workflow(
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
+// ---------------------------------------------------------------------------
+// Workflow chat (POST → SSE streaming)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatRequest {
+    messages: Vec<ChatMessage>,
+    workflow_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+/// POST /api/workflows/chat — direct POST-to-SSE streaming (same pattern as generate_report())
+async fn chat_workflow(
+    State(_state): State<Arc<AppState>>,
+    Json(req): Json<ChatRequest>,
+) -> ApiResult<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>> {
+    let messages = req.messages;
+    let stream = async_stream::stream! {
+        // TODO Phase 8: call Claude API with messages + system prompt, stream deltas.
+        let _ = messages;
+        yield Ok(Event::default().event("chunk").data(r#"{"delta":""}"#));
+        yield Ok(Event::default().event("done").data("{}"));
+    };
+    Ok(Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default()))
+}
+
+// ---------------------------------------------------------------------------
+// Run control
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunControlRequest {
+    command: String, // "pause" | "skip" | "abort"
+}
+
+async fn control_run(
+    State(_state): State<Arc<AppState>>,
+    Path(run_id): Path<String>,
+    Json(body): Json<RunControlRequest>,
+) -> ApiResult<impl IntoResponse> {
+    // TODO Phase 8: forward to sidecar runner via tokio channel
+    tracing::info!("Workflow run {run_id} control command: {}", body.command);
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/workflows", get(list_workflows).post(create_workflow))
         .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
+        .route("/workflows/chat", post(chat_workflow))
+        .route("/workflows/run/{run_id}/control", post(control_run))
 }
 
 #[cfg(test)]
