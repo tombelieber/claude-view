@@ -140,7 +140,7 @@ export function WorkflowChatRail({
               const parsed = JSON.parse(data)
 
               if (eventType === 'chunk') {
-                accumulated += parsed.text
+                accumulated += parsed.delta
                 const updated = accumulated
                 setMessages((prev) =>
                   prev.map((m) => (m.id === assistantId ? { ...m, content: updated } : m)),

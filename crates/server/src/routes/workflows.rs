@@ -117,20 +117,19 @@ pub struct CreateWorkflowRequest {
 // File storage
 // ---------------------------------------------------------------------------
 
+fn home() -> PathBuf {
+    dirs::home_dir().expect("home directory must be available")
+}
+
 fn official_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
+    home()
         .join(".claude-view")
         .join("workflows")
         .join("official")
 }
 
 fn user_dir() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_default()
-        .join(".claude-view")
-        .join("workflows")
-        .join("user")
+    home().join(".claude-view").join("workflows").join("user")
 }
 
 /// Validate a workflow ID: non-empty, max 64 chars, starts with ASCII alpha,
@@ -348,9 +347,11 @@ async fn control_run(
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/workflows", get(list_workflows).post(create_workflow))
-        .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
+        // Literal routes MUST be registered before parameterised routes —
+        // otherwise `/workflows/chat` is captured by `{id}` as id="chat".
         .route("/workflows/chat", post(chat_workflow))
         .route("/workflows/run/{run_id}/control", post(control_run))
+        .route("/workflows/{id}", get(get_workflow).delete(delete_workflow))
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 import mermaid from 'mermaid'
 import { useEffect, useId, useRef } from 'react'
 
-mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' })
+mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' })
 
 interface MermaidRendererProps {
   chart: string
