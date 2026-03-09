@@ -210,6 +210,7 @@ async fn handle_hook(
                         last_cache_hit_at: None,
                         compact_count: 0,
                         slug: None,
+                        closed_at: None,
                         control: None,
                         hook_events: Vec::new(),
                     };
@@ -351,6 +352,7 @@ async fn handle_hook(
                     last_cache_hit_at: None,
                     compact_count: 0,
                     slug: None,
+                    closed_at: None,
                     control: None,
                     hook_events: Vec::new(),
                 };
@@ -1105,6 +1107,7 @@ mod tests {
             last_cache_hit_at: None,
             compact_count: 0,
             slug: None,
+            closed_at: None,
             control: None,
             hook_events: Vec::new(),
         }
