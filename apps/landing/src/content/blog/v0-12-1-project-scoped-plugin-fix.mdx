@@ -1,0 +1,59 @@
+---
+title: "Fixing Project-Scoped Plugin Actions"
+description: "v0.12.1 fixes a silent failure where project-scoped plugin operations (uninstall, enable, disable) didn't pass the correct working directory to the CLI subprocess."
+date: 2026-03-09
+author: claude-view team
+---
+
+v0.12.0 shipped a full Plugin Manager. But if you had plugins installed at the project scope, some actions failed silently. v0.12.1 fixes this by wiring `projectPath` through the entire stack.
+
+## The bug
+
+Claude Code's CLI enforces a rule for project-scoped plugins: the subprocess must run from the directory where the plugin was originally installed. If you installed a plugin with `--scope project` in `/Users/me/my-project`, uninstalling it requires CWD to be that same path. Without it, the CLI returns an error.
+
+The Plugin Manager's backend had the project path in the `installed_plugins.json` data, but it never passed it forward. The path stopped at the Rust struct and never made it to the API response, the TypeScript types, the React components, or back to the CLI subprocess. The UI showed a toast error, but the root cause was invisible.
+
+## The fix
+
+Full-stack wiring of `projectPath`, traced end-to-end:
+
+1. **Rust struct** — Added `project_path: Option<String>` to `CliInstalledPlugin` and `PluginInfo`
+2. **API response** — `project_path` serializes as `projectPath` in JSON (matching the `#[derive(TS)]` convention)
+3. **Generated types** — `PluginInfo.projectPath: string | null` auto-generated from the Rust struct
+4. **React components** — `PluginActionMenu` and `PluginCard` pass `plugin.projectPath` through the `onAction` callback
+5. **Mutation hook** — `usePluginMutations` sends `projectPath` in the POST body to `/api/plugins/action`
+6. **Backend handler** — Sets `Command::current_dir()` on the subprocess when `projectPath` is present
+
+The "Update All" button also needed fixing — it was missing `projectPath` in its mutation call, so bulk updates would fail for project-scoped plugins.
+
+## Scope flag behavior
+
+While debugging, we discovered that the `--scope` flag only applies to two CLI actions:
+
+- **install** — tells the CLI where to install (user or project)
+- **uninstall** — tells the CLI which scope to remove from
+
+For **enable** and **disable**, the CLI auto-detects scope. Passing `--scope` to these actions is harmless but unnecessary. v0.12.1 now only adds `--scope` for install and uninstall, matching the CLI's actual contract.
+
+## E2E test guard
+
+This class of bug — full-stack wiring gaps where a field exists at one layer but not the next — is hard to catch with unit tests. Each layer passes its own tests because missing an optional field doesn't cause an error. The failure only surfaces when a real user clicks a button.
+
+To guard against regressions, v0.12.1 adds 26 Playwright E2E tests for the Plugins page:
+
+- **API contract** — Response shape, field presence, query param filtering, error responses
+- **Search & filters** — Debounced search, scope dropdown, kind tabs, active styling
+- **Card interactions** — Expand/collapse, marketplace display, disabled state
+- **Action menu** — Opens correctly, uninstall confirmation dialog, click doesn't propagate to card
+- **Health banner** — Visibility matches API data (duplicate count, unused count, CLI errors)
+- **Accessibility** — Keyboard navigation with Enter/Space, focus management
+
+Tests are resilient to different plugin configurations — they skip gracefully when no plugins are installed, so they pass on CI machines without a local Claude CLI.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you have project-scoped plugins, open the Plugins page and try disabling or uninstalling one. It should work correctly now regardless of scope.
