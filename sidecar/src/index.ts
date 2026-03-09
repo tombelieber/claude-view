@@ -6,6 +6,8 @@ import { WebSocketServer } from 'ws'
 import { controlRouter } from './control.js'
 import { healthRouter } from './health.js'
 import { SessionManager } from './session-manager.js'
+import { runWorkflow } from './workflow-runner.js'
+import type { WorkflowEvent } from './workflow-runner.js'
 import { handleWebSocket } from './ws-handler.js'
 
 const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
@@ -19,6 +21,25 @@ app.route(
 )
 app.route('/control', controlRouter(sessionManager))
 app.get('/', (c) => c.json({ status: 'ok' }))
+
+// Workflow runner — POST /workflows/run
+app.post('/workflows/run', async (c) => {
+  const body = await c.req.json<{ workflowId: string; inputs?: Record<string, string> }>()
+  if (!body.workflowId) {
+    return c.json({ error: 'Missing workflowId' }, 400)
+  }
+
+  const events: WorkflowEvent[] = []
+  await runWorkflow(body.workflowId, body.inputs ?? {}, (event) => {
+    events.push(event)
+  })
+
+  const lastEvent = events[events.length - 1]
+  return c.json({
+    status: lastEvent?.type === 'workflow_complete' ? 'complete' : 'failed',
+    events,
+  })
+})
 
 // Clean up stale socket from prior crash
 if (fs.existsSync(SOCKET_PATH)) {
@@ -72,4 +93,4 @@ async function shutdown() {
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-export { app, server, sessionManager, SOCKET_PATH }
+export { app, server, sessionManager, SOCKET_PATH, runWorkflow }
