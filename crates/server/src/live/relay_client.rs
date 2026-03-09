@@ -207,6 +207,20 @@ async fn connect_and_stream(
                             }
                         }
                     }
+                    Ok(SessionEvent::SessionClosed { session }) => {
+                        let Ok(json) = serde_json::to_vec(&session) else {
+                            tracing::error!("failed to serialize session for relay");
+                            continue;
+                        };
+                        for device in paired_devices {
+                            if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
+                                let envelope = build_envelope(&device.device_id, &encrypted, Some(&session));
+                                if sink.send(Message::Text(envelope.to_string().into())).await.is_err() {
+                                    return Ok(());
+                                }
+                            }
+                        }
+                    }
                     Ok(SessionEvent::SessionCompleted { session_id }) => {
                         let msg = serde_json::json!({"type": "session_completed", "sessionId": session_id});
                         let Ok(json) = serde_json::to_vec(&msg) else {
