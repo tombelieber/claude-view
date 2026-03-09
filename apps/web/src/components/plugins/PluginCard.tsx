@@ -123,7 +123,7 @@ function ItemsSection({ kind, items }: { kind: string; items: PluginItem[] }) {
 
 interface PluginCardProps {
   plugin: PluginInfo
-  onAction: (action: string, name: string, scope?: string) => void
+  onAction: (action: string, name: string, scope?: string, projectPath?: string | null) => void
   isPending: boolean
 }
 
