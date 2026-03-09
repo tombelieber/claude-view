@@ -398,12 +398,17 @@ async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResp
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
+    if let Ok(mut tx) = state.db.pool().begin().await {
+        for id in &dismissed_ids {
+            let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
+                .bind(now)
+                .bind(id)
+                .execute(&mut *tx)
+                .await;
+        }
+        let _ = tx.commit().await;
+    }
     for id in &dismissed_ids {
-        let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
-            .bind(now)
-            .bind(id)
-            .execute(state.db.pool())
-            .await;
         let _ = state.live_tx.send(SessionEvent::SessionCompleted {
             session_id: id.clone(),
         });

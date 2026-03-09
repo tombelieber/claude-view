@@ -1110,14 +1110,13 @@ impl LiveSessionManager {
                             tracing::debug!(session_id = %session_id, "JSONL file removed for recently-closed session — keeping in map");
                         } else if should_close {
                             // Active session whose file vanished — treat as closure.
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() as i64;
                             let closed_session = {
                                 let mut sessions = manager.sessions.write().await;
                                 if let Some(session) = sessions.get_mut(&session_id) {
-                                    let now = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_secs()
-                                        as i64;
                                     session.status = SessionStatus::Done;
                                     session.closed_at = Some(now);
                                     session.hook_events.clear();
@@ -1129,6 +1128,18 @@ impl LiveSessionManager {
 
                             if let Some(session) = closed_session {
                                 let _ = manager.tx.send(SessionEvent::SessionClosed { session });
+                                // Persist closed_at to SQLite for restart recovery
+                                let db = manager.db.clone();
+                                let sid = session_id.clone();
+                                tokio::spawn(async move {
+                                    let _ = sqlx::query(
+                                        "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
+                                    )
+                                    .bind(now)
+                                    .bind(&sid)
+                                    .execute(db.pool())
+                                    .await;
+                                });
                                 // Acquire accumulators lock AFTER sessions lock is dropped
                                 let mut accumulators = manager.accumulators.write().await;
                                 accumulators.remove(&session_id);
@@ -1233,7 +1244,7 @@ impl LiveSessionManager {
                                 session.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
-                                    label: "Session ended (process exited)".into(),
+                                    label: "Session ended".into(),
                                     context: None,
                                 };
                                 session.status = SessionStatus::Done;
@@ -1286,15 +1297,23 @@ impl LiveSessionManager {
                         .unwrap_or_default()
                         .as_secs() as i64;
                     tokio::spawn(async move {
+                        let mut tx = match db.pool().begin().await {
+                            Ok(tx) => tx,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Failed to begin transaction for closed_at persistence");
+                                return;
+                            }
+                        };
                         for session_id in dead_sessions_for_db {
                             let _ = sqlx::query(
                                 "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
                             )
                             .bind(now)
                             .bind(&session_id)
-                            .execute(db.pool())
+                            .execute(&mut *tx)
                             .await;
                         }
+                        let _ = tx.commit().await;
                     });
                 }
 
