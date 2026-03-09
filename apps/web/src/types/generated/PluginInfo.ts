@@ -14,6 +14,7 @@ export type PluginInfo = {
   enabled: boolean
   installedAt: string
   lastUpdated: string | null
+  projectPath: string | null
   items: Array<PluginItem>
   skillCount: number
   commandCount: number
