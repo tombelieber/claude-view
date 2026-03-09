@@ -1,5 +1,5 @@
 import type { ControlBinding } from '@claude-view/shared/types/generated'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sseUrl } from '../../lib/sse-url'
 import type { ProgressItem } from '../../types/generated/ProgressItem'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
@@ -62,6 +62,7 @@ export interface LiveSession {
   lastCacheHitAt?: number | null
   toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
   slug?: string | null
+  closedAt: number | null
   compactCount?: number
   control?: ControlBinding | null
 }
@@ -96,6 +97,9 @@ export interface UseLiveSessionsResult {
   stalledSessions: Set<string>
   /** Unix epoch seconds, ticks every ~1s for duration computation */
   currentTime: number
+  recentlyClosed: LiveSession[]
+  dismissSession: (sessionId: string) => Promise<void>
+  dismissAllClosed: () => Promise<void>
 }
 
 export function sessionTotalCost(session: LiveSession): number {
@@ -105,6 +109,7 @@ export function sessionTotalCost(session: LiveSession): number {
 
 export function useLiveSessions(): UseLiveSessionsResult {
   const [sessions, setSessions] = useState<Map<string, LiveSession>>(new Map())
+  const [recentlyClosed, setRecentlyClosed] = useState<Map<string, LiveSession>>(new Map())
   const [summary, setSummary] = useState<LiveSummary | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
@@ -175,10 +180,36 @@ export function useLiveSessions(): UseLiveSessionsResult {
               return next
             })
             lastEventTimes.current.delete(data.sessionId)
+            setRecentlyClosed((prev) => {
+              const next = new Map(prev)
+              next.delete(data.sessionId)
+              return next
+            })
             setLastUpdate(new Date())
           }
         } catch {
           /* ignore */
+        }
+      })
+
+      es.addEventListener('session_closed', (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data)
+          const session = data.session ?? data
+          if (session?.id) {
+            // Remove from active sessions
+            setSessions((prev) => {
+              const next = new Map(prev)
+              next.delete(session.id)
+              return next
+            })
+            lastEventTimes.current.delete(session.id)
+            // Add to recently closed
+            setRecentlyClosed((prev) => new Map(prev).set(session.id, session))
+            setLastUpdate(new Date())
+          }
+        } catch {
+          /* ignore malformed */
         }
       })
 
@@ -211,6 +242,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
           // After a lag recovery, the server re-sends all active sessions
           // as session_discovered events. Track which IDs arrive in the
           // next batch so we can prune sessions that no longer exist.
+          // Note: resync only prunes active sessions, not recentlyClosed (separate state)
           resyncRef.current = { ids: new Set<string>(), timer: null }
           resyncRef.current.timer = window.setTimeout(() => {
             if (resyncRef.current) {
@@ -272,6 +304,33 @@ export function useLiveSessions(): UseLiveSessionsResult {
     [sessions],
   )
 
+  const recentlyClosedList = useMemo(
+    () => Array.from(recentlyClosed.values()).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
+    [recentlyClosed],
+  )
+
+  const dismissSession = useCallback(async (sessionId: string) => {
+    setRecentlyClosed((prev) => {
+      const next = new Map(prev)
+      next.delete(sessionId)
+      return next
+    })
+    try {
+      await fetch(`/api/live/sessions/${sessionId}/dismiss`, { method: 'DELETE' })
+    } catch {
+      /* best-effort */
+    }
+  }, [])
+
+  const dismissAllClosed = useCallback(async () => {
+    setRecentlyClosed(new Map())
+    try {
+      await fetch('/api/live/recently-closed', { method: 'DELETE' })
+    } catch {
+      /* best-effort */
+    }
+  }, [])
+
   return {
     sessions: sessionList,
     summary,
@@ -280,5 +339,8 @@ export function useLiveSessions(): UseLiveSessionsResult {
     lastUpdate,
     stalledSessions,
     currentTime,
+    recentlyClosed: recentlyClosedList,
+    dismissSession,
+    dismissAllClosed,
   }
 }
