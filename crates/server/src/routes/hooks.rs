@@ -7,7 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
     append_capped_hook_event, append_capped_hook_events, status_from_agent_state, AgentState,
-    AgentStateGroup, HookEvent, LiveSession, SessionEvent, MAX_HOOK_EVENTS_PER_SESSION,
+    AgentStateGroup, HookEvent, LiveSession, SessionEvent, SessionStatus,
+    MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::state::AppState;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
@@ -210,6 +211,7 @@ async fn handle_hook(
                         last_cache_hit_at: None,
                         compact_count: 0,
                         slug: None,
+                        closed_at: None,
                         control: None,
                         hook_events: Vec::new(),
                     };
@@ -351,6 +353,7 @@ async fn handle_hook(
                     last_cache_hit_at: None,
                     compact_count: 0,
                     slug: None,
+                    closed_at: None,
                     control: None,
                     hook_events: Vec::new(),
                 };
@@ -518,15 +521,60 @@ async fn handle_hook(
                 }
             }
 
-            state.live_sessions.write().await.remove(&session_id);
+            // Mark session as recently closed (don't remove from map)
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
+            let we_closed_it;
+            {
+                let mut sessions = state.live_sessions.write().await;
+                if let Some(session) = sessions.get_mut(&session_id) {
+                    // Idempotency guard: reconciliation loop may have already closed this session
+                    if session.closed_at.is_some() {
+                        // Already closed by PID-death detection — skip duplicate close
+                        tracing::debug!(session_id = %session_id, "SessionEnd skipped — already closed by reconciliation");
+                        we_closed_it = false;
+                    } else {
+                        session.status = SessionStatus::Done;
+                        session.closed_at = Some(now);
+                        session.agent_state = AgentState {
+                            group: AgentStateGroup::NeedsYou,
+                            state: "session_ended".into(),
+                            label: "Session ended".into(),
+                            context: None,
+                        };
+                        session.hook_events.clear(); // Reclaim memory — already persisted to SQLite above
+                        we_closed_it = true;
+                    }
+                } else {
+                    we_closed_it = false;
+                }
+            }
+
             if let Some(mgr) = &state.live_manager {
                 mgr.remove_accumulator(&session_id).await;
             }
             // Clean up hook event broadcast channel
             state.hook_event_channels.write().await.remove(&session_id);
-            let _ = state
-                .live_tx
-                .send(SessionEvent::SessionCompleted { session_id });
+
+            // Only broadcast if WE just closed it (not if reconciliation already did)
+            if we_closed_it {
+                let session = state.live_sessions.read().await.get(&session_id).cloned();
+                if let Some(session) = session {
+                    let _ = state.live_tx.send(SessionEvent::SessionClosed { session });
+                }
+
+                // Persist closed_at to SQLite for restart recovery
+                let _ = sqlx::query(
+                    "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL",
+                )
+                .bind(now)
+                .bind(&session_id)
+                .execute(state.db.pool())
+                .await;
+            }
         }
         // ── Metadata-only events ─────────────────────────────────────────
         // Sub-entity lifecycle: update metadata but NEVER touch agent_state.
@@ -932,7 +980,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
         "SessionEnd" => AgentState {
             group: AgentStateGroup::NeedsYou,
             state: "session_ended".into(),
-            label: "Session closed".into(),
+            label: "Session ended".into(),
             context: None,
         },
         _ => AgentState {
@@ -1105,6 +1153,7 @@ mod tests {
             last_cache_hit_at: None,
             compact_count: 0,
             slug: None,
+            closed_at: None,
             control: None,
             hook_events: Vec::new(),
         }
