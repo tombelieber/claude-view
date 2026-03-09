@@ -88,8 +88,13 @@ pub async fn live_stream(
                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
             }
             for session in map.values() {
+                let event_name = if session.closed_at.is_some() {
+                    "session_closed"
+                } else {
+                    "session_discovered"
+                };
                 match serde_json::to_string(session) {
-                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                 }
             }
@@ -129,8 +134,13 @@ pub async fn live_stream(
                                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                             }
                             for session in map.values() {
+                                let event_name = if session.closed_at.is_some() {
+                                    "session_closed"
+                                } else {
+                                    "session_discovered"
+                                };
                                 match serde_json::to_string(session) {
-                                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                                 }
                             }
@@ -158,16 +168,20 @@ pub async fn live_stream(
 /// GET /api/live/sessions -- List all live sessions, sorted by most recent activity.
 async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let mut sessions: Vec<_> = map.values().cloned().collect();
-    sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    let mut all_sessions: Vec<_> = map.values().cloned().collect();
+    all_sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    let (active, recently_closed): (Vec<_>, Vec<_>) = all_sessions
+        .into_iter()
+        .partition(|s| s.closed_at.is_none());
     let process_count = state
         .live_manager
         .as_ref()
         .map(|m| m.process_count())
         .unwrap_or(0);
     Json(serde_json::json!({
-        "sessions": sessions,
-        "total": sessions.len(),
+        "sessions": active,
+        "recentlyClosed": recently_closed,
+        "total": active.len(),
         "processCount": process_count,
     }))
 }
@@ -363,6 +377,9 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
     let mut total_tokens = 0u64;
 
     for session in map.values() {
+        if session.closed_at.is_some() {
+            continue; // Recently closed — excluded from active counts
+        }
         match session.agent_state.group {
             AgentStateGroup::NeedsYou => needs_you_count += 1,
             AgentStateGroup::Autonomous => autonomous_count += 1,
