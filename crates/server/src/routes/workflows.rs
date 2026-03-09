@@ -162,9 +162,33 @@ fn to_summary(path: &std::path::Path, source: &str) -> Option<WorkflowSummary> {
     })
 }
 
-// NOTE: seed_official_workflows() is defined in Task 4 AFTER the YAML sample files
-// are created — include_str!() is a compile-time macro that requires the referenced
-// files to exist on disk. Do NOT add it here.
+// ---------------------------------------------------------------------------
+// Startup seeding
+// ---------------------------------------------------------------------------
+
+/// Called at server startup — seeds official workflow YAMLs if missing.
+pub fn seed_official_workflows() {
+    let dir = official_dir();
+    let _ = std::fs::create_dir_all(&dir);
+
+    let samples: &[(&str, &str)] = &[
+        (
+            "plan-polisher",
+            include_str!("workflow_samples/plan-polisher.yaml"),
+        ),
+        (
+            "plan-executor",
+            include_str!("workflow_samples/plan-executor.yaml"),
+        ),
+    ];
+
+    for (name, yaml) in samples {
+        let path = dir.join(format!("{name}.yaml"));
+        if !path.exists() {
+            let _ = std::fs::write(&path, yaml);
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Handlers
