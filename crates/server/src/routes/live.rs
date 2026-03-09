@@ -398,15 +398,20 @@ async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResp
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    if let Ok(mut tx) = state.db.pool().begin().await {
-        for id in &dismissed_ids {
-            let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
-                .bind(now)
-                .bind(id)
-                .execute(&mut *tx)
-                .await;
+    match state.db.pool().begin().await {
+        Ok(mut tx) => {
+            for id in &dismissed_ids {
+                let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
+                    .bind(now)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await;
+            }
+            let _ = tx.commit().await;
         }
-        let _ = tx.commit().await;
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to begin transaction for dismiss_all_closed — dismissal not persisted");
+        }
     }
     for id in &dismissed_ids {
         let _ = state.live_tx.send(SessionEvent::SessionCompleted {

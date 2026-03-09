@@ -1262,8 +1262,8 @@ impl LiveSessionManager {
                     }
 
                     // Dead sessions stay in the map as "recently closed" —
-                    // they are NOT removed here. The cleanup/reaper task
-                    // handles eviction after the dismiss/TTL window.
+                    // they are NOT removed here. Users dismiss them manually
+                    // (design: no time-based auto-dismiss, no TTL).
                 }
 
                 // Remove accumulators for dead sessions to prevent stale data if
