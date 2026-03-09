@@ -21,12 +21,22 @@ export function RecentlyClosedSection({
   onSelect,
   currentTime,
 }: RecentlyClosedSectionProps) {
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === 'true')
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === 'true'
+    } catch {
+      return false
+    }
+  })
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev
-      localStorage.setItem(COLLAPSE_KEY, String(next))
+      try {
+        localStorage.setItem(COLLAPSE_KEY, String(next))
+      } catch {
+        // localStorage unavailable (private browsing, quota exceeded)
+      }
       return next
     })
   }, [])
@@ -76,7 +86,7 @@ export function RecentlyClosedSection({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  navigator.clipboard.writeText(`claude --resume ${session.id}`)
+                  navigator.clipboard.writeText(`claude --resume ${session.id}`).catch(() => {})
                 }}
                 className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                 title="Copy resume command"
