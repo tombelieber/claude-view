@@ -31,15 +31,30 @@ export function PluginsPage() {
 
   const mutations = usePluginMutations()
 
-  const handleAction = (action: string, name: string, actionScope?: string) => {
-    mutations.execute({ action, name, scope: actionScope ?? null })
+  const handleAction = (
+    action: string,
+    name: string,
+    actionScope?: string,
+    projectPath?: string | null,
+  ) => {
+    mutations.execute({
+      action,
+      name,
+      scope: actionScope ?? null,
+      projectPath: projectPath ?? null,
+    })
   }
 
   const handleUpdateAll = async () => {
     if (!data) return
     const updatable = data.installed.filter((p) => p.updatable)
     for (const plugin of updatable) {
-      await mutations.execute({ action: 'update', name: plugin.name, scope: plugin.scope })
+      await mutations.execute({
+        action: 'update',
+        name: plugin.name,
+        scope: plugin.scope,
+        projectPath: plugin.projectPath ?? null,
+      })
     }
   }
 

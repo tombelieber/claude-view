@@ -51,6 +51,7 @@ pub struct PluginInfo {
     pub enabled: bool,
     pub installed_at: String,
     pub last_updated: Option<String>,
+    pub project_path: Option<String>,
     pub items: Vec<PluginItem>,
     pub skill_count: u32,
     pub command_count: u32,
@@ -205,14 +206,13 @@ pub(crate) struct CliInstalledPlugin {
     version: Option<String>,
     scope: String,
     enabled: bool,
-    #[serde(default)]
-    #[allow(dead_code)]
-    install_path: Option<String>,
     installed_at: String,
     #[serde(default)]
     last_updated: Option<String>,
     #[serde(default)]
     git_commit_sha: Option<String>,
+    #[serde(default)]
+    project_path: Option<String>,
     #[serde(default)]
     errors: Vec<String>,
 }
@@ -276,7 +276,8 @@ fn strip_ansi(s: &str) -> String {
 
 /// Run a `claude plugin` subcommand and return stdout as String.
 /// Strips ALL CLAUDE* env vars and ANSI codes per CLAUDE.md hard rules.
-async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
+/// Optional `cwd` sets the working directory (needed for project-scoped uninstall).
+async fn run_claude_plugin_in(args: &[&str], cwd: Option<&str>) -> Result<String, ApiError> {
     use std::process::Stdio;
 
     let cli_path = claude_view_core::resolved_cli_path().unwrap_or("claude");
@@ -284,6 +285,9 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
     let mut cmd = Command::new(cli_path);
     cmd.arg("plugin");
     cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -325,6 +329,11 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
     let stdout = String::from_utf8(output.stdout)
         .map_err(|e| ApiError::Internal(format!("Invalid UTF-8 from CLI: {e}")))?;
     Ok(strip_ansi(&stdout))
+}
+
+/// Convenience: run `claude plugin` in the default CWD.
+async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
+    run_claude_plugin_in(args, None).await
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +489,7 @@ async fn list_plugins(
             enabled: cli_plugin.enabled,
             installed_at: cli_plugin.installed_at.clone(),
             last_updated: cli_plugin.last_updated.clone(),
+            project_path: cli_plugin.project_path.clone(),
             items,
             skill_count,
             command_count,
@@ -613,9 +623,13 @@ pub struct PluginActionRequest {
     pub action: String,
     /// Plugin name or full ID (e.g. "superpowers" or "superpowers@marketplace")
     pub name: String,
-    /// For install: "user" | "project"
+    /// "user" | "project"
     #[serde(default)]
     pub scope: Option<String>,
+    /// For project-scoped plugins: the project directory where it was installed.
+    /// Required for uninstall of project-scoped plugins (CLI needs correct CWD).
+    #[serde(default)]
+    pub project_path: Option<String>,
 }
 
 /// Response for POST /api/plugins/action.
@@ -691,16 +705,24 @@ async fn plugin_action(
         ApiError::Conflict("A plugin mutation is already in progress. Try again shortly.".into())
     })?;
 
-    // Build CLI args
+    // Build CLI args.
+    // - install/uninstall: pass --scope so the CLI targets the correct scope.
+    // - uninstall of project-scoped plugins: also needs CWD set to the original
+    //   projectPath, because the CLI checks the current directory to find the
+    //   project-scoped installation.
+    // - enable/disable: operate on local settings files, no --scope needed.
     let mut args: Vec<&str> = vec![&req.action, &req.name];
     let scope_str;
-    if let Some(ref scope) = req.scope {
-        scope_str = scope.clone();
-        args.push("--scope");
-        args.push(&scope_str);
+    if req.action == "install" || req.action == "uninstall" {
+        if let Some(ref scope) = req.scope {
+            scope_str = scope.clone();
+            args.push("--scope");
+            args.push(&scope_str);
+        }
     }
 
-    let output = run_claude_plugin(&args).await;
+    let cwd = req.project_path.as_deref();
+    let output = run_claude_plugin_in(&args, cwd).await;
 
     match output {
         Ok(stdout) => {
@@ -1083,6 +1105,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![PluginItem {
                     id: "superpowers:brainstorming".to_string(),
                     name: "brainstorming".to_string(),
@@ -1112,6 +1135,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-02-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![PluginItem {
                     id: "hookify:format".to_string(),
                     name: "format".to_string(),
@@ -1170,6 +1194,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![],
                 skill_count: 0,
                 command_count: 0,
@@ -1192,6 +1217,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![],
                 skill_count: 0,
                 command_count: 0,
@@ -1241,6 +1267,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![],
                 skill_count: 0,
                 command_count: 0,
@@ -1263,6 +1290,7 @@ mod tests {
                 enabled: true,
                 installed_at: "2026-01-01T00:00:00Z".to_string(),
                 last_updated: None,
+                project_path: None,
                 items: vec![],
                 skill_count: 0,
                 command_count: 0,

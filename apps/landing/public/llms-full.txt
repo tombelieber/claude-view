@@ -462,6 +462,80 @@ Open the Plans tab on an old session. Search your prompt history. Check the Team
 
 
 
+--- blog/v0-12-0-plugin-manager.mdx ---
+
+---
+title: "Visual Plugin Management for Claude Code"
+description: "v0.12.0 brings a full Plugin Manager to claude-view — browse, install, enable, disable, and uninstall Claude Code plugins without touching the terminal."
+date: 2026-03-09
+author: claude-view team
+---
+
+Claude Code's plugin system is powerful. But managing plugins has meant memorizing CLI commands, remembering scope flags, and parsing terminal output. v0.12.0 changes that with a dedicated Plugin Manager page in the browser.
+
+## The problem with CLI-only plugin management
+
+If you wanted to see what plugins you had installed, you ran `claude plugin list`. To install one, `claude plugin install <name> --scope user`. To disable it for a single project, `claude plugin disable <name> --scope project`. Every action was a terminal round-trip, and forgetting the `--scope` flag meant operating on the wrong level.
+
+Worse, there was no overview. No way to see at a glance which plugins were active, which were disabled, or which scope each one was installed at. You had to hold that state in your head.
+
+## Plugin Manager page
+
+Open claude-view and navigate to the new **Plugins** page. You see:
+
+- **Health banner** at the top showing overall plugin system status
+- **Card grid** of every installed plugin, each displaying name, description, version, scope (user or project), and enabled state
+- **Search bar** with debounced filtering to find plugins instantly across large collections
+- **Action menu** on each card for enable, disable, and uninstall operations
+
+The card layout gives you the same information density as `claude plugin list` but in a format you can scan in seconds rather than parse line by line.
+
+## Marketplace and installation
+
+Click **Browse Marketplace** to open the marketplace dialog. It lists available plugins you haven't installed yet. Each entry shows the plugin name and description.
+
+When you click install, a **scope picker** appears. Choose user-level (applies everywhere) or project-level (applies only to the current project). The choice is explicit and visible, no more guessing which flag to pass.
+
+After installation, the plugin card appears in your grid immediately. No page refresh needed.
+
+## Scoped actions that actually work
+
+This was a subtle but critical fix. In earlier builds, scope forwarding only worked for the install action. Enabling, disabling, and uninstalling a project-scoped plugin silently operated at the user level, creating confusing states where a plugin appeared disabled but kept running in a project.
+
+v0.12.0 forwards the scope parameter for every action. Disable a project-scoped plugin and it disables at the project scope. Uninstall it and it uninstalls from the project. The behavior matches what you see on the card.
+
+## Under the hood
+
+The Plugin Manager is built on the same architectural pattern as the rest of claude-view: the Rust backend does the heavy lifting, the React frontend renders it.
+
+**Server-side caching.** The backend calls `claude plugin list` and caches the parsed output with a 5-minute TTL using the CachedUpstream pattern. Opening the Plugins page doesn't shell out to the CLI every time. The cache invalidates automatically on any mutation (install, enable, disable, uninstall).
+
+**ANSI stripping.** The `claude` CLI outputs colored text with ANSI escape codes. The server sets `NO_COLOR=1` on the subprocess environment and strips any remaining escape sequences as a safety net. Browser toast messages and error dialogs render clean text, not garbled control characters.
+
+**Type safety.** Plugin response types are defined as Rust structs with `#[derive(TS)]`, generating TypeScript types automatically. The frontend imports from `types/generated/` and never hand-writes API response shapes. When the backend adds a field, the frontend type updates on the next build.
+
+**Scope forwarding.** Every plugin mutation endpoint accepts a `scope` parameter. The backend passes it directly to the `claude plugin <action> --scope <value>` subprocess call. No action silently defaults to user scope.
+
+## Also in this release
+
+- **Mobile:** Expo SDK 55 compatibility with updated react-native-screens and expo-router. Push notifications are platform-gated so they compile cleanly on web. EAS build artifacts are properly gitignored.
+- **Registry:** New `invocables_for_plugin` method for querying which tools a specific plugin provides.
+
+## What's next
+
+- **Plugin usage analytics** — track which plugins fire most often and in which sessions
+- **Mobile plugin management** — view and toggle plugins from the Expo native app
+- **Plugin dependency graph** — visualize which plugins depend on each other
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Plugins page from the sidebar. See every plugin you have installed. Try disabling one, then re-enabling it. Browse the marketplace and install something new.
+
+
 --- blog/v0-2-0-security-and-ui-redesign.mdx ---
 
 ---
@@ -1101,6 +1175,46 @@ npx claude-view
 - Mobile app enhancements (Expo SDK 56 upgrade)
 - Custom session layouts (drag-and-drop column resizing)
 - Codex historical + live verification protocols
+
+
+--- changelog/v0.12.0.md ---
+
+---
+title: v0.12.0 — Plugin Manager
+date: 2026-03-09
+version: v0.12.0
+---
+
+## New features
+
+**Plugin Manager** — A full GUI for browsing, installing, enabling, disabling, and uninstalling Claude Code plugins directly from the claude-view web UI. No terminal needed.
+
+**Plugin Card Grid** — Each installed plugin renders as a card showing name, status, scope (user or project), and version. A health banner at the top shows plugin system status at a glance.
+
+**Marketplace Dialog** — Browse available plugins and install them with a scope picker (user-level or project-level). Debounced search filtering across all plugin cards for instant discovery.
+
+**Plugin Actions** — Right-click or use the action menu on any plugin card to enable, disable, or uninstall with a confirmation dialog. All actions correctly forward the scope parameter to the underlying CLI.
+
+## Improvements
+
+- **Full TUI data parity** — Plugin cards now display the same data as `claude plugin list` terminal output (description, installed scope, enabled state, version).
+- **Server-side CLI caching** — Plugin list output is cached with a 5-minute TTL (CachedUpstream pattern), so the page loads instantly on repeat visits.
+- **ANSI stripping** — Raw CLI escape codes are stripped server-side before reaching the browser. No more garbled text in toast messages or error dialogs.
+- **Scoped mutations** — Enable, disable, install, and uninstall all forward the correct scope parameter. Previously only install passed scope, leaving other actions broken for project-scoped plugins.
+- **Mobile: Expo SDK 55 compatibility** — Updated react-native-screens (4.23.0), expo-router (55.0.4), platform-gated push notifications on web, cleaned up EAS build artifacts.
+- **Registry** — New `invocables_for_plugin` method for querying plugin-specific invocable tools.
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+## What's next
+
+- Plugin usage analytics (which plugins you use most, per-session breakdown)
+- Mobile plugin management (view and toggle plugins from the Expo app)
+- Plugin dependency graph visualization
 
 
 --- changelog/v0.2.0.md ---
