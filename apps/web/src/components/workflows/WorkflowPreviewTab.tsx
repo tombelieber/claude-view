@@ -10,18 +10,22 @@ function sanitizeId(s: string) {
   return s.replace(/[^a-zA-Z0-9]/g, '_')
 }
 
+function sanitizeLabel(s: string) {
+  return s.replace(/[[\]{}()|<>"/\\]/g, '')
+}
+
 function buildMermaid(def: WorkflowDefinition): string {
   const lines = ['graph LR']
   const inputId = 'Input'
   lines.push(
-    `  ${inputId}([${def.inputs[0]?.name ?? 'Input'}]) --> ${sanitizeId(def.stages[0]?.name ?? 'Stage')}`,
+    `  ${inputId}([${sanitizeLabel(def.inputs[0]?.name ?? 'Input')}]) --> ${sanitizeId(def.stages[0]?.name ?? 'Stage')}`,
   )
   for (let i = 0; i < def.stages.length; i++) {
     const stage = def.stages[i]
     const sid = sanitizeId(stage.name)
-    const skills = stage.skills.join('\\n')
-    const gate = stage.gate ? `\\nGate: ${stage.gate.condition}` : ''
-    lines.push(`  ${sid}{${stage.name}\\n${skills}${gate}}`)
+    const skills = stage.skills.map(sanitizeLabel).join('\\n')
+    const gate = stage.gate ? `\\nGate: ${sanitizeLabel(stage.gate.condition)}` : ''
+    lines.push(`  ${sid}{${sanitizeLabel(stage.name)}\\n${skills}${gate}}`)
     if (stage.gate?.retry) lines.push(`  ${sid} -->|fail| ${sid}`)
     const next = def.stages[i + 1]
     if (next) lines.push(`  ${sid} -->|pass| ${sanitizeId(next.name)}`)

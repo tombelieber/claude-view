@@ -52,6 +52,8 @@ interface PipelineState {
 
 const RUNS_DIR = join(homedir(), '.claude-view', 'workflows', 'runs')
 
+const VALID_WORKFLOW_ID = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/
+
 // ── Public API ──
 
 export async function runWorkflow(
@@ -59,6 +61,14 @@ export async function runWorkflow(
   inputs: Record<string, string>,
   onEvent: (event: WorkflowEvent) => void,
 ): Promise<void> {
+  if (!VALID_WORKFLOW_ID.test(workflowId)) {
+    onEvent({
+      type: 'workflow_failed',
+      summary: `Invalid workflow ID: ${workflowId}`,
+    })
+    return
+  }
+
   const yamlPath = resolveWorkflowPath(workflowId)
   if (!existsSync(yamlPath)) {
     onEvent({
@@ -163,8 +173,11 @@ function loadOrCreatePipeline(workflowId: string, inputs: Record<string, string>
   if (existsSync(path)) {
     try {
       return JSON.parse(readFileSync(path, 'utf-8')) as PipelineState
-    } catch {
-      // Corrupt state file — start fresh
+    } catch (err) {
+      console.warn(
+        `[workflow-runner] Corrupt pipeline state for "${workflowId}", starting fresh:`,
+        err,
+      )
     }
   }
   return {
