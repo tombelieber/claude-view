@@ -2537,4 +2537,30 @@ mod tests {
             .await;
         assert!(result.is_err());
     }
+
+    // ========================================================================
+    // Migrations 55-56: Recently-closed persistence columns
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration_closed_at_dismissed_at_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(
+            column_names.contains(&"closed_at"),
+            "Missing closed_at column"
+        );
+        assert!(
+            column_names.contains(&"dismissed_at"),
+            "Missing dismissed_at column"
+        );
+    }
 }
