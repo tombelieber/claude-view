@@ -522,6 +522,11 @@ async fn handle_hook(
             }
 
             // Mark session as recently closed (don't remove from map)
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
             let we_closed_it;
             {
                 let mut sessions = state.live_sessions.write().await;
@@ -532,16 +537,12 @@ async fn handle_hook(
                         tracing::debug!(session_id = %session_id, "SessionEnd skipped — already closed by reconciliation");
                         we_closed_it = false;
                     } else {
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as i64;
                         session.status = SessionStatus::Done;
                         session.closed_at = Some(now);
                         session.agent_state = AgentState {
                             group: AgentStateGroup::NeedsYou,
                             state: "session_ended".into(),
-                            label: "Session closed".into(),
+                            label: "Session ended".into(),
                             context: None,
                         };
                         session.hook_events.clear(); // Reclaim memory — already persisted to SQLite above
@@ -566,10 +567,6 @@ async fn handle_hook(
                 }
 
                 // Persist closed_at to SQLite for restart recovery
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
                 let _ = sqlx::query(
                     "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL",
                 )
@@ -983,7 +980,7 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
         "SessionEnd" => AgentState {
             group: AgentStateGroup::NeedsYou,
             state: "session_ended".into(),
-            label: "Session closed".into(),
+            label: "Session ended".into(),
             context: None,
         },
         _ => AgentState {
