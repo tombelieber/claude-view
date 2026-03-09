@@ -5,6 +5,8 @@
 //! - `GET /api/live/sessions/:id`        -- Get a single live session
 //! - `GET /api/live/sessions/:id/messages` -- Get recent messages for a live session
 //! - `POST /api/live/sessions/:id/kill`   -- Send SIGTERM to a session's process
+//! - `DELETE /api/live/sessions/:id/dismiss` -- Dismiss a recently closed session
+//! - `DELETE /api/live/recently-closed`   -- Dismiss all recently closed sessions
 //! - `GET /api/live/summary`             -- Aggregate live session statistics
 //! - `GET /api/live/pricing`             -- Model pricing table
 
@@ -17,7 +19,7 @@ use axum::{
     extract::{Path, Query, State},
     response::sse::{Event, Sse},
     response::{IntoResponse, Json, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde::Deserialize;
@@ -33,6 +35,8 @@ use crate::state::AppState;
 /// - `GET /live/sessions/:id`           - Get single live session
 /// - `GET /live/sessions/:id/messages`  - Get recent messages for a live session
 /// - `POST /live/sessions/:id/kill`     - Send SIGTERM to a session's process
+/// - `DELETE /live/sessions/:id/dismiss` - Dismiss a recently closed session
+/// - `DELETE /live/recently-closed`      - Dismiss all recently closed sessions
 /// - `GET /live/summary`                - Aggregate statistics
 /// - `GET /live/pricing`                - Model pricing table
 pub fn router() -> Router<Arc<AppState>> {
@@ -45,6 +49,8 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_live_session_messages),
         )
         .route("/live/sessions/{id}/kill", post(kill_session))
+        .route("/live/sessions/{id}/dismiss", delete(dismiss_session))
+        .route("/live/recently-closed", delete(dismiss_all_closed))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
 }
@@ -62,6 +68,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// | `summary`           | On connect, and when a client lags     |
 /// | `session_discovered`| New session detected                   |
 /// | `session_updated`   | Session state changed                  |
+/// | `session_closed`    | Session process exited (recently closed) |
 /// | `session_completed` | Session ended                          |
 /// | `heartbeat`         | Every 15 seconds to keep connection    |
 ///
@@ -87,8 +94,13 @@ pub async fn live_stream(
                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
             }
             for session in map.values() {
+                let event_name = if session.closed_at.is_some() {
+                    "session_closed"
+                } else {
+                    "session_discovered"
+                };
                 match serde_json::to_string(session) {
-                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                 }
             }
@@ -104,6 +116,7 @@ pub async fn live_stream(
                             let event_name = match &session_event {
                                 SessionEvent::SessionDiscovered { .. } => "session_discovered",
                                 SessionEvent::SessionUpdated { .. } => "session_updated",
+                                SessionEvent::SessionClosed { .. } => "session_closed",
                                 SessionEvent::SessionCompleted { .. } => "session_completed",
                                 SessionEvent::Summary { .. } => "summary",
                             };
@@ -127,8 +140,13 @@ pub async fn live_stream(
                                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                             }
                             for session in map.values() {
+                                let event_name = if session.closed_at.is_some() {
+                                    "session_closed"
+                                } else {
+                                    "session_discovered"
+                                };
                                 match serde_json::to_string(session) {
-                                    Ok(data) => yield Ok(Event::default().event("session_discovered").data(data)),
+                                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                                 }
                             }
@@ -156,16 +174,20 @@ pub async fn live_stream(
 /// GET /api/live/sessions -- List all live sessions, sorted by most recent activity.
 async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let mut sessions: Vec<_> = map.values().cloned().collect();
-    sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    let mut all_sessions: Vec<_> = map.values().cloned().collect();
+    all_sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    let (active, recently_closed): (Vec<_>, Vec<_>) = all_sessions
+        .into_iter()
+        .partition(|s| s.closed_at.is_none());
     let process_count = state
         .live_manager
         .as_ref()
         .map(|m| m.process_count())
         .unwrap_or(0);
     Json(serde_json::json!({
-        "sessions": sessions,
-        "total": sessions.len(),
+        "sessions": active,
+        "recentlyClosed": recently_closed,
+        "total": active.len(),
         "processCount": process_count,
     }))
 }
@@ -301,6 +323,105 @@ async fn kill_session(
     }
 }
 
+/// DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.
+///
+/// Removes the session from the live map and marks it as dismissed in SQLite.
+/// Sends `SessionCompleted` to notify the frontend to remove from `recentlyClosed`.
+///
+/// Note: There is a narrow race window between removing from the map and persisting
+/// to SQLite. If the server crashes in that window, the session reappears on restart
+/// (user clicks dismiss again). This is accept-and-retry tolerant by design.
+async fn dismiss_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let removed = {
+        let mut sessions = state.live_sessions.write().await;
+        if let Some(session) = sessions.get(&id) {
+            if session.closed_at.is_some() {
+                sessions.remove(&id);
+                true
+            } else {
+                false // Can't dismiss an active session
+            }
+        } else {
+            false
+        }
+    };
+
+    if removed {
+        // Persist dismissal to SQLite
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        if let Err(e) = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
+            .bind(now)
+            .bind(&id)
+            .execute(state.db.pool())
+            .await
+        {
+            tracing::warn!(session_id = %id, error = %e, "Failed to persist dismiss to SQLite");
+        }
+        // Notify frontend to remove from recentlyClosed
+        let _ = state
+            .live_tx
+            .send(SessionEvent::SessionCompleted { session_id: id });
+        (
+            axum::http::StatusCode::OK,
+            Json(serde_json::json!({"dismissed": true})),
+        )
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"dismissed": false})),
+        )
+    }
+}
+
+/// DELETE /api/live/recently-closed -- Dismiss all recently closed sessions.
+async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let dismissed_ids: Vec<String> = {
+        let mut sessions = state.live_sessions.write().await;
+        let ids: Vec<String> = sessions
+            .iter()
+            .filter(|(_, s)| s.closed_at.is_some())
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            sessions.remove(id);
+        }
+        ids
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    match state.db.pool().begin().await {
+        Ok(mut tx) => {
+            for id in &dismissed_ids {
+                let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
+                    .bind(now)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await;
+            }
+            let _ = tx.commit().await;
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to begin transaction for dismiss_all_closed — dismissal not persisted");
+        }
+    }
+    for id in &dismissed_ids {
+        let _ = state.live_tx.send(SessionEvent::SessionCompleted {
+            session_id: id.clone(),
+        });
+    }
+
+    Json(serde_json::json!({"dismissedCount": dismissed_ids.len()}))
+}
+
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
 async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
@@ -361,6 +482,9 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
     let mut total_tokens = 0u64;
 
     for session in map.values() {
+        if session.closed_at.is_some() {
+            continue; // Recently closed — excluded from active counts
+        }
         match session.agent_state.group {
             AgentStateGroup::NeedsYou => needs_you_count += 1,
             AgentStateGroup::Autonomous => autonomous_count += 1,
@@ -376,4 +500,94 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
         "totalTokensToday": total_tokens,
         "processCount": process_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::live::state::{AgentState, AgentStateGroup, LiveSession, SessionStatus};
+    use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+
+    /// Minimal LiveSession for tests with optional closed flag.
+    fn test_session(id: &str, closed: bool) -> LiveSession {
+        let mut s = LiveSession {
+            id: id.to_string(),
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            pid: None,
+            title: "Test session".into(),
+            last_user_message: String::new(),
+            last_user_file: None,
+            current_activity: "Working".into(),
+            turn_count: 5,
+            started_at: Some(1000),
+            last_activity_at: 1000,
+            model: None,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            compact_count: 0,
+            slug: None,
+            closed_at: None,
+            control: None,
+            hook_events: Vec::new(),
+        };
+        if closed {
+            s.status = SessionStatus::Done;
+            s.closed_at = Some(1_700_000_000);
+        }
+        s
+    }
+
+    #[test]
+    fn test_build_summary_excludes_closed_sessions() {
+        let mut map = HashMap::new();
+        map.insert("active-1".into(), test_session("active-1", false));
+        map.insert("active-2".into(), test_session("active-2", false));
+        map.insert("closed-1".into(), test_session("closed-1", true));
+
+        let summary = build_summary(&map, 2);
+
+        assert_eq!(
+            summary["autonomousCount"], 2,
+            "closed session must not inflate autonomousCount"
+        );
+        assert_eq!(summary["needsYouCount"], 0);
+        assert_eq!(
+            summary["processCount"], 2,
+            "processCount should be passed through"
+        );
+    }
+
+    #[test]
+    fn test_build_summary_empty_map() {
+        let map = HashMap::new();
+        let summary = build_summary(&map, 0);
+
+        assert_eq!(summary["autonomousCount"], 0);
+        assert_eq!(summary["needsYouCount"], 0);
+        assert_eq!(summary["totalCostTodayUsd"], 0.0);
+        assert_eq!(summary["totalTokensToday"], 0);
+    }
 }
