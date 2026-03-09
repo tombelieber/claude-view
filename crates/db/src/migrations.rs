@@ -730,6 +730,10 @@ COMMIT;"#,
     r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_events_dedup ON hook_events(session_id, timestamp, event_name, COALESCE(tool_name, ''), source);"#,
     // Migration 54: Add slug column for plan file association
     r#"ALTER TABLE sessions ADD COLUMN slug TEXT;"#,
+    // Migration 55: closed_at — set when a live session's process exits (NULL = never tracked as live).
+    r#"ALTER TABLE sessions ADD COLUMN closed_at INTEGER;"#,
+    // Migration 56: dismissed_at — set when user explicitly dismisses from recently-closed list.
+    r#"ALTER TABLE sessions ADD COLUMN dismissed_at INTEGER;"#,
 ];
 
 // ============================================================================
