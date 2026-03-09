@@ -48,6 +48,7 @@ function makeMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       totalCostSource: 'calculated',
     },
     cacheStatus: 'warm',
+    closedAt: null,
     ...overrides,
   }
 }

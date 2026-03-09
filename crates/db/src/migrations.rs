@@ -730,6 +730,10 @@ COMMIT;"#,
     r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_hook_events_dedup ON hook_events(session_id, timestamp, event_name, COALESCE(tool_name, ''), source);"#,
     // Migration 54: Add slug column for plan file association
     r#"ALTER TABLE sessions ADD COLUMN slug TEXT;"#,
+    // Migration 55: closed_at — set when a live session's process exits (NULL = never tracked as live).
+    r#"ALTER TABLE sessions ADD COLUMN closed_at INTEGER;"#,
+    // Migration 56: dismissed_at — set when user explicitly dismisses from recently-closed list.
+    r#"ALTER TABLE sessions ADD COLUMN dismissed_at INTEGER;"#,
 ];
 
 // ============================================================================
@@ -2532,5 +2536,31 @@ mod tests {
             .execute(&pool)
             .await;
         assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Migrations 55-56: Recently-closed persistence columns
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_migration_closed_at_dismissed_at_columns_exist() {
+        let pool = setup_db().await;
+
+        let columns: Vec<(String,)> =
+            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+
+        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+        assert!(
+            column_names.contains(&"closed_at"),
+            "Missing closed_at column"
+        );
+        assert!(
+            column_names.contains(&"dismissed_at"),
+            "Missing dismissed_at column"
+        );
     }
 }
