@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { WorkflowMode } from '../../pages/WorkflowDetailPage'
 
@@ -31,12 +31,26 @@ interface WorkflowChatRailProps {
   generatedYaml: string
 }
 
+const CONTROL_COMMANDS = new Set(['pause', 'skip', 'abort'])
+
+function parseControlCommand(input: string): string | null {
+  const trimmed = input.trim().toLowerCase()
+  return CONTROL_COMMANDS.has(trimmed) ? trimmed : null
+}
+
 function extractYaml(content: string): string | undefined {
   const match = content.match(/```ya?ml\n([\s\S]*?)```/)
   return match?.[1]?.trim()
 }
 
-export function WorkflowChatRail({ mode, workflowId, onYamlUpdate }: WorkflowChatRailProps) {
+export function WorkflowChatRail({
+  mode,
+  workflowId,
+  onYamlUpdate,
+  runId,
+  autoMessage,
+  generatedYaml,
+}: WorkflowChatRailProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -175,14 +189,94 @@ export function WorkflowChatRail({ mode, workflowId, onYamlUpdate }: WorkflowCha
     abortRef.current = null
   }, [])
 
+  const handleControlSubmit = useCallback(async () => {
+    const text = inputValue.trim()
+    if (!text || !runId) return
+
+    const command = parseControlCommand(text)
+    if (!command) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content:
+            'Design is locked while the workflow runs. Available commands: **pause**, **skip**, **abort**.',
+        },
+      ])
+      setInputValue('')
+      return
+    }
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: 'user' as const,
+        content: text,
+      },
+    ])
+    setInputValue('')
+
+    try {
+      const res = await fetch(`/api/workflows/run/${runId}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      })
+      if (!res.ok) throw new Error(`Control failed: ${res.status}`)
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: `Command **${command}** sent to workflow runner.`,
+        },
+      ])
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: `Failed to send command: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        },
+      ])
+    }
+  }, [inputValue, runId])
+
+  const prevAutoMessageRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode !== 'review' || !autoMessage || autoMessage === prevAutoMessageRef.current) return
+    prevAutoMessageRef.current = autoMessage
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: autoMessage,
+      },
+    ])
+  }, [mode, autoMessage])
+
+  const handleSubmit = useCallback(() => {
+    if (mode === 'design') {
+      handleDesignSubmit()
+    } else if (mode === 'control') {
+      handleControlSubmit()
+    } else if (mode === 'review') {
+      handleDesignSubmit() // review replies go through design streaming
+    }
+  }, [mode, handleDesignSubmit, handleControlSubmit])
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        handleDesignSubmit()
+        handleSubmit()
       }
     },
-    [handleDesignSubmit],
+    [handleSubmit],
   )
 
   return (
@@ -197,6 +291,17 @@ export function WorkflowChatRail({ mode, workflowId, onYamlUpdate }: WorkflowCha
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
+        {mode === 'control' && generatedYaml && (
+          <details className="mb-3 rounded-md border border-gray-200 dark:border-gray-700">
+            <summary className="px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer">
+              Workflow YAML (collapsed)
+            </summary>
+            <pre className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap">
+              {generatedYaml}
+            </pre>
+          </details>
+        )}
+
         {messages.length === 0 && (
           <p className="text-center py-8 text-xs text-gray-400 dark:text-gray-500">
             {mode === 'design' ? 'Describe the workflow you want to create.' : ''}
@@ -232,7 +337,7 @@ export function WorkflowChatRail({ mode, workflowId, onYamlUpdate }: WorkflowCha
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={MODE_PLACEHOLDERS[mode]}
-            disabled={isStreaming || mode !== 'design'}
+            disabled={isStreaming}
             rows={3}
             className="w-full resize-none rounded-md border border-gray-200 dark:border-gray-700
                        bg-transparent text-sm px-3 py-2 pr-16
@@ -253,8 +358,8 @@ export function WorkflowChatRail({ mode, workflowId, onYamlUpdate }: WorkflowCha
             ) : (
               <button
                 type="button"
-                onClick={handleDesignSubmit}
-                disabled={!inputValue.trim() || mode !== 'design'}
+                onClick={handleSubmit}
+                disabled={!inputValue.trim() || isStreaming}
                 className="px-2 py-1 text-xs rounded bg-blue-600 text-white
                            hover:bg-blue-700 transition-colors
                            disabled:opacity-50 disabled:cursor-not-allowed"
