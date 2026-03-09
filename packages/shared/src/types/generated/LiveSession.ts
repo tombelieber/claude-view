@@ -157,6 +157,12 @@ export type LiveSession = {
    */
   slug: string | null
   /**
+   * Unix timestamp when this session's process exited (None = still running).
+   * Set by reconciliation loop or SessionEnd hook. Used by frontend for
+   * "closed Xm ago" display and by recently-closed persistence.
+   */
+  closedAt: number | null
+  /**
    * If Some, this session is being controlled via the sidecar Agent SDK.
    */
   control: ControlBinding | null
