@@ -2,6 +2,9 @@
 //! Full-text search endpoint.
 //!
 //! - GET /search?q=...&scope=...&limit=...&offset=... — Search across all sessions
+//!
+//! Uses unified search: Tantivy first, grep fallback if 0 results.
+//! Returns 503 if the search index is still building.
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -11,8 +14,11 @@ use axum::{
     Json, Router,
 };
 use claude_view_search::types::SearchResponse;
+use claude_view_search::{unified_search, UnifiedSearchOptions};
 use serde::Deserialize;
 use std::sync::Arc;
+
+use super::grep::collect_jsonl_files;
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
@@ -30,20 +36,20 @@ pub struct SearchQuery {
 /// Build the search sub-router.
 ///
 /// Routes:
-/// - `GET /search` — Full-text search across all indexed sessions
+/// - `GET /search` — Unified smart search across all indexed sessions
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/search", get(search_handler))
 }
 
-/// GET /api/search — Execute a full-text search query.
+/// GET /api/search — Unified smart search.
 ///
-/// Returns session-grouped results sorted by BM25 relevance score.
+/// Tries Tantivy full-text index first. If 0 results, falls back to
+/// grep over raw JSONL files. Returns a single `SearchResponse` shape
+/// regardless of which engine produced the results.
 ///
-/// Query parameters:
-/// - `q` (required): Search query string, supports qualifiers like `project:foo`
-/// - `scope`: Optional scope filter
-/// - `limit`: Max session groups to return (default 20, capped at 100)
-/// - `offset`: Number of session groups to skip (default 0)
+/// Returns 503 if the search index is still building (grep is NOT
+/// a substitute for the missing index — it's a fallback for Tantivy
+/// misses, not Tantivy absence).
 async fn search_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
@@ -61,6 +67,8 @@ async fn search_handler(
         .read()
         .map_err(|_| crate::error::ApiError::Internal("search index lock poisoned".into()))?
         .clone();
+
+    // 503 if index not ready — grep is NOT a substitute for missing index
     let search_index = search_index.ok_or_else(|| {
         crate::error::ApiError::ServiceUnavailable(
             "Search index is not available. It may still be building.".to_string(),
@@ -69,14 +77,36 @@ async fn search_handler(
 
     let limit = query.limit.unwrap_or(20).min(100);
     let offset = query.offset.unwrap_or(0);
-    let scope = query.scope.as_deref();
+    let scope = query.scope.clone();
 
-    // Run Tantivy search on a blocking thread to avoid stalling the Tokio
-    // runtime and to catch panics (which otherwise drop the connection silently).
     let q_owned = q.to_string();
-    let scope_owned = scope.map(|s| s.to_string());
+
     let response = tokio::task::spawn_blocking(move || {
-        search_index.search(&q_owned, scope_owned.as_deref(), limit, offset)
+        // Parse scope for project filter (e.g. "project:claude-view" -> "claude-view")
+        let project_filter = scope
+            .as_deref()
+            .and_then(|s| s.strip_prefix("project:").map(|p| p.to_string()));
+
+        // Collect JSONL files for grep fallback, scoped by project if specified.
+        // Log errors but don't fail the request — grep is a fallback, not primary.
+        let jsonl_files = match collect_jsonl_files(project_filter.as_deref()) {
+            Ok(files) => files,
+            Err(e) => {
+                tracing::warn!("Failed to collect JSONL files for grep fallback: {e}");
+                vec![]
+            }
+        };
+
+        let opts = UnifiedSearchOptions {
+            query: q_owned,
+            scope,
+            limit,
+            offset,
+        };
+
+        // search_index is Arc<SearchIndex> — .as_ref() dereferences to &SearchIndex.
+        // Rust does NOT auto-deref Arc<T> to &T in function argument position.
+        unified_search(Some(search_index.as_ref()), &jsonl_files, &opts)
     })
     .await
     .map_err(|e| {
@@ -98,5 +128,5 @@ async fn search_handler(
     })?
     .map_err(|e| crate::error::ApiError::Internal(format!("Search failed: {}", e)))?;
 
-    Ok(Json(response))
+    Ok(Json(response.response))
 }

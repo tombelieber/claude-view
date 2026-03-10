@@ -25,4 +25,10 @@ export type SearchResponse = {
    * Session-grouped results, sorted by best BM25 score descending.
    */
   sessions: Array<SessionHit>
+  /**
+   * Which search engine produced these results.
+   * `None` = Tantivy (default), `"grep"` = grep fallback.
+   * Allows the frontend to show a subtle indicator when grep fallback fired.
+   */
+  searchEngine: string | null
 }
