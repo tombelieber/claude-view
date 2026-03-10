@@ -1,5 +1,7 @@
 # Open in IDE — Design Spec
 
+> **Status:** Done (implemented 2026-03-11)
+
 ## Problem
 
 Users viewing session file changes or monitoring live sessions want to jump directly into their IDE at the relevant project or file. Currently there's no way to do this from claude-view.

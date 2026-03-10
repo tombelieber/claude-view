@@ -1,5 +1,7 @@
 # Open in IDE — Implementation Plan
 
+> **Status:** DONE (2026-03-11) — all 4 tasks implemented, shippable audit passed (SHIP IT)
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add "Open in IDE" buttons that let users open projects and files in VS Code, Cursor, Windsurf, Zed, WebStorm, or IntelliJ directly from claude-view.
@@ -9,6 +11,18 @@
 **Tech Stack:** Rust (Axum), React, Radix UI Popover, react-query, localStorage
 
 **Spec:** `docs/superpowers/specs/2026-03-11-open-in-ide-design.md`
+
+## Completion Summary
+
+| Task | Commit | Description |
+|------|--------|-------------|
+| 1 | `c279f839` | Rust types, IDE registry, detection, open handler, security validation, tests |
+| 2 | `7efed319` | Generate TS types for IDE detection API (IdeInfo, IdeDetectResponse, OpenInIdeRequest, OpenInIdeResponse) |
+| 3 | `4d23b03b` | useIdePreference hook + OpenInIdeButton split button component |
+| 4 | `2544649c` | Wire OpenInIdeButton into ChangesTab, FileChangeHeader, KanbanSwimLaneHeader |
+| fix | `ef23366d` | Post-merge fix: add missing projectPath to closed-only project group literal |
+
+Shippable audit passed (SHIP IT) — plan compliance 100%, wiring integrity verified, zero production hardening blockers, build + tests green.
 
 ---
 
