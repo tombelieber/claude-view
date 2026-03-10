@@ -299,6 +299,7 @@ async fn delete_workflow(
 #[serde(rename_all = "camelCase")]
 struct ChatRequest {
     messages: Vec<ChatMessage>,
+    #[allow(dead_code)]
     workflow_id: Option<String>,
 }
 
