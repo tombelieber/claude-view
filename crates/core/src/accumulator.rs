@@ -267,18 +267,18 @@ impl SessionAccumulator {
         }
 
         // -----------------------------------------------------------------
+        // Team name tracking (from top-level `teamName` JSONL field)
+        // -----------------------------------------------------------------
+        if self.team_name.is_none() {
+            if let Some(ref tn) = line.team_name {
+                self.team_name = Some(tn.clone());
+            }
+        }
+
+        // -----------------------------------------------------------------
         // Sub-agent spawn tracking
         // -----------------------------------------------------------------
         for spawn in &line.sub_agent_spawns {
-            // Team spawns are NOT sub-agents — their lifecycle is managed by
-            // ~/.claude/teams/, not the JSONL sub-agent tracking system.
-            if spawn.team_name.is_some() {
-                if self.team_name.is_none() {
-                    self.team_name = spawn.team_name.clone();
-                }
-                continue;
-            }
-
             // Dedup guard: skip if we already know this tool_use_id
             if self
                 .sub_agents
@@ -646,6 +646,7 @@ mod tests {
             request_id: None,
             hook_progress: None,
             slug: None,
+            team_name: None,
         }
     }
 
@@ -992,7 +993,6 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1038,7 +1038,6 @@ mod tests {
                 tool_use_id: "toolu_01BG".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1082,7 +1081,6 @@ mod tests {
                 tool_use_id: "toolu_01BG2".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1133,7 +1131,6 @@ mod tests {
                 tool_use_id: "toolu_01FAIL".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Failing work".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1178,7 +1175,6 @@ mod tests {
                 tool_use_id: "toolu_01KILL".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "Killed work".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1225,7 +1221,6 @@ mod tests {
                 tool_use_id: "toolu_01TEAM".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "landing-sync".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1272,7 +1267,6 @@ mod tests {
                 tool_use_id: "toolu_01FUTURE".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "future-agent".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1323,7 +1317,6 @@ mod tests {
                     tool_use_id: tid.clone(),
                     agent_type: "general-purpose".to_string(),
                     description: format!("{status}-agent"),
-                    team_name: None,
                 });
             acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1372,7 +1365,6 @@ mod tests {
                 tool_use_id: "toolu_01NTERM".to_string(),
                 agent_type: "general-purpose".to_string(),
                 description: "notif-agent".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1417,7 +1409,6 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
-                team_name: None,
             });
 
         // Process same spawn twice (replay resilience)
@@ -1441,7 +1432,6 @@ mod tests {
                 tool_use_id: "toolu_01ABC".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1770,7 +1760,6 @@ mod tests {
                 tool_use_id: "toolu_cost".to_string(),
                 agent_type: "code".to_string(),
                 description: "Write code".to_string(),
-                team_name: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1799,40 +1788,36 @@ mod tests {
     }
 
     #[test]
-    fn test_team_spawn_not_added_to_sub_agents() {
+    fn test_team_name_from_top_level_jsonl_field() {
         let mut acc = SessionAccumulator::new();
         let pricing = HashMap::new();
 
-        // Team spawn: has team_name
-        let mut team_line = empty_line();
-        team_line.line_type = LineType::Assistant;
-        team_line
-            .sub_agent_spawns
+        // Real data: after TeamCreate, every line has top-level `teamName`.
+        // The parser extracts it into LiveLine.team_name.
+        let mut line = empty_line();
+        line.line_type = LineType::Assistant;
+        line.team_name = Some("demo-team".to_string());
+        // Agent spawn on the same line (sub-agent within the team)
+        line.sub_agent_spawns
             .push(crate::live_parser::SubAgentSpawn {
-                tool_use_id: "toolu_01TEAM".to_string(),
+                tool_use_id: "toolu_01AG".to_string(),
                 agent_type: "general-purpose".to_string(),
-                description: "landing-sync".to_string(),
-                team_name: Some("claude-view-release".to_string()),
+                description: "agent-sysinfo".to_string(),
             });
-        acc.process_line(&team_line, 0, &pricing);
+        acc.process_line(&line, 0, &pricing);
 
-        // Team spawn must NOT be added to sub_agents
-        assert_eq!(
-            acc.sub_agents.len(),
-            0,
-            "team spawns should be excluded from sub_agents"
-        );
-
-        // But team_name should be captured on the accumulator
-        assert_eq!(acc.team_name.as_deref(), Some("claude-view-release"));
+        // team_name captured from top-level field
+        assert_eq!(acc.team_name.as_deref(), Some("demo-team"));
+        // Sub-agent still added (it's a team member, not the team itself)
+        assert_eq!(acc.sub_agents.len(), 1);
     }
 
     #[test]
-    fn test_regular_spawn_still_added_to_sub_agents() {
+    fn test_regular_spawn_without_team() {
         let mut acc = SessionAccumulator::new();
         let pricing = HashMap::new();
 
-        // Regular spawn: no team_name
+        // Regular spawn: no team context (no top-level teamName)
         let mut reg_line = empty_line();
         reg_line.line_type = LineType::Assistant;
         reg_line
@@ -1841,7 +1826,6 @@ mod tests {
                 tool_use_id: "toolu_01REG".to_string(),
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
-                team_name: None,
             });
         acc.process_line(&reg_line, 0, &pricing);
 

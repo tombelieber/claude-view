@@ -38,9 +38,6 @@ pub struct SubAgentSpawn {
     pub tool_use_id: String,
     pub agent_type: String,
     pub description: String,
-    /// Present when this spawn is a team member (from `input.team_name`).
-    /// Used by accumulator to skip adding to sub_agents[].
-    pub team_name: Option<String>,
 }
 
 /// Extracted from a `type: "progress"` line with `data.type: "agent_progress"`.
@@ -148,6 +145,10 @@ pub struct LiveLine {
     /// Session slug from top-level JSONL field (e.g. "async-greeting-dewdrop").
     /// Present on every line; extracted once by accumulator.
     pub slug: Option<String>,
+    /// Team name from top-level `teamName` JSONL field.
+    /// Present on every line after a `TeamCreate` tool_use succeeds.
+    /// Set-once by accumulator (first non-None wins).
+    pub team_name: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -471,6 +472,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 request_id: None,
                 hook_progress: None,
                 slug: None,
+                team_name: None,
             };
         }
     };
@@ -611,6 +613,12 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    // Extract team name from top-level (present on every line after TeamCreate)
+    let team_name = parsed
+        .get("teamName")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
     // Check if this is a meta message (system prompts, hooks, etc.)
     let is_meta = parsed
         .get("isMeta")
@@ -651,16 +659,11 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                         .and_then(|v| v.as_str())
                         .unwrap_or(tool_name)
                         .to_string();
-                    let team_name = input
-                        .and_then(|i| i.get("team_name"))
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
                     if !tool_use_id.is_empty() {
                         sub_agent_spawns.push(SubAgentSpawn {
                             tool_use_id,
                             agent_type,
                             description,
-                            team_name,
                         });
                     }
                 }
@@ -979,6 +982,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         request_id,
         hook_progress: result_hook_progress,
         slug,
+        team_name,
     }
 }
 
@@ -2369,25 +2373,27 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // Sub-agent spawn: team_name extraction
+    // Team name extraction from top-level `teamName` JSONL field
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_sub_agent_spawn_team_has_team_name() {
-        let line = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01TEAM","name":"Agent","input":{"name":"landing-sync","description":"Sync landing page","subagent_type":"general-purpose","team_name":"claude-view-release","prompt":"..."}}]},"timestamp":"2026-03-08T14:10:00Z"}"#;
+    fn test_team_name_from_top_level_field() {
+        // Real data: after TeamCreate succeeds, every subsequent JSONL line has top-level `teamName`
+        let line = br#"{"type":"assistant","teamName":"demo-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01AG","name":"Agent","input":{"name":"agent-sysinfo","description":"System info agent","prompt":"..."}}]},"timestamp":"2026-03-11T10:00:00Z"}"#;
         let finders = TailFinders::new();
         let result = parse_single_line(line, &finders);
+        assert_eq!(result.team_name.as_deref(), Some("demo-team"));
+        // The Agent spawn itself does NOT carry team_name — that's a top-level field
         assert_eq!(result.sub_agent_spawns.len(), 1);
-        let spawn = &result.sub_agent_spawns[0];
-        assert_eq!(spawn.team_name.as_deref(), Some("claude-view-release"));
     }
 
     #[test]
-    fn test_sub_agent_spawn_regular_has_no_team_name() {
+    fn test_no_team_name_without_top_level_field() {
+        // Regular sub-agent spawn without any team context
         let line = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01REG","name":"Agent","input":{"name":"Search auth","description":"Search auth code","subagent_type":"Explore"}}]},"timestamp":"2026-03-08T10:00:00Z"}"#;
         let finders = TailFinders::new();
         let result = parse_single_line(line, &finders);
         assert_eq!(result.sub_agent_spawns.len(), 1);
-        assert_eq!(result.sub_agent_spawns[0].team_name, None);
+        assert!(result.team_name.is_none());
     }
 }
