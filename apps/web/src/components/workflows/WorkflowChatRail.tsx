@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { WorkflowMode } from '../../pages/WorkflowDetailPage'
+// WorkflowMode is local to the chat rail (chat feature deferred)
+type WorkflowMode = 'design' | 'control' | 'review'
 
 const MODE_LABELS: Record<WorkflowMode, string> = {
   design: 'Designing',
