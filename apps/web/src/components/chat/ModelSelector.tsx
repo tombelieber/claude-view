@@ -1,12 +1,10 @@
 import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Cpu } from 'lucide-react'
 import { useState } from 'react'
+import { type ModelOption, useModelOptions } from '../../hooks/use-models'
 import { cn } from '../../lib/utils'
 
-export interface ModelOption {
-  id: string
-  label: string
-}
+export type { ModelOption }
 
 interface ModelSelectorProps {
   model: string
@@ -15,10 +13,10 @@ interface ModelSelectorProps {
   disabled?: boolean
 }
 
-const DEFAULT_MODELS: ModelOption[] = [
-  { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5' },
+const FALLBACK_MODELS: ModelOption[] = [
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
 ]
 
 function getLabel(models: ModelOption[], modelId: string): string {
@@ -32,7 +30,8 @@ function getLabel(models: ModelOption[], modelId: string): string {
  */
 export function ModelSelector({ model, onModelChange, models, disabled }: ModelSelectorProps) {
   const [open, setOpen] = useState(false)
-  const options = models ?? DEFAULT_MODELS
+  const { options: fetchedModels } = useModelOptions()
+  const options = models ?? (fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS)
   const label = getLabel(options, model)
 
   return (
@@ -53,7 +52,7 @@ export function ModelSelector({ model, onModelChange, models, disabled }: ModelS
           aria-label={`Model: ${label}. Click to change.`}
         >
           <Cpu className="w-3 h-3" aria-hidden="true" />
-          <span>{label}</span>
+          <span title={model}>{label}</span>
           <ChevronDown className="w-3 h-3" aria-hidden="true" />
         </button>
       </Popover.Trigger>
@@ -80,7 +79,7 @@ export function ModelSelector({ model, onModelChange, models, disabled }: ModelS
                   )}
                 >
                   <Cpu className="w-4 h-4" aria-hidden="true" />
-                  <span>{opt.label}</span>
+                  <span title={opt.id}>{opt.label}</span>
                 </button>
               </Popover.Close>
             )

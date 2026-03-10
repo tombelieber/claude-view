@@ -242,7 +242,7 @@ export function FilterPopover({
                         }}
                         className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300" title={model}>
                         {formatModelName(model)}
                       </span>
                     </label>
