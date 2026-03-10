@@ -106,9 +106,9 @@ pub enum DiffLineKind {
 /// diff stats by diffing v(N-1) → v(N) for the latest version pair, or counts
 /// all lines as added for single-version files.
 ///
-/// `file_path_map` maps `backupFileName` → original file path (from JSONL
-/// `file-history-snapshot` entries). If not provided, the file hash is used
-/// as the display path.
+/// `file_path_map` maps `hash` → original file path (from JSONL
+/// `file-history-snapshot` entries, with `@vN` suffix stripped).
+/// If a hash has no entry, it is used as the display path.
 pub fn scan_file_history(
     history_dir: &Path,
     session_id: &str,
@@ -214,13 +214,9 @@ pub fn scan_file_history(
         total_added += stats.added;
         total_removed += stats.removed;
 
-        // Resolve file path from map, falling back to hash
-        let first_backup = file_versions
-            .first()
-            .map(|v| v.backup_file_name.as_str())
-            .unwrap_or("");
+        // Resolve file path from map (keyed by hash), falling back to hash
         let file_path = file_path_map
-            .get(first_backup)
+            .get(&hash)
             .cloned()
             .unwrap_or_else(|| hash.clone());
 
@@ -564,7 +560,8 @@ mod tests {
         fs::write(session_dir.join("abc@v1"), "line1\nline2\n").unwrap();
         fs::write(session_dir.join("abc@v2"), "line1\nline2\nline3\n").unwrap();
 
-        let map = HashMap::from([("abc@v1".to_string(), "src/main.rs".to_string())]);
+        // Map is keyed by hash (not backupFileName) — matches extract_file_path_map output
+        let map = HashMap::from([("abc".to_string(), "src/main.rs".to_string())]);
 
         let result = scan_file_history(tmp.path(), "sess-1", &map);
         assert_eq!(result.files.len(), 1);
