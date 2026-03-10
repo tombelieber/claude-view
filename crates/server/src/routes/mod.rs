@@ -11,6 +11,7 @@ pub mod file_history;
 pub mod grep;
 pub mod health;
 pub mod hooks;
+pub mod ide;
 pub mod indexing;
 pub mod insights;
 pub mod invocables;
@@ -136,6 +137,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api/live", terminal::router())
         .nest("/api", turns::router())
         .nest("/api", hooks::router())
+        .nest("/api", ide::router())
         .nest("/api", search::router())
         .nest("/api", grep::router())
         .nest("/api", reports::router())
