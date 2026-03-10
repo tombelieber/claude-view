@@ -653,6 +653,7 @@ mod tests {
             hook_progress: None,
             slug: None,
             team_name: None,
+            at_files: Vec::new(),
         }
     }
 
