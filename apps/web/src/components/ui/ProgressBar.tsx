@@ -13,6 +13,8 @@ export interface ProgressBarProps {
   className?: string
   /** Stacked layout: label above bar instead of inline (for mobile) */
   stacked?: boolean
+  /** Optional tooltip text shown on hover over the label */
+  title?: string
 }
 
 /**
@@ -34,6 +36,7 @@ export function ProgressBar({
   suffix,
   className,
   stacked = false,
+  title,
 }: ProgressBarProps) {
   // Ensure we don't divide by zero and clamp percentage between 0-100
   const percentage = max > 0 ? Math.min(Math.max((value / max) * 100, 0), 100) : 0
@@ -44,7 +47,10 @@ export function ProgressBar({
     return (
       <div className={cn('mb-3', className)}>
         <div className="mb-1.5">
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-200 block truncate">
+          <span
+            className="text-sm font-medium text-gray-800 dark:text-gray-200 block truncate"
+            title={title}
+          >
             {label}
           </span>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 tabular-nums mt-0.5">
@@ -73,7 +79,10 @@ export function ProgressBar({
   return (
     <div className={cn('mb-2', className)}>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+        <span
+          className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate"
+          title={title}
+        >
           {label}
         </span>
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
