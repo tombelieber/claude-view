@@ -1,0 +1,28 @@
+name: "Plan Executor"
+description: "Implements a polished plan and ships it as a PR"
+author: "official"
+category: "Development"
+version: "1.0.0"
+
+inputs:
+  - name: "plan_file"
+    type: "file_path"
+    description: "Path to the polished implementation plan MD file"
+
+stages:
+  - name: "Implement"
+    skills: ["/feature-dev:feature-dev", "/subagent-driven-development"]
+    gate:
+      condition: "all tasks complete and committed"
+      retry: false
+    parallel: true
+    model: "claude-opus-4-6"
+    agents: 4
+
+  - name: "Ship"
+    skills: ["/shippable"]
+    gate:
+      condition: "verdict = SHIP IT"
+      retry: true
+    model: "claude-opus-4-6"
+    agents: 1
