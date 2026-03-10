@@ -475,10 +475,27 @@ fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Ve
                 .get("operation")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown");
+            let op_content = parsed.get("content").and_then(|v| v.as_str());
+
+            let content = if let Some(c) = op_content {
+                format!("queue-{}: {}", operation, c)
+            } else {
+                format!("queue-{}", operation)
+            };
+
+            let mut metadata = serde_json::json!({
+                "type": "queue-operation",
+                "operation": operation,
+            });
+            if let Some(c) = op_content {
+                metadata["content"] = serde_json::Value::String(c.to_string());
+            }
+
             let mut result = serde_json::json!({
                 "type": "system",
-                "content": format!("queue-{}", operation),
+                "content": content,
                 "category": "queue",
+                "metadata": metadata,
             });
             if let Some(ts) = timestamp {
                 result["ts"] = serde_json::Value::String(ts.to_string());
@@ -1959,5 +1976,112 @@ NaN ago
             results.is_empty(),
             "Text blocks that become empty after tag stripping should not be emitted"
         );
+    }
+
+    // =========================================================================
+    // Unit test: queue-operation includes metadata in rich mode
+    // =========================================================================
+
+    #[test]
+    fn format_line_rich_mode_queue_operation_includes_metadata() {
+        let finders = RichModeFinders::new();
+        let line = r#"{"type":"queue-operation","operation":"enqueue","timestamp":"2026-03-09T10:00:00Z","content":"fix the bug"}"#;
+        let results = format_line_for_mode(line, "rich", &finders);
+        assert_eq!(results.len(), 1, "queue-operation should emit one message");
+        let parsed: serde_json::Value = serde_json::from_str(&results[0]).unwrap();
+        assert_eq!(parsed["type"], "system");
+        assert_eq!(parsed["category"], "queue");
+
+        // Key assertions: metadata must exist with operation, content, and type
+        let metadata = &parsed["metadata"];
+        assert!(
+            !metadata.is_null(),
+            "queue-operation must include metadata object"
+        );
+        assert_eq!(metadata["type"], "queue-operation");
+        assert_eq!(metadata["operation"], "enqueue");
+        assert_eq!(metadata["content"], "fix the bug");
+    }
+
+    #[test]
+    fn format_line_rich_mode_queue_operation_without_content() {
+        let finders = RichModeFinders::new();
+        let line =
+            r#"{"type":"queue-operation","operation":"cancel","timestamp":"2026-03-09T10:01:00Z"}"#;
+        let results = format_line_for_mode(line, "rich", &finders);
+        assert_eq!(results.len(), 1, "queue-operation should emit one message");
+        let parsed: serde_json::Value = serde_json::from_str(&results[0]).unwrap();
+        assert_eq!(parsed["type"], "system");
+        assert_eq!(parsed["category"], "queue");
+        assert_eq!(parsed["content"], "queue-cancel");
+
+        let metadata = &parsed["metadata"];
+        assert_eq!(metadata["type"], "queue-operation");
+        assert_eq!(metadata["operation"], "cancel");
+        // content should not be present when the source line has none
+        assert!(
+            metadata.get("content").is_none() || metadata["content"].is_null(),
+            "metadata.content should be absent when source has no content"
+        );
+    }
+
+    // =========================================================================
+    // Integration test: queue-operation metadata via WebSocket
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_rich_mode_queue_operation_includes_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let jsonl_path = dir.path().join("test-session.jsonl");
+        {
+            let mut f = std::fs::File::create(&jsonl_path).unwrap();
+            writeln!(f, r#"{{"type":"queue-operation","operation":"enqueue","timestamp":"2026-03-09T10:00:00Z","content":"fix the bug"}}"#).unwrap();
+        }
+
+        let session_id = "test-queue-meta";
+        let state = test_state_with_session(session_id, jsonl_path.to_str().unwrap()).await;
+        let (addr, server_handle) = start_test_server(state).await;
+        let mut ws = ws_connect(addr, session_id).await;
+
+        // Send handshake (rich mode)
+        ws.send(tungstenite::Message::Text(
+            r#"{"mode":"rich","scrollback":100}"#.into(),
+        ))
+        .await
+        .unwrap();
+
+        // Collect messages until buffer_end (with timeout via recv_text)
+        let mut messages = Vec::new();
+        loop {
+            match recv_text(&mut ws).await {
+                Some(text) => {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if v.get("type").and_then(|t| t.as_str()) == Some("buffer_end") {
+                            break;
+                        }
+                    }
+                    messages.push(text);
+                }
+                None => break, // timeout — no more messages
+            }
+        }
+
+        // Find the queue-operation message
+        let queue_msg = messages
+            .iter()
+            .find(|m| m.contains("queue"))
+            .expect("should have a queue message");
+
+        let parsed: serde_json::Value = serde_json::from_str(queue_msg).unwrap();
+        assert_eq!(parsed["type"], "system");
+        assert_eq!(parsed["category"], "queue");
+
+        // Key assertions: metadata must exist with operation, content, and type
+        let metadata = &parsed["metadata"];
+        assert_eq!(metadata["type"], "queue-operation");
+        assert_eq!(metadata["operation"], "enqueue");
+        assert_eq!(metadata["content"], "fix the bug");
+
+        server_handle.abort();
     }
 }
