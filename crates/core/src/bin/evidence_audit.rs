@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use claude_view_core::evidence_audit::{
-    check_set_diff, load_baseline, run_audit_checks, scan_directory_parallel,
+    check_set_diff, load_baseline, run_audit_checks, run_phase3_checks, scan_directory_parallel,
     scan_directory_parallel_with_pipeline, AuditResult,
 };
 
@@ -178,7 +178,7 @@ fn main() {
     let mode_label = if quick_mode {
         "QUICK (types only)"
     } else {
-        "FULL (6 type + 12 pipeline)"
+        "FULL (6 type + 12 pipeline + 2 field)"
     };
 
     // Print banner (file count filled in after scan)
@@ -338,6 +338,42 @@ fn main() {
 
         let phase2_passed = results.iter().all(|r| r.skipped || r.passed);
         overall_passed = overall_passed && phase2_passed;
+
+        // Phase 3: Field Coverage
+        println!("\n  {BLUE}── Phase 3: Field Coverage ──{NC}");
+        let phase3_results = run_phase3_checks(&signals.field_inventory, &baseline);
+        let phase2_count = results.len();
+        let phase1_count = result.checks.len();
+        for (i, check) in phase3_results.iter().enumerate() {
+            let idx = phase1_count + phase2_count + i + 1;
+            let grand_total = phase1_count + phase2_count + phase3_results.len();
+            if check.skipped {
+                println!(
+                    "  [{idx}/{grand_total}] {}: {YELLOW}SKIPPED{NC} ({})",
+                    check.name,
+                    check
+                        .sample_violations
+                        .first()
+                        .map(|v| v.detail.as_str())
+                        .unwrap_or("deferred")
+                );
+            } else if check.passed {
+                println!(
+                    "  [{idx}/{grand_total}] {}: {GREEN}OK{NC} ({} paths, 0 violations)",
+                    check.name, check.lines_checked
+                );
+            } else {
+                println!(
+                    "  [{idx}/{grand_total}] {}: {RED}FAIL{NC} ({} violations)",
+                    check.name, check.violation_count
+                );
+                for v in &check.sample_violations {
+                    println!("         {RED}→{NC} {}", v.detail);
+                }
+            }
+        }
+        let phase3_passed = phase3_results.iter().all(|r| r.skipped || r.passed);
+        overall_passed = overall_passed && phase3_passed;
     }
 
     let total_elapsed = start.elapsed();
