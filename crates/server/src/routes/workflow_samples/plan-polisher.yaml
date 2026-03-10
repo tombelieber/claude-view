@@ -1,0 +1,19 @@
+name: "Plan Polisher"
+description: "Audits a plan until it scores 100/100 on prove-it"
+author: "official"
+category: "Development"
+version: "1.0.0"
+
+inputs:
+  - name: "plan_file"
+    type: "file_path"
+    description: "Path to the implementation plan MD file"
+
+stages:
+  - name: "Audit"
+    skills: ["/auditing-plans", "/prove-it"]
+    gate:
+      condition: "/prove-it verdict = Pass"
+      retry: true
+    model: "claude-opus-4-6"
+    agents: 1
