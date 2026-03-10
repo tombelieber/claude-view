@@ -1,9 +1,11 @@
 import { ChevronDown, ChevronRight, FolderOpen, GitBranch } from 'lucide-react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
+import { OpenInIdeButton } from './OpenInIdeButton'
 
 interface ProjectHeaderProps {
   projectName: string
+  projectPath: string
   totalCostUsd: number
   sessionCount: number
   isCollapsed: boolean
@@ -12,6 +14,7 @@ interface ProjectHeaderProps {
 
 export function ProjectHeader({
   projectName,
+  projectPath,
   totalCostUsd,
   sessionCount,
   isCollapsed,
@@ -20,9 +23,16 @@ export function ProjectHeader({
   const Chevron = isCollapsed ? ChevronRight : ChevronDown
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onToggle()
+        }
+      }}
       className={cn(
         'w-full flex items-center gap-2 py-2 px-3 cursor-pointer',
         'bg-gray-100/60 dark:bg-gray-800/40',
@@ -38,10 +48,11 @@ export function ProjectHeader({
       <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
         ({sessionCount})
       </span>
+      <OpenInIdeButton projectPath={projectPath} />
       <span className="ml-auto text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
         {formatCostUsd(totalCostUsd)}
       </span>
-    </button>
+    </div>
   )
 }
 
