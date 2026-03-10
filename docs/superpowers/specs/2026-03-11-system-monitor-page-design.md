@@ -193,7 +193,7 @@ struct SessionResource {
     input_tokens: u64,          // from LiveSession accumulator
     output_tokens: u64,         // from LiveSession accumulator
     cache_read_tokens: u64,     // from LiveSession accumulator
-    estimated_cost_usd: f64,    // COMPUTED from tokens * model pricing, NOT from JSONL
+    estimated_cost_usd: f64,    // From existing LiveSession.cost (CostBreakdown), NOT new logic
     tool_call_count: u32,       // from LiveSession accumulator
 }
 // NOTE on pid: LiveSession may have pid: None if detected via JSONL watcher
