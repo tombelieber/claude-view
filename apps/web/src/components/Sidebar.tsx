@@ -20,6 +20,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   UsersRound,
+  Workflow,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -565,6 +566,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           <UsersRound className="w-5 h-5" />
         </Link>
         <Link
+          to="/workflows"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/workflows'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Workflows"
+        >
+          <Workflow className="w-5 h-5" />
+        </Link>
+        <Link
           to="/plugins"
           className={cn(
             'p-2 rounded-md transition-colors',
@@ -718,6 +732,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <UsersRound className="w-4 h-4" />
                         <span className="font-medium">Teams</span>
+                      </Link>
+                      <Link
+                        to={`/workflows${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/workflows'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <Workflow className="w-4 h-4" />
+                        <span className="font-medium">Workflows</span>
                       </Link>
                       <Link
                         to={`/plugins${paramString ? `?${paramString}` : ''}`}
