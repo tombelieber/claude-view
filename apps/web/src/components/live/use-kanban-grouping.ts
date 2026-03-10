@@ -16,6 +16,7 @@ export interface BranchGroup {
 
 export interface ProjectGroup {
   projectName: string
+  projectPath: string
   branches: BranchGroup[]
   totalSessionCount: number
   totalCostUsd: number
@@ -99,6 +100,7 @@ export function groupSessionsByProjectBranch(
 
     groups.push({
       projectName,
+      projectPath: branches[0]?.sessions[0]?.projectPath ?? '',
       branches,
       totalSessionCount,
       totalCostUsd,
