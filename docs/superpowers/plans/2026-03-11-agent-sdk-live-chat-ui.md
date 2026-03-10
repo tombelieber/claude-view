@@ -1,6 +1,18 @@
 # Agent SDK Live Chat UI — Implementation Plan
 
+> **Status:** DONE (2026-03-11) — all 12 tasks implemented, shippable audit passed (SHIP IT)
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+## Completion Summary
+
+| Task | Commit | Description |
+|------|--------|-------------|
+| All 12 tasks (6 chunks) | `dae35d0d` | feat(live-chat): upgrade Agent SDK live chat UI with rich rendering, mode selection, and token usage |
+
+Shippable audit: SHIP IT — 0 plan gaps, all 6 wiring flows verified, 0 blockers, 11/11 typecheck, build success. 15 files changed, 775 insertions.
+
+---
 
 **Goal:** Upgrade the live chat UI to render rich messages (tool cards, thinking, errors), wire mode selection to the SDK, show real context/token usage, and polish interactive cards.
 
