@@ -192,9 +192,15 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
               onChange={(e) => handleModelChange(e.target.value)}
               className="text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none w-full"
             >
-              <option value="haiku">Claude Haiku (fastest, cheapest)</option>
-              <option value="sonnet">Claude Sonnet (balanced)</option>
-              <option value="opus">Claude Opus (most capable)</option>
+              <option value="haiku" title="claude-haiku-4-5-20251001">
+                Claude Haiku (fastest, cheapest)
+              </option>
+              <option value="sonnet" title="claude-sonnet-4-6">
+                Claude Sonnet (balanced)
+              </option>
+              <option value="opus" title="claude-opus-4-6">
+                Claude Opus (most capable)
+              </option>
             </select>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
               Haiku is recommended for classification. It provides excellent accuracy at the lowest
