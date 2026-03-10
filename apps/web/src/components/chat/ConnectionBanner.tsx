@@ -5,10 +5,11 @@ import { cn } from '../../lib/utils'
 
 interface ConnectionBannerProps {
   health: ConnectionHealth
+  errorMessage?: string | null
   onRetry?: () => void
 }
 
-export function ConnectionBanner({ health, onRetry }: ConnectionBannerProps) {
+export function ConnectionBanner({ health, errorMessage, onRetry }: ConnectionBannerProps) {
   if (health === 'ok') return null
 
   const isDegraded = health === 'degraded'
@@ -28,7 +29,10 @@ export function ConnectionBanner({ health, onRetry }: ConnectionBannerProps) {
       ) : (
         <WifiOff className="w-3.5 h-3.5" />
       )}
-      <span>{isDegraded ? 'Reconnecting...' : 'Connection lost'}</span>
+      <div className="flex flex-col">
+        <span>{isDegraded ? 'Reconnecting...' : 'Connection lost'}</span>
+        {!isDegraded && errorMessage && <span className="text-xs opacity-80">{errorMessage}</span>}
+      </div>
       {!isDegraded && onRetry && (
         <button
           type="button"

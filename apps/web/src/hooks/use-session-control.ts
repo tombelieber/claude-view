@@ -10,6 +10,7 @@ import type {
   PermissionRequestMsg,
   PlanApprovalMsg,
 } from '../types/control'
+import { CLOSE_CODES } from '../types/control'
 import { type ControlStatus, useControlSession } from './use-control-session'
 
 // ---------------------------------------------------------------------------
@@ -100,6 +101,8 @@ export interface UseSessionControlReturn {
   planApproval: PlanApprovalMsg | null
   elicitation: ElicitationMsg | null
   error: string | null
+  fatalCode: number | null
+  errorMessage: string | null
   send: (text: string) => void
   retry: (localId: string) => void
   respondPermission: (id: string, allowed: boolean) => void
@@ -302,6 +305,64 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
   // ---------------------------------------------------------------------------
   const inputBarState = phaseToInputBarState(phase, controlSession.status)
 
+  const fatalCode = controlSession.fatalCode
+
+  // Derive a user-friendly error message from the fatal close code
+  let errorMessage: string | null = null
+  if (fatalCode === CLOSE_CODES.SESSION_NOT_FOUND) {
+    errorMessage = 'Session no longer available'
+  } else if (fatalCode === CLOSE_CODES.SIDECAR_UNAVAILABLE) {
+    errorMessage = 'Sidecar unavailable \u2014 is Claude Code running?'
+  } else if (controlSession.status === 'fatal' || controlSession.status === 'failed') {
+    errorMessage = controlSession.error ?? null
+  }
+
+  // ---------------------------------------------------------------------------
+  // Absorb WS-received messages into the local messages array (in order).
+  //
+  // controlSession.messages contains ALL messages from the WS (user echoes from
+  // sendMessage() + assistant_done materializations + tool_use_start + tool_use_result).
+  // We track how many we've absorbed so we only push new arrivals, preserving
+  // chronological interleaving with local optimistic user messages.
+  //
+  // User-role messages from WS are skipped — the local optimistic copy is canonical
+  // (it has status/localId/createdAt lifecycle tracking).
+  // ---------------------------------------------------------------------------
+  const absorbedCountRef = useRef(0)
+
+  useEffect(() => {
+    const wsMessages = controlSession.messages
+    if (wsMessages.length <= absorbedCountRef.current) return
+
+    const newMessages = wsMessages.slice(absorbedCountRef.current)
+    absorbedCountRef.current = wsMessages.length
+
+    // Convert non-user WS messages to ChatMessageWithStatus and append
+    const toAbsorb: ChatMessageWithStatus[] = []
+    for (const m of newMessages) {
+      // Skip user echoes — local optimistic message is the canonical copy
+      if (m.role === 'user') continue
+      toAbsorb.push({
+        ...m,
+        content: m.content ?? '',
+        localId: m.messageId ?? `ws-${absorbedCountRef.current}`,
+        status: 'sent' as MessageStatus,
+        createdAt: Date.now(),
+      })
+    }
+
+    if (toAbsorb.length > 0) {
+      setMessages((prev) => [...prev, ...toAbsorb])
+    }
+  }, [controlSession.messages])
+
+  // Reset absorbed count when WS messages array is cleared (session change/reconnect)
+  useEffect(() => {
+    if (controlSession.messages.length === 0) {
+      absorbedCountRef.current = 0
+    }
+  }, [controlSession.messages])
+
   return {
     phase,
     inputBarState,
@@ -316,6 +377,8 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
     planApproval: controlSession.planApproval,
     elicitation: controlSession.elicitation,
     error,
+    fatalCode,
+    errorMessage,
     send,
     retry,
     respondPermission: controlSession.respondPermission,
