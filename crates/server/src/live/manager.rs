@@ -79,6 +79,8 @@ struct SessionAccumulator {
     mcp_servers: std::collections::HashSet<String>,
     /// Unique skill names seen (deduplicated).
     skills: std::collections::HashSet<String>,
+    /// Accumulated @file mentions from user messages (deduplicated, ≤10, first-N-wins).
+    at_files: std::collections::HashSet<String>,
     /// Path to the JSONL file on disk (set on first process_jsonl_update).
     file_path: Option<PathBuf>,
     /// Decoded project path (set on first process_jsonl_update).
@@ -125,6 +127,7 @@ impl SessionAccumulator {
             last_cache_hit_at: None,
             mcp_servers: std::collections::HashSet::new(),
             skills: std::collections::HashSet::new(),
+            at_files: std::collections::HashSet::new(),
             file_path: None,
             project_path: None,
             resolved_cwd: None,
@@ -166,6 +169,7 @@ struct JsonlMetadata {
     tools_used: Vec<super::state::ToolUsed>,
     compact_count: u32,
     slug: Option<String>,
+    user_files: Option<Vec<String>>,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -221,6 +225,7 @@ fn build_recovered_session(
         closed_at: None,
         control: None,
         hook_events: Vec::new(),
+        user_files: None,
     }
 }
 
@@ -350,6 +355,9 @@ fn apply_jsonl_metadata(
     session.last_cache_hit_at = m.last_cache_hit_at;
     session.compact_count = m.compact_count;
     session.slug = m.slug.clone();
+    if m.user_files.is_some() {
+        session.user_files = m.user_files.clone();
+    }
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -541,6 +549,13 @@ impl LiveSessionManager {
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
             slug: acc.slug.clone(),
+            user_files: if acc.at_files.is_empty() {
+                None
+            } else {
+                let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
+                files.sort();
+                Some(files)
+            },
         };
         drop(accumulators);
 
@@ -874,6 +889,14 @@ impl LiveSessionManager {
                                     last_cache_hit_at: acc.last_cache_hit_at,
                                     compact_count: acc.compact_count,
                                     slug: acc.slug.clone(),
+                                    user_files: if acc.at_files.is_empty() {
+                                        None
+                                    } else {
+                                        let mut files: Vec<String> =
+                                            acc.at_files.iter().cloned().collect();
+                                        files.sort();
+                                        Some(files)
+                                    },
                                 };
                                 drop(accumulators);
 
@@ -1511,6 +1534,7 @@ impl LiveSessionManager {
             acc.task_items.clear();
             acc.mcp_servers.clear();
             acc.skills.clear();
+            acc.at_files.clear();
             acc.tokens = TokenUsage::default();
             acc.tool_counts_edit = 0;
             acc.tool_counts_read = 0;
@@ -1670,6 +1694,12 @@ impl LiveSessionManager {
                     acc.last_user_message = line.content_preview.clone();
                     if line.ide_file.is_some() {
                         acc.last_user_file = line.ide_file.clone();
+                    }
+                }
+                // Accumulate @file mentions (first-N-wins, cap at 10)
+                for file in &line.at_files {
+                    if acc.at_files.len() < 10 {
+                        acc.at_files.insert(file.clone());
                     }
                 }
             }
@@ -2059,6 +2089,13 @@ impl LiveSessionManager {
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
             slug: acc.slug.clone(),
+            user_files: if acc.at_files.is_empty() {
+                None
+            } else {
+                let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
+                files.sort();
+                Some(files)
+            },
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).

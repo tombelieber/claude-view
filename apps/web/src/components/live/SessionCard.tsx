@@ -1,3 +1,4 @@
+import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   AlertTriangle,
   Archive,
@@ -58,6 +59,11 @@ const COLOR_MAP: Record<string, string> = {
   red: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 }
+
+const MAX_VISIBLE_FILES = 3
+const TOOLTIP_CONTENT_CLASS =
+  'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
+const TOOLTIP_ARROW_CLASS = 'fill-gray-200 dark:fill-gray-700'
 
 function StateBadge({ agentState }: { agentState: AgentState }) {
   const known = KNOWN_STATES[agentState.state]
@@ -202,15 +208,99 @@ export function SessionCard({
         </p>
       )}
 
-      {/* IDE file context chip */}
-      {session.lastUserFile && (
-        <div className="flex items-center gap-1 mb-1">
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 truncate max-w-full">
-            <FileText className="h-2.5 w-2.5 shrink-0" />
-            {session.lastUserFile.split('/').pop()}
-          </span>
-        </div>
-      )}
+      {/* File context: @mention chips (emerald) + IDE file chip (sky), deduplicated, ≤3 + overflow */}
+      {(() => {
+        const mentionFiles: string[] = session.userFiles ?? []
+        const ideFile: string | null = session.lastUserFile ?? null
+        const ideFileDeduped = ideFile && !mentionFiles.includes(ideFile) ? ideFile : null
+        const allFiles: Array<{ path: string; kind: 'mention' | 'ide' }> = [
+          ...mentionFiles.map((p) => ({ path: p, kind: 'mention' as const })),
+          ...(ideFileDeduped ? [{ path: ideFileDeduped, kind: 'ide' as const }] : []),
+        ]
+        if (allFiles.length === 0) return null
+        const projectRoot = session.projectPath || null
+        function displayName(fullPath: string): string {
+          if (projectRoot && fullPath.startsWith(projectRoot + '/')) {
+            return fullPath.slice(projectRoot.length + 1)
+          }
+          return fullPath.split('/').pop() ?? fullPath
+        }
+        const visible = allFiles.slice(0, MAX_VISIBLE_FILES)
+        const overflow = allFiles.slice(MAX_VISIBLE_FILES)
+        return (
+          <Tooltip.Provider delayDuration={200}>
+            <div className="flex flex-wrap items-center gap-1 mb-1">
+              {visible.map(({ path, kind }) =>
+                kind === 'mention' ? (
+                  <Tooltip.Root key={`mention-${path}`}>
+                    <Tooltip.Trigger asChild>
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 max-w-[160px] truncate cursor-default">
+                        <span className="shrink-0 font-semibold">@</span>
+                        <span className="truncate">{displayName(path)}</span>
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
+                        <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
+                          {path}
+                        </span>
+                        <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                ) : (
+                  <Tooltip.Root key={`ide-${path}`}>
+                    <Tooltip.Trigger asChild>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 max-w-[160px] truncate cursor-default">
+                        <FileText className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{displayName(path)}</span>
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
+                        <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
+                          {path}
+                        </span>
+                        <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                ),
+              )}
+              {overflow.length > 0 && (
+                <Tooltip.Root>
+                  <Tooltip.Trigger asChild>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 cursor-default">
+                      +{overflow.length} more
+                    </span>
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
+                      <div className="space-y-1">
+                        {overflow.map(({ path, kind }) => (
+                          <div key={`${kind}-${path}`} className="flex items-center gap-1.5">
+                            {kind === 'mention' ? (
+                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                                @
+                              </span>
+                            ) : (
+                              <FileText className="h-3 w-3 shrink-0 text-sky-500 dark:text-sky-400" />
+                            )}
+                            <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
+                              {path}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+              )}
+            </div>
+          </Tooltip.Provider>
+        )
+      })()}
 
       {/* Spinner row */}
       <div className="mb-2">
