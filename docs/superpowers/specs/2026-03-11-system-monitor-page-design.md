@@ -194,7 +194,7 @@ struct SessionResource {
     output_tokens: u64,         // from LiveSession accumulator
     cache_read_tokens: u64,     // from LiveSession accumulator
     estimated_cost_usd: f64,    // From existing LiveSession.cost (CostBreakdown), NOT new logic
-    tool_call_count: u32,       // from LiveSession accumulator
+    turn_count: u32,            // from LiveSession.turn_count (no tool_call_count on LiveSession)
 }
 // NOTE on pid: LiveSession may have pid: None if detected via JSONL watcher
 // before process scan completes. In this case cpu_percent=0.0, memory_bytes=0,
