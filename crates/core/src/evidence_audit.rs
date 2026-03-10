@@ -1106,6 +1106,30 @@ pub fn run_audit_checks(signals: &AggregatedSignals, baseline: &Baseline) -> Aud
     }
 }
 
+/// Run Phase 3 field-coverage checks against the inventory and baseline.
+/// Returns skipped results if baseline lacks `field_extraction_paths`.
+pub fn run_phase3_checks(
+    inventory: &crate::field_inventory::FieldInventory,
+    baseline: &Baseline,
+) -> Vec<crate::pipeline_checks::PipelineCheckResult> {
+    match &baseline.field_extraction_paths {
+        Some(paths) => vec![
+            crate::pipeline_checks::check_field_coverage(inventory, paths),
+            crate::pipeline_checks::check_phantom_fields(inventory, paths),
+        ],
+        None => vec![
+            crate::pipeline_checks::PipelineCheckResult::new_skipped(
+                "Field coverage",
+                "Baseline lacks field_extraction_paths section",
+            ),
+            crate::pipeline_checks::PipelineCheckResult::new_skipped(
+                "Phantom field detection",
+                "Baseline lacks field_extraction_paths section",
+            ),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
