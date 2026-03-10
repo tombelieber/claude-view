@@ -11,6 +11,7 @@ pub mod discovery;
 pub mod error;
 pub mod evidence_audit;
 pub mod facets;
+pub mod field_inventory;
 pub mod file_history;
 pub mod fluency_score;
 pub mod insights;
