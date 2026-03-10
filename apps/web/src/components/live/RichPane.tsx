@@ -230,7 +230,7 @@ function formatTimestamp(ts: number | undefined): string | null {
 
 // --- Message Card Components ---
 
-function UserMessage({
+export function UserMessage({
   message,
   verboseMode = false,
 }: { message: RichMessage; index?: number; verboseMode?: boolean }) {
@@ -238,7 +238,12 @@ function UserMessage({
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
   return (
-    <div className="border-l-2 border-blue-500 pl-2 py-1">
+    <div
+      className={cn(
+        'border-l-2 pl-2 py-1',
+        message.pending ? 'border-blue-400/50 dark:border-blue-500/30' : 'border-blue-500',
+      )}
+    >
       <div className="flex items-start gap-1.5">
         <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
@@ -265,6 +270,11 @@ function UserMessage({
           )}
         </div>
         <Timestamp ts={message.ts} />
+        {message.pending && (
+          <span className="text-[9px] font-mono text-blue-400 dark:text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded flex-shrink-0">
+            Queued
+          </span>
+        )}
       </div>
     </div>
   )
