@@ -42,6 +42,11 @@ export interface ResumeMsg {
   lastSeq: number
 }
 
+export interface SetModeMessage {
+  type: 'set_mode'
+  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+}
+
 export type ClientMessage =
   | UserMessage
   | PermissionResponse
@@ -50,6 +55,7 @@ export type ClientMessage =
   | ElicitationResponse
   | PingMessage
   | ResumeMsg
+  | SetModeMessage
 
 // ── Sidecar → Frontend (via Axum WS proxy) ──
 
@@ -86,6 +92,12 @@ export interface ToolUseResult {
   isError: boolean
 }
 
+export interface ThinkingMessage {
+  type: 'thinking'
+  content: string
+  messageId: string
+}
+
 export interface PermissionRequest {
   type: 'permission_request'
   requestId: string
@@ -100,6 +112,15 @@ export interface SessionStatusMessage {
   status: 'active' | 'waiting_input' | 'waiting_permission' | 'completed' | 'error'
   contextUsage: number
   turnCount: number
+  tokenUsage?: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheCreation: number
+  }
+  costUsd?: number
+  model?: string
+  contextWindow?: number
 }
 
 export interface ErrorMessage {
@@ -151,6 +172,7 @@ export type ServerMessage =
   | AssistantDone
   | ToolUseStart
   | ToolUseResult
+  | ThinkingMessage
   | PermissionRequest
   | AskUserQuestionMessage
   | PlanApprovalMessage

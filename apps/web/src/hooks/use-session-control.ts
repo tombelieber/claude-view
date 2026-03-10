@@ -7,6 +7,7 @@ import type {
   ChatMessageWithStatus,
   ElicitationMsg,
   MessageStatus,
+  PermissionMode,
   PermissionRequestMsg,
   PlanApprovalMsg,
 } from '../types/control'
@@ -109,6 +110,19 @@ export interface UseSessionControlReturn {
   answerQuestion: (id: string, answers: Record<string, string>) => void
   approvePlan: (id: string, approved: boolean, feedback?: string) => void
   submitElicitation: (id: string, response: string) => void
+  setMode: (mode: PermissionMode) => void
+  tokenUsage: { input: number; output: number; cacheRead: number; cacheCreation: number } | null
+  model: string | null
+  contextWindow: number | null
+  toolPairMap: Map<
+    string,
+    {
+      toolName: string
+      toolInput: Record<string, unknown>
+      result?: { output: string; isError: boolean }
+      startTime: number
+    }
+  >
 }
 
 export function useSessionControl(sessionId: string): UseSessionControlReturn {
@@ -385,5 +399,10 @@ export function useSessionControl(sessionId: string): UseSessionControlReturn {
     answerQuestion: controlSession.answerQuestion,
     approvePlan: controlSession.approvePlan,
     submitElicitation: controlSession.submitElicitation,
+    setMode: controlSession.setMode,
+    tokenUsage: controlSession.tokenUsage,
+    model: controlSession.model,
+    contextWindow: controlSession.contextWindow,
+    toolPairMap: controlSession.toolPairMap,
   }
 }
