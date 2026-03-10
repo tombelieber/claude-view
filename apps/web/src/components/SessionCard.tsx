@@ -1,4 +1,5 @@
 import * as ContextMenu from '@radix-ui/react-context-menu'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   Archive,
   Code2,
@@ -14,7 +15,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import type { SessionInfo } from '../hooks/use-projects'
-import { useTeamForSession } from '../hooks/use-teams'
+import { useTeamDetail, useTeamForSession } from '../hooks/use-teams'
 import { formatCostUsd, formatNumber } from '../lib/format-utils'
 import { computeWeight, weightBorderClass } from '../lib/session-weight'
 import { getDisplayLongestTaskSeconds, getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
@@ -23,6 +24,7 @@ import { cleanPreviewText, getSessionTitle } from '../utils/get-session-title'
 import { CategoryBadge } from './CategoryBadge'
 import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
+import { TeamMemberPills } from './live/TeamMemberPills'
 import { SessionSpinner, formatDurationCompact, pickPastVerb } from './spinner'
 
 /**
@@ -164,8 +166,9 @@ export function SessionCard({
   selected = false,
   onSelectToggle,
 }: SessionCardProps) {
-  // Hook must be called BEFORE early return to satisfy Rules of Hooks
+  // Hooks must be called BEFORE early return to satisfy Rules of Hooks
   const teamMatch = useTeamForSession(session?.id)
+  const { data: teamDetail } = useTeamDetail(teamMatch?.name ?? null)
 
   // Null safety: handle null/undefined session
   if (!session) {
@@ -305,10 +308,31 @@ export function SessionCard({
                 </span>
               )}
               {teamMatch && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
-                  <UsersRound className="w-3 h-3" />
-                  Teams &middot; {teamMatch.memberCount} agents
-                </span>
+                <Tooltip.Provider delayDuration={200}>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger asChild>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 cursor-default">
+                        <UsersRound className="w-3 h-3" />
+                        Teams &middot; {teamMatch.memberCount} agents
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                      <Tooltip.Content
+                        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs"
+                        sideOffset={5}
+                      >
+                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                          Agent Team: {teamMatch.name}
+                        </p>
+                        <p className="text-gray-500 dark:text-gray-400 mt-0.5">
+                          {teamMatch.memberCount} team members. Click to view team details in the
+                          Teams tab.
+                        </p>
+                        <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
+                      </Tooltip.Content>
+                    </Tooltip.Portal>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
               )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
@@ -359,6 +383,16 @@ export function SessionCard({
                 pastTenseVerb={pickPastVerb(session.id)}
                 taskTimeSeconds={taskTimeSeconds}
               />
+            </div>
+          )}
+
+          {/* Team member pills — with label */}
+          {teamDetail && teamDetail.members.length > 0 && (
+            <div className="mt-2 -mx-1 px-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
+                Team Members
+              </span>
+              <TeamMemberPills members={teamDetail.members} />
             </div>
           )}
 
