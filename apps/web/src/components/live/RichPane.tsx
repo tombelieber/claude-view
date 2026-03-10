@@ -39,6 +39,7 @@ import { PairedToolCard } from './PairedToolCard'
 import { ActionFilterChips } from './action-log/ActionFilterChips'
 import { HookEventRow } from './action-log/HookEventRow'
 import type { ActionCategory } from './action-log/types'
+import { findActiveUserEnqueues } from './pending-queue'
 
 // --- Types ---
 
@@ -60,6 +61,7 @@ export interface RichMessage {
   ts?: number // timestamp
   category?: ActionCategory // set for tool_use, tool_result, hook, error
   metadata?: Record<string, unknown> // system/progress/summary subtype data
+  pending?: boolean // true for queued user messages not yet processed
 }
 
 export interface RichPaneProps {
@@ -98,7 +100,7 @@ function stripCommandTags(content: string): string {
 
 /** Convert a timestamp value (ISO string or number) to Unix seconds, or undefined. */
 function parseTimestamp(ts: unknown): number | undefined {
-  if (typeof ts === 'number' && isFinite(ts) && ts > 0) return ts
+  if (typeof ts === 'number' && Number.isFinite(ts) && ts > 0) return ts
   if (typeof ts === 'string') {
     const ms = Date.parse(ts)
     if (!isNaN(ms)) return ms / 1000
@@ -378,7 +380,7 @@ function ThinkingMessage({
   // Show a preview: first line or first ~120 chars
   const preview = useMemo(() => {
     const first = message.content.split('\n')[0] || ''
-    return first.length > 120 ? first.slice(0, 120) + '…' : first
+    return first.length > 120 ? `${first.slice(0, 120)}…` : first
   }, [message.content])
 
   return (
@@ -807,32 +809,52 @@ export function RichPane({
   }, [countsProp, messages, verboseMode])
 
   const displayMessages = useMemo(() => {
+    // Compute active enqueues once (used in both modes)
+    const activeEnqueues = findActiveUserEnqueues(messages)
+
     if (!verboseMode) {
-      return messages.filter((m) => {
-        if (m.type === 'user' || m.type === 'error') return true
-        if (m.type === 'assistant') {
-          // Hide raw Task/sub-agent JSON blobs (e.g. {"task_id":...,"task_type":"local_agent"})
-          const t = m.content.trim()
-          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"'))
-            return false
-          return true
+      const result: RichMessage[] = []
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i]
+        // Active user enqueue → render as pending user message
+        if (activeEnqueues.has(i)) {
+          result.push({
+            ...m,
+            type: 'user',
+            content: (m.metadata?.content as string) || 'Message queued',
+            pending: true,
+          })
+          continue
         }
-        // Show AskUserQuestion in compact mode (friendly card, not raw JSON)
+        if (m.type === 'user' || m.type === 'error') {
+          result.push(m)
+          continue
+        }
+        if (m.type === 'assistant') {
+          const t = m.content.trim()
+          if (t.startsWith('{') && t.includes('"task_id"') && t.includes('"task_type"')) continue
+          result.push(m)
+          continue
+        }
+        // Show AskUserQuestion in compact mode
         if (
           m.type === 'tool_use' &&
           m.name === 'AskUserQuestion' &&
           isAskUserQuestionInput(m.inputData)
-        )
-          return true
+        ) {
+          result.push(m)
+          continue
+        }
         // Show ExitPlanMode for interactive plan approval card
-        if (m.type === 'tool_use' && m.name === 'ExitPlanMode') return true
-        return false
-      })
+        if (m.type === 'tool_use' && m.name === 'ExitPlanMode') {
+          result.push(m)
+        }
+      }
+      return result
     }
-    // Verbose mode: apply category filter
+    // Verbose mode: apply category filter (unchanged)
     if (verboseFilter === 'all') return messages
     return messages.filter((m) => {
-      // Messages without a category (user, assistant, thinking) are excluded when filtering
       if (!m.category) return false
       return verboseFilter.includes(m.category)
     })
