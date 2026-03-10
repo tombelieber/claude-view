@@ -646,6 +646,7 @@ mod tests {
             request_id: None,
             hook_progress: None,
             slug: None,
+            at_files: Vec::new(),
         }
     }
 

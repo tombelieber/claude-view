@@ -148,6 +148,8 @@ pub struct LiveLine {
     /// Session slug from top-level JSONL field (e.g. "async-greeting-dewdrop").
     /// Present on every line; extracted once by accumulator.
     pub slug: Option<String>,
+    /// Files referenced with `@filename` syntax in user messages.
+    pub at_files: Vec<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -179,6 +181,7 @@ pub struct TailFinders {
     pub task_notification_key: memmem::Finder<'static>,
     pub compact_boundary_key: memmem::Finder<'static>,
     pub hook_progress_key: memmem::Finder<'static>,
+    pub at_file_key: memmem::Finder<'static>,
 }
 
 impl TailFinders {
@@ -201,6 +204,7 @@ impl TailFinders {
             task_notification_key: memmem::Finder::new(b"<task-notification>"),
             compact_boundary_key: memmem::Finder::new(b"\"compact_boundary\""),
             hook_progress_key: memmem::Finder::new(b"\"hook_progress\""),
+            at_file_key: memmem::Finder::new(b"@"),
         }
     }
 }
@@ -471,6 +475,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 request_id: None,
                 hook_progress: None,
                 slug: None,
+                at_files: Vec::new(),
             };
         }
     };
@@ -502,7 +507,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names, skill_names, is_tool_result, ide_file) =
+    let (content_preview, tool_names, skill_names, is_tool_result, ide_file, at_files) =
         extract_content_and_tools(content_source, finders);
 
     // Detect system-injected prefixes from RAW content (before stripping).
@@ -979,6 +984,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         request_id,
         hook_progress: result_hook_progress,
         slug,
+        at_files,
     }
 }
 
@@ -1052,16 +1058,37 @@ pub(crate) fn strip_noise_tags(content: &str) -> (String, Option<String>) {
 /// content array contains a `tool_result` block.
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
-    _finders: &TailFinders,
-) -> (String, Vec<String>, Vec<String>, bool, Option<String>) {
+    finders: &TailFinders,
+) -> (
+    String,
+    Vec<String>,
+    Vec<String>,
+    bool,
+    Option<String>,
+    Vec<String>,
+) {
+    use std::sync::OnceLock;
+    static AT_FILE_RE: OnceLock<regex_lite::Regex> = OnceLock::new();
+    let at_file_re = AT_FILE_RE
+        .get_or_init(|| regex_lite::Regex::new(r"(?:^|\s)@([\w./-]+\.\w{1,15})").unwrap());
+
     let mut preview = String::new();
     let mut tool_names = Vec::new();
     let mut skill_names = Vec::new();
     let mut has_tool_result = false;
     let mut ide_file: Option<String> = None;
+    let mut at_files: Vec<String> = Vec::new();
 
     match parsed.get("content") {
         Some(serde_json::Value::String(s)) => {
+            // Extract @file references from raw string before noise stripping
+            if finders.at_file_key.find(s.as_bytes()).is_some() {
+                for caps in at_file_re.captures_iter(s) {
+                    if let Some(m) = caps.get(1) {
+                        at_files.push(m.as_str().to_string());
+                    }
+                }
+            }
             let (stripped, file) = strip_noise_tags(s);
             preview = truncate_str(&stripped, 200);
             ide_file = file;
@@ -1070,8 +1097,16 @@ fn extract_content_and_tools(
             for block in blocks {
                 match block.get("type").and_then(|t| t.as_str()) {
                     Some("text") => {
-                        if preview.is_empty() {
-                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                            // Extract @file references from raw text before noise stripping
+                            if finders.at_file_key.find(text.as_bytes()).is_some() {
+                                for caps in at_file_re.captures_iter(text) {
+                                    if let Some(m) = caps.get(1) {
+                                        at_files.push(m.as_str().to_string());
+                                    }
+                                }
+                            }
+                            if preview.is_empty() {
                                 let (stripped, file) = strip_noise_tags(text);
                                 preview = truncate_str(&stripped, 200);
                                 if ide_file.is_none() {
@@ -1107,7 +1142,14 @@ fn extract_content_and_tools(
         _ => {}
     }
 
-    (preview, tool_names, skill_names, has_tool_result, ide_file)
+    (
+        preview,
+        tool_names,
+        skill_names,
+        has_tool_result,
+        ide_file,
+        at_files,
+    )
 }
 
 /// Extract a `<task-notification>` from the full content JSON value.
