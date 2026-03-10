@@ -25,14 +25,19 @@ export function StatusDot({ group, size = 'sm', pulse = false }: StatusDotProps)
       {showPulse && (
         <span
           className={cn(
-            'absolute inline-flex rounded-full opacity-75 animate-ping',
+            'absolute inline-flex rounded-full opacity-60 motion-safe:animate-live-ring',
             SIZE_CLASSES[size],
             GROUP_COLORS[group],
           )}
         />
       )}
       <span
-        className={cn('relative inline-flex rounded-full', SIZE_CLASSES[size], GROUP_COLORS[group])}
+        className={cn(
+          'relative inline-flex rounded-full',
+          SIZE_CLASSES[size],
+          GROUP_COLORS[group],
+          showPulse && 'motion-safe:animate-live-breathe',
+        )}
       />
     </span>
   )

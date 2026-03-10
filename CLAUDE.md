@@ -67,6 +67,19 @@
 | Default port | `47892` (override: `CLAUDE_VIEW_PORT`, fallback: ephemeral) |
 | Platform MVP | macOS (ARM64 + Intel). Linux v2.1, Windows v2.2 |
 
+## API Design Principle: One Endpoint Per Capability
+
+**The frontend NEVER orchestrates between multiple backend engines.** If a feature has multiple strategies (e.g. Tantivy full-text + ripgrep substring + SQLite LIKE), the backend exposes ONE endpoint that tries all strategies internally and returns a unified response. The frontend sends one request, gets one response shape.
+
+**Why:** Pushing engine selection to the frontend creates wiring bugs that are invisible — no compiler error, no runtime error, just missing results. The 2026-03-11 search audit found 3 wiring gaps where grep was built but never connected because the frontend had to decide when to call which endpoint. One endpoint, backend decides.
+
+**Pattern:**
+
+- BAD: `/api/search` (Tantivy) + `/api/grep` (ripgrep) + frontend `isRegex` switch
+- GOOD: `/api/search` → backend tries Tantivy first, falls back to grep if 0 results, returns unified `SearchResponse`
+
+The dedicated endpoint (e.g. `/api/grep`) can still exist for power users or debugging, but the main user-facing flow MUST go through a single unified endpoint.
+
 ## What NOT to Do
 
 1. Don't suggest Docker for MVP
@@ -362,6 +375,22 @@ Use `./scripts/release.sh {patch|minor|major}` then push with tags. Also bump `C
 - **Full Rust workspace** (`cargo test`) only for cross-crate changes (e.g. shared types in core consumed by server).
 - **Web frontend:** `cd apps/web && bunx vitest run` (not `bun run test:client` -- that no longer exists).
 - **All workspaces:** `bun run test` runs `bunx turbo test` across all apps.
+
+### Rust TDD — MANDATORY for Every Bug Fix and New Feature
+
+**Every Rust change MUST be accompanied by tests that would catch a regression if the change were reverted.** This is non-negotiable.
+
+**Why:** The live session branch race (2026-03-11) was a proven, data-backed fix — but had zero tests. Any future refactor of `apply_jsonl_metadata` could silently reintroduce the bug with no warning. Tests are the only machine-enforceable memory.
+
+**Rules:**
+
+1. **Bug fix = regression test first.** Before fixing a Rust bug, write a test that fails on the current (broken) code. Fix the bug. Test passes. This test stays forever.
+2. **New function = unit tests for each behavior branch.** Every `if`/`match` arm that represents a distinct behavior must have at least one test covering it.
+3. **Interaction between two async systems = integration test.** If Component A populates state and Component B consumes it (e.g. hook creates session + accumulator enriches it), there MUST be a test verifying they work together correctly — not just in isolation.
+4. **Test names must describe the scenario, not the implementation.** `test_preserves_hook_branch_when_accumulator_has_none` not `test_apply_jsonl_metadata_1`. Future developers must understand what breaks from the test name alone.
+5. **No "I'll add tests later."** Tests ship in the same commit as the fix. A fix without tests is not done.
+
+**Helper pattern for Rust tests:** Define `minimal_*` factory functions inside `#[cfg(test)]` that build structs with sensible defaults. Tests only set the fields relevant to the scenario — everything else stays minimal. See `minimal_live_session_for_branch_tests()` and `minimal_jsonl_metadata()` in `crates/server/src/live/manager.rs` as the reference pattern.
 
 ## UI/UX Rules
 

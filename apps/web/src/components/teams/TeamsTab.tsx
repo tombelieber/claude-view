@@ -138,7 +138,17 @@ export function TeamsTab({ teamName }: TeamsTabProps) {
     )
   }
 
-  if (!team) return null
+  if (!team) {
+    return (
+      <div className="p-4 space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{teamName}</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Team data is no longer available. The team may have been disbanded after the session
+          ended.
+        </p>
+      </div>
+    )
+  }
 
   const leadName = team.members.find((m) => m.agentType === 'team-lead')?.name
 

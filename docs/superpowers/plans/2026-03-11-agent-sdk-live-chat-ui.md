@@ -4,7 +4,7 @@
 
 **Goal:** Upgrade the live chat UI to render rich messages (tool cards, thinking, errors), wire mode selection to the SDK, show real context/token usage, and polish interactive cards.
 
-**Architecture:** Hybrid approach — existing RichPane components (PairedToolCard, ThinkingMessage, ErrorMessage) are embedded inside chat-style LiveMessageBubble. Sidecar accumulates tokens from SDK assistant messages and emits real usage. Mode selection sends `set_mode` messages to sidecar which calls `sdkSession.setPermissionMode()`.
+**Architecture:** Hybrid approach — existing RichPane components (PairedToolCard, ThinkingMessage, ErrorMessage) are embedded inside chat-style LiveMessageBubble. Sidecar accumulates tokens from SDK assistant messages and emits real usage. Mode selection sends `set_mode` messages to sidecar which closes and re-resumes the SDK session with the new `permissionMode` (V2 SDK has no `setPermissionMode()` method).
 
 **Tech Stack:** TypeScript (sidecar + React frontend), Agent SDK V2 (`@anthropic-ai/claude-agent-sdk`), Radix UI, Tailwind CSS, Lucide icons.
 
@@ -90,7 +90,7 @@ In `session-manager.ts`, add to the `ControlSession` interface (after the `conte
   cacheReadTokens: number
   cacheCreationTokens: number
   lastTurnInputTokens: number
-  permissionMode: string | null // persisted for reconnect state
+  permissionMode: import('@anthropic-ai/claude-agent-sdk').PermissionMode | null // persisted for reconnect state
   model: string | null
   sessionContextWindow: number | null // from SDK result.modelUsage
 ```
@@ -105,7 +105,7 @@ In the `cs = { ... }` assignment block inside `resume()`, add:
   cacheReadTokens: 0,
   cacheCreationTokens: 0,
   lastTurnInputTokens: 0,
-  permissionMode: permissionMode ?? null,
+  permissionMode: null, // updated to `permissionMode ?? null` in Task 3 Step 3
   model: null,
   sessionContextWindow: null,
 ```
@@ -134,7 +134,7 @@ if (block.type === 'thinking' && 'thinking' in block && block.thinking) {
     type: 'thinking',
     content: block.thinking as string,
     messageId,
-  })
+  } satisfies ThinkingMessage)
 } else if (block.type === 'text' && block.text) {
 ```
 
@@ -143,7 +143,9 @@ if (block.type === 'thinking' && 'thinking' in block && block.thinking) {
 After the content block loop in the `case 'assistant'` branch, add token accumulation:
 
 ```typescript
-// Accumulate per-turn tokens from BetaMessage.usage
+// Accumulate per-turn tokens from BetaMessage.usage (BetaUsage uses snake_case)
+// Note: BetaUsage comes from @anthropic-ai/sdk (API types, snake_case),
+// NOT ModelUsage from @anthropic-ai/claude-agent-sdk (SDK types, camelCase).
 const usage = assistantMsg.message.usage
 if (usage) {
   cs.lastTurnInputTokens = usage.input_tokens ?? 0
@@ -151,9 +153,8 @@ if (usage) {
   cs.totalOutputTokens += usage.output_tokens ?? 0
   cs.cacheReadTokens += usage.cache_read_input_tokens ?? 0
   cs.cacheCreationTokens += usage.cache_creation_input_tokens ?? 0
-  if (assistantMsg.message.model) {
-    cs.model = assistantMsg.message.model
-  }
+  // NOTE: BetaMessage does NOT have a .model field — model is only available
+  // from SDKResultSuccess.modelUsage keys (extracted in Step 7 result handler).
 }
 ```
 
@@ -205,6 +206,7 @@ case 'result': {
     }
 
     // Override accumulated totals with authoritative result usage
+    // NonNullableUsage maps from BetaUsage — keys are snake_case
     if (resultMsg.usage) {
       cs.totalInputTokens = resultMsg.usage.input_tokens ?? cs.totalInputTokens
       cs.totalOutputTokens = resultMsg.usage.output_tokens ?? cs.totalOutputTokens
@@ -227,7 +229,7 @@ case 'result': {
       cacheReadTokens: cs.cacheReadTokens,
       cacheWriteTokens: cs.cacheCreationTokens,
     },
-    cost: null,
+    cost: null, // SDK V2 does not provide per-turn cost — lastTurnCost will always be null; total cost via tokenUsage is the authoritative source
     totalCost: cs.totalCost,
   })
 
@@ -268,15 +270,45 @@ git commit -m "feat(sidecar): emit thinking blocks, tool results, and real token
 Add after the `resolveElicitation()` method:
 
 ```typescript
-async setMode(controlId: string, mode: string): Promise<boolean> {
+async setMode(controlId: string, mode: import('@anthropic-ai/claude-agent-sdk').PermissionMode): Promise<boolean> {
   const cs = this.sessions.get(controlId)
   if (!cs) return false
 
+  // CRITICAL: Only allow mode changes when NOT actively streaming.
+  // close() during an active for-await loop would trigger the catch block
+  // in sendMessage(), emitting a fatal error to the frontend.
+  // NOTE: isStreaming is set to true BEFORE the send() call in sendMessage().
+  // If isStreaming is false here, no stream is active. The TOCTOU window between
+  // isStreaming=false check and close() is safe because both setMode() and
+  // sendMessage() run on the same JS event loop tick — there's no interleaving.
+  if (cs.isStreaming) {
+    this.emitSequenced(cs, {
+      type: 'error',
+      message: 'Cannot change mode while agent is processing. Wait for the current turn to complete.',
+      fatal: false,
+    })
+    return false
+  }
+
   try {
-    // Persist on ControlSession for reconnect state
+    // V2 SDK does NOT support mid-session setPermissionMode().
+    // setPermissionMode() exists on Query (V1 API), not SDKSession (V2 API).
+    // Strategy: close the current SDK session and re-resume with the new mode.
+    // unstable_v2_resumeSession() reconnects to the same Claude process,
+    // preserving conversation state while applying the new permission mode.
+    cs.sdkSession.close()
+    // unstable_v2_resumeSession is already imported at module top level
+    // NOTE: allowDangerouslySkipPermissions is V1-only (Options type),
+    // NOT available in SDKSessionOptions (V2). For V2, just pass
+    // permissionMode: 'bypassPermissions' directly — the SDK handles it.
+    cs.sdkSession = unstable_v2_resumeSession(cs.sessionId, {
+      model: cs.model ?? 'claude-sonnet-4-20250514',
+      permissionMode: mode,
+      canUseTool: async (toolName, input, { signal }) => {
+        return this.handleCanUseTool(cs, toolName, input, signal)
+      },
+    })
     cs.permissionMode = mode
-    // SDK method for immediate mid-session mode change
-    await cs.sdkSession.setPermissionMode(mode as import('@anthropic-ai/claude-agent-sdk').PermissionMode)
     return true
   } catch (err) {
     // Emit error to frontend
@@ -290,16 +322,25 @@ async setMode(controlId: string, mode: string): Promise<boolean> {
 }
 ```
 
+> **V2 SDK Limitation:** `SDKSession` only exposes `send()`, `stream()`, `close()`, and `[Symbol.asyncDispose]()`. The `setPermissionMode()` method exists on `Query` (V1's `query()` API), not on `SDKSession`. The close-and-re-resume strategy works because `unstable_v2_resumeSession()` reconnects to the same running Claude process by session ID, so conversation state is preserved.
+
 - [ ] **Step 2: Handle `set_mode` in ws-handler switch**
 
 In `ws-handler.ts`, add a case in the `switch (msg.type)` block (after the `ping` case):
 
 ```typescript
-case 'set_mode':
-  sessions.setMode(controlId, msg.mode).catch((err) => {
-    ws.send(JSON.stringify({ type: 'error', message: String(err), fatal: false }))
-  })
+case 'set_mode': {
+  // Validate mode enum before passing to session manager — reject malformed WS messages
+  const VALID_MODES = new Set(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk'])
+  if (!VALID_MODES.has(msg.mode)) {
+    ws.send(JSON.stringify({ type: 'error', message: `Invalid mode: ${msg.mode}`, fatal: false }))
+    break
+  }
+  // setMode handles errors internally (emits to frontend via emitSequenced),
+  // but catch here defensively in case of unexpected throws
+  sessions.setMode(controlId, msg.mode).catch(() => {})
   break
+}
 ```
 
 - [ ] **Step 3: Add `permissionMode` to resume options**
@@ -311,7 +352,7 @@ async resume(
   sessionId: string,
   model?: string,
   projectPath?: string,
-  permissionMode?: string,
+  permissionMode?: import('@anthropic-ai/claude-agent-sdk').PermissionMode,
 ): Promise<ControlSession> {
 ```
 
@@ -321,12 +362,18 @@ And in the `unstable_v2_resumeSession()` call, add:
 const sdkSession = unstable_v2_resumeSession(sessionId, {
   model: model ?? 'claude-sonnet-4-20250514',
   ...(projectPath ? { cwd: projectPath } : {}),
-  ...(permissionMode ? { permissionMode: permissionMode as import('@anthropic-ai/claude-agent-sdk').PermissionMode } : {}),
-  ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+  ...(permissionMode ? { permissionMode } : {}),
+  // allowDangerouslySkipPermissions is V1-only — not needed in SDKSessionOptions
   canUseTool: async (toolName, input, { signal }) => {
     return this.handleCanUseTool(cs, toolName, input, signal)
   },
 })
+```
+
+Also update the `cs = { ... }` init block's `permissionMode` line (added as `null` in Task 2 Step 2) to use the new parameter:
+
+```typescript
+  permissionMode: permissionMode ?? null,
 ```
 
 - [ ] **Step 4: Commit**
@@ -392,7 +439,7 @@ export interface SessionStatusMsg {
 
 - [ ] **Step 4: Add `ThinkingMsg` to `ServerMessage` union**
 
-Update the `ServerMessage` union:
+**INSERT** (do NOT replace the entire union) a `| ThinkingMsg` line into the existing `ServerMessage` union, between `ElicitationMsg` and `SessionStatusMsg`. The final union should include ALL existing members plus the new one:
 
 ```typescript
 export type ServerMessage =
@@ -404,12 +451,14 @@ export type ServerMessage =
   | AskUserQuestionMsg
   | PlanApprovalMsg
   | ElicitationMsg
-  | ThinkingMsg
+  | ThinkingMsg          // NEW — insert this line
   | SessionStatusMsg
   | ErrorMsg
   | PongMsg
-  | HeartbeatConfigMsg
+  | HeartbeatConfigMsg   // KEEP — do NOT drop this existing member
 ```
+
+> **WARNING:** If you replace the entire union instead of inserting one line, you will silently drop `HeartbeatConfigMsg` which breaks WebSocket heartbeat detection. Verify the union has the same member count as before + 1.
 
 - [ ] **Step 5: Add `'thinking'` role to `ChatMessage`**
 
@@ -457,6 +506,7 @@ interface ControlSessionState {
   tokenUsage: { input: number; output: number; cacheRead: number; cacheCreation: number } | null
   model: string | null
   contextWindow: number | null
+  toolPairMap: Map<string, { toolName: string; toolInput: Record<string, unknown>; result?: { output: string; isError: boolean }; startTime: number }>
   permissionRequest: PermissionRequestMsg | null
   askQuestion: AskUserQuestionMsg | null
   planApproval: PlanApprovalMsg | null
@@ -467,25 +517,34 @@ interface ControlSessionState {
 
 - [ ] **Step 2: Update `initialUIState` with new fields**
 
+Replace the existing `const initialUIState` with a factory function (prevents shared `Map` reference across resets):
+
 ```typescript
-const initialUIState: ControlSessionState = {
-  messages: [],
-  streamingContent: '',
-  streamingMessageId: '',
-  contextUsage: 0,
-  turnCount: 0,
-  sessionCost: null,
-  lastTurnCost: null,
-  tokenUsage: null,
-  model: null,
-  contextWindow: null,
-  permissionRequest: null,
-  askQuestion: null,
-  planApproval: null,
-  elicitation: null,
-  error: null,
+function makeInitialUIState(): ControlSessionState {
+  return {
+    messages: [],
+    streamingContent: '',
+    streamingMessageId: '',
+    contextUsage: 0,
+    turnCount: 0,
+    sessionCost: null,
+    lastTurnCost: null,
+    tokenUsage: null,
+    model: null,
+    contextWindow: null,
+    toolPairMap: new Map(), // NOTE: grows unbounded within a session (no eviction). Acceptable for MVP — Map is cleared on session change via makeInitialUIState(). For very long sessions (500+ tool calls), consider capping to last N entries.
+    permissionRequest: null,
+    askQuestion: null,
+    planApproval: null,
+    elicitation: null,
+    error: null,
+  }
 }
 ```
+
+Then update ALL usages of `initialUIState` in the file to `makeInitialUIState()`:
+- `useState<ControlSessionState>(initialUIState)` → `useState<ControlSessionState>(makeInitialUIState)`
+- `setUI(initialUIState)` → `setUI(makeInitialUIState())`
 
 - [ ] **Step 3: Handle `thinking` messages in `setUI` switch**
 
@@ -510,7 +569,7 @@ Add the same case in BOTH `setUI` blocks (initial connection handler at ~line 16
 
 - [ ] **Step 4: Update `session_status` handler to read new fields**
 
-In both `setUI` switch blocks, update the `session_status` case:
+In **BOTH** `setUI` switch blocks (initial connection handler and reconnect handler — same pattern as Step 3), update the `session_status` case:
 
 ```typescript
 case 'session_status':
@@ -525,17 +584,66 @@ case 'session_status':
   }
 ```
 
-- [ ] **Step 5: Add `setMode` callback**
+- [ ] **Step 5: Update `tool_use_start` and `tool_use_result` cases to populate `toolPairMap`**
 
-Add after the `submitElicitation` callback:
+In **BOTH** `setUI` switch blocks (initial connection handler and reconnect handler — same pattern as Steps 3 and 4), replace the `tool_use_start` and `tool_use_result` cases:
 
 ```typescript
-const setMode = useCallback((mode: string) => {
+case 'tool_use_start': {
+  const newMap = new Map(prev.toolPairMap)
+  newMap.set(msg.toolUseId, { toolName: msg.toolName, toolInput: msg.toolInput, startTime: Date.now() })
+  return {
+    ...prev,
+    toolPairMap: newMap,
+    messages: [
+      ...prev.messages,
+      { role: 'tool_use', toolName: msg.toolName, toolInput: msg.toolInput, toolUseId: msg.toolUseId },
+    ],
+  }
+}
+
+case 'tool_use_result': {
+  const newMap = new Map(prev.toolPairMap)
+  const existing = newMap.get(msg.toolUseId)
+  if (existing) {
+    newMap.set(msg.toolUseId, { ...existing, result: { output: msg.output, isError: msg.isError } })
+  }
+  return {
+    ...prev,
+    toolPairMap: newMap,
+    messages: [
+      ...prev.messages,
+      { role: 'tool_result', toolUseId: msg.toolUseId, output: msg.output, isError: msg.isError },
+    ],
+  }
+}
+```
+
+- [ ] **Step 6: Add `setMode` callback**
+
+First, add `PermissionMode` to the existing import at the top of `use-control-session.ts`:
+
+```typescript
+import type {
+  AskUserQuestionMsg,
+  ChatMessage,
+  ElicitationMsg,
+  PermissionMode,        // NEW
+  PermissionRequestMsg,
+  PlanApprovalMsg,
+  ServerMessage,
+} from '../types/control'
+```
+
+Then add after the `submitElicitation` callback:
+
+```typescript
+const setMode = useCallback((mode: PermissionMode) => {
   sendRaw({ type: 'set_mode', mode })
 }, [sendRaw])
 ```
 
-- [ ] **Step 6: Return new fields**
+- [ ] **Step 7: Return new fields**
 
 Add to the return object:
 
@@ -565,10 +673,11 @@ return {
   approvePlan,
   submitElicitation,
   setMode,
+  toolPairMap: ui.toolPairMap,
 }
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add apps/web/src/hooks/use-control-session.ts
@@ -580,11 +689,36 @@ git commit -m "feat(web): wire thinking, token usage, and setMode into useContro
 **Files:**
 - Modify: `apps/web/src/hooks/use-session-control.ts`
 
-- [ ] **Step 1: Pass through `setMode` from useControlSession**
+- [ ] **Step 1: Update `UseSessionControlReturn` interface and return object**
 
-In the `useSessionControl` hook, destructure and return `setMode` from `useControlSession`. Also pass through `tokenUsage`, `model`, `contextWindow`.
+The hook accesses `useControlSession` via dot notation (e.g. `controlSession.setMode`), NOT destructuring. Update the `UseSessionControlReturn` interface (at ~line 90) to add:
 
-Find where `useControlSession` return values are destructured and add `setMode`, `tokenUsage`, `model`, `contextWindow`. Return them from `useSessionControl`.
+First, add `PermissionMode` to the existing top-level import from `'../types/control'`:
+
+```typescript
+import type { ..., PermissionMode } from '../types/control'
+```
+
+Then **APPEND** (do NOT replace) these fields to the existing `UseSessionControlReturn` interface (after `submitElicitation`). Use semantic anchor `submitElicitation` to find the insertion point:
+
+```typescript
+  // Add these 5 fields AFTER the existing submitElicitation line:
+  setMode: (mode: PermissionMode) => void
+  tokenUsage: { input: number; output: number; cacheRead: number; cacheCreation: number } | null
+  model: string | null
+  contextWindow: number | null
+  toolPairMap: Map<string, { toolName: string; toolInput: Record<string, unknown>; result?: { output: string; isError: boolean }; startTime: number }>
+```
+
+Then **APPEND** to the existing return object (at ~line 366, after `submitElicitation: controlSession.submitElicitation`):
+
+```typescript
+  setMode: controlSession.setMode,
+  tokenUsage: controlSession.tokenUsage,
+  model: controlSession.model,
+  contextWindow: controlSession.contextWindow,
+  toolPairMap: controlSession.toolPairMap,
+```
 
 - [ ] **Step 2: Commit**
 
@@ -593,75 +727,7 @@ git add apps/web/src/hooks/use-session-control.ts
 git commit -m "feat(web): expose setMode and token fields from useSessionControl"
 ```
 
-### Task 6b: Add toolPairMap to useControlSession for tool result pairing
-
-**Files:**
-- Modify: `apps/web/src/hooks/use-control-session.ts`
-
-- [ ] **Step 1: Add `toolPairMap` to ControlSessionState**
-
-Add to the `ControlSessionState` interface:
-
-```typescript
-  toolPairMap: Map<string, { toolName: string; toolInput: Record<string, unknown>; result?: { output: string; isError: boolean }; startTime: number }>
-```
-
-Initialize in `initialUIState`:
-
-```typescript
-  toolPairMap: new Map(),
-```
-
-- [ ] **Step 2: Populate toolPairMap in setUI switch cases**
-
-In the `tool_use_start` case, add to the map:
-
-```typescript
-case 'tool_use_start': {
-  const newMap = new Map(prev.toolPairMap)
-  newMap.set(msg.toolUseId, { toolName: msg.toolName, toolInput: msg.toolInput, startTime: Date.now() })
-  return {
-    ...prev,
-    toolPairMap: newMap,
-    messages: [
-      ...prev.messages,
-      { role: 'tool_use', toolName: msg.toolName, toolInput: msg.toolInput, toolUseId: msg.toolUseId },
-    ],
-  }
-}
-```
-
-In the `tool_use_result` case, pair with existing entry:
-```typescript
-case 'tool_use_result': {
-  const newMap = new Map(prev.toolPairMap)
-  const existing = newMap.get(msg.toolUseId)
-  if (existing) {
-    newMap.set(msg.toolUseId, { ...existing, result: { output: msg.output, isError: msg.isError } })
-  }
-  return {
-    ...prev,
-    toolPairMap: newMap,
-    messages: [
-      ...prev.messages,
-      { role: 'tool_result', toolUseId: msg.toolUseId, output: msg.output, isError: msg.isError },
-    ],
-  }
-}
-```
-
-Apply the same changes in BOTH setUI blocks (initial + reconnect).
-
-- [ ] **Step 3: Return `toolPairMap` from the hook**
-
-Add `toolPairMap: ui.toolPairMap` to the return object.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add apps/web/src/hooks/use-control-session.ts
-git commit -m "feat(web): add toolPairMap for tool use/result pairing"
-```
+> **Task 6b was merged into Task 5** (Steps 1, 2, 4b, and 6 now include `toolPairMap`). No separate task needed.
 
 ## Chunk 3: ModeSwitch Replacement
 
@@ -675,6 +741,7 @@ git commit -m "feat(web): add toolPairMap for tool use/result pairing"
 Replace the entire file with a new implementation using the 5 SDK permission modes:
 
 ```typescript
+import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import * as Popover from '@radix-ui/react-popover'
 import {
   ChevronDown,
@@ -832,39 +899,43 @@ export function ModeSwitch({ mode, onModeChange, disabled }: ModeSwitchProps) {
         </Popover.Portal>
       </Popover.Root>
 
-      {/* Bypass confirmation dialog */}
-      {confirmBypass && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm mx-4">
-            <div className="flex items-center gap-2 mb-3">
+      {/* Bypass confirmation dialog — uses Radix AlertDialog per CLAUDE.md overlay rule */}
+      <AlertDialog.Root open={confirmBypass} onOpenChange={setConfirmBypass}>
+        <AlertDialog.Portal>
+          <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40 animate-in fade-in-0" />
+          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm mx-4 animate-in fade-in-0 zoom-in-95">
+            <AlertDialog.Title className="flex items-center gap-2 mb-3">
               <ShieldOff className="w-5 h-5 text-red-500" />
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Enable Trust All Mode?
-              </h3>
-            </div>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-4">
+              </span>
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-xs text-gray-600 dark:text-gray-400 mb-4">
               This mode auto-approves ALL tool executions including destructive operations
               like file deletion and command execution. Use only when you fully trust the session.
-            </p>
+            </AlertDialog.Description>
             <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setConfirmBypass(false)}
-                className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmBypass}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
-              >
-                Enable Trust All
-              </button>
+              <AlertDialog.Cancel asChild>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action asChild>
+                <button
+                  type="button"
+                  onClick={handleConfirmBypass}
+                  className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                >
+                  Enable Trust All
+                </button>
+              </AlertDialog.Action>
             </div>
-          </div>
-        </div>
-      )}
+          </AlertDialog.Content>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </>
   )
 }
@@ -887,7 +958,32 @@ Also update `MODE_COMMANDS` to use the new mode names:
 const MODE_COMMANDS = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'])
 ```
 
-Wire `onModeChange` to call both the local state setter and `sessionControl.setMode(mode)`.
+Update the default value in the props destructuring (find `mode = 'code'` in the function parameter list):
+```typescript
+// Change from:  mode = 'code',
+// To:
+mode = 'default',
+```
+
+Update the `handleSlashSelect` cast (find `onModeChange(cmd.name as` inside the `handleSlashSelect` function):
+```typescript
+// Change from:  onModeChange(cmd.name as 'plan' | 'code' | 'ask')
+// To:
+onModeChange(cmd.name as PermissionMode)
+```
+
+Also update `apps/web/src/components/chat/commands.ts` — replace the old mode commands with the new SDK permission modes:
+
+```typescript
+// Mode commands — replace the old plan/code/ask with SDK permission modes
+{ name: 'default', description: 'Default mode — prompts for dangerous operations', category: 'mode' },
+{ name: 'acceptEdits', description: 'Auto-approve file edits', category: 'mode' },
+{ name: 'plan', description: 'Plan mode — think and plan, no tool execution', category: 'mode' },
+{ name: 'dontAsk', description: 'Skip tools that need permission', category: 'mode' },
+{ name: 'bypassPermissions', description: 'Trust all — auto-approve everything (dangerous)', category: 'mode' },
+```
+
+> Note: `ChatInputBar` does NOT have access to `sessionControl`. The `onModeChange` prop is wired in `ConversationView.tsx` (Step 3 below), which calls both `setChatMode` and `sessionControl.setMode`.
 
 - [ ] **Step 3: Update ConversationView mode state type with localStorage persistence**
 
@@ -900,13 +996,22 @@ const [chatMode, setChatMode] = useState<'plan' | 'code' | 'ask'>('code')
 to:
 
 ```typescript
-import type { PermissionMode } from '../../types/control'
+import type { PermissionMode } from '../types/control'
 
 // Read initial mode from localStorage, default to 'default'
+// Validates stored value — old 'code'/'ask' values from pre-SDK mode are rejected gracefully
+const VALID_MODES: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk']
 const [chatMode, setChatMode] = useState<PermissionMode>(() => {
   if (!sessionId) return 'default'
-  const stored = localStorage.getItem(`claude-view:mode:${sessionId}`)
-  return (stored as PermissionMode) ?? 'default'
+  try {
+    const stored = localStorage.getItem(`claude-view:mode:${sessionId}`)
+    return stored && VALID_MODES.includes(stored as PermissionMode)
+      ? (stored as PermissionMode)
+      : 'default'
+  } catch {
+    // SecurityError in private browsing — silently fall back
+    return 'default'
+  }
 })
 
 // When mode changes, persist and send to sidecar
@@ -914,15 +1019,36 @@ const handleModeChange = useCallback((mode: PermissionMode) => {
   setChatMode(mode)
   if (sessionId) localStorage.setItem(`claude-view:mode:${sessionId}`, mode)
   sessionControl.setMode(mode)
-}, [sessionId, sessionControl])
+}, [sessionId, sessionControl.setMode])
+
+// On WS reconnect/connect, send persisted mode so sidecar initializes correctly.
+// The sidecar's resume() already accepts permissionMode (Task 3 Step 3),
+// but that only applies when the session is first created. For mode changes
+// that happen while disconnected, re-send after WS opens:
+// NOTE: `phase` is SessionPhase ('idle'|'connecting'|'ready'|...), NOT ControlStatus.
+// `'ready'` = WS connected and session active.
+// Uses lastSentModeRef to prevent sending the same mode on rapid reconnect cycles.
+const lastSentModeRef = useRef<PermissionMode | null>(null)
+useEffect(() => {
+  if (sessionControl.phase === 'ready' && chatMode !== 'default' && lastSentModeRef.current !== chatMode) {
+    lastSentModeRef.current = chatMode
+    sessionControl.setMode(chatMode)
+  }
+}, [sessionControl.phase, chatMode, sessionControl.setMode])
 ```
 
-Pass `handleModeChange` as `onModeChange` to `ChatInputBar`.
+In the JSX where `ChatInputBar` is rendered (at ~line 858), update:
+```tsx
+// Change from:
+onModeChange={setChatMode}
+// To:
+onModeChange={handleModeChange}
+```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/components/chat/ModeSwitch.tsx apps/web/src/components/chat/ChatInputBar.tsx apps/web/src/components/ConversationView.tsx
+git add apps/web/src/components/chat/ModeSwitch.tsx apps/web/src/components/chat/ChatInputBar.tsx apps/web/src/components/chat/commands.ts apps/web/src/components/ConversationView.tsx
 git commit -m "feat(web): replace plan/code/ask with 5 SDK permission modes"
 ```
 
@@ -931,9 +1057,10 @@ git commit -m "feat(web): replace plan/code/ask with 5 SDK permission modes"
 ### Task 8: Extract ThinkingMessage and ErrorMessage from RichPane
 
 **Files:**
-- Modify: `apps/web/src/components/live/RichPane.tsx`
 - Create: `apps/web/src/components/chat/ThinkingBlock.tsx`
 - Create: `apps/web/src/components/chat/ErrorBlock.tsx`
+
+> Note: `RichPane.tsx` is NOT modified — its internal `ThinkingMessage`/`ErrorMessage` remain unchanged. These new components are standalone equivalents for the live chat path.
 
 - [ ] **Step 1: Create standalone ThinkingBlock component**
 
@@ -943,7 +1070,6 @@ Extract the ThinkingMessage rendering logic from RichPane into a reusable compon
 // apps/web/src/components/chat/ThinkingBlock.tsx
 import { Brain, ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import { cn } from '../../lib/utils'
 
 interface ThinkingBlockProps {
   content: string
@@ -1166,9 +1292,35 @@ export function LiveMessageBubble({ message, onRetry, verbose, toolResult }: Liv
 }
 ```
 
-- [ ] **Step 2: Wire `verbose` prop from ConversationView**
+- [ ] **Step 2: Wire `verbose` and `toolResult` props from ConversationView**
 
-In `ConversationView.tsx`, pass `verbose={verboseMode}` to each `LiveMessageBubble` rendered in the Virtuoso list.
+In `ConversationView.tsx`, update the `LiveMessageBubble` render inside the Virtuoso `itemContent` callback (in the `item.kind === 'live'` branch, currently at ~line 786):
+
+```tsx
+if (item.kind === 'live') {
+  // Skip rendering wrapper for hidden items (thinking/tool_result when !verbose)
+  // to avoid empty padding divs in the Virtuoso list
+  const isHiddenThinking = !verboseMode && item.message.role === 'thinking'
+  const isHiddenToolResult = !verboseMode && item.message.role === 'tool_result'
+  if (isHiddenThinking || isHiddenToolResult) return <div />
+
+  const toolResult = item.message.role === 'tool_use' && item.message.toolUseId
+    ? sessionControl.toolPairMap.get(item.message.toolUseId)?.result ?? null
+    : null
+  return (
+    <div className="max-w-4xl mx-auto px-6 pb-4">
+      <LiveMessageBubble
+        message={item.message}
+        onRetry={sessionControl.retry}
+        verbose={verboseMode}
+        toolResult={toolResult ? { output: toolResult.output, isError: toolResult.isError } : null}
+      />
+    </div>
+  )
+}
+```
+
+This requires `sessionControl.toolPairMap` to be available — which it is via the `UseSessionControlReturn` update in Task 6 Step 1.
 
 - [ ] **Step 3: Commit**
 
@@ -1217,7 +1369,54 @@ export function InteractionToast({ visible, label, onScrollTo }: InteractionToas
 
 - [ ] **Step 2: Wire toast into ConversationView**
 
-In `ConversationView.tsx`, show `InteractionToast` when a permission/question/plan request is active and the user is scrolled up. Use the Virtuoso `atBottomStateChange` callback to track scroll position.
+In `ConversationView.tsx`:
+
+1. Add state, ref, and import:
+```typescript
+import { InteractionToast } from './chat/InteractionToast'
+import type { VirtuosoHandle } from 'react-virtuoso'
+
+const [isAtBottom, setIsAtBottom] = useState(true)
+const virtuosoRef = useRef<VirtuosoHandle>(null)
+```
+
+2. Add `ref` and `atBottomStateChange` to the Virtuoso component:
+```tsx
+<Virtuoso
+  ref={virtuosoRef}
+  // ... existing props ...
+  atBottomStateChange={(atBottom) => setIsAtBottom(atBottom)}
+>
+```
+
+3. Derive toast visibility and label:
+```typescript
+const hasInteraction = !!(sessionControl.permissionRequest || sessionControl.askQuestion || sessionControl.planApproval || sessionControl.elicitation)
+const showToast = hasInteraction && !isAtBottom
+const toastLabel = sessionControl.permissionRequest
+  ? 'Permission required — click to view'
+  : sessionControl.askQuestion
+    ? 'Question requires your answer'
+    : sessionControl.planApproval
+      ? 'Plan needs approval'
+      : 'Input needed'
+```
+
+4. Render `InteractionToast` just before `<ConnectionBanner>`:
+```tsx
+<InteractionToast
+  visible={showToast}
+  label={toastLabel}
+  onScrollTo={() => {
+    virtuosoRef.current?.scrollToIndex({
+      index: conversationItems.length - 1,
+      behavior: 'smooth',
+    })
+    setIsAtBottom(true)
+  }}
+/>
+<ConnectionBanner ... />
+```
 
 - [ ] **Step 3: Commit**
 
@@ -1317,6 +1516,100 @@ Address any type errors or test failures.
 - [ ] **Step 6: Final commit**
 
 ```bash
-git add -A
+# Stage ONLY files touched by this plan — NEVER use `git add -A` (CLAUDE.md rule)
+git add sidecar/src/types.ts sidecar/src/session-manager.ts sidecar/src/ws-handler.ts \
+  apps/web/src/types/control.ts \
+  apps/web/src/hooks/use-control-session.ts apps/web/src/hooks/use-session-control.ts \
+  apps/web/src/components/chat/ModeSwitch.tsx apps/web/src/components/chat/ChatInputBar.tsx \
+  apps/web/src/components/chat/commands.ts apps/web/src/components/ConversationView.tsx \
+  apps/web/src/components/chat/ThinkingBlock.tsx apps/web/src/components/chat/ErrorBlock.tsx \
+  apps/web/src/components/chat/LiveMessageBubble.tsx \
+  apps/web/src/components/chat/InteractionToast.tsx \
+  apps/web/src/components/chat/cards/PermissionCard.tsx
 git commit -m "fix: address build/test issues from live chat UI implementation"
 ```
+
+## Changelog of Fixes Applied (Audit Round 1)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Task 2 Step 2: `permissionMode: permissionMode ?? null` references param not yet added to `resume()` | Blocker | Changed to `permissionMode: null` with comment; Task 3 Step 3 updates to use param |
+| 2 | Task 6 Step 1: `UseSessionControlReturn` interface never updated with new fields | Blocker | Added explicit interface extension + return object code with `setMode`, `tokenUsage`, `model`, `contextWindow`, `toolPairMap` |
+| 3 | Task 7 Step 2: Default `mode = 'code'` invalid in `PermissionMode`; `handleSlashSelect` cast stale | Blocker | Added explicit instructions to change default to `'default'` and update cast to `PermissionMode` |
+| 4 | Task 9 Step 2: No code for `verbose` prop or `toolResult` lookup in ConversationView | Blocker | Added full JSX code with `toolPairMap.get()` lookup and both props wired |
+| 5 | Task 6b: `toolPairMap` never forwarded through `useSessionControl` | Blocker | Merged into Task 6 Step 1 — `toolPairMap` now in `UseSessionControlReturn` |
+| 6 | Task 6b Step 1: `toolPairMap` added after `initialUIState` already finalized | Blocker | Merged Task 6b into Task 5 — `toolPairMap` now in Steps 1, 2, 4b, and 6 |
+| 7 | Task 5 Step 5: `setMode` param typed `string` instead of `PermissionMode` | Warning | Changed to `PermissionMode` with import |
+| 8 | Task 10 Step 2: Toast wiring vague — no actual code | Warning | Added explicit state, Virtuoso callback, derivation logic, and JSX placement |
+
+## Changelog of Fixes Applied (Audit Round 2 — Adversarial Review Score: 72)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | SDK uses camelCase (`inputTokens`, `outputTokens`) not snake_case | Critical | Replaced all `input_tokens`→`inputTokens` etc. throughout plan (NOTE: partially reverted in Round 3 — see below) |
+| 2 | `import type` placed inside callback body (Task 2 Step 7) | Critical | Moved `import type { ThinkingMessage }` to module-level import block, added `ThinkingMsg` to frontend imports |
+| 3 | `new Map()` in module-level `const initialUIState` creates shared mutable reference | Important | Changed to `makeInitialUIState()` factory function; all call sites updated |
+| 4 | `// ... existing fields ...` placeholder in `ControlSessionState` extension (Task 5 Step 1) | Important | Changed to explicit APPEND instruction — keep all existing fields, add new ones after `error` |
+| 5 | `lastTurnCost` silently becomes always-null with no documentation | Important | Added inline comment on `cost: null` line documenting that SDK V2 does not provide per-turn cost |
+
+## Changelog of Fixes Applied (Audit Round 3 — Adversarial Review Score: 58→pending)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | `setPermissionMode()` does not exist on `SDKSession` (V2) — only on `Query` (V1) | Blocker | Rewrote `setMode()` to close SDK session and re-resume with new `permissionMode` via `unstable_v2_resumeSession()`. Added V2 limitation documentation. |
+| 2 | `BetaUsage` (from `@anthropic-ai/sdk`) uses snake_case (`input_tokens`), not camelCase | Blocker | Reverted Round 2 fix #1: changed all `usage.inputTokens` → `usage.input_tokens`, `usage.outputTokens` → `usage.output_tokens`, `usage.cacheReadInputTokens` → `usage.cache_read_input_tokens`, `usage.cacheCreationInputTokens` → `usage.cache_creation_input_tokens` in Task 2 Steps 5 and 7. Added clarifying comments distinguishing `BetaUsage` (snake_case, from `@anthropic-ai/sdk`) vs `ModelUsage` (camelCase, from `@anthropic-ai/claude-agent-sdk`). |
+| 3 | `InteractionToast.onScrollTo` was a no-op | Warning | Added `virtuosoRef` with `VirtuosoHandle` type, wired `ref={virtuosoRef}` to Virtuoso, implemented `scrollToIndex` + `setIsAtBottom(true)` in handler |
+| 4 | Dead `ThinkingMsg` import (discriminated union narrowing doesn't need it) | Minor | Removed `ThinkingMsg` from import in Task 5 Step 6 |
+| 5 | `resume()` param `permissionMode?: string` too loose | Minor | Changed to `permissionMode?: import('@anthropic-ai/claude-agent-sdk').PermissionMode`, removed cast at call site |
+| 6 | `setMode` ws-handler `.catch()` was dead code (errors handled internally) | Warning | Changed to `.catch(() => {})` with comment explaining internal error handling |
+| 7 | Task 5 step numbering: `Step 4b` breaks sequential order | Minor | Renumbered: 4b→5, 5→6, 6→7, 7→8 |
+
+## Changelog of Fixes Applied (Audit Round 4 — Adversarial Review Score: 78→pending)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | `commands.ts` not updated — slash commands `/code` and `/ask` break, new modes have no slash commands | Blocker | Added `commands.ts` update in Task 7 Step 2: replace plan/code/ask mode entries with default/acceptEdits/plan/dontAsk/bypassPermissions. Added to commit. |
+| 2 | Race condition: `setMode()` closes SDK session while `sendMessage()` has active stream loop | Blocker | Added `if (cs.isStreaming) return false` guard with user-facing error message at top of `setMode()` |
+| 3 | ConversationView import path `../../types/control` wrong (should be `../types/control`) | Warning | Fixed to `../types/control` — ConversationView is at `components/`, not `components/chat/` |
+| 4 | Mode not forwarded to sidecar on reconnect — localStorage mode silently ignored | Warning | Added `useEffect` that sends `setMode(chatMode)` when `sessionControl.phase` transitions to `'ready'` (corrected from `'active'` in Round 5 fix #1) |
+| 5 | Unnecessary dynamic `import()` in `setMode()` — `unstable_v2_resumeSession` already imported at top | Warning | Replaced with comment noting existing top-level import |
+| 6 | `ControlSession.permissionMode: string | null` — should use SDK's `PermissionMode` type | Minor | Changed to `import('@anthropic-ai/claude-agent-sdk').PermissionMode | null` |
+| 7 | Hidden thinking/tool_result messages create empty 24px wrapper divs in Virtuoso | Minor | Added early return `<div />` in `itemContent` callback for hidden items before the wrapper div |
+
+## Changelog of Fixes Applied (Audit Round 5 — Adversarial Review Score: 88→92+)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | `sessionControl.phase === 'active'` wrong — `SessionPhase` has no `'active'` value (compile error) | Critical | Changed to `'ready'` with explanatory comment about SessionPhase vs ControlStatus |
+| 2 | `useCallback` dependency on entire `sessionControl` object (new object every render) | Important | Changed to `sessionControl.setMode` (stable useCallback ref) |
+| 3 | `useEffect` deps incomplete — `chatMode` captured stale via closure | Important | Changed deps from `[sessionControl.phase]` to `[sessionControl.phase, chatMode, sessionControl.setMode]`, removed eslint-disable-line |
+| 4 | Toast `hasInteraction` missing `elicitation` case | Minor | Added `sessionControl.elicitation` to check, added `'Input needed'` label |
+
+## Changelog of Fixes Applied (Round 6 — Cross-agent findings)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | `assistantMsg.message.model` does not exist on `BetaMessage` — Anthropic API doesn't echo model per-message | Blocker | Removed `if (assistantMsg.message.model)` block from Task 2 Step 5. Model is only extracted from `SDKResultSuccess.modelUsage` keys in Step 7 (already correct). |
+| 2 | `allowDangerouslySkipPermissions` is V1-only (`Options` type), not in `SDKSessionOptions` (V2) | Blocker | Removed from both `setMode()` (Task 3 Step 1) and `resume()` (Task 3 Step 3). V2 only needs `permissionMode: 'bypassPermissions'`. |
+| 3 | JSX diff for `onModeChange` prop not shown explicitly | Warning | Added explicit diff: `onModeChange={setChatMode}` → `onModeChange={handleModeChange}` in Task 7 Step 3 |
+
+## Changelog of Fixes Applied (Round 7 — 4-agent parallel audit, adversarial review)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | Architecture description says `setPermissionMode()` but V2 uses close-and-re-resume | Minor | Updated plan header to describe close-and-re-resume strategy |
+| 2 | ws-handler `set_mode` case has no mode enum validation — malformed WS messages pass through | Blocker | Added `VALID_MODES` Set check + error response before calling `sessions.setMode()` in Task 3 Step 2 |
+| 3 | Task 4 Step 4: `ServerMessage` union block replaces entire union, silently drops `HeartbeatConfigMsg` | Blocker | Changed to INSERT instruction with `// NEW` and `// KEEP` annotations + warning comment |
+| 4 | Task 7 Step 1: hand-rolled `fixed inset-0` modal violates CLAUDE.md Radix overlay rule | Blocker | Replaced with `@radix-ui/react-alert-dialog` (AlertDialog.Root/Portal/Overlay/Content/Title/Description/Cancel/Action) |
+| 5 | Task 8 Step 1: `ThinkingBlock.tsx` imports `cn` but never uses it — fails Biome lint | Blocker | Removed unused `cn` import |
+| 6 | Task 6 Step 1: inline `import('../types/control').PermissionMode` non-idiomatic | Warning | Changed to top-level `import type { PermissionMode }` with explicit instruction |
+| 7 | Task 7 Step 3: localStorage reads unvalidated mode — old `'code'`/`'ask'` values crash sidecar | Warning | Added `VALID_MODES.includes()` check + try/catch for SecurityError |
+| 8 | Rapid reconnect sends duplicate `set_mode` messages (3 close/reopen cycles) | Warning | Added `lastSentModeRef` to deduplicate, only sends when mode actually changes |
+| 9 | Task 5 Steps 4-5 don't say "update BOTH setUI blocks" (only Step 3 says it) | Warning | Added explicit "BOTH" + "(same pattern as Step 3)" to Steps 4 and 5 |
+| 10 | Task 8 "Files" lists `RichPane.tsx` as Modify but no step edits it — orphaned entry | Minor | Removed from Files list, added clarifying note |
+| 11 | Round 4 changelog entry #4 says `'active'` but body uses `'ready'` | Minor | Updated changelog entry to note Round 5 correction |
+| 12 | Task 12 Step 6 uses `git add -A` — violates CLAUDE.md git discipline | Minor | Replaced with explicit file list of all 15 plan-touched files |
+| 13 | Task 7 Step 2 uses approximate line numbers (~88, ~133) | Minor | Replaced with semantic anchor descriptions ("find `mode = 'code'`", "find `onModeChange(cmd.name as`") |
+| 14 | `ThinkingMessage` import in session-manager.ts technically unused (no explicit type annotation) | Minor | Added `satisfies ThinkingMessage` to emitted object in Task 2 Step 4 |
+| 15 | `toolPairMap` grows unbounded within session — no eviction | Minor | Added comment in `makeInitialUIState()` acknowledging MVP-acceptable growth with future cap suggestion |
+| 16 | `setMode()` TOCTOU claim debunked — `isStreaming` set BEFORE `send()` at line 290 | Info | Added explanatory comment in Task 3 Step 1 confirming single-threaded JS safety |

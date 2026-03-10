@@ -11,6 +11,7 @@ use crate::live::state::{
     MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::state::AppState;
+use claude_view_core::discovery::resolve_git_branch;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 #[derive(Debug, Deserialize)]
@@ -173,6 +174,10 @@ async fn handle_hook(
                 let buffered_events = take_unresolved_hook_events(&payload.session_id).await;
                 let mut sessions = state.live_sessions.write().await;
                 if !sessions.contains_key(&payload.session_id) {
+                    // Resolve branch eagerly from cwd (same as SessionStart path)
+                    let (branch, wt_branch, is_wt) =
+                        resolve_branch_from_cwd(payload.cwd.as_deref());
+                    let effective = wt_branch.clone().or(branch.clone());
                     let mut session = LiveSession {
                         id: payload.session_id.clone(),
                         project: String::new(),
@@ -181,10 +186,10 @@ async fn handle_hook(
                         file_path: payload.transcript_path.clone().unwrap_or_default(),
                         status: status_from_agent_state(&agent_state),
                         agent_state: agent_state.clone(),
-                        git_branch: None,
-                        worktree_branch: None,
-                        is_worktree: false,
-                        effective_branch: None,
+                        git_branch: branch,
+                        worktree_branch: wt_branch,
+                        is_worktree: is_wt,
+                        effective_branch: effective,
                         pid: claude_pid,
                         title: String::new(),
                         last_user_message: payload
@@ -319,6 +324,10 @@ async fn handle_hook(
                 });
             } else if should_create {
                 // Session doesn't exist — create skeleton.
+                // Resolve branch eagerly from cwd to avoid "(no branch)" flash
+                // before the file watcher processes the JSONL.
+                let (branch, wt_branch, is_wt) = resolve_branch_from_cwd(payload.cwd.as_deref());
+                let effective = wt_branch.clone().or(branch.clone());
                 let mut session = LiveSession {
                     id: payload.session_id.clone(),
                     project: String::new(),
@@ -327,10 +336,10 @@ async fn handle_hook(
                     file_path: payload.transcript_path.clone().unwrap_or_default(),
                     status: status_from_agent_state(&agent_state),
                     agent_state: agent_state.clone(),
-                    git_branch: None,
-                    worktree_branch: None,
-                    is_worktree: false,
-                    effective_branch: None,
+                    git_branch: branch,
+                    worktree_branch: wt_branch,
+                    is_worktree: is_wt,
+                    effective_branch: effective,
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
@@ -1069,6 +1078,20 @@ fn extract_pid_from_header(header_value: Option<&str>) -> Option<u32> {
         return None;
     }
     Some(pid)
+}
+
+/// Resolve git branch and worktree info from a cwd path.
+///
+/// Returns `(git_branch, worktree_branch, is_worktree)`.
+/// Uses pure filesystem reads — no git subprocess.
+fn resolve_branch_from_cwd(cwd: Option<&str>) -> (Option<String>, Option<String>, bool) {
+    let Some(cwd) = cwd else {
+        return (None, None, false);
+    };
+    let branch = resolve_git_branch(cwd);
+    let wt_branch = claude_view_core::discovery::resolve_worktree_branch(cwd);
+    let is_wt = wt_branch.is_some();
+    (branch, wt_branch, is_wt)
 }
 
 #[cfg(test)]

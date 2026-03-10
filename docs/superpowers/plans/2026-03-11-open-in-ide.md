@@ -4,7 +4,7 @@
 
 **Goal:** Add "Open in IDE" buttons that let users open projects and files in VS Code, Cursor, Windsurf, Zed, WebStorm, or IntelliJ directly from claude-view.
 
-**Architecture:** Backend detects installed IDEs at startup, caches the list in AppState, and exposes two endpoints: detection and launch. Frontend stores the user's IDE preference in localStorage and renders a split button (main click = open, dropdown = pick IDE) in three locations: Changes tab header, FileChangeHeader rows, and Kanban swimlane ProjectHeader.
+**Architecture:** Backend detects installed IDEs at startup, caches the list in AppState, and exposes two endpoints: `GET /api/ide/detect` and `POST /api/ide/open`. Frontend stores the user's IDE preference in localStorage and renders a split button (main click = open, dropdown = pick IDE) in three locations: Changes tab header, FileChangeHeader rows, and Kanban swimlane ProjectHeader.
 
 **Tech Stack:** Rust (Axum), React, Radix UI Popover, react-query, localStorage
 
@@ -25,7 +25,6 @@
 // crates/server/src/routes/ide.rs
 //! IDE detection and launch endpoints.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use axum::{extract::State, routing::{get, post}, Json, Router};
@@ -138,38 +137,62 @@ Run: `cargo check -p claude-view-server`
 ### Task 3: Add available_ides to AppState
 
 **Files:**
-- Modify: `crates/server/src/state.rs` (add field after `teams` ~line 133)
-- Modify: `crates/server/src/state.rs` (update all constructors)
+- Modify: `crates/server/src/state.rs` (add field after `teams` ~line 133, update 3 constructors)
+- Modify: `crates/server/src/lib.rs` (update `create_app_full()` struct literal ~line 194)
 
-- [ ] **Step 1: Read state.rs to find exact insertion points**
+**IMPORTANT:** There are **5 construction sites** for `AppState`:
+1. `AppState::new()` in `state.rs` ~line 146 (used in tests)
+2. `AppState::new_with_indexing()` in `state.rs` ~line 188 (used in tests)
+3. `AppState::new_with_indexing_and_registry()` in `state.rs` ~line 229 (used in tests)
+4. `create_app_with_git_sync()` struct literal in `lib.rs` ~line 115 (used in git-sync tests)
+5. `create_app_full()` struct literal in `lib.rs` ~line 194 (**production path — this is the one `main.rs` calls**)
+
+All 5 MUST be updated or the project will not compile (Rust struct literals are exhaustive).
+
+- [ ] **Step 1: Read state.rs and lib.rs to find exact insertion points**
 
 Read `crates/server/src/state.rs` to confirm the struct definition and constructor signatures.
+Read `crates/server/src/lib.rs` lines 194–227 to see the `create_app_full()` struct literal.
 
-- [ ] **Step 2: Add the field and type alias**
+- [ ] **Step 2: Add the field and type alias to state.rs**
 
 In `state.rs`, add:
 - Type alias near the top (after other type aliases): `pub type AvailableIdesHolder = Vec<(crate::routes::ide::IdeInfo, String)>;`
-- New field in `AppState` struct: `pub available_ides: AvailableIdesHolder,`
-- Initialize as `available_ides: Vec::new()` in all constructors
+  - **Note:** This creates a `state → routes::ide` dependency. All other type aliases in `state.rs` reference external crates (`claude_view_core`, `claude_view_db`, etc.), never `crate::routes::*`. This compiles fine (single crate), but is an inverted dependency. Acceptable for MVP; if it bothers you, move `IdeInfo` to a shared `crate::types` module later.
+- New field in `AppState` struct (after `prompt_templates` ~line 139): `pub available_ides: AvailableIdesHolder,`
+- Initialize as `available_ides: Vec::new()` in all 3 constructors in `state.rs`
 
-- [ ] **Step 3: Verify it compiles**
+- [ ] **Step 3: Verify it compiles (expect failure — lib.rs not yet updated)**
 
 Run: `cargo check -p claude-view-server`
+Expected: compile errors in `lib.rs` — `missing field available_ides` in both `create_app_with_git_sync()` (~line 115) and `create_app_full()` (~line 194). This confirms the field was added correctly to the struct.
 
 ---
 
-### Task 4: Run IDE detection at startup
+### Task 4: Run IDE detection at startup and fix both lib.rs construction sites
 
 **Files:**
-- Modify: `crates/server/src/main.rs` — add detection call during startup
+- Modify: `crates/server/src/lib.rs` — fix both `create_app_with_git_sync()` (~line 115) and `create_app_full()` (~line 194)
 
-- [ ] **Step 1: Read main.rs to find the startup sequence**
+There are TWO struct literals in `lib.rs` that need `available_ides`:
+- `create_app_with_git_sync()` ~line 115 — test helper, just needs `available_ides: Vec::new()`
+- `create_app_full()` ~line 194 — production path, runs actual IDE detection
 
-Read `crates/server/src/main.rs` around where `AppState` is constructed (lines 310–340).
+- [ ] **Step 1: Read lib.rs to find both struct literals**
 
-- [ ] **Step 2: Add IDE detection before AppState construction**
+Read `crates/server/src/lib.rs` lines 114–150 (`create_app_with_git_sync`) and lines 186–227 (`create_app_full`).
 
-After the existing state construction, run detection and store results:
+- [ ] **Step 2: Fix create_app_with_git_sync() — add empty Vec**
+
+In the struct literal at ~line 115, add after `prompt_templates`:
+
+```rust
+        available_ides: Vec::new(),
+```
+
+- [ ] **Step 3: Add IDE detection inside create_app_full(), before the struct literal**
+
+Insert detection call just before `let state = Arc::new(state::AppState {` (~line 194):
 
 ```rust
 // Detect installed IDEs (fast — just runs `which` for each)
@@ -180,9 +203,13 @@ for (ide, cmd) in &available_ides {
 }
 ```
 
-Set `available_ides` on the AppState instance.
+Then add the field to the `create_app_full` struct literal (after `prompt_templates`):
 
-- [ ] **Step 3: Verify it compiles**
+```rust
+        available_ides,
+```
+
+- [ ] **Step 4: Verify it compiles**
 
 Run: `cargo check -p claude-view-server`
 
@@ -273,12 +300,13 @@ pub async fn post_open(
         canonical_project
     };
 
-    // 4. Spawn the IDE (fire-and-forget)
+    // 4. Spawn the IDE (fire-and-forget, using tokio for auto-reaping)
     let target_str = target.to_string_lossy().to_string();
-    let mut cmd = std::process::Command::new(&command);
+    let mut cmd = tokio::process::Command::new(&command);
 
-    if req.file_path.is_some() {
-        // For file opening, use --goto for VS Code forks
+    // VS Code forks use --goto; Zed and JetBrains take file path as positional arg
+    let is_vscode_fork = matches!(req.ide.as_str(), "vscode" | "cursor" | "windsurf");
+    if req.file_path.is_some() && is_vscode_fork {
         cmd.arg("--goto").arg(&target_str);
     } else {
         cmd.arg(&target_str);
@@ -288,11 +316,14 @@ pub async fn post_open(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
+    // tokio::process::Command auto-reaps child via SIGCHLD — no zombies
     match cmd.spawn() {
         Ok(_child) => {
             tracing::info!(ide = %req.ide, target = %target_str, "Launched IDE");
             Ok(Json(serde_json::json!({})))
         }
+        // Note: ApiError::Internal logs the detail but returns generic "Internal server error"
+        // to the client (by design — see error.rs). The OS error is only visible in server logs.
         Err(e) => Err(ApiError::Internal(format!(
             "Failed to launch {}: {e}",
             req.ide
@@ -339,13 +370,153 @@ Expected: compiles cleanly.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add crates/server/src/routes/ide.rs crates/server/src/routes/mod.rs crates/server/src/state.rs crates/server/src/main.rs
+git add crates/server/src/routes/ide.rs crates/server/src/routes/mod.rs crates/server/src/state.rs crates/server/src/lib.rs
 git commit -m "feat(ide): add IDE detection and launch API endpoints
 
 - GET /api/ide/detect — returns installed IDEs (VS Code, Cursor, Windsurf, Zed, WebStorm, IntelliJ)
 - POST /api/ide/open — launches IDE with project folder or specific file
 - Security: canonicalize paths, validate containment, reject traversal
 - Detection cached at startup in AppState"
+```
+
+---
+
+### Task 7b: Add endpoint tests for ide.rs
+
+**Files:**
+- Modify: `crates/server/src/routes/ide.rs` (add `#[cfg(test)]` module at bottom)
+
+Every route module in this codebase has a `#[cfg(test)]` block. The security validation paths in `post_open` are fully testable without spawning any IDE.
+
+- [ ] **Step 1: Add test module to ide.rs**
+
+Append to `crates/server/src/routes/ide.rs`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    /// Build a test router with a fake "testvscode" IDE pre-populated.
+    /// Uses async `new_in_memory()` (the real Database API) and seeds
+    /// `available_ides` so path-validation tests actually exercise
+    /// the path checks (not just "IDE not found").
+    ///
+    /// Pattern: `Arc::get_mut` on a freshly-created Arc (refcount=1)
+    /// to mutate fields before sharing — same pattern as coaching.rs tests.
+    async fn test_app() -> Router {
+        let db = claude_view_db::Database::new_in_memory()
+            .await
+            .expect("in-memory DB");
+        let mut state = crate::state::AppState::new(db);
+        // Seed a fake IDE so tests can reach the path validation logic
+        Arc::get_mut(&mut state).unwrap().available_ides = vec![(
+            IdeInfo { id: "testvscode".into(), name: "Test VS Code".into() },
+            "false".into(), // "false" is a valid binary that exits 1 — safe for testing
+        )];
+        Router::new()
+            .route("/api/ide/detect", axum::routing::get(get_detect))
+            .route("/api/ide/open", axum::routing::post(post_open))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn test_ide_detect_returns_seeded_list() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/ide/detect")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["available"].as_array().unwrap().len(), 1);
+        assert_eq!(json["available"][0]["id"], "testvscode");
+    }
+
+    #[tokio::test]
+    async fn test_open_rejects_relative_path() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ide/open")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"ide":"testvscode","projectPath":"relative/path"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("absolute"), "Expected 'absolute' in error: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_open_rejects_unknown_ide() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ide/open")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"ide":"vim","projectPath":"/tmp"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("IDE not found"), "Expected 'IDE not found' in error: {text}");
+    }
+
+    #[tokio::test]
+    async fn test_open_rejects_path_traversal() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/ide/open")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"ide":"testvscode","projectPath":"/tmp","filePath":"../../etc/passwd"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+}
+```
+
+- [ ] **Step 2: Verify tests pass**
+
+Run: `cargo test -p claude-view-server ide::tests`
+Expected: 4 tests pass.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add crates/server/src/routes/ide.rs
+git commit -m "test(ide): add endpoint tests for detect and open security validation"
 ```
 
 ---
@@ -361,9 +532,11 @@ git commit -m "feat(ide): add IDE detection and launch API endpoints
 
 - [ ] **Step 1: Run the codegen**
 
-Run: `cargo test -p claude-view-server --features codegen export_bindings -- --ignored 2>/dev/null; ls apps/web/src/types/generated/Ide*`
+Run: `./scripts/generate-types.sh`
 
-If the project uses a different codegen command, check `package.json` for a `generate:types` script.
+This is the canonical codegen entry point. It runs `cargo test --features codegen export_bindings -- --nocapture` for all four crates (core, search, db, server), post-processes imports, and formats with Biome. Do NOT use `--ignored` — the ts-rs `export_bindings` tests are NOT `#[ignore]`.
+
+Verify the new files exist: `ls apps/web/src/types/generated/Ide*`
 
 - [ ] **Step 2: Verify generated files exist and re-export from index**
 
@@ -460,13 +633,23 @@ export function useIdePreference() {
     [preferredIde],
   )
 
-  return { availableIdes, preferredIde, setPreferredIde, openProject, openFile }
+  // Escape hatch: open with an explicit IDE id, bypassing the preferredIde closure.
+  // Used by OpenInIdeButton dropdown to avoid stale-closure bug when the user
+  // picks a different IDE (setPreferredIde triggers re-render AFTER the await).
+  const openWithIde = useCallback(
+    async (ideId: string, projectPath: string, filePath?: string) => {
+      await postOpenInIde(ideId, projectPath, filePath)
+    },
+    [],
+  )
+
+  return { availableIdes, preferredIde, setPreferredIde, openProject, openFile, openWithIde }
 }
 ```
 
-- [ ] **Step 2: Verify useLocalStorage hook exists**
+- [ ] **Step 2: Create useLocalStorage hook (MANDATORY — this file does NOT exist)**
 
-Check if `apps/web/src/hooks/use-local-storage.ts` exists. If not, create a minimal one:
+Create `apps/web/src/hooks/use-local-storage.ts`. This file does NOT exist in the codebase — you MUST create it before `use-ide-preference.ts` will compile:
 
 ```typescript
 import { useCallback, useState } from 'react'
@@ -531,21 +714,20 @@ interface OpenInIdeButtonProps {
 }
 
 export function OpenInIdeButton({ projectPath, filePath, compact }: OpenInIdeButtonProps) {
-  const { availableIdes, preferredIde, setPreferredIde, openProject, openFile } =
+  const { availableIdes, preferredIde, setPreferredIde, openWithIde } =
     useIdePreference()
   const [open, setOpen] = useState(false)
 
   if (!preferredIde || availableIdes.length === 0) return null
 
   const handleOpen = async (ideId?: string) => {
-    const id = ideId ?? preferredIde.id
-    if (ideId) setPreferredIde(id)
+    const targetId = ideId ?? preferredIde.id
+    if (ideId) setPreferredIde(ideId)
     try {
-      if (filePath) {
-        await openFile(projectPath, filePath)
-      } else {
-        await openProject(projectPath)
-      }
+      // Use openWithIde(targetId, ...) to avoid stale-closure bug.
+      // openProject/openFile closures capture preferredIde from the last render,
+      // so clicking a dropdown item would open the PREVIOUS IDE, not the clicked one.
+      await openWithIde(targetId, projectPath, filePath)
     } catch (e) {
       console.warn('Failed to open IDE:', e)
     }
@@ -656,13 +838,17 @@ interface ChangesTabProps {
 export function ChangesTab({ fileHistory, sessionId, projectPath }: ChangesTabProps) {
 ```
 
-Add `OpenInIdeButton` import and place it in the header after the stats:
+Add `import { OpenInIdeButton } from './OpenInIdeButton'` alongside the existing imports at the top.
+
+Then insert `<OpenInIdeButton>` in the summary header div, after the `−N` stats span and before the closing `</div>` (~line 28). The surrounding code looks like:
 
 ```typescript
-import { OpenInIdeButton } from './OpenInIdeButton'
-
-// In the header div, after the +/- stats spans:
-<OpenInIdeButton projectPath={projectPath} />
+        {summary.totalRemoved > 0 && (
+          <span className="font-mono text-red-500 dark:text-red-400">−{summary.totalRemoved}</span>
+        )}
+        {/* INSERT HERE — after stats, before </div> */}
+        <OpenInIdeButton projectPath={projectPath} />
+      </div>
 ```
 
 - [ ] **Step 2: Add projectPath prop to FileChangeHeader**
@@ -677,12 +863,22 @@ interface FileChangeHeaderProps {
 }
 ```
 
-Add a compact `OpenInIdeButton` in the header row, after the stats/NEW badge:
+Add a compact `OpenInIdeButton` in the header row `<div>` (**NOT** inside the inner expand `<button>`).
+
+The header structure in `FileChangeHeader.tsx` is:
+- `<div>` (flex row, ~line 87) — outer container
+  - `<button>` (expand/collapse, lines 95–106) — chevron + icon + filename. **Closes at line 106.**
+  - Version pills (lines 108–133) — siblings of the button, inside the div
+  - NEW badge (lines 135–140)
+  - Stats spans (lines 142–152) — `+N` / `−N`
+  - **INSERT `<OpenInIdeButton>` HERE** — after stats (~line 152), before `</div>` (~line 153)
+- `</div>` (line 153)
 
 ```typescript
 import { OpenInIdeButton } from './OpenInIdeButton'
 
-// After the stats spans, before the closing of the header button area:
+// Insert AFTER the −N stats span (~line 152), BEFORE the closing </div> (~line 153).
+// This is OUTSIDE the expand <button> (which closes at line 106) — no nested buttons.
 <OpenInIdeButton projectPath={projectPath} filePath={file.filePath} compact />
 ```
 
@@ -739,19 +935,41 @@ export interface ProjectGroup {
 }
 ```
 
-In the `groupSessionsByProjectBranch` function, where `ProjectGroup` objects are constructed, add `projectPath` from the first session in each group. Find where the project groups are built and add:
+In the `groupSessionsByProjectBranch` function, at the `groups.push({` call (~line 100), add:
 
 ```typescript
-projectPath: firstSession.projectPath,
+projectPath: branches[0]?.sessions[0]?.projectPath ?? '',
 ```
 
-The first session in each project group is available from `branchMap` values — use the first session from the first branch.
-
-- [ ] **Step 2: Add projectPath prop to ProjectHeader**
-
-In `KanbanSwimLaneHeader.tsx`, update `ProjectHeaderProps`:
+The full updated `groups.push` block becomes:
 
 ```typescript
+    groups.push({
+      projectName,
+      projectPath: branches[0]?.sessions[0]?.projectPath ?? '',  // NEW
+      branches,
+      totalSessionCount,
+      totalCostUsd,
+      maxActivityAt: projectMaxActivity,
+    })
+```
+
+Note: There is no pre-existing `firstSession` variable in scope at this point. `branches[0].sessions[0]` is the first session from the first branch in the group. `LiveSession.projectPath` is a required `string` (never undefined), so the `?? ''` is just defensive.
+
+- [ ] **Step 2: Refactor ProjectHeader and add projectPath prop**
+
+In `KanbanSwimLaneHeader.tsx`:
+
+**IMPORTANT:** The current `ProjectHeader` root element is a `<button>`. Inserting `<OpenInIdeButton>` (which contains `<button>` elements) inside a `<button>` produces **invalid nested interactive HTML**. Browsers will auto-correct by ejecting the nested buttons, breaking layout and accessibility.
+
+**Fix:** Add `import { OpenInIdeButton } from './OpenInIdeButton'` to the existing imports at the top of `KanbanSwimLaneHeader.tsx`. Then replace ONLY the `ProjectHeader` function (lines 13–46). Leave `BranchHeader` (lines 55–83) and all existing imports (`ChevronDown`, `ChevronRight`, `FolderOpen`, `GitBranch`, `formatCostUsd`, `cn`) unchanged.
+
+Replace the `ProjectHeader` function with:
+
+```typescript
+// Add this import alongside the existing ones at the top of the file:
+// import { OpenInIdeButton } from './OpenInIdeButton'
+
 interface ProjectHeaderProps {
   projectName: string
   projectPath: string  // NEW
@@ -760,20 +978,54 @@ interface ProjectHeaderProps {
   isCollapsed: boolean
   onToggle: () => void
 }
+
+export function ProjectHeader({
+  projectName,
+  projectPath,  // NEW
+  totalCostUsd,
+  sessionCount,
+  isCollapsed,
+  onToggle,
+}: ProjectHeaderProps) {
+  const Chevron = isCollapsed ? ChevronRight : ChevronDown
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onToggle}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle() } }}
+      className={cn(
+        'w-full flex items-center gap-2 py-2 px-3 cursor-pointer',
+        'bg-gray-100/60 dark:bg-gray-800/40',
+        'hover:bg-gray-100 dark:hover:bg-gray-800/60',
+        'transition-colors',
+      )}
+    >
+      <Chevron className="w-4 h-4 text-gray-400 dark:text-gray-500 shrink-0" />
+      <FolderOpen className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />
+      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">
+        {projectName}
+      </span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+        ({sessionCount})
+      </span>
+      <OpenInIdeButton projectPath={projectPath} />
+      <span className="ml-auto text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
+        {formatCostUsd(totalCostUsd)}
+      </span>
+    </div>
+  )
+}
 ```
 
-Add the `OpenInIdeButton` inside the header, after the session count badge and before cost:
+This replaces ONLY the `ProjectHeader` function (lines 13–46). **Do NOT delete `BranchHeader` (lines 55–83) or any other code in this file.** The `<div role="button">` with `tabIndex={0}` and `onKeyDown` preserves keyboard accessibility. The `OpenInIdeButton`'s `e.stopPropagation()` wrapper prevents IDE clicks from toggling collapse.
 
-```typescript
-import { OpenInIdeButton } from './OpenInIdeButton'
+- [ ] **Step 3: Pass projectPath in KanbanView (TWO changes)**
 
-// Inside ProjectHeader render, after session count, before cost:
-<OpenInIdeButton projectPath={projectPath} />
-```
+In `KanbanView.tsx`, make TWO changes:
 
-- [ ] **Step 3: Pass projectPath in KanbanView**
-
-In `KanbanView.tsx`, update the `<ProjectHeader>` call (~line 605):
+**Change A:** Update the `<ProjectHeader>` JSX call (~line 605):
 
 ```typescript
 <ProjectHeader
@@ -784,6 +1036,19 @@ In `KanbanView.tsx`, update the `<ProjectHeader>` call (~line 605):
   isCollapsed={projCollapsed}
   onToggle={() => toggleCollapse(projKey)}
 />
+```
+
+**Change B:** Update the `merged.push()` at ~line 576 (the "closed-only projects" synthesis block) to include the new required field. This is a `ProjectGroup` literal that currently has NO `projectPath` — `tsc` will fail without this:
+
+```typescript
+      merged.push({
+        projectName: projectKey,
+        projectPath: '',  // NEW — no active sessions to derive a path from
+        branches,
+        totalSessionCount: 0,
+        totalCostUsd: 0,
+        maxActivityAt: 0,
+      })
 ```
 
 - [ ] **Step 4: Verify types resolve**
@@ -805,15 +1070,15 @@ git commit -m "feat(ide): wire OpenInIdeButton into Kanban swimlane project head
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Build everything**
+- [ ] **Step 1: Build frontend (Rust was already verified in Task 7)**
 
 Run: `bun run build`
-Expected: All tasks successful, no errors.
+Expected: All Turbo tasks successful, no errors. Note: `bun run build` runs `turbo build` which covers JS/TS apps only. The Rust binary was compiled and verified in Task 7 Step 3.
 
-- [ ] **Step 2: Run Rust tests for server crate**
+- [ ] **Step 2: Run Rust tests for server crate (includes new ide::tests)**
 
 Run: `cargo test -p claude-view-server`
-Expected: All existing tests pass (no new tests needed for fire-and-forget spawn logic).
+Expected: All tests pass, including the 4 new `ide::tests` from Task 7b.
 
 - [ ] **Step 3: Run frontend typecheck**
 
@@ -856,3 +1121,34 @@ All three should return 400 with error messages.
 git add -A
 git commit -m "fix(ide): address issues found during smoke testing"
 ```
+
+---
+
+## Changelog of Fixes Applied (Audit → Final Plan)
+
+| # | Issue | Severity | Fix Applied |
+|---|-------|----------|-------------|
+| 1 | `--goto` flag sent to ALL IDEs — breaks Zed & JetBrains file-open | Blocker | Task 6: Gate `--goto` on `matches!(req.ide.as_str(), "vscode" \| "cursor" \| "windsurf")`; other IDEs get positional arg only |
+| 2 | `create_app_full()` and `create_app_with_git_sync()` in `lib.rs` — plan missed both struct literals | Blocker | Tasks 3 & 4: Explicitly list all 5 construction sites; Task 4 fixes both `lib.rs` sites |
+| 3 | Codegen command `--ignored` runs zero tests (ts-rs tests are NOT `#[ignore]`) | Blocker | Task 8: Replaced with `./scripts/generate-types.sh` (canonical entry point, uses `--nocapture`) |
+| 4 | `ProjectHeader` root is `<button>` — nesting `OpenInIdeButton` creates invalid HTML | Blocker | Task 12 Step 2: Full rewrite from `<button>` to `<div role="button">` with keyboard accessibility |
+| 5 | `std::process::Command` spawn creates zombie processes | Warning | Task 6: Switched to `tokio::process::Command` which auto-reaps via SIGCHLD |
+| 6 | Task 4 pointed to `main.rs` but AppState constructed in `lib.rs` | Warning | Task 4: Rewritten to target `lib.rs:create_app_full()` directly |
+| 7 | Plan says "no new tests needed" — 6 security paths are testable | Warning | Added Task 7b with 4 endpoint tests (detect, reject relative path, reject unknown IDE, reject traversal) |
+| 8 | `projectPath` population says `firstSession.projectPath` but no such variable in scope | Warning | Task 12 Step 1: Replaced with `branches[0]?.sessions[0]?.projectPath ?? ''` with full code block |
+| 9 | `ApiError::Internal` hides detail from client — plan implies client sees it | Minor | Task 6: Added comment explaining server-only logging behavior |
+| 10 | Architecture header said `POST /api/open-in-ide` but code uses `/api/ide/open` | Minor | Fixed architecture description to show actual endpoint paths |
+| 11 | `bun run build` is frontend-only but Task 13 implied "build everything" | Minor | Task 13 Step 1: Added clarification that Rust was verified in Task 7 |
+| 12 | Task 7 commit staged `main.rs` but changes are in `lib.rs` | Minor | Fixed `git add` to list `lib.rs` instead of `main.rs` |
+| 13 | `Database::in_memory()` doesn't exist — real API is async `new_in_memory()` | Blocker | Task 7b: Fixed to `async fn test_app()` with `Database::new_in_memory().await` |
+| 14 | 5th AppState construction site `create_app_with_git_sync()` in `lib.rs:115` missed | Blocker | Tasks 3 & 4: Added as 5th site, Task 4 Step 2 adds `available_ides: Vec::new()` there |
+| 15 | `test_open_rejects_relative_path` hits "IDE not found" before path check (empty `available_ides`) | Blocker | Task 7b: Tests now seed a fake `"testvscode"` IDE via `Arc::get_mut` pattern (matches coaching.rs) |
+| 16 | Stale closure in `handleOpen` — dropdown opens wrong (prior) IDE | Blocker | Task 9: Added `openWithIde(ideId, ...)` escape hatch; Task 10: `handleOpen` uses it |
+| 17 | Unused `use std::path::Path` import | Warning | Task 1: Removed dead import |
+| 18 | Ambiguous `FileChangeHeader` insertion point — could nest inside `<button>` | Warning | Task 11 Step 2: Added full structural diagram showing insert between line 152 and `</div>` at 153 |
+| 19 | Task 12 Step 2 code block looks like full-file rewrite — would delete `BranchHeader` | Blocker | Added explicit "replace ONLY ProjectHeader (lines 13–46), leave BranchHeader (lines 55–83) unchanged" |
+| 20 | Unused `openProject`/`openFile` in destructure — Biome lint rejects unused vars | Blocker | Task 10: Removed from destructure, only `openWithIde` is used |
+| 21 | ChangesTab insertion point lacks surrounding-line context — ambiguous placement | Warning | Task 11 Step 1: Added explicit code snippet with `totalRemoved` span → insert → `</div>` |
+| 22 | `use-local-storage.ts` doesn't exist but creation was conditional ("if not, create") — import is unconditional | Blocker | Task 9 Step 2: Changed to MANDATORY creation with explicit "this file does NOT exist" warning |
+| 23 | `merged.push()` at KanbanView.tsx:576 missing required `projectPath` field — tsc compile error | Blocker | Task 12 Step 3: Added "Change B" updating `merged.push()` with `projectPath: ''` |
+| 24 | `AvailableIdesHolder` type alias creates inverted `state → routes::ide` dependency | Warning | Task 3 Step 2: Added note acknowledging the inversion; acceptable for MVP |

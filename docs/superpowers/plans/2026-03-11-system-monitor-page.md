@@ -1,5 +1,7 @@
 # System Monitor Page Implementation Plan
 
+> **Status:** 🚨 L1 Launch Blocker · Queued
+>
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a `/monitor` page that shows real-time system resource usage (CPU, RAM, disk, network), all active Claude sessions with per-process metrics, and a top-5 expandable process list — using a lazy observer pattern with zero overhead when the page is not open.
