@@ -168,6 +168,17 @@ export function useControlSession(sessionId: string | null) {
               }
 
             case 'assistant_done':
+              // Guard: skip materializing when no chunks preceded this done event.
+              // The server may send assistant_done with zero chunks (e.g. empty turn).
+              if (!prev.streamingContent) {
+                return {
+                  ...prev,
+                  streamingContent: '',
+                  streamingMessageId: '',
+                  sessionCost: msg.totalCost,
+                  lastTurnCost: msg.cost,
+                }
+              }
               return {
                 ...prev,
                 messages: [
@@ -341,6 +352,17 @@ export function useControlSession(sessionId: string | null) {
                 streamingMessageId: msg.messageId,
               }
             case 'assistant_done':
+              // Guard: skip materializing when no chunks preceded this done event.
+              // The server may send assistant_done with zero chunks (e.g. empty turn).
+              if (!prev.streamingContent) {
+                return {
+                  ...prev,
+                  streamingContent: '',
+                  streamingMessageId: '',
+                  sessionCost: msg.totalCost,
+                  lastTurnCost: msg.cost,
+                }
+              }
               return {
                 ...prev,
                 messages: [
@@ -505,6 +527,7 @@ export function useControlSession(sessionId: string | null) {
     planApproval: ui.planApproval,
     elicitation: ui.elicitation,
     error: ui.error,
+    fatalCode: connState.phase === 'fatal' ? (connState.code ?? null) : null,
     sendMessage,
     sendRaw,
     respondPermission,
