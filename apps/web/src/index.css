@@ -397,6 +397,12 @@ body {
   gap: 1rem;
 }
 
+/* Streaming cursor blink: used by StreamingFooter */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* Indeterminate progress bar: slides a bar back and forth */
 @keyframes indeterminate {
   0% {
