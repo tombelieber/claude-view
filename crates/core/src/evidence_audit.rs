@@ -19,6 +19,8 @@ pub struct Baseline {
     pub system_subtypes: SystemSubtypes,
     pub progress_data_types: ProgressDataTypes,
     pub thinking_block_keys: ThinkingBlockKeys,
+    #[serde(default)]
+    pub field_extraction_paths: Option<FieldExtractionPaths>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +65,12 @@ pub struct ProgressDataTypes {
 #[derive(Debug, Deserialize)]
 pub struct ThinkingBlockKeys {
     pub required: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FieldExtractionPaths {
+    pub extracted: Vec<String>,
+    pub intentionally_ignored: Vec<String>,
 }
 
 // ─── Line Signal Extraction ──────────────────────────────────────
