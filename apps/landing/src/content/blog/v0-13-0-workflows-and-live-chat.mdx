@@ -1,0 +1,50 @@
+---
+title: "Workflows: Build Multi-Stage AI Pipelines from a Chat"
+description: "v0.13.0 introduces a workflow system where you describe a pipeline in natural language and watch it render as a live Mermaid diagram, plus unified live chat and recently closed sessions."
+date: 2026-03-11
+author: claude-view team
+---
+
+What if you could describe a multi-stage process in plain English and have it turn into an executable pipeline — while you watch? That's the idea behind Workflows, the headline feature in v0.13.0.
+
+## Designing pipelines through conversation
+
+The Workflows page is a new section in the sidebar. Open it and you see a library grid of your saved workflows. Create a new one, and you land in a detail view with a familiar VS Code-style layout: resizable panels, a tab strip, and a chat rail on the right.
+
+The chat rail is where it gets interesting. Describe what you want — "polish this implementation plan by checking each step against the codebase, then rewrite unclear steps" — and the LLM streams back a YAML workflow definition in real time. As it writes, the Mermaid diagram in the preview tab updates live. You see your pipeline take shape as a directed graph while the AI is still generating it.
+
+Two chat modes let you shape the workflow iteratively. **Control mode** modifies the workflow definition directly. **Review mode** critiques the current definition and suggests improvements without changing it. Switch between them as you refine the pipeline.
+
+## Running workflows
+
+The runner tab shows your workflow as stage columns, similar to a kanban board turned sideways. Each stage has attempt cards that track execution state: pending, running, succeeded, failed. A progress bar across the top shows overall completion.
+
+Under the hood, the Node.js sidecar process handles execution. Each stage runs in sequence with gate polling — the runner checks whether the previous stage's output satisfies the next stage's preconditions before proceeding. If a stage crashes, the runner recovers automatically: it detects the failure, logs the crash context, and can retry the stage without losing progress on earlier stages.
+
+Two built-in workflows ship with v0.13.0: **Plan Polisher** (reviews and tightens implementation plans) and **Plan Executor** (runs plan steps sequentially with verification). Both are stored as YAML files and can be forked or edited.
+
+## Unified live chat
+
+Before v0.13.0, watching a live session meant seeing only real-time messages as they arrived. If you opened the live monitor after a session had been running for a while, you missed everything that happened before.
+
+Now the live session view loads the full message history first, then appends real-time messages seamlessly below. One continuous scroll view, no tab switching, no "load earlier messages" button. History and live events merge into a single conversation stream.
+
+## Recently closed sessions
+
+Sessions used to disappear from the Live Monitor the moment they ended. If you stepped away for five minutes and came back, you'd have no idea which sessions had just finished or what they accomplished.
+
+The Live Monitor now has a "Recently Closed" section. When a session's process exits, the session moves from the active list to the recently closed list with a timestamp. You can dismiss individual sessions or clear the entire section. The closed state persists in SQLite, so recently closed sessions survive server restarts.
+
+## Everything else
+
+- **Dynamic model list** — The model selector fetches available models from the backend, with full model IDs in tooltips
+- **Queued message indicators** — Pending user messages show as faded bubbles with a "Queued" badge
+- **Production hardening** — Six security and correctness fixes across the workflow endpoints
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Workflows page to create your first pipeline. Try describing a process you run manually today and watch it become a diagram.
