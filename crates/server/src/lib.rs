@@ -226,6 +226,9 @@ pub fn create_app_full(
         prompt_templates,
     });
 
+    // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
+    crate::routes::workflows::seed_official_workflows();
+
     // Refresh pricing table from litellm on startup and every 24h.
     {
         let pricing = state.pricing.clone();
