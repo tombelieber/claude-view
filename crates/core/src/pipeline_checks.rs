@@ -707,10 +707,9 @@ pub fn check_field_coverage(
     for (path, count) in &inventory.paths {
         let is_known = extracted.contains(path.as_str())
             || ignored.contains(path.as_str())
-            || baseline
-                .intentionally_ignored
-                .iter()
-                .any(|ign| path.starts_with(&format!("{}.", ign)));
+            || baseline.intentionally_ignored.iter().any(|ign| {
+                path.starts_with(&format!("{}.", ign)) || path.starts_with(&format!("{}[", ign))
+            });
         if is_known {
             accum.record_pass();
         } else {
