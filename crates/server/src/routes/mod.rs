@@ -38,6 +38,7 @@ pub mod teams;
 pub mod terminal;
 pub mod trends;
 pub mod turns;
+pub mod workflows;
 
 use std::sync::Arc;
 
@@ -146,6 +147,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", share::router())
         .nest("/api", plugins::router())
         .nest("/api", teams::router())
+        .nest("/api", workflows::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
