@@ -113,6 +113,7 @@ mod tests {
             prompt_index: Arc::new(std::sync::RwLock::new(None)),
             prompt_stats: Arc::new(std::sync::RwLock::new(None)),
             prompt_templates: Arc::new(std::sync::RwLock::new(None)),
+            available_ides: Vec::new(),
         });
 
         let app = Router::new()
