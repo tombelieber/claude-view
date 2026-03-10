@@ -1694,16 +1694,15 @@ impl LiveSessionManager {
                 }
             }
 
+            // --- Team name tracking (from top-level `teamName` JSONL field) ---
+            if acc.team_name.is_none() {
+                if let Some(ref tn) = line.team_name {
+                    acc.team_name = Some(tn.clone());
+                }
+            }
+
             // --- Sub-agent spawn tracking ---
             for spawn in &line.sub_agent_spawns {
-                // Team spawns are NOT sub-agents — skip.
-                if spawn.team_name.is_some() {
-                    if acc.team_name.is_none() {
-                        acc.team_name = spawn.team_name.clone();
-                    }
-                    continue;
-                }
-
                 // Guard against re-processing the same spawn line
                 // (can happen if accumulator reset while file exists, or offset tracking bug)
                 if acc
