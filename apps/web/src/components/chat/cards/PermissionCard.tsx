@@ -1,5 +1,6 @@
 import { ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { cn } from '../../../lib/utils'
 import { InteractiveCardShell } from './InteractiveCardShell'
 
 export interface PermissionCardProps {
@@ -154,13 +155,23 @@ export function PermissionCard({ permission, onRespond, resolved }: PermissionCa
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
               <div
-                className="h-full bg-amber-500 rounded-full transition-all duration-1000 ease-linear"
+                className={cn(
+                  'h-full rounded-full transition-all duration-1000 ease-linear',
+                  countdown < 10 ? 'bg-red-500 animate-pulse' : 'bg-amber-500',
+                )}
                 style={{
                   width: `${(countdown / totalSeconds) * 100}%`,
                 }}
               />
             </div>
-            <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 tabular-nums w-6 text-right">
+            <span
+              className={cn(
+                'text-[10px] font-mono tabular-nums w-6 text-right',
+                countdown < 10
+                  ? 'text-red-500 dark:text-red-400 font-bold'
+                  : 'text-gray-500 dark:text-gray-400',
+              )}
+            >
               {countdown}s
             </span>
           </div>
