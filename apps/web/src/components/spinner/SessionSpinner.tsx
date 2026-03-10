@@ -118,7 +118,10 @@ export function SessionSpinner(props: SessionSpinnerProps) {
         {shortModel && (
           <>
             <span className="text-gray-500 dark:text-gray-400"> · </span>
-            <span className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+            <span
+              className="text-gray-500 dark:text-gray-400 font-mono tabular-nums"
+              title={model ?? undefined}
+            >
               {shortModel}
             </span>
           </>
@@ -230,10 +233,10 @@ export function SessionSpinner(props: SessionSpinnerProps) {
         {arrow}
         {formattedTokens}
         {shortModel && (
-          <>
+          <span title={model ?? undefined}>
             {' · '}
             {shortModel}
-          </>
+          </span>
         )}
       </span>
     </span>

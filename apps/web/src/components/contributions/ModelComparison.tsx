@@ -179,7 +179,10 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                     className="border-b border-gray-100 dark:border-gray-800 last:border-0"
                   >
                     <td className="py-3 pr-4">
-                      <span className="font-medium text-gray-900 dark:text-gray-100">
+                      <span
+                        className="font-medium text-gray-900 dark:text-gray-100"
+                        title={model.model}
+                      >
                         {formatModelFamily(model.model)}
                       </span>
                     </td>
