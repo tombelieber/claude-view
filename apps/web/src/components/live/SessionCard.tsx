@@ -115,20 +115,26 @@ export function SessionCard({
     ? 'Unavailable'
     : formatCostUsd(totalCost)
 
-  const cardClassName =
-    'group block rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors'
+  const isAutonomous = session.agentState.group === 'autonomous'
+  const isCompacting = session.agentState.state === 'compacting'
+  const cardClassName = `group block rounded-lg border bg-white dark:bg-gray-900 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/70 cursor-pointer transition-colors ${
+    isCompacting ? 'animate-live-compact-breathe' : 'border-gray-200 dark:border-gray-700'
+  }`
 
   const cardContent = (
     <>
       {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          {session.agentState.group === 'autonomous' && (
-            <span
-              data-testid="pulse-dot"
-              className="inline-block w-2 h-2 rounded-full bg-green-500 flex-shrink-0 motion-safe:animate-pulse"
-              aria-hidden="true"
-            />
+          {isAutonomous && (
+            <span className="relative inline-flex flex-shrink-0 w-2.5 h-2.5" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full bg-green-400/70 motion-safe:animate-live-ring" />
+              <span className="absolute inset-0 rounded-full bg-green-300/50 motion-safe:animate-live-ring2" />
+              <span
+                data-testid="pulse-dot"
+                className="relative inline-block w-2.5 h-2.5 rounded-full bg-green-500 motion-safe:animate-live-breathe"
+              />
+            </span>
           )}
           {!hideProjectBranch && (
             <>
@@ -198,10 +204,12 @@ export function SessionCard({
 
       {/* IDE file context chip */}
       {session.lastUserFile && (
-        <p className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mb-1">
-          <FileText className="h-3 w-3 shrink-0" />
-          <span className="font-mono truncate">{session.lastUserFile}</span>
-        </p>
+        <div className="flex items-center gap-1 mb-1">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 truncate max-w-full">
+            <FileText className="h-2.5 w-2.5 shrink-0" />
+            {session.lastUserFile.split('/').pop()}
+          </span>
+        </div>
       )}
 
       {/* Spinner row */}
@@ -232,16 +240,22 @@ export function SessionCard({
         <TaskProgressList items={session.progressItems} />
       )}
 
-      {/* Team badge or Sub-agent pills */}
-      {session.teamName ? (
-        <div className="mb-2 -mx-1 px-2 py-1">
-          <span className="text-xs text-gray-600 dark:text-gray-400">Team: {session.teamName}</span>
+      {/* Team badge — distinct from sub-agents (different hierarchy level) */}
+      {session.teamName && (
+        <div className="mb-2 -mx-1 px-1">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200">
+            <TreePine className="h-3 w-3 shrink-0" />
+            {session.teamName}
+          </span>
         </div>
-      ) : session.subAgents && session.subAgents.length > 0 ? (
+      )}
+
+      {/* Sub-agent pills — shown independently from team */}
+      {session.subAgents && session.subAgents.length > 0 && (
         <div className="mb-2 -mx-1">
           <SubAgentPills subAgents={session.subAgents} />
         </div>
-      ) : null}
+      )}
 
       {/* Tool integrations (MCP servers, Skills) */}
       {session.toolsUsed && session.toolsUsed.length > 0 && (
@@ -266,15 +280,7 @@ export function SessionCard({
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
         {(session.compactCount ?? 0) > 0 && (
-          <span
-            className={`inline-flex items-center gap-0.5 ${
-              (session.compactCount ?? 0) >= 4
-                ? 'text-red-500'
-                : (session.compactCount ?? 0) >= 2
-                  ? 'text-amber-500'
-                  : 'text-gray-400 dark:text-gray-500'
-            }`}
-          >
+          <span className="inline-flex items-center gap-0.5 text-sky-500 dark:text-sky-400">
             <Minimize2 className="h-3 w-3" />
             {session.compactCount} {session.compactCount === 1 ? 'compact' : 'compacts'}
           </span>
@@ -285,23 +291,16 @@ export function SessionCard({
 
   if (onClickOverride) {
     return (
-      <div
+      <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           onClickOverride()
         }}
-        className={cardClassName}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClickOverride()
-          }
-        }}
+        className={`w-full text-left ${cardClassName}`}
       >
         {cardContent}
-      </div>
+      </button>
     )
   }
 

@@ -446,6 +446,136 @@ body {
   animation: timeline-bar-grow 1.5s ease-in-out infinite;
 }
 
+/* ── Live session "card draw" pulse ── */
+/* Poker deal feel: fast charge → snap peak → exhale → hold → repeat */
+
+/* Inner dot: rapid charge, bright snap, slow decay */
+@keyframes live-breathe {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    filter: brightness(1);
+  }
+  /* Fast charge — 40% of cycle */
+  40% {
+    transform: scale(1.5);
+    box-shadow: 0 0 10px 5px rgba(34, 197, 94, 0.6);
+    filter: brightness(1.6);
+  }
+  /* Snap peak — brief flash */
+  50% {
+    transform: scale(1.25);
+    box-shadow: 0 0 18px 8px rgba(74, 222, 128, 0.45);
+    filter: brightness(2);
+  }
+  /* Exhale back down */
+  75% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.1);
+    filter: brightness(0.85);
+  }
+  /* Hold dim */
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    filter: brightness(1);
+  }
+}
+
+/* Ring: tight charge burst → fast blast out → gone */
+@keyframes live-breathe-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  /* Quick hold before blast */
+  15% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  /* Blast out fast */
+  55% {
+    transform: scale(3.2);
+    opacity: 0.15;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* Secondary delayed ring for zip/echo feel */
+@keyframes live-breathe-ring2 {
+  0%, 20% {
+    transform: scale(1);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.3);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3.8);
+    opacity: 0;
+  }
+}
+
+.animate-live-breathe {
+  animation: live-breathe 1.6s cubic-bezier(0.25, 0, 0.1, 1) infinite;
+}
+.animate-live-ring {
+  animation: live-breathe-ring 1.6s cubic-bezier(0.1, 0, 0.2, 1) infinite;
+}
+.animate-live-ring2 {
+  animation: live-breathe-ring2 1.6s cubic-bezier(0.1, 0, 0.2, 1) infinite;
+}
+
+/* Compacting card: border-color + box-shadow + opacity — all animate together */
+@keyframes live-compact-breathe {
+  0%   {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.25), 0 0 16px 0 rgba(56,189,248,0.15);
+    opacity: 1;
+  }
+  45%  {
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 6px rgba(125,211,252,0.40), 0 0 32px 4px rgba(56,189,248,0.30);
+    opacity: 0.62;
+  }
+  60%  {
+    border-color: #bae6fd;
+    box-shadow: 0 0 0 8px rgba(186,230,253,0.50), 0 0 42px 8px rgba(56,189,248,0.38);
+    opacity: 0.55;
+  }
+  75%  {
+    border-color: #7dd3fc;
+    box-shadow: 0 0 0 5px rgba(125,211,252,0.30), 0 0 24px 2px rgba(56,189,248,0.20);
+    opacity: 0.78;
+  }
+  100% {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 3px rgba(56,189,248,0.25), 0 0 16px 0 rgba(56,189,248,0.15);
+    opacity: 1;
+  }
+}
+.animate-live-compact-breathe {
+  border-width: 2px !important;
+  animation: live-compact-breathe 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+/* Inner content wrapper */
+.animate-live-compact-content { display: contents; }
+
+/* Compacting state: sky-blue shimmer sweep on the spinner bar */
+@keyframes live-compact-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.animate-live-compact-bar {
+  background: linear-gradient(90deg, #0c2a3a, #38bdf8, #7dd3fc, #38bdf8, #0c2a3a);
+  background-size: 300% 100%;
+  animation: live-compact-shimmer 3s linear infinite;
+}
+
 /* Search highlight: <mark> tags from Tantivy snippet generator */
 mark {
   background: #fef08a;
