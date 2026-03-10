@@ -24,6 +24,7 @@ import { useSessionControl } from '../hooks/use-session-control'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useSessionMessages } from '../hooks/use-session-messages'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
+import { type ConversationItem, buildConversationItems } from '../lib/conversation-items'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -33,6 +34,7 @@ import {
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
 import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
 import { messagesToRichMessages } from '../lib/message-to-rich'
+import { getContextWindow } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import { cn } from '../lib/utils'
@@ -48,6 +50,8 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
+import { LiveMessageBubble } from './chat/LiveMessageBubble'
+import { StreamingFooter } from './chat/StreamingFooter'
 import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
@@ -108,6 +112,28 @@ export function ConversationView() {
 
   // Chat input bar: resume flow
   const sessionControl = useSessionControl(sessionId || '')
+
+  // Seed context % from DB until the WS session_status event arrives.
+  // Use model-specific context window (not hardcoded 200K) for accurate gauge.
+  // WS value starts at 0 and only updates after resume connects — so without
+  // this seed, the gauge shows 0% even though the session overview shows usage.
+  // Math.max ensures the live WS value wins once it arrives (it's always accurate).
+  const contextWindow = getContextWindow(sessionDetail?.primaryModel)
+  const dbContextPercent = sessionDetail?.totalInputTokens
+    ? Math.round((sessionDetail.totalInputTokens / contextWindow) * 100)
+    : 0
+  const contextPercent = Math.max(sessionControl.contextPercent, dbContextPercent)
+
+  // Mode + model state for ChatInputBar (UI-only for MVP — sent with future protocol)
+  const [chatMode, setChatMode] = useState<'plan' | 'code' | 'ask'>('code')
+  const [chatModel, setChatModel] = useState('claude-sonnet-4-6')
+
+  // Sync chatModel when sessionDetail loads (it's undefined on first render)
+  useEffect(() => {
+    if (sessionDetail?.primaryModel) {
+      setChatModel(sessionDetail.primaryModel)
+    }
+  }, [sessionDetail?.primaryModel])
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
@@ -318,13 +344,19 @@ export function ConversationView() {
   )
   const hiddenCount = allMessages.length - filteredMessages.length
 
+  // Build unified conversation items: history + divider + live messages
+  const conversationItems = useMemo(
+    () => buildConversationItems(filteredMessages, sessionControl.messages),
+    [filteredMessages, sessionControl.messages],
+  )
+
   // Virtuoso reverse-infinite-scroll: firstItemIndex must decrease as items
   // are prepended so Virtuoso can adjust scroll position and keep firing
   // startReached. See https://virtuoso.dev/prepend-items/
   const FIRST_ITEM_START = 1_000_000
   const firstItemIndex = useMemo(
-    () => FIRST_ITEM_START - filteredMessages.length,
-    [filteredMessages.length],
+    () => FIRST_ITEM_START - conversationItems.length,
+    [conversationItems.length],
   )
 
   // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
@@ -729,19 +761,44 @@ export function ConversationView() {
                 <ThreadHighlightProvider>
                   <ExpandProvider>
                     <Virtuoso
-                      data={filteredMessages}
+                      data={conversationItems}
                       firstItemIndex={firstItemIndex}
                       startReached={handleStartReached}
-                      initialTopMostItemIndex={Math.max(0, filteredMessages.length - 1)}
+                      initialTopMostItemIndex={Math.max(0, conversationItems.length - 1)}
                       followOutput="smooth"
-                      itemContent={(index, message) => {
+                      itemContent={(_index, item: ConversationItem) => {
+                        if (item.kind === 'divider') {
+                          return (
+                            <div className="max-w-4xl mx-auto px-6 py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                                <span className="text-xs font-medium text-blue-500 dark:text-blue-400">
+                                  Live session
+                                </span>
+                                <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                              </div>
+                            </div>
+                          )
+                        }
+                        if (item.kind === 'live') {
+                          return (
+                            <div className="max-w-4xl mx-auto px-6 pb-4">
+                              <LiveMessageBubble
+                                message={item.message}
+                                onRetry={sessionControl.retry}
+                              />
+                            </div>
+                          )
+                        }
+                        // item.kind === 'history'
+                        const message = item.message
                         const thread = message.uuid ? threadMap.get(message.uuid) : undefined
                         return (
                           <div className="max-w-4xl mx-auto px-6 pb-4">
-                            <ErrorBoundary key={message.uuid || index}>
+                            <ErrorBoundary key={message.uuid || _index}>
                               <MessageTyped
                                 message={message}
-                                messageIndex={index}
+                                messageIndex={_index}
                                 messageType={message.role}
                                 metadata={message.metadata}
                                 parentUuid={thread?.parentUuid}
@@ -769,16 +826,17 @@ export function ConversationView() {
                           ) : (
                             <div className="h-6" />
                           ),
-                        Footer: () =>
-                          filteredMessages.length > 0 ? (
-                            <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-                              {totalMessages} messages
-                              {hiddenCount > 0 && <> &bull; {hiddenCount} hidden in chat view</>}
-                              {sessionInfo && sessionInfo.toolCallCount > 0 && (
-                                <> &bull; {sessionInfo.toolCallCount} tool calls</>
-                              )}
-                            </div>
-                          ) : null,
+                        Footer: () => (
+                          <div className="max-w-4xl mx-auto px-6">
+                            <StreamingFooter
+                              streamingContent={sessionControl.streamingContent}
+                              phase={sessionControl.phase}
+                              liveMessageCount={sessionControl.messages.length}
+                              totalMessages={totalMessages}
+                              hiddenCount={hiddenCount}
+                            />
+                          </div>
+                        ),
                       }}
                       increaseViewportBy={{ top: 400, bottom: 400 }}
                       className="h-full overflow-auto"
@@ -793,11 +851,18 @@ export function ConversationView() {
               />
             )}
           </div>
-          <ConnectionBanner health={sessionControl.connectionHealth} />
+          <ConnectionBanner
+            health={sessionControl.connectionHealth}
+            errorMessage={sessionControl.errorMessage}
+          />
           <ChatInputBar
             onSend={sessionControl.send}
             state={sessionControl.inputBarState}
-            contextPercent={sessionControl.contextPercent}
+            contextPercent={contextPercent}
+            mode={chatMode}
+            onModeChange={setChatMode}
+            model={chatModel}
+            onModelChange={setChatModel}
           />
         </div>
 

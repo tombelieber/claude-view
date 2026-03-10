@@ -89,9 +89,7 @@ export class SessionManager {
 
     const sdkSession = unstable_v2_resumeSession(sessionId, {
       model: model ?? 'claude-sonnet-4-20250514',
-      env: {
-        ...(projectPath ? { CLAUDE_CWD: projectPath } : {}),
-      },
+      ...(projectPath ? { cwd: projectPath } : {}),
       canUseTool: async (toolName, input, { signal }) => {
         return this.handleCanUseTool(cs, toolName, input, signal)
       },
@@ -301,7 +299,8 @@ export class SessionManager {
         for await (const msg of cs.sdkSession.stream()) {
           switch (msg.type) {
             case 'stream_event': {
-              // Real-time text chunks (needs includePartialMessages: true)
+              // V2 SDK does NOT emit stream_event — kept for forward-compat
+              // if includePartialMessages is added to SDKSessionOptions.
               const event = (msg as SDKMessage & { type: 'stream_event' }).event
               if (
                 event?.type === 'content_block_delta' &&
@@ -318,11 +317,19 @@ export class SessionManager {
               break
             }
             case 'assistant': {
-              // Complete assistant message with all content blocks
+              // V2 SDK delivers complete assistant messages (not streaming chunks).
+              // Each message contains content blocks: text, tool_use, thinking.
+              // Emit text blocks as assistant_chunk so the client can render them.
               messageId = crypto.randomUUID()
               const assistantMsg = msg as SDKMessage & { type: 'assistant' }
               for (const block of assistantMsg.message.content) {
-                if (block.type === 'tool_use') {
+                if (block.type === 'text' && block.text) {
+                  this.emitSequenced(cs, {
+                    type: 'assistant_chunk',
+                    content: block.text,
+                    messageId,
+                  })
+                } else if (block.type === 'tool_use') {
                   this.emitSequenced(cs, {
                     type: 'tool_use_start',
                     toolName: block.name,
