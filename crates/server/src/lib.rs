@@ -36,8 +36,8 @@ pub use metrics::{init_metrics, record_request, record_storage, record_sync, Req
 pub use routes::api_routes;
 pub use sidecar::SidecarManager;
 pub use state::{
-    AppState, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder, RegistryHolder,
-    SearchIndexHolder, ShareConfig,
+    AppState, AvailableIdesHolder, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder,
+    RegistryHolder, SearchIndexHolder, ShareConfig,
 };
 
 use std::collections::HashMap;
@@ -147,6 +147,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         prompt_index: Arc::new(std::sync::RwLock::new(None)),
         prompt_stats: Arc::new(std::sync::RwLock::new(None)),
         prompt_templates: Arc::new(std::sync::RwLock::new(None)),
+        available_ides: Vec::new(),
     });
     api_routes(state)
 }
@@ -191,6 +192,18 @@ pub fn create_app_full(
             .unwrap_or(47892),
     );
 
+    // Detect installed IDEs (runs `which` for each known command).
+    let available_ides = routes::ide::detect_installed_ides();
+    if available_ides.is_empty() {
+        tracing::info!("No known IDEs detected on PATH");
+    } else {
+        let names: Vec<&str> = available_ides
+            .iter()
+            .map(|(info, _)| info.name.as_str())
+            .collect();
+        tracing::info!(ides = ?names, "Detected installed IDEs");
+    }
+
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -224,6 +237,7 @@ pub fn create_app_full(
         prompt_index,
         prompt_stats,
         prompt_templates,
+        available_ides,
     });
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)

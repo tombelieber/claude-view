@@ -839,7 +839,11 @@ export function SessionDetailPanel({
 
         {/* ---- Changes tab ---- */}
         {activeTab === 'changes' && hasChanges && (
-          <ChangesTab fileHistory={fileHistory!} sessionId={data.id} />
+          <ChangesTab
+            fileHistory={fileHistory!}
+            sessionId={data.id}
+            projectPath={data.projectPath}
+          />
         )}
 
         {/* ---- Plan tab ---- */}
