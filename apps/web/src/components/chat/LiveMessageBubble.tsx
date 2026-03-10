@@ -1,10 +1,13 @@
 import { AlertCircle, Check, Loader2, RefreshCw, Wrench } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { ChatMessageWithStatus } from '../../types/control'
+import { ThinkingBlock } from './ThinkingBlock'
 
 interface LiveMessageBubbleProps {
   message: ChatMessageWithStatus
   onRetry?: (localId: string) => void
+  verbose?: boolean
+  toolResult?: { output: string; isError: boolean; duration?: number } | null
 }
 
 function StatusIndicator({ message, onRetry }: LiveMessageBubbleProps) {
@@ -43,17 +46,78 @@ function formatTime(ts: number | undefined): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export function LiveMessageBubble({ message, onRetry }: LiveMessageBubbleProps) {
-  if (message.role === 'tool_use') {
+export function LiveMessageBubble({
+  message,
+  onRetry,
+  verbose,
+  toolResult,
+}: LiveMessageBubbleProps) {
+  // --- Thinking blocks ---
+  if (message.role === 'thinking') {
+    if (!verbose) return null // hidden in chat mode
     return (
-      <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
-        <Wrench className="w-3.5 h-3.5" />
-        <span className="font-mono">{message.toolName ?? 'tool'}</span>
+      <div className="px-4 py-2">
+        <ThinkingBlock content={message.content ?? ''} />
       </div>
     )
   }
 
+  // --- Tool use ---
+  if (message.role === 'tool_use') {
+    if (!verbose) {
+      // Compact: one-line summary
+      return (
+        <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+          <Wrench className="w-3.5 h-3.5" />
+          <span className="font-mono">{message.toolName ?? 'tool'}</span>
+          {toolResult && (
+            <span
+              className={cn(
+                'ml-auto',
+                toolResult.isError
+                  ? 'text-red-500 dark:text-red-400'
+                  : 'text-green-500 dark:text-green-400',
+              )}
+            >
+              {toolResult.isError ? 'error' : 'done'}
+            </span>
+          )}
+        </div>
+      )
+    }
+    // Verbose: show full tool input
+    return (
+      <div className="px-4 py-2 space-y-1">
+        <div className="flex items-center gap-2 text-xs">
+          <Wrench className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400" />
+          <span className="font-mono font-medium text-purple-700 dark:text-purple-300">
+            {message.toolName ?? 'tool'}
+          </span>
+        </div>
+        <pre className="text-[11px] text-gray-600 dark:text-gray-400 font-mono overflow-x-auto max-h-48 whitespace-pre-wrap bg-gray-50 dark:bg-gray-800/50 rounded p-2">
+          {JSON.stringify(message.toolInput, null, 2)}
+        </pre>
+        {toolResult && (
+          <div
+            className={cn(
+              'border-l-2 pl-2 mt-1',
+              toolResult.isError
+                ? 'border-red-300 dark:border-red-700'
+                : 'border-green-300 dark:border-green-700',
+            )}
+          >
+            <pre className="text-[11px] text-gray-600 dark:text-gray-400 font-mono overflow-x-auto max-h-48 whitespace-pre-wrap">
+              {toolResult.output}
+            </pre>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // --- Tool result (standalone, only in verbose) ---
   if (message.role === 'tool_result') {
+    if (!verbose) return null
     return (
       <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
         {message.isError ? (
@@ -61,11 +125,12 @@ export function LiveMessageBubble({ message, onRetry }: LiveMessageBubbleProps) 
         ) : (
           <Check className="w-3.5 h-3.5 text-green-500 dark:text-green-400" />
         )}
-        <span>Result</span>
+        <span className="font-mono truncate max-w-md">{message.output?.slice(0, 200)}</span>
       </div>
     )
   }
 
+  // --- User / Assistant messages ---
   const isUser = message.role === 'user'
   const barColor = isUser ? 'bg-blue-500 dark:bg-blue-400' : 'bg-orange-500 dark:bg-orange-400'
 

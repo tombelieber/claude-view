@@ -19,6 +19,7 @@ import type {
   AskUserQuestionMessage,
   SequencedServerMessage,
   ServerMessage,
+  ThinkingMessage,
 } from './types.js'
 
 export interface ControlSession {
@@ -29,6 +30,14 @@ export interface ControlSession {
   totalCost: number | null
   turnCount: number
   contextUsage: number // 0-100 percentage of context window used
+  totalInputTokens: number
+  totalOutputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  lastTurnInputTokens: number
+  permissionMode: import('@anthropic-ai/claude-agent-sdk').PermissionMode | null
+  model: string | null
+  sessionContextWindow: number | null
   startedAt: number
   emitter: EventEmitter
   isStreaming: boolean // guard against concurrent sendMessage calls
@@ -68,7 +77,12 @@ export class SessionManager {
     }))
   }
 
-  async resume(sessionId: string, model?: string, projectPath?: string): Promise<ControlSession> {
+  async resume(
+    sessionId: string,
+    model?: string,
+    projectPath?: string,
+    permissionMode?: import('@anthropic-ai/claude-agent-sdk').PermissionMode,
+  ): Promise<ControlSession> {
     // Check if already active
     for (const cs of this.sessions.values()) {
       if (cs.sessionId === sessionId) {
@@ -90,6 +104,7 @@ export class SessionManager {
     const sdkSession = unstable_v2_resumeSession(sessionId, {
       model: model ?? 'claude-sonnet-4-20250514',
       ...(projectPath ? { cwd: projectPath } : {}),
+      ...(permissionMode ? { permissionMode } : {}),
       canUseTool: async (toolName, input, { signal }) => {
         return this.handleCanUseTool(cs, toolName, input, signal)
       },
@@ -103,6 +118,14 @@ export class SessionManager {
       totalCost: null,
       turnCount: 0,
       contextUsage: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      lastTurnInputTokens: 0,
+      permissionMode: permissionMode ?? null,
+      model: null,
+      sessionContextWindow: null,
       startedAt: Date.now(),
       emitter,
       isStreaming: false,
@@ -323,7 +346,13 @@ export class SessionManager {
               messageId = crypto.randomUUID()
               const assistantMsg = msg as SDKMessage & { type: 'assistant' }
               for (const block of assistantMsg.message.content) {
-                if (block.type === 'text' && block.text) {
+                if (block.type === 'thinking' && 'thinking' in block && block.thinking) {
+                  this.emitSequenced(cs, {
+                    type: 'thinking',
+                    content: block.thinking as string,
+                    messageId,
+                  } satisfies ThinkingMessage)
+                } else if (block.type === 'text' && block.text) {
                   this.emitSequenced(cs, {
                     type: 'assistant_chunk',
                     content: block.text,
@@ -338,10 +367,36 @@ export class SessionManager {
                   })
                 }
               }
+              // Accumulate per-turn tokens from BetaMessage.usage (BetaUsage uses snake_case)
+              // Note: BetaUsage comes from @anthropic-ai/sdk (API types, snake_case),
+              // NOT ModelUsage from @anthropic-ai/claude-agent-sdk (SDK types, camelCase).
+              const usage = assistantMsg.message.usage
+              if (usage) {
+                cs.lastTurnInputTokens = usage.input_tokens ?? 0
+                cs.totalInputTokens += usage.input_tokens ?? 0
+                cs.totalOutputTokens += usage.output_tokens ?? 0
+                cs.cacheReadTokens += usage.cache_read_input_tokens ?? 0
+                cs.cacheCreationTokens += usage.cache_creation_input_tokens ?? 0
+              }
               break
             }
             case 'user': {
-              // Tool results come back as user messages
+              const userMsg = msg as SDKMessage & { type: 'user' }
+              if (userMsg.message?.content && Array.isArray(userMsg.message.content)) {
+                for (const block of userMsg.message.content) {
+                  if (block.type === 'tool_result') {
+                    this.emitSequenced(cs, {
+                      type: 'tool_use_result',
+                      toolUseId: block.tool_use_id ?? '',
+                      output:
+                        typeof block.content === 'string'
+                          ? block.content
+                          : JSON.stringify(block.content ?? ''),
+                      isError: block.is_error ?? false,
+                    })
+                  }
+                }
+              }
               break
             }
             case 'result': {
@@ -349,14 +404,58 @@ export class SessionManager {
               if (resultMsg.subtype === 'success') {
                 cs.totalCost = resultMsg.total_cost_usd ?? null
                 cs.turnCount = resultMsg.num_turns ?? 0
+
+                // Extract context window from modelUsage (SDK type: Record<string, ModelUsage>)
+                if (resultMsg.modelUsage) {
+                  for (const [model, mu] of Object.entries(resultMsg.modelUsage)) {
+                    if (mu.contextWindow) {
+                      cs.sessionContextWindow = mu.contextWindow
+                      cs.model = model
+                    }
+                  }
+                }
+
+                // Override accumulated totals with authoritative result usage
+                if (resultMsg.usage) {
+                  cs.totalInputTokens = resultMsg.usage.input_tokens ?? cs.totalInputTokens
+                  cs.totalOutputTokens = resultMsg.usage.output_tokens ?? cs.totalOutputTokens
+                  cs.cacheReadTokens = resultMsg.usage.cache_read_input_tokens ?? cs.cacheReadTokens
+                  cs.cacheCreationTokens =
+                    resultMsg.usage.cache_creation_input_tokens ?? cs.cacheCreationTokens
+                }
               }
               cs.status = 'waiting_input'
+
+              const ctxWindow = cs.sessionContextWindow ?? 200_000
+              cs.contextUsage = Math.round((cs.lastTurnInputTokens / ctxWindow) * 100)
+
               this.emitSequenced(cs, {
                 type: 'assistant_done',
                 messageId,
-                usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+                usage: {
+                  inputTokens: cs.totalInputTokens,
+                  outputTokens: cs.totalOutputTokens,
+                  cacheReadTokens: cs.cacheReadTokens,
+                  cacheWriteTokens: cs.cacheCreationTokens,
+                },
                 cost: null,
                 totalCost: cs.totalCost,
+              })
+
+              this.emitSequenced(cs, {
+                type: 'session_status',
+                status: cs.status,
+                contextUsage: cs.contextUsage,
+                turnCount: cs.turnCount,
+                tokenUsage: {
+                  input: cs.totalInputTokens,
+                  output: cs.totalOutputTokens,
+                  cacheRead: cs.cacheReadTokens,
+                  cacheCreation: cs.cacheCreationTokens,
+                },
+                costUsd: cs.totalCost ?? undefined,
+                model: cs.model ?? undefined,
+                contextWindow: cs.sessionContextWindow ?? undefined,
               })
               break
             }
@@ -442,6 +541,48 @@ export class SessionManager {
     })
     pending.resolve(response)
     return true
+  }
+
+  async setMode(
+    controlId: string,
+    mode: import('@anthropic-ai/claude-agent-sdk').PermissionMode,
+  ): Promise<boolean> {
+    const cs = this.sessions.get(controlId)
+    if (!cs) return false
+
+    // CRITICAL: Only allow mode changes when NOT actively streaming.
+    if (cs.isStreaming) {
+      this.emitSequenced(cs, {
+        type: 'error',
+        message:
+          'Cannot change mode while agent is processing. Wait for the current turn to complete.',
+        fatal: false,
+      })
+      return false
+    }
+
+    try {
+      // V2 SDK does NOT support mid-session setPermissionMode().
+      // Strategy: close the current SDK session and re-resume with the new mode.
+      cs.sdkSession.close()
+      // unstable_v2_resumeSession is already imported at module top level
+      cs.sdkSession = unstable_v2_resumeSession(cs.sessionId, {
+        model: cs.model ?? 'claude-sonnet-4-20250514',
+        permissionMode: mode,
+        canUseTool: async (toolName, input, { signal }) => {
+          return this.handleCanUseTool(cs, toolName, input, signal)
+        },
+      })
+      cs.permissionMode = mode
+      return true
+    } catch (err) {
+      this.emitSequenced(cs, {
+        type: 'error',
+        message: `Failed to set mode: ${err instanceof Error ? err.message : String(err)}`,
+        fatal: false,
+      })
+      return false
+    }
   }
 
   async close(controlId: string): Promise<void> {
