@@ -144,6 +144,7 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
                   <ProgressBar
                     key={model.model}
                     label={formatModelName(model.model)}
+                    title={model.model}
                     value={modelTotal}
                     max={totalModelTokens}
                     suffix={formatTokens(modelTotal)}
