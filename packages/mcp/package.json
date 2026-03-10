@@ -1,6 +1,6 @@
 {
   "name": "@claude-view/mcp",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "MCP server for claude-view — internal package, bundled into @claude-view/plugin",
   "private": true,
   "type": "module",
