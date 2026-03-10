@@ -1,7 +1,7 @@
 # Agent SDK Live Chat UI — Design Spec
 
 **Date:** 2026-03-11
-**Status:** Approved
+**Status:** Done (implemented 2026-03-11)
 **Scope:** Rich message rendering, interactive UI, mode selection, context gauge for live Agent SDK sessions
 
 ## Overview
