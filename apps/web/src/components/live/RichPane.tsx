@@ -191,6 +191,7 @@ export function parseRichMessage(raw: string): RichMessage | null {
         content: typeof msg.content === 'string' ? msg.content : '',
         ts: parseTimestamp(msg.ts),
         category: (msg.category as ActionCategory) ?? 'system',
+        metadata: msg.metadata,
       }
     }
     return null
