@@ -69,6 +69,11 @@ pub type PromptStatsHolder = Arc<RwLock<Option<PromptStats>>>;
 pub type PromptTemplatesHolder =
     Arc<RwLock<Option<Vec<claude_view_core::prompt_templates::PromptTemplate>>>>;
 
+/// Type alias for the cached list of detected IDEs.
+///
+/// Each entry is `(IdeInfo, resolved_command_path)`.
+pub type AvailableIdesHolder = Vec<(crate::routes::ide::IdeInfo, String)>;
+
 /// Shared application state accessible from all route handlers.
 pub struct AppState {
     /// Server start time for uptime tracking.
@@ -137,6 +142,8 @@ pub struct AppState {
     pub prompt_stats: PromptStatsHolder,
     /// Detected prompt templates.
     pub prompt_templates: PromptTemplatesHolder,
+    /// IDEs detected at startup (cached for the lifetime of the server).
+    pub available_ides: AvailableIdesHolder,
 }
 
 impl AppState {
@@ -180,6 +187,7 @@ impl AppState {
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
+            available_ides: Vec::new(),
         })
     }
 
@@ -222,6 +230,7 @@ impl AppState {
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
+            available_ides: Vec::new(),
         })
     }
 
@@ -267,6 +276,7 @@ impl AppState {
             prompt_index: Arc::new(RwLock::new(None)),
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
+            available_ides: Vec::new(),
         })
     }
 
