@@ -1,6 +1,6 @@
 {
   "name": "claude-view",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "private": true,
   "description": "You have 10 Claude sessions running. What are they doing? Live dashboard for Claude Code — monitor every session, track costs, search history, see sub-agents. One command: npx claude-view",
   "type": "module",
