@@ -3,13 +3,12 @@ import { useEffect, useState } from 'react'
 import type { SearchResponse } from '../types/generated'
 
 interface UseSearchOptions {
-  scope?: string
   limit?: number
   enabled?: boolean
 }
 
 export function useSearch(query: string, options: UseSearchOptions = {}) {
-  const { scope, limit = 20, enabled = true } = options
+  const { limit = 20, enabled = true } = options
 
   // Debounce query by 200ms
   const [debouncedQuery, setDebouncedQuery] = useState(query)
@@ -20,11 +19,10 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
   }, [query])
 
   const queryResult = useQuery<SearchResponse>({
-    queryKey: ['search', debouncedQuery, scope, limit],
+    queryKey: ['search', debouncedQuery, limit],
     queryFn: async () => {
       const params = new URLSearchParams()
       params.set('q', debouncedQuery)
-      if (scope) params.set('scope', scope)
       params.set('limit', String(limit))
 
       const res = await fetch(`/api/search?${params}`)
