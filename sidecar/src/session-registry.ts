@@ -17,6 +17,7 @@ export type SessionState =
 export interface ControlSession {
   controlId: string
   sessionId: string
+  model: string
   sdkSession: SDKSession
   state: SessionState
   totalCostUsd: number
