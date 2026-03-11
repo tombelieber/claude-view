@@ -26,8 +26,7 @@ use std::sync::Mutex;
 use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
 
-pub use grep::{grep_files, GrepError, GrepOptions, JsonlFile};
-pub use grep_types::{GrepLineMatch, GrepResponse, GrepSessionHit};
+pub use grep::JsonlFile;
 pub use indexer::SearchDocument;
 pub use types::{MatchHit, SearchResponse, SessionHit};
 pub use unified::{
@@ -377,7 +376,7 @@ mod tests {
 
         // Search for "JWT authentication"
         let result = idx
-            .search("JWT authentication", None, 10, 0)
+            .search("JWT authentication", None, 10, 0, false)
             .expect("search");
         assert_eq!(result.total_sessions, 1, "only session 1 matches JWT");
         assert_eq!(result.sessions[0].session_id, "sess-001");
@@ -429,7 +428,7 @@ mod tests {
 
         // Search with project qualifier
         let result = idx
-            .search("project:claude-view login bug", None, 10, 0)
+            .search("project:claude-view login bug", None, 10, 0, false)
             .expect("search");
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "sess-001");
@@ -471,7 +470,7 @@ mod tests {
 
         // Search with scope filter
         let result = idx
-            .search("feature", Some("project:project-a"), 10, 0)
+            .search("feature", Some("project:project-a"), 10, 0, false)
             .expect("search");
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "sess-001");
@@ -498,7 +497,7 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Verify it's there
-        let result = idx.search("deleted", None, 10, 0).expect("search");
+        let result = idx.search("deleted", None, 10, 0, false).expect("search");
         assert_eq!(result.total_sessions, 1);
 
         // Delete and commit
@@ -507,7 +506,7 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Verify it's gone
-        let result = idx.search("deleted", None, 10, 0).expect("search");
+        let result = idx.search("deleted", None, 10, 0, false).expect("search");
         assert_eq!(result.total_sessions, 0);
     }
 
@@ -534,7 +533,9 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Verify v1 is searchable
-        let result = idx.search("databases", None, 10, 0).expect("search v1");
+        let result = idx
+            .search("databases", None, 10, 0, false)
+            .expect("search v1");
         assert_eq!(result.total_sessions, 1);
 
         // Re-index with version 2 (different content)
@@ -556,18 +557,22 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Old content should not be found
-        let result = idx.search("databases", None, 10, 0).expect("search old");
+        let result = idx
+            .search("databases", None, 10, 0, false)
+            .expect("search old");
         assert_eq!(result.total_sessions, 0);
 
         // New content should be found
-        let result = idx.search("networking", None, 10, 0).expect("search new");
+        let result = idx
+            .search("networking", None, 10, 0, false)
+            .expect("search new");
         assert_eq!(result.total_sessions, 1);
     }
 
     #[test]
     fn test_search_empty_query_returns_empty() {
         let idx = SearchIndex::open_in_ram().expect("create index");
-        let result = idx.search("", None, 10, 0).expect("search empty");
+        let result = idx.search("", None, 10, 0, false).expect("search empty");
         assert_eq!(result.total_sessions, 0);
         assert_eq!(result.total_matches, 0);
     }
@@ -607,14 +612,14 @@ mod tests {
 
         // Search only user messages
         let result = idx
-            .search("role:user authentication", None, 10, 0)
+            .search("role:user authentication", None, 10, 0, false)
             .expect("search");
         assert_eq!(result.total_matches, 1);
         assert_eq!(result.sessions[0].top_match.role, "user");
 
         // Search only assistant messages
         let result = idx
-            .search("role:assistant authentication", None, 10, 0)
+            .search("role:assistant authentication", None, 10, 0, false)
             .expect("search");
         assert_eq!(result.total_matches, 1);
         assert_eq!(result.sessions[0].top_match.role, "assistant");
@@ -655,7 +660,9 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Search with skill qualifier
-        let result = idx.search("skill:Edit bug", None, 10, 0).expect("search");
+        let result = idx
+            .search("skill:Edit bug", None, 10, 0, false)
+            .expect("search");
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "sess-001");
     }
@@ -684,17 +691,23 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Get first 2
-        let result = idx.search("rust", None, 2, 0).expect("search page 1");
+        let result = idx
+            .search("rust", None, 2, 0, false)
+            .expect("search page 1");
         assert_eq!(result.total_sessions, 5);
         assert_eq!(result.sessions.len(), 2);
 
         // Get next 2
-        let result = idx.search("rust", None, 2, 2).expect("search page 2");
+        let result = idx
+            .search("rust", None, 2, 2, false)
+            .expect("search page 2");
         assert_eq!(result.total_sessions, 5);
         assert_eq!(result.sessions.len(), 2);
 
         // Get last 1
-        let result = idx.search("rust", None, 2, 4).expect("search page 3");
+        let result = idx
+            .search("rust", None, 2, 4, false)
+            .expect("search page 3");
         assert_eq!(result.total_sessions, 5);
         assert_eq!(result.sessions.len(), 1);
     }
@@ -719,7 +732,9 @@ mod tests {
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
-        let result = idx.search("query content", None, 10, 0).expect("search");
+        let result = idx
+            .search("query content", None, 10, 0, false)
+            .expect("search");
         assert_eq!(result.sessions.len(), 1);
         assert_eq!(result.sessions[0].branch, None);
     }
@@ -761,7 +776,7 @@ mod tests {
         // Quoted phrase "login authentication" — the exact phrase match (sess-001) must rank first.
         // With multi-signal scoring, sess-002 may also appear (both terms present) but lower ranked.
         let result = idx
-            .search("\"login authentication\"", None, 10, 0)
+            .search("\"login authentication\"", None, 10, 0, false)
             .expect("phrase search");
         assert!(
             result.total_sessions >= 1,
@@ -824,7 +839,9 @@ mod tests {
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
-        let result = idx.search("authentication", None, 10, 0).expect("search");
+        let result = idx
+            .search("authentication", None, 10, 0, false)
+            .expect("search");
         assert_eq!(result.total_sessions, 2);
         // Both sessions should be found. Note: FuzzyTermQuery uses constant scoring
         // (not BM25), so ordering by best_score is not guaranteed to reflect term
@@ -943,7 +960,7 @@ mod tests {
         idx.reader.reload().unwrap();
 
         // Partial model name should match
-        let result = idx.search("model:opus hello", None, 10, 0).unwrap();
+        let result = idx.search("model:opus hello", None, 10, 0, false).unwrap();
         assert_eq!(
             result.total_sessions, 1,
             "model:opus should match claude-opus-4-6"
@@ -952,7 +969,7 @@ mod tests {
 
         // Full model name should also still match
         let result2 = idx
-            .search("model:claude-opus-4-6 hello", None, 10, 0)
+            .search("model:claude-opus-4-6 hello", None, 10, 0, false)
             .unwrap();
         assert_eq!(
             result2.total_sessions, 1,
@@ -993,11 +1010,13 @@ mod tests {
         idx.commit().unwrap();
         idx.reader.reload().unwrap();
 
-        let result = idx.search("project:test-app", None, 10, 0).unwrap();
+        let result = idx.search("project:test-app", None, 10, 0, false).unwrap();
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "s2");
 
-        let result2 = idx.search("project:claude-view fix", None, 10, 0).unwrap();
+        let result2 = idx
+            .search("project:claude-view fix", None, 10, 0, false)
+            .unwrap();
         assert_eq!(result2.total_sessions, 1);
         assert_eq!(result2.sessions[0].session_id, "s1");
     }
@@ -1022,19 +1041,21 @@ mod tests {
         idx.commit().unwrap();
         idx.reader.reload().unwrap();
 
-        let r1 = idx.search("project:my-project", None, 10, 0).unwrap();
+        let r1 = idx
+            .search("project:my-project", None, 10, 0, false)
+            .unwrap();
         assert_eq!(r1.total_sessions, 1, "project-only qualifier should work");
 
-        let r2 = idx.search("branch:main", None, 10, 0).unwrap();
+        let r2 = idx.search("branch:main", None, 10, 0, false).unwrap();
         assert_eq!(r2.total_sessions, 1, "branch-only qualifier should work");
 
-        let r3 = idx.search("role:user", None, 10, 0).unwrap();
+        let r3 = idx.search("role:user", None, 10, 0, false).unwrap();
         assert_eq!(r3.total_sessions, 1, "role-only qualifier should work");
 
-        let r4 = idx.search("skill:commit", None, 10, 0).unwrap();
+        let r4 = idx.search("skill:commit", None, 10, 0, false).unwrap();
         assert_eq!(r4.total_sessions, 1, "skill-only qualifier should work");
 
-        let r5 = idx.search("model:opus", None, 10, 0).unwrap();
+        let r5 = idx.search("model:opus", None, 10, 0, false).unwrap();
         assert_eq!(
             r5.total_sessions, 1,
             "model-only qualifier (partial) should work"
@@ -1075,7 +1096,9 @@ mod tests {
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
-        let result = idx.search("brainstorming", None, 10, 0).expect("search");
+        let result = idx
+            .search("brainstorming", None, 10, 0, false)
+            .expect("search");
         assert_eq!(
             result.total_sessions, 1,
             "should find session via tool_result content"
@@ -1116,7 +1139,9 @@ mod tests {
         idx.commit().expect("commit");
         idx.reader.reload().expect("reload");
 
-        let result = idx.search("brainstorming", None, 10, 0).expect("search");
+        let result = idx
+            .search("brainstorming", None, 10, 0, false)
+            .expect("search");
         assert_eq!(
             result.total_sessions, 0,
             "summary-role documents must be excluded from source-message indexing"
@@ -1144,12 +1169,14 @@ mod tests {
         idx.reader.reload().expect("reload");
 
         // Exact match should work
-        let r1 = idx.search("brainstorming", None, 10, 0).expect("exact");
+        let r1 = idx
+            .search("brainstorming", None, 10, 0, false)
+            .expect("exact");
         assert_eq!(r1.total_sessions, 1, "exact match");
 
         // Typo: missing letter
         let r2 = idx
-            .search("brainstormin", None, 10, 0)
+            .search("brainstormin", None, 10, 0, false)
             .expect("typo missing letter");
         assert_eq!(
             r2.total_sessions, 1,
@@ -1158,7 +1185,7 @@ mod tests {
 
         // Typo: transposed letters
         let r3 = idx
-            .search("brianstorming", None, 10, 0)
+            .search("brianstorming", None, 10, 0, false)
             .expect("typo transposition");
         assert_eq!(
             r3.total_sessions, 1,
@@ -1169,7 +1196,7 @@ mod tests {
         // low-weight signal, so this may find results. The key invariant is that
         // exact matches rank higher than fuzzy-only matches (tested elsewhere).
         let r4 = idx
-            .search("\"brainstormin\"", None, 10, 0)
+            .search("\"brainstormin\"", None, 10, 0, false)
             .expect("quoted typo");
         // With multi-signal, fuzzy can still match even in quoted mode
         // (the phrase signal won't fire, but fuzzy will). This is intentional —
