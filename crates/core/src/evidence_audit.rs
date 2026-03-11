@@ -3,6 +3,7 @@
 //! Scans Claude Code JSONL files and compares structural inventories
 //! against `evidence-baseline.json`. Catches drift before release.
 
+use crate::field_inventory::FieldInventory;
 use serde::de::{self, Deserializer as _, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashSet};
@@ -18,6 +19,8 @@ pub struct Baseline {
     pub system_subtypes: SystemSubtypes,
     pub progress_data_types: ProgressDataTypes,
     pub thinking_block_keys: ThinkingBlockKeys,
+    #[serde(default)]
+    pub field_extraction_paths: Option<FieldExtractionPaths>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +65,12 @@ pub struct ProgressDataTypes {
 #[derive(Debug, Deserialize)]
 pub struct ThinkingBlockKeys {
     pub required: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FieldExtractionPaths {
+    pub extracted: Vec<String>,
+    pub intentionally_ignored: Vec<String>,
 }
 
 // ─── Line Signal Extraction ──────────────────────────────────────
@@ -549,6 +558,7 @@ pub struct AggregatedSignals {
     pub thinking_key_sets: HashSet<BTreeSet<String>>,
     pub nesting_direct_count: usize,
     pub nesting_nested_count: usize,
+    pub field_inventory: FieldInventory,
     pub files_scanned: usize,
     pub lines_scanned: usize,
     pub errors: usize,
@@ -564,6 +574,7 @@ impl AggregatedSignals {
         self.thinking_key_sets.extend(other.thinking_key_sets);
         self.nesting_direct_count += other.nesting_direct_count;
         self.nesting_nested_count += other.nesting_nested_count;
+        self.field_inventory.merge(&other.field_inventory);
         self.files_scanned += other.files_scanned;
         self.lines_scanned += other.lines_scanned;
         self.errors += other.errors;
@@ -804,6 +815,10 @@ pub fn scan_file_with_pipeline(path: &Path) -> (AggregatedSignals, PipelineSigna
             if let Ok(raw_value) = serde_json::from_slice::<serde_json::Value>(line_bytes) {
                 run_per_line_checks(&raw_value, &parsed, &file_name, agg.lines_scanned, pipeline);
             }
+
+            // Phase 3: field inventory
+            let field_inv = crate::field_inventory::extract_field_inventory(line_bytes);
+            agg.field_inventory.merge(&field_inv);
 
             // Store offset + parsed line for per-session checks (no line copy)
             session_lines.push((
@@ -1088,6 +1103,30 @@ pub fn run_audit_checks(signals: &AggregatedSignals, baseline: &Baseline) -> Aud
         files_scanned: signals.files_scanned,
         lines_scanned: signals.lines_scanned,
         errors: signals.errors,
+    }
+}
+
+/// Run Phase 3 field-coverage checks against the inventory and baseline.
+/// Returns skipped results if baseline lacks `field_extraction_paths`.
+pub fn run_phase3_checks(
+    inventory: &crate::field_inventory::FieldInventory,
+    baseline: &Baseline,
+) -> Vec<crate::pipeline_checks::PipelineCheckResult> {
+    match &baseline.field_extraction_paths {
+        Some(paths) => vec![
+            crate::pipeline_checks::check_field_coverage(inventory, paths),
+            crate::pipeline_checks::check_phantom_fields(inventory, paths),
+        ],
+        None => vec![
+            crate::pipeline_checks::PipelineCheckResult::new_skipped(
+                "Field coverage",
+                "Baseline lacks field_extraction_paths section",
+            ),
+            crate::pipeline_checks::PipelineCheckResult::new_skipped(
+                "Phantom field detection",
+                "Baseline lacks field_extraction_paths section",
+            ),
+        ],
     }
 }
 
