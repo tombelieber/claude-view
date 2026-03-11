@@ -1,0 +1,446 @@
+// packages/shared/src/types/sidecar-protocol.ts
+// Mirror of sidecar/src/protocol.ts — canonical event types for the WS protocol.
+// When adding new events, update BOTH this file and sidecar/src/protocol.ts.
+
+// ─── Server → Client Events ───────────────────────────────────────
+
+export interface AssistantText {
+  type: 'assistant_text'
+  text: string
+  messageId: string
+  parentToolUseId: string | null
+}
+
+export interface AssistantThinking {
+  type: 'assistant_thinking'
+  thinking: string
+  messageId: string
+  parentToolUseId: string | null
+}
+
+export interface AssistantError {
+  type: 'assistant_error'
+  error:
+    | 'authentication_failed'
+    | 'billing_error'
+    | 'rate_limit'
+    | 'invalid_request'
+    | 'server_error'
+    | 'unknown'
+    | 'max_output_tokens'
+  messageId: string
+}
+
+export interface StreamDelta {
+  type: 'stream_delta'
+  event: unknown
+  messageId: string
+}
+
+export interface ToolUseStart {
+  type: 'tool_use_start'
+  toolName: string
+  toolInput: Record<string, unknown>
+  toolUseId: string
+  messageId: string
+  parentToolUseId: string | null
+}
+
+export interface ToolUseResult {
+  type: 'tool_use_result'
+  toolUseId: string
+  output: string
+  isError: boolean
+  isReplay: boolean
+}
+
+export interface ToolProgress {
+  type: 'tool_progress'
+  toolUseId: string
+  toolName: string
+  elapsedSeconds: number
+  parentToolUseId: string | null
+  taskId?: string
+}
+
+export interface ToolSummary {
+  type: 'tool_summary'
+  summary: string
+  precedingToolUseIds: string[]
+}
+
+export interface ModelUsageInfo {
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  cacheCreationInputTokens: number
+  webSearchRequests: number
+  costUSD: number
+  contextWindow: number
+  maxOutputTokens: number
+}
+
+export interface TurnComplete {
+  type: 'turn_complete'
+  totalCostUsd: number
+  numTurns: number
+  durationMs: number
+  durationApiMs: number
+  usage: Record<string, number>
+  modelUsage: Record<string, ModelUsageInfo>
+  permissionDenials: { toolName: string; toolUseId: string; toolInput: Record<string, unknown> }[]
+  result: string
+  structuredOutput?: unknown
+  stopReason: string | null
+  fastModeState?: 'off' | 'cooldown' | 'on'
+}
+
+export interface TurnError {
+  type: 'turn_error'
+  subtype:
+    | 'error_during_execution'
+    | 'error_max_turns'
+    | 'error_max_budget_usd'
+    | 'error_max_structured_output_retries'
+  errors: string[]
+  permissionDenials: { toolName: string; toolUseId: string; toolInput: Record<string, unknown> }[]
+  totalCostUsd: number
+  numTurns: number
+  durationMs: number
+  usage: Record<string, number>
+  modelUsage: Record<string, ModelUsageInfo>
+  stopReason: string | null
+  fastModeState?: 'off' | 'cooldown' | 'on'
+}
+
+export interface SessionInit {
+  type: 'session_init'
+  tools: string[]
+  model: string
+  mcpServers: { name: string; status: string }[]
+  permissionMode: string
+  slashCommands: string[]
+  claudeCodeVersion: string
+  cwd: string
+  agents: string[]
+  skills: string[]
+  outputStyle: string
+}
+
+export interface SessionStatus {
+  type: 'session_status'
+  status: 'compacting' | null
+  permissionMode?: string
+}
+
+export interface ContextCompacted {
+  type: 'context_compacted'
+  trigger: 'manual' | 'auto'
+  preTokens: number
+}
+
+export interface ElicitationComplete {
+  type: 'elicitation_complete'
+  mcpServerName: string
+  elicitationId: string
+}
+
+export interface RateLimit {
+  type: 'rate_limit'
+  status: 'allowed' | 'allowed_warning' | 'rejected'
+  resetsAt?: number
+  utilization?: number
+  rateLimitType?: string
+  overageStatus?: string
+  isUsingOverage?: boolean
+}
+
+export interface TaskStarted {
+  type: 'task_started'
+  taskId: string
+  toolUseId?: string
+  description: string
+  taskType?: string
+  prompt?: string
+}
+
+export interface TaskProgressEvent {
+  type: 'task_progress'
+  taskId: string
+  toolUseId?: string
+  description: string
+  lastToolName?: string
+  summary?: string
+  usage: { totalTokens: number; toolUses: number; durationMs: number }
+}
+
+export interface TaskNotification {
+  type: 'task_notification'
+  taskId: string
+  toolUseId?: string
+  status: 'completed' | 'failed' | 'stopped'
+  outputFile: string
+  summary: string
+  usage?: { totalTokens: number; toolUses: number; durationMs: number }
+}
+
+export interface HookEvent {
+  type: 'hook_event'
+  phase: 'started' | 'progress' | 'response'
+  hookId: string
+  hookName: string
+  hookEventName: string
+  stdout?: string
+  stderr?: string
+  output?: string
+  exitCode?: number
+  outcome?: 'success' | 'error' | 'cancelled'
+}
+
+export interface AuthStatus {
+  type: 'auth_status'
+  isAuthenticating: boolean
+  output: string[]
+  error?: string
+}
+
+export interface FilesSaved {
+  type: 'files_saved'
+  files: { filename: string; fileId: string }[]
+  failed: { filename: string; error: string }[]
+  processedAt: string
+}
+
+export interface PromptSuggestion {
+  type: 'prompt_suggestion'
+  suggestion: string
+}
+
+export interface CommandOutput {
+  type: 'command_output'
+  content: string
+}
+
+export interface UnknownSdkEvent {
+  type: 'unknown_sdk_event'
+  sdkType: string
+  raw: unknown
+}
+
+export interface SessionClosed {
+  type: 'session_closed'
+  reason: string
+}
+
+// ─── Interactive Cards ────────────────────────────────────────────
+
+export interface PermissionRequest {
+  type: 'permission_request'
+  requestId: string
+  toolName: string
+  toolInput: Record<string, unknown>
+  toolUseID: string
+  suggestions?: unknown[]
+  decisionReason?: string
+  blockedPath?: string
+  agentID?: string
+  timeoutMs: number
+}
+
+export interface AskQuestion {
+  type: 'ask_question'
+  requestId: string
+  questions: {
+    question: string
+    header: string
+    options: { label: string; description: string; markdown?: string }[]
+    multiSelect: boolean
+  }[]
+}
+
+export interface PlanApproval {
+  type: 'plan_approval'
+  requestId: string
+  planData: Record<string, unknown>
+}
+
+export interface Elicitation {
+  type: 'elicitation'
+  requestId: string
+  toolName: string
+  toolInput: Record<string, unknown>
+  prompt: string
+}
+
+// ─── Infrastructure ───────────────────────────────────────────────
+
+export interface ErrorEvent {
+  type: 'error'
+  message: string
+  fatal: boolean
+}
+
+export interface PongEvent {
+  type: 'pong'
+}
+
+export interface HeartbeatConfig {
+  type: 'heartbeat_config'
+  intervalMs: number
+}
+
+// ─── Union Types ──────────────────────────────────────────────────
+
+export type ServerEvent =
+  | AssistantText
+  | AssistantThinking
+  | AssistantError
+  | StreamDelta
+  | ToolUseStart
+  | ToolUseResult
+  | ToolProgress
+  | ToolSummary
+  | TurnComplete
+  | TurnError
+  | SessionInit
+  | SessionStatus
+  | SessionClosed
+  | ContextCompacted
+  | ElicitationComplete
+  | RateLimit
+  | TaskStarted
+  | TaskProgressEvent
+  | TaskNotification
+  | HookEvent
+  | AuthStatus
+  | FilesSaved
+  | CommandOutput
+  | PromptSuggestion
+  | PermissionRequest
+  | AskQuestion
+  | PlanApproval
+  | Elicitation
+  | ErrorEvent
+  | PongEvent
+  | UnknownSdkEvent
+
+export type SequencedEvent = ServerEvent & { seq: number }
+
+// ─── Client → Server Messages ─────────────────────────────────────
+
+export interface UserMessage {
+  type: 'user_message'
+  content: string
+}
+
+export interface PermissionResponse {
+  type: 'permission_response'
+  requestId: string
+  allowed: boolean
+  updatedPermissions?: unknown[]
+}
+
+export interface QuestionResponse {
+  type: 'question_response'
+  requestId: string
+  answers: Record<string, string>
+}
+
+export interface PlanResponseMsg {
+  type: 'plan_response'
+  requestId: string
+  approved: boolean
+  feedback?: string
+}
+
+export interface ElicitationResponse {
+  type: 'elicitation_response'
+  requestId: string
+  response: string
+}
+
+export interface ResumeMsg {
+  type: 'resume'
+  lastSeq: number
+}
+
+export interface PingMsg {
+  type: 'ping'
+}
+
+export interface SetModeMsg {
+  type: 'set_mode'
+  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+}
+
+export type ClientMessage =
+  | UserMessage
+  | PermissionResponse
+  | QuestionResponse
+  | PlanResponseMsg
+  | ElicitationResponse
+  | ResumeMsg
+  | PingMsg
+  | SetModeMsg
+
+// ─── HTTP Request/Response Types ──────────────────────────────────
+
+export interface CreateSessionRequest {
+  model: string
+  permissionMode?: string
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  projectPath?: string
+  initialMessage?: string
+}
+
+export interface ResumeSessionRequest {
+  sessionId: string
+  model?: string
+  permissionMode?: string
+  projectPath?: string
+}
+
+export interface ForkSessionRequest {
+  sessionId: string
+  model?: string
+  permissionMode?: string
+}
+
+export interface PromptRequest {
+  message: string
+  model: string
+  permissionMode?: string
+}
+
+export interface SessionResponse {
+  controlId: string
+  sessionId: string
+  status: 'created' | 'resumed' | 'already_active' | 'forked'
+}
+
+export interface AvailableSession {
+  sessionId: string
+  summary: string
+  lastModified: number
+  fileSize: number
+  customTitle?: string
+  firstPrompt?: string
+  gitBranch?: string
+  cwd?: string
+}
+
+export interface ActiveSession {
+  controlId: string
+  sessionId: string
+  state: string
+  turnCount: number
+  totalCostUsd: number | null
+  startedAt: number
+}
+
+export interface HealthResponse {
+  status: 'ok'
+  activeSessions: number
+  uptime: number
+}
