@@ -29,9 +29,9 @@ import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
-import type { ConnectionHealth } from '../hooks/use-session-control'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
+import { deriveInputBarState } from '../lib/control-status-map'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -45,6 +45,7 @@ import { getContextWindow } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
+import type { ConnectionHealth } from '../types/control'
 import { CommitsPanel } from './CommitsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
@@ -52,7 +53,6 @@ import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
 import { SearchInput } from './SearchInput'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
-import type { InputBarState } from './chat/ChatInputBar'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
 import { ConversationThread } from './conversation/ConversationThread'
@@ -62,30 +62,6 @@ import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
 import { historyToPanelData } from './live/session-panel-data'
-
-/** Map new sessionState string + isLive to legacy InputBarState for ChatInputBar */
-function deriveInputBarState(sessionState: string, isLive: boolean): InputBarState {
-  if (!isLive) return 'dormant'
-  switch (sessionState) {
-    case 'waiting_input':
-      return 'active'
-    case 'active':
-      return 'streaming'
-    case 'waiting_permission':
-      return 'waiting_permission'
-    case 'compacting':
-      return 'streaming'
-    case 'initializing':
-      return 'connecting'
-    case 'reconnecting':
-      return 'reconnecting'
-    case 'closed':
-    case 'error':
-      return 'completed'
-    default:
-      return 'dormant'
-  }
-}
 
 /** Map sessionState to connection health for banner */
 function deriveConnectionHealth(sessionState: string): ConnectionHealth {
@@ -674,7 +650,6 @@ export function ConversationView() {
           {findOpen && (
             <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
               <SearchInput
-                ref={undefined}
                 value={findQuery}
                 onChange={setFindQuery}
                 placeholder="Find in conversation..."

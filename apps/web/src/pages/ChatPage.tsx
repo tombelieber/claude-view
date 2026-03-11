@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import type { ChatInputBarProps } from '../components/chat/ChatInputBar'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { ConversationThread } from '../components/conversation/ConversationThread'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import { useConversation } from '../hooks/use-conversation'
+import { deriveInputBarState } from '../lib/control-status-map'
 import type { PermissionMode } from '../types/control'
 
 // NOTE: Display mode (chat/developer) is NOT the same as permission mode (default/plan/auto/etc.)
@@ -19,6 +19,7 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
     <div className="flex items-center gap-1 p-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-sm">
       {(['chat', 'developer'] as const).map((m) => (
         <button
+          type="button"
           key={m}
           onClick={() => onChange(m)}
           className={[
@@ -35,34 +36,11 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
   )
 }
 
-function sessionStateToInputBarState(
-  sessionState: string,
-  isLive: boolean,
-): ChatInputBarProps['state'] {
-  if (!isLive) return 'dormant'
-  switch (sessionState) {
-    case 'waiting_input':
-      return 'active'
-    case 'active':
-      return 'streaming'
-    case 'waiting_permission':
-      return 'waiting_permission'
-    case 'initializing':
-      return 'connecting'
-    case 'closed':
-      return 'completed'
-    case 'error':
-      return 'completed'
-    default:
-      return 'dormant'
-  }
-}
-
 export function ChatPage() {
   const navigate = useNavigate()
   const { sessionId } = useParams<{ sessionId?: string }>()
 
-  const { blocks, inputState: _inputState, actions, sessionInfo } = useConversation(sessionId)
+  const { blocks, actions, sessionInfo } = useConversation(sessionId)
 
   // Display mode persisted in localStorage
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
@@ -83,7 +61,7 @@ export function ChatPage() {
   }, [])
 
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
-  const inputBarState = sessionStateToInputBarState(sessionInfo.sessionState, sessionInfo.isLive)
+  const inputBarState = deriveInputBarState(sessionInfo.sessionState, sessionInfo.isLive)
 
   const handleSend = useCallback(
     (text: string) => {
