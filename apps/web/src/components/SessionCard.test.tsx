@@ -124,11 +124,11 @@ describe('SessionCard', () => {
       const badge = container.querySelector('[title="main"]')
       expect(badge).toBeInTheDocument()
 
-      // Should have muted background and text colors
-      expect(badge?.className).toContain('bg-gray-100')
-      expect(badge?.className).toContain('text-gray-500')
-      expect(badge?.className).toContain('dark:bg-gray-800')
-      expect(badge?.className).toContain('dark:text-gray-400')
+      // Should have violet branch badge colors
+      expect(badge?.className).toContain('bg-violet-50')
+      expect(badge?.className).toContain('text-violet-700')
+      expect(badge?.className).toContain('dark:bg-violet-950/50')
+      expect(badge?.className).toContain('dark:text-violet-300')
     })
 
     it('1.5: should render badge before time range in header row', () => {
@@ -334,8 +334,8 @@ describe('SessionCard', () => {
 
       // Branch badge should have dark mode classes
       const badge = container.querySelector('[title="feature/test"]')
-      expect(badge?.className).toContain('dark:bg-gray-800')
-      expect(badge?.className).toContain('dark:text-gray-400')
+      expect(badge?.className).toContain('dark:bg-violet-950/50')
+      expect(badge?.className).toContain('dark:text-violet-300')
 
       // Top files should have dark mode classes
       const topFiles = container.querySelector('svg.lucide-file-pen')?.parentElement
