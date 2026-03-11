@@ -1721,6 +1721,12 @@ impl LiveSessionManager {
 
             // --- Sub-agent spawn tracking ---
             for spawn in &line.sub_agent_spawns {
+                // Team spawns are NOT sub-agents — their lifecycle is managed by
+                // ~/.claude/teams/, not the JSONL sub-agent tracking system.
+                if spawn.team_name.is_some() {
+                    continue;
+                }
+
                 // Guard against re-processing the same spawn line
                 // (can happen if accumulator reset while file exists, or offset tracking bug)
                 if acc
@@ -3161,5 +3167,252 @@ mod hook_event_tests {
             source: channel_a.source.clone(),
         };
         assert_eq!(row.source, "hook_progress");
+    }
+
+    // ── apply_jsonl_metadata branch guard tests ──────────────────────────────
+    //
+    // These tests guard against the race condition where process_jsonl_update
+    // runs before any user-type JSONL lines are parsed (acc.git_branch = None),
+    // and unconditional assignment would overwrite the hook-resolved branch.
+    //
+    // Root cause (2026-03-11): acc.git_branch is None on the first
+    // process_jsonl_update call when only metadata lines exist. The fix:
+    // only overwrite branch fields when the accumulator has a Some value.
+
+    fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
+        use crate::live::state::{AgentState, AgentStateGroup, SessionStatus};
+        use claude_view_core::pricing::CacheStatus;
+        LiveSession {
+            id: id.to_string(),
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            pid: None,
+            title: "Test".into(),
+            last_user_message: String::new(),
+            last_user_file: None,
+            current_activity: "Working".into(),
+            turn_count: 0,
+            started_at: None,
+            last_activity_at: 0,
+            model: None,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            compact_count: 0,
+            slug: None,
+            closed_at: None,
+            control: None,
+            hook_events: Vec::new(),
+        }
+    }
+
+    fn minimal_jsonl_metadata() -> JsonlMetadata {
+        JsonlMetadata {
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            pid: None,
+            title: String::new(),
+            last_user_message: String::new(),
+            last_user_file: None,
+            turn_count: 0,
+            started_at: None,
+            last_activity_at: 0,
+            model: None,
+            tokens: TokenUsage::default(),
+            context_window_tokens: 0,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            progress_items: Vec::new(),
+            last_cache_hit_at: None,
+            tools_used: Vec::new(),
+            compact_count: 0,
+            slug: None,
+        }
+    }
+
+    /// Core regression: hook resolves branch from CWD ("main"), first
+    /// process_jsonl_update arrives with acc.git_branch=None (metadata-only lines).
+    /// The hook-resolved branch MUST be preserved.
+    #[test]
+    fn test_apply_jsonl_metadata_preserves_hook_branch_when_accumulator_has_none() {
+        let mut session = minimal_live_session_for_branch_tests("test-session");
+        // Simulate hook path: branch resolved from git rev-parse
+        session.git_branch = Some("main".to_string());
+        session.effective_branch = Some("main".to_string());
+
+        // First process_jsonl_update: only metadata lines, no gitBranch yet
+        let meta = minimal_jsonl_metadata(); // git_branch: None
+
+        apply_jsonl_metadata(
+            &mut session,
+            &meta,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert_eq!(
+            session.git_branch.as_deref(),
+            Some("main"),
+            "Hook-resolved branch must not be overwritten by None accumulator"
+        );
+        assert_eq!(
+            session.effective_branch.as_deref(),
+            Some("main"),
+            "effective_branch must preserve hook-resolved value"
+        );
+    }
+
+    /// Once the JSONL parser sees a user message with gitBranch, it wins.
+    #[test]
+    fn test_apply_jsonl_metadata_jsonl_branch_wins_when_some() {
+        let mut session = minimal_live_session_for_branch_tests("test-session");
+        session.git_branch = Some("old-hook-branch".to_string());
+        session.effective_branch = Some("old-hook-branch".to_string());
+
+        let mut meta = minimal_jsonl_metadata();
+        meta.git_branch = Some("main".to_string()); // JSONL has definitive value
+
+        apply_jsonl_metadata(
+            &mut session,
+            &meta,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert_eq!(
+            session.git_branch.as_deref(),
+            Some("main"),
+            "JSONL-sourced branch must overwrite hook branch when Some"
+        );
+        assert_eq!(
+            session.effective_branch.as_deref(),
+            Some("main"),
+            "effective_branch must reflect JSONL branch"
+        );
+    }
+
+    /// Session with no branch from either source: stays None.
+    #[test]
+    fn test_apply_jsonl_metadata_none_stays_none_when_no_source() {
+        let mut session = minimal_live_session_for_branch_tests("test-session");
+        // session.git_branch is None (no hook resolution, e.g. non-git dir)
+
+        let meta = minimal_jsonl_metadata(); // also None
+
+        apply_jsonl_metadata(
+            &mut session,
+            &meta,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert!(
+            session.git_branch.is_none(),
+            "Branch stays None when neither hook nor JSONL provides a value"
+        );
+        assert!(
+            session.effective_branch.is_none(),
+            "effective_branch stays None when no source provides a value"
+        );
+    }
+
+    /// Worktree branch: hook resolves from CWD, metadata arrives with None.
+    /// Must not destroy the worktree branch.
+    #[test]
+    fn test_apply_jsonl_metadata_preserves_worktree_branch_when_none() {
+        let mut session = minimal_live_session_for_branch_tests("test-session");
+        session.git_branch = Some("main".to_string());
+        session.worktree_branch = Some("feat/my-feature".to_string());
+        session.is_worktree = true;
+        session.effective_branch = Some("feat/my-feature".to_string()); // worktree wins
+
+        let meta = minimal_jsonl_metadata(); // worktree_branch: None, is_worktree: false
+
+        apply_jsonl_metadata(
+            &mut session,
+            &meta,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert_eq!(
+            session.worktree_branch.as_deref(),
+            Some("feat/my-feature"),
+            "Hook-resolved worktree branch must not be cleared by None accumulator"
+        );
+        assert!(
+            session.is_worktree,
+            "is_worktree must not be reset to false by metadata with is_worktree=false"
+        );
+        assert_eq!(
+            session.effective_branch.as_deref(),
+            Some("feat/my-feature"),
+            "effective_branch must stay as worktree branch"
+        );
+    }
+
+    /// Worktree branch from JSONL wins when Some.
+    #[test]
+    fn test_apply_jsonl_metadata_jsonl_worktree_branch_wins_when_some() {
+        let mut session = minimal_live_session_for_branch_tests("test-session");
+        session.git_branch = Some("main".to_string());
+        session.worktree_branch = None;
+        session.effective_branch = Some("main".to_string());
+
+        let mut meta = minimal_jsonl_metadata();
+        meta.git_branch = Some("main".to_string());
+        meta.worktree_branch = Some("feat/my-feature".to_string());
+        meta.is_worktree = true;
+
+        apply_jsonl_metadata(
+            &mut session,
+            &meta,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert_eq!(session.worktree_branch.as_deref(), Some("feat/my-feature"));
+        assert!(session.is_worktree);
+        assert_eq!(
+            session.effective_branch.as_deref(),
+            Some("feat/my-feature"),
+            "effective_branch must prefer worktree_branch over git_branch"
+        );
     }
 }
