@@ -1,11 +1,16 @@
 import { Activity } from 'lucide-react'
+import { useLiveSessions } from '../components/live/use-live-sessions'
+import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
+import { SystemGaugeRow } from '../components/monitor/SystemGaugeRow'
+import { TopProcessesPanel } from '../components/monitor/TopProcessesPanel'
 import { useSystemMonitor } from '../hooks/use-system-monitor'
 
 export function SystemMonitorPage() {
   const { status, systemInfo, snapshot } = useSystemMonitor()
+  const { sessions } = useLiveSessions()
 
   return (
-    <div className="flex flex-col gap-4 p-4 max-w-7xl mx-auto">
+    <div className="flex flex-col gap-4 p-4 max-w-7xl mx-auto h-full">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Activity className="w-6 h-6 text-blue-500" />
@@ -41,39 +46,40 @@ export function SystemMonitorPage() {
         )}
       </div>
 
-      {/* Content: skeleton or data */}
+      {/* Content */}
       {!snapshot ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
-          ))}
+        <div className="space-y-4">
+          {/* Gauge skeleton */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={`gauge-skeleton-${i}`}
+                className="h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse"
+              />
+            ))}
+          </div>
+          {/* Session panel skeleton */}
+          <div className="h-48 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          {/* Process panel skeleton */}
+          <div className="h-40 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Gauge row placeholder — will be replaced in Task #6 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <GaugeSkeleton label="CPU" value={`${snapshot.cpuPercent.toFixed(1)}%`} />
-            <GaugeSkeleton
-              label="Memory"
-              value={`${((snapshot.memoryUsedBytes / snapshot.memoryTotalBytes) * 100).toFixed(1)}%`}
-            />
-            <GaugeSkeleton
-              label="Disk"
-              value={`${((snapshot.diskUsedBytes / snapshot.diskTotalBytes) * 100).toFixed(1)}%`}
-            />
-            <GaugeSkeleton label="Sessions" value={`${snapshot.sessionResources.length}`} />
+        <div className="flex flex-col gap-4 flex-1 min-h-0">
+          {/* Gauges — sticky at top */}
+          <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-950 -mx-4 px-4 py-2">
+            <SystemGaugeRow snapshot={snapshot} systemInfo={systemInfo} />
           </div>
+
+          {/* Claude Sessions */}
+          <ClaudeSessionsPanel
+            sessionResources={snapshot.sessionResources}
+            liveSessions={sessions}
+          />
+
+          {/* Top Processes */}
+          <TopProcessesPanel processes={snapshot.topProcesses} />
         </div>
       )}
-    </div>
-  )
-}
-
-function GaugeSkeleton({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-1">{value}</p>
     </div>
   )
 }
