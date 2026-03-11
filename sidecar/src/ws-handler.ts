@@ -1,4 +1,5 @@
 // sidecar/src/ws-handler.ts
+import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import type { ClientMessage, ResumeMsg, SetModeMsg } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
@@ -41,7 +42,11 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           break
 
         case 'permission_response':
-          session.permissions.resolvePermission(msg.requestId, msg.allowed, msg.updatedPermissions)
+          session.permissions.resolvePermission(
+            msg.requestId,
+            msg.allowed,
+            msg.updatedPermissions as PermissionUpdate[] | undefined,
+          )
           break
 
         case 'question_response':
