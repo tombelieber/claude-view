@@ -1,85 +1,19 @@
-//! Grep search endpoint.
+//! JSONL file collection utility for search.
 //!
-//! - GET /grep?pattern=...&project=...&limit=...&caseSensitive=...&wholeWord=...
-//!   Regex search over raw JSONL session files using ripgrep core crates.
+//! Scans `~/.claude/projects/` for session JSONL files.
+//! Used by `search_service::execute_search()` for grep fallback.
 
 use std::collections::HashSet;
-use std::sync::Arc;
-
-use axum::{extract::Query, routing::get, Json, Router};
-use serde::Deserialize;
-use tokio::task::spawn_blocking;
 
 use claude_view_core::discovery::{claude_projects_dir, resolve_project_path_with_cwd};
-use claude_view_search::grep_types::GrepResponse;
-use claude_view_search::{grep_files, GrepOptions, JsonlFile};
+use claude_view_search::JsonlFile;
 
-use crate::error::{ApiError, ApiResult};
-use crate::state::AppState;
-
-#[derive(Debug, Deserialize)]
-pub struct GrepQuery {
-    pub pattern: Option<String>,
-    pub project: Option<String>,
-    pub limit: Option<usize>,
-    #[serde(rename = "caseSensitive")]
-    pub case_sensitive: Option<bool>,
-    #[serde(rename = "wholeWord")]
-    pub whole_word: Option<bool>,
-}
-
-/// Build the grep sub-router.
-///
-/// Routes:
-/// - `GET /grep` — Regex search over raw JSONL files
-pub fn router() -> Router<Arc<AppState>> {
-    Router::new().route("/grep", get(grep_handler))
-}
-
-/// GET /api/grep — Regex search over raw JSONL session files.
-///
-/// Query parameters:
-/// - `pattern` (required): Regex pattern to search for
-/// - `project`: Optional project name filter
-/// - `limit`: Max matches to return (default 200, capped at 1000)
-/// - `caseSensitive`: Whether the search is case-sensitive (default false)
-/// - `wholeWord`: Whether to match whole words only (default false)
-async fn grep_handler(Query(params): Query<GrepQuery>) -> ApiResult<Json<GrepResponse>> {
-    let pattern = params
-        .pattern
-        .filter(|p| !p.trim().is_empty())
-        .ok_or_else(|| ApiError::BadRequest("Missing 'pattern' parameter".into()))?;
-
-    let limit = params.limit.unwrap_or(200).min(1000);
-    let case_sensitive = params.case_sensitive.unwrap_or(false);
-    let whole_word = params.whole_word.unwrap_or(false);
-
-    let project_filter = params.project;
-
-    // Move all blocking filesystem I/O into spawn_blocking to avoid blocking
-    // the Tokio event loop (directory scan + grep search).
-    let result = spawn_blocking(move || {
-        let files = collect_jsonl_files(project_filter.as_deref(), None)?;
-
-        let opts = GrepOptions {
-            pattern,
-            case_sensitive,
-            whole_word,
-            limit,
-        };
-
-        grep_files(&files, &opts).map_err(|e| ApiError::BadRequest(format!("{e}")))
-    })
-    .await
-    .map_err(|e| ApiError::Internal(format!("Grep task failed: {e}")))??;
-
-    Ok(Json(result))
-}
+use crate::error::ApiError;
 
 /// Scan ~/.claude/projects/ for all JSONL session files.
 /// Optionally filter by project display name or full path.
 ///
-/// Used by both `/api/grep` and `/api/search` (unified search grep fallback).
+/// Used by `search_service::execute_search()` (unified search grep fallback).
 ///
 /// NOTE: project filter checks BOTH display_name AND full_path to match
 /// the polymorphic project filter pattern (CLAUDE.md Hard Rule).
