@@ -82,6 +82,21 @@ pub enum InboxMessageType {
 }
 
 // ============================================================================
+// JSONL Fallback Index
+// ============================================================================
+
+/// Reference to a session JSONL file that contains data for a team.
+/// Used when the filesystem team directory (`~/.claude/teams/<name>/`) no longer exists.
+#[derive(Debug, Clone)]
+pub struct TeamJSONLRef {
+    pub session_id: String,
+    pub jsonl_path: std::path::PathBuf,
+}
+
+/// Index type: team_name → list of JSONL refs (a team may appear across multiple sessions).
+pub type TeamJSONLIndex = HashMap<String, Vec<TeamJSONLRef>>;
+
+// ============================================================================
 // Raw deserialization types (match on-disk JSON shape)
 // ============================================================================
 
@@ -519,6 +534,15 @@ mod tests {
             store.get("test-team").is_some(),
             "Team detail should be available for newly created team"
         );
+    }
+
+    #[test]
+    fn test_team_jsonl_ref_creation() {
+        let r = TeamJSONLRef {
+            session_id: "abc-123".to_string(),
+            jsonl_path: std::path::PathBuf::from("/tmp/test.jsonl"),
+        };
+        assert_eq!(r.session_id, "abc-123");
     }
 
     #[test]
