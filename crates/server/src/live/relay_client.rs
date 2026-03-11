@@ -29,7 +29,9 @@ pub struct RelayClientConfig {
 impl Default for RelayClientConfig {
     fn default() -> Self {
         Self {
-            relay_url: std::env::var("RELAY_URL").ok(),
+            relay_url: std::env::var("RELAY_URL")
+                .ok()
+                .or_else(|| option_env!("RELAY_URL").map(str::to_string)),
             heartbeat_interval: Duration::from_secs(30),
             max_reconnect_delay: Duration::from_secs(30),
         }
