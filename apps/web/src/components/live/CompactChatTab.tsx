@@ -1,17 +1,15 @@
 // Compact chat view for the live monitor side panel.
-// Uses useConversation to connect to the session's WS (live) or load history,
-// then renders all blocks through chatRegistry in compact mode.
-import { useConversation } from '../../hooks/use-conversation'
+// Receives pre-fetched blocks from SessionDetailPanel (shared useConversation call)
+// to avoid opening a second WebSocket connection to the same session.
+import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { ConversationThread } from '../conversation/ConversationThread'
 import { chatRegistry } from '../conversation/blocks/chat/registry'
 
 interface CompactChatTabProps {
-  sessionId: string
+  blocks: ConversationBlock[]
 }
 
-export function CompactChatTab({ sessionId }: CompactChatTabProps) {
-  const { blocks } = useConversation(sessionId)
-
+export function CompactChatTab({ blocks }: CompactChatTabProps) {
   if (blocks.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-gray-400 dark:text-gray-500 p-4">
