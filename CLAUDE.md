@@ -253,6 +253,17 @@ NEVER document:
 - Wrangler secret values
 - Any `*.workers.dev` URLs with auth tokens
 
+## Code Design — Decompose, Don't Monolith (MANDATORY)
+
+**Always design code as small, composable modules. Never build god objects or monolithic files.**
+
+- **Single Responsibility:** Each module/struct/file does ONE thing. If you can't describe it in one sentence without "and", split it.
+- **No god objects:** A struct that owns state + coordinates + does IO + holds business logic is always wrong. Extract coordinators, handlers, stores, and logic into separate types.
+- **File size signal:** >300 lines in a Rust file or >200 lines in a TS component is a smell. >600 lines is a hard stop — refactor before adding more.
+- **Rust:** Split large `impl` blocks by concern (e.g. `manager.rs` → `manager/accumulator.rs`, `manager/store.rs`, `manager/handler.rs`).
+- **React:** One component per file. Hooks extract logic; components only render.
+- **SQL/DB:** One query function per operation.
+
 ## Hard Rules
 
 > Detailed code examples: `docs/claude-rules-reference.md`
