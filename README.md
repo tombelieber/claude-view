@@ -60,6 +60,10 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 | **Sub-agent visualization** | See the full agent tree — sub-agents, their status, and what tools they're calling |
 | **Multiple views** | Grid, List, Kanban, or Monitor mode — pick what fits your workflow |
 | **Kanban swimlanes** | Group sessions by project or branch — visual swimlane layout for multi-project workflows |
+| **Recently closed sessions** | Sessions that end appear in a "Recently Closed" section instead of vanishing — persist across server restarts |
+| **Unified live chat** | History and real-time messages in a single scrollable conversation — no more tab-switching |
+| **Queued message indicators** | Messages waiting in the queue show as pending bubbles with a "Queued" badge |
+| **SSE-driven live data** | Live session data pushed via Server-Sent Events — eliminates stale-cache risks entirely |
 
 ### Rich Chat History
 
@@ -78,6 +82,7 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 | Feature | Why it matters |
 |---------|---------------|
 | **Full-text search** | Search across all sessions — messages, tool calls, file paths |
+| **Unified search engine** | Tantivy full-text + SQLite pre-filter run in parallel — one endpoint, no frontend wiring gaps |
 | **Project & branch filters** | Scope to the project you're working on right now |
 | **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
 
@@ -87,8 +92,35 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 |---------|---------------|
 | **Plan browser** | View your `.claude/plans/` directly in session detail — no more hunting through files |
 | **Prompt history** | Full-text search across all prompts you've sent to Claude Code with template clustering and intent classification |
-| **Teams dashboard** | See team leads, inbox messages, team tasks, and file changes across all team members |
+| **Teams dashboard** | See team leads, inbox messages, team tasks, and file changes across all team members — with JSONL fallback so history is never lost |
 | **Prompt analytics** | Leaderboards of prompt templates, intent distribution, and usage statistics |
+
+### Plugin Manager
+
+| Feature | Why it matters |
+|---------|---------------|
+| **GUI plugin browser** | Browse, install, enable, disable, and uninstall Claude Code plugins without touching a terminal |
+| **Plugin card grid** | Every installed plugin shown as a card with name, status, scope, and version |
+| **Marketplace dialog** | Discover new plugins and install with scope picker (user-level or project-level) |
+| **Health banner** | Plugin system status at a glance — know when something is broken before it breaks your workflow |
+
+### Workflows
+
+| Feature | Why it matters |
+|---------|---------------|
+| **Workflow builder** | Create and run multi-stage workflows from a dedicated page — VS Code-style layout with Mermaid diagram preview and YAML editor |
+| **Streaming LLM chat rail** | Generate workflow definitions in real time using an embedded chat interface |
+| **Stage runner** | Visualize stage columns, attempt cards, and progress bar as your workflow executes |
+| **Built-in seed workflows** | Plan Polisher and Plan Executor ship out of the box |
+
+### Open in IDE
+
+| Feature | Why it matters |
+|---------|---------------|
+| **One-click file open** | Files referenced in sessions have a button to open them directly in your editor |
+| **Auto-detects your editor** | VS Code, Cursor, Zed, and others auto-detected — no configuration needed |
+| **Everywhere it matters** | Button appears in Changes tab, file headers, and Kanban project headers |
+| **Preference memory** | Your preferred editor is remembered across sessions |
 
 ---
 
@@ -103,6 +135,8 @@ Claude Code does a lot behind `"thinking..."` that never shows in your terminal.
 | **Skill / hook / plugin tracking** | Know which skills fired, which hooks ran, what plugins are active |
 | **Hook event recording** | Dual-channel hook capture (live + JSONL backfill) — every hook event recorded and browsable, even for past sessions |
 | **Worktree branch drift** | Detects when git worktree branches diverge — shown in live monitor and history |
+| **@File mention chips** | `@filename` references extracted from sessions shown as chips on cards — hover for the full path |
+| **Agent SDK live chat** | Thinking blocks, tool calls, and tool results with syntax highlighting, collapsible sections, and a context window gauge |
 | **Tool use timeline** | Action log of every tool_use/tool_result pair with timing |
 | **Error surfacing** | Errors bubble up to the session card — no more buried failures |
 | **Raw message inspector** | Drill into any message's raw JSON when you need the full picture |
@@ -265,6 +299,38 @@ The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claud
 | Env Variable | Default | Description |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` or `PORT` | `47892` | Override the default port |
+
+</details>
+
+<details>
+<summary><strong>Self-hosting / Local Dev — Optional Cloud Features</strong></summary>
+<br>
+
+The pre-built binary (`npx claude-view`) ships with auth, sharing, and mobile relay baked in. If you're building from source or running your own server, these features are **opt-in via environment variables** — omit any of them and that feature is simply disabled. No errors, no warnings, just graceful degradation.
+
+| Env Variable | Feature | What happens without it |
+|-------------|---------|------------------------|
+| `SUPABASE_URL` | Login / auth | Auth disabled — app runs in fully local, zero-account mode |
+| `RELAY_URL` | Mobile pairing (QR code) | Mobile relay disabled — QR pairing unavailable |
+| `SHARE_WORKER_URL` + `SHARE_VIEWER_URL` | Encrypted session sharing | Share button hidden — sessions stay local |
+
+**To run fully local with no cloud dependencies** (the default for self-hosters):
+
+```bash
+bun dev    # just works — all cloud features off
+```
+
+**To enable a feature**, export the env var before starting the server:
+
+```bash
+export SUPABASE_URL=https://your-project.supabase.co
+export RELAY_URL=wss://your-relay.fly.dev/ws
+export SHARE_WORKER_URL=https://your-worker.example.com
+export SHARE_VIEWER_URL=https://your-viewer.example.com
+bun run dev:server
+```
+
+> These are **runtime** overrides — they take precedence over whatever is baked into the binary at build time.
 
 </details>
 
