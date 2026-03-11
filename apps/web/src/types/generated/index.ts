@@ -235,3 +235,9 @@ export type { PluginActionRequest } from './PluginActionRequest'
 export type { PluginActionResponse } from './PluginActionResponse'
 export type { MarketplaceInfo } from './MarketplaceInfo'
 export type { MarketplaceActionRequest } from './MarketplaceActionRequest'
+
+// IDE types (Open in IDE)
+export type { IdeInfo } from './IdeInfo'
+export type { IdeDetectResponse } from './IdeDetectResponse'
+export type { OpenInIdeRequest } from './OpenInIdeRequest'
+export type { OpenInIdeResponse } from './OpenInIdeResponse'

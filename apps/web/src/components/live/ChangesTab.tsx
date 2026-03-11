@@ -1,12 +1,14 @@
 import type { FileHistoryResponse } from '../../types/generated/FileHistoryResponse'
 import { FileChangeHeader } from './FileChangeHeader'
+import { OpenInIdeButton } from './OpenInIdeButton'
 
 interface ChangesTabProps {
   fileHistory: FileHistoryResponse
   sessionId: string
+  projectPath: string
 }
 
-export function ChangesTab({ fileHistory, sessionId }: ChangesTabProps) {
+export function ChangesTab({ fileHistory, sessionId, projectPath }: ChangesTabProps) {
   const { summary, files } = fileHistory
 
   return (
@@ -25,11 +27,17 @@ export function ChangesTab({ fileHistory, sessionId }: ChangesTabProps) {
         {summary.totalRemoved > 0 && (
           <span className="font-mono text-red-500 dark:text-red-400">−{summary.totalRemoved}</span>
         )}
+        <OpenInIdeButton projectPath={projectPath} />
       </div>
 
       {/* File list */}
       {files.map((file) => (
-        <FileChangeHeader key={file.fileHash} file={file} sessionId={sessionId} />
+        <FileChangeHeader
+          key={file.fileHash}
+          file={file}
+          sessionId={sessionId}
+          projectPath={projectPath}
+        />
       ))}
     </div>
   )
