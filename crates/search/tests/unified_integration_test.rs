@@ -1,5 +1,5 @@
 use claude_view_search::indexer::SearchDocument;
-use claude_view_search::unified::{unified_search, UnifiedSearchOptions};
+use claude_view_search::unified::{unified_search, SearchEngine, UnifiedSearchOptions};
 use claude_view_search::{JsonlFile, SearchIndex};
 use std::fs;
 use tempfile::TempDir;
@@ -36,9 +36,9 @@ fn make_jsonl_file(
     }
 }
 
-/// Both engines find the same session — grep primary, Tantivy supplements.
+/// Tantivy-primary: when Tantivy finds the session, only tantivy engine tag appears.
 #[test]
-fn test_co_primary_both_find_session() {
+fn test_tantivy_primary_returns_tantivy_engine_only() {
     let idx = SearchIndex::open_in_ram().unwrap();
     index_doc(&idx, "s1", "deploy to production");
     idx.commit().unwrap();
@@ -57,18 +57,18 @@ fn test_co_primary_both_find_session() {
         scope: None,
         limit: 10,
         offset: 0,
+        skip_snippets: false,
     };
 
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
     assert_eq!(result.response.total_sessions, 1);
-    let engines = &result.response.sessions[0].engines;
-    assert!(engines.contains(&"grep".to_string()));
-    assert!(engines.contains(&"tantivy".to_string()));
+    assert_eq!(result.engine, SearchEngine::Tantivy);
+    assert_eq!(result.response.sessions[0].engines, vec!["tantivy"]);
 }
 
-/// CJK — grep finds it, Tantivy may or may not.
+/// CJK — Tantivy can't tokenize CJK, falls back to grep.
 #[test]
-fn test_co_primary_cjk_grep_only() {
+fn test_cjk_grep_fallback() {
     let idx = SearchIndex::open_in_ram().unwrap();
     index_doc(&idx, "s1", "自動部署到生產環境完成");
     idx.commit().unwrap();
@@ -87,18 +87,20 @@ fn test_co_primary_cjk_grep_only() {
         scope: None,
         limit: 10,
         offset: 0,
+        skip_snippets: false,
     };
 
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
     assert_eq!(result.response.total_sessions, 1);
+    assert_eq!(result.engine, SearchEngine::Grep);
     assert!(result.response.sessions[0]
         .engines
         .contains(&"grep".to_string()));
 }
 
-/// Results sorted by recency (modified_at DESC).
+/// Results sorted by recency (modified_at DESC) — grep fallback path.
 #[test]
-fn test_co_primary_sorted_by_recency() {
+fn test_grep_fallback_sorted_by_recency() {
     let idx = SearchIndex::open_in_ram().unwrap();
     idx.commit().unwrap();
     idx.reader.reload().unwrap();
@@ -124,9 +126,12 @@ fn test_co_primary_sorted_by_recency() {
         scope: None,
         limit: 10,
         offset: 0,
+        skip_snippets: false,
     };
 
+    // Tantivy has nothing indexed → grep fallback
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
+    assert_eq!(result.engine, SearchEngine::Grep);
     assert_eq!(result.response.sessions.len(), 2);
     assert_eq!(result.response.sessions[0].session_id, "s-new");
     assert_eq!(result.response.sessions[1].session_id, "s-old");

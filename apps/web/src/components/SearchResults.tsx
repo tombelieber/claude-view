@@ -11,7 +11,6 @@ export function SearchResults() {
   const { addRecentSearch } = useAppStore()
 
   const query = searchParams.get('q') || ''
-  const scope = searchParams.get('scope') || undefined
 
   // Add to recent searches when query changes
   useEffect(() => {
@@ -26,7 +25,6 @@ export function SearchResults() {
     error,
     isDebouncing,
   } = useSearch(query, {
-    scope,
     limit: 50,
   })
 
@@ -71,7 +69,10 @@ export function SearchResults() {
               Search Results
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {totalSessions} {totalSessions === 1 ? 'session' : 'sessions'}, {totalMatches}{' '}
+              {sessions.length < totalSessions
+                ? `${sessions.length} of ${totalSessions}`
+                : `${totalSessions}`}{' '}
+              {totalSessions === 1 ? 'session' : 'sessions'}, {totalMatches}{' '}
               {totalMatches === 1 ? 'match' : 'matches'} for &ldquo;
               <span className="font-mono">{query}</span>&rdquo;
               <span className="ml-1 text-gray-400 dark:text-gray-500">({elapsedMs}ms)</span>
