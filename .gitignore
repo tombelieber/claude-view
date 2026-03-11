@@ -105,6 +105,7 @@ __pycache__/
 # Internal docs
 docs/plans/
 docs/internal/
+docs/superpowers/
 .playwright-mcp/
 
 # Astro build artifacts (apps/landing)
