@@ -599,6 +599,69 @@ npx claude-view@latest
 If you have project-scoped plugins, open the Plugins page and try disabling or uninstalling one. It should work correctly now regardless of scope.
 
 
+--- blog/v0-15-0-unified-search-and-sidecar.mdx ---
+
+---
+title: "Search That Always Works, Teams That Survive Restarts"
+description: "v0.15.0 ships a unified search engine with automatic fallback, a ground-up sidecar rewrite for Agent SDK v0.2.72, SSE-driven live data, and persistent team browsing via JSONL reconstruction."
+date: 2026-03-12
+author: claude-view team
+---
+
+Two problems that show up differently but have the same root cause: data that should be there isn't. v0.15.0 fixes both — for search and for teams.
+
+## Search that finds what you're looking for
+
+The previous search architecture had a gap. Tantivy's full-text index is fast and precise for keyword queries, but it only knows about sessions it has indexed. If you searched for something before indexing completed, or used a query that Tantivy couldn't tokenize well, you got nothing.
+
+v0.15.0 introduces a unified search engine that never gives up empty-handed. The flow:
+
+1. **SQLite pre-filter** — structured filters (project, date range, model) run first against the database to narrow the candidate session IDs
+2. **Tantivy full-text** — runs against the pre-filtered set, returns ranked results with snippets
+3. **ripgrep fallback** — if Tantivy returns 0 results, grep scans the JSONL files directly for substring matches
+
+The fallback is automatic and transparent. Results from grep are labeled "Substring matches" so you know which engine answered — useful for understanding whether your query hit the full-text index or a literal match.
+
+The frontend sends a single request to `/api/search`. It doesn't know or care which engine responded. This follows the project's one-endpoint principle: backend decides the strategy, frontend renders the result.
+
+## The sidecar rewrite
+
+The Node.js sidecar — which brokers communication between the Rust server and Claude Agent SDK sessions — has been rewritten from scratch for Agent SDK v0.2.72.
+
+The old sidecar accumulated debt: a growing list of edge cases, a protocol that had evolved organically, and two bugs that caused real failures in production (a broken resume URL and a pipe deadlock that could freeze a session).
+
+The new sidecar is built around four distinct modules:
+
+- **Session registry** — a typed map of active sessions with sequenced event emission, so events always arrive in order
+- **Permission handler** — routes `canUseTool` decisions with full context forwarded to the frontend, enabling per-tool approval UI
+- **Event mapper** — a pure function that translates all 22 SDK message types to the new typed protocol (27 server events, 8 client messages), with no side effects
+- **SDK session** — manages create/resume lifecycle with a long-lived stream loop and clean shutdown
+
+The resume URL bug (wrong path) and pipe deadlock (read loop not draining stderr) are both fixed. Crash recovery now works reliably.
+
+## SSE-driven live data
+
+The live monitor previously fetched session state on a polling interval. Between polls, you could be looking at stale data — a session that had already ended, or a new session that hadn't appeared yet.
+
+Live data now comes through server-sent events. The Rust server pushes updates as they happen. The browser receives them immediately. The polling loop is gone.
+
+## Persistent team browsing
+
+When you opened claude-view after a restart, team data was often missing. The live session store is in-memory, so anything that happened before the restart wasn't there. Teams showed as empty or incomplete until sessions were re-indexed.
+
+v0.15.0 adds a JSONL fallback layer for teams. When the in-memory store is cold — either because the server just started or a session was closed — claude-view reconstructs team composition and message inbox directly from the JSONL files. The reconstruction is a single-pass scan per session, not a full re-index.
+
+Teams now persist across server restarts. If you were in the middle of a multi-agent session last night, you can open claude-view this morning and still see the full team composition and message history.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Run a search to see the unified engine in action. Start a multi-agent session, restart the server, and check whether the team is still there.
+
+
 --- blog/v0-14-0-open-in-ide-and-mentions.mdx ---
 
 ---
@@ -1529,6 +1592,39 @@ version: v0.2.1
 
 ```bash
 npx claude-view
+```
+
+
+--- changelog/v0.15.0.md ---
+
+---
+title: "v0.15.0 — Unified Search, Sidecar Rewrite, and Persistent Teams"
+date: 2026-03-12
+version: v0.15.0
+---
+
+## New features
+
+**Unified search engine** — Search now uses Tantivy full-text indexing as the primary engine, with automatic ripgrep fallback when the index returns no results. A SQLite pre-filter narrows candidates by project, date, and model before the full-text pass. Results from the grep fallback are labeled "Substring matches" so you can see which engine answered.
+
+**Sidecar ground-up rewrite** — The Node.js sidecar has been rewritten for Agent SDK v0.2.72 with a new typed protocol (27 server events, 8 client messages), a permission handler for `canUseTool` routing, a pure event mapper for all 22 SDK message types, and a session registry with sequenced event emission. Resume URL and pipe deadlock bugs are fixed.
+
+**SSE-driven live data** — The live monitor now receives session data via server-sent events instead of polling, eliminating stale-cache risks.
+
+**Persistent team browsing** — Team composition and inbox messages are now reconstructed from JSONL files on disk when the in-memory store is cold. Teams survive server restarts without losing member or message history.
+
+**Evidence audit Phase 3** — Every `release.sh` run now verifies field coverage (6,874 paths) and detects phantom fields (struct fields with zero occurrences in real data) across all JSONL files as a pre-release gate.
+
+## Improvements
+
+- **Single-pass team summaries** — JSONL reconstruction for team summaries now does one pass instead of multiple, reducing startup I/O.
+- **Search scope removed** — The scope selector has been removed from the frontend; the backend handles scope internally for a cleaner interface.
+- **Session count accuracy** — `/api/search` now returns a true `total_sessions` count rather than a capped estimate.
+
+## Getting started
+
+```bash
+npx claude-view@latest
 ```
 
 
