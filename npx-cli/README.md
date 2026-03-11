@@ -41,18 +41,57 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 
 ## What You Get
 
+### Live Monitor
+
 - **Live session cards** — see what every session is working on, right now
 - **Notification sounds** — get pinged when a session finishes or needs input
 - **Context gauge** — real-time context window usage per session
 - **Cache warm countdown** — time your messages to save tokens
 - **Cost tracking** — per-session and aggregate spend with cache savings
 - **Sub-agent visualization** — see the full agent tree, tool calls, MCP invocations
+- **Recently closed sessions** — sessions stay visible after ending instead of vanishing
+- **Unified live chat** — history and real-time messages in one scrollable view
+- **SSE-driven live data** — real-time push, no stale cache
+
+### History & Search
+
+- **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
+- **Full-text search** — Tantivy + SQLite search across sessions, messages, tool calls, file paths
+- **Export** — markdown export for context resumption or sharing
+- **Encrypted sharing** — share any session via E2E encrypted link
+
+### Plans, Prompts & Teams
+
 - **Plans browser** — view your `.claude/plans/` directly in session detail
 - **Prompt history** — full-text search across all prompts with intent classification and template clustering
 - **Teams dashboard** — track team leads, inbox, tasks, and file changes across team members
-- **Full-text search** — search across all sessions, messages, tool calls, file paths, and plans
-- **Analytics** — activity heatmap, cost ROI, model comparison, AI Fluency Score
-- **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
+
+### Plugin Manager
+
+- **GUI plugin browser** — install, enable, disable, and uninstall Claude Code plugins — no terminal needed
+- **Marketplace dialog** — discover and install plugins with user or project scope
+
+### Workflows
+
+- **Workflow builder** — create and run multi-stage workflows with a Mermaid diagram preview and YAML editor
+- **Streaming LLM chat rail** — generate workflow definitions in real time
+
+### Open in IDE
+
+- **One-click file open** — open any referenced file directly in VS Code, Cursor, Zed, or your preferred editor
+- **Auto-detects your editor** — no configuration needed
+
+### Agent Internals
+
+- **@File mention chips** — `@filename` references shown as chips on session cards
+- **Agent SDK live chat** — thinking blocks, tool calls, and results with syntax highlighting
+- **Worktree branch drift** — detects when git worktree branches diverge
+
+### Analytics
+
+- **Activity heatmap** — 90-day GitHub-style usage grid
+- **Cost ROI metrics** — cost per commit, per session, per line of AI output
+- **AI Fluency Score** — single 0–100 number tracking your overall effectiveness
 
 ---
 
