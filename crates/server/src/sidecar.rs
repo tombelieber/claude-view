@@ -104,8 +104,10 @@ impl SidecarManager {
                 .envs(filtered_env)
                 .env("SIDECAR_SOCKET", &self.socket_path)
                 .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
+                // inherit → logs flow to server process stdout/stderr without pipe buffering.
+                // piped+unread would fill the 64KB pipe buffer and deadlock the sidecar.
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
                 .spawn()
                 .map_err(SidecarError::SpawnFailed)?;
 
@@ -240,7 +242,7 @@ impl SidecarManager {
         recovered
     }
 
-    /// Call sidecar POST /control/resume for a single session.
+    /// Call sidecar POST /control/sessions/resume for a single session.
     async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
         use http_body_util::{BodyExt, Full};
         use hyper::client::conn::http1;
@@ -268,7 +270,7 @@ impl SidecarManager {
 
         let req = hyper::Request::builder()
             .method("POST")
-            .uri("/control/resume")
+            .uri("/control/sessions/resume")
             .header("host", "localhost")
             .header("content-type", "application/json")
             .body(Full::new(bytes::Bytes::from(body_str)))

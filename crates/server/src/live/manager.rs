@@ -3261,6 +3261,7 @@ mod hook_event_tests {
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
+            user_files: None,
         }
     }
 
@@ -3290,6 +3291,7 @@ mod hook_event_tests {
             tools_used: Vec::new(),
             compact_count: 0,
             slug: None,
+            user_files: None,
         }
     }
 
