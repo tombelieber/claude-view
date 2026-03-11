@@ -1,4 +1,5 @@
 import { Activity } from 'lucide-react'
+import { useRef } from 'react'
 import { useLiveSessions } from '../components/live/use-live-sessions'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
 import { SystemGaugeRow } from '../components/monitor/SystemGaugeRow'
@@ -8,6 +9,13 @@ import { useSystemMonitor } from '../hooks/use-system-monitor'
 export function SystemMonitorPage() {
   const { status, systemInfo, snapshot } = useSystemMonitor()
   const { sessions } = useLiveSessions()
+  const hasRevealedRef = useRef(false)
+
+  // Track first data arrival for stagger animation
+  if (snapshot && !hasRevealedRef.current) {
+    hasRevealedRef.current = true
+  }
+  const shouldAnimate = hasRevealedRef.current
 
   return (
     <div className="flex flex-col gap-4 p-4 max-w-7xl mx-auto h-full">
@@ -66,20 +74,49 @@ export function SystemMonitorPage() {
       ) : (
         <div className="flex flex-col gap-4 flex-1 min-h-0">
           {/* Gauges — sticky at top */}
-          <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-950 -mx-4 px-4 py-2">
+          <div
+            className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-950 -mx-4 px-4 py-2"
+            style={shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out both' } : undefined}
+          >
             <SystemGaugeRow snapshot={snapshot} systemInfo={systemInfo} />
           </div>
 
           {/* Claude Sessions */}
-          <ClaudeSessionsPanel
-            sessionResources={snapshot.sessionResources}
-            liveSessions={sessions}
-          />
+          <div
+            style={
+              shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out 100ms both' } : undefined
+            }
+          >
+            <ClaudeSessionsPanel
+              sessionResources={snapshot.sessionResources}
+              liveSessions={sessions}
+            />
+          </div>
 
           {/* Top Processes */}
-          <TopProcessesPanel processes={snapshot.topProcesses} />
+          <div
+            style={
+              shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out 200ms both' } : undefined
+            }
+          >
+            <TopProcessesPanel processes={snapshot.topProcesses} />
+          </div>
         </div>
       )}
+
+      {/* Stagger animation keyframes */}
+      <style>{`
+        @keyframes monitor-reveal {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   )
 }
