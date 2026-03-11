@@ -414,6 +414,105 @@ fn reconstruct_team_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Option
     })
 }
 
+/// Reconstruct inbox messages from SendMessage tool_use calls in JSONL.
+///
+/// SendMessage calls in the lead session JSONL represent outbound messages
+/// (team-lead → member). These are the only messages available after the
+/// filesystem team directory is deleted.
+fn reconstruct_inbox_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Vec<InboxMessage> {
+    let team_name_finder = memmem::Finder::new(team_name.as_bytes());
+    let send_msg_finder = memmem::Finder::new(b"\"SendMessage\"");
+
+    let mut messages = Vec::new();
+
+    for r in refs {
+        let Ok(content) = std::fs::read_to_string(&r.jsonl_path) else {
+            continue;
+        };
+
+        for line in content.lines() {
+            // SIMD pre-filter: must mention team name AND SendMessage
+            if team_name_finder.find(line.as_bytes()).is_none() {
+                continue;
+            }
+            if send_msg_finder.find(line.as_bytes()).is_none() {
+                continue;
+            }
+
+            let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+
+            let line_team = parsed
+                .get("teamName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if line_team != team_name {
+                continue;
+            }
+
+            let timestamp = parsed
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let blocks = parsed
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array());
+
+            let Some(blocks) = blocks else {
+                continue;
+            };
+
+            for block in blocks {
+                if block.get("name").and_then(|n| n.as_str()) != Some("SendMessage") {
+                    continue;
+                }
+                let Some(input) = block.get("input") else {
+                    continue;
+                };
+
+                let msg_type = input
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("message");
+                let content_text = input
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let summary = input
+                    .get("summary")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                let message_type = match msg_type {
+                    "shutdown_request" => InboxMessageType::ShutdownRequest,
+                    "shutdown_approved" => InboxMessageType::ShutdownApproved,
+                    "task_assignment" => InboxMessageType::TaskAssignment,
+                    "idle_notification" => InboxMessageType::IdleNotification,
+                    _ => InboxMessageType::PlainText,
+                };
+
+                messages.push(InboxMessage {
+                    from: "team-lead".to_string(),
+                    text: content_text,
+                    timestamp: timestamp.clone(),
+                    message_type,
+                    read: true, // Historical messages are always "read"
+                    color: None,
+                    summary,
+                });
+            }
+        }
+    }
+
+    messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    messages
+}
+
 // ============================================================================
 // Parser
 // ============================================================================
@@ -797,6 +896,53 @@ mod tests {
             store.get("test-team").is_some(),
             "Team detail should be available for newly created team"
         );
+    }
+
+    #[test]
+    fn test_reconstruct_inbox_from_jsonl() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-789.jsonl");
+
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-789","teamName":"inbox-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"SendMessage","input":{"type":"message","recipient":"analyst","summary":"Data ready","content":"Here is the analysis data."}}]},"timestamp":"2026-03-11T10:05:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-789","teamName":"inbox-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"SendMessage","input":{"type":"shutdown_request","recipient":"analyst","content":"All done."}}]},"timestamp":"2026-03-11T10:10:00.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-789".to_string(),
+            jsonl_path,
+        }];
+
+        let inbox = reconstruct_inbox_from_jsonl("inbox-team", &refs);
+        assert_eq!(inbox.len(), 2);
+        assert_eq!(inbox[0].from, "team-lead");
+        assert!(inbox[0].text.contains("analysis data"));
+        assert!(matches!(inbox[0].message_type, InboxMessageType::PlainText));
+        assert!(matches!(
+            inbox[1].message_type,
+            InboxMessageType::ShutdownRequest
+        ));
+        assert!(inbox[0].timestamp < inbox[1].timestamp);
+    }
+
+    #[test]
+    fn test_reconstruct_inbox_empty_when_no_send_messages() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-empty.jsonl");
+
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-empty","teamName":"no-msg-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"no-msg-team","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-empty".to_string(),
+            jsonl_path,
+        }];
+
+        let inbox = reconstruct_inbox_from_jsonl("no-msg-team", &refs);
+        assert!(inbox.is_empty());
     }
 
     #[test]
