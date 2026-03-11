@@ -75,6 +75,11 @@ export function SearchResults() {
               <span className="font-mono">{query}</span>&rdquo;
               <span className="ml-1 text-gray-400 dark:text-gray-500">({elapsedMs}ms)</span>
             </p>
+            {searchResults?.searchEngine === 'grep' && (
+              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded">
+                Substring matches
+              </span>
+            )}
           </div>
           <button
             onClick={handleClearSearch}
