@@ -176,12 +176,16 @@ pub fn create_app_full(
     let mut initial_pricing = claude_view_db::default_pricing();
     claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
     let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
+    let teams = Arc::new(crate::teams::TeamsStore::load(
+        &dirs::home_dir().expect("home dir exists").join(".claude"),
+    ));
     let (manager, live_sessions, live_tx) = live::manager::LiveSessionManager::start(
         pricing.clone(),
         db.clone(),
         search_index.clone(),
         registry.clone(),
         Some(sidecar.clone()),
+        teams.clone(),
     );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
@@ -231,9 +235,7 @@ pub fn create_app_full(
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
         plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
-        teams: Arc::new(crate::teams::TeamsStore::load(
-            &dirs::home_dir().expect("home dir exists").join(".claude"),
-        )),
+        teams: teams.clone(),
         prompt_index,
         prompt_stats,
         prompt_templates,
