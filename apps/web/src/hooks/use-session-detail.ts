@@ -18,9 +18,9 @@ async function fetchSessionDetail(sessionId: string): Promise<SessionDetail> {
  * - Linked commits with tier
  * - Derived metrics (tokensPerPrompt, reeditRate, etc.)
  */
-export function useSessionDetail(sessionId: string | null) {
+export function useSessionDetail(sessionId: string | null, version?: number) {
   return useQuery({
-    queryKey: ['session-detail', sessionId],
+    queryKey: ['session-detail', sessionId, version ?? 0],
     queryFn: () => {
       if (!sessionId) throw new Error('sessionId is required')
       return fetchSessionDetail(sessionId)

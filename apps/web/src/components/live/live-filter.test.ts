@@ -49,6 +49,7 @@ function makeMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     },
     cacheStatus: 'warm',
     closedAt: null,
+    editCount: 0,
     ...overrides,
   }
 }

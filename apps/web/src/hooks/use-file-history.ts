@@ -10,9 +10,9 @@ async function fetchFileHistory(sessionId: string): Promise<FileHistoryResponse>
   return response.json()
 }
 
-export function useFileHistory(sessionId: string | null) {
+export function useFileHistory(sessionId: string | null, version?: number) {
   return useQuery({
-    queryKey: ['file-history', sessionId],
+    queryKey: ['file-history', sessionId, version ?? 0],
     queryFn: () => {
       if (!sessionId) throw new Error('sessionId is required')
       return fetchFileHistory(sessionId)
