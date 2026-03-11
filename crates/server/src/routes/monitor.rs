@@ -79,8 +79,9 @@ async fn monitor_stream(
             let sessions_clone = sessions.clone();
             drop(sessions);
             let mut sys = sysinfo::System::new_all();
-            std::thread::sleep(Duration::from_millis(200));
             tokio::task::spawn_blocking(move || {
+                // Brief sleep so sysinfo CPU delta is non-zero on first measurement
+                std::thread::sleep(Duration::from_millis(200));
                 collect_snapshot(&mut sys, &sessions_clone)
             })
             .await
@@ -152,18 +153,20 @@ async fn monitor_snapshot(State(state): State<Arc<AppState>>) -> Json<ResourceSn
         map.clone()
     };
     let mut sys = sysinfo::System::new_all();
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let snapshot = tokio::task::spawn_blocking(move || collect_snapshot(&mut sys, &sessions))
-        .await
-        .unwrap_or_else(|_| ResourceSnapshot {
-            timestamp: chrono::Utc::now().timestamp(),
-            cpu_percent: 0.0,
-            memory_used_bytes: 0,
-            memory_total_bytes: 0,
-            disk_used_bytes: 0,
-            disk_total_bytes: 0,
-            top_processes: Vec::new(),
-            session_resources: Vec::new(),
-        });
+    let snapshot = tokio::task::spawn_blocking(move || {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        collect_snapshot(&mut sys, &sessions)
+    })
+    .await
+    .unwrap_or_else(|_| ResourceSnapshot {
+        timestamp: chrono::Utc::now().timestamp(),
+        cpu_percent: 0.0,
+        memory_used_bytes: 0,
+        memory_total_bytes: 0,
+        disk_used_bytes: 0,
+        disk_total_bytes: 0,
+        top_processes: Vec::new(),
+        session_resources: Vec::new(),
+    });
     Json(snapshot)
 }
