@@ -177,7 +177,11 @@
       "lastPrompt",
       "prNumber",
       "prUrl",
-      "prRepository"
+      "prRepository",
+      "toolUseResult.answers",
+      "toolUseResult.annotations",
+      "message.content[].content",
+      "data.message.message"
     ],
     "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Not needed by our parser for session display, cost tracking, or live monitoring."
   }
