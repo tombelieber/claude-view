@@ -599,6 +599,56 @@ npx claude-view@latest
 If you have project-scoped plugins, open the Plugins page and try disabling or uninstalling one. It should work correctly now regardless of scope.
 
 
+--- blog/v0-14-0-open-in-ide-and-mentions.mdx ---
+
+---
+title: "Open Files in Your Editor, See What Claude Referenced"
+description: "v0.14.0 adds one-click Open in IDE from session views, @file mention chips on session cards, and a richer live chat experience with thinking blocks and a context gauge."
+date: 2026-03-11
+author: claude-view team
+---
+
+The gap between reading a Claude Code session and acting on it just got smaller. v0.14.0 introduces two features that connect what you see in claude-view to the work you do in your editor.
+
+## Open in IDE
+
+Claude Code sessions reference files constantly — edits, reads, searches, diffs. Until now, seeing a file referenced in a session meant manually navigating to it in your editor.
+
+v0.14.0 adds an **Open in IDE button** wherever files appear: the Changes tab, individual file headers in the diff view, and the project headers in the Kanban live monitor. Click it and the file opens in your editor at the right path.
+
+claude-view auto-detects which editors you have installed — VS Code, Cursor, Zed, and others. If you have more than one, it asks once and remembers. The detection runs locally against your installed applications; nothing is sent to a server.
+
+The button is intentionally small and secondary — it doesn't get in the way of reading the session, but it's there when you want to act on something you see.
+
+## @File mention chips
+
+When Claude references a file using `@filename` notation, that mention is now extracted and displayed as a chip on the session card. You can see at a glance which files a session touched before you open it — useful for finding sessions that worked on a specific file, or for understanding what a long-running agent was doing.
+
+Chips show abbreviated names to keep cards compact. Hover a chip to see the full path. The extraction runs at parse time, so mentions appear on both live sessions and historical ones without any extra work.
+
+## Richer live chat
+
+The live chat rail — which shows the streaming conversation between you and Claude during an active session — now renders the full structure of assistant responses:
+
+- **Thinking blocks** are shown in a collapsible aside, so you can see Claude's reasoning without it dominating the view
+- **Tool calls** show the function name and arguments with syntax highlighting
+- **Tool results** are formatted and collapsible for long outputs
+
+A **mode selector** at the top of the rail lets you switch between Control mode (direct commands) and Review mode (critique and suggestions). A **context gauge** shows what percentage of the current model's context window is in use — useful for knowing when you're approaching limits on a long session.
+
+## Teams panel improvements
+
+The teams panel now separates human team members from Claude sub-agents. Previously they were mixed together, which made it hard to see who was coordinating the session versus which agents were doing work. The new layout puts people and agents in distinct sections with clear labels.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
+
+
 --- blog/v0-13-0-workflows-and-live-chat.mdx ---
 
 ---
@@ -1420,6 +1470,38 @@ version: v0.2.0
 
 ```bash
 npx claude-view
+```
+
+
+--- changelog/v0.14.0.md ---
+
+---
+title: "v0.14.0 — Open in IDE, @Mentions, and Agent Chat"
+date: 2026-03-11
+version: v0.14.0
+---
+
+## New features
+
+**Open in IDE** — Files referenced in your Claude Code sessions now have a one-click button to open them directly in your editor. claude-view auto-detects VS Code, Cursor, Zed, and other installed editors. The button appears in the Changes tab, file headers, and Kanban project headers. Your preferred editor is remembered across sessions.
+
+**@File mention chips** — When Claude references files during a session, the `@filename` mentions are extracted and shown as chips on session cards in both the Live Monitor and session history. Hover a chip to see the full path.
+
+**Agent SDK live chat upgrades** — The live chat rail now renders thinking blocks, tool calls, and tool results with full syntax highlighting and collapsible sections. A mode selector lets you switch between Control and Review modes. A token usage gauge shows how much of the context window is in use.
+
+**Teams: members vs sub-agents** — The team panel now clearly separates human team members from Claude sub-agents spawned during the session. The layout is cleaner and easier to scan at a glance.
+
+## Improvements
+
+- **`teamName` extraction fixed** — Now correctly read from the top-level JSONL field instead of a phantom `input.team_name` path that never existed in real data.
+- **Branch metadata guard** — Fixed a bug where `apply_jsonl_metadata` could overwrite an existing branch value with `None`.
+- **File history filenames** — Resolved by content hash rather than `backupFileName`, which was unreliable for renamed files.
+- **Live monitor animation** — Compacting card animation strengthened with border and glow pulse for clearer visual feedback.
+
+## Getting started
+
+```bash
+npx claude-view@latest
 ```
 
 
