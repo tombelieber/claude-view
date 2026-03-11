@@ -612,6 +612,10 @@ pub struct TeamsStore {
     /// Eagerly loaded snapshot (used for the initial log message at startup).
     pub teams: HashMap<String, TeamDetail>,
     pub inboxes: HashMap<String, Vec<InboxMessage>>,
+    /// JSONL fallback index: team_name → JSONL file refs.
+    /// Populated at startup by scanning all session JSONL files.
+    /// Used when a team's filesystem directory no longer exists.
+    jsonl_index: TeamJSONLIndex,
 }
 
 /// Internal: scan the teams directory and return (teams, inboxes).
@@ -651,13 +655,22 @@ impl TeamsStore {
             claude_dir: None,
             teams: HashMap::new(),
             inboxes: HashMap::new(),
+            jsonl_index: HashMap::new(),
         }
     }
 
-    /// Scan ~/.claude/teams/ and load all teams with valid config.json.
-    /// Subsequent calls to `summaries()`, `get()`, etc. will re-scan live.
+    /// Scan ~/.claude/teams/ and build the JSONL fallback index.
+    /// Delegates to `load_with_index()` — the existing call at `lib.rs:234`
+    /// automatically builds the JSONL index at startup without changes.
     pub fn load(claude_dir: &Path) -> Self {
+        Self::load_with_index(claude_dir)
+    }
+
+    /// Scan ~/.claude/teams/ for filesystem teams and build the JSONL fallback index.
+    /// Subsequent calls to `summaries()`, `get()`, etc. will re-scan disk live.
+    pub fn load_with_index(claude_dir: &Path) -> Self {
         let (teams, inboxes) = scan_teams_dir(claude_dir);
+        let jsonl_index = build_team_jsonl_index(claude_dir);
 
         for (name, detail) in &teams {
             let msg_count = inboxes.get(name).map_or(0, |i| i.len());
@@ -668,16 +681,30 @@ impl TeamsStore {
                 msg_count,
             );
         }
+
+        let jsonl_only: Vec<_> = jsonl_index
+            .keys()
+            .filter(|name| !teams.contains_key(*name))
+            .collect();
+        if !jsonl_only.is_empty() {
+            tracing::info!(
+                "Found {} teams in JSONL only (filesystem deleted): {:?}",
+                jsonl_only.len(),
+                jsonl_only,
+            );
+        }
+
         tracing::info!(
-            "Loaded {} teams from {:?}",
+            "Loaded {} teams from disk + {} in JSONL index",
             teams.len(),
-            claude_dir.join("teams")
+            jsonl_index.len(),
         );
 
         Self {
             claude_dir: Some(claude_dir.to_path_buf()),
             teams,
             inboxes,
+            jsonl_index,
         }
     }
 
@@ -727,20 +754,74 @@ impl TeamsStore {
                 }
             })
             .collect();
+        // Add JSONL-only teams (not on filesystem)
+        for (team_name, refs) in &self.jsonl_index {
+            if teams.contains_key(team_name) {
+                continue; // Already have this team from filesystem
+            }
+            if let Some(detail) = reconstruct_team_from_jsonl(team_name, refs) {
+                let inbox = reconstruct_inbox_from_jsonl(team_name, refs);
+                let msg_count = inbox.len() as u32;
+                let mut models: Vec<_> = detail.members.iter().map(|m| m.model.clone()).collect();
+                models.sort();
+                models.dedup();
+
+                let duration = if inbox.len() >= 2 {
+                    let first = chrono::DateTime::parse_from_rfc3339(&inbox[0].timestamp).ok();
+                    let last =
+                        chrono::DateTime::parse_from_rfc3339(&inbox[inbox.len() - 1].timestamp)
+                            .ok();
+                    first
+                        .zip(last)
+                        .map(|(f, l)| (l - f).num_seconds().max(0) as u32)
+                } else {
+                    None
+                };
+
+                summaries.push(TeamSummary {
+                    name: detail.name,
+                    description: detail.description,
+                    created_at: detail.created_at,
+                    lead_session_id: detail.lead_session_id,
+                    member_count: detail.members.len() as u32,
+                    message_count: msg_count,
+                    duration_estimate_secs: duration,
+                    models,
+                });
+            }
+        }
+
         summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         summaries
     }
 
-    /// Look up a team by name (re-scans disk).
+    /// Look up a team by name (re-scans disk, falls back to JSONL index).
     pub fn get(&self, name: &str) -> Option<TeamDetail> {
         let (teams, _) = self.refresh();
-        teams.get(name).cloned()
+        // Filesystem first
+        if let Some(detail) = teams.get(name) {
+            return Some(detail.clone());
+        }
+        // JSONL fallback — reconstruct from session logs
+        if let Some(refs) = self.jsonl_index.get(name) {
+            return reconstruct_team_from_jsonl(name, refs);
+        }
+        None
     }
 
-    /// Look up inbox messages for a team (re-scans disk).
+    /// Look up inbox messages for a team (re-scans disk, falls back to JSONL index).
     pub fn inbox(&self, name: &str) -> Option<Vec<InboxMessage>> {
         let (_, inboxes) = self.refresh();
-        inboxes.get(name).cloned()
+        // Filesystem first
+        if let Some(msgs) = inboxes.get(name) {
+            return Some(msgs.clone());
+        }
+        // JSONL fallback — return reconstructed inbox (may be empty vec)
+        if self.jsonl_index.contains_key(name) {
+            let refs = &self.jsonl_index[name];
+            return Some(reconstruct_inbox_from_jsonl(name, refs));
+        }
+        None
     }
 }
 
@@ -896,6 +977,99 @@ mod tests {
             store.get("test-team").is_some(),
             "Team detail should be available for newly created team"
         );
+    }
+
+    #[test]
+    fn test_get_prefers_filesystem_over_jsonl() {
+        let tmp = TempDir::new().unwrap();
+
+        // Create filesystem team
+        make_test_team(tmp.path());
+
+        // Also create JSONL with different description for same team name
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        fs::create_dir_all(&projects_dir).unwrap();
+        let jsonl_path = projects_dir.join("sess-jsonl.jsonl");
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-jsonl","teamName":"test-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"test-team","description":"JSONL version"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let store = TeamsStore::load_with_index(tmp.path());
+
+        // Should return filesystem version (original description), NOT JSONL version
+        let detail = store.get("test-team").unwrap();
+        assert_eq!(detail.description, "Test team for unit tests");
+    }
+
+    #[test]
+    fn test_inbox_fallback_from_jsonl() {
+        let tmp = TempDir::new().unwrap();
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        fs::create_dir_all(&projects_dir).unwrap();
+
+        let jsonl_path = projects_dir.join("sess-inbox.jsonl");
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-inbox","teamName":"inbox-only","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"inbox-only","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-inbox","teamName":"inbox-only","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"SendMessage","input":{"type":"message","recipient":"worker","content":"Hello worker"}}]},"timestamp":"2026-03-11T10:01:00.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let store = TeamsStore::load_with_index(tmp.path());
+        let inbox = store.inbox("inbox-only");
+        assert!(inbox.is_some());
+        assert_eq!(inbox.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_summaries_includes_jsonl_only_teams() {
+        let tmp = TempDir::new().unwrap();
+
+        // Create one filesystem team
+        make_test_team(tmp.path());
+
+        // Create one JSONL-only team
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        fs::create_dir_all(&projects_dir).unwrap();
+        let jsonl_path = projects_dir.join("sess-summary.jsonl");
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-summary","teamName":"jsonl-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"jsonl-team","description":"JSONL-only team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-summary","teamName":"jsonl-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"agent-a","team_name":"jsonl-team","prompt":"Work"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let store = TeamsStore::load_with_index(tmp.path());
+        let summaries = store.summaries();
+
+        assert_eq!(summaries.len(), 2);
+        let names: Vec<_> = summaries.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"test-team"));
+        assert!(names.contains(&"jsonl-team"));
+    }
+
+    #[test]
+    fn test_teams_store_with_jsonl_index() {
+        let tmp = TempDir::new().unwrap();
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        fs::create_dir_all(&projects_dir).unwrap();
+
+        let jsonl_path = projects_dir.join("sess-fallback.jsonl");
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-fallback","teamName":"ghost-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"ghost-team","description":"A team that no longer exists on disk"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-fallback","teamName":"ghost-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"worker","team_name":"ghost-team","prompt":"Do stuff","subagent_type":"general-purpose"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        // Load with JSONL index — no teams/ directory exists
+        let store = TeamsStore::load_with_index(tmp.path());
+
+        let detail = store.get("ghost-team");
+        assert!(detail.is_some(), "Should reconstruct ghost-team from JSONL");
+        let detail = detail.unwrap();
+        assert_eq!(detail.name, "ghost-team");
+        assert_eq!(detail.description, "A team that no longer exists on disk");
+        assert_eq!(detail.members.len(), 1);
+        assert_eq!(detail.members[0].name, "worker");
     }
 
     #[test]
