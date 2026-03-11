@@ -133,7 +133,7 @@ function getStoredPanelWidth(isInline: boolean): number {
     const stored = localStorage.getItem(key)
     if (stored) {
       const w = Number.parseInt(stored, 10)
-      if (w >= MIN_PANEL_WIDTH && !isNaN(w)) return w
+      if (w >= MIN_PANEL_WIDTH && !Number.isNaN(w)) return w
     }
   } catch (e) {
     console.debug('[SessionDetailPanel] localStorage access failed:', e)
@@ -153,21 +153,32 @@ export function SessionDetailPanel({
   controlSessionId,
 }: SessionDetailPanelProps) {
   // Resolve to unified data shape
+  // Callers always provide either panelData (history) or session (live) — never neither.
+  // biome-ignore lint/style/noNonNullAssertion: callers guarantee panelDataProp or session is always set
   const data: SessionPanelData = panelDataProp ?? liveSessionToPanelData(session!)
   const isLive = !panelDataProp
   const hasSubAgents = data.subAgents && data.subAgents.length > 0
 
+  // Live sessions: use SSE-driven version counters
+  // For history sessions, version is undefined → query key is stable → no unnecessary refetches
+  const editVersion = isLive ? session?.editCount : undefined
+  const taskVersion = isLive ? (session?.progressItems?.length ?? 0) : undefined
+
   // For live sessions, fetch tasks from API (the SSE live stream does not include persistent task data)
-  const { data: liveSessionDetail } = useSessionDetail(isLive ? data.id : null)
+  const { data: liveSessionDetail } = useSessionDetail(isLive ? data.id : null, taskVersion)
   const tasks = isLive ? liveSessionDetail?.tasks : data.tasks
   const hasTasks = tasks && tasks.length > 0
 
   // File history (fetched on demand for all sessions)
-  const { data: fileHistory } = useFileHistory(data.id)
+  const { data: fileHistory } = useFileHistory(data.id, editVersion)
   const hasChanges = fileHistory && fileHistory.files.length > 0
 
   // Plan documents — hook takes sessionId (endpoint resolves slug server-side)
-  const { data: planDocuments } = usePlanDocuments(data.id, data.hasPlans || !!data.slug)
+  const { data: planDocuments } = usePlanDocuments(
+    data.id,
+    data.hasPlans || !!data.slug,
+    editVersion,
+  )
   const hasPlans = planDocuments && planDocuments.length > 0
 
   // ---- Control session hooks (unconditional — Rules of Hooks) ----
@@ -677,10 +688,10 @@ export function SessionDetailPanel({
                 <div className="flex items-center gap-1.5 mb-2">
                   <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                   <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
-                    Sub-Agents ({data.subAgents!.length})
+                    Sub-Agents ({(data.subAgents ?? []).length})
                   </span>
                 </div>
-                <SubAgentPills subAgents={data.subAgents!} />
+                <SubAgentPills subAgents={data.subAgents ?? []} />
               </button>
             )}
 
@@ -698,7 +709,7 @@ export function SessionDetailPanel({
                   </span>
                 </div>
                 <TimelineView
-                  subAgents={data.subAgents!}
+                  subAgents={data.subAgents ?? []}
                   sessionStartedAt={data.startedAt}
                   sessionDurationMs={
                     data.status === 'done'
@@ -793,7 +804,7 @@ export function SessionDetailPanel({
                 {/* Swim lanes (~50% height) */}
                 <div className="flex-1 min-h-0 overflow-y-auto p-4">
                   <SwimLanes
-                    subAgents={data.subAgents!}
+                    subAgents={data.subAgents ?? []}
                     sessionActive={data.status === 'working'}
                     onDrillDown={handleDrillDown}
                   />
@@ -803,7 +814,7 @@ export function SessionDetailPanel({
                 {data.startedAt && (
                   <div className="flex-1 min-h-0 overflow-y-auto p-4 border-t border-gray-200 dark:border-gray-800">
                     <TimelineView
-                      subAgents={data.subAgents!}
+                      subAgents={data.subAgents ?? []}
                       sessionStartedAt={data.startedAt}
                       sessionDurationMs={
                         data.status === 'done'
@@ -825,7 +836,9 @@ export function SessionDetailPanel({
         )}
 
         {/* ---- Teams tab ---- */}
-        {activeTab === 'teams' && data.teamName && <TeamsTab teamName={data.teamName} />}
+        {activeTab === 'teams' && data.teamName && (
+          <TeamsTab teamName={data.teamName} inboxVersion={session?.teamInboxCount} />
+        )}
 
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
@@ -835,19 +848,19 @@ export function SessionDetailPanel({
         )}
 
         {/* ---- Tasks tab ---- */}
-        {activeTab === 'tasks' && hasTasks && <TaskDetailTab tasks={tasks!} />}
+        {activeTab === 'tasks' && hasTasks && tasks && <TaskDetailTab tasks={tasks} />}
 
         {/* ---- Changes tab ---- */}
-        {activeTab === 'changes' && hasChanges && (
+        {activeTab === 'changes' && hasChanges && fileHistory && (
           <ChangesTab
-            fileHistory={fileHistory!}
+            fileHistory={fileHistory}
             sessionId={data.id}
             projectPath={data.projectPath}
           />
         )}
 
         {/* ---- Plan tab ---- */}
-        {activeTab === 'plan' && hasPlans && <PlanTab plans={planDocuments!} />}
+        {activeTab === 'plan' && hasPlans && planDocuments && <PlanTab plans={planDocuments} />}
       </div>
     </div>
   )

@@ -48,6 +48,7 @@ function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSess
     },
     cacheStatus: 'unknown',
     closedAt: null,
+    editCount: 0,
     ...overrides,
   }
 }
