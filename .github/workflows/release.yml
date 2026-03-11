@@ -89,6 +89,9 @@ jobs:
 
       - name: Build Rust binary
         run: cargo build --release -p claude-view-server
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          RELAY_URL: wss://claude-view-relay.fly.dev/ws
 
       - name: Stage sidecar
         run: |
