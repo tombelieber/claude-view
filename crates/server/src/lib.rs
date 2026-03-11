@@ -149,6 +149,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         prompt_stats: Arc::new(std::sync::RwLock::new(None)),
         prompt_templates: Arc::new(std::sync::RwLock::new(None)),
         available_ides: Vec::new(),
+        monitor_tx: tokio::sync::broadcast::channel(64).0,
+        monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     });
     api_routes(state)
 }
@@ -241,6 +243,8 @@ pub fn create_app_full(
         prompt_stats,
         prompt_templates,
         available_ides,
+        monitor_tx: tokio::sync::broadcast::channel(64).0,
+        monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     });
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
