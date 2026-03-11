@@ -286,7 +286,7 @@ pub async fn list_sessions(
             match search_index {
                 Some(idx) => {
                     const TANTIVY_SESSION_LIMIT: usize = 10_000;
-                    match idx.search(q_trimmed, None, TANTIVY_SESSION_LIMIT, 0) {
+                    match idx.search(q_trimmed, None, TANTIVY_SESSION_LIMIT, 0, false) {
                         Ok(response) => {
                             let ids: Vec<String> = response
                                 .sessions

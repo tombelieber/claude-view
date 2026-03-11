@@ -63,8 +63,15 @@ pub fn unified_search(
     // Run both engines (synchronous — caller wraps in spawn_blocking)
 
     // 1. Run Tantivy (supplement)
-    let tantivy_result = search_index
-        .map(|idx| idx.search(&opts.query, opts.scope.as_deref(), opts.limit, opts.offset));
+    let tantivy_result = search_index.map(|idx| {
+        idx.search(
+            &opts.query,
+            opts.scope.as_deref(),
+            opts.limit,
+            opts.offset,
+            false,
+        )
+    });
 
     // 2. Run grep (primary)
     let grep_result = if !jsonl_files.is_empty() {
