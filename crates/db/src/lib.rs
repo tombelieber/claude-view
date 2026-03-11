@@ -30,6 +30,7 @@ pub use queries::IndexRunIntegrityCounters;
 pub use queries::IndexerEntry;
 pub use queries::InvocableWithCount;
 pub use queries::ModelWithStats;
+pub use queries::SearchPrefilter;
 pub use queries::SessionFilterParams;
 pub use queries::StatsOverview;
 pub use queries::SystemStorageStats;
