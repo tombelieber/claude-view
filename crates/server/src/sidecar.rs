@@ -242,7 +242,7 @@ impl SidecarManager {
         recovered
     }
 
-    /// Call sidecar POST /control/resume for a single session.
+    /// Call sidecar POST /control/sessions/resume for a single session.
     async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
         use http_body_util::{BodyExt, Full};
         use hyper::client::conn::http1;
