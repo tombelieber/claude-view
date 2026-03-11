@@ -8,6 +8,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ChatPage } from './pages/ChatPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
@@ -57,6 +58,8 @@ export const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <LiveMonitorPage /> },
+      { path: 'chat', element: <ChatPage /> },
+      { path: 'chat/:sessionId', element: <ChatPage /> },
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'analytics', element: <AnalyticsPage /> },
