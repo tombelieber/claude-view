@@ -3,8 +3,8 @@
 //!
 //! - GET /search?q=...&scope=...&limit=...&offset=... — Search across all sessions
 //!
-//! Uses unified search: Tantivy first, grep fallback if 0 results.
-//! Returns 503 if the search index is still building.
+//! Uses co-primary search: grep (primary) + Tantivy (supplement).
+//! SQLite pre-filters narrow the session set before search engines run.
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -13,9 +13,11 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use claude_view_db::SearchPrefilter;
 use claude_view_search::types::SearchResponse;
 use claude_view_search::{unified_search, UnifiedSearchOptions};
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::grep::collect_jsonl_files;
@@ -31,25 +33,42 @@ pub struct SearchQuery {
     pub limit: Option<usize>,
     /// Number of session groups to skip for pagination (default: 0).
     pub offset: Option<usize>,
+    // Structured filters for SQLite pre-filter:
+    /// Filter by project path or project_id.
+    pub project: Option<String>,
+    /// Filter by git branch name.
+    pub branch: Option<String>,
+    /// Filter by model name.
+    pub model: Option<String>,
+    /// Filter sessions after this date (ISO format: "2026-03-01").
+    pub after: Option<String>,
+    /// Filter sessions before this date (ISO format: "2026-03-11").
+    pub before: Option<String>,
 }
 
 /// Build the search sub-router.
 ///
 /// Routes:
-/// - `GET /search` — Unified smart search across all indexed sessions
+/// - `GET /search` — Co-primary smart search across all indexed sessions
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/search", get(search_handler))
 }
 
-/// GET /api/search — Unified smart search.
+/// Parse ISO date string ("YYYY-MM-DD") to Unix timestamp (midnight UTC).
+fn parse_iso_date(s: &str) -> Option<i64> {
+    chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .ok()
+        .map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp())
+}
+
+/// GET /api/search — Co-primary smart search.
 ///
-/// Tries Tantivy full-text index first. If 0 results, falls back to
-/// grep over raw JSONL files. Returns a single `SearchResponse` shape
-/// regardless of which engine produced the results.
+/// Runs grep (primary) and Tantivy (supplement) concurrently.
+/// SQLite pre-filter narrows the session set before engines run.
+/// Returns a single `SearchResponse` regardless of which engines contributed.
 ///
-/// Returns 503 if the search index is still building (grep is NOT
-/// a substitute for the missing index — it's a fallback for Tantivy
-/// misses, not Tantivy absence).
+/// Does NOT return 503 when Tantivy index is missing — grep is primary and
+/// does not depend on the index.
 async fn search_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
@@ -61,52 +80,72 @@ async fn search_handler(
         ));
     }
 
+    let limit = query.limit.unwrap_or(20).min(100);
+    let offset = query.offset.unwrap_or(0);
+    let scope = query.scope.clone();
+
+    // Build SQLite pre-filter from structured params.
+    // Also extract project from scope string for backward compat ("project:<name>").
+    let scope_project = scope
+        .as_deref()
+        .and_then(|s| s.strip_prefix("project:").map(|p| p.to_string()));
+
+    let prefilter = SearchPrefilter {
+        project: query.project.clone().or(scope_project),
+        branch: query.branch.clone(),
+        model: query.model.clone(),
+        after: query.after.as_deref().and_then(parse_iso_date),
+        before: query.before.as_deref().and_then(parse_iso_date),
+    };
+
+    // Step 1: SQLite pre-filter (only if any structured filters are set).
+    let session_ids: Option<HashSet<String>> = if !prefilter.is_empty() {
+        Some(
+            state
+                .db
+                .search_prefilter_session_ids(&prefilter)
+                .await
+                .map_err(|e| crate::error::ApiError::Internal(format!("Pre-filter: {e}")))?,
+        )
+    } else {
+        None
+    };
+
+    // Step 2: Collect JSONL files (narrowed by session IDs when filtered).
+    let project_filter = prefilter.project.clone();
+    let session_ids_clone = session_ids.clone();
+    let jsonl_files = tokio::task::spawn_blocking(move || {
+        collect_jsonl_files(project_filter.as_deref(), session_ids_clone.as_ref())
+    })
+    .await
+    .map_err(|e| crate::error::ApiError::Internal(format!("File collection join: {e}")))?
+    .unwrap_or_else(|e| {
+        tracing::warn!("Failed to collect JSONL files: {e}");
+        vec![]
+    });
+
+    // Step 3: Get search index (optional — grep is primary, Tantivy supplements).
     // Read-lock the holder, clone the Option<Arc<SearchIndex>>, drop the lock immediately.
     let search_index = state
         .search_index
         .read()
         .map_err(|_| crate::error::ApiError::Internal("search index lock poisoned".into()))?
         .clone();
+    // search_index is Option<Arc<SearchIndex>> — pass as Option<&SearchIndex> via .as_deref()
 
-    // 503 if index not ready — grep is NOT a substitute for missing index
-    let search_index = search_index.ok_or_else(|| {
-        crate::error::ApiError::ServiceUnavailable(
-            "Search index is not available. It may still be building.".to_string(),
-        )
-    })?;
-
-    let limit = query.limit.unwrap_or(20).min(100);
-    let offset = query.offset.unwrap_or(0);
-    let scope = query.scope.clone();
-
+    // Step 4: Run unified search (both engines co-primary) in spawn_blocking.
     let q_owned = q.to_string();
+    let start = std::time::Instant::now();
 
-    let response = tokio::task::spawn_blocking(move || {
-        // Parse scope for project filter (e.g. "project:claude-view" -> "claude-view")
-        let project_filter = scope
-            .as_deref()
-            .and_then(|s| s.strip_prefix("project:").map(|p| p.to_string()));
-
-        // Collect JSONL files for grep fallback, scoped by project if specified.
-        // Log errors but don't fail the request — grep is a fallback, not primary.
-        let jsonl_files = match collect_jsonl_files(project_filter.as_deref(), None) {
-            Ok(files) => files,
-            Err(e) => {
-                tracing::warn!("Failed to collect JSONL files for grep fallback: {e}");
-                vec![]
-            }
-        };
-
+    let result = tokio::task::spawn_blocking(move || {
         let opts = UnifiedSearchOptions {
             query: q_owned,
             scope,
             limit,
             offset,
         };
-
-        // search_index is Arc<SearchIndex> — .as_ref() dereferences to &SearchIndex.
-        // Rust does NOT auto-deref Arc<T> to &T in function argument position.
-        unified_search(Some(search_index.as_ref()), &jsonl_files, &opts)
+        // .as_deref() converts Option<Arc<SearchIndex>> to Option<&SearchIndex>
+        unified_search(search_index.as_deref(), &jsonl_files, &opts)
     })
     .await
     .map_err(|e| {
@@ -128,5 +167,8 @@ async fn search_handler(
     })?
     .map_err(|e| crate::error::ApiError::Internal(format!("Search failed: {}", e)))?;
 
-    Ok(Json(response.response))
+    let mut response = result.response;
+    response.elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+
+    Ok(Json(response))
 }
