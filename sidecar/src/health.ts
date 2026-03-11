@@ -1,6 +1,6 @@
 // sidecar/src/health.ts
 import { Hono } from 'hono'
-import type { HealthResponse } from './types.js'
+import type { HealthResponse } from './protocol.js'
 
 const startTime = Date.now()
 

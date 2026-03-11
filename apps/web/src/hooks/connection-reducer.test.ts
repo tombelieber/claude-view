@@ -108,11 +108,11 @@ describe('connectionReducer', () => {
     expect((next as { lastSeq: number }).lastSeq).toBe(6)
   })
 
-  it('active + completed status → completed', () => {
+  it('active + session_closed → completed', () => {
     const state: ConnectionState = { phase: 'active', sessionId: 's1', lastSeq: 5 }
     const next = connectionReducer(state, {
       type: 'ws_message',
-      msg: { type: 'session_status', status: 'completed', contextUsage: 50, turnCount: 3 },
+      msg: { type: 'session_closed', reason: 'done' },
       seq: 6,
     })
     expect(next.phase).toBe('completed')
