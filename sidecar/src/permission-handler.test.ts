@@ -80,7 +80,9 @@ describe('PermissionHandler', () => {
     vi.advanceTimersByTime(1001)
     const result = await promise
     expect(result.behavior).toBe('deny')
-    expect(result.message).toContain('timed out')
+    if (result.behavior === 'deny') {
+      expect(result.message).toContain('timed out')
+    }
 
     vi.useRealTimers()
   })
