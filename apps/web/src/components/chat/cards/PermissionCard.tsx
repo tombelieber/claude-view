@@ -8,7 +8,7 @@ export interface PermissionCardProps {
     requestId: string
     toolName: string
     toolInput: Record<string, unknown>
-    description: string
+    decisionReason?: string
     timeoutMs: number
   }
   onRespond: (requestId: string, allowed: boolean) => void
@@ -134,8 +134,8 @@ export function PermissionCard({ permission, onRespond, resolved }: PermissionCa
         </div>
 
         {/* Description */}
-        {permission.description && (
-          <p className="text-xs text-gray-700 dark:text-gray-300">{permission.description}</p>
+        {permission.decisionReason && (
+          <p className="text-xs text-gray-700 dark:text-gray-300">{permission.decisionReason}</p>
         )}
 
         {/* Tool-specific preview */}

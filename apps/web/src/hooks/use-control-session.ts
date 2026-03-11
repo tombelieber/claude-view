@@ -3,11 +3,20 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
 import type {
   AskUserQuestionMsg,
+  AuthStatusMsg,
   ChatMessage,
+  ContextCompactedMsg,
   ElicitationMsg,
+  HookEventMsg,
+  ModelUsageInfo,
   PermissionRequestMsg,
   PlanApprovalMsg,
+  RateLimitMsg,
   ServerMessage,
+  SessionInitMsg,
+  TaskProgressMsg,
+  TaskStartedMsg,
+  ToolProgressMsg,
 } from '../types/control'
 import { CLOSE_CODES, type PermissionMode } from '../types/control'
 import { type ConnectionState, connectionReducer } from './connection-reducer'
@@ -27,6 +36,8 @@ interface ControlSessionState {
   messages: ChatMessage[]
   streamingContent: string
   streamingMessageId: string
+  thinkingContent: string
+  // Legacy fields kept for backwards compat with use-session-control consumers
   contextUsage: number
   turnCount: number
   sessionCost: number | null
@@ -34,6 +45,18 @@ interface ControlSessionState {
   tokenUsage: { input: number; output: number; cacheRead: number; cacheCreation: number } | null
   model: string | null
   contextWindow: number | null
+  // New fields for 27-event protocol
+  sessionInit: SessionInitMsg | null
+  rateLimitStatus: RateLimitMsg | null
+  activeTasks: Map<string, TaskStartedMsg | TaskProgressMsg>
+  activeToolProgress: Map<string, ToolProgressMsg>
+  contextCompaction: ContextCompactedMsg | null
+  fastModeState: string | null
+  hookEvents: HookEventMsg[]
+  promptSuggestion: string | null
+  modelUsage: Record<string, ModelUsageInfo>
+  authStatus: AuthStatusMsg | null
+  // Interactive card state
   toolPairMap: Map<
     string,
     {
@@ -55,6 +78,7 @@ function makeInitialUIState(): ControlSessionState {
     messages: [],
     streamingContent: '',
     streamingMessageId: '',
+    thinkingContent: '',
     contextUsage: 0,
     turnCount: 0,
     sessionCost: null,
@@ -62,6 +86,16 @@ function makeInitialUIState(): ControlSessionState {
     tokenUsage: null,
     model: null,
     contextWindow: null,
+    sessionInit: null,
+    rateLimitStatus: null,
+    activeTasks: new Map(),
+    activeToolProgress: new Map(),
+    contextCompaction: null,
+    fastModeState: null,
+    hookEvents: [],
+    promptSuggestion: null,
+    modelUsage: {},
+    authStatus: null,
     toolPairMap: new Map(),
     permissionRequest: null,
     askQuestion: null,
@@ -73,6 +107,222 @@ function makeInitialUIState(): ControlSessionState {
 
 const INITIAL_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 30_000
+
+function handleServerMessage(prev: ControlSessionState, msg: ServerMessage): ControlSessionState {
+  switch (msg.type) {
+    case 'assistant_text':
+      return {
+        ...prev,
+        streamingContent: prev.streamingContent + msg.text,
+        streamingMessageId: msg.messageId,
+      }
+
+    case 'assistant_thinking':
+      return {
+        ...prev,
+        thinkingContent: prev.thinkingContent + msg.thinking,
+        messages: [
+          ...prev.messages,
+          {
+            role: 'thinking',
+            content: msg.thinking,
+            messageId: msg.messageId,
+          },
+        ],
+      }
+
+    case 'assistant_error':
+      return { ...prev, error: msg.error }
+
+    case 'turn_complete': {
+      // Materialize any in-progress streaming content
+      const newMessages = [...prev.messages]
+      if (prev.streamingContent) {
+        newMessages.push({
+          role: 'assistant',
+          content: prev.streamingContent,
+          messageId: prev.streamingMessageId || undefined,
+        })
+      }
+      // Derive contextUsage from modelUsage if available
+      const firstModel = Object.keys(msg.modelUsage)[0]
+      const firstUsage = firstModel ? msg.modelUsage[firstModel] : null
+      const ctxWindow = firstUsage?.contextWindow ?? prev.contextWindow ?? 0
+      const inputTokens = firstUsage?.inputTokens ?? 0
+      const ctxPercent = ctxWindow > 0 ? (inputTokens / ctxWindow) * 100 : 0
+      return {
+        ...prev,
+        messages: newMessages,
+        streamingContent: '',
+        streamingMessageId: '',
+        thinkingContent: '',
+        sessionCost: msg.totalCostUsd,
+        lastTurnCost: msg.totalCostUsd,
+        turnCount: msg.numTurns,
+        modelUsage: msg.modelUsage,
+        fastModeState: msg.fastModeState ?? prev.fastModeState,
+        contextUsage: ctxPercent,
+        contextWindow: ctxWindow || prev.contextWindow,
+        model: firstModel ?? prev.model,
+      }
+    }
+
+    case 'turn_error':
+      return {
+        ...prev,
+        streamingContent: '',
+        streamingMessageId: '',
+        thinkingContent: '',
+        sessionCost: msg.totalCostUsd,
+        turnCount: msg.numTurns,
+        modelUsage: msg.modelUsage,
+        fastModeState: msg.fastModeState ?? prev.fastModeState,
+        error: msg.errors.join('\n') || 'Turn error',
+      }
+
+    case 'tool_use_start': {
+      const newMap = new Map(prev.toolPairMap)
+      newMap.set(msg.toolUseId, {
+        toolName: msg.toolName,
+        toolInput: msg.toolInput,
+        startTime: Date.now(),
+      })
+      return {
+        ...prev,
+        toolPairMap: newMap,
+        messages: [
+          ...prev.messages,
+          {
+            role: 'tool_use',
+            toolName: msg.toolName,
+            toolInput: msg.toolInput,
+            toolUseId: msg.toolUseId,
+          },
+        ],
+      }
+    }
+
+    case 'tool_use_result': {
+      const newMap = new Map(prev.toolPairMap)
+      const existing = newMap.get(msg.toolUseId)
+      if (existing) {
+        newMap.set(msg.toolUseId, {
+          ...existing,
+          result: { output: msg.output, isError: msg.isError },
+        })
+      }
+      return {
+        ...prev,
+        toolPairMap: newMap,
+        messages: [
+          ...prev.messages,
+          {
+            role: 'tool_result',
+            toolUseId: msg.toolUseId,
+            output: msg.output,
+            isError: msg.isError,
+          },
+        ],
+      }
+    }
+
+    case 'tool_progress': {
+      const newMap = new Map(prev.activeToolProgress)
+      newMap.set(msg.toolUseId, msg)
+      return { ...prev, activeToolProgress: newMap }
+    }
+
+    case 'tool_summary':
+      return {
+        ...prev,
+        messages: [...prev.messages, { role: 'assistant', content: msg.summary }],
+      }
+
+    case 'session_init':
+      return {
+        ...prev,
+        sessionInit: msg,
+        model: msg.model,
+      }
+
+    case 'session_status':
+      // New protocol: session_status only carries 'compacting' | null + optional permissionMode
+      return prev
+
+    case 'session_closed':
+      // Terminal — sessionStatus tracking in the WS handler handles the status transition
+      return prev
+
+    case 'context_compacted':
+      return { ...prev, contextCompaction: msg }
+
+    case 'rate_limit':
+      return { ...prev, rateLimitStatus: msg }
+
+    case 'task_started': {
+      const newTasks = new Map(prev.activeTasks)
+      newTasks.set(msg.taskId, msg)
+      return { ...prev, activeTasks: newTasks }
+    }
+
+    case 'task_progress': {
+      const newTasks = new Map(prev.activeTasks)
+      newTasks.set(msg.taskId, msg)
+      return { ...prev, activeTasks: newTasks }
+    }
+
+    case 'task_notification': {
+      const newTasks = new Map(prev.activeTasks)
+      newTasks.delete(msg.taskId)
+      return { ...prev, activeTasks: newTasks }
+    }
+
+    case 'hook_event':
+      return { ...prev, hookEvents: [...prev.hookEvents, msg] }
+
+    case 'auth_status':
+      return { ...prev, authStatus: msg }
+
+    case 'files_saved':
+    case 'command_output':
+    case 'stream_delta':
+    case 'unknown_sdk_event':
+      // Acknowledged but no UI state change needed
+      return prev
+
+    case 'prompt_suggestion':
+      return { ...prev, promptSuggestion: msg.suggestion }
+
+    case 'permission_request':
+      // Dedup replayed requests
+      if (prev.permissionRequest?.requestId === msg.requestId) return prev
+      return { ...prev, permissionRequest: msg }
+
+    case 'ask_question':
+      // Dedup replayed requests
+      if (prev.askQuestion?.requestId === msg.requestId) return prev
+      return { ...prev, askQuestion: msg }
+
+    case 'plan_approval':
+      if (prev.planApproval?.requestId === msg.requestId) return prev
+      return { ...prev, planApproval: msg }
+
+    case 'elicitation':
+      if (prev.elicitation?.requestId === msg.requestId) return prev
+      return { ...prev, elicitation: msg }
+
+    case 'elicitation_complete':
+      // MCP server elicitation lifecycle signal — no UI state change needed.
+      // The elicitation card is dismissed by the user via submitElicitation().
+      return prev
+
+    case 'error':
+      return { ...prev, error: msg.message }
+
+    default:
+      return prev
+  }
+}
 
 export function useControlSession(sessionId: string | null) {
   const [connState, dispatch] = useReducer(connectionReducer, { phase: 'idle' } as ConnectionState)
@@ -142,10 +392,6 @@ export function useControlSession(sessionId: string | null) {
       ws.onopen = () => {
         if (wsRef.current !== ws) return // stale guard
         dispatch({ type: 'ws_open' })
-
-        // On reconnect, send resume with lastSeq
-        // connState is captured via closure but we need the latest value
-        // We'll handle this in the reconnect effect instead
       }
 
       ws.onmessage = (event) => {
@@ -176,143 +422,11 @@ export function useControlSession(sessionId: string | null) {
         dispatch({ type: 'ws_message', msg, seq })
 
         // Accumulate UI state
-        setUI((prev) => {
-          switch (msg.type) {
-            case 'assistant_chunk':
-              return {
-                ...prev,
-                streamingContent: prev.streamingContent + msg.content,
-                streamingMessageId: msg.messageId,
-              }
+        setUI((prev) => handleServerMessage(prev, msg))
 
-            case 'assistant_done':
-              // Guard: skip materializing when no chunks preceded this done event.
-              // The server may send assistant_done with zero chunks (e.g. empty turn).
-              if (!prev.streamingContent) {
-                return {
-                  ...prev,
-                  streamingContent: '',
-                  streamingMessageId: '',
-                  sessionCost: msg.totalCost,
-                  lastTurnCost: msg.cost,
-                }
-              }
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'assistant',
-                    content: prev.streamingContent,
-                    messageId: msg.messageId,
-                    usage: msg.usage,
-                  },
-                ],
-                streamingContent: '',
-                streamingMessageId: '',
-                sessionCost: msg.totalCost,
-                lastTurnCost: msg.cost,
-              }
-
-            case 'tool_use_start': {
-              const newMap = new Map(prev.toolPairMap)
-              newMap.set(msg.toolUseId, {
-                toolName: msg.toolName,
-                toolInput: msg.toolInput,
-                startTime: Date.now(),
-              })
-              return {
-                ...prev,
-                toolPairMap: newMap,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'tool_use',
-                    toolName: msg.toolName,
-                    toolInput: msg.toolInput,
-                    toolUseId: msg.toolUseId,
-                  },
-                ],
-              }
-            }
-
-            case 'tool_use_result': {
-              const newMap = new Map(prev.toolPairMap)
-              const existing = newMap.get(msg.toolUseId)
-              if (existing) {
-                newMap.set(msg.toolUseId, {
-                  ...existing,
-                  result: { output: msg.output, isError: msg.isError },
-                })
-              }
-              return {
-                ...prev,
-                toolPairMap: newMap,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'tool_result',
-                    toolUseId: msg.toolUseId,
-                    output: msg.output,
-                    isError: msg.isError,
-                  },
-                ],
-              }
-            }
-
-            case 'permission_request':
-              // Dedup replayed requests
-              if (prev.permissionRequest?.requestId === msg.requestId) return prev
-              return { ...prev, permissionRequest: msg }
-
-            case 'ask_user_question':
-              // Dedup replayed requests
-              if (prev.askQuestion?.requestId === msg.requestId) return prev
-              return { ...prev, askQuestion: msg }
-
-            case 'plan_approval':
-              if (prev.planApproval?.requestId === msg.requestId) return prev
-              return { ...prev, planApproval: msg }
-
-            case 'elicitation':
-              if (prev.elicitation?.requestId === msg.requestId) return prev
-              return { ...prev, elicitation: msg }
-
-            case 'thinking':
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'thinking',
-                    content: msg.content,
-                    messageId: msg.messageId,
-                  },
-                ],
-              }
-
-            case 'session_status':
-              return {
-                ...prev,
-                contextUsage: msg.contextUsage,
-                turnCount: msg.turnCount,
-                tokenUsage: msg.tokenUsage ?? prev.tokenUsage,
-                model: msg.model ?? prev.model,
-                contextWindow: msg.contextWindow ?? prev.contextWindow,
-                sessionCost: msg.costUsd ?? prev.sessionCost,
-              }
-
-            case 'error':
-              return { ...prev, error: msg.message }
-
-            default:
-              return prev
-          }
-        })
-
-        // Track session sub-status separately for ControlStatus derivation
-        if (msg.type === 'session_status') {
-          setSessionStatus(msg.status)
+        // Track session sub-status from session_closed
+        if (msg.type === 'session_closed') {
+          setSessionStatus('completed')
         }
       }
 
@@ -396,129 +510,10 @@ export function useControlSession(sessionId: string | null) {
         const msg = raw as unknown as ServerMessage
         dispatch({ type: 'ws_message', msg, seq })
 
-        setUI((prev) => {
-          switch (msg.type) {
-            case 'assistant_chunk':
-              return {
-                ...prev,
-                streamingContent: prev.streamingContent + msg.content,
-                streamingMessageId: msg.messageId,
-              }
-            case 'assistant_done':
-              // Guard: skip materializing when no chunks preceded this done event.
-              // The server may send assistant_done with zero chunks (e.g. empty turn).
-              if (!prev.streamingContent) {
-                return {
-                  ...prev,
-                  streamingContent: '',
-                  streamingMessageId: '',
-                  sessionCost: msg.totalCost,
-                  lastTurnCost: msg.cost,
-                }
-              }
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'assistant',
-                    content: prev.streamingContent,
-                    messageId: msg.messageId,
-                    usage: msg.usage,
-                  },
-                ],
-                streamingContent: '',
-                streamingMessageId: '',
-                sessionCost: msg.totalCost,
-                lastTurnCost: msg.cost,
-              }
-            case 'tool_use_start': {
-              const newMap = new Map(prev.toolPairMap)
-              newMap.set(msg.toolUseId, {
-                toolName: msg.toolName,
-                toolInput: msg.toolInput,
-                startTime: Date.now(),
-              })
-              return {
-                ...prev,
-                toolPairMap: newMap,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'tool_use',
-                    toolName: msg.toolName,
-                    toolInput: msg.toolInput,
-                    toolUseId: msg.toolUseId,
-                  },
-                ],
-              }
-            }
-            case 'tool_use_result': {
-              const newMap = new Map(prev.toolPairMap)
-              const existing = newMap.get(msg.toolUseId)
-              if (existing) {
-                newMap.set(msg.toolUseId, {
-                  ...existing,
-                  result: { output: msg.output, isError: msg.isError },
-                })
-              }
-              return {
-                ...prev,
-                toolPairMap: newMap,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'tool_result',
-                    toolUseId: msg.toolUseId,
-                    output: msg.output,
-                    isError: msg.isError,
-                  },
-                ],
-              }
-            }
-            case 'permission_request':
-              if (prev.permissionRequest?.requestId === msg.requestId) return prev
-              return { ...prev, permissionRequest: msg }
-            case 'ask_user_question':
-              if (prev.askQuestion?.requestId === msg.requestId) return prev
-              return { ...prev, askQuestion: msg }
-            case 'plan_approval':
-              if (prev.planApproval?.requestId === msg.requestId) return prev
-              return { ...prev, planApproval: msg }
-            case 'elicitation':
-              if (prev.elicitation?.requestId === msg.requestId) return prev
-              return { ...prev, elicitation: msg }
-            case 'thinking':
-              return {
-                ...prev,
-                messages: [
-                  ...prev.messages,
-                  {
-                    role: 'thinking',
-                    content: msg.content,
-                    messageId: msg.messageId,
-                  },
-                ],
-              }
-            case 'session_status':
-              return {
-                ...prev,
-                contextUsage: msg.contextUsage,
-                turnCount: msg.turnCount,
-                tokenUsage: msg.tokenUsage ?? prev.tokenUsage,
-                model: msg.model ?? prev.model,
-                contextWindow: msg.contextWindow ?? prev.contextWindow,
-                sessionCost: msg.costUsd ?? prev.sessionCost,
-              }
-            case 'error':
-              return { ...prev, error: msg.message }
-            default:
-              return prev
-          }
-        })
+        setUI((prev) => handleServerMessage(prev, msg))
 
-        if (msg.type === 'session_status') {
-          setSessionStatus(msg.status)
+        if (msg.type === 'session_closed') {
+          setSessionStatus('completed')
         }
       }
 
@@ -616,6 +611,8 @@ export function useControlSession(sessionId: string | null) {
     messages: ui.messages,
     streamingContent: ui.streamingContent,
     streamingMessageId: ui.streamingMessageId,
+    thinkingContent: ui.thinkingContent,
+    // Legacy fields (backwards compat)
     contextUsage: ui.contextUsage,
     turnCount: ui.turnCount,
     sessionCost: ui.sessionCost,
@@ -623,6 +620,17 @@ export function useControlSession(sessionId: string | null) {
     tokenUsage: ui.tokenUsage,
     model: ui.model,
     contextWindow: ui.contextWindow,
+    // New fields
+    sessionInit: ui.sessionInit,
+    rateLimitStatus: ui.rateLimitStatus,
+    activeTasks: ui.activeTasks,
+    activeToolProgress: ui.activeToolProgress,
+    contextCompaction: ui.contextCompaction,
+    fastModeState: ui.fastModeState,
+    hookEvents: ui.hookEvents,
+    promptSuggestion: ui.promptSuggestion,
+    modelUsage: ui.modelUsage,
+    authStatus: ui.authStatus,
     toolPairMap: ui.toolPairMap,
     permissionRequest: ui.permissionRequest,
     askQuestion: ui.askQuestion,

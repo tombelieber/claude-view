@@ -20,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
+import { useAvailableSessions } from '../../hooks/use-available-sessions'
 import { useControlCallbacks } from '../../hooks/use-control-callbacks'
 import { useControlSession } from '../../hooks/use-control-session'
 import { useFileHistory } from '../../hooks/use-file-history'
@@ -171,7 +172,33 @@ export function SessionDetailPanel({
   const hasPlans = planDocuments && planDocuments.length > 0
 
   // ---- Control session hooks (unconditional — Rules of Hooks) ----
-  const controlSession = useControlSession(controlSessionId ?? null)
+  // localControlId: set when the user clicks "Connect" in this panel (self-managed resume flow)
+  const [localControlId, setLocalControlId] = useState<string | null>(null)
+  const effectiveControlId = controlSessionId ?? localControlId
+
+  // Available sessions — used to determine if the current session can be resumed via sidecar
+  const { sessions: availableSessions } = useAvailableSessions()
+  const isAvailableViaSDK = useMemo(
+    () => !effectiveControlId && availableSessions.some((s) => s.sessionId === data.id),
+    [effectiveControlId, availableSessions, data.id],
+  )
+
+  const handleConnect = useCallback(async () => {
+    try {
+      const res = await fetch('/api/control/sessions/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: data.id }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      setLocalControlId(json.controlId)
+    } catch (err) {
+      console.error('[SessionDetailPanel] Connect to Mission Control failed:', err)
+    }
+  }, [data.id])
+
+  const controlSession = useControlSession(effectiveControlId ?? null)
   const controlCallbacks = useControlCallbacks(
     controlSession.sendRaw,
     controlSession.respondPermission,
@@ -757,7 +784,16 @@ export function SessionDetailPanel({
                 onRespond={controlSession.respondPermission}
               />
             )}
-            {controlSessionId && (
+            {isAvailableViaSDK && (
+              <button
+                type="button"
+                onClick={handleConnect}
+                className="mx-3 mb-2 px-3 py-2 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+              >
+                Connect to Mission Control
+              </button>
+            )}
+            {effectiveControlId && (
               <ChatInputBar
                 onSend={controlSession.sendMessage}
                 state={controlStatusToInputState(controlSession.status)}
