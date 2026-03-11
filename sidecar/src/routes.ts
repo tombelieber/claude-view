@@ -59,7 +59,10 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Send message
+  // Send message — fire-and-forget by design.
+  // Returns immediately after queuing; the SDK processes the message and emits
+  // response events (assistant_text, tool_use_start, turn_complete, etc.) over
+  // the WS stream. Errors from sendMessage propagate as 'error' events on the stream.
   app.post('/send', async (c) => {
     const body = await c.req.json<{ controlId: string; message: string }>()
     const cs = registry.get(body.controlId)
