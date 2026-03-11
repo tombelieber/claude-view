@@ -313,10 +313,28 @@ fn apply_jsonl_metadata(
     session.project = project.to_string();
     session.project_display_name = project_display_name.to_string();
     session.project_path = project_path.to_string();
-    session.git_branch = m.git_branch.clone();
-    session.worktree_branch = m.worktree_branch.clone();
-    session.is_worktree = m.is_worktree;
-    session.effective_branch = m.worktree_branch.clone().or(m.git_branch.clone());
+    // Only overwrite branch fields when the JSONL accumulator has a definitive value.
+    // Hooks resolve branch eagerly from CWD (filesystem HEAD); the accumulator learns
+    // gitBranch later when user-type JSONL lines are parsed. Without this guard,
+    // the first process_jsonl_update (which may only contain metadata lines) overwrites
+    // the hook-resolved branch with None, causing a "(no branch)" flash in the UI.
+    if m.git_branch.is_some() {
+        session.git_branch = m.git_branch.clone();
+    }
+    if m.worktree_branch.is_some() {
+        session.worktree_branch = m.worktree_branch.clone();
+    }
+    if m.is_worktree {
+        session.is_worktree = true;
+    }
+    // Recompute effective_branch from current session state (may include hook-resolved values)
+    let new_effective = session
+        .worktree_branch
+        .clone()
+        .or(session.git_branch.clone());
+    if new_effective.is_some() {
+        session.effective_branch = new_effective;
+    }
     // PID binding: only assign PID on first discovery. Once bound,
     // the process detector owns liveness checks for that specific PID.
     if session.pid.is_none() {
