@@ -38,6 +38,9 @@ pub struct SubAgentSpawn {
     pub tool_use_id: String,
     pub agent_type: String,
     pub description: String,
+    /// Present when this spawn is a team member (from `input.team_name`).
+    /// Used by accumulator/manager to skip adding to sub_agents[].
+    pub team_name: Option<String>,
 }
 
 /// Extracted from a `type: "progress"` line with `data.type: "agent_progress"`.
@@ -347,6 +350,7 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
             Some(ToolUseResultPayload {
                 agent_id: obj
                     .get("agentId")
+                    .or_else(|| obj.get("agent_id")) // team spawns use snake_case
                     .and_then(|v| v.as_str())
                     .map(String::from),
                 status,
@@ -659,11 +663,16 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                         .and_then(|v| v.as_str())
                         .unwrap_or(tool_name)
                         .to_string();
+                    let spawn_team_name = input
+                        .and_then(|i| i.get("team_name"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
                     if !tool_use_id.is_empty() {
                         sub_agent_spawns.push(SubAgentSpawn {
                             tool_use_id,
                             agent_type,
                             description,
+                            team_name: spawn_team_name,
                         });
                     }
                 }
@@ -2383,8 +2392,24 @@ mod tests {
         let finders = TailFinders::new();
         let result = parse_single_line(line, &finders);
         assert_eq!(result.team_name.as_deref(), Some("demo-team"));
-        // The Agent spawn itself does NOT carry team_name — that's a top-level field
         assert_eq!(result.sub_agent_spawns.len(), 1);
+        // This spawn has no input.team_name — just a regular Agent spawn within a team session
+        assert!(result.sub_agent_spawns[0].team_name.is_none());
+    }
+
+    #[test]
+    fn test_spawn_with_input_team_name() {
+        // Real data: team member spawn has team_name in input (from Agent tool)
+        let line = br#"{"type":"assistant","teamName":"nvda-demo","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_015Y","name":"Agent","input":{"description":"NVDA stock researcher","name":"researcher","team_name":"nvda-demo","subagent_type":"general-purpose","prompt":"...","run_in_background":true}}]},"timestamp":"2026-03-10T19:04:44Z"}"#;
+        let finders = TailFinders::new();
+        let result = parse_single_line(line, &finders);
+        assert_eq!(result.team_name.as_deref(), Some("nvda-demo"));
+        assert_eq!(result.sub_agent_spawns.len(), 1);
+        // team_name extracted from input.team_name — this is the discriminator
+        assert_eq!(
+            result.sub_agent_spawns[0].team_name.as_deref(),
+            Some("nvda-demo")
+        );
     }
 
     #[test]
@@ -2395,5 +2420,6 @@ mod tests {
         let result = parse_single_line(line, &finders);
         assert_eq!(result.sub_agent_spawns.len(), 1);
         assert!(result.team_name.is_none());
+        assert!(result.sub_agent_spawns[0].team_name.is_none());
     }
 }

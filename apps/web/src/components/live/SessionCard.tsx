@@ -1,3 +1,4 @@
+import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   AlertTriangle,
   Archive,
@@ -19,6 +20,7 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useTeamDetail } from '../../hooks/use-teams'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -29,6 +31,7 @@ import { CostTooltip } from './CostTooltip'
 import { SessionToolChips } from './SessionToolChips'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
+import { TeamMemberPills } from './TeamMemberPills'
 import { hasUnavailableCost } from './cost-display'
 import { getEffectiveBranch } from './effective-branch'
 import type { AgentState } from './types'
@@ -97,6 +100,7 @@ export function SessionCard({
   hideProjectBranch,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
+  const { data: teamDetail } = useTeamDetail(session.teamName ?? null)
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
@@ -240,19 +244,51 @@ export function SessionCard({
         <TaskProgressList items={session.progressItems} />
       )}
 
-      {/* Team badge — distinct from sub-agents (different hierarchy level) */}
+      {/* Team section — badge + member pills */}
       {session.teamName && (
         <div className="mb-2 -mx-1 px-1">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200">
-            <TreePine className="h-3 w-3 shrink-0" />
-            {session.teamName}
-          </span>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              Team
+            </span>
+            <Tooltip.Provider delayDuration={200}>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 cursor-default">
+                    <TreePine className="h-3 w-3 shrink-0" />
+                    {session.teamName}
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs"
+                    sideOffset={5}
+                  >
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      Agent Team: {session.teamName}
+                    </p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-0.5">
+                      Coordinated multi-agent team. Open the detail panel's Teams tab for members
+                      and inbox.
+                    </p>
+                    <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            </Tooltip.Provider>
+          </div>
+          {teamDetail && teamDetail.members.length > 0 && (
+            <TeamMemberPills members={teamDetail.members} />
+          )}
         </div>
       )}
 
-      {/* Sub-agent pills — shown independently from team */}
+      {/* Sub-agents section — with label when present */}
       {session.subAgents && session.subAgents.length > 0 && (
-        <div className="mb-2 -mx-1">
+        <div className="mb-2 -mx-1 px-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
+            Sub-Agents
+          </span>
           <SubAgentPills subAgents={session.subAgents} />
         </div>
       )}
