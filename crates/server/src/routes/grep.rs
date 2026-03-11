@@ -3,6 +3,7 @@
 //! - GET /grep?pattern=...&project=...&limit=...&caseSensitive=...&wholeWord=...
 //!   Regex search over raw JSONL session files using ripgrep core crates.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::{extract::Query, routing::get, Json, Router};
@@ -58,7 +59,7 @@ async fn grep_handler(Query(params): Query<GrepQuery>) -> ApiResult<Json<GrepRes
     // Move all blocking filesystem I/O into spawn_blocking to avoid blocking
     // the Tokio event loop (directory scan + grep search).
     let result = spawn_blocking(move || {
-        let files = collect_jsonl_files(project_filter.as_deref())?;
+        let files = collect_jsonl_files(project_filter.as_deref(), None)?;
 
         let opts = GrepOptions {
             pattern,
@@ -82,7 +83,10 @@ async fn grep_handler(Query(params): Query<GrepQuery>) -> ApiResult<Json<GrepRes
 ///
 /// NOTE: project filter checks BOTH display_name AND full_path to match
 /// the polymorphic project filter pattern (CLAUDE.md Hard Rule).
-pub fn collect_jsonl_files(project_filter: Option<&str>) -> Result<Vec<JsonlFile>, ApiError> {
+pub fn collect_jsonl_files(
+    project_filter: Option<&str>,
+    session_ids: Option<&HashSet<String>>,
+) -> Result<Vec<JsonlFile>, ApiError> {
     let projects_dir =
         claude_projects_dir().map_err(|e| ApiError::Internal(format!("Projects dir: {e}")))?;
 
@@ -112,6 +116,12 @@ pub fn collect_jsonl_files(project_filter: Option<&str>) -> Result<Vec<JsonlFile
                             .file_stem()
                             .map(|s| s.to_string_lossy().to_string())
                             .unwrap_or_default();
+                        // If session_ids filter provided, skip files not in the set
+                        if let Some(ids) = session_ids {
+                            if !ids.contains(&session_id) {
+                                continue;
+                            }
+                        }
                         let modified_at = path
                             .metadata()
                             .and_then(|m| m.modified())
