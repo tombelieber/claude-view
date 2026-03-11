@@ -242,6 +242,179 @@ fn scan_directory_for_teams(dir: &Path, finder: &memmem::Finder, index: &mut Tea
 }
 
 // ============================================================================
+// JSONL Reconstruction
+// ============================================================================
+
+/// Deterministic color palette for team members when color is not in JSONL.
+const FALLBACK_COLORS: &[&str] = &[
+    "#3b82f6", // blue
+    "#ef4444", // red
+    "#22c55e", // green
+    "#f59e0b", // amber
+    "#8b5cf6", // violet
+    "#ec4899", // pink
+    "#06b6d4", // cyan
+    "#f97316", // orange
+];
+
+/// Generate a deterministic color from a member name.
+fn deterministic_color(name: &str) -> &'static str {
+    let hash = name
+        .bytes()
+        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+    FALLBACK_COLORS[(hash as usize) % FALLBACK_COLORS.len()]
+}
+
+/// Reconstruct a `TeamDetail` from JSONL session files.
+///
+/// Scans the referenced JSONL files for:
+/// - `TeamCreate` tool_use → team name + description
+/// - `Agent`/`Task` spawns with matching `input.team_name` → members
+/// - First timestamp with matching `teamName` → `created_at`
+///
+/// Returns `None` if no TeamCreate for the given team is found.
+fn reconstruct_team_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Option<TeamDetail> {
+    let team_name_finder = memmem::Finder::new(team_name.as_bytes());
+    let team_create_finder = memmem::Finder::new(b"\"TeamCreate\"");
+
+    let mut description = String::new();
+    let mut lead_session_id = String::new();
+    let mut created_at: i64 = 0;
+    let mut members = Vec::new();
+    let mut found_create = false;
+
+    for r in refs {
+        let Ok(content) = std::fs::read_to_string(&r.jsonl_path) else {
+            continue;
+        };
+
+        for line in content.lines() {
+            // SIMD pre-filter: must mention the team name
+            if team_name_finder.find(line.as_bytes()).is_none() {
+                continue;
+            }
+
+            let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+
+            // Verify this line is for our team
+            let line_team = parsed
+                .get("teamName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if line_team != team_name {
+                continue;
+            }
+
+            // Extract created_at from first matching line's timestamp
+            if created_at == 0 {
+                if let Some(ts) = parsed.get("timestamp").and_then(|v| v.as_str()) {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                        created_at = dt.timestamp_millis();
+                    }
+                }
+                lead_session_id = r.session_id.clone();
+            }
+
+            let content_blocks = parsed
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array());
+
+            let Some(blocks) = content_blocks else {
+                continue;
+            };
+
+            for block in blocks {
+                let tool_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let input = block.get("input");
+
+                // TeamCreate → description
+                if tool_name == "TeamCreate" && team_create_finder.find(line.as_bytes()).is_some() {
+                    if let Some(inp) = input {
+                        let inp_team = inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
+                        if inp_team == team_name {
+                            description = inp
+                                .get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            found_create = true;
+                        }
+                    }
+                }
+
+                // Agent/Task spawn with team_name → team member
+                if tool_name == "Agent" || tool_name == "Task" {
+                    if let Some(inp) = input {
+                        let spawn_team =
+                            inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
+                        if spawn_team == team_name {
+                            let member_name = inp
+                                .get("name")
+                                .or_else(|| inp.get("description"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unnamed")
+                                .to_string();
+                            let agent_type = inp
+                                .get("subagent_type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(tool_name)
+                                .to_string();
+                            // Prefer explicit model from Agent input, fall back to message.model
+                            let model = inp
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .or_else(|| {
+                                    parsed
+                                        .get("message")
+                                        .and_then(|m| m.get("model"))
+                                        .and_then(|v| v.as_str())
+                                })
+                                .unwrap_or("unknown")
+                                .to_string();
+                            let prompt = inp
+                                .get("prompt")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let tool_use_id = block
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+
+                            members.push(TeamMember {
+                                agent_id: tool_use_id,
+                                name: member_name.clone(),
+                                agent_type,
+                                model,
+                                prompt,
+                                color: deterministic_color(&member_name).to_string(),
+                                backend_type: None,
+                                cwd: String::new(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !found_create {
+        return None;
+    }
+
+    Some(TeamDetail {
+        name: team_name.to_string(),
+        description,
+        created_at,
+        lead_session_id,
+        members,
+    })
+}
+
+// ============================================================================
 // Parser
 // ============================================================================
 
@@ -624,6 +797,64 @@ mod tests {
             store.get("test-team").is_some(),
             "Team detail should be available for newly created team"
         );
+    }
+
+    #[test]
+    fn test_reconstruct_team_from_jsonl() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-123.jsonl");
+
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"demo-team","description":"Demo research team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"researcher","team_name":"demo-team","prompt":"Research the topic","subagent_type":"Explore"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"name":"writer","team_name":"demo-team","prompt":"Write the report","subagent_type":"code-writer"}}]},"timestamp":"2026-03-11T10:00:02.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-123".to_string(),
+            jsonl_path: jsonl_path.clone(),
+        }];
+
+        let detail = reconstruct_team_from_jsonl("demo-team", &refs);
+        assert!(detail.is_some(), "Should reconstruct team");
+        let detail = detail.unwrap();
+        assert_eq!(detail.name, "demo-team");
+        assert_eq!(detail.description, "Demo research team");
+        assert_eq!(detail.lead_session_id, "sess-123");
+        assert_eq!(detail.members.len(), 2);
+        assert_eq!(detail.members[0].name, "researcher");
+        assert_eq!(detail.members[0].agent_type, "Explore");
+        assert_eq!(detail.members[1].name, "writer");
+        assert!(!detail.members[0].color.is_empty());
+        assert!(!detail.members[1].color.is_empty());
+        assert_ne!(detail.members[0].color, detail.members[1].color);
+    }
+
+    #[test]
+    fn test_reconstruct_ignores_non_team_agent_spawns() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-456.jsonl");
+
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"my-team","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"model":"opus","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"member-a","team_name":"my-team","prompt":"Do work"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"name":"helper","prompt":"Quick task"}}]},"timestamp":"2026-03-11T10:00:02.000Z"}"#,
+        ];
+        fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-456".to_string(),
+            jsonl_path,
+        }];
+
+        let detail = reconstruct_team_from_jsonl("my-team", &refs).unwrap();
+        assert_eq!(
+            detail.members.len(),
+            1,
+            "Only team member spawn should be included"
+        );
+        assert_eq!(detail.members[0].name, "member-a");
     }
 
     #[test]
