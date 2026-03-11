@@ -1,11 +1,5 @@
-// crates/search/tests/unified_integration_test.rs
-//! Integration tests for unified search (Tantivy + grep fallback).
-//!
-//! These tests use real temporary JSONL files and an in-RAM Tantivy index
-//! to verify the complete two-phase search pipeline.
-
 use claude_view_search::indexer::SearchDocument;
-use claude_view_search::unified::{unified_search, SearchEngine, UnifiedSearchOptions};
+use claude_view_search::unified::{unified_search, UnifiedSearchOptions};
 use claude_view_search::{JsonlFile, SearchIndex};
 use std::fs;
 use tempfile::TempDir;
@@ -25,7 +19,12 @@ fn index_doc(idx: &SearchIndex, session_id: &str, content: &str) {
     idx.index_session(session_id, &[doc]).unwrap();
 }
 
-fn make_jsonl_file(dir: &std::path::Path, session_id: &str, content: &str) -> JsonlFile {
+fn make_jsonl_file(
+    dir: &std::path::Path,
+    session_id: &str,
+    content: &str,
+    modified_at: i64,
+) -> JsonlFile {
     let path = dir.join(format!("{session_id}.jsonl"));
     fs::write(&path, content).unwrap();
     JsonlFile {
@@ -33,13 +32,13 @@ fn make_jsonl_file(dir: &std::path::Path, session_id: &str, content: &str) -> Js
         session_id: session_id.to_string(),
         project: "integration-test".to_string(),
         project_path: dir.to_string_lossy().to_string(),
-        modified_at: 1710000000,
+        modified_at,
     }
 }
 
-/// Tantivy finds the result — grep is never called.
+/// Both engines find the same session — grep primary, Tantivy supplements.
 #[test]
-fn test_tantivy_sufficient_no_grep() {
+fn test_co_primary_both_find_session() {
     let idx = SearchIndex::open_in_ram().unwrap();
     index_doc(&idx, "s1", "deploy to production");
     idx.commit().unwrap();
@@ -48,29 +47,29 @@ fn test_tantivy_sufficient_no_grep() {
     let tmp = TempDir::new().unwrap();
     let files = vec![make_jsonl_file(
         tmp.path(),
-        "s2",
-        "{\"content\":\"deploy unrelated\"}\n",
+        "s1",
+        "{\"content\":\"deploy to production\"}\n",
+        1710000000,
     )];
 
     let opts = UnifiedSearchOptions {
-        query: "deploy to production".to_string(),
+        query: "deploy".to_string(),
         scope: None,
         limit: 10,
         offset: 0,
     };
 
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
-    assert_eq!(result.engine, SearchEngine::Tantivy);
-    assert_eq!(result.response.sessions.len(), 1);
-    assert_eq!(result.response.sessions[0].session_id, "s1");
+    assert_eq!(result.response.total_sessions, 1);
+    let engines = &result.response.sessions[0].engines;
+    assert!(engines.contains(&"grep".to_string()));
+    assert!(engines.contains(&"tantivy".to_string()));
 }
 
-/// CJK without spaces — Tantivy misses, grep catches.
-/// This is the exact bug reported on 2026-03-11.
+/// CJK — grep finds it, Tantivy may or may not.
 #[test]
-fn test_cjk_without_spaces_grep_fallback() {
+fn test_co_primary_cjk_grep_only() {
     let idx = SearchIndex::open_in_ram().unwrap();
-    // Index the same CJK content — Tantivy tokenizes as one giant token
     index_doc(&idx, "s1", "自動部署到生產環境完成");
     idx.commit().unwrap();
     idx.reader.reload().unwrap();
@@ -80,9 +79,9 @@ fn test_cjk_without_spaces_grep_fallback() {
         tmp.path(),
         "s1",
         "{\"content\":\"自動部署到生產環境完成\"}\n",
+        1710000000,
     )];
 
-    // Search for a substring — Tantivy can't find "部署" inside the mega-token
     let opts = UnifiedSearchOptions {
         query: "部署".to_string(),
         scope: None,
@@ -91,44 +90,44 @@ fn test_cjk_without_spaces_grep_fallback() {
     };
 
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
-    assert_eq!(result.engine, SearchEngine::Grep);
     assert_eq!(result.response.total_sessions, 1);
-    assert!(
-        result.response.sessions[0]
-            .top_match
-            .snippet
-            .contains("部署"),
-        "snippet should contain the CJK search term"
-    );
+    assert!(result.response.sessions[0]
+        .engines
+        .contains(&"grep".to_string()));
 }
 
-/// Mixed English/Cantonese — the original bug report: "hook 嘅 payload"
+/// Results sorted by recency (modified_at DESC).
 #[test]
-fn test_mixed_cantonese_english_search() {
+fn test_co_primary_sorted_by_recency() {
     let idx = SearchIndex::open_in_ram().unwrap();
-    index_doc(&idx, "s1", "SessionStart hook 嘅 payload 本身冇 git_branch");
     idx.commit().unwrap();
     idx.reader.reload().unwrap();
 
     let tmp = TempDir::new().unwrap();
-    let files = vec![make_jsonl_file(
-        tmp.path(),
-        "s1",
-        "{\"content\":\"SessionStart hook 嘅 payload 本身冇 git_branch\"}\n",
-    )];
+    let files = vec![
+        make_jsonl_file(
+            tmp.path(),
+            "s-old",
+            "{\"content\":\"deploy\"}\n",
+            1710000000,
+        ),
+        make_jsonl_file(
+            tmp.path(),
+            "s-new",
+            "{\"content\":\"deploy\"}\n",
+            1710099999,
+        ),
+    ];
 
     let opts = UnifiedSearchOptions {
-        query: "hook 嘅 payload".to_string(),
+        query: "deploy".to_string(),
         scope: None,
         limit: 10,
         offset: 0,
     };
 
     let result = unified_search(Some(&idx), &files, &opts).unwrap();
-    // This specific case may work in Tantivy (spaces delimit tokens)
-    // but if it doesn't, grep catches it. Either way: results > 0.
-    assert!(
-        result.response.total_sessions > 0,
-        "Must find the session regardless of which engine"
-    );
+    assert_eq!(result.response.sessions.len(), 2);
+    assert_eq!(result.response.sessions[0].session_id, "s-new");
+    assert_eq!(result.response.sessions[1].session_id, "s-old");
 }
