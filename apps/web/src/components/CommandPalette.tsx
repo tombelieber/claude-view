@@ -294,13 +294,12 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
       // Build search URL, inheriting active sidebar project/branch filters as scope
       const searchUrl = new URLSearchParams()
       searchUrl.set('q', searchQuery)
+      // Filters are sent as explicit params, not scope
       const currentParams = new URLSearchParams(location.search)
       const project = currentParams.get('project')
       const branch = currentParams.get('branch')
-      const scopeParts: string[] = []
-      if (project) scopeParts.push(`project:${project}`)
-      if (branch) scopeParts.push(`branch:${branch}`)
-      if (scopeParts.length > 0) searchUrl.set('scope', scopeParts.join(' '))
+      if (project) searchUrl.set('project', project)
+      if (branch) searchUrl.set('branch', branch)
       navigate(`/search?${searchUrl}`)
     },
     [addRecentSearch, onClose, navigate, location.search],
