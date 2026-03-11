@@ -3319,7 +3319,6 @@ mod hook_event_tests {
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
-            user_files: None,
         }
     }
 
