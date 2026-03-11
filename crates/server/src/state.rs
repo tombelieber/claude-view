@@ -21,6 +21,7 @@ use claude_view_search::prompt_index::PromptSearchIndex;
 use claude_view_search::SearchIndex;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::{broadcast, OnceCell};
@@ -144,6 +145,11 @@ pub struct AppState {
     pub prompt_templates: PromptTemplatesHolder,
     /// IDEs detected at startup (cached for the lifetime of the server).
     pub available_ides: AvailableIdesHolder,
+    /// Broadcast sender for system monitor resource snapshots (SSE).
+    pub monitor_tx: broadcast::Sender<crate::live::monitor::ResourceSnapshot>,
+    /// Number of active SSE subscribers to the system monitor.
+    /// When 0→1, the polling task starts. When 1→0, it stops.
+    pub monitor_subscribers: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -188,6 +194,8 @@ impl AppState {
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
             available_ides: Vec::new(),
+            monitor_tx: broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -231,6 +239,8 @@ impl AppState {
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
             available_ides: Vec::new(),
+            monitor_tx: broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -277,6 +287,8 @@ impl AppState {
             prompt_stats: Arc::new(RwLock::new(None)),
             prompt_templates: Arc::new(RwLock::new(None)),
             available_ides: Vec::new(),
+            monitor_tx: broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
         })
     }
 
