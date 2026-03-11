@@ -29,6 +29,8 @@ pub struct UnifiedSearchOptions {
     /// Session groups to skip (pagination). NOTE: only applies to Tantivy.
     /// Grep fallback ignores offset (no session-level pagination in grep).
     pub offset: usize,
+    /// Skip snippet generation — for callers that only need session IDs.
+    pub skip_snippets: bool,
 }
 
 /// Extended search response with engine metadata.
@@ -58,136 +60,130 @@ pub fn unified_search(
     jsonl_files: &[JsonlFile],
     opts: &UnifiedSearchOptions,
 ) -> Result<UnifiedSearchResult, UnifiedSearchError> {
-    use std::collections::HashMap;
-
-    // Run both engines (synchronous — caller wraps in spawn_blocking)
-
-    // 1. Run Tantivy (supplement)
+    // 1. Tantivy (PRIMARY) — always run if index available
     let tantivy_result = search_index.map(|idx| {
         idx.search(
             &opts.query,
             opts.scope.as_deref(),
             opts.limit,
             opts.offset,
-            false,
+            opts.skip_snippets,
         )
     });
 
-    // 2. Run grep (primary)
-    let grep_result = if !jsonl_files.is_empty() {
+    let tantivy_response: Option<SearchResponse> = match tantivy_result {
+        Some(Ok(resp)) => Some(resp),
+        Some(Err(e)) => {
+            tracing::warn!(error = %e, "Tantivy search failed, will try grep fallback");
+            None
+        }
+        None => None,
+    };
+
+    // 2. If Tantivy found results, return directly — grep does NOT run.
+    if let Some(resp) = tantivy_response {
+        if !resp.sessions.is_empty() {
+            return Ok(UnifiedSearchResult {
+                response: resp,
+                engine: SearchEngine::Tantivy,
+            });
+        }
+    }
+
+    // 3. Grep (FALLBACK) — only runs when Tantivy returned 0 results
+    if !jsonl_files.is_empty() {
         let grep_opts = GrepOptions {
             pattern: regex_escape_for_literal(&opts.query),
             case_sensitive: false,
             whole_word: false,
-            limit: opts.limit * 10, // over-fetch lines, we group by session
+            limit: opts.limit.saturating_mul(10).min(100_000),
         };
-        Some(grep_files(jsonl_files, &grep_opts))
-    } else {
-        None
-    };
+        match grep_files(jsonl_files, &grep_opts) {
+            Ok(grep_resp) => {
+                let mut sessions: Vec<SessionHit> = grep_resp
+                    .results
+                    .into_iter()
+                    .map(|hit| {
+                        let match_count = hit.matches.len();
+                        let top_match = hit
+                            .matches
+                            .first()
+                            .map(|m| MatchHit {
+                                role: "unknown".to_string(),
+                                turn_number: 0,
+                                snippet: truncate_and_highlight(
+                                    &m.content,
+                                    m.match_start,
+                                    m.match_end,
+                                ),
+                                timestamp: hit.modified_at,
+                            })
+                            .unwrap_or_else(|| MatchHit {
+                                role: "unknown".to_string(),
+                                turn_number: 0,
+                                snippet: String::new(),
+                                timestamp: 0,
+                            });
+                        let matches: Vec<MatchHit> = hit
+                            .matches
+                            .iter()
+                            .map(|m| MatchHit {
+                                role: "unknown".to_string(),
+                                turn_number: 0,
+                                snippet: truncate_and_highlight(
+                                    &m.content,
+                                    m.match_start,
+                                    m.match_end,
+                                ),
+                                timestamp: hit.modified_at,
+                            })
+                            .collect();
+                        SessionHit {
+                            session_id: hit.session_id,
+                            project: hit.project,
+                            branch: None,
+                            modified_at: hit.modified_at,
+                            match_count,
+                            best_score: 0.0,
+                            top_match,
+                            matches,
+                            engines: vec!["grep".to_string()],
+                        }
+                    })
+                    .collect();
 
-    // 3. Build grep session map (primary)
-    let mut session_map: HashMap<String, SessionHit> = HashMap::new();
+                sessions.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+                let total_sessions = sessions.len();
+                let total_matches: usize = sessions.iter().map(|s| s.match_count).sum();
+                sessions.truncate(opts.limit);
 
-    if let Some(Ok(grep_resp)) = grep_result {
-        for hit in grep_resp.results.into_iter().take(opts.limit) {
-            let match_count = hit.matches.len();
-            let top_match = hit
-                .matches
-                .first()
-                .map(|m| MatchHit {
-                    role: "unknown".to_string(),
-                    turn_number: 0,
-                    snippet: truncate_and_highlight(&m.content, m.match_start, m.match_end),
-                    timestamp: hit.modified_at,
-                })
-                .unwrap_or_else(|| MatchHit {
-                    role: "unknown".to_string(),
-                    turn_number: 0,
-                    snippet: String::new(),
-                    timestamp: 0,
+                return Ok(UnifiedSearchResult {
+                    response: SearchResponse {
+                        query: opts.query.clone(),
+                        total_sessions,
+                        total_matches,
+                        elapsed_ms: 0.0,
+                        sessions,
+                    },
+                    engine: SearchEngine::Grep,
                 });
-
-            let matches: Vec<MatchHit> = hit
-                .matches
-                .iter()
-                .map(|m| MatchHit {
-                    role: "unknown".to_string(),
-                    turn_number: 0,
-                    snippet: truncate_and_highlight(&m.content, m.match_start, m.match_end),
-                    timestamp: hit.modified_at,
-                })
-                .collect();
-
-            session_map.insert(
-                hit.session_id.clone(),
-                SessionHit {
-                    session_id: hit.session_id,
-                    project: hit.project,
-                    branch: None,
-                    modified_at: hit.modified_at,
-                    match_count,
-                    best_score: 0.0, // grep has no BM25 scoring
-                    top_match,
-                    matches,
-                    engines: vec!["grep".to_string()],
-                },
-            );
-        }
-    }
-
-    let grep_count = session_map.len();
-
-    // 4. Merge Tantivy results (supplement) — only if grep didn't saturate
-    if grep_count < opts.limit {
-        if let Some(Ok(tantivy_resp)) = tantivy_result {
-            for session in tantivy_resp.sessions {
-                if let Some(existing) = session_map.get_mut(&session.session_id) {
-                    // Both engines found this session — add tantivy tag
-                    if !existing.engines.contains(&"tantivy".to_string()) {
-                        existing.engines.push("tantivy".to_string());
-                    }
-                    // Upgrade score if Tantivy's BM25 is higher
-                    if session.best_score > existing.best_score {
-                        existing.best_score = session.best_score;
-                    }
-                } else {
-                    // Tantivy-only session (typo recovery / fuzzy match)
-                    let mut tantivy_session = session;
-                    tantivy_session.engines = vec!["tantivy".to_string()];
-                    session_map.insert(tantivy_session.session_id.clone(), tantivy_session);
-                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Grep fallback also failed");
             }
         }
     }
 
-    // 5. Sort: modified_at DESC, then best_score DESC
-    let mut sessions: Vec<SessionHit> = session_map.into_values().collect();
-    sessions.sort_by(|a, b| {
-        b.modified_at
-            .cmp(&a.modified_at)
-            .then_with(|| b.best_score.total_cmp(&a.best_score))
-    });
-
-    // 6. Apply limit
-    sessions.truncate(opts.limit);
-
-    let total_sessions = sessions.len();
-    let total_matches: usize = sessions.iter().map(|s| s.match_count).sum();
-
+    // 4. Both engines returned nothing
     Ok(UnifiedSearchResult {
         response: SearchResponse {
             query: opts.query.clone(),
-            total_sessions,
-            total_matches,
-            elapsed_ms: 0.0, // caller sets elapsed time
-            sessions,
+            total_sessions: 0,
+            total_matches: 0,
+            elapsed_ms: 0.0,
+            sessions: vec![],
         },
-        engine: if grep_count > 0 {
-            SearchEngine::Grep
-        } else {
-            SearchEngine::Tantivy
-        },
+        engine: SearchEngine::Tantivy,
     })
 }
 
@@ -277,11 +273,10 @@ mod tests {
             .collect()
     }
 
-    /// Grep finds >= limit sessions; Tantivy supplement is discarded (saturated).
+    /// Tantivy is primary — only its results appear (grep doesn't run).
     #[test]
-    fn test_grep_primary_tantivy_discarded_when_saturated() {
+    fn test_tantivy_primary_returns_only_tantivy_results() {
         let tmp = TempDir::new().unwrap();
-        // Create limit=2 sessions all containing "deploy"
         let files = create_test_jsonl_files(
             tmp.path(),
             &[
@@ -289,7 +284,7 @@ mod tests {
                 ("s2", "{\"content\":\"deploy staging\"}\n", 1710000002),
             ],
         );
-        // Tantivy has a third session with the word — but limit=2, so it should be cut
+        // Tantivy has only s3
         let idx = create_test_index(&[("s3", "user", "deploy to dev")]);
 
         let opts = UnifiedSearchOptions {
@@ -297,23 +292,14 @@ mod tests {
             scope: None,
             limit: 2,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(Some(&idx), &files, &opts).unwrap();
 
-        // Grep saturated the limit — s3 (Tantivy-only) should NOT appear
-        assert_eq!(result.response.total_sessions, 2);
-        let ids: Vec<&str> = result
-            .response
-            .sessions
-            .iter()
-            .map(|s| s.session_id.as_str())
-            .collect();
-        assert!(
-            !ids.contains(&"s3"),
-            "Tantivy-only session s3 should be discarded when grep saturates"
-        );
-        // Engine tag: grep is primary
-        assert_eq!(result.engine, SearchEngine::Grep);
+        // Tantivy found s3 — grep doesn't run
+        assert_eq!(result.engine, SearchEngine::Tantivy);
+        assert_eq!(result.response.total_sessions, 1);
+        assert_eq!(result.response.sessions[0].session_id, "s3");
     }
 
     /// Grep finds nothing; Tantivy (fuzzy) supplements.
@@ -337,6 +323,7 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(Some(&idx), &files, &opts).unwrap();
 
@@ -372,6 +359,7 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(Some(&idx), &files, &opts).unwrap();
 
@@ -384,11 +372,11 @@ mod tests {
         );
     }
 
-    /// Both engines find the same session — it gets ["grep", "tantivy"] engines tag.
+    /// Tantivy-primary: when Tantivy finds the session, grep doesn't run.
     #[test]
-    fn test_both_engines_find_same_session() {
+    fn test_tantivy_primary_session_has_tantivy_engine_only() {
         let tmp = TempDir::new().unwrap();
-        // JSONL file for grep
+        // JSONL file for grep (would find s1 if grep ran)
         let files = create_test_jsonl_files(
             tmp.path(),
             &[("s1", "{\"content\":\"deploy to production\"}\n", 1710000000)],
@@ -401,21 +389,15 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(Some(&idx), &files, &opts).unwrap();
 
         assert_eq!(result.response.total_sessions, 1);
         let session = &result.response.sessions[0];
         assert_eq!(session.session_id, "s1");
-        // Both engines found it
-        assert!(
-            session.engines.contains(&"grep".to_string()),
-            "should have grep engine"
-        );
-        assert!(
-            session.engines.contains(&"tantivy".to_string()),
-            "should have tantivy engine"
-        );
+        // Only Tantivy engine — grep never ran
+        assert_eq!(session.engines, vec!["tantivy"]);
     }
 
     /// Results are sorted newest-first, with BM25 score as tiebreaker.
@@ -437,6 +419,7 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(None, &files, &opts).unwrap();
 
@@ -462,6 +445,7 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         // Pass empty files — grep has nothing to search
         let result = unified_search(Some(&idx), &[], &opts).unwrap();
@@ -486,12 +470,118 @@ mod tests {
             scope: None,
             limit: 10,
             offset: 0,
+            skip_snippets: false,
         };
         let result = unified_search(None, &files, &opts).unwrap();
 
         assert_eq!(result.engine, SearchEngine::Grep);
         assert_eq!(result.response.total_sessions, 1);
         assert_eq!(result.response.sessions[0].engines, vec!["grep"]);
+    }
+
+    /// When Tantivy finds results, grep does NOT run. Only Tantivy sessions appear.
+    #[test]
+    fn test_tantivy_primary_wins_over_grep() {
+        let tmp = TempDir::new().unwrap();
+        let files = create_test_jsonl_files(
+            tmp.path(),
+            &[
+                ("s1", "{\"content\":\"deploy to production\"}\n", 1710000003),
+                ("s2", "{\"content\":\"deploy staging\"}\n", 1710000002),
+            ],
+        );
+        let idx = create_test_index(&[("s3", "user", "deploy to dev")]);
+        let opts = UnifiedSearchOptions {
+            query: "deploy".to_string(),
+            scope: None,
+            limit: 2,
+            offset: 0,
+            skip_snippets: false,
+        };
+        let result = unified_search(Some(&idx), &files, &opts).unwrap();
+        assert_eq!(result.engine, SearchEngine::Tantivy);
+        assert_eq!(result.response.total_sessions, 1);
+        assert_eq!(result.response.sessions[0].session_id, "s3");
+    }
+
+    /// Engine tag is tantivy-only when Tantivy wins.
+    #[test]
+    fn test_tantivy_primary_only_tantivy_engine_tag() {
+        let tmp = TempDir::new().unwrap();
+        let files = create_test_jsonl_files(
+            tmp.path(),
+            &[("s1", "{\"content\":\"deploy to production\"}\n", 1710000000)],
+        );
+        let idx = create_test_index(&[("s1", "user", "deploy to production tonight")]);
+        let opts = UnifiedSearchOptions {
+            query: "deploy".to_string(),
+            scope: None,
+            limit: 10,
+            offset: 0,
+            skip_snippets: false,
+        };
+        let result = unified_search(Some(&idx), &files, &opts).unwrap();
+        assert_eq!(result.response.total_sessions, 1);
+        assert_eq!(result.response.sessions[0].engines, vec!["tantivy"]);
+    }
+
+    /// Grep fallback when Tantivy returns 0 (CJK, empty index).
+    #[test]
+    fn test_grep_fallback_when_tantivy_returns_zero() {
+        let tmp = TempDir::new().unwrap();
+        let files = create_test_jsonl_files(
+            tmp.path(),
+            &[("s1", "{\"content\":\"自動部署到生產環境\"}\n", 1710000000)],
+        );
+        let idx = create_test_index(&[]); // empty index
+        let opts = UnifiedSearchOptions {
+            query: "部署".to_string(),
+            scope: None,
+            limit: 10,
+            offset: 0,
+            skip_snippets: false,
+        };
+        let result = unified_search(Some(&idx), &files, &opts).unwrap();
+        assert_eq!(result.response.total_sessions, 1);
+        assert_eq!(result.engine, SearchEngine::Grep);
+    }
+
+    /// Tantivy primary: find all sessions (not capped by grep's subset).
+    #[test]
+    fn test_tantivy_primary_grep_does_not_override() {
+        let tmp = TempDir::new().unwrap();
+        let files = create_test_jsonl_files(
+            tmp.path(),
+            &[
+                ("s1", "{\"content\":\"deploy to production\"}\n", 1710000003),
+                ("s2", "{\"content\":\"deploy staging\"}\n", 1710000002),
+            ],
+        );
+        let idx = create_test_index(&[
+            ("s1", "user", "deploy to production"),
+            ("s2", "user", "deploy staging"),
+            ("s3", "user", "deploy to dev environment"),
+        ]);
+        let opts = UnifiedSearchOptions {
+            query: "deploy".to_string(),
+            scope: None,
+            limit: 10,
+            offset: 0,
+            skip_snippets: false,
+        };
+        let result = unified_search(Some(&idx), &files, &opts).unwrap();
+        assert_eq!(
+            result.response.total_sessions, 3,
+            "Tantivy should find all 3"
+        );
+        let ids: Vec<&str> = result
+            .response
+            .sessions
+            .iter()
+            .map(|s| s.session_id.as_str())
+            .collect();
+        assert!(ids.contains(&"s3"), "Tantivy-only session s3 must appear");
+        assert_eq!(result.engine, SearchEngine::Tantivy);
     }
 
     /// `regex_escape_for_literal` correctly escapes regex metacharacters.
