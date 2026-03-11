@@ -11,6 +11,7 @@ mod invocables;
 mod models;
 pub mod reports;
 pub(crate) mod row_types;
+pub mod search_prefilter;
 pub mod sessions;
 pub mod settings;
 mod system;
@@ -18,6 +19,7 @@ mod types;
 
 pub use dashboard::ActivityPoint;
 pub use dashboard::SessionFilterParams;
+pub use search_prefilter::SearchPrefilter;
 pub use types::*;
 
 // Re-export _tx functions for indexer_parallel.rs (crate::queries::*_tx paths)
