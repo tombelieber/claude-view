@@ -298,17 +298,21 @@ fn reconstruct_team_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Option
                 continue;
             };
 
-            // Verify this line is for our team
+            // Verify this line is for our team.
+            // Real TeamCreate assistant messages do NOT carry a top-level "teamName" —
+            // the team name only appears inside message.content[].input.team_name.
+            // We allow those through and let the inner block check confirm the match.
             let line_team = parsed
                 .get("teamName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            if line_team != team_name {
+            let is_team_create_line = team_create_finder.find(line.as_bytes()).is_some();
+            if !is_team_create_line && line_team != team_name {
                 continue;
             }
 
-            // Extract created_at from first matching line's timestamp
-            if created_at == 0 {
+            // Extract created_at from first line that belongs to our team
+            if created_at == 0 && (line_team == team_name || is_team_create_line) {
                 if let Some(ts) = parsed.get("timestamp").and_then(|v| v.as_str()) {
                     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
                         created_at = dt.timestamp_millis();
@@ -331,7 +335,7 @@ fn reconstruct_team_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Option
                 let input = block.get("input");
 
                 // TeamCreate → description
-                if tool_name == "TeamCreate" && team_create_finder.find(line.as_bytes()).is_some() {
+                if tool_name == "TeamCreate" && is_team_create_line {
                     if let Some(inp) = input {
                         let inp_team = inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
                         if inp_team == team_name {
@@ -448,15 +452,18 @@ fn reconstruct_team_and_inbox_from_jsonl(
                 continue;
             };
 
+            // Allow TeamCreate lines through even without top-level teamName —
+            // real Claude Code JSONL omits teamName on the creation event itself.
             let line_team = parsed
                 .get("teamName")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            if line_team != team_name {
+            let is_team_create_line = team_create_finder.find(line.as_bytes()).is_some();
+            if !is_team_create_line && line_team != team_name {
                 continue;
             }
 
-            if created_at == 0 {
+            if created_at == 0 && (line_team == team_name || is_team_create_line) {
                 if let Some(ts) = parsed.get("timestamp").and_then(|v| v.as_str()) {
                     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
                         created_at = dt.timestamp_millis();
@@ -484,7 +491,7 @@ fn reconstruct_team_and_inbox_from_jsonl(
                 let tool_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let input = block.get("input");
 
-                if tool_name == "TeamCreate" && team_create_finder.find(line.as_bytes()).is_some() {
+                if tool_name == "TeamCreate" && is_team_create_line {
                     if let Some(inp) = input {
                         let inp_team = inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
                         if inp_team == team_name {
@@ -1452,5 +1459,72 @@ mod tests {
             classify_message(r#"{"type":"shutdown_approved","requestId":"1"}"#),
             InboxMessageType::ShutdownApproved
         ));
+    }
+
+    /// Regression: TeamCreate assistant messages in real Claude Code JSONL do NOT
+    /// carry a top-level "teamName" field — the team name only appears inside
+    /// message.content[].input.team_name. reconstruct_team_from_jsonl must still
+    /// find the team without requiring a top-level teamName on that line.
+    #[test]
+    fn test_reconstruct_team_from_jsonl_without_toplevel_teamname() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-real.jsonl");
+
+        // Real-world shape: TeamCreate line has NO top-level teamName.
+        // Subsequent Agent lines DO have teamName (real Claude Code behaviour).
+        let lines = vec![
+            // TeamCreate — no teamName at top level (matches real JSONL structure)
+            r#"{"type":"assistant","sessionId":"sess-real","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_abc","name":"TeamCreate","input":{"team_name":"real-team","description":"A real world team"},"caller":{"type":"direct"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            // Agent spawn — has teamName (subsequent messages after team creation)
+            r#"{"type":"assistant","sessionId":"sess-real","teamName":"real-team","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_def","name":"Agent","input":{"name":"worker","team_name":"real-team","prompt":"Do work","subagent_type":"general-purpose"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
+        ];
+        std::fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-real".to_string(),
+            jsonl_path: jsonl_path.clone(),
+        }];
+
+        let result = reconstruct_team_from_jsonl("real-team", &refs);
+        assert!(
+            result.is_some(),
+            "Should reconstruct team even when TeamCreate line has no top-level teamName"
+        );
+        let team = result.unwrap();
+        assert_eq!(team.name, "real-team");
+        assert_eq!(team.description, "A real world team");
+        assert_eq!(team.members.len(), 1, "Should find Agent spawn member");
+        assert_eq!(team.members[0].name, "worker");
+    }
+
+    /// Regression: reconstruct_team_and_inbox_from_jsonl (used in summaries())
+    /// must also work when TeamCreate line has no top-level teamName.
+    #[test]
+    fn test_reconstruct_combined_without_toplevel_teamname() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("sess-combined.jsonl");
+
+        let lines = vec![
+            // TeamCreate — no teamName at top level
+            r#"{"type":"assistant","sessionId":"sess-combined","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"combo-team","description":"Combined test team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
+            // SendMessage — has teamName
+            r#"{"type":"assistant","sessionId":"sess-combined","teamName":"combo-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"SendMessage","input":{"type":"message","recipient":"worker","content":"Go!"}}]},"timestamp":"2026-03-11T10:01:00.000Z"}"#,
+        ];
+        std::fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let refs = vec![TeamJSONLRef {
+            session_id: "sess-combined".to_string(),
+            jsonl_path: jsonl_path.clone(),
+        }];
+
+        let result = reconstruct_team_and_inbox_from_jsonl("combo-team", &refs);
+        assert!(
+            result.is_some(),
+            "summaries() path must find team without top-level teamName on TeamCreate line"
+        );
+        let (team, inbox) = result.unwrap();
+        assert_eq!(team.name, "combo-team");
+        assert_eq!(team.description, "Combined test team");
+        assert_eq!(inbox.len(), 1);
     }
 }
