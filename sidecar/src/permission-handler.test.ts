@@ -100,4 +100,108 @@ describe('PermissionHandler', () => {
     // All should resolve
     return Promise.all(promises)
   })
+
+  it('routes ExitPlanMode to plan_approval event', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+
+    const signal = new AbortController().signal
+    const promise = handler.handleCanUseTool(
+      'ExitPlanMode',
+      { allowedPrompts: ['Implement the plan'] },
+      { signal, toolUseID: 'tu_plan' },
+      emit,
+    )
+
+    expect(events).toHaveLength(1)
+    expect((events[0] as Record<string, unknown>).type).toBe('plan_approval')
+    const ev = events[0] as Record<string, unknown>
+    expect((ev.planData as Record<string, unknown>).allowedPrompts).toBeDefined()
+
+    const requestId = ev.requestId as string
+    handler.resolvePlan(requestId, true)
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+  })
+
+  it('routes ExitPlanMode to plan_approval and deny resolves with deny', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+
+    const signal = new AbortController().signal
+    const promise = handler.handleCanUseTool(
+      'ExitPlanMode',
+      {},
+      { signal, toolUseID: 'tu_plan_deny' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolvePlan(requestId, false, 'Not ready')
+
+    const result = await promise
+    expect(result.behavior).toBe('deny')
+    if (result.behavior === 'deny') {
+      expect(result.message).toBe('Not ready')
+    }
+  })
+
+  it('routes MCP elicitation tools (non-standard, with prompt field) to elicitation event', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+
+    const signal = new AbortController().signal
+    const promise = handler.handleCanUseTool(
+      'mcp__my_server__gather_info', // non-standard tool name
+      { prompt: 'What is your GitHub username?' },
+      { signal, toolUseID: 'tu_elicit' },
+      emit,
+    )
+
+    expect(events).toHaveLength(1)
+    const ev = events[0] as Record<string, unknown>
+    expect(ev.type).toBe('elicitation')
+    expect(ev.prompt).toBe('What is your GitHub username?')
+
+    const requestId = ev.requestId as string
+    handler.resolveElicitation(requestId, 'myuser')
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+  })
+
+  it('does NOT route standard tools with prompt field to elicitation (heuristic boundary)', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+
+    // Bash with a 'prompt' field in input should still go to permission_request, not elicitation
+    const signal = new AbortController().signal
+    const promise = handler.handleCanUseTool(
+      'Bash',
+      { command: 'echo hi', prompt: 'some prompt string' },
+      { signal, toolUseID: 'tu_bash_prompt' },
+      emit,
+    )
+
+    expect(events).toHaveLength(1)
+    expect((events[0] as Record<string, unknown>).type).toBe('permission_request')
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolvePermission(requestId, true)
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+  })
 })
