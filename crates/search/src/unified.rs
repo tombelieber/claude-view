@@ -49,7 +49,7 @@ pub enum UnifiedSearchError {
 ///
 /// - `search_index`: If `None`, skips Tantivy and goes straight to grep.
 ///   (The route handler should return 503 when index is building — this
-///    `None` path is for tests and future direct-grep contexts only.)
+///   `None` path is for tests and future direct-grep contexts only.)
 /// - `jsonl_files`: Pre-collected files to grep if fallback is needed.
 /// - `opts`: Query, scope, pagination.
 ///
