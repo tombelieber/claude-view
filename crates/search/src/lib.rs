@@ -26,8 +26,7 @@ use std::sync::Mutex;
 use tantivy::schema::{Field, Schema, FAST, STORED, STRING, TEXT};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy};
 
-pub use grep::{grep_files, GrepError, GrepOptions, JsonlFile};
-pub use grep_types::{GrepLineMatch, GrepResponse, GrepSessionHit};
+pub use grep::JsonlFile;
 pub use indexer::SearchDocument;
 pub use types::{MatchHit, SearchResponse, SessionHit};
 pub use unified::{
