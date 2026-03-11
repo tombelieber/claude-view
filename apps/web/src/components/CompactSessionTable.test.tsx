@@ -248,10 +248,10 @@ describe('CompactSessionTable', () => {
 
       expect(branchCell.textContent).toContain('feature/test')
 
-      // Branch pill should have rounded-md and bg-gray-100 classes
-      const pill = branchCell.querySelector('.rounded-md')
+      // Branch pill should have violet badge classes
+      const pill = branchCell.querySelector('.bg-violet-50')
       expect(pill).toBeInTheDocument()
-      expect(pill).toHaveClass('bg-gray-100')
+      expect(pill).toHaveClass('text-violet-700')
     })
 
     it('formats activity as prompts/tokens inline', () => {
