@@ -8,6 +8,7 @@ import {
   FileText,
   GitBranch,
   LayoutDashboard,
+  MessageSquare,
   ScrollText,
   Terminal,
   Timer,
@@ -43,6 +44,7 @@ import { PermissionCard } from '../chat/cards/PermissionCard'
 import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
+import { CompactChatTab } from './CompactChatTab'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { PlanTab } from './PlanTab'
@@ -67,6 +69,7 @@ import type { LiveSession } from './use-live-sessions'
 
 type TabId =
   | 'overview'
+  | 'chat'
   | 'terminal'
   | 'log'
   | 'sub-agents'
@@ -94,6 +97,7 @@ interface SessionDetailPanelProps {
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'log', label: 'Log', icon: ScrollText },
   { id: 'sub-agents', label: 'Sub-Agents', icon: Users },
@@ -773,6 +777,13 @@ export function SessionDetailPanel({
             {data.historyExtras?.sessionDetail && (
               <CommitsPanel commits={data.historyExtras.sessionDetail.commits ?? []} />
             )}
+          </div>
+        )}
+
+        {/* ---- Chat tab (compact block renderer) ---- */}
+        {activeTab === 'chat' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <CompactChatTab sessionId={data.id} />
           </div>
         )}
 
