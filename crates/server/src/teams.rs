@@ -4,6 +4,7 @@
 //! Reads team configs and inbox messages from the filesystem.
 //! No file watching — teams are ephemeral (1–44 min bursts).
 
+use memchr::memmem;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -149,6 +150,95 @@ struct RawInboxMessage {
     color: Option<String>,
     #[serde(default)]
     summary: Option<String>,
+}
+
+// ============================================================================
+// JSONL Index Scanner
+// ============================================================================
+
+/// Scan all JSONL files under `claude_dir/projects/` to build a team → JSONL path index.
+///
+/// For each `.jsonl` file, reads lines looking for a top-level `"teamName"` field.
+/// Uses SIMD memmem pre-filter: files without `"teamName"` are skipped in ~microseconds.
+/// Stops scanning a file once all unique team names are collected (typically <10 lines).
+pub fn build_team_jsonl_index(claude_dir: &Path) -> TeamJSONLIndex {
+    let projects_dir = claude_dir.join("projects");
+    let mut index: TeamJSONLIndex = HashMap::new();
+
+    let Ok(project_entries) = std::fs::read_dir(&projects_dir) else {
+        return index;
+    };
+
+    let finder = memmem::Finder::new(b"\"teamName\"");
+
+    for project_entry in project_entries.flatten() {
+        let project_path = project_entry.path();
+        if !project_path.is_dir() {
+            continue;
+        }
+        scan_directory_for_teams(&project_path, &finder, &mut index);
+    }
+
+    tracing::info!(
+        "Built team JSONL index: {} teams across {} session refs",
+        index.len(),
+        index.values().map(|v| v.len()).sum::<usize>(),
+    );
+
+    index
+}
+
+/// Scan a single directory for `.jsonl` files with team references.
+fn scan_directory_for_teams(dir: &Path, finder: &memmem::Finder, index: &mut TeamJSONLIndex) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only process .jsonl files (not .meta.json, not directories)
+        match path.extension() {
+            Some(ext) if ext == "jsonl" => {}
+            _ => continue,
+        }
+
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+
+        // SIMD pre-filter: skip entire file if no teamName reference
+        if finder.find(content.as_bytes()).is_none() {
+            continue;
+        }
+
+        // Extract session ID from filename stem (e.g. "b4c61369-....jsonl" → "b4c61369-...")
+        let session_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Collect unique team names from this file
+        let mut seen_teams = std::collections::HashSet::new();
+        for line in content.lines() {
+            if finder.find(line.as_bytes()).is_none() {
+                continue;
+            }
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(team_name) = parsed.get("teamName").and_then(|v| v.as_str()) {
+                    if seen_teams.insert(team_name.to_string()) {
+                        index
+                            .entry(team_name.to_string())
+                            .or_default()
+                            .push(TeamJSONLRef {
+                                session_id: session_id.clone(),
+                                jsonl_path: path.clone(),
+                            });
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -534,6 +624,63 @@ mod tests {
             store.get("test-team").is_some(),
             "Team detail should be available for newly created team"
         );
+    }
+
+    #[test]
+    fn test_build_team_jsonl_index_finds_teams() {
+        let tmp = TempDir::new().unwrap();
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&projects_dir).unwrap();
+
+        let jsonl_path = projects_dir.join("sess-abc.jsonl");
+        let lines = vec![
+            r#"{"type":"user","sessionId":"sess-abc","message":{"role":"user","content":"hi"},"timestamp":"2026-03-11T10:00:00Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-abc","teamName":"demo-team","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:01Z"}"#,
+        ];
+        std::fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let index = build_team_jsonl_index(tmp.path());
+        assert!(
+            index.contains_key("demo-team"),
+            "Should find demo-team in index"
+        );
+        assert_eq!(index["demo-team"].len(), 1);
+        assert_eq!(index["demo-team"][0].session_id, "sess-abc");
+        assert_eq!(index["demo-team"][0].jsonl_path, jsonl_path);
+    }
+
+    #[test]
+    fn test_build_team_jsonl_index_multiple_teams_one_session() {
+        let tmp = TempDir::new().unwrap();
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&projects_dir).unwrap();
+
+        let jsonl_path = projects_dir.join("sess-multi.jsonl");
+        let lines = vec![
+            r#"{"type":"assistant","sessionId":"sess-multi","teamName":"team-a","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:01Z"}"#,
+            r#"{"type":"assistant","sessionId":"sess-multi","teamName":"team-b","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:02Z"}"#,
+        ];
+        std::fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
+
+        let index = build_team_jsonl_index(tmp.path());
+        assert!(index.contains_key("team-a"));
+        assert!(index.contains_key("team-b"));
+    }
+
+    #[test]
+    fn test_build_team_jsonl_index_ignores_non_jsonl_files() {
+        let tmp = TempDir::new().unwrap();
+        let projects_dir = tmp.path().join("projects").join("test-project");
+        std::fs::create_dir_all(&projects_dir).unwrap();
+
+        std::fs::write(
+            projects_dir.join("sess-abc.meta.json"),
+            r#"{"teamName":"ghost-team"}"#,
+        )
+        .unwrap();
+
+        let index = build_team_jsonl_index(tmp.path());
+        assert!(index.is_empty());
     }
 
     #[test]
