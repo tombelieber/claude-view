@@ -40,17 +40,17 @@ export function useTeams() {
 export function useTeamDetail(name: string | null) {
   return useQuery({
     queryKey: ['team-detail', name],
-    queryFn: () => fetchTeamDetail(name!),
+    queryFn: () => fetchTeamDetail(name ?? ''),
     enabled: !!name,
     staleTime: 60_000,
   })
 }
 
 /** Fetch inbox messages for a specific team. */
-export function useTeamInbox(name: string | null) {
+export function useTeamInbox(name: string | null, version?: number) {
   return useQuery({
-    queryKey: ['team-inbox', name],
-    queryFn: () => fetchTeamInbox(name!),
+    queryKey: ['team-inbox', name, version ?? 0],
+    queryFn: () => fetchTeamInbox(name ?? ''),
     enabled: !!name,
     staleTime: 60_000,
   })

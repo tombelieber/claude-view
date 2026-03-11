@@ -20,7 +20,6 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useTeamDetail } from '../../hooks/use-teams'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -105,7 +104,6 @@ export function SessionCard({
   hideProjectBranch,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
-  const { data: teamDetail } = useTeamDetail(session.teamName ?? null)
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
@@ -223,7 +221,7 @@ export function SessionCard({
         if (allFiles.length === 0) return null
         const projectRoot = session.projectPath || null
         function displayName(fullPath: string): string {
-          if (projectRoot && fullPath.startsWith(projectRoot + '/')) {
+          if (projectRoot && fullPath.startsWith(`${projectRoot}/`)) {
             return fullPath.slice(projectRoot.length + 1)
           }
           return fullPath.split('/').pop() ?? fullPath
@@ -366,8 +364,8 @@ export function SessionCard({
               </Tooltip.Root>
             </Tooltip.Provider>
           </div>
-          {teamDetail && teamDetail.members.length > 0 && (
-            <TeamMemberPills members={teamDetail.members} />
+          {session.teamMembers && session.teamMembers.length > 0 && (
+            <TeamMemberPills members={session.teamMembers} />
           )}
         </div>
       )}
