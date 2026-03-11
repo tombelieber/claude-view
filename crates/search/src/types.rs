@@ -16,11 +16,6 @@ pub struct SearchResponse {
     pub elapsed_ms: f64,
     /// Session-grouped results, sorted by best BM25 score descending.
     pub sessions: Vec<SessionHit>,
-    /// Which search engine produced these results.
-    /// `None` = Tantivy (default), `"grep"` = grep fallback.
-    /// Allows the frontend to show a subtle indicator when grep fallback fired.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub search_engine: Option<String>,
 }
 
 /// A session that contains one or more search matches.
@@ -42,6 +37,9 @@ pub struct SessionHit {
     pub top_match: MatchHit,
     /// All matches in this session (for expanded view).
     pub matches: Vec<MatchHit>,
+    /// Which search engines contributed to this session's results.
+    /// e.g. ["grep"], ["tantivy"], ["grep", "tantivy"]
+    pub engines: Vec<String>,
 }
 
 /// A single message-level search match with a highlighted snippet.

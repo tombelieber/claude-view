@@ -28,4 +28,9 @@ export type SessionHit = {
    * All matches in this session (for expanded view).
    */
   matches: Array<MatchHit>
+  /**
+   * Which search engines contributed to this session's results.
+   * e.g. ["grep"], ["tantivy"], ["grep", "tantivy"]
+   */
+  engines: Array<string>
 }
