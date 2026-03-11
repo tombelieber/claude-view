@@ -1,57 +1,51 @@
 // sidecar/src/ws-handler.ts
 import type { WebSocket } from 'ws'
-import type { SessionManager } from './session-manager.js'
-import type { ClientMessage, ResumeMsg, ServerMessage, SetModeMessage } from './types.js'
+import type { ClientMessage, ResumeMsg, SetModeMsg } from './protocol.js'
+import { sendMessage, setSessionMode } from './sdk-session.js'
+import type { SessionRegistry } from './session-registry.js'
 
-export function handleWebSocket(ws: WebSocket, controlId: string, sessions: SessionManager) {
-  const session = sessions.getSession(controlId)
+export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
+  const session = registry.get(controlId)
   if (!session) {
     ws.send(JSON.stringify({ type: 'error', message: 'Session not found', fatal: true }))
     ws.close()
     return
   }
 
-  // Subscribe to session events via EventEmitter
-  const onMessage = (msg: ServerMessage) => {
+  // Subscribe to session events
+  const onMessage = (msg: unknown) => {
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify(msg))
     }
   }
   session.emitter.on('message', onMessage)
 
-  // Route through emitSequencedById so it gets seq + buffered for replay
-  sessions.emitSequencedById(controlId, {
+  // Send current state
+  registry.emitSequenced(session, {
     type: 'session_status',
-    status: session.status,
-    contextUsage: session.contextUsage,
-    turnCount: session.turnCount,
+    status: session.state === 'compacting' ? 'compacting' : null,
   })
 
-  // Send heartbeat config — client should ping at this interval.
-  // No seq — this is a setup message, not a replayable event.
-  ws.send(
-    JSON.stringify({
-      type: 'heartbeat_config',
-      intervalMs: 15_000,
-    }),
-  )
+  // Heartbeat config (no seq)
+  ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
 
-  // Handle incoming messages from frontend
+  // Handle incoming messages
   ws.on('message', (raw) => {
     try {
       const msg: ClientMessage = JSON.parse(raw.toString())
       switch (msg.type) {
         case 'user_message':
-          sessions.sendMessage(controlId, msg.content).catch((err) => {
+          sendMessage(session, msg.content).catch((err) => {
             ws.send(JSON.stringify({ type: 'error', message: String(err), fatal: false }))
           })
           break
+
         case 'permission_response':
-          sessions.resolvePermission(controlId, msg.requestId, msg.allowed)
+          session.permissions.resolvePermission(msg.requestId, msg.allowed, msg.updatedPermissions)
           break
-        case 'question_response': {
-          const ok = sessions.resolveQuestion(controlId, msg.requestId, msg.answers)
-          if (!ok)
+
+        case 'question_response':
+          if (!session.permissions.resolveQuestion(msg.requestId, msg.answers)) {
             ws.send(
               JSON.stringify({
                 type: 'error',
@@ -59,19 +53,19 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
                 fatal: false,
               }),
             )
+          }
           break
-        }
-        case 'plan_response': {
-          const ok = sessions.resolvePlan(controlId, msg.requestId, msg.approved, msg.feedback)
-          if (!ok)
+
+        case 'plan_response':
+          if (!session.permissions.resolvePlan(msg.requestId, msg.approved, msg.feedback)) {
             ws.send(
               JSON.stringify({ type: 'error', message: 'Unknown plan requestId', fatal: false }),
             )
+          }
           break
-        }
-        case 'elicitation_response': {
-          const ok = sessions.resolveElicitation(controlId, msg.requestId, msg.response)
-          if (!ok)
+
+        case 'elicitation_response':
+          if (!session.permissions.resolveElicitation(msg.requestId, msg.response)) {
             ws.send(
               JSON.stringify({
                 type: 'error',
@@ -79,35 +73,31 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
                 fatal: false,
               }),
             )
+          }
           break
-        }
+
         case 'resume': {
           const lastSeq = (msg as ResumeMsg).lastSeq
           const missed = session.eventBuffer.getAfter(lastSeq, (e) => e.seq)
           if (missed === null) {
-            // Buffer exhausted — can't replay
             ws.send(
-              JSON.stringify({
-                type: 'error',
-                message: 'replay_buffer_exhausted',
-                fatal: true,
-              }),
+              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: true }),
             )
             ws.close()
           } else {
-            // Replay missed events — they already have seq baked in
             for (const event of missed) {
-              if (ws.readyState === ws.OPEN) {
-                ws.send(JSON.stringify(event.msg))
-              }
+              if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event.msg))
             }
           }
           break
         }
+
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))
           break
+
         case 'set_mode': {
+          const modeMsg = msg as SetModeMsg
           const VALID_MODES = new Set([
             'default',
             'acceptEdits',
@@ -115,17 +105,28 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
             'plan',
             'dontAsk',
           ])
-          if (!VALID_MODES.has((msg as SetModeMessage).mode)) {
+          if (!VALID_MODES.has(modeMsg.mode)) {
             ws.send(
               JSON.stringify({
                 type: 'error',
-                message: `Invalid mode: ${(msg as SetModeMessage).mode}`,
+                message: `Invalid mode: ${modeMsg.mode}`,
                 fatal: false,
               }),
             )
             break
           }
-          sessions.setMode(controlId, (msg as SetModeMessage).mode).catch(() => {})
+          // V2 SDK: close + re-resume with new permission mode (synchronous — errors emitted via registry)
+          try {
+            setSessionMode(session, modeMsg.mode, registry)
+          } catch (err: unknown) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: `Mode change failed: ${err}`,
+                fatal: false,
+              }),
+            )
+          }
           break
         }
       }
@@ -134,28 +135,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
     }
   })
 
-  // Cleanup on close
+  // Cleanup on close — drain interactive maps, keep session alive for reconnect
   ws.on('close', () => {
     session.emitter.removeListener('message', onMessage)
-
-    // Drain interactive pending maps (question/plan/elicitation) — these have
-    // no auto-timeout timer, so they'd hang forever without a connected frontend.
-    // Do NOT call sessions.close() — that destroys the SDK session and defeats
-    // the frontend's reconnect logic (exponential backoff, up to 10 retries).
-    // pendingPermissions is NOT drained here because it has its own 60s auto-deny timer.
-    for (const [, pending] of session.pendingQuestions) {
-      pending.resolve({}) // empty answers → allow with no selections
-    }
-    session.pendingQuestions.clear()
-
-    for (const [, pending] of session.pendingPlans) {
-      pending.resolve({ approved: false }) // reject plan (never auto-approve)
-    }
-    session.pendingPlans.clear()
-
-    for (const [, pending] of session.pendingElicitations) {
-      pending.resolve('') // empty response
-    }
-    session.pendingElicitations.clear()
+    session.permissions.drainInteractive()
   })
 }
