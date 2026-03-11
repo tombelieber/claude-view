@@ -6,11 +6,17 @@ export interface SlashCommand {
 
 export const COMMANDS: SlashCommand[] = [
   // Mode commands
-  { name: 'plan', description: 'Switch to plan mode — think before acting', category: 'mode' },
-  { name: 'code', description: 'Switch to code mode — implement changes', category: 'mode' },
   {
-    name: 'ask',
-    description: 'Switch to ask mode — answer questions without edits',
+    name: 'default',
+    description: 'Default mode — prompts for dangerous operations',
+    category: 'mode',
+  },
+  { name: 'acceptEdits', description: 'Auto-approve file edits', category: 'mode' },
+  { name: 'plan', description: 'Plan mode — think and plan, no tool execution', category: 'mode' },
+  { name: 'dontAsk', description: 'Skip tools that need permission', category: 'mode' },
+  {
+    name: 'bypassPermissions',
+    description: 'Trust all — auto-approve everything (dangerous)',
     category: 'mode',
   },
 

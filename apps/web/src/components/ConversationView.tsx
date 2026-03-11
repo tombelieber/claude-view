@@ -1,3 +1,12 @@
+import type { PermissionMode } from '../types/control'
+
+const VALID_MODES: PermissionMode[] = [
+  'default',
+  'acceptEdits',
+  'bypassPermissions',
+  'plan',
+  'dontAsk',
+]
 import { FindProvider } from '@claude-view/shared/contexts/FindContext'
 import {
   ArrowLeft,
@@ -11,7 +20,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
-import { Virtuoso } from 'react-virtuoso'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
@@ -50,6 +59,7 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
+import { InteractionToast } from './chat/InteractionToast'
 import { LiveMessageBubble } from './chat/LiveMessageBubble'
 import { StreamingFooter } from './chat/StreamingFooter'
 import { RichPane } from './live/RichPane'
@@ -124,8 +134,18 @@ export function ConversationView() {
     : 0
   const contextPercent = Math.max(sessionControl.contextPercent, dbContextPercent)
 
-  // Mode + model state for ChatInputBar (UI-only for MVP — sent with future protocol)
-  const [chatMode, setChatMode] = useState<'plan' | 'code' | 'ask'>('code')
+  // Mode + model state for ChatInputBar
+  const [chatMode, setChatMode] = useState<PermissionMode>(() => {
+    if (!sessionId) return 'default'
+    try {
+      const stored = localStorage.getItem(`claude-view:mode:${sessionId}`)
+      return stored && VALID_MODES.includes(stored as PermissionMode)
+        ? (stored as PermissionMode)
+        : 'default'
+    } catch {
+      return 'default'
+    }
+  })
   const [chatModel, setChatModel] = useState('claude-sonnet-4-6')
 
   // Sync chatModel when sessionDetail loads (it's undefined on first render)
@@ -134,6 +154,27 @@ export function ConversationView() {
       setChatModel(sessionDetail.primaryModel)
     }
   }, [sessionDetail?.primaryModel])
+
+  const handleModeChange = useCallback(
+    (mode: PermissionMode) => {
+      setChatMode(mode)
+      if (sessionId) localStorage.setItem(`claude-view:mode:${sessionId}`, mode)
+      sessionControl.setMode(mode)
+    },
+    [sessionId, sessionControl.setMode],
+  )
+
+  const lastSentModeRef = useRef<PermissionMode | null>(null)
+  useEffect(() => {
+    if (
+      sessionControl.phase === 'ready' &&
+      chatMode !== 'default' &&
+      lastSentModeRef.current !== chatMode
+    ) {
+      lastSentModeRef.current = chatMode
+      sessionControl.setMode(chatMode)
+    }
+  }, [sessionControl.phase, chatMode, sessionControl.setMode])
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
@@ -363,6 +404,8 @@ export function ConversationView() {
   // The compact chat view intentionally excludes them to keep focus on the user/assistant conversation.
 
   const [panelOpen, setPanelOpen] = useState(true)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
 
   // Convert messages to RichMessage[] for verbose mode + terminal tab
   const richMessages = useMemo(
@@ -391,6 +434,33 @@ export function ConversationView() {
     () => computeCategoryCounts(richMessagesWithHookEvents),
     [richMessagesWithHookEvents],
   )
+
+  // Build tool pair map from live messages for verbose tool display
+  const toolPairMap = useMemo(() => {
+    const map = new Map<string, { output: string; isError: boolean }>()
+    for (const m of sessionControl.messages) {
+      if (m.role === 'tool_result' && m.toolUseId && m.output !== undefined) {
+        map.set(m.toolUseId, { output: m.output, isError: !!m.isError })
+      }
+    }
+    return map
+  }, [sessionControl.messages])
+
+  // Toast: notify user when an interaction card is off-screen
+  const hasInteraction = !!(
+    sessionControl.permissionRequest ||
+    sessionControl.askQuestion ||
+    sessionControl.planApproval ||
+    sessionControl.elicitation
+  )
+  const showToast = hasInteraction && !isAtBottom
+  const toastLabel = sessionControl.permissionRequest
+    ? 'Permission required — click to view'
+    : sessionControl.askQuestion
+      ? 'Question requires your answer'
+      : sessionControl.planApproval
+        ? 'Plan needs approval'
+        : 'Input needed'
 
   // Build panel data for SessionDetailPanel
   const panelData = useMemo(() => {
@@ -731,7 +801,7 @@ export function ConversationView() {
       {/* Two-column: Conversation + Sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Conversation messages + ChatInputBar */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col relative">
           {/* In-session find bar (Cmd+F) */}
           {findOpen && (
             <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
@@ -761,11 +831,13 @@ export function ConversationView() {
                 <ThreadHighlightProvider>
                   <ExpandProvider>
                     <Virtuoso
+                      ref={virtuosoRef}
                       data={conversationItems}
                       firstItemIndex={firstItemIndex}
                       startReached={handleStartReached}
                       initialTopMostItemIndex={Math.max(0, conversationItems.length - 1)}
                       followOutput="smooth"
+                      atBottomStateChange={(atBottom) => setIsAtBottom(atBottom)}
                       itemContent={(_index, item: ConversationItem) => {
                         if (item.kind === 'divider') {
                           return (
@@ -781,11 +853,23 @@ export function ConversationView() {
                           )
                         }
                         if (item.kind === 'live') {
+                          // Skip rendering wrapper for hidden items
+                          const isHiddenThinking = !verboseMode && item.message.role === 'thinking'
+                          const isHiddenToolResult =
+                            !verboseMode && item.message.role === 'tool_result'
+                          if (isHiddenThinking || isHiddenToolResult) return <div />
+
+                          const toolResult =
+                            item.message.role === 'tool_use' && item.message.toolUseId
+                              ? (toolPairMap.get(item.message.toolUseId) ?? null)
+                              : null
                           return (
                             <div className="max-w-4xl mx-auto px-6 pb-4">
                               <LiveMessageBubble
                                 message={item.message}
                                 onRetry={sessionControl.retry}
+                                verbose={verboseMode}
+                                toolResult={toolResult}
                               />
                             </div>
                           )
@@ -851,6 +935,17 @@ export function ConversationView() {
               />
             )}
           </div>
+          <InteractionToast
+            visible={showToast}
+            label={toastLabel}
+            onScrollTo={() => {
+              virtuosoRef.current?.scrollToIndex({
+                index: conversationItems.length - 1,
+                behavior: 'smooth',
+              })
+              setIsAtBottom(true)
+            }}
+          />
           <ConnectionBanner
             health={sessionControl.connectionHealth}
             errorMessage={sessionControl.errorMessage}
@@ -860,7 +955,7 @@ export function ConversationView() {
             state={sessionControl.inputBarState}
             contextPercent={contextPercent}
             mode={chatMode}
-            onModeChange={setChatMode}
+            onModeChange={handleModeChange}
             model={chatModel}
             onModelChange={setChatModel}
           />
