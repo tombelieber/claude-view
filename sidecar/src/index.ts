@@ -1,28 +1,28 @@
+// sidecar/src/index.ts
 import fs from 'node:fs'
 import { createAdaptorServer } from '@hono/node-server'
-// sidecar/src/index.ts — updated
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
-import { controlRouter } from './control.js'
 import { healthRouter } from './health.js'
-import { SessionManager } from './session-manager.js'
+import { createRoutes } from './routes.js'
+import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
 import type { WorkflowEvent } from './workflow-runner.js'
 import { handleWebSocket } from './ws-handler.js'
 
 const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
 
-const sessionManager = new SessionManager()
+const registry = new SessionRegistry()
 const app = new Hono()
 
 app.route(
   '/health',
-  healthRouter(() => sessionManager.getActiveCount()),
+  healthRouter(() => registry.activeCount),
 )
-app.route('/control', controlRouter(sessionManager))
+app.route('/control', createRoutes(registry))
 app.get('/', (c) => c.json({ status: 'ok' }))
 
-// Workflow runner — POST /workflows/run
+// Workflow runner — POST /workflows/run (preserved from existing sidecar)
 app.post('/workflows/run', async (c) => {
   const body = await c.req.json<{ workflowId: string; inputs?: Record<string, string> }>()
   if (!body.workflowId) {
@@ -41,24 +41,18 @@ app.post('/workflows/run', async (c) => {
   })
 })
 
-// Clean up stale socket from prior crash
-if (fs.existsSync(SOCKET_PATH)) {
-  fs.unlinkSync(SOCKET_PATH)
-}
+// Clean up stale socket
+if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
 
-// Create HTTP server — createAdaptorServer accepts app directly
 const server = createAdaptorServer(app)
-
 server.listen(SOCKET_PATH, () => {
   console.log(`[sidecar] Listening on ${SOCKET_PATH}`)
   console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
 })
 
-// WS upgrade handler on the HTTP server (not a separate net.Server)
+// WS upgrade
 const wss = new WebSocketServer({ noServer: true })
-
 server.on('upgrade', (request, socket, head) => {
-  // Extract controlId from URL: /control/sessions/:controlId/stream
   const match = request.url?.match(/\/control\/sessions\/([^/]+)\/stream/)
   if (!match?.[1]) {
     socket.destroy()
@@ -67,30 +61,29 @@ server.on('upgrade', (request, socket, head) => {
 
   const controlId = match[1]
   wss.handleUpgrade(request, socket, head, (ws) => {
-    handleWebSocket(ws, controlId, sessionManager)
+    handleWebSocket(ws, controlId, registry)
   })
 })
 
+// Parent process check
 const parentCheck = setInterval(() => {
   try {
     process.kill(process.ppid!, 0)
   } catch {
-    console.log('[sidecar] Parent process exited, shutting down')
-    shutdown()
+    console.log('[sidecar] Parent exited, shutting down')
+    void shutdown()
   }
 }, 2000)
 
 async function shutdown() {
   clearInterval(parentCheck)
-  await sessionManager.shutdownAll()
+  await registry.closeAll()
   server.close()
-  if (fs.existsSync(SOCKET_PATH)) {
-    fs.unlinkSync(SOCKET_PATH)
-  }
+  if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
   process.exit(0)
 }
 
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-export { app, server, sessionManager, SOCKET_PATH, runWorkflow }
+export { app, registry, server, SOCKET_PATH, runWorkflow }
