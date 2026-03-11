@@ -18,6 +18,7 @@ pub mod indexer;
 pub mod prompt_index;
 pub mod query;
 pub mod types;
+pub mod unified;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -29,6 +30,9 @@ pub use grep::{grep_files, GrepError, GrepOptions, JsonlFile};
 pub use grep_types::{GrepLineMatch, GrepResponse, GrepSessionHit};
 pub use indexer::SearchDocument;
 pub use types::{MatchHit, SearchResponse, SessionHit};
+pub use unified::{
+    unified_search, SearchEngine, UnifiedSearchError, UnifiedSearchOptions, UnifiedSearchResult,
+};
 
 /// Schema version for the Tantivy index. Bump when the schema changes
 /// (field types, new fields, removed fields). A mismatch triggers auto-rebuild.
