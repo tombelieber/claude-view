@@ -214,7 +214,7 @@ export function SessionSpinner(props: SessionSpinnerProps) {
   const spinnerColorClass = isStalled
     ? 'text-red-500'
     : isCompacting
-      ? 'text-amber-500'
+      ? 'text-sky-400'
       : 'text-emerald-500'
 
   const animationClass = isCompacting && !prefersReducedMotion ? 'animate-pulse' : ''
