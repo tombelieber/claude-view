@@ -298,10 +298,14 @@ async fn main() -> Result<()> {
     };
 
     let share = match (
-        std::env::var("SHARE_WORKER_URL"),
-        std::env::var("SHARE_VIEWER_URL"),
+        std::env::var("SHARE_WORKER_URL")
+            .ok()
+            .or_else(|| option_env!("SHARE_WORKER_URL").map(str::to_string)),
+        std::env::var("SHARE_VIEWER_URL")
+            .ok()
+            .or_else(|| option_env!("SHARE_VIEWER_URL").map(str::to_string)),
     ) {
-        (Ok(worker_url), Ok(viewer_url)) => Some(ShareConfig {
+        (Some(worker_url), Some(viewer_url)) => Some(ShareConfig {
             worker_url,
             viewer_url,
             http_client: reqwest::Client::new(),

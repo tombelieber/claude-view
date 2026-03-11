@@ -92,6 +92,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           RELAY_URL: wss://claude-view-relay.fly.dev/ws
+          SHARE_WORKER_URL: https://api-share.claudeview.ai
+          SHARE_VIEWER_URL: https://share.claudeview.ai
 
       - name: Stage sidecar
         run: |
