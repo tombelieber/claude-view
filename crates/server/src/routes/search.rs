@@ -143,6 +143,7 @@ async fn search_handler(
             scope,
             limit,
             offset,
+            skip_snippets: false,
         };
         // .as_deref() converts Option<Arc<SearchIndex>> to Option<&SearchIndex>
         unified_search(search_index.as_deref(), &jsonl_files, &opts)
