@@ -703,6 +703,53 @@ npx claude-view@latest
 Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
 
 
+--- blog/v0-16-0-zero-config-cloud.mdx ---
+
+---
+title: "npx claude-view Just Works"
+description: "v0.16.0 bakes prod URLs into the distributed binary so sharing and auth work out of the box — while self-hosted builds stay clean with no embedded config."
+date: 2026-03-12
+author: claude-view team
+---
+
+There's a tension in distributing a tool that has both local and cloud features. If you embed cloud URLs in the binary, self-hosters pick up config they didn't ask for. If you don't, `npx` users have to set env vars before anything cloud-related works.
+
+v0.16.0 resolves this cleanly.
+
+## Two binaries, one codebase
+
+The distributed binary — the one you get via `npx claude-view@latest` or the install script — now has Supabase and relay URLs baked in at CI build time. Sharing works. Auth works. No configuration required.
+
+The source build — `cargo build` from the repo — produces a binary with none of those URLs embedded. It's a clean slate. Cloud features activate only when you explicitly set the env vars:
+
+```bash
+export SUPABASE_URL=...
+export SHARE_WORKER_URL=...
+export SHARE_VIEWER_URL=...
+cargo run --release
+```
+
+Same source. Different build contexts. The right defaults for each audience.
+
+## How it works
+
+The CI workflow injects the prod URLs as environment variables during the release build. Rust's `env!()` macro embeds them at compile time — they're baked into the binary, not loaded at runtime. No `.env` files, no dynamic resolution, no failure modes.
+
+When the same code is built locally without those vars set, the feature is disabled. The `GET /api/config` endpoint tells the frontend which features are available, so the UI adapts automatically.
+
+## Self-hosting is a first-class path
+
+This change came from a real gap: the README didn't explain the distribution model clearly. The README now has an explicit self-hosting section covering which env vars activate which features and what works with zero config.
+
+If you're running claude-view on your own machine with your own data, `cargo build && ./target/release/claude-view` gives you the full local experience with no cloud dependencies at all.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+
 --- blog/v0-15-0-unified-search-and-sidecar.mdx ---
 
 ---
@@ -1570,6 +1617,32 @@ version: v0.15.0
 - **Single-pass team summaries** — JSONL reconstruction for team summaries now does one pass instead of multiple, reducing startup I/O.
 - **Search scope removed** — The scope selector has been removed from the frontend; the backend handles scope internally for a cleaner interface.
 - **Session count accuracy** — `/api/search` now returns a true `total_sessions` count rather than a capped estimate.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.16.0.md ---
+
+---
+title: "v0.16.0 — Zero-Config Cloud Features"
+date: 2026-03-12
+version: v0.16.0
+---
+
+## New features
+
+**Zero-config sharing and auth** — Supabase and relay URLs are now baked into the distributed binary at CI build time. `npx claude-view@latest` works with sharing and auth enabled out of the box — no env vars, no setup.
+
+**Self-hosting stays clean** — Building from source (`cargo build`) produces a binary with no embedded URLs. Cloud features are opt-in: set `SUPABASE_URL`, `SHARE_WORKER_URL`, and `SHARE_VIEWER_URL` to enable them.
+
+## Improvements
+
+- **Self-hosting guide** — README now explains the opt-in cloud features model clearly, with instructions for running fully local.
+- **Expanded feature docs** — npx README reorganized into grouped sections covering all major features.
 
 ## Getting started
 
