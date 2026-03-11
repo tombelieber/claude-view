@@ -703,6 +703,40 @@ npx claude-view@latest
 Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
 
 
+--- blog/v0-17-0-system-monitor.mdx ---
+
+---
+title: "See Your Machine While Your Agents Run"
+description: "v0.17.0 adds a System Monitor page with live CPU, memory, and disk gauges — streamed via SSE with smooth animations, right alongside your Claude sessions."
+date: 2026-03-12
+author: claude-view team
+---
+
+When you're running several Claude agents in parallel, your machine is working hard. But until now, you had to switch to Activity Monitor or `htop` to see what was actually happening — breaking your flow every time you wanted to check if you were close to memory pressure or a CPU spike.
+
+v0.17.0 adds a System Monitor page directly in the claude-view sidebar.
+
+## What you see
+
+Open the System Monitor from the sidebar and you get live gauges for CPU usage, memory (used vs. available), and disk activity. Below the gauges is a top processes list — the most CPU-hungry processes on your machine, grouped by name and sorted live.
+
+## Smooth, not jumpy
+
+Raw system metrics change every second and the numbers can jump around. The monitor uses a rAF-based tween hook that interpolates values between readings. The gauge moves smoothly toward each new reading rather than teleporting. Cards also animate in with a staggered reveal on first load.
+
+## SSE, not polling
+
+The system data streams from the Rust backend via server-sent events. The server pushes updates as they happen; the browser receives them without polling. Under the hood, the observer runs in a `spawn_blocking` task so the sleep between readings never blocks the async runtime.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the System Monitor from the sidebar while running a few agents. Watch what your machine does.
+
+
 --- blog/v0-16-0-zero-config-cloud.mdx ---
 
 ---
@@ -1643,6 +1677,36 @@ version: v0.16.0
 
 - **Self-hosting guide** — README now explains the opt-in cloud features model clearly, with instructions for running fully local.
 - **Expanded feature docs** — npx README reorganized into grouped sections covering all major features.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.17.0.md ---
+
+---
+title: "v0.17.0 — System Monitor"
+date: 2026-03-12
+version: v0.17.0
+---
+
+## New features
+
+**System Monitor page** — A new sidebar section shows real-time CPU, memory, and disk usage for your machine alongside your Claude sessions, streaming via server-sent events.
+
+**Animated gauges** — Gauge values tween smoothly using a rAF-based animation hook so CPU spikes and memory changes are easy to track visually.
+
+**Live process list** — Processes are grouped and normalized by name, sorted by CPU usage, and updated in real time.
+
+**Staggered card reveal** — On first load, monitor cards animate in sequentially for a clean entry.
+
+## Improvements
+
+- **Async correctness** — `std::thread::sleep` moved into `spawn_blocking`; the system observer no longer blocks the async runtime.
+- **SSE event alignment** — `init` and `snapshot` event names now match between the Rust backend and the React frontend.
 
 ## Getting started
 
