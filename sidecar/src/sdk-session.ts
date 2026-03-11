@@ -79,6 +79,7 @@ export function createControlSession(
   cs = {
     controlId,
     sessionId: '', // filled after stream emits session_init with session_id
+    model: req.model,
     sdkSession,
     state: 'initializing',
     totalCostUsd: 0,
@@ -132,6 +133,7 @@ export async function resumeControlSession(
   cs = {
     controlId,
     sessionId: req.sessionId,
+    model: req.model ?? 'claude-sonnet-4-20250514',
     sdkSession,
     state: 'initializing',
     totalCostUsd: 0,
@@ -166,6 +168,8 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
       // Stream ended normally
       cs.state = 'closed'
       registry.emitSequenced(cs, { type: 'session_closed', reason: 'stream_ended' })
+      // Brief delay so any reconnecting WS can replay the ring buffer before removal
+      setTimeout(() => registry.remove(cs.controlId), 5_000)
     } catch (err) {
       cs.state = 'error'
       registry.emitSequenced(cs, {
@@ -173,6 +177,7 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
         message: err instanceof Error ? err.message : String(err),
         fatal: true,
       })
+      setTimeout(() => registry.remove(cs.controlId), 5_000)
     }
   })()
 }
@@ -256,11 +261,7 @@ export function setSessionMode(cs: ControlSession, mode: string, registry: Sessi
   cs.sdkSession.close()
   cs.sdkSession = unstable_v2_resumeSession(
     cs.sessionId,
-    buildSdkOptions(
-      { model: 'claude-sonnet-4-20250514', permissionMode: mode },
-      cs.permissions,
-      emit,
-    ),
+    buildSdkOptions({ model: cs.model, permissionMode: mode }, cs.permissions, emit),
   )
 
   // Restart stream loop for the new SDK session handle
