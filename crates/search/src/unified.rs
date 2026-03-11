@@ -77,8 +77,7 @@ pub fn unified_search(
 
     // Phase 2: Grep fallback
     if jsonl_files.is_empty() {
-        // No files to grep — return empty results with no engine indicator.
-        // Don't set search_engine: "grep" here because grep didn't actually run.
+        // No files to grep — return empty results.
         return Ok(UnifiedSearchResult {
             response: SearchResponse {
                 query: opts.query.clone(),
@@ -86,7 +85,6 @@ pub fn unified_search(
                 total_matches: 0,
                 elapsed_ms: 0.0,
                 sessions: vec![],
-                search_engine: None,
             },
             engine: SearchEngine::Grep,
         });
@@ -144,6 +142,7 @@ pub fn unified_search(
                 best_score: 1.0, // grep has no scoring — uniform
                 top_match,
                 matches,
+                engines: vec!["grep".to_string()],
             }
         })
         .collect();
@@ -158,7 +157,6 @@ pub fn unified_search(
             total_matches,
             elapsed_ms: grep_result.elapsed_ms,
             sessions,
-            search_engine: Some("grep".to_string()),
         },
         engine: SearchEngine::Grep,
     })
@@ -258,8 +256,8 @@ mod tests {
         let result = unified_search(Some(&idx), &[], &opts).unwrap();
         assert_eq!(result.engine, SearchEngine::Tantivy);
         assert_eq!(result.response.total_sessions, 1);
-        // Tantivy path should NOT set search_engine
-        assert!(result.response.search_engine.is_none());
+        // Tantivy path: each session hit should report "tantivy" engine
+        assert_eq!(result.response.sessions[0].engines, vec!["tantivy"]);
     }
 
     #[test]
@@ -283,7 +281,8 @@ mod tests {
         let result = unified_search(Some(&idx), &files, &opts).unwrap();
         assert_eq!(result.engine, SearchEngine::Grep);
         assert!(result.response.total_sessions > 0);
-        assert_eq!(result.response.search_engine.as_deref(), Some("grep"));
+        // Grep fallback: each session hit should report "grep" engine
+        assert_eq!(result.response.sessions[0].engines, vec!["grep"]);
     }
 
     #[test]
