@@ -410,6 +410,12 @@ export interface ResumeSessionRequest {
   projectPath?: string
 }
 
+export interface ForkSessionRequest {
+  sessionId: string
+  model?: string
+  permissionMode?: string
+}
+
 export interface PromptRequest {
   message: string
   model: string
