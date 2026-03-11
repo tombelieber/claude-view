@@ -270,7 +270,7 @@ impl SidecarManager {
 
         let req = hyper::Request::builder()
             .method("POST")
-            .uri("/control/resume")
+            .uri("/control/sessions/resume")
             .header("host", "localhost")
             .header("content-type", "application/json")
             .body(Full::new(bytes::Bytes::from(body_str)))
