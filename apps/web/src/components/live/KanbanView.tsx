@@ -575,6 +575,7 @@ function GroupedKanban({
       }
       merged.push({
         projectName: projectKey,
+        projectPath: '',
         branches,
         totalSessionCount: 0,
         totalCostUsd: 0,
