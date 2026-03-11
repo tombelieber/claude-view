@@ -311,6 +311,7 @@ export type ServerEvent =
   | SessionClosed
   // Context
   | ContextCompacted
+  | ElicitationComplete
   | RateLimit
   // Tasks (agent teams)
   | TaskStarted
