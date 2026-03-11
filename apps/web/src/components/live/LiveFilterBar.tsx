@@ -1,4 +1,4 @@
-import { ArrowUpDown, ChevronDown, Filter, Layers, Loader2, Search, X } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, Filter, Layers, Loader2, Search, Square, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { IndexingPhase } from '../../hooks/use-indexing-progress'
 import type { LiveSessionFilters } from './live-filter'
@@ -32,6 +32,12 @@ interface LiveFilterBarProps {
   sortValue?: KanbanSort
   /** Callback when kanban sort changes. */
   onSortChange?: (value: KanbanSort) => void
+  /** Whether the "Closed" column is visible (kanban only). */
+  showClosed?: boolean
+  /** Callback when show-closed toggle changes. */
+  onShowClosedChange?: (value: boolean) => void
+  /** Number of recently closed sessions (for badge when toggle is off). */
+  closedCount?: number
 }
 
 type DropdownType = 'status' | 'project' | 'branch' | 'groupBy' | 'sort' | null
@@ -67,6 +73,9 @@ export function LiveFilterBar({
   onGroupByChange,
   sortValue,
   onSortChange,
+  showClosed,
+  onShowClosedChange,
+  closedCount = 0,
 }: LiveFilterBarProps) {
   const [localSearch, setLocalSearch] = useState(filters.search)
   const [openDropdown, setOpenDropdown] = useState<DropdownType>(null)
@@ -292,6 +301,27 @@ export function LiveFilterBar({
               </div>
             )}
           </div>
+        )}
+
+        {/* Show Closed toggle — only in kanban view */}
+        {showClosed !== undefined && onShowClosedChange && (
+          <button
+            type="button"
+            onClick={() => onShowClosedChange(!showClosed)}
+            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer ${
+              showClosed
+                ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
+            }`}
+          >
+            <Square className="h-3 w-3" />
+            <span className="hidden sm:inline">Closed</span>
+            {!showClosed && closedCount > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-zinc-500/20 text-zinc-400 leading-none">
+                {closedCount}
+              </span>
+            )}
+          </button>
         )}
 
         {/* Filtered count — sticks with filter buttons */}
