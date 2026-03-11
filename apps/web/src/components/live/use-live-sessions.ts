@@ -23,6 +23,7 @@ export interface LiveSession {
   title: string
   lastUserMessage: string
   lastUserFile?: string | null
+  userFiles?: string[] | null
   currentActivity: string
   turnCount: number
   startedAt: number | null
