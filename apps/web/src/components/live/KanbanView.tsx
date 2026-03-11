@@ -604,6 +604,7 @@ function GroupedKanban({
             <div key={project.projectName} className="mb-2">
               <ProjectHeader
                 projectName={project.projectName}
+                projectPath={project.projectPath}
                 totalCostUsd={project.totalCostUsd}
                 sessionCount={project.totalSessionCount}
                 isCollapsed={projCollapsed}

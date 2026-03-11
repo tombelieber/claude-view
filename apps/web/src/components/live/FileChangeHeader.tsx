@@ -4,6 +4,7 @@ import { useFileDiff } from '../../hooks/use-file-history'
 import { cn } from '../../lib/utils'
 import type { FileChange } from '../../types/generated/FileChange'
 import { DiffViewer } from './DiffViewer'
+import { OpenInIdeButton } from './OpenInIdeButton'
 
 const CODE_EXTS = new Set([
   'rs',
@@ -40,9 +41,10 @@ function getFileIcon(filePath: string) {
 interface FileChangeHeaderProps {
   file: FileChange
   sessionId: string
+  projectPath: string
 }
 
-export function FileChangeHeader({ file, sessionId }: FileChangeHeaderProps) {
+export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHeaderProps) {
   const [expanded, setExpanded] = useState(true)
   const maxVersion = file.versions.length > 0 ? Math.max(...file.versions.map((v) => v.version)) : 1
   // For single-version (new) files, diff from 0 (empty) to 1 to show full content
@@ -150,6 +152,7 @@ export function FileChangeHeader({ file, sessionId }: FileChangeHeaderProps) {
             −{file.stats.removed}
           </span>
         )}
+        <OpenInIdeButton projectPath={projectPath} filePath={file.filePath} compact />
       </div>
 
       {/* Diff content — directly below header, no extra toolbar */}
