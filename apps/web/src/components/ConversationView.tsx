@@ -20,20 +20,18 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { useConversation } from '../hooks/use-conversation'
 import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
-import { useSessionControl } from '../hooks/use-session-control'
+import type { ConnectionHealth } from '../hooks/use-session-control'
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { useSessionMessages } from '../hooks/use-session-messages'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { type ConversationItem, buildConversationItems } from '../lib/conversation-items'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -45,27 +43,56 @@ import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-t
 import { messagesToRichMessages } from '../lib/message-to-rich'
 import { getContextWindow } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
-import { buildThreadMap, getThreadChain } from '../lib/thread-map'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
-import type { Message } from '../types/generated'
 import { CommitsPanel } from './CommitsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
 import { EmptyState, ErrorState, Skeleton } from './LoadingStates'
-import { MessageTyped } from './MessageTyped'
 import { SearchInput } from './SearchInput'
 import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
+import type { InputBarState } from './chat/ChatInputBar'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
-import { InteractionToast } from './chat/InteractionToast'
-import { LiveMessageBubble } from './chat/LiveMessageBubble'
-import { StreamingFooter } from './chat/StreamingFooter'
+import { ConversationThread } from './conversation/ConversationThread'
+import { chatRegistry } from './conversation/blocks/chat/registry'
+import { developerRegistry } from './conversation/blocks/developer/registry'
 import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
 import { historyToPanelData } from './live/session-panel-data'
+
+/** Map new sessionState string + isLive to legacy InputBarState for ChatInputBar */
+function deriveInputBarState(sessionState: string, isLive: boolean): InputBarState {
+  if (!isLive) return 'dormant'
+  switch (sessionState) {
+    case 'waiting_input':
+      return 'active'
+    case 'active':
+      return 'streaming'
+    case 'waiting_permission':
+      return 'waiting_permission'
+    case 'compacting':
+      return 'streaming'
+    case 'initializing':
+      return 'connecting'
+    case 'reconnecting':
+      return 'reconnecting'
+    case 'closed':
+    case 'error':
+      return 'completed'
+    default:
+      return 'dormant'
+  }
+}
+
+/** Map sessionState to connection health for banner */
+function deriveConnectionHealth(sessionState: string): ConnectionHealth {
+  if (sessionState === 'reconnecting') return 'degraded'
+  if (sessionState === 'error') return 'lost'
+  return 'ok'
+}
 
 /** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
 function HistoryRichPane({
@@ -87,54 +114,43 @@ function HistoryRichPane({
   )
 }
 
-/** Strings that Claude Code emits as placeholder content (no real text) */
-const EMPTY_CONTENT = new Set(['(no content)', ''])
-
-function filterMessages(messages: Message[], mode: 'compact' | 'full'): Message[] {
-  if (mode === 'full') return messages
-  return messages.filter((msg) => {
-    if (msg.role === 'user') return true
-    if (msg.role === 'assistant') {
-      // Hide assistant messages with no real content (only tool calls, no text)
-      if (EMPTY_CONTENT.has(msg.content.trim()) && !msg.thinking) return false
-      return true
-    }
-    if (msg.role === 'tool_use') return false
-    if (msg.role === 'tool_result') return false
-    if (msg.role === 'system') return false
-    if (msg.role === 'progress') return false
-    if (msg.role === 'summary') return false
-    return false
-  })
-}
-
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
 
-  // Fetch session detail first (uses /api/sessions/:id, no projectDir needed)
-  // to get the project directory for the legacy session/messages endpoints
+  // Session metadata
   const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
   const projectDir = sessionDetail?.project ?? ''
   const project = summaries.find((p) => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
-  // Chat input bar: resume flow
-  const sessionControl = useSessionControl(sessionId || '')
+  // Full session for export (loads in background)
+  const { data: session, error: sessionError } = useSession(sessionId || null)
 
-  // Seed context % from DB until the WS session_status event arrives.
-  // Use model-specific context window (not hardcoded 200K) for accurate gauge.
-  // WS value starts at 0 and only updates after resume connects — so without
-  // this seed, the gauge shows 0% even though the session overview shows usage.
-  // Math.max ensures the live WS value wins once it arrives (it's always accurate).
+  // Rich data + hook events for the side panel
+  const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
+  const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
+  const { data: richData } = useRichSessionData(sessionId || null)
+  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
+
+  // Unified conversation hook: blocks + actions + session state
+  const { blocks, actions, sessionInfo: convInfo } = useConversation(sessionId)
+  const { isLive, sessionState } = convInfo
+
+  // Detect missing JSONL (session in DB but file deleted)
+  const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
+
+  // Loading: gate on sessionDetail only (blocks arrive async from new hook)
+  const isLoading = isFileGone ? false : !sessionDetail && !detailError
+
+  // Context gauge seeded from DB (live updates not available from new hook)
   const contextWindow = getContextWindow(sessionDetail?.primaryModel)
-  const dbContextPercent = sessionDetail?.totalInputTokens
+  const contextPercent = sessionDetail?.totalInputTokens
     ? Math.round((sessionDetail.totalInputTokens / contextWindow) * 100)
     : 0
-  const contextPercent = Math.max(sessionControl.contextPercent, dbContextPercent)
 
-  // Mode + model state for ChatInputBar
+  // Mode state for ChatInputBar
   const [chatMode, setChatMode] = useState<PermissionMode>(() => {
     if (!sessionId) return 'default'
     try {
@@ -148,33 +164,27 @@ export function ConversationView() {
   })
   const [chatModel, setChatModel] = useState('claude-sonnet-4-6')
 
-  // Sync chatModel when sessionDetail loads (it's undefined on first render)
   useEffect(() => {
-    if (sessionDetail?.primaryModel) {
-      setChatModel(sessionDetail.primaryModel)
-    }
+    if (sessionDetail?.primaryModel) setChatModel(sessionDetail.primaryModel)
   }, [sessionDetail?.primaryModel])
 
   const handleModeChange = useCallback(
     (mode: PermissionMode) => {
       setChatMode(mode)
       if (sessionId) localStorage.setItem(`claude-view:mode:${sessionId}`, mode)
-      sessionControl.setMode(mode)
+      actions.setPermissionMode(mode)
     },
-    [sessionId, sessionControl.setMode],
+    [sessionId, actions],
   )
 
+  // Push persisted mode once session goes live
   const lastSentModeRef = useRef<PermissionMode | null>(null)
   useEffect(() => {
-    if (
-      sessionControl.phase === 'ready' &&
-      chatMode !== 'default' &&
-      lastSentModeRef.current !== chatMode
-    ) {
+    if (isLive && chatMode !== 'default' && lastSentModeRef.current !== chatMode) {
       lastSentModeRef.current = chatMode
-      sessionControl.setMode(chatMode)
+      actions.setPermissionMode(chatMode)
     }
-  }, [sessionControl.phase, chatMode, sessionControl.setMode])
+  }, [isLive, chatMode, actions])
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
@@ -186,47 +196,22 @@ export function ConversationView() {
   // In-session find (Cmd+F / Ctrl+F)
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
-  const findInputRef = useRef<HTMLInputElement>(null)
+  const findOpenRef = useRef(findOpen)
+  useEffect(() => {
+    findOpenRef.current = findOpen
+  }, [findOpen])
 
-  // Build a deterministic "back to sessions" URL, preserving project/branch filters
   const backUrl = useMemo(() => {
     const preserved = new URLSearchParams()
-    const project = searchParams.get('project')
+    const proj = searchParams.get('project')
     const branch = searchParams.get('branch')
-    if (project) preserved.set('project', project)
+    if (proj) preserved.set('project', proj)
     if (branch) preserved.set('branch', branch)
     const qs = preserved.toString()
     return qs ? `/sessions?${qs}` : '/sessions'
   }, [searchParams])
-  // useSession and useSessionMessages now use /api/sessions/:id/* (no projectDir needed)
-  const { data: session, error: sessionError } = useSession(sessionId || null)
-  const {
-    data: pagesData,
-    isLoading: isMessagesLoading,
-    error: messagesError,
-    fetchPreviousPage,
-    hasPreviousPage,
-    isFetchingPreviousPage,
-  } = useSessionMessages(sessionId || null)
 
-  // Detect when DB has the session but the JSONL file is gone from disk
-  const isFileGone =
-    !!sessionDetail && (isNotFoundError(messagesError) || isNotFoundError(sessionError))
-
-  // Only gate initial render on paginated messages — the full session fetch
-  // loads in the background for export use. This ensures faster time-to-first-content.
-  const isLoading = isFileGone ? false : isMessagesLoading || (!sessionDetail && !detailError)
-  const error = isFileGone ? null : detailError || messagesError
   const exportsReady = !!session
-
-  const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
-  const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
-
-  // Rich session data from JSONL parsing (cost, context gauge, sub-agents, cache)
-  const { data: richData } = useRichSessionData(sessionId || null)
-
-  // Fetch stored hook events from SQLite (enabled for all historical sessions)
-  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -288,7 +273,7 @@ export function ConversationView() {
           return
         }
       } catch {
-        // If the check fails (e.g. endpoint doesn't exist yet), proceed anyway
+        // Proceed anyway if check fails
       }
     }
     const cmd = `claude --resume ${sessionId}`
@@ -300,12 +285,10 @@ export function ConversationView() {
     }
   }, [sessionId, sessionDetail])
 
-  // Keyboard shortcuts: Cmd+Shift+E for HTML, Cmd+Shift+P for PDF
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Cmd (Mac) or Ctrl (Windows/Linux)
       const modifierKey = e.metaKey || e.ctrlKey
-
       if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
         handleExportHtml()
@@ -317,18 +300,11 @@ export function ConversationView() {
         handleResume()
       }
     }
-
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleExportHtml, handleExportPdf, handleResume])
 
-  // In-session find: Cmd+F / Ctrl+F to open, Escape to close
-  // Use ref to avoid re-registering the handler on every findOpen change
-  const findOpenRef = useRef(findOpen)
-  useEffect(() => {
-    findOpenRef.current = findOpen
-  }, [findOpen])
-
+  // Cmd+F / Escape for find bar
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -368,57 +344,14 @@ export function ConversationView() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [resumeMenuOpen])
 
-  const allMessages = useMemo(
-    () => pagesData?.pages.flatMap((page) => page.messages) ?? [],
-    [pagesData],
-  )
-
-  // Full session messages for verbose/terminal view (loaded in background by useSession)
-  // Falls back to paginated data while session is still loading.
-  const verboseAllMessages = useMemo(() => session?.messages ?? allMessages, [session, allMessages])
-
-  const totalMessages = session?.messages?.length ?? pagesData?.pages[0]?.total ?? 0
-
-  const filteredMessages = useMemo(
-    () => (allMessages.length > 0 ? filterMessages(allMessages, 'compact') : []),
-    [allMessages],
-  )
-  const hiddenCount = allMessages.length - filteredMessages.length
-
-  // Build unified conversation items: history + divider + live messages
-  const conversationItems = useMemo(
-    () => buildConversationItems(filteredMessages, sessionControl.messages),
-    [filteredMessages, sessionControl.messages],
-  )
-
-  // Virtuoso reverse-infinite-scroll: firstItemIndex must decrease as items
-  // are prepended so Virtuoso can adjust scroll position and keep firing
-  // startReached. See https://virtuoso.dev/prepend-items/
-  const FIRST_ITEM_START = 1_000_000
-  const firstItemIndex = useMemo(
-    () => FIRST_ITEM_START - conversationItems.length,
-    [conversationItems.length],
-  )
-
-  // NOTE: Hook events are only shown in verbose/debug mode (via richMessagesWithHookEvents).
-  // The compact chat view intentionally excludes them to keep focus on the user/assistant conversation.
-
   const [panelOpen, setPanelOpen] = useState(true)
-  const [isAtBottom, setIsAtBottom] = useState(true)
-  const virtuosoRef = useRef<VirtuosoHandle>(null)
 
-  // Convert messages to RichMessage[] for verbose mode + terminal tab
+  // Verbose mode: rich messages for RichPane (developer terminal view)
   const richMessages = useMemo(
-    () => (verboseAllMessages.length > 0 ? messagesToRichMessages(verboseAllMessages) : []),
-    [verboseAllMessages],
+    () => (session?.messages?.length ? messagesToRichMessages(session.messages) : []),
+    [session?.messages],
   )
-
-  // Merge hook events into Rich view (both hook_event and hook_progress show)
   const richHookMessages = useMemo(() => hookEventsToRichMessages(hookEvents), [hookEvents])
-
-  // Skip SQLite hook-event merge when the parser already includes hook_event
-  // entries from JSONL (avoids duplicates). Fall back to SQLite merge for older
-  // sessions whose JSONL predates hook_event support.
   const richMessagesWithHookEvents = useMemo(() => {
     if (
       richHookMessages.length === 0 ||
@@ -429,40 +362,12 @@ export function ConversationView() {
     return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
   }, [richMessages, richHookMessages])
 
-  // Shared category counts for both verbose terminal and side panel
   const historyCategoryCounts = useMemo(
     () => computeCategoryCounts(richMessagesWithHookEvents),
     [richMessagesWithHookEvents],
   )
 
-  // Build tool pair map from live messages for verbose tool display
-  const toolPairMap = useMemo(() => {
-    const map = new Map<string, { output: string; isError: boolean }>()
-    for (const m of sessionControl.messages) {
-      if (m.role === 'tool_result' && m.toolUseId && m.output !== undefined) {
-        map.set(m.toolUseId, { output: m.output, isError: !!m.isError })
-      }
-    }
-    return map
-  }, [sessionControl.messages])
-
-  // Toast: notify user when an interaction card is off-screen
-  const hasInteraction = !!(
-    sessionControl.permissionRequest ||
-    sessionControl.askQuestion ||
-    sessionControl.planApproval ||
-    sessionControl.elicitation
-  )
-  const showToast = hasInteraction && !isAtBottom
-  const toastLabel = sessionControl.permissionRequest
-    ? 'Permission required — click to view'
-    : sessionControl.askQuestion
-      ? 'Question requires your answer'
-      : sessionControl.planApproval
-        ? 'Plan needs approval'
-        : 'Input needed'
-
-  // Build panel data for SessionDetailPanel
+  // Side panel data
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
     return historyToPanelData(
@@ -473,44 +378,15 @@ export function ConversationView() {
     )
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
-  // When the user scrolls to the top, we want to load ALL remaining history without
-  // requiring repeated manual scrolls. The problem: Virtuoso fires startReached once
-  // per "scroll to top" event, then adjusts scrollTop (to maintain the viewport after
-  // prepending items), which takes the list out of "at top" state. With compact mode's
-  // heavy filtering (~5% of messages visible), the user would need 10+ manual scrolls.
-  //
-  // Fix: a ref that marks "load-all mode". Once startReached fires, we set the ref and
-  // keep calling fetchPreviousPage after each completed fetch until offset=0 is reached.
-  const isLoadingAllRef = useRef(false)
+  // Derived UI state from new hook
+  const inputBarState = deriveInputBarState(sessionState, isLive)
+  const connectionHealth = deriveConnectionHealth(sessionState)
 
-  useEffect(() => {
-    if (!isFetchingPreviousPage) {
-      if (hasPreviousPage && isLoadingAllRef.current) {
-        fetchPreviousPage()
-      } else {
-        isLoadingAllRef.current = false
-      }
-    }
-  }, [isFetchingPreviousPage, hasPreviousPage, fetchPreviousPage])
-
-  const handleStartReached = useCallback(() => {
-    if (hasPreviousPage && !isFetchingPreviousPage) {
-      isLoadingAllRef.current = true
-      fetchPreviousPage()
-    }
-  }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage])
-
-  const threadMap = useMemo(() => buildThreadMap(filteredMessages), [filteredMessages])
-
-  const getThreadChainForUuid = useCallback(
-    (uuid: string) => getThreadChain(uuid, filteredMessages),
-    [filteredMessages],
-  )
+  // ----- Early returns -----
 
   if (isLoading) {
     return (
       <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
-        {/* Header skeleton */}
         <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
           <div className="flex items-center gap-2">
@@ -527,15 +403,15 @@ export function ConversationView() {
     )
   }
 
-  if (error) {
+  if (detailError) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <ErrorState message={error.message} onBack={() => navigate(backUrl)} />
+        <ErrorState message={detailError.message} onBack={() => navigate(backUrl)} />
       </div>
     )
   }
 
-  if (!session && !pagesData && !isFileGone) {
+  if (!blocks.length && !isLive && !sessionDetail) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
@@ -551,7 +427,6 @@ export function ConversationView() {
   if (isFileGone && sessionDetail) {
     return (
       <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-4">
             <Link
@@ -575,10 +450,7 @@ export function ConversationView() {
             <span>Resume</span>
           </button>
         </div>
-
-        {/* Two-column: Message + Sidebar */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left: File-gone notice */}
           <div className="flex-1 min-w-0 flex items-center justify-center">
             <div className="text-center max-w-md px-6">
               <FileX className="w-12 h-12 text-amber-400 mx-auto mb-4" />
@@ -597,8 +469,6 @@ export function ConversationView() {
               </Link>
             </div>
           </div>
-
-          {/* Right: Metrics sidebar — still renders from DB data (no rich data since JSONL is gone) */}
           <aside className="w-[300px] flex-shrink-0 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-y-auto p-4 space-y-4 hidden lg:block">
             {sessionDetail.userPromptCount > 0 && (
               <SessionMetricsBar
@@ -633,6 +503,9 @@ export function ConversationView() {
     )
   }
 
+  // Registry: chat bubbles (compact) vs developer terminal view
+  const registry = verboseMode ? developerRegistry : chatRegistry
+
   return (
     <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
       {/* Conversation Header */}
@@ -651,13 +524,9 @@ export function ConversationView() {
 
         <div className="flex items-center gap-2">
           <ViewModeControls />
-          {!verboseMode && hiddenCount > 0 && (
-            <span className="text-xs text-gray-400 dark:text-gray-500">{hiddenCount} hidden</span>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Panel toggle */}
           <button
             type="button"
             onClick={() => setPanelOpen(!panelOpen)}
@@ -733,7 +602,7 @@ export function ConversationView() {
               </div>
             )}
           </div>
-          {/* Export overflow menu */}
+          {/* Export dropdown */}
           <div className="relative" ref={exportMenuRef}>
             <button
               type="button"
@@ -756,7 +625,6 @@ export function ConversationView() {
                 aria-hidden="true"
               />
             </button>
-
             {exportMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
                 <button
@@ -800,13 +668,13 @@ export function ConversationView() {
 
       {/* Two-column: Conversation + Sidebar */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Conversation messages + ChatInputBar */}
+        {/* Left: Conversation thread + input bar */}
         <div className="flex-1 min-w-0 flex flex-col relative">
-          {/* In-session find bar (Cmd+F) */}
+          {/* Cmd+F find bar */}
           {findOpen && (
             <div className="sticky top-0 z-10 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/[0.06] px-4 py-2 flex-shrink-0">
               <SearchInput
-                ref={findInputRef}
+                ref={undefined}
                 value={findQuery}
                 onChange={setFindQuery}
                 placeholder="Find in conversation..."
@@ -825,134 +693,32 @@ export function ConversationView() {
               />
             </div>
           )}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {!verboseMode ? (
-              <FindProvider value={findQuery}>
-                <ThreadHighlightProvider>
-                  <ExpandProvider>
-                    <Virtuoso
-                      ref={virtuosoRef}
-                      data={conversationItems}
-                      firstItemIndex={firstItemIndex}
-                      startReached={handleStartReached}
-                      initialTopMostItemIndex={Math.max(0, conversationItems.length - 1)}
-                      followOutput="smooth"
-                      atBottomStateChange={(atBottom) => setIsAtBottom(atBottom)}
-                      itemContent={(_index, item: ConversationItem) => {
-                        if (item.kind === 'divider') {
-                          return (
-                            <div className="max-w-4xl mx-auto px-6 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
-                                <span className="text-xs font-medium text-blue-500 dark:text-blue-400">
-                                  Live session
-                                </span>
-                                <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
-                              </div>
-                            </div>
-                          )
-                        }
-                        if (item.kind === 'live') {
-                          // Skip rendering wrapper for hidden items
-                          const isHiddenThinking = !verboseMode && item.message.role === 'thinking'
-                          const isHiddenToolResult =
-                            !verboseMode && item.message.role === 'tool_result'
-                          if (isHiddenThinking || isHiddenToolResult) return <div />
 
-                          const toolResult =
-                            item.message.role === 'tool_use' && item.message.toolUseId
-                              ? (toolPairMap.get(item.message.toolUseId) ?? null)
-                              : null
-                          return (
-                            <div className="max-w-4xl mx-auto px-6 pb-4">
-                              <LiveMessageBubble
-                                message={item.message}
-                                onRetry={sessionControl.retry}
-                                verbose={verboseMode}
-                                toolResult={toolResult}
-                              />
-                            </div>
-                          )
-                        }
-                        // item.kind === 'history'
-                        const message = item.message
-                        const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-                        return (
-                          <div className="max-w-4xl mx-auto px-6 pb-4">
-                            <ErrorBoundary key={message.uuid || _index}>
-                              <MessageTyped
-                                message={message}
-                                messageIndex={_index}
-                                messageType={message.role}
-                                metadata={message.metadata}
-                                parentUuid={thread?.parentUuid}
-                                indent={thread?.indent ?? 0}
-                                isChildMessage={thread?.isChild ?? false}
-                                onGetThreadChain={getThreadChainForUuid}
-                                showThinking={false}
-                              />
-                            </ErrorBoundary>
-                          </div>
-                        )
-                      }}
-                      components={{
-                        Header: () =>
-                          isFetchingPreviousPage ? (
-                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                              Loading older messages...
-                            </div>
-                          ) : hasPreviousPage ? (
-                            <div className="h-6" />
-                          ) : filteredMessages.length > 0 ? (
-                            <div className="max-w-4xl mx-auto px-6 py-4 text-center text-sm text-gray-400 dark:text-gray-500">
-                              Beginning of conversation
-                            </div>
-                          ) : (
-                            <div className="h-6" />
-                          ),
-                        Footer: () => (
-                          <div className="max-w-4xl mx-auto px-6">
-                            <StreamingFooter
-                              streamingContent={sessionControl.streamingContent}
-                              phase={sessionControl.phase}
-                              liveMessageCount={sessionControl.messages.length}
-                              totalMessages={totalMessages}
-                              hiddenCount={hiddenCount}
-                            />
-                          </div>
-                        ),
-                      }}
-                      increaseViewportBy={{ top: 400, bottom: 400 }}
-                      className="h-full overflow-auto"
-                    />
-                  </ExpandProvider>
-                </ThreadHighlightProvider>
-              </FindProvider>
-            ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {verboseMode ? (
               <HistoryRichPane
                 messages={richMessagesWithHookEvents}
                 categoryCounts={historyCategoryCounts}
               />
+            ) : (
+              <FindProvider value={findQuery}>
+                <ThreadHighlightProvider>
+                  <ExpandProvider>
+                    <div className="max-w-4xl mx-auto px-6 py-4">
+                      <ErrorBoundary>
+                        <ConversationThread blocks={blocks} renderers={registry} />
+                      </ErrorBoundary>
+                    </div>
+                  </ExpandProvider>
+                </ThreadHighlightProvider>
+              </FindProvider>
             )}
           </div>
-          <InteractionToast
-            visible={showToast}
-            label={toastLabel}
-            onScrollTo={() => {
-              virtuosoRef.current?.scrollToIndex({
-                index: conversationItems.length - 1,
-                behavior: 'smooth',
-              })
-              setIsAtBottom(true)
-            }}
-          />
-          <ConnectionBanner
-            health={sessionControl.connectionHealth}
-            errorMessage={sessionControl.errorMessage}
-          />
+
+          <ConnectionBanner health={connectionHealth} />
           <ChatInputBar
-            onSend={sessionControl.send}
-            state={sessionControl.inputBarState}
+            onSend={actions.sendMessage}
+            state={inputBarState}
             contextPercent={contextPercent}
             mode={chatMode}
             onModeChange={handleModeChange}
@@ -961,7 +727,7 @@ export function ConversationView() {
           />
         </div>
 
-        {/* Right: Detail panel (inline) */}
+        {/* Right: Detail panel */}
         {panelOpen && panelData && (
           <SessionDetailPanel panelData={panelData} onClose={() => setPanelOpen(false)} inline />
         )}
