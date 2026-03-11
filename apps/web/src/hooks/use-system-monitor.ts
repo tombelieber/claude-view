@@ -34,22 +34,22 @@ export function useSystemMonitor(): SystemMonitorState {
       const es = new EventSource(sseUrl('/api/monitor/stream'))
       esRef.current = es
 
-      es.addEventListener('monitor_connected', (e: MessageEvent) => {
+      es.addEventListener('init', (e: MessageEvent) => {
         if (unmounted || esRef.current !== es) return
         try {
-          const info: SystemInfo = JSON.parse(e.data)
+          const data: { systemInfo: SystemInfo; snapshot: ResourceSnapshot } = JSON.parse(e.data)
           retriesRef.current = 0
-          setState((prev) => ({
-            ...prev,
+          setState({
             status: 'connected',
-            systemInfo: info,
-          }))
+            systemInfo: data.systemInfo,
+            snapshot: data.snapshot,
+          })
         } catch {
           // ignore malformed data
         }
       })
 
-      es.addEventListener('monitor_snapshot', (e: MessageEvent) => {
+      es.addEventListener('snapshot', (e: MessageEvent) => {
         if (unmounted || esRef.current !== es) return
         try {
           const snap: ResourceSnapshot = JSON.parse(e.data)
