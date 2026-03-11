@@ -695,17 +695,23 @@ pub fn check_field_coverage(
     inventory: &FieldInventory,
     baseline: &FieldExtractionPaths,
 ) -> PipelineCheckResult {
-    let known: HashSet<&str> = baseline
-        .extracted
+    let extracted: HashSet<&str> = baseline.extracted.iter().map(|s| s.as_str()).collect();
+    let ignored: HashSet<&str> = baseline
+        .intentionally_ignored
         .iter()
-        .chain(&baseline.intentionally_ignored)
         .map(|s| s.as_str())
         .collect();
 
     let mut accum = CheckAccum::default();
 
     for (path, count) in &inventory.paths {
-        if known.contains(path.as_str()) {
+        let is_known = extracted.contains(path.as_str())
+            || ignored.contains(path.as_str())
+            || baseline
+                .intentionally_ignored
+                .iter()
+                .any(|ign| path.starts_with(&format!("{}.", ign)));
+        if is_known {
             accum.record_pass();
         } else {
             accum.record_violation(
