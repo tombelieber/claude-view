@@ -1204,6 +1204,8 @@ mod tests {
             prompt_stats: Arc::new(std::sync::RwLock::new(None)),
             prompt_templates: Arc::new(std::sync::RwLock::new(None)),
             available_ides: Vec::new(),
+            monitor_tx: tokio::sync::broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         });
 
         // Register the session in the live sessions map
@@ -1411,6 +1413,8 @@ mod tests {
             prompt_stats: Arc::new(std::sync::RwLock::new(None)),
             prompt_templates: Arc::new(std::sync::RwLock::new(None)),
             available_ides: Vec::new(),
+            monitor_tx: tokio::sync::broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

@@ -1,5 +1,6 @@
 pub mod hook_registrar;
 pub mod manager;
+pub mod monitor;
 pub mod process;
 pub mod relay_client;
 pub mod state;
