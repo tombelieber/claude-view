@@ -311,6 +311,11 @@ function handleServerMessage(prev: ControlSessionState, msg: ServerMessage): Con
       if (prev.elicitation?.requestId === msg.requestId) return prev
       return { ...prev, elicitation: msg }
 
+    case 'elicitation_complete':
+      // MCP server elicitation lifecycle signal — no UI state change needed.
+      // The elicitation card is dismissed by the user via submitElicitation().
+      return prev
+
     case 'error':
       return { ...prev, error: msg.message }
 

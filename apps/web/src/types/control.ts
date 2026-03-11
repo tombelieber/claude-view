@@ -270,6 +270,12 @@ export interface ElicitationMsg {
   prompt: string
 }
 
+export interface ElicitationCompleteMsg {
+  type: 'elicitation_complete'
+  mcpServerName: string
+  elicitationId: string
+}
+
 // --- Infrastructure -----------------------------------------------
 
 export interface ErrorMsg {
@@ -326,6 +332,7 @@ export type ServerMessage =
   | AskUserQuestionMsg
   | PlanApprovalMsg
   | ElicitationMsg
+  | ElicitationCompleteMsg
   // Infrastructure
   | ErrorMsg
   | PongMsg
