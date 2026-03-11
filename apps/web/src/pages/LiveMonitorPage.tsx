@@ -17,7 +17,7 @@ import { ViewModeSwitcher } from '../components/live/ViewModeSwitcher'
 import { filterLiveSessions } from '../components/live/live-filter'
 import type { KanbanGroupBy, KanbanSort } from '../components/live/types'
 import type { LiveViewMode } from '../components/live/types'
-import { LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
+import { KANBAN_SHOW_CLOSED_STORAGE_KEY, LIVE_VIEW_STORAGE_KEY } from '../components/live/types'
 import { useKanbanGrouping } from '../components/live/use-kanban-grouping'
 import { useKeyboardShortcuts } from '../components/live/use-keyboard-shortcuts'
 import { useLiveSessionFilters } from '../components/live/use-live-session-filters'
@@ -117,6 +117,24 @@ export function LiveMonitorPage() {
     },
     [setSort],
   )
+
+  // Show Closed column toggle (kanban only, default ON, persisted)
+  const [showClosed, setShowClosed] = useState(() => {
+    try {
+      const stored = localStorage.getItem(KANBAN_SHOW_CLOSED_STORAGE_KEY)
+      return stored === null ? true : stored === 'true'
+    } catch {
+      return true
+    }
+  })
+  const handleShowClosedChange = useCallback((value: boolean) => {
+    setShowClosed(value)
+    try {
+      localStorage.setItem(KANBAN_SHOW_CLOSED_STORAGE_KEY, String(value))
+    } catch {
+      // localStorage unavailable
+    }
+  }, [])
 
   // Derive summary from current sessions so it always matches the kanban/grid.
   // Server-side summary is only used for cost/tokens (which may include cleaned-up sessions).
@@ -382,6 +400,9 @@ export function LiveMonitorPage() {
             onGroupByChange={viewMode === 'kanban' ? handleGroupByChange : undefined}
             sortValue={viewMode === 'kanban' ? sort : undefined}
             onSortChange={viewMode === 'kanban' ? handleSortChange : undefined}
+            showClosed={viewMode === 'kanban' ? showClosed : undefined}
+            onShowClosedChange={viewMode === 'kanban' ? handleShowClosedChange : undefined}
+            closedCount={recentlyClosed.length}
           />
         </div>
       </div>
@@ -433,6 +454,10 @@ export function LiveMonitorPage() {
               projectGroups={projectGroups}
               isCollapsed={isCollapsed}
               toggleCollapse={toggleCollapse}
+              recentlyClosed={recentlyClosed}
+              onDismiss={dismissSession}
+              onDismissAll={dismissAllClosed}
+              showClosed={showClosed}
             />
           )}
 

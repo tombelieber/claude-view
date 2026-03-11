@@ -134,6 +134,28 @@ pub fn infer_git_root_from_worktree_path(cwd: &str) -> Option<String> {
     None
 }
 
+/// Resolve the current git branch for any directory (regular repo or worktree).
+///
+/// 1. If `<cwd>/.git` is a **file** (worktree), delegates to `resolve_worktree_branch`.
+/// 2. If `<cwd>/.git` is a **directory** (regular repo), reads `.git/HEAD`.
+/// 3. Returns `None` if not a git repo, HEAD is detached, or any I/O error.
+///
+/// Pure filesystem operation — no git subprocess.
+pub fn resolve_git_branch(cwd: &str) -> Option<String> {
+    let dot_git = std::path::Path::new(cwd).join(".git");
+    if dot_git.is_file() {
+        return resolve_worktree_branch(cwd);
+    }
+    if dot_git.is_dir() {
+        let head = std::fs::read_to_string(dot_git.join("HEAD")).ok()?;
+        return head
+            .trim()
+            .strip_prefix("ref: refs/heads/")
+            .map(|b| b.to_string());
+    }
+    None
+}
+
 /// Resolve the actual git branch for a worktree directory.
 ///
 /// Reads the worktree's `.git` file to find the gitdir, then reads
@@ -1558,5 +1580,69 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let result = resolve_worktree_branch(dir.path().to_str().unwrap());
         assert_eq!(result, None);
+    }
+
+    // ========================================================================
+    // resolve_git_branch Tests (unified: regular repo + worktree)
+    // ========================================================================
+
+    #[test]
+    fn test_resolve_git_branch_regular_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let result = resolve_git_branch(dir.path().to_str().unwrap());
+        assert_eq!(result, Some("main".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_git_branch_regular_repo_feature_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/feat/auth-flow\n").unwrap();
+
+        let result = resolve_git_branch(dir.path().to_str().unwrap());
+        assert_eq!(result, Some("feat/auth-flow".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_git_branch_detached_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "abc123def456789\n").unwrap();
+
+        let result = resolve_git_branch(dir.path().to_str().unwrap());
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_git_branch_not_a_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_git_branch(dir.path().to_str().unwrap());
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_git_branch_worktree_delegates() {
+        // When .git is a file (worktree), should delegate to resolve_worktree_branch
+        let dir = tempfile::tempdir().unwrap();
+        let wt_dir = dir.path().join("worktree");
+        std::fs::create_dir_all(&wt_dir).unwrap();
+
+        let gitdir_path = dir.path().join(".git").join("worktrees").join("worktree");
+        std::fs::create_dir_all(&gitdir_path).unwrap();
+        std::fs::write(
+            wt_dir.join(".git"),
+            format!("gitdir: {}", gitdir_path.display()),
+        )
+        .unwrap();
+        std::fs::write(gitdir_path.join("HEAD"), "ref: refs/heads/wt-branch\n").unwrap();
+
+        let result = resolve_git_branch(wt_dir.to_str().unwrap());
+        assert_eq!(result, Some("wt-branch".to_string()));
     }
 }

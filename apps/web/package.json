@@ -30,6 +30,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5.90.18",
     "@tanstack/react-table": "^8.21.3",
+    "@xyflow/react": "^12.10.1",
     "clsx": "^2.1.1",
     "dockview": "^5.0.0",
     "dockview-react": "^5.0.0",
