@@ -271,44 +271,58 @@ pub async fn list_sessions(
         _ => None,
     };
 
-    // Resolve text query via Tantivy (if available and q is present)
+    // Resolve text query via unified search (same engine as /api/search).
     let search_session_ids = if let Some(ref q_text) = query.q {
         let q_trimmed = q_text.trim();
         if q_trimmed.is_empty() {
             None
         } else {
-            // Try to get search index
-            let search_index = state
-                .search_index
-                .read()
-                .ok()
-                .and_then(|guard| guard.clone());
-            match search_index {
-                Some(idx) => {
-                    const TANTIVY_SESSION_LIMIT: usize = 10_000;
-                    match idx.search(q_trimmed, None, TANTIVY_SESSION_LIMIT, 0, false) {
-                        Ok(response) => {
-                            let ids: Vec<String> = response
-                                .sessions
-                                .into_iter()
-                                .map(|s| s.session_id)
-                                .collect();
-                            if ids.len() >= TANTIVY_SESSION_LIMIT {
-                                tracing::warn!(
-                                    query = q_trimmed,
-                                    limit = TANTIVY_SESSION_LIMIT,
-                                    "Tantivy session limit saturated — results may be incomplete"
-                                );
-                            }
-                            Some(ids)
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = %e, query = q_trimmed, "Tantivy search failed, falling back to LIKE");
-                            None // Fall back to SQLite LIKE
-                        }
+            let filters = crate::search_service::SearchFilters {
+                project: query.project.clone(),
+                branch: query
+                    .branches
+                    .as_deref()
+                    .and_then(|b| b.split(',').next().map(|s| s.trim().to_string())),
+                model: query
+                    .models
+                    .as_deref()
+                    .and_then(|m| m.split(',').next().map(|s| s.trim().to_string())),
+                after: query.time_after.and_then(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                }),
+                before: query.time_before.and_then(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                }),
+            };
+            // skip_snippets=true: we only need session IDs, not highlighted text.
+            match crate::search_service::execute_search(
+                &state,
+                q_trimmed,
+                &filters,
+                usize::MAX,
+                0,
+                true,
+            )
+            .await
+            {
+                Ok(response) => {
+                    let ids: Vec<String> = response
+                        .sessions
+                        .into_iter()
+                        .map(|s| s.session_id)
+                        .collect();
+                    if ids.is_empty() {
+                        None
+                    } else {
+                        Some(ids)
                     }
                 }
-                None => None, // Index not ready, fall back to SQLite LIKE
+                Err(e) => {
+                    tracing::warn!(error = %e, "Unified search failed, falling back to LIKE");
+                    None
+                }
             }
         }
     } else {
