@@ -54,6 +54,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     },
     cacheStatus: 'warm',
     closedAt: null,
+    editCount: 0,
     ...overrides,
   }
 }
@@ -199,7 +200,8 @@ describe('MonitorPane', () => {
     it('shows blue ring when isSelected=true', () => {
       const { container } = renderMonitorPane({ isSelected: true })
 
-      const paneDiv = container.firstElementChild!
+      const paneDiv = container.firstElementChild
+      if (!paneDiv) throw new Error('Expected pane div')
       expect(paneDiv.className).toContain('ring-2')
       expect(paneDiv.className).toContain('ring-blue-500')
     })
@@ -207,7 +209,8 @@ describe('MonitorPane', () => {
     it('does not show blue ring when isSelected=false', () => {
       const { container } = renderMonitorPane({ isSelected: false })
 
-      const paneDiv = container.firstElementChild!
+      const paneDiv = container.firstElementChild
+      if (!paneDiv) throw new Error('Expected pane div')
       expect(paneDiv.className).not.toContain('ring-2')
     })
   })
@@ -218,7 +221,8 @@ describe('MonitorPane', () => {
       renderMonitorPane({ onSelect })
 
       // Click on the header area — find via the cursor-pointer header div
-      const header = screen.getByText('my-project').closest('[class*="cursor-pointer"]')!
+      const header = screen.getByText('my-project').closest('[class*="cursor-pointer"]')
+      if (!header) throw new Error('Expected cursor-pointer header element')
       fireEvent.click(header)
 
       expect(onSelect).toHaveBeenCalledTimes(1)
@@ -248,7 +252,9 @@ describe('MonitorPane', () => {
       const onContextMenu = vi.fn()
       const { container } = renderMonitorPane({ onContextMenu })
 
-      fireEvent.contextMenu(container.firstElementChild!)
+      const rootEl = container.firstElementChild
+      if (!rootEl) throw new Error('Expected root element')
+      fireEvent.contextMenu(rootEl)
 
       expect(onContextMenu).toHaveBeenCalledTimes(1)
     })

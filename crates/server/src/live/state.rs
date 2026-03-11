@@ -82,6 +82,10 @@ pub struct ToolUsed {
     pub kind: String,
 }
 
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
+}
+
 /// A live session snapshot broadcast to connected SSE clients.
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
@@ -161,6 +165,19 @@ pub struct LiveSession {
     /// Frontend uses this to show team badge instead of sub-agent pills.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_name: Option<String>,
+    /// Team members read from ~/.claude/teams/{name}/config.json.
+    /// Populated after each JSONL metadata application when team_name is Some.
+    /// Empty vec when not a team lead.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub team_members: Vec<crate::teams::TeamMember>,
+    /// Number of inbox messages for this team (0 when not a team lead).
+    /// Used by frontend as a version signal to invalidate inbox queries.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub team_inbox_count: u32,
+    /// Number of file-modifying tool uses (Edit + Write) in this session.
+    /// Used by frontend as a version signal to invalidate file-history and plan queries.
+    #[serde(default)]
+    pub edit_count: u32,
     /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
     /// Empty vec if no progress items have been detected.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -541,6 +558,9 @@ mod tests {
             last_turn_task_seconds: None,
             sub_agents: Vec::new(),
             team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,

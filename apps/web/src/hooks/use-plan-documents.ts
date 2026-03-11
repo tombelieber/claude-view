@@ -9,9 +9,9 @@ async function fetchPlanDocuments(sessionId: string): Promise<PlanDocument[]> {
   return response.json()
 }
 
-export function usePlanDocuments(sessionId: string | null, enabled = true) {
+export function usePlanDocuments(sessionId: string | null, enabled = true, version?: number) {
   return useQuery({
-    queryKey: ['plan-documents', sessionId],
+    queryKey: ['plan-documents', sessionId, version ?? 0],
     queryFn: () => {
       if (!sessionId) throw new Error('sessionId is required')
       return fetchPlanDocuments(sessionId)
