@@ -1,6 +1,7 @@
 import { ArrowUp, Square } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { cn } from '../../lib/utils'
+import type { PermissionMode } from '../../types/control'
 import { AttachButton, AttachmentChips } from './AttachButton'
 import { ChatContextGauge } from './ChatContextGauge'
 import { ModeSwitch } from './ModeSwitch'
@@ -60,8 +61,8 @@ export interface ChatInputBarProps {
   onStop?: () => void
   state?: InputBarState
   placeholder?: string
-  mode?: 'plan' | 'code' | 'ask'
-  onModeChange?: (mode: 'plan' | 'code' | 'ask') => void
+  mode?: PermissionMode
+  onModeChange?: (mode: PermissionMode) => void
   model?: string
   onModelChange?: (model: string) => void
   contextPercent?: number
@@ -72,7 +73,7 @@ export interface ChatInputBarProps {
 // ---------------------------------------------------------------------------
 // Mode commands that map directly to onModeChange
 // ---------------------------------------------------------------------------
-const MODE_COMMANDS = new Set(['plan', 'code', 'ask'])
+const MODE_COMMANDS = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'])
 
 // ---------------------------------------------------------------------------
 // Component
@@ -83,7 +84,7 @@ export function ChatInputBar({
   onStop,
   state = 'active',
   placeholder: placeholderProp,
-  mode = 'code',
+  mode = 'default',
   onModeChange,
   model = 'claude-sonnet-4-6',
   onModelChange,
@@ -130,7 +131,7 @@ export function ChatInputBar({
   const handleSlashSelect = useCallback(
     (cmd: SlashCommand) => {
       if (MODE_COMMANDS.has(cmd.name) && onModeChange) {
-        onModeChange(cmd.name as 'plan' | 'code' | 'ask')
+        onModeChange(cmd.name as PermissionMode)
       } else if (onCommand) {
         onCommand(cmd.name)
       }
