@@ -278,7 +278,10 @@ async fn main() -> Result<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Step 4: Load Supabase JWKS for JWT validation (sharing feature)
-    let jwks = if let Ok(supabase_url) = std::env::var("SUPABASE_URL") {
+    let jwks = if let Some(supabase_url) = std::env::var("SUPABASE_URL")
+        .ok()
+        .or_else(|| option_env!("SUPABASE_URL").map(str::to_string))
+    {
         match fetch_decoding_key(&supabase_url).await {
             Ok(cache) => {
                 tracing::info!("Supabase JWKS loaded");
@@ -295,10 +298,14 @@ async fn main() -> Result<()> {
     };
 
     let share = match (
-        std::env::var("SHARE_WORKER_URL"),
-        std::env::var("SHARE_VIEWER_URL"),
+        std::env::var("SHARE_WORKER_URL")
+            .ok()
+            .or_else(|| option_env!("SHARE_WORKER_URL").map(str::to_string)),
+        std::env::var("SHARE_VIEWER_URL")
+            .ok()
+            .or_else(|| option_env!("SHARE_VIEWER_URL").map(str::to_string)),
     ) {
-        (Ok(worker_url), Ok(viewer_url)) => Some(ShareConfig {
+        (Some(worker_url), Some(viewer_url)) => Some(ShareConfig {
             worker_url,
             viewer_url,
             http_client: reqwest::Client::new(),
