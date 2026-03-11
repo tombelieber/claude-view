@@ -19,17 +19,21 @@ use crate::state::AppState;
 /// Relay base URL for HTTP API calls (Mac server → relay).
 /// Derived from RELAY_URL env var (e.g. wss://host/ws → https://host).
 fn relay_http_url() -> Option<String> {
-    std::env::var("RELAY_URL").ok().map(|u| {
-        u.replace("wss://", "https://")
-            .replace("ws://", "http://")
-            .trim_end_matches("/ws")
-            .to_string()
-    })
+    (std::env::var("RELAY_URL").ok())
+        .or_else(|| option_env!("RELAY_URL").map(str::to_string))
+        .map(|u| {
+            u.replace("wss://", "https://")
+                .replace("ws://", "http://")
+                .trim_end_matches("/ws")
+                .to_string()
+        })
 }
 
 /// Relay WebSocket URL for QR code (phone → relay). Read from RELAY_URL env var.
 fn relay_ws_url() -> Option<String> {
-    std::env::var("RELAY_URL").ok()
+    std::env::var("RELAY_URL")
+        .ok()
+        .or_else(|| option_env!("RELAY_URL").map(str::to_string))
 }
 
 #[derive(Serialize)]
