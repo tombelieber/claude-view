@@ -237,7 +237,8 @@ async fn proxy_resume(
     let body_string = serde_json::to_string(&body)
         .map_err(|e| ApiError::Internal(format!("Serialize resume request: {e}")))?;
 
-    let resp = proxy_to_sidecar(state, "POST", "/control/resume", Some(body_string)).await?;
+    let resp =
+        proxy_to_sidecar(state, "POST", "/control/sessions/resume", Some(body_string)).await?;
 
     let bytes = resp
         .into_body()
@@ -553,6 +554,19 @@ async fn list_sessions(State(state): State<Arc<AppState>>) -> Result<Response, A
     proxy_to_sidecar(&state, "GET", "/control/sessions", None).await
 }
 
+/// POST /api/control/sessions — create a new control session
+async fn create_session(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "POST", "/control/sessions", Some(body)).await
+}
+
+/// GET /api/control/available-sessions — list available Claude Code sessions
+async fn list_available_sessions(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "GET", "/control/available-sessions", None).await
+}
+
 /// DELETE /api/control/sessions/:id — terminate a control session
 async fn terminate_session(
     State(state): State<Arc<AppState>>,
@@ -585,10 +599,17 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/control/estimate", post(estimate_cost))
         .route("/control/send", post(send_message))
         .route("/control/connect", axum::routing::get(ws_connect))
-        .route("/control/sessions", axum::routing::get(list_sessions))
+        .route(
+            "/control/sessions",
+            axum::routing::get(list_sessions).post(create_session),
+        )
         .route(
             "/control/sessions/{id}",
             axum::routing::delete(terminate_session),
+        )
+        .route(
+            "/control/available-sessions",
+            axum::routing::get(list_available_sessions),
         )
 }
 
