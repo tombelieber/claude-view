@@ -1,0 +1,87 @@
+// sidecar/src/session-registry.ts
+import type { EventEmitter } from 'node:events'
+import type { SDKSession } from '@anthropic-ai/claude-agent-sdk'
+import type { PermissionHandler } from './permission-handler.js'
+import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
+import type { RingBuffer } from './ring-buffer.js'
+
+export type SessionState =
+  | 'initializing'
+  | 'waiting_input'
+  | 'active'
+  | 'waiting_permission'
+  | 'compacting'
+  | 'error'
+  | 'closed'
+
+export interface ControlSession {
+  controlId: string
+  sessionId: string
+  sdkSession: SDKSession
+  state: SessionState
+  totalCostUsd: number
+  turnCount: number
+  modelUsage: Record<string, unknown>
+  startedAt: number
+  emitter: EventEmitter
+  eventBuffer: RingBuffer<{ seq: number; msg: SequencedEvent }>
+  nextSeq: number
+  permissions: PermissionHandler
+}
+
+export class SessionRegistry {
+  private sessions = new Map<string, ControlSession>()
+
+  get(controlId: string): ControlSession | undefined {
+    return this.sessions.get(controlId)
+  }
+
+  getBySessionId(sessionId: string): ControlSession | undefined {
+    for (const cs of this.sessions.values()) {
+      if (cs.sessionId === sessionId) return cs
+    }
+    return undefined
+  }
+
+  hasSessionId(sessionId: string): boolean {
+    return this.getBySessionId(sessionId) !== undefined
+  }
+
+  register(cs: ControlSession): void {
+    this.sessions.set(cs.controlId, cs)
+  }
+
+  remove(controlId: string): void {
+    this.sessions.delete(controlId)
+  }
+
+  list(): ActiveSession[] {
+    return Array.from(this.sessions.values()).map((cs) => ({
+      controlId: cs.controlId,
+      sessionId: cs.sessionId,
+      state: cs.state,
+      turnCount: cs.turnCount,
+      totalCostUsd: cs.totalCostUsd || null,
+      startedAt: cs.startedAt,
+    }))
+  }
+
+  get activeCount(): number {
+    return this.sessions.size
+  }
+
+  emitSequenced(cs: ControlSession, event: ServerEvent): void {
+    const seq = cs.nextSeq++
+    const sequenced: SequencedEvent = { ...event, seq }
+    cs.eventBuffer.push({ seq, msg: sequenced })
+    cs.emitter.emit('message', sequenced)
+  }
+
+  async closeAll(): Promise<void> {
+    for (const cs of this.sessions.values()) {
+      cs.permissions.drainAll()
+      cs.sdkSession.close()
+    }
+    this.sessions.clear()
+  }
+}
