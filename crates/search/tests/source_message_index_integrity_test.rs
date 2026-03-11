@@ -28,7 +28,9 @@ fn role_filtering_skips_unknown_source_roles() {
     idx.commit().expect("commit");
     idx.reader.reload().expect("reload");
 
-    let all = idx.search("rolechecktoken", None, 10, 0).expect("search");
+    let all = idx
+        .search("rolechecktoken", None, 10, 0, false)
+        .expect("search");
     assert_eq!(all.total_sessions, 1);
     assert_eq!(all.total_matches, 2, "invalid role doc should be skipped");
     assert!(all.sessions[0]
@@ -37,7 +39,7 @@ fn role_filtering_skips_unknown_source_roles() {
         .all(|m| m.role == "user" || m.role == "assistant"));
 
     let invalid_role = idx
-        .search("role:system rolechecktoken", None, 10, 0)
+        .search("role:system rolechecktoken", None, 10, 0, false)
         .expect("search by invalid role");
     assert_eq!(invalid_role.total_sessions, 0);
 }
@@ -56,19 +58,21 @@ fn summary_role_docs_are_excluded_from_source_message_index() {
     idx.reader.reload().expect("reload");
 
     let from_summary = idx
-        .search("summaryuniquetoken", None, 10, 0)
+        .search("summaryuniquetoken", None, 10, 0, false)
         .expect("search summary term");
     assert_eq!(
         from_summary.total_sessions, 0,
         "summary docs must not be indexed"
     );
 
-    let from_tool = idx.search("tooltoken", None, 10, 0).expect("search tool");
+    let from_tool = idx
+        .search("tooltoken", None, 10, 0, false)
+        .expect("search tool");
     assert_eq!(from_tool.total_sessions, 1);
     assert_eq!(from_tool.sessions[0].top_match.role, "tool");
 
     let role_summary = idx
-        .search("role:summary", None, 10, 0)
+        .search("role:summary", None, 10, 0, false)
         .expect("search role");
     assert_eq!(role_summary.total_sessions, 0);
 }
