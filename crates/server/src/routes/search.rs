@@ -89,7 +89,7 @@ async fn search_handler(
 
         // Collect JSONL files for grep fallback, scoped by project if specified.
         // Log errors but don't fail the request — grep is a fallback, not primary.
-        let jsonl_files = match collect_jsonl_files(project_filter.as_deref()) {
+        let jsonl_files = match collect_jsonl_files(project_filter.as_deref(), None) {
             Ok(files) => files,
             Err(e) => {
                 tracing::warn!("Failed to collect JSONL files for grep fallback: {e}");
