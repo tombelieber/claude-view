@@ -599,6 +599,110 @@ npx claude-view@latest
 If you have project-scoped plugins, open the Plugins page and try disabling or uninstalling one. It should work correctly now regardless of scope.
 
 
+--- blog/v0-13-0-workflows-and-live-chat.mdx ---
+
+---
+title: "Workflows: Build Multi-Stage AI Pipelines from a Chat"
+description: "v0.13.0 introduces a workflow system where you describe a pipeline in natural language and watch it render as a live Mermaid diagram, plus unified live chat and recently closed sessions."
+date: 2026-03-11
+author: claude-view team
+---
+
+What if you could describe a multi-stage process in plain English and have it turn into an executable pipeline — while you watch? That's the idea behind Workflows, the headline feature in v0.13.0.
+
+## Designing pipelines through conversation
+
+The Workflows page is a new section in the sidebar. Open it and you see a library grid of your saved workflows. Create a new one, and you land in a detail view with a familiar VS Code-style layout: resizable panels, a tab strip, and a chat rail on the right.
+
+The chat rail is where it gets interesting. Describe what you want — "polish this implementation plan by checking each step against the codebase, then rewrite unclear steps" — and the LLM streams back a YAML workflow definition in real time. As it writes, the Mermaid diagram in the preview tab updates live. You see your pipeline take shape as a directed graph while the AI is still generating it.
+
+Two chat modes let you shape the workflow iteratively. **Control mode** modifies the workflow definition directly. **Review mode** critiques the current definition and suggests improvements without changing it. Switch between them as you refine the pipeline.
+
+## Running workflows
+
+The runner tab shows your workflow as stage columns, similar to a kanban board turned sideways. Each stage has attempt cards that track execution state: pending, running, succeeded, failed. A progress bar across the top shows overall completion.
+
+Under the hood, the Node.js sidecar process handles execution. Each stage runs in sequence with gate polling — the runner checks whether the previous stage's output satisfies the next stage's preconditions before proceeding. If a stage crashes, the runner recovers automatically: it detects the failure, logs the crash context, and can retry the stage without losing progress on earlier stages.
+
+Two built-in workflows ship with v0.13.0: **Plan Polisher** (reviews and tightens implementation plans) and **Plan Executor** (runs plan steps sequentially with verification). Both are stored as YAML files and can be forked or edited.
+
+## Unified live chat
+
+Before v0.13.0, watching a live session meant seeing only real-time messages as they arrived. If you opened the live monitor after a session had been running for a while, you missed everything that happened before.
+
+Now the live session view loads the full message history first, then appends real-time messages seamlessly below. One continuous scroll view, no tab switching, no "load earlier messages" button. History and live events merge into a single conversation stream.
+
+## Recently closed sessions
+
+Sessions used to disappear from the Live Monitor the moment they ended. If you stepped away for five minutes and came back, you'd have no idea which sessions had just finished or what they accomplished.
+
+The Live Monitor now has a "Recently Closed" section. When a session's process exits, the session moves from the active list to the recently closed list with a timestamp. You can dismiss individual sessions or clear the entire section. The closed state persists in SQLite, so recently closed sessions survive server restarts.
+
+## Everything else
+
+- **Dynamic model list** — The model selector fetches available models from the backend, with full model IDs in tooltips
+- **Queued message indicators** — Pending user messages show as faded bubbles with a "Queued" badge
+- **Production hardening** — Six security and correctness fixes across the workflow endpoints
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Workflows page to create your first pipeline. Try describing a process you run manually today and watch it become a diagram.
+
+
+--- blog/v0-14-0-open-in-ide-and-mentions.mdx ---
+
+---
+title: "Open Files in Your Editor, See What Claude Referenced"
+description: "v0.14.0 adds one-click Open in IDE from session views, @file mention chips on session cards, and a richer live chat experience with thinking blocks and a context gauge."
+date: 2026-03-11
+author: claude-view team
+---
+
+The gap between reading a Claude Code session and acting on it just got smaller. v0.14.0 introduces two features that connect what you see in claude-view to the work you do in your editor.
+
+## Open in IDE
+
+Claude Code sessions reference files constantly — edits, reads, searches, diffs. Until now, seeing a file referenced in a session meant manually navigating to it in your editor.
+
+v0.14.0 adds an **Open in IDE button** wherever files appear: the Changes tab, individual file headers in the diff view, and the project headers in the Kanban live monitor. Click it and the file opens in your editor at the right path.
+
+claude-view auto-detects which editors you have installed — VS Code, Cursor, Zed, and others. If you have more than one, it asks once and remembers. The detection runs locally against your installed applications; nothing is sent to a server.
+
+The button is intentionally small and secondary — it doesn't get in the way of reading the session, but it's there when you want to act on something you see.
+
+## @File mention chips
+
+When Claude references a file using `@filename` notation, that mention is now extracted and displayed as a chip on the session card. You can see at a glance which files a session touched before you open it — useful for finding sessions that worked on a specific file, or for understanding what a long-running agent was doing.
+
+Chips show abbreviated names to keep cards compact. Hover a chip to see the full path. The extraction runs at parse time, so mentions appear on both live sessions and historical ones without any extra work.
+
+## Richer live chat
+
+The live chat rail — which shows the streaming conversation between you and Claude during an active session — now renders the full structure of assistant responses:
+
+- **Thinking blocks** are shown in a collapsible aside, so you can see Claude's reasoning without it dominating the view
+- **Tool calls** show the function name and arguments with syntax highlighting
+- **Tool results** are formatted and collapsible for long outputs
+
+A **mode selector** at the top of the rail lets you switch between Control mode (direct commands) and Review mode (critique and suggestions). A **context gauge** shows what percentage of the current model's context window is in use — useful for knowing when you're approaching limits on a long session.
+
+## Teams panel improvements
+
+The teams panel now separates human team members from Claude sub-agents. Previously they were mixed together, which made it hard to see who was coordinating the session versus which agents were doing work. The new layout puts people and agents in distinct sections with clear labels.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
+
+
 --- blog/v0-15-0-unified-search-and-sidecar.mdx ---
 
 ---
@@ -660,110 +764,6 @@ npx claude-view@latest
 ```
 
 Run a search to see the unified engine in action. Start a multi-agent session, restart the server, and check whether the team is still there.
-
-
---- blog/v0-14-0-open-in-ide-and-mentions.mdx ---
-
----
-title: "Open Files in Your Editor, See What Claude Referenced"
-description: "v0.14.0 adds one-click Open in IDE from session views, @file mention chips on session cards, and a richer live chat experience with thinking blocks and a context gauge."
-date: 2026-03-11
-author: claude-view team
----
-
-The gap between reading a Claude Code session and acting on it just got smaller. v0.14.0 introduces two features that connect what you see in claude-view to the work you do in your editor.
-
-## Open in IDE
-
-Claude Code sessions reference files constantly — edits, reads, searches, diffs. Until now, seeing a file referenced in a session meant manually navigating to it in your editor.
-
-v0.14.0 adds an **Open in IDE button** wherever files appear: the Changes tab, individual file headers in the diff view, and the project headers in the Kanban live monitor. Click it and the file opens in your editor at the right path.
-
-claude-view auto-detects which editors you have installed — VS Code, Cursor, Zed, and others. If you have more than one, it asks once and remembers. The detection runs locally against your installed applications; nothing is sent to a server.
-
-The button is intentionally small and secondary — it doesn't get in the way of reading the session, but it's there when you want to act on something you see.
-
-## @File mention chips
-
-When Claude references a file using `@filename` notation, that mention is now extracted and displayed as a chip on the session card. You can see at a glance which files a session touched before you open it — useful for finding sessions that worked on a specific file, or for understanding what a long-running agent was doing.
-
-Chips show abbreviated names to keep cards compact. Hover a chip to see the full path. The extraction runs at parse time, so mentions appear on both live sessions and historical ones without any extra work.
-
-## Richer live chat
-
-The live chat rail — which shows the streaming conversation between you and Claude during an active session — now renders the full structure of assistant responses:
-
-- **Thinking blocks** are shown in a collapsible aside, so you can see Claude's reasoning without it dominating the view
-- **Tool calls** show the function name and arguments with syntax highlighting
-- **Tool results** are formatted and collapsible for long outputs
-
-A **mode selector** at the top of the rail lets you switch between Control mode (direct commands) and Review mode (critique and suggestions). A **context gauge** shows what percentage of the current model's context window is in use — useful for knowing when you're approaching limits on a long session.
-
-## Teams panel improvements
-
-The teams panel now separates human team members from Claude sub-agents. Previously they were mixed together, which made it hard to see who was coordinating the session versus which agents were doing work. The new layout puts people and agents in distinct sections with clear labels.
-
-## Update now
-
-```bash
-npx claude-view@latest
-```
-
-Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
-
-
---- blog/v0-13-0-workflows-and-live-chat.mdx ---
-
----
-title: "Workflows: Build Multi-Stage AI Pipelines from a Chat"
-description: "v0.13.0 introduces a workflow system where you describe a pipeline in natural language and watch it render as a live Mermaid diagram, plus unified live chat and recently closed sessions."
-date: 2026-03-11
-author: claude-view team
----
-
-What if you could describe a multi-stage process in plain English and have it turn into an executable pipeline — while you watch? That's the idea behind Workflows, the headline feature in v0.13.0.
-
-## Designing pipelines through conversation
-
-The Workflows page is a new section in the sidebar. Open it and you see a library grid of your saved workflows. Create a new one, and you land in a detail view with a familiar VS Code-style layout: resizable panels, a tab strip, and a chat rail on the right.
-
-The chat rail is where it gets interesting. Describe what you want — "polish this implementation plan by checking each step against the codebase, then rewrite unclear steps" — and the LLM streams back a YAML workflow definition in real time. As it writes, the Mermaid diagram in the preview tab updates live. You see your pipeline take shape as a directed graph while the AI is still generating it.
-
-Two chat modes let you shape the workflow iteratively. **Control mode** modifies the workflow definition directly. **Review mode** critiques the current definition and suggests improvements without changing it. Switch between them as you refine the pipeline.
-
-## Running workflows
-
-The runner tab shows your workflow as stage columns, similar to a kanban board turned sideways. Each stage has attempt cards that track execution state: pending, running, succeeded, failed. A progress bar across the top shows overall completion.
-
-Under the hood, the Node.js sidecar process handles execution. Each stage runs in sequence with gate polling — the runner checks whether the previous stage's output satisfies the next stage's preconditions before proceeding. If a stage crashes, the runner recovers automatically: it detects the failure, logs the crash context, and can retry the stage without losing progress on earlier stages.
-
-Two built-in workflows ship with v0.13.0: **Plan Polisher** (reviews and tightens implementation plans) and **Plan Executor** (runs plan steps sequentially with verification). Both are stored as YAML files and can be forked or edited.
-
-## Unified live chat
-
-Before v0.13.0, watching a live session meant seeing only real-time messages as they arrived. If you opened the live monitor after a session had been running for a while, you missed everything that happened before.
-
-Now the live session view loads the full message history first, then appends real-time messages seamlessly below. One continuous scroll view, no tab switching, no "load earlier messages" button. History and live events merge into a single conversation stream.
-
-## Recently closed sessions
-
-Sessions used to disappear from the Live Monitor the moment they ended. If you stepped away for five minutes and came back, you'd have no idea which sessions had just finished or what they accomplished.
-
-The Live Monitor now has a "Recently Closed" section. When a session's process exits, the session moves from the active list to the recently closed list with a timestamp. You can dismiss individual sessions or clear the entire section. The closed state persists in SQLite, so recently closed sessions survive server restarts.
-
-## Everything else
-
-- **Dynamic model list** — The model selector fetches available models from the backend, with full model IDs in tooltips
-- **Queued message indicators** — Pending user messages show as faded bubbles with a "Queued" badge
-- **Production hardening** — Six security and correctness fixes across the workflow endpoints
-
-## Update now
-
-```bash
-npx claude-view@latest
-```
-
-Open the Workflows page to create your first pipeline. Try describing a process you run manually today and watch it become a diagram.
 
 
 --- blog/v0-2-0-security-and-ui-redesign.mdx ---
@@ -1513,29 +1513,6 @@ npx claude-view@latest
 ```
 
 
---- changelog/v0.2.0.md ---
-
----
-title: "v0.2.0 — Security & UI Redesign"
-date: 2026-01-30
-version: v0.2.0
----
-
-## New features
-
-- Semantic card components for conversation UI redesign
-
-## Improvements
-
-- Hardening/security robustness across the application
-
-## Getting started
-
-```bash
-npx claude-view
-```
-
-
 --- changelog/v0.14.0.md ---
 
 ---
@@ -1565,33 +1542,6 @@ version: v0.14.0
 
 ```bash
 npx claude-view@latest
-```
-
-
---- changelog/v0.2.1.md ---
-
----
-title: "v0.2.1 — First Automated Release"
-date: 2026-02-02
-version: v0.2.1
----
-
-## New features
-
-- Full JSONL parsing — all 7 message types rendered
-- Compact/Full toggle, syntax-highlighted code blocks, dark mode
-- Analytics dashboard — token/model tracking, metrics engine, git correlation
-- Rust backend (Axum) ~15MB binary, parallel JSONL indexing with mmap + SIMD
-
-## Improvements
-
-- SHA256 checksum verification, npm provenance attestation via Sigstore
-- 4-platform CI builds
-
-## Getting started
-
-```bash
-npx claude-view
 ```
 
 
@@ -1625,6 +1575,56 @@ version: v0.15.0
 
 ```bash
 npx claude-view@latest
+```
+
+
+--- changelog/v0.2.0.md ---
+
+---
+title: "v0.2.0 — Security & UI Redesign"
+date: 2026-01-30
+version: v0.2.0
+---
+
+## New features
+
+- Semantic card components for conversation UI redesign
+
+## Improvements
+
+- Hardening/security robustness across the application
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.2.1.md ---
+
+---
+title: "v0.2.1 — First Automated Release"
+date: 2026-02-02
+version: v0.2.1
+---
+
+## New features
+
+- Full JSONL parsing — all 7 message types rendered
+- Compact/Full toggle, syntax-highlighted code blocks, dark mode
+- Analytics dashboard — token/model tracking, metrics engine, git correlation
+- Rust backend (Axum) ~15MB binary, parallel JSONL indexing with mmap + SIMD
+
+## Improvements
+
+- SHA256 checksum verification, npm provenance attestation via Sigstore
+- 4-platform CI builds
+
+## Getting started
+
+```bash
+npx claude-view
 ```
 
 
