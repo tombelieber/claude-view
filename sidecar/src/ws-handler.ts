@@ -1,7 +1,7 @@
 // sidecar/src/ws-handler.ts
 import type { WebSocket } from 'ws'
 import type { SessionManager } from './session-manager.js'
-import type { ClientMessage, ResumeMsg, ServerMessage } from './types.js'
+import type { ClientMessage, ResumeMsg, ServerMessage, SetModeMessage } from './types.js'
 
 export function handleWebSocket(ws: WebSocket, controlId: string, sessions: SessionManager) {
   const session = sessions.getSession(controlId)
@@ -107,6 +107,27 @@ export function handleWebSocket(ws: WebSocket, controlId: string, sessions: Sess
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))
           break
+        case 'set_mode': {
+          const VALID_MODES = new Set([
+            'default',
+            'acceptEdits',
+            'bypassPermissions',
+            'plan',
+            'dontAsk',
+          ])
+          if (!VALID_MODES.has((msg as SetModeMessage).mode)) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: `Invalid mode: ${(msg as SetModeMessage).mode}`,
+                fatal: false,
+              }),
+            )
+            break
+          }
+          sessions.setMode(controlId, (msg as SetModeMessage).mode).catch(() => {})
+          break
+        }
       }
     } catch {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format', fatal: false }))
