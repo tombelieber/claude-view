@@ -1,0 +1,52 @@
+---
+title: "See Your Machine While Your Agents Run"
+description: "v0.17.0 adds a System Monitor page with live CPU, memory, and disk gauges — streamed via SSE with smooth animations, right alongside your Claude sessions."
+date: 2026-03-12
+author: claude-view team
+---
+
+When you're running several Claude agents in parallel, your machine is working hard. But until now, you had to switch to Activity Monitor or `htop` to see what was actually happening — breaking your flow every time you wanted to check if you were close to memory pressure or a CPU spike.
+
+v0.17.0 adds a System Monitor page directly in the claude-view sidebar.
+
+## What you see
+
+Open the System Monitor from the sidebar and you get live gauges for:
+
+- **CPU usage** — overall utilization, updated in real time
+- **Memory** — used vs. available, so you can see when agents are pushing limits
+- **Disk** — current read/write activity
+
+Below the gauges is a **top processes list** — the most CPU-hungry processes on your machine, grouped by name and sorted live. You can see at a glance whether it's your Claude sessions, your IDE, or something else driving load.
+
+## Smooth, not jumpy
+
+Raw system metrics change every second and the numbers can jump around. A gauge that snaps from 23% to 67% in one frame is hard to track visually.
+
+The monitor uses a rAF-based tween hook that interpolates values between readings. The gauge needle moves smoothly toward each new reading rather than teleporting. This is the same technique Activity Monitor uses — your eye can track a moving needle; it can't track a number that jumps.
+
+Cards also animate in with a staggered reveal on first load — each one fades in slightly after the previous. It's a small detail, but it makes the page feel responsive rather than just appearing fully-formed.
+
+## SSE, not polling
+
+The system data streams from the Rust backend via server-sent events — the same mechanism as the live session monitor. The server pushes updates as they happen; the browser receives them without polling. No stale reads, no interval timers, no unnecessary requests.
+
+`★ Insight ─────────────────────────────────────`
+This is a natural extension of the SSE infrastructure already used for live sessions — once the server can push session events, pushing system metrics costs almost nothing architecturally.
+`─────────────────────────────────────────────────`
+
+Under the hood, the observer runs in a `spawn_blocking` task so the `std::thread::sleep` between readings never blocks the async runtime. This matters on macOS where the Tokio runtime is used for everything from HTTP to file I/O — a blocking sleep in the wrong place can stall unrelated requests.
+
+## What's next
+
+- Linux and Windows builds are next on the platform roadmap
+- More monitor metrics: network I/O, per-session resource attribution
+- Cost tracking improvements across multi-agent sessions
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the System Monitor from the sidebar while running a few agents. Watch what your machine does.
