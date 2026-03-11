@@ -170,6 +170,7 @@ struct JsonlMetadata {
     compact_count: u32,
     slug: Option<String>,
     user_files: Option<Vec<String>>,
+    edit_count: u32,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -217,6 +218,9 @@ fn build_recovered_session(
         last_turn_task_seconds: None,
         sub_agents: Vec::new(),
         team_name: None,
+        team_members: Vec::new(),
+        team_inbox_count: 0,
+        edit_count: 0,
         progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
@@ -376,6 +380,7 @@ fn apply_jsonl_metadata(
     if m.user_files.is_some() {
         session.user_files = m.user_files.clone();
     }
+    session.edit_count = m.edit_count;
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -404,6 +409,8 @@ pub struct LiveSessionManager {
     snapshot_tx: mpsc::Sender<()>,
     /// Sidecar manager for crash recovery of controlled sessions.
     sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
+    /// Teams store for embedding team members in SSE payloads.
+    teams: Arc<crate::teams::TeamsStore>,
 }
 
 impl LiveSessionManager {
@@ -417,6 +424,7 @@ impl LiveSessionManager {
         search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
+        teams: Arc<crate::teams::TeamsStore>,
     ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -436,6 +444,7 @@ impl LiveSessionManager {
             registry,
             snapshot_tx,
             sidecar,
+            teams,
         });
 
         // Spawn background tasks
@@ -574,6 +583,7 @@ impl LiveSessionManager {
                 files.sort();
                 Some(files)
             },
+            edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
         drop(accumulators);
 
@@ -591,6 +601,20 @@ impl LiveSessionManager {
                 &project_display_name,
                 &project_path,
             );
+            // Populate team data from TeamsStore (not from JSONL accumulator)
+            if let Some(ref tn) = session.team_name.clone() {
+                if let Some(detail) = self.teams.get(tn) {
+                    session.team_members = detail.members;
+                }
+                session.team_inbox_count = self
+                    .teams
+                    .inbox(tn)
+                    .map(|msgs| msgs.len() as u32)
+                    .unwrap_or(0);
+            } else {
+                session.team_members = Vec::new();
+                session.team_inbox_count = 0;
+            }
             // Preserve the hook's last_activity_at if it's more recent than file mtime
             if hook_activity > session.last_activity_at {
                 session.last_activity_at = hook_activity;
@@ -915,6 +939,7 @@ impl LiveSessionManager {
                                         files.sort();
                                         Some(files)
                                     },
+                                    edit_count: acc.tool_counts_edit + acc.tool_counts_write,
                                 };
                                 drop(accumulators);
 
@@ -926,6 +951,20 @@ impl LiveSessionManager {
                                     &project_display_name,
                                     &project_path,
                                 );
+                                // Populate team data from TeamsStore (not from JSONL accumulator)
+                                if let Some(ref tn) = session.team_name.clone() {
+                                    if let Some(detail) = manager.teams.get(tn) {
+                                        session.team_members = detail.members;
+                                    }
+                                    session.team_inbox_count = manager
+                                        .teams
+                                        .inbox(tn)
+                                        .map(|msgs| msgs.len() as u32)
+                                        .unwrap_or(0);
+                                } else {
+                                    session.team_members = Vec::new();
+                                    session.team_inbox_count = 0;
+                                }
                             } else {
                                 drop(accumulators);
                             }
@@ -2119,6 +2158,7 @@ impl LiveSessionManager {
                 files.sort();
                 Some(files)
             },
+            edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
@@ -2185,6 +2225,20 @@ impl LiveSessionManager {
                 &project_display_name,
                 &project_path,
             );
+            // Populate team data from TeamsStore (not from JSONL accumulator)
+            if let Some(ref tn) = session.team_name.clone() {
+                if let Some(detail) = self.teams.get(tn) {
+                    session.team_members = detail.members;
+                }
+                session.team_inbox_count = self
+                    .teams
+                    .inbox(tn)
+                    .map(|msgs| msgs.len() as u32)
+                    .unwrap_or(0);
+            } else {
+                session.team_members = Vec::new();
+                session.team_inbox_count = 0;
+            }
 
             // Apply Channel A events to LiveSession (NO cross-channel dedup)
             if !channel_a_events.is_empty() {
@@ -3253,11 +3307,15 @@ mod hook_event_tests {
             last_turn_task_seconds: None,
             sub_agents: Vec::new(),
             team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
             progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
             compact_count: 0,
             slug: None,
+            user_files: None,
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
@@ -3290,6 +3348,8 @@ mod hook_event_tests {
             tools_used: Vec::new(),
             compact_count: 0,
             slug: None,
+            user_files: None,
+            edit_count: 0,
         }
     }
 
@@ -3450,6 +3510,55 @@ mod hook_event_tests {
             session.effective_branch.as_deref(),
             Some("feat/my-feature"),
             "effective_branch must prefer worktree_branch over git_branch"
+        );
+    }
+
+    #[test]
+    fn test_edit_count_accumulates_from_edit_and_write_tools() {
+        // edit_count must be the sum of Edit + Write tool uses from the accumulator.
+        // This guards against regressions where only one tool type is counted.
+        let mut metadata = minimal_jsonl_metadata();
+        metadata.edit_count = 7; // simulates acc.tool_counts_edit=4 + acc.tool_counts_write=3
+
+        let mut session = minimal_live_session_for_branch_tests("test-edit-count");
+        apply_jsonl_metadata(
+            &mut session,
+            &metadata,
+            "/tmp/test.jsonl",
+            "proj",
+            "proj",
+            "/tmp",
+        );
+
+        assert_eq!(
+            session.edit_count, 7,
+            "edit_count must be propagated from JsonlMetadata to LiveSession"
+        );
+    }
+
+    #[test]
+    fn test_edit_count_defaults_to_zero_for_new_session() {
+        // A freshly constructed LiveSession must have edit_count = 0.
+        // Guards against construction sites that forget the default.
+        let session = minimal_live_session_for_branch_tests("test-zero-edit-count");
+        assert_eq!(
+            session.edit_count, 0,
+            "edit_count must default to 0 in freshly constructed LiveSession"
+        );
+    }
+
+    #[test]
+    fn test_team_members_and_inbox_count_default_to_empty_for_non_team_session() {
+        // A session without a team name must have empty team_members and inbox_count = 0.
+        // Guards against sessions leaking team data from previous state.
+        let session = minimal_live_session_for_branch_tests("test-no-team");
+        assert!(
+            session.team_members.is_empty(),
+            "team_members must be empty for non-team sessions"
+        );
+        assert_eq!(
+            session.team_inbox_count, 0,
+            "team_inbox_count must be 0 for non-team sessions"
         );
     }
 }

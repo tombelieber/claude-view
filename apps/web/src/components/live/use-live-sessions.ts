@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sseUrl } from '../../lib/sse-url'
 import type { ProgressItem } from '../../types/generated/ProgressItem'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { TeamMember } from '../../types/generated/TeamMember'
 import type { AgentState } from './types'
 
 const STALL_THRESHOLD_MS = 3000
@@ -65,6 +66,9 @@ export interface LiveSession {
   slug?: string | null
   closedAt: number | null
   compactCount?: number
+  teamMembers?: TeamMember[] // Tier 1: embedded from disk
+  teamInboxCount?: number // Tier 1: version signal for inbox
+  editCount: number // Tier 2: version signal for file/plan queries
   control?: ControlBinding | null
 }
 

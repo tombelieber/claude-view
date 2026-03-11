@@ -8,6 +8,7 @@ import type { InboxMessage, InboxMessageType, TeamMember } from '../../types/gen
 
 interface TeamsTabProps {
   teamName: string
+  inboxVersion?: number
 }
 
 // ============================================================================
@@ -124,9 +125,9 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
 // Main component
 // ============================================================================
 
-export function TeamsTab({ teamName }: TeamsTabProps) {
+export function TeamsTab({ teamName, inboxVersion }: TeamsTabProps) {
   const { data: team, isLoading: teamLoading } = useTeamDetail(teamName)
-  const { data: inbox, isLoading: inboxLoading } = useTeamInbox(teamName)
+  const { data: inbox, isLoading: inboxLoading } = useTeamInbox(teamName, inboxVersion)
 
   if (teamLoading || inboxLoading) {
     return (
