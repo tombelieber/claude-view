@@ -9,7 +9,7 @@ import type {
   PlanApprovalMsg,
   ServerMessage,
 } from '../types/control'
-import { CLOSE_CODES } from '../types/control'
+import { CLOSE_CODES, type PermissionMode } from '../types/control'
 import { type ConnectionState, connectionReducer } from './connection-reducer'
 
 export type ControlStatus =
@@ -31,6 +31,18 @@ interface ControlSessionState {
   turnCount: number
   sessionCost: number | null
   lastTurnCost: number | null
+  tokenUsage: { input: number; output: number; cacheRead: number; cacheCreation: number } | null
+  model: string | null
+  contextWindow: number | null
+  toolPairMap: Map<
+    string,
+    {
+      toolName: string
+      toolInput: Record<string, unknown>
+      result?: { output: string; isError: boolean }
+      startTime: number
+    }
+  >
   permissionRequest: PermissionRequestMsg | null
   askQuestion: AskUserQuestionMsg | null
   planApproval: PlanApprovalMsg | null
@@ -38,19 +50,25 @@ interface ControlSessionState {
   error: string | null
 }
 
-const initialUIState: ControlSessionState = {
-  messages: [],
-  streamingContent: '',
-  streamingMessageId: '',
-  contextUsage: 0,
-  turnCount: 0,
-  sessionCost: null,
-  lastTurnCost: null,
-  permissionRequest: null,
-  askQuestion: null,
-  planApproval: null,
-  elicitation: null,
-  error: null,
+function makeInitialUIState(): ControlSessionState {
+  return {
+    messages: [],
+    streamingContent: '',
+    streamingMessageId: '',
+    contextUsage: 0,
+    turnCount: 0,
+    sessionCost: null,
+    lastTurnCost: null,
+    tokenUsage: null,
+    model: null,
+    contextWindow: null,
+    toolPairMap: new Map(),
+    permissionRequest: null,
+    askQuestion: null,
+    planApproval: null,
+    elicitation: null,
+    error: null,
+  }
 }
 
 const INITIAL_BACKOFF_MS = 1000
@@ -58,7 +76,7 @@ const MAX_BACKOFF_MS = 30_000
 
 export function useControlSession(sessionId: string | null) {
   const [connState, dispatch] = useReducer(connectionReducer, { phase: 'idle' } as ConnectionState)
-  const [ui, setUI] = useState<ControlSessionState>(initialUIState)
+  const [ui, setUI] = useState<ControlSessionState>(makeInitialUIState)
   const [sessionStatus, setSessionStatus] = useState<string>('idle')
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -102,7 +120,7 @@ export function useControlSession(sessionId: string | null) {
   // --- Connect effect ---
   useEffect(() => {
     if (!sessionId) {
-      setUI(initialUIState)
+      setUI(makeInitialUIState())
       setSessionStatus('idle')
       dispatch({ type: 'reset' })
       return
@@ -196,9 +214,16 @@ export function useControlSession(sessionId: string | null) {
                 lastTurnCost: msg.cost,
               }
 
-            case 'tool_use_start':
+            case 'tool_use_start': {
+              const newMap = new Map(prev.toolPairMap)
+              newMap.set(msg.toolUseId, {
+                toolName: msg.toolName,
+                toolInput: msg.toolInput,
+                startTime: Date.now(),
+              })
               return {
                 ...prev,
+                toolPairMap: newMap,
                 messages: [
                   ...prev.messages,
                   {
@@ -209,10 +234,20 @@ export function useControlSession(sessionId: string | null) {
                   },
                 ],
               }
+            }
 
-            case 'tool_use_result':
+            case 'tool_use_result': {
+              const newMap = new Map(prev.toolPairMap)
+              const existing = newMap.get(msg.toolUseId)
+              if (existing) {
+                newMap.set(msg.toolUseId, {
+                  ...existing,
+                  result: { output: msg.output, isError: msg.isError },
+                })
+              }
               return {
                 ...prev,
+                toolPairMap: newMap,
                 messages: [
                   ...prev.messages,
                   {
@@ -223,6 +258,7 @@ export function useControlSession(sessionId: string | null) {
                   },
                 ],
               }
+            }
 
             case 'permission_request':
               // Dedup replayed requests
@@ -242,11 +278,28 @@ export function useControlSession(sessionId: string | null) {
               if (prev.elicitation?.requestId === msg.requestId) return prev
               return { ...prev, elicitation: msg }
 
+            case 'thinking':
+              return {
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    role: 'thinking',
+                    content: msg.content,
+                    messageId: msg.messageId,
+                  },
+                ],
+              }
+
             case 'session_status':
               return {
                 ...prev,
                 contextUsage: msg.contextUsage,
                 turnCount: msg.turnCount,
+                tokenUsage: msg.tokenUsage ?? prev.tokenUsage,
+                model: msg.model ?? prev.model,
+                contextWindow: msg.contextWindow ?? prev.contextWindow,
+                sessionCost: msg.costUsd ?? prev.sessionCost,
               }
 
             case 'error':
@@ -379,9 +432,16 @@ export function useControlSession(sessionId: string | null) {
                 sessionCost: msg.totalCost,
                 lastTurnCost: msg.cost,
               }
-            case 'tool_use_start':
+            case 'tool_use_start': {
+              const newMap = new Map(prev.toolPairMap)
+              newMap.set(msg.toolUseId, {
+                toolName: msg.toolName,
+                toolInput: msg.toolInput,
+                startTime: Date.now(),
+              })
               return {
                 ...prev,
+                toolPairMap: newMap,
                 messages: [
                   ...prev.messages,
                   {
@@ -392,9 +452,19 @@ export function useControlSession(sessionId: string | null) {
                   },
                 ],
               }
-            case 'tool_use_result':
+            }
+            case 'tool_use_result': {
+              const newMap = new Map(prev.toolPairMap)
+              const existing = newMap.get(msg.toolUseId)
+              if (existing) {
+                newMap.set(msg.toolUseId, {
+                  ...existing,
+                  result: { output: msg.output, isError: msg.isError },
+                })
+              }
               return {
                 ...prev,
+                toolPairMap: newMap,
                 messages: [
                   ...prev.messages,
                   {
@@ -405,6 +475,7 @@ export function useControlSession(sessionId: string | null) {
                   },
                 ],
               }
+            }
             case 'permission_request':
               if (prev.permissionRequest?.requestId === msg.requestId) return prev
               return { ...prev, permissionRequest: msg }
@@ -417,8 +488,28 @@ export function useControlSession(sessionId: string | null) {
             case 'elicitation':
               if (prev.elicitation?.requestId === msg.requestId) return prev
               return { ...prev, elicitation: msg }
+            case 'thinking':
+              return {
+                ...prev,
+                messages: [
+                  ...prev.messages,
+                  {
+                    role: 'thinking',
+                    content: msg.content,
+                    messageId: msg.messageId,
+                  },
+                ],
+              }
             case 'session_status':
-              return { ...prev, contextUsage: msg.contextUsage, turnCount: msg.turnCount }
+              return {
+                ...prev,
+                contextUsage: msg.contextUsage,
+                turnCount: msg.turnCount,
+                tokenUsage: msg.tokenUsage ?? prev.tokenUsage,
+                model: msg.model ?? prev.model,
+                contextWindow: msg.contextWindow ?? prev.contextWindow,
+                sessionCost: msg.costUsd ?? prev.sessionCost,
+              }
             case 'error':
               return { ...prev, error: msg.message }
             default:
@@ -513,6 +604,13 @@ export function useControlSession(sessionId: string | null) {
     [sendRaw],
   )
 
+  const setMode = useCallback(
+    (mode: PermissionMode) => {
+      sendRaw({ type: 'set_mode', mode })
+    },
+    [sendRaw],
+  )
+
   return {
     status,
     messages: ui.messages,
@@ -522,6 +620,10 @@ export function useControlSession(sessionId: string | null) {
     turnCount: ui.turnCount,
     sessionCost: ui.sessionCost,
     lastTurnCost: ui.lastTurnCost,
+    tokenUsage: ui.tokenUsage,
+    model: ui.model,
+    contextWindow: ui.contextWindow,
+    toolPairMap: ui.toolPairMap,
     permissionRequest: ui.permissionRequest,
     askQuestion: ui.askQuestion,
     planApproval: ui.planApproval,
@@ -534,5 +636,6 @@ export function useControlSession(sessionId: string | null) {
     answerQuestion,
     approvePlan,
     submitElicitation,
+    setMode,
   }
 }
