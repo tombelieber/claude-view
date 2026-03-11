@@ -414,6 +414,193 @@ fn reconstruct_team_from_jsonl(team_name: &str, refs: &[TeamJSONLRef]) -> Option
     })
 }
 
+/// Reconstruct both TeamDetail and inbox in a single file-read pass.
+///
+/// Combines `reconstruct_team_from_jsonl` and `reconstruct_inbox_from_jsonl`
+/// to avoid reading each JSONL file twice when both are needed (e.g. summaries()).
+/// Returns `None` when no TeamCreate is found (same semantics as reconstruct_team).
+fn reconstruct_team_and_inbox_from_jsonl(
+    team_name: &str,
+    refs: &[TeamJSONLRef],
+) -> Option<(TeamDetail, Vec<InboxMessage>)> {
+    let team_name_finder = memmem::Finder::new(team_name.as_bytes());
+    let team_create_finder = memmem::Finder::new(b"\"TeamCreate\"");
+    let send_msg_finder = memmem::Finder::new(b"\"SendMessage\"");
+
+    let mut description = String::new();
+    let mut lead_session_id = String::new();
+    let mut created_at: i64 = 0;
+    let mut members = Vec::new();
+    let mut messages = Vec::new();
+    let mut found_create = false;
+
+    for r in refs {
+        let Ok(content) = std::fs::read_to_string(&r.jsonl_path) else {
+            continue;
+        };
+
+        for line in content.lines() {
+            if team_name_finder.find(line.as_bytes()).is_none() {
+                continue;
+            }
+
+            let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+
+            let line_team = parsed
+                .get("teamName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if line_team != team_name {
+                continue;
+            }
+
+            if created_at == 0 {
+                if let Some(ts) = parsed.get("timestamp").and_then(|v| v.as_str()) {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+                        created_at = dt.timestamp_millis();
+                    }
+                }
+                lead_session_id = r.session_id.clone();
+            }
+
+            let timestamp = parsed
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let blocks = parsed
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array());
+
+            let Some(blocks) = blocks else {
+                continue;
+            };
+
+            for block in blocks {
+                let tool_name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let input = block.get("input");
+
+                if tool_name == "TeamCreate" && team_create_finder.find(line.as_bytes()).is_some() {
+                    if let Some(inp) = input {
+                        let inp_team = inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
+                        if inp_team == team_name {
+                            description = inp
+                                .get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            found_create = true;
+                        }
+                    }
+                }
+
+                if tool_name == "Agent" || tool_name == "Task" {
+                    if let Some(inp) = input {
+                        let spawn_team =
+                            inp.get("team_name").and_then(|v| v.as_str()).unwrap_or("");
+                        if spawn_team == team_name {
+                            let member_name = inp
+                                .get("name")
+                                .or_else(|| inp.get("description"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unnamed")
+                                .to_string();
+                            let agent_type = inp
+                                .get("subagent_type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(tool_name)
+                                .to_string();
+                            let model = inp
+                                .get("model")
+                                .and_then(|v| v.as_str())
+                                .or_else(|| {
+                                    parsed
+                                        .get("message")
+                                        .and_then(|m| m.get("model"))
+                                        .and_then(|v| v.as_str())
+                                })
+                                .unwrap_or("unknown")
+                                .to_string();
+                            let prompt = inp
+                                .get("prompt")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            let tool_use_id = block
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            members.push(TeamMember {
+                                agent_id: tool_use_id,
+                                name: member_name.clone(),
+                                agent_type,
+                                model,
+                                prompt,
+                                color: deterministic_color(&member_name).to_string(),
+                                backend_type: None,
+                                cwd: String::new(),
+                            });
+                        }
+                    }
+                }
+
+                if tool_name == "SendMessage" && send_msg_finder.find(line.as_bytes()).is_some() {
+                    if let Some(inp) = input {
+                        let msg_type = inp
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("message");
+                        let content_text = inp
+                            .get("content")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let summary = inp
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+                        let message_type = match msg_type {
+                            "shutdown_request" => InboxMessageType::ShutdownRequest,
+                            "shutdown_approved" => InboxMessageType::ShutdownApproved,
+                            "task_assignment" => InboxMessageType::TaskAssignment,
+                            "idle_notification" => InboxMessageType::IdleNotification,
+                            _ => InboxMessageType::PlainText,
+                        };
+                        messages.push(InboxMessage {
+                            from: "team-lead".to_string(),
+                            text: content_text,
+                            timestamp: timestamp.clone(),
+                            message_type,
+                            read: true,
+                            color: None,
+                            summary,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if !found_create {
+        return None;
+    }
+
+    messages.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+    let detail = TeamDetail {
+        name: team_name.to_string(),
+        description,
+        created_at,
+        lead_session_id,
+        members,
+    };
+    Some((detail, messages))
+}
+
 /// Reconstruct inbox messages from SendMessage tool_use calls in JSONL.
 ///
 /// SendMessage calls in the lead session JSONL represent outbound messages
@@ -754,13 +941,13 @@ impl TeamsStore {
                 }
             })
             .collect();
-        // Add JSONL-only teams (not on filesystem)
+        // Add JSONL-only teams (not on filesystem).
+        // Uses combined single-pass reconstruction to avoid reading each JSONL file twice.
         for (team_name, refs) in &self.jsonl_index {
             if teams.contains_key(team_name) {
                 continue; // Already have this team from filesystem
             }
-            if let Some(detail) = reconstruct_team_from_jsonl(team_name, refs) {
-                let inbox = reconstruct_inbox_from_jsonl(team_name, refs);
+            if let Some((detail, inbox)) = reconstruct_team_and_inbox_from_jsonl(team_name, refs) {
                 let msg_count = inbox.len() as u32;
                 let mut models: Vec<_> = detail.members.iter().map(|m| m.model.clone()).collect();
                 models.sort();
