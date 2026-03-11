@@ -66,6 +66,15 @@ export interface SessionStatusMsg {
   status: 'active' | 'waiting_input' | 'waiting_permission' | 'completed' | 'error'
   contextUsage: number
   turnCount: number
+  tokenUsage?: {
+    input: number
+    output: number
+    cacheRead: number
+    cacheCreation: number
+  }
+  costUsd?: number
+  model?: string
+  contextWindow?: number
 }
 
 export interface ErrorMsg {
@@ -102,6 +111,12 @@ export interface ElicitationMsg {
   prompt: string
 }
 
+export interface ThinkingMsg {
+  type: 'thinking'
+  content: string
+  messageId: string
+}
+
 export type ServerMessage =
   | AssistantChunk
   | AssistantDone
@@ -111,6 +126,7 @@ export type ServerMessage =
   | AskUserQuestionMsg
   | PlanApprovalMsg
   | ElicitationMsg
+  | ThinkingMsg
   | SessionStatusMsg
   | ErrorMsg
   | PongMsg
@@ -147,6 +163,13 @@ export interface ResumeClientMsg {
   lastSeq: number
 }
 
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+
+export interface SetModeClientMsg {
+  type: 'set_mode'
+  mode: PermissionMode
+}
+
 // Control session info for takeover flow
 export interface ControlSessionInfo {
   sessionId: string
@@ -156,7 +179,7 @@ export interface ControlSessionInfo {
 
 // Chat message for display
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'tool_use' | 'tool_result'
+  role: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'thinking'
   content?: string
   messageId?: string
   toolName?: string
