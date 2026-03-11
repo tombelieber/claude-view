@@ -193,7 +193,7 @@ pub fn collect_snapshot(
 
     // Top processes — group by normalized name, take top 10
     let mut groups: HashMap<String, (u32, f32, u64)> = HashMap::new();
-    for (_pid, proc) in sys.processes() {
+    for proc in sys.processes().values() {
         let raw_name = proc.name().to_string_lossy().to_string();
         let norm = normalize_process_name(&raw_name);
         let entry = groups.entry(norm).or_insert((0, 0.0, 0));
