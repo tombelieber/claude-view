@@ -188,6 +188,7 @@ impl SearchIndex {
         scope: Option<&str>,
         limit: usize,
         offset: usize,
+        skip_snippets: bool,
     ) -> Result<SearchResponse, SearchError> {
         let start = Instant::now();
 
@@ -207,6 +208,31 @@ impl SearchIndex {
                     total_matches: 0,
                     elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
                     sessions: vec![],
+                });
+            }
+
+            if skip_snippets {
+                return Ok(SearchResponse {
+                    query: query_str.to_string(),
+                    total_sessions: 1,
+                    total_matches: top_docs.len(),
+                    elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                    sessions: vec![SessionHit {
+                        session_id: session_id.clone(),
+                        project: String::new(),
+                        branch: None,
+                        modified_at: 0,
+                        match_count: top_docs.len(),
+                        best_score: 1.0,
+                        top_match: MatchHit {
+                            role: String::new(),
+                            turn_number: 0,
+                            snippet: String::new(),
+                            timestamp: 0,
+                        },
+                        matches: vec![],
+                        engines: vec!["tantivy".to_string()],
+                    }],
                 });
             }
 
@@ -481,10 +507,9 @@ impl SearchIndex {
         // Two-phase search: Count gets true total, TopDocs gets top scored results.
         let total_matches_all = searcher.search(&combined_query, &Count)?;
 
-        // Cap fetched docs to avoid loading the entire index for common queries.
-        // We need enough docs to fill (offset + limit) session groups, over-fetching
-        // by ~50x to account for multi-doc sessions (each session has many messages).
-        let fetch_limit = ((limit + offset) * 50).clamp(1, 10_000);
+        // Fetch ALL matching docs so session grouping gives a true total_sessions count.
+        // Without this, paginated queries under-count total sessions.
+        let fetch_limit = total_matches_all.max(1);
         let top_docs = searcher.search(&combined_query, &TopDocs::with_limit(fetch_limit))?;
 
         // Group by session_id
@@ -504,6 +529,35 @@ impl SearchIndex {
         }
 
         let total_sessions_all = session_groups.len();
+
+        if skip_snippets {
+            let sessions: Vec<SessionHit> = session_groups
+                .into_keys()
+                .map(|session_id| SessionHit {
+                    session_id,
+                    project: String::new(),
+                    branch: None,
+                    modified_at: 0,
+                    match_count: 0,
+                    best_score: 0.0,
+                    top_match: MatchHit {
+                        role: String::new(),
+                        turn_number: 0,
+                        snippet: String::new(),
+                        timestamp: 0,
+                    },
+                    matches: vec![],
+                    engines: vec!["tantivy".to_string()],
+                })
+                .collect();
+            return Ok(SearchResponse {
+                query: query_str.to_string(),
+                total_sessions: total_sessions_all,
+                total_matches: total_matches_all,
+                elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+                sessions,
+            });
+        }
 
         // Build snippet query from original search terms (PhraseQuery + TermQuery).
         // IMPORTANT: Do NOT use FuzzyTermQuery for snippets — Tantivy's
@@ -930,7 +984,9 @@ mod tests {
         idx.commit().unwrap();
         idx.reader.reload().unwrap();
 
-        let result = idx.search("deploy to production", None, 10, 0).unwrap();
+        let result = idx
+            .search("deploy to production", None, 10, 0, false)
+            .unwrap();
         assert!(result.total_sessions >= 2, "both sessions should match");
 
         // Session A (exact phrase) must rank above Session B (scattered terms)
@@ -970,7 +1026,7 @@ mod tests {
         idx.reader.reload().unwrap();
 
         // "deploymnt" (typo) should still find "deployment" via fuzzy
-        let result = idx.search("deploymnt", None, 10, 0).unwrap();
+        let result = idx.search("deploymnt", None, 10, 0, false).unwrap();
         assert_eq!(
             result.total_sessions, 1,
             "fuzzy should catch single-char typo"
@@ -1020,12 +1076,16 @@ mod tests {
         idx.reader.reload().unwrap();
 
         // after:2026-02-01 should only return new-session
-        let result = idx.search("deploy after:2026-02-01", None, 10, 0).unwrap();
+        let result = idx
+            .search("deploy after:2026-02-01", None, 10, 0, false)
+            .unwrap();
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "new-session");
 
         // before:2026-02-01 should only return old-session
-        let result = idx.search("deploy before:2026-02-01", None, 10, 0).unwrap();
+        let result = idx
+            .search("deploy before:2026-02-01", None, 10, 0, false)
+            .unwrap();
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "old-session");
     }
@@ -1070,7 +1130,9 @@ mod tests {
         idx.reader.reload().unwrap();
 
         // session:aaa-111 should only return that session
-        let result = idx.search("hello", Some("session:aaa-111"), 10, 0).unwrap();
+        let result = idx
+            .search("hello", Some("session:aaa-111"), 10, 0, false)
+            .unwrap();
         assert_eq!(result.total_sessions, 1);
         assert_eq!(result.sessions[0].session_id, "aaa-111");
     }
@@ -1117,13 +1179,47 @@ mod tests {
         idx.reader.reload().unwrap();
 
         let result = idx
-            .search("identical content scoring", None, 10, 0)
+            .search("identical content scoring", None, 10, 0, false)
             .unwrap();
         assert_eq!(result.total_sessions, 2);
         // With identical scores, newer session should rank first
         assert_eq!(
             result.sessions[0].session_id, "new",
             "recency should tiebreak equal scores — newer first"
+        );
+    }
+
+    #[test]
+    fn test_total_sessions_is_true_count_not_paginated() {
+        let idx = SearchIndex::open_in_ram().expect("create index");
+        // 200 sessions * 5 docs = 1000 docs total.
+        // With limit=1, fetch_limit = (1+0)*50 = 50, which only covers ~10 sessions.
+        // True total must still be 200.
+        for i in 0..200 {
+            let session_id = format!("session-{i:03}");
+            let docs: Vec<_> = (0..5)
+                .map(|j| crate::indexer::SearchDocument {
+                    session_id: session_id.clone(),
+                    project: "test".to_string(),
+                    branch: "main".to_string(),
+                    model: "opus".to_string(),
+                    role: "user".to_string(),
+                    content: format!("deploy message {j}"),
+                    turn_number: j as u64,
+                    timestamp: 1710000000 + (i * 100 + j) as i64,
+                    skills: vec![],
+                })
+                .collect();
+            idx.index_session(&session_id, &docs).expect("index");
+        }
+        idx.commit().expect("commit");
+        idx.reader.reload().expect("reload");
+
+        let resp = idx.search("deploy", None, 1, 0, false).unwrap();
+        assert_eq!(resp.sessions.len(), 1, "paginated: 1 session returned");
+        assert_eq!(
+            resp.total_sessions, 200,
+            "TRUE total must be 200, not subset"
         );
     }
 
@@ -1150,7 +1246,7 @@ mod tests {
         idx.commit().unwrap();
         idx.reader.reload().unwrap();
 
-        let result = idx.search("pm-status", None, 10, 0).unwrap();
+        let result = idx.search("pm-status", None, 10, 0, false).unwrap();
         assert_eq!(
             result.total_sessions, 1,
             "hyphenated query should match tokenized content terms"
