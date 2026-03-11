@@ -207,6 +207,7 @@ impl SearchIndex {
                     total_matches: 0,
                     elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
                     sessions: vec![],
+                    search_engine: None,
                 });
             }
 
@@ -300,6 +301,7 @@ impl SearchIndex {
                     top_match,
                     matches,
                 }],
+                search_engine: None,
             });
         }
 
@@ -470,6 +472,7 @@ impl SearchIndex {
                 total_matches: 0,
                 elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
                 sessions: vec![],
+                search_engine: None,
             });
         }
 
@@ -734,6 +737,7 @@ impl SearchIndex {
             total_matches: total_matches_all,
             elapsed_ms,
             sessions,
+            search_engine: None,
         })
     }
 }
