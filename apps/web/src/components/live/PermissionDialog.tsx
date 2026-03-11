@@ -83,8 +83,8 @@ export function PermissionDialog({ request, onRespond }: PermissionDialogProps) 
             </div>
 
             {/* Description */}
-            {request.description && (
-              <p className="text-sm text-gray-700 dark:text-gray-300">{request.description}</p>
+            {request.decisionReason && (
+              <p className="text-sm text-gray-700 dark:text-gray-300">{request.decisionReason}</p>
             )}
 
             {/* Tool-specific preview */}
