@@ -562,6 +562,14 @@ async fn create_session(
     proxy_to_sidecar(&state, "POST", "/control/sessions", Some(body)).await
 }
 
+/// POST /api/control/sessions/resume — resume an existing Claude Code session via sidecar
+async fn resume_session(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "POST", "/control/sessions/resume", Some(body)).await
+}
+
 /// GET /api/control/available-sessions — list available Claude Code sessions
 async fn list_available_sessions(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
     proxy_to_sidecar(&state, "GET", "/control/available-sessions", None).await
@@ -603,6 +611,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/control/sessions",
             axum::routing::get(list_sessions).post(create_session),
         )
+        .route("/control/sessions/resume", post(resume_session))
         .route(
             "/control/sessions/{id}",
             axum::routing::delete(terminate_session),
