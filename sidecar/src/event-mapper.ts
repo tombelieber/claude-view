@@ -63,7 +63,7 @@ export function mapSdkMessage(msg: SDKMessage): ServerEvent[] {
       return [
         {
           type: 'unknown_sdk_event',
-          sdkType: m.type ?? 'undefined',
+          sdkType: (m as AnyMsg).type ?? 'undefined',
           raw: m,
         } satisfies UnknownSdkEvent,
       ]
@@ -78,7 +78,13 @@ function mapAssistant(m: AnyMsg): ServerEvent[] {
 
   // Check error field first — may have empty content on error
   if (m.error) {
-    return [{ type: 'assistant_error', error: m.error, messageId: msgId } satisfies AssistantError]
+    return [
+      {
+        type: 'assistant_error',
+        error: m.error as AssistantError['error'],
+        messageId: msgId,
+      } satisfies AssistantError,
+    ]
   }
 
   const message = m.message as { content: { type: string; [k: string]: unknown }[] }
