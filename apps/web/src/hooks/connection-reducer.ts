@@ -58,8 +58,8 @@ export function connectionReducer(
         return { phase: 'fatal', sessionId: state.sessionId, reason: msg.message }
       }
 
-      // Session completed
-      if (msg.type === 'session_status' && msg.status === 'completed') {
+      // Session completed - signalled by session_closed in new protocol
+      if (msg.type === 'session_closed') {
         return { phase: 'completed', sessionId: state.sessionId }
       }
 
