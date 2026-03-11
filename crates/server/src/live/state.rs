@@ -178,6 +178,10 @@ pub struct LiveSession {
     pub compact_count: u32,
     /// Session slug for plan file association.
     pub slug: Option<String>,
+    /// Files referenced with `@filename` syntax in user messages.
+    /// Deduplicated set across session lifetime (≤10, first-N-wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_files: Option<Vec<String>>,
     /// Unix timestamp when this session's process exited (None = still running).
     /// Set by reconciliation loop or SessionEnd hook. Used by frontend for
     /// "closed Xm ago" display and by recently-closed persistence.
@@ -542,6 +546,7 @@ mod tests {
             last_cache_hit_at: None,
             compact_count: 0,
             slug: None,
+            user_files: None,
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
