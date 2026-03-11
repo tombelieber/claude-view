@@ -12,6 +12,7 @@ import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { SystemMonitorPage } from './pages/SystemMonitorPage'
 import { TeamsPage } from './pages/TeamsPage'
 import { WorkflowDetailPage } from './pages/WorkflowDetailPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
       { path: 'workflows', element: <WorkflowsPage /> },
       { path: 'workflows/:id', element: <WorkflowDetailPage /> },
       { path: 'plugins', element: <PluginsPage /> },
+      { path: 'monitor', element: <SystemMonitorPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
       {
