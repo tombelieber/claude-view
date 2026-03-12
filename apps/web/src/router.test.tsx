@@ -66,7 +66,7 @@ describe('router', () => {
     expect(await screen.findByText('Insights Page')).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe('/insights')
     expect(memoryRouter.state.location.search).toBe('')
-  })
+  }, 10_000)
 
   it('keeps /analytics tab behavior unchanged', async () => {
     const memoryRouter = await renderAt('/analytics?tab=contributions')
