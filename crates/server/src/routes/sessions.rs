@@ -645,12 +645,9 @@ pub async fn session_activity(
 // Archive / Unarchive handlers
 // ============================================================================
 
-/// Returns ~/.claude-view/archives/
+/// Returns archive dir — respects `CLAUDE_VIEW_DATA_DIR` for sandbox envs.
 fn archive_base_dir() -> std::path::PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".claude-view")
-        .join("archives")
+    claude_view_core::paths::archive_dir()
 }
 
 async fn archive_session_handler(
@@ -1948,6 +1945,9 @@ mod tests {
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
         };
         session.hook_events.push(HookEvent {
             timestamp: 1000,

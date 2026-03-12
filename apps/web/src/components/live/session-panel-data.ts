@@ -71,6 +71,10 @@ export interface SessionPanelData {
 
   compactCount?: number
 
+  // Statusline fields (authoritative from Claude Code per-turn summary)
+  statuslineContextWindowSize?: number | null
+  statuslineUsedPct?: number | null
+
   // Live-only fields (optional)
   startedAt?: number | null
   lastActivityAt?: number
@@ -119,6 +123,8 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     teamName: session.teamName ?? null,
     progressItems: session.progressItems,
     compactCount: session.compactCount,
+    statuslineContextWindowSize: session.statuslineContextWindowSize ?? null,
+    statuslineUsedPct: session.statuslineUsedPct ?? null,
     startedAt: session.startedAt,
     lastActivityAt: session.lastActivityAt,
     lastUserMessage: session.lastUserMessage,

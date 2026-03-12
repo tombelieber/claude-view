@@ -207,6 +207,19 @@ pub struct LiveSession {
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
+    /// Authoritative context window size from statusline (200_000 or 1_000_000).
+    /// Set by the statusline wrapper on each turn. Null until first statusline event.
+    /// Frontend prefers this over all heuristics when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_context_window_size: Option<u32>,
+    /// Authoritative context used percentage from statusline (0.0–100.0).
+    /// Pre-computed by Claude Code — no division needed, no wrong denominator.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_used_pct: Option<f32>,
+    /// Claude Code's own total cost in USD, from statusline.
+    /// Cross-check against our token-based pricing engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_cost_usd: Option<f64>,
     /// Hook lifecycle events captured for the event log.
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]
@@ -569,6 +582,9 @@ mod tests {
             user_files: None,
             closed_at: None,
             control: None,
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
             hook_events: Vec::new(),
         }
     }

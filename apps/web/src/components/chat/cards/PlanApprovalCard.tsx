@@ -7,6 +7,7 @@ export interface PlanApprovalCardProps {
   planData: unknown
   onApprove: (requestId: string, approved: boolean, feedback?: string) => void
   resolved?: { approved: boolean }
+  isPending?: boolean
 }
 
 function extractPlanContent(planData: unknown): string {
@@ -27,6 +28,7 @@ export function PlanApprovalCard({
   planData,
   onApprove,
   resolved,
+  isPending,
 }: PlanApprovalCardProps) {
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -62,7 +64,8 @@ export function PlanApprovalCard({
           <button
             type="button"
             onClick={handleRequestChanges}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            disabled={isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
           >
             <MessageSquarePlus className="w-3 h-3" />
             {showFeedback ? 'Submit Changes' : 'Request Changes'}
@@ -70,9 +73,10 @@ export function PlanApprovalCard({
           <button
             type="button"
             onClick={handleApprove}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+            disabled={isPending}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
           >
-            Approve Plan
+            {isPending ? 'Approving\u2026' : 'Approve Plan'}
           </button>
         </>
       }
