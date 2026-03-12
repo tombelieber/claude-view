@@ -363,14 +363,15 @@ function SharedLinksSection() {
             <td className="py-2">
               <button
                 type="button"
+                disabled={revokeShare.isPending}
                 onClick={() => {
                   if (confirm('Revoke this share? The link will stop working.')) {
                     revokeShare.mutate(share.session_id)
                   }
                 }}
-                className="text-red-600 dark:text-red-500 hover:text-red-500 dark:hover:text-red-400 text-xs"
+                className="text-red-600 dark:text-red-500 hover:text-red-500 dark:hover:text-red-400 text-xs disabled:opacity-50 disabled:cursor-wait"
               >
-                Revoke
+                {revokeShare.isPending ? 'Revoking\u2026' : 'Revoke'}
               </button>
             </td>
           </tr>

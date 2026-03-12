@@ -177,6 +177,7 @@ async fn main() -> Result<()> {
 
         // 1. Remove hooks from ~/.claude/settings.json (also removes .tmp)
         actions.extend(claude_view_server::live::hook_registrar::cleanup(0));
+        claude_view_server::live::statusline_injector::cleanup();
 
         // 2. Remove cache directory (DB + Tantivy index)
         actions.extend(claude_view_core::paths::remove_cache_data());
@@ -866,6 +867,7 @@ async fn main() -> Result<()> {
 
             // Clean up hooks from ~/.claude/settings.json
             claude_view_server::live::hook_registrar::cleanup(shutdown_port);
+            claude_view_server::live::statusline_injector::cleanup();
 
             // Shut down Node.js sidecar if running
             sidecar_for_shutdown.shutdown();
