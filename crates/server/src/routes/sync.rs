@@ -347,8 +347,9 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                     move |_session_id| {
                         indexing_cb.increment_indexed();
                     },
-                    move |total| {
-                        indexing_total.set_total(total);
+                    move |file_count| {
+                        indexing_total.set_total(file_count);
+                        indexing_total.set_sessions_found(file_count);
                     },
                     move || {
                         indexing_finalize
