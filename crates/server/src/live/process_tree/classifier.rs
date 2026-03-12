@@ -620,4 +620,148 @@ mod tests {
         let cpu_values: Vec<f32> = snap.ecosystem.iter().map(|p| p.cpu_percent).collect();
         assert_eq!(cpu_values.len(), 3);
     }
+
+    #[test]
+    fn test_is_self_flag_set_for_real_own_pid() {
+        let real_own_pid = std::process::id();
+        let processes = vec![make_raw(
+            real_own_pid,
+            1,
+            "claude-view",
+            "/Users/test/.cargo/bin/claude-view serve",
+            0.5,
+            50_000_000,
+            chrono::Utc::now().timestamp() - 100,
+        )];
+        let snap = classify_process_list(&processes, real_own_pid);
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert!(
+            snap.ecosystem[0].is_self,
+            "is_self must be true for PID {} (the real server PID)",
+            real_own_pid
+        );
+    }
+
+    #[test]
+    fn test_classifier_does_not_include_non_claude_processes() {
+        let processes = vec![
+            make_raw(
+                100,
+                1,
+                "claude",
+                "/usr/local/bin/claude",
+                5.0,
+                200_000_000,
+                1_700_000_000,
+            ),
+            make_raw(200, 1, "bash", "/bin/bash", 0.1, 5_000_000, 1_700_000_000),
+            make_raw(201, 1, "zsh", "/bin/zsh", 0.1, 5_000_000, 1_700_000_000),
+            make_raw(
+                202,
+                1,
+                "Finder",
+                "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
+                1.0,
+                50_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                203,
+                1,
+                "loginwindow",
+                "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
+                0.0,
+                20_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                204,
+                1,
+                "node",
+                "/usr/local/bin/node server.js",
+                10.0,
+                300_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                205,
+                1,
+                "cargo",
+                "/usr/local/bin/cargo build",
+                25.0,
+                500_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                206,
+                1,
+                "WindowServer",
+                "/System/Library/PrivateFrameworks/SkyLight.framework/..",
+                3.0,
+                100_000_000,
+                1_700_000_000,
+            ),
+        ];
+        let snap = classify_process_list(&processes, 9999);
+
+        assert_eq!(
+            snap.ecosystem.len(),
+            1,
+            "only 'claude' should be in ecosystem, got: {:?}",
+            snap.ecosystem.iter().map(|p| &p.name).collect::<Vec<_>>()
+        );
+        assert_eq!(snap.ecosystem[0].pid, 100);
+
+        assert!(
+            snap.children.is_empty(),
+            "system processes with PPID=1 must not appear as children, got: {:?}",
+            snap.children.iter().map(|p| &p.name).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_classifier_child_requires_ecosystem_parent() {
+        let processes = vec![
+            make_raw(
+                100,
+                1,
+                "claude",
+                "/usr/local/bin/claude",
+                5.0,
+                200_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                101,
+                100,
+                "node",
+                "/usr/local/bin/node dev-server.js",
+                10.0,
+                100_000_000,
+                1_700_000_001,
+            ),
+            make_raw(
+                202,
+                1,
+                "node",
+                "/usr/local/bin/node unrelated-server.js",
+                10.0,
+                100_000_000,
+                1_700_000_001,
+            ),
+        ];
+        let snap = classify_process_list(&processes, 9999);
+
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert_eq!(
+            snap.children.len(),
+            1,
+            "only PID 101 (PPID=100) should be a child, got: {:?}",
+            snap.children
+                .iter()
+                .map(|p| (p.pid, p.ppid))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(snap.children[0].pid, 101);
+    }
 }
