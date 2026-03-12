@@ -575,6 +575,14 @@ async fn list_available_sessions(State(state): State<Arc<AppState>>) -> Result<R
     proxy_to_sidecar(&state, "GET", "/control/available-sessions", None).await
 }
 
+/// POST /api/control/sessions/fork — fork an existing session
+async fn fork_session(
+    State(state): State<Arc<AppState>>,
+    body: String,
+) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "POST", "/control/sessions/fork", Some(body)).await
+}
+
 /// DELETE /api/control/sessions/:id — terminate a control session
 async fn terminate_session(
     State(state): State<Arc<AppState>>,
@@ -612,6 +620,7 @@ pub fn router() -> Router<Arc<AppState>> {
             axum::routing::get(list_sessions).post(create_session),
         )
         .route("/control/sessions/resume", post(resume_session))
+        .route("/control/sessions/fork", post(fork_session))
         .route(
             "/control/sessions/{id}",
             axum::routing::delete(terminate_session),
@@ -766,6 +775,48 @@ mod tests {
         assert_eq!(json["has_pricing"], false);
         assert!(json["first_message_cost"].is_null());
         assert!(json["per_message_cost"].is_null());
+    }
+
+    /// Fork route must proxy to sidecar, not return 404/405 (route registration check).
+    ///
+    /// With no sidecar running in tests, we expect 500 (sidecar unavailable) —
+    /// NOT 404 (route missing) or 405 (method not allowed).
+    #[tokio::test]
+    async fn test_fork_session_route_registered() {
+        let db = Database::new_in_memory().await.unwrap();
+        let app = crate::create_app(db);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/control/sessions/fork")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"sessionId":"ff353c9b-9fbe-46dd-acda-9ed6ce8df670"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let status = response.status();
+        assert_ne!(
+            status,
+            StatusCode::NOT_FOUND,
+            "Fork route must be registered (got 404 — route missing)"
+        );
+        assert_ne!(
+            status,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "Fork route must accept POST"
+        );
+        // 500 = reached proxy_to_sidecar but sidecar not running (correct behavior in tests)
+        assert_eq!(
+            status,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Expected 500 (sidecar unavailable in test), got {status}"
+        );
     }
 
     /// Regression test: ws_connect MUST NOT return 404 or 409 for a history session.

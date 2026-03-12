@@ -1,6 +1,11 @@
 // sidecar/src/routes.ts
 import { Hono } from 'hono'
-import type { CreateSessionRequest, PromptRequest, ResumeSessionRequest } from './protocol.js'
+import type {
+  CreateSessionRequest,
+  ForkSessionRequest,
+  PromptRequest,
+  ResumeSessionRequest,
+} from './protocol.js'
 import {
   closeSession,
   createControlSession,
@@ -57,6 +62,17 @@ export function createRoutes(registry: SessionRegistry) {
     } catch (err) {
       return c.json({ error: `Resume failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
+  })
+
+  // Fork existing session — deferred: V2 SDK does not yet expose resume+forkSession in SDKSessionOptions.
+  // Endpoint registered so the Rust proxy route doesn't 502; returns 501 with a clear message.
+  // biome-ignore lint/suspicious/useAwait: async required by Hono handler signature
+  app.post('/sessions/fork', async (c) => {
+    const _body = await c.req.json<ForkSessionRequest>()
+    return c.json(
+      { error: 'Fork is not yet supported by the V2 SDK. Planned for a future release.' },
+      501,
+    )
   })
 
   // Send message — fire-and-forget by design.
