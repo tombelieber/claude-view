@@ -53,6 +53,9 @@ pub struct IndexingState {
     sessions_found: AtomicUsize,
     bytes_processed: AtomicU64,
     bytes_total: AtomicU64,
+    /// Stall detection timeout in seconds (default 300 = 5 minutes).
+    /// Tests override to 1 second for fast execution.
+    stall_timeout_secs: AtomicU64,
     error: RwLock<Option<String>>,
 }
 
@@ -68,6 +71,7 @@ impl IndexingState {
             sessions_found: AtomicUsize::new(0),
             bytes_processed: AtomicU64::new(0),
             bytes_total: AtomicU64::new(0),
+            stall_timeout_secs: AtomicU64::new(300),
             error: RwLock::new(None),
         }
     }
@@ -153,6 +157,20 @@ impl IndexingState {
     /// Set the total bytes of all JSONL files to parse.
     pub fn set_bytes_total(&self, bytes: u64) {
         self.bytes_total.store(bytes, Ordering::Relaxed);
+    }
+
+    // -- Stall detection ------------------------------------------------------
+
+    /// Get the stall detection timeout duration.
+    /// Default: 5 minutes. Tests override to 1 second.
+    pub fn stall_timeout(&self) -> std::time::Duration {
+        std::time::Duration::from_secs(self.stall_timeout_secs.load(Ordering::Relaxed))
+    }
+
+    /// Override the stall detection timeout (for tests).
+    pub fn set_stall_timeout(&self, duration: std::time::Duration) {
+        self.stall_timeout_secs
+            .store(duration.as_secs(), Ordering::Relaxed);
     }
 
     // -- Error ----------------------------------------------------------------
