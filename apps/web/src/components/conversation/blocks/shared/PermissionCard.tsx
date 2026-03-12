@@ -30,9 +30,15 @@ export interface PermissionCardProps {
   permission: PermissionRequest
   onRespond?: (requestId: string, allowed: boolean) => void
   resolved?: { allowed: boolean }
+  isPending?: boolean
 }
 
-export function PermissionCard({ permission, onRespond, resolved }: PermissionCardProps) {
+export function PermissionCard({
+  permission,
+  onRespond,
+  resolved,
+  isPending,
+}: PermissionCardProps) {
   const totalSeconds = Math.ceil(permission.timeoutMs / 1000)
   const [countdown, setCountdown] = useState(totalSeconds)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -93,14 +99,16 @@ export function PermissionCard({ permission, onRespond, resolved }: PermissionCa
             <button
               type="button"
               onClick={handleDeny}
-              className="px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+              disabled={isPending}
+              className="px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-wait"
             >
               Deny
             </button>
             <button
               type="button"
               onClick={handleAllow}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
+              disabled={isPending}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
             >
               Allow
             </button>

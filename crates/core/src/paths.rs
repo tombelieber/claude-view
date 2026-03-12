@@ -41,6 +41,36 @@ pub fn prompt_index_dir() -> PathBuf {
     data_dir().join("prompt-index")
 }
 
+/// Config/state directory for persistent data that must survive cache clears
+/// (device keys, workflows, archives). When `CLAUDE_VIEW_DATA_DIR` is set,
+/// this returns the same root as `data_dir()` — one env var controls everything.
+/// Without override, falls back to `~/.claude-view/`.
+pub fn config_dir() -> PathBuf {
+    if std::env::var("CLAUDE_VIEW_DATA_DIR").is_ok() {
+        data_dir()
+    } else {
+        dirs::home_dir()
+            .expect("no home directory found")
+            .join(".claude-view")
+    }
+}
+
+pub fn crypto_dir() -> PathBuf {
+    config_dir()
+}
+
+pub fn archive_dir() -> PathBuf {
+    config_dir().join("archives")
+}
+
+pub fn workflows_official_dir() -> PathBuf {
+    config_dir().join("workflows").join("official")
+}
+
+pub fn workflows_user_dir() -> PathBuf {
+    config_dir().join("workflows").join("user")
+}
+
 /// Remove all claude-view cache data (DB, WAL, search index, prompt index).
 pub fn remove_cache_data() -> Vec<String> {
     let dir = data_dir();
@@ -152,6 +182,47 @@ mod tests {
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         let path = lock_dir().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/locks"));
+        env::remove_var("CLAUDE_VIEW_DATA_DIR");
+    }
+
+    #[test]
+    fn test_config_dir_follows_data_dir_override() {
+        env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv-sandbox");
+        let dir = config_dir();
+        assert_eq!(dir, PathBuf::from("/tmp/test-cv-sandbox"));
+        env::remove_var("CLAUDE_VIEW_DATA_DIR");
+    }
+
+    #[test]
+    fn test_config_dir_falls_back_to_home_dot_claude_view() {
+        env::remove_var("CLAUDE_VIEW_DATA_DIR");
+        let dir = config_dir();
+        assert!(
+            dir.ends_with(".claude-view"),
+            "config_dir should fall back to ~/.claude-view, got: {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn test_archive_dir_derives_from_config_dir() {
+        env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
+        let path = archive_dir();
+        assert_eq!(path, PathBuf::from("/tmp/test-cv/archives"));
+        env::remove_var("CLAUDE_VIEW_DATA_DIR");
+    }
+
+    #[test]
+    fn test_workflows_dirs_derive_from_config_dir() {
+        env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
+        assert_eq!(
+            workflows_official_dir(),
+            PathBuf::from("/tmp/test-cv/workflows/official")
+        );
+        assert_eq!(
+            workflows_user_dir(),
+            PathBuf::from("/tmp/test-cv/workflows/user")
+        );
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
     }
 }
