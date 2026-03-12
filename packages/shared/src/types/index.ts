@@ -1,4 +1,6 @@
 export * from './relay'
+export * from './sidecar-protocol'
+export * from './blocks'
 export type {
   AgentState,
   AgentStateGroup,

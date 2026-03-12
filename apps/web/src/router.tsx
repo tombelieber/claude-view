@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { Navigate, createBrowserRouter, useParams } from 'react-router-dom'
 import App from './App'
 import { ConversationView } from './components/ConversationView'
@@ -9,6 +10,9 @@ import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
+
+// Lazy-loaded: ChatPage pulls in react-markdown + block renderers (heavy deps)
+const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })))
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
@@ -58,6 +62,22 @@ export const router = createBrowserRouter([
     element: <App />,
     children: [
       { index: true, element: <LiveMonitorPage /> },
+      {
+        path: 'chat',
+        element: (
+          <Suspense fallback={null}>
+            <ChatPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'chat/:sessionId',
+        element: (
+          <Suspense fallback={null}>
+            <ChatPage />
+          </Suspense>
+        ),
+      },
       { path: 'sessions', element: <HistoryView /> },
       { path: 'sessions/:sessionId', element: <ConversationView /> },
       { path: 'analytics', element: <AnalyticsPage /> },
