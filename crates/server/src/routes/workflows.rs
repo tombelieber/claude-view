@@ -117,19 +117,12 @@ pub struct CreateWorkflowRequest {
 // File storage
 // ---------------------------------------------------------------------------
 
-fn home() -> PathBuf {
-    dirs::home_dir().expect("home directory must be available")
-}
-
 fn official_dir() -> PathBuf {
-    home()
-        .join(".claude-view")
-        .join("workflows")
-        .join("official")
+    claude_view_core::paths::workflows_official_dir()
 }
 
 fn user_dir() -> PathBuf {
-    home().join(".claude-view").join("workflows").join("user")
+    claude_view_core::paths::workflows_user_dir()
 }
 
 /// Validate a workflow ID: non-empty, max 64 chars, starts with ASCII alpha,

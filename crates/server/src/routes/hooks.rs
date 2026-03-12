@@ -222,6 +222,9 @@ async fn handle_hook(
                         user_files: None,
                         closed_at: None,
                         control: None,
+                        statusline_context_window_size: None,
+                        statusline_used_pct: None,
+                        statusline_cost_usd: None,
                         hook_events: Vec::new(),
                     };
                     append_capped_hook_events(
@@ -372,6 +375,9 @@ async fn handle_hook(
                     user_files: None,
                     closed_at: None,
                     control: None,
+                    statusline_context_window_size: None,
+                    statusline_used_pct: None,
+                    statusline_cost_usd: None,
                     hook_events: Vec::new(),
                 };
                 append_capped_hook_events(
@@ -1190,6 +1196,9 @@ mod tests {
             user_files: None,
             closed_at: None,
             control: None,
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
             hook_events: Vec::new(),
         }
     }

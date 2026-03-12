@@ -192,12 +192,12 @@ pub fn create_app_full(
     );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
-    live::hook_registrar::register(
-        std::env::var("CLAUDE_VIEW_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(47892),
-    );
+    let server_port = std::env::var("CLAUDE_VIEW_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(47892u16);
+    live::hook_registrar::register(server_port);
+    live::statusline_injector::register(server_port);
 
     // Detect installed IDEs (runs `which` for each known command).
     let available_ides = routes::ide::detect_installed_ides();
