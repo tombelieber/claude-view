@@ -235,6 +235,7 @@ export type { PluginActionRequest } from './PluginActionRequest'
 export type { PluginActionResponse } from './PluginActionResponse'
 export type { MarketplaceInfo } from './MarketplaceInfo'
 export type { MarketplaceActionRequest } from './MarketplaceActionRequest'
+export type { UserItemInfo } from './UserItemInfo'
 
 // IDE types (Open in IDE)
 export type { IdeInfo } from './IdeInfo'
