@@ -441,8 +441,11 @@ async fn main() -> Result<()> {
             move |_session_id| {
                 state_for_progress.increment_indexed();
             },
-            move |total| {
-                state_for_total.set_total(total);
+            move |file_count| {
+                state_for_total.set_total(file_count);
+                // Filesystem .jsonl count is source of truth for session count.
+                // sessions-index.json hints only cover ~24% of project dirs.
+                state_for_total.set_sessions_found(file_count);
             },
             move || {
                 state_for_finalize.set_status(IndexingStatus::Finalizing);
@@ -658,10 +661,27 @@ async fn main() -> Result<()> {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        // Print the "Ready" line with Pass 1 results
+        // Wait briefly for session data when hints report 0 sessions.
+        // on_total_known fires during scan_and_index_all with the filesystem count —
+        // typically within a few hundred ms of entering DeepIndexing.
+        if tui_state.sessions_found() == 0 {
+            for _ in 0..20 {
+                let status = tui_state.status();
+                if status == IndexingStatus::Done
+                    || status == IndexingStatus::Error
+                    || tui_state.sessions_found() > 0
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
+
+        // Print the "Ready" line with Pass 1 results.
+        // Use max(sessions_found, total) — same defense-in-depth as the SSE ready event.
         let elapsed = startup_start.elapsed();
         let projects = tui_state.projects_found();
-        let sessions = tui_state.sessions_found();
+        let sessions = std::cmp::max(tui_state.sessions_found(), tui_state.total());
         eprintln!(
             "  \u{2713} Ready in {} \u{2014} {} projects, {} sessions",
             claude_view_core::format_duration(elapsed),
