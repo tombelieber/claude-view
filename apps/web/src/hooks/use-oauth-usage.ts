@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 
 export interface UsageTier {
   id: string
@@ -28,23 +29,21 @@ function parseMaxAgeSecs(response: Response): number {
   return 300
 }
 
-/**
- * Last server-provided max-age in seconds, used as the baseline for
- * staleTime and refetchInterval. Updated on every successful fetch.
- */
-let serverMaxAgeSecs = 300
+interface OAuthUsageResult {
+  data: OAuthUsage
+  maxAgeSecs: number
+}
 
-async function fetchOAuthUsage(): Promise<OAuthUsage> {
+async function fetchOAuthUsage(): Promise<OAuthUsageResult> {
   const response = await fetch('/api/oauth/usage')
   if (!response.ok) {
     const errorText = await response.text()
     throw new Error(`Failed to fetch OAuth usage: ${errorText}`)
   }
-  serverMaxAgeSecs = parseMaxAgeSecs(response)
-  return response.json()
+  return { data: await response.json(), maxAgeSecs: parseMaxAgeSecs(response) }
 }
 
-async function forceRefreshOAuthUsage(): Promise<OAuthUsage> {
+async function forceRefreshOAuthUsage(): Promise<OAuthUsageResult> {
   const response = await fetch('/api/oauth/usage/refresh', { method: 'POST' })
   if (response.status === 429) {
     const retryAfter = response.headers.get('Retry-After')
@@ -55,35 +54,41 @@ async function forceRefreshOAuthUsage(): Promise<OAuthUsage> {
     const errorText = await response.text()
     throw new Error(`Failed to refresh OAuth usage: ${errorText}`)
   }
-  serverMaxAgeSecs = parseMaxAgeSecs(response)
-  return response.json()
+  return { data: await response.json(), maxAgeSecs: parseMaxAgeSecs(response) }
 }
 
 /**
  * Hook to fetch OAuth usage data.
  *
- * Timing is server-driven: the backend sets `Cache-Control: max-age=<ttl>`,
- * and the module-level `serverMaxAgeSecs` tracks it. TanStack Query re-reads
- * staleTime/refetchInterval on every render, so it picks up changes naturally.
+ * Timing is server-driven: the backend sets `Cache-Control: max-age=<remaining_ttl>`.
+ * We store the server's max-age in React state so the interval actually updates after
+ * each fetch — a plain module-level `let` wouldn't trigger a re-render, causing the
+ * refetchInterval to stay frozen at whatever value was captured on first render.
  *
  * `forceRefresh` mutation bypasses the server cache (user-initiated refresh button).
  */
 export function useOAuthUsage() {
   const queryClient = useQueryClient()
-  const intervalMs = serverMaxAgeSecs * 1000
+  const [intervalMs, setIntervalMs] = useState(300_000)
 
   const query = useQuery({
     queryKey: ['oauth-usage'],
-    queryFn: fetchOAuthUsage,
+    queryFn: async () => {
+      const result = await fetchOAuthUsage()
+      setIntervalMs(result.maxAgeSecs * 1000)
+      return result
+    },
     staleTime: intervalMs,
     refetchInterval: intervalMs,
     refetchOnWindowFocus: false,
+    select: (result) => result.data,
   })
 
   const forceRefresh = useMutation({
     mutationFn: forceRefreshOAuthUsage,
-    onSuccess: (data) => {
-      queryClient.setQueryData(['oauth-usage'], data)
+    onSuccess: (result) => {
+      setIntervalMs(result.maxAgeSecs * 1000)
+      queryClient.setQueryData(['oauth-usage'], result)
     },
   })
 
