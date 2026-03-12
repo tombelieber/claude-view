@@ -1,13 +1,13 @@
-// sidecar/src/protocol.ts
-// Complete protocol: sidecar ↔ frontend over WebSocket
-// Every SDK message type maps to one or more of these events.
+// packages/shared/src/types/sidecar-protocol.ts
+// Mirror of sidecar/src/protocol.ts — canonical event types for the WS protocol.
+// When adding new events, update BOTH this file and sidecar/src/protocol.ts.
 
 // ─── Server → Client Events ───────────────────────────────────────
 
 export interface AssistantText {
   type: 'assistant_text'
   text: string
-  messageId: string // SDK msg.uuid
+  messageId: string
   parentToolUseId: string | null
 }
 
@@ -33,7 +33,7 @@ export interface AssistantError {
 
 export interface StreamDelta {
   type: 'stream_delta'
-  event: unknown // BetaRawMessageStreamEvent — forward compat
+  event: unknown
   messageId: string
 }
 
@@ -86,7 +86,7 @@ export interface TurnComplete {
   numTurns: number
   durationMs: number
   durationApiMs: number
-  usage: Record<string, number> // NonNullableUsage flattened
+  usage: Record<string, number>
   modelUsage: Record<string, ModelUsageInfo>
   permissionDenials: { toolName: string; toolUseId: string; toolInput: Record<string, unknown> }[]
   result: string
@@ -232,7 +232,7 @@ export interface SessionClosed {
   reason: string
 }
 
-// ─── Interactive Cards (from canUseTool) ──────────────────────────
+// ─── Interactive Cards ────────────────────────────────────────────
 
 export interface PermissionRequest {
   type: 'permission_request'
@@ -240,7 +240,7 @@ export interface PermissionRequest {
   toolName: string
   toolInput: Record<string, unknown>
   toolUseID: string
-  suggestions?: unknown[] // PermissionUpdate[] from SDK
+  suggestions?: unknown[]
   decisionReason?: string
   blockedPath?: string
   agentID?: string
@@ -269,7 +269,7 @@ export interface Elicitation {
   requestId: string
   toolName: string
   toolInput: Record<string, unknown>
-  prompt: string // extracted from toolInput.prompt — frontend renders this
+  prompt: string
 }
 
 // ─── Infrastructure ───────────────────────────────────────────────
@@ -292,43 +292,34 @@ export interface HeartbeatConfig {
 // ─── Union Types ──────────────────────────────────────────────────
 
 export type ServerEvent =
-  // Assistant output
   | AssistantText
   | AssistantThinking
   | AssistantError
   | StreamDelta
-  // Tool execution
   | ToolUseStart
   | ToolUseResult
   | ToolProgress
   | ToolSummary
-  // Turn lifecycle
   | TurnComplete
   | TurnError
-  // Session
   | SessionInit
   | SessionStatus
   | SessionClosed
-  // Context
   | ContextCompacted
   | ElicitationComplete
   | RateLimit
-  // Tasks (agent teams)
   | TaskStarted
   | TaskProgressEvent
   | TaskNotification
-  // System
   | HookEvent
   | AuthStatus
   | FilesSaved
   | CommandOutput
   | PromptSuggestion
-  // Interactive cards
   | PermissionRequest
   | AskQuestion
   | PlanApproval
   | Elicitation
-  // Infrastructure
   | ErrorEvent
   | PongEvent
   | UnknownSdkEvent
@@ -346,7 +337,7 @@ export interface PermissionResponse {
   type: 'permission_response'
   requestId: string
   allowed: boolean
-  updatedPermissions?: unknown[] // echo back suggestions for "always allow"
+  updatedPermissions?: unknown[]
 }
 
 export interface QuestionResponse {
@@ -425,7 +416,7 @@ export interface PromptRequest {
 export interface SessionResponse {
   controlId: string
   sessionId: string
-  status: 'created' | 'resumed' | 'already_active'
+  status: 'created' | 'resumed' | 'already_active' | 'forked'
 }
 
 export interface AvailableSession {
