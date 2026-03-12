@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./components/*": "./src/components/*.tsx",
     "./contexts/*": "./src/contexts/*.tsx",
+    "./lib": "./src/lib/index.ts",
     "./lib/*": "./src/lib/*.tsx",
     "./utils/*": "./src/utils/*.ts",
     "./types/message": "./src/types/message/index.ts",
@@ -31,9 +32,13 @@
   "peerDependencies": {
     "react": ">=18"
   },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  },
   "scripts": {
     "build": "echo 'No build step — consumed as TypeScript source'",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "biome check .",
+    "test": "vitest run"
   }
 }
