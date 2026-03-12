@@ -2,6 +2,8 @@ import type { ActiveSession, AvailableSession } from '@claude-view/shared'
 import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { TOAST_DURATION } from '../../../lib/notify'
 import { SessionListItem } from './SessionListItem'
 
 function groupByTime(sessions: AvailableSession[], now: number) {
@@ -114,9 +116,14 @@ export function SessionSidebar() {
           body: JSON.stringify({ sessionId }),
         })
         const data = await res.json()
-        if (data.sessionId) navigate(`/chat/${data.sessionId}`)
+        if (data.sessionId) {
+          toast.success('Session forked', { duration: TOAST_DURATION.micro })
+          navigate(`/chat/${data.sessionId}`)
+        } else {
+          toast.error('Fork failed', { duration: TOAST_DURATION.extended })
+        }
       } catch {
-        // Fork failed — silently fail for now
+        toast.error('Failed to fork session', { duration: TOAST_DURATION.extended })
       }
     },
     [navigate],

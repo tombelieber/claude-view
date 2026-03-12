@@ -70,6 +70,9 @@ export interface LiveSession {
   teamInboxCount?: number // Tier 1: version signal for inbox
   editCount: number // Tier 2: version signal for file/plan queries
   control?: ControlBinding | null
+  statuslineContextWindowSize?: number | null
+  statuslineUsedPct?: number | null
+  statuslineCostUsd?: number | null
 }
 
 export interface LiveSummary {
