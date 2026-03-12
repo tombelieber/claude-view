@@ -6,6 +6,21 @@
 /* Dark mode: class-based (not media query) */
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --color-apple-bg: #F5F5F7;
+  --color-apple-surface: #FFFFFF;
+  --color-apple-text1: #1D1D1F;
+  --color-apple-text2: #6E6E73;
+  --color-apple-text3: #AEAEB2;
+  --color-apple-sep: #D1D1D6;
+  --color-apple-sep2: #E5E5EA;
+  --color-apple-blue: #007AFF;
+  --color-apple-orange: #FF9500;
+  --color-apple-red: #FF3B30;
+  --color-apple-indigo: #5856D6;
+  --color-apple-green: #34C759;
+}
+
 /* Design System Fonts */
 :root {
   --font-mono: "Fira Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
