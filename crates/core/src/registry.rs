@@ -307,6 +307,24 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
         entries.push(s);
     }
 
+    let user_commands = scan_user_commands(claude_dir);
+    for c in user_commands {
+        if !global_seen_ids.insert(c.id.clone()) {
+            debug!("Skipping duplicate user command: {}", c.id);
+            continue;
+        }
+        entries.push(c);
+    }
+
+    let user_agents = scan_user_agents(claude_dir);
+    for a in user_agents {
+        if !global_seen_ids.insert(a.id.clone()) {
+            debug!("Skipping duplicate user agent: {}", a.id);
+            continue;
+        }
+        entries.push(a);
+    }
+
     // 3. Register built-in tools
     for &tool_name in BUILTIN_TOOLS {
         entries.push(InvocableInfo {
@@ -544,6 +562,64 @@ fn scan_user_skills(claude_dir: &Path) -> Vec<InvocableInfo> {
         }
     }
 
+    results
+}
+
+/// Scan user-level custom commands at `{claude_dir}/commands/*.md`.
+fn scan_user_commands(claude_dir: &Path) -> Vec<InvocableInfo> {
+    let dir = claude_dir.join("commands");
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut results = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let name = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let description = read_first_line_description(&path);
+        results.push(InvocableInfo {
+            id: format!("user:command:{name}"),
+            plugin_name: None,
+            name,
+            kind: InvocableKind::Command,
+            description,
+        });
+    }
+    results
+}
+
+/// Scan user-level custom agents at `{claude_dir}/agents/*.md`.
+fn scan_user_agents(claude_dir: &Path) -> Vec<InvocableInfo> {
+    let dir = claude_dir.join("agents");
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    let mut results = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let name = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let description = read_first_line_description(&path);
+        results.push(InvocableInfo {
+            id: format!("user:agent:{name}"),
+            plugin_name: None,
+            name,
+            kind: InvocableKind::Agent,
+            description,
+        });
+    }
     results
 }
 
@@ -1272,5 +1348,53 @@ mod tests {
         let after = build_registry(claude_dir).await;
 
         assert_ne!(before.fingerprint(), after.fingerprint());
+    }
+
+    // -----------------------------------------------------------------------
+    // User-level custom commands
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_scan_user_commands_reads_md_files() {
+        let tmp = TempDir::new().unwrap();
+        let cmds = tmp.path().join("commands");
+        std::fs::create_dir_all(&cmds).unwrap();
+        std::fs::write(cmds.join("wtf.md"), "# wtf\nsome content").unwrap();
+        std::fs::write(cmds.join("notes.md"), "# notes").unwrap();
+
+        let result = scan_user_commands(tmp.path());
+        assert_eq!(result.len(), 2);
+        let names: Vec<_> = result.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"wtf"));
+        assert!(names.contains(&"notes"));
+        // Must have no plugin_name
+        assert!(result.iter().all(|i| i.plugin_name.is_none()));
+    }
+
+    #[test]
+    fn test_scan_user_agents_reads_md_files() {
+        let tmp = TempDir::new().unwrap();
+        let agents = tmp.path().join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(agents.join("full-codebase-docs-sync-scanner.md"), "# agent").unwrap();
+
+        let result = scan_user_agents(tmp.path());
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "full-codebase-docs-sync-scanner");
+        assert!(result[0].plugin_name.is_none());
+    }
+
+    #[test]
+    fn test_scan_user_commands_empty_when_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let result = scan_user_commands(tmp.path());
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_scan_user_agents_empty_when_dir_missing() {
+        let tmp = TempDir::new().unwrap();
+        let result = scan_user_agents(tmp.path());
+        assert!(result.is_empty());
     }
 }
