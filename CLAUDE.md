@@ -353,6 +353,7 @@ filters.projects.some(p => p === s.projectPath || p === (s.projectDisplayName ||
 - **WebSocket stale guard:** Every WS handler must check `wsRef.current !== ws` before acting
 - **No shadcn/ui CSS vars:** `text-muted-foreground`, `bg-muted`, etc. are undefined here. Use explicit Tailwind + `dark:` variants
 - **Radix UI:** Use `@radix-ui/react-*` for overlays. Never hand-roll hover/positioning
+- **Async button loading states (MANDATORY):** Every button that triggers an async operation (API call, mutation, `await`) MUST have: (1) `disabled={isPending}` to prevent double-clicks, (2) `disabled:opacity-50 disabled:cursor-wait` styling, (3) error feedback via `toast.error()` — never `console.warn` only. For mutation buttons, use TanStack Query's `mutation.isPending`. For callback-prop buttons, accept an `isPending?: boolean` prop. Reference pattern: `ShareModal.tsx`, `ApplyRuleButton.tsx`, `ClassifyButton.tsx`. A 2026-03-13 audit found 6 components with zero loading feedback.
 
 ### Statistical Analysis
 
