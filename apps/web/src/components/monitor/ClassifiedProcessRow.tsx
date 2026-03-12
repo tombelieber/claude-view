@@ -1,3 +1,4 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { MoreHorizontal, Skull } from 'lucide-react'
 import { useState } from 'react'
 import { formatBytes, formatUptime } from '../../lib/format-utils'
@@ -9,29 +10,42 @@ interface ClassifiedProcessRowProps {
   process: ClassifiedProcess
   onKill: (pid: number, startTime: number, force: boolean) => void
   depth?: number
+  isPending?: boolean
 }
 
 function tagBadge(tag: EcosystemTag | null | undefined): string {
   switch (tag) {
-    case 'cli': return 'CLI'
-    case 'ide': return 'IDE'
-    case 'desktop': return 'App'
-    case 'self': return 'Us'
-    default: return ''
+    case 'cli':
+      return 'CLI'
+    case 'ide':
+      return 'IDE'
+    case 'desktop':
+      return 'App'
+    case 'self':
+      return 'Us'
+    default:
+      return ''
   }
 }
 
 function stalenessDot(staleness: Staleness): { color: string; title: string } {
   switch (staleness) {
-    case 'Active': return { color: 'bg-green-500', title: 'Active' }
-    case 'Idle': return { color: 'bg-gray-400', title: 'Idle' }
-    case 'LikelyStale': return { color: 'bg-amber-500', title: 'Likely stale' }
+    case 'Active':
+      return { color: 'bg-green-500', title: 'Active' }
+    case 'Idle':
+      return { color: 'bg-gray-400', title: 'Idle' }
+    case 'LikelyStale':
+      return { color: 'bg-amber-500', title: 'Likely stale' }
   }
 }
 
-export function ClassifiedProcessRow({ process: proc, onKill, depth = 0 }: ClassifiedProcessRowProps) {
+export function ClassifiedProcessRow({
+  process: proc,
+  onKill,
+  depth = 0,
+  isPending,
+}: ClassifiedProcessRowProps) {
   const [confirmKill, setConfirmKill] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const dot = stalenessDot(proc.staleness)
 
   return (
@@ -71,8 +85,12 @@ export function ClassifiedProcessRow({ process: proc, onKill, depth = 0 }: Class
           <span className="text-xs text-red-600 dark:text-red-400">Kill {proc.pid}?</span>
           <button
             type="button"
-            onClick={() => { onKill(proc.pid, proc.startTime, false); setConfirmKill(false) }}
-            className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/40"
+            disabled={isPending}
+            onClick={() => {
+              onKill(proc.pid, proc.startTime, false)
+              setConfirmKill(false)
+            }}
+            className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/40 disabled:opacity-50 disabled:cursor-wait"
           >
             Yes
           </button>
@@ -86,30 +104,33 @@ export function ClassifiedProcessRow({ process: proc, onKill, depth = 0 }: Class
         </div>
       ) : (
         <div className="relative shrink-0">
-          <button
-            type="button"
-            disabled={proc.isSelf}
-            title={proc.isSelf ? 'Cannot kill this server process' : 'Process actions'}
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <MoreHorizontal className="w-3.5 h-3.5" />
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 z-20 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-1 min-w-[120px]">
-                <button
-                  type="button"
-                  onClick={() => { setMenuOpen(false); setConfirmKill(true) }}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                disabled={proc.isSelf}
+                title={proc.isSelf ? 'Cannot kill this server process' : 'Process actions'}
+                className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                className="z-50 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 py-1 min-w-[120px]"
+                sideOffset={4}
+              >
+                <DropdownMenu.Item
+                  onSelect={() => setConfirmKill(true)}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer outline-none"
                 >
                   <Skull className="w-3 h-3" />
                   Terminate
-                </button>
-              </div>
-            </>
-          )}
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
         </div>
       )}
     </div>
