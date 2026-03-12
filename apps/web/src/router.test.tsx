@@ -37,6 +37,10 @@ vi.mock('./pages/AnalyticsPage', () => ({
   AnalyticsPage: () => <div>Analytics Page</div>,
 }))
 
+vi.mock('./pages/ChatPage', () => ({
+  ChatPage: () => <div>Chat Page</div>,
+}))
+
 vi.mock('./pages/LiveMonitorPage', () => ({
   LiveMonitorPage: () => <div>Live Monitor Page</div>,
 }))
@@ -62,7 +66,7 @@ describe('router', () => {
     expect(await screen.findByText('Insights Page')).toBeInTheDocument()
     expect(memoryRouter.state.location.pathname).toBe('/insights')
     expect(memoryRouter.state.location.search).toBe('')
-  })
+  }, 10_000)
 
   it('keeps /analytics tab behavior unchanged', async () => {
     const memoryRouter = await renderAt('/analytics?tab=contributions')

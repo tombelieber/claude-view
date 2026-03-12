@@ -1,3 +1,5 @@
+import type { InteractionBlock } from '@claude-view/shared/types/blocks'
+import type { PermissionRequest } from '@claude-view/shared/types/sidecar-protocol'
 import {
   Check,
   CheckSquare,
@@ -8,6 +10,7 @@ import {
   FileText,
   GitBranch,
   LayoutDashboard,
+  MessageSquare,
   ScrollText,
   Terminal,
   Timer,
@@ -20,16 +23,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
-import { useAvailableSessions } from '../../hooks/use-available-sessions'
-import { useControlCallbacks } from '../../hooks/use-control-callbacks'
-import { useControlSession } from '../../hooks/use-control-session'
+import { useConversation } from '../../hooks/use-conversation'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { controlStatusToInputState } from '../../lib/control-status-map'
+import { deriveInputBarState } from '../../lib/control-status-map'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
@@ -43,6 +44,7 @@ import { PermissionCard } from '../chat/cards/PermissionCard'
 import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
+import { CompactChatTab } from './CompactChatTab'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { PlanTab } from './PlanTab'
@@ -67,6 +69,7 @@ import type { LiveSession } from './use-live-sessions'
 
 type TabId =
   | 'overview'
+  | 'chat'
   | 'terminal'
   | 'log'
   | 'sub-agents'
@@ -84,8 +87,6 @@ interface SessionDetailPanelProps {
   onClose: () => void
   /** When true, render inline as a flex child instead of a fixed portal overlay. */
   inline?: boolean
-  /** Control session ID for interactive session control (chat input, permissions). */
-  controlSessionId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,7 @@ interface SessionDetailPanelProps {
 
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'log', label: 'Log', icon: ScrollText },
   { id: 'sub-agents', label: 'Sub-Agents', icon: Users },
@@ -151,7 +153,6 @@ export function SessionDetailPanel({
   panelData: panelDataProp,
   onClose,
   inline,
-  controlSessionId,
 }: SessionDetailPanelProps) {
   // Resolve to unified data shape
   // Callers always provide either panelData (history) or session (live) — never neither.
@@ -182,37 +183,32 @@ export function SessionDetailPanel({
   )
   const hasPlans = planDocuments && planDocuments.length > 0
 
-  // ---- Control session hooks (unconditional — Rules of Hooks) ----
-  // localControlId: set when the user clicks "Connect" in this panel (self-managed resume flow)
-  const [localControlId, setLocalControlId] = useState<string | null>(null)
-  const effectiveControlId = controlSessionId ?? localControlId
+  // ---- Unified conversation hook — handles WS lifecycle + blocks + actions ----
+  const {
+    blocks: convBlocks,
+    actions: convActions,
+    sessionInfo: convInfo,
+  } = useConversation(data.id)
 
-  // Available sessions — used to determine if the current session can be resumed via sidecar
-  const { sessions: availableSessions } = useAvailableSessions()
-  const isAvailableViaSDK = useMemo(
-    () => !effectiveControlId && availableSessions.some((s) => s.sessionId === data.id),
-    [effectiveControlId, availableSessions, data.id],
+  // Build ControlCallbacks from convActions for RichPane interactive cards
+  const controlCallbacks = useMemo(
+    () => ({
+      answerQuestion: convActions.answerQuestion,
+      respondPermission: (requestId: string, allowed: boolean) =>
+        convActions.respondPermission(requestId, allowed),
+      approvePlan: convActions.approvePlan,
+      submitElicitation: convActions.submitElicitation,
+    }),
+    [convActions],
   )
 
-  const handleConnect = useCallback(async () => {
-    try {
-      const res = await fetch('/api/control/sessions/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: data.id }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      setLocalControlId(json.controlId)
-    } catch (err) {
-      console.error('[SessionDetailPanel] Connect to Mission Control failed:', err)
-    }
-  }, [data.id])
-
-  const controlSession = useControlSession(effectiveControlId ?? null)
-  const controlCallbacks = useControlCallbacks(
-    controlSession.sendRaw,
-    controlSession.respondPermission,
+  // Find the first unresolved permission request from the live block stream
+  const pendingPermission = useMemo(
+    () =>
+      convBlocks.find(
+        (b) => b.type === 'interaction' && b.variant === 'permission' && !b.resolved,
+      ) as InteractionBlock | undefined,
+    [convBlocks],
   )
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
@@ -776,6 +772,13 @@ export function SessionDetailPanel({
           </div>
         )}
 
+        {/* ---- Chat tab (compact block renderer) ---- */}
+        {activeTab === 'chat' && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <CompactChatTab blocks={convBlocks} />
+          </div>
+        )}
+
         {/* ---- Terminal tab ---- */}
         {activeTab === 'terminal' && (
           <div className="flex flex-col h-full">
@@ -789,26 +792,17 @@ export function SessionDetailPanel({
                 controlCallbacks={controlCallbacks}
               />
             </div>
-            {controlSession.status === 'waiting_permission' && controlSession.permissionRequest && (
+            {pendingPermission && pendingPermission.variant === 'permission' && (
               <PermissionCard
-                permission={controlSession.permissionRequest}
-                onRespond={controlSession.respondPermission}
+                permission={pendingPermission.data as PermissionRequest}
+                onRespond={convActions.respondPermission}
               />
             )}
-            {isAvailableViaSDK && (
-              <button
-                type="button"
-                onClick={handleConnect}
-                className="mx-3 mb-2 px-3 py-2 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-              >
-                Connect to Mission Control
-              </button>
-            )}
-            {effectiveControlId && (
+            {convInfo.isLive && (
               <ChatInputBar
-                onSend={controlSession.sendMessage}
-                state={controlStatusToInputState(controlSession.status)}
-                contextPercent={Math.round(controlSession.contextUsage)}
+                onSend={convActions.sendMessage}
+                state={deriveInputBarState(convInfo.sessionState, convInfo.isLive)}
+                contextPercent={0}
               />
             )}
           </div>

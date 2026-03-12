@@ -1,4 +1,5 @@
 export * from './types/relay'
+export type { ActiveSession, AvailableSession } from './types/sidecar-protocol'
 export type {
   AgentState,
   AgentStateGroup,
