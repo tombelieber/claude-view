@@ -1,4 +1,3 @@
-import { AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { PluginInfo, PluginItem } from '../../types/generated'
@@ -16,9 +15,7 @@ function ScopeBadge({ scope }: { scope: string }) {
     <span
       className={cn(
         'text-[10px] px-1.5 py-0.5 rounded font-medium uppercase',
-        isProject
-          ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-          : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+        isProject ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-600',
       )}
     >
       {scope}
@@ -36,7 +33,7 @@ function ContentsLine({ plugin }: { plugin: PluginInfo }) {
     parts.push(`${plugin.commandCount} cmd${plugin.commandCount > 1 ? 's' : ''}`)
   if (plugin.mcpCount > 0) parts.push(`${plugin.mcpCount} MCP`)
   if (parts.length === 0) return null
-  return <span className="text-xs text-gray-500 dark:text-gray-500">{parts.join(' \u00b7 ')}</span>
+  return <span className="text-xs text-apple-text2">{parts.join(' \u00b7 ')}</span>
 }
 
 function UsageLine({ plugin }: { plugin: PluginInfo }) {
@@ -44,10 +41,10 @@ function UsageLine({ plugin }: { plugin: PluginInfo }) {
   const sessions = Number(plugin.sessionCount)
   const lastUsed = plugin.lastUsedAt ? formatRelativeTime(Number(plugin.lastUsedAt)) : null
   if (invocations === 0) {
-    return <span className="text-xs text-gray-400 dark:text-gray-600">No usage recorded</span>
+    return <span className="text-xs text-apple-text3">No usage recorded</span>
   }
   return (
-    <span className="text-xs text-gray-400 dark:text-gray-600">
+    <span className="text-xs text-apple-text3">
       {invocations.toLocaleString()}&times; across {sessions} session{sessions !== 1 ? 's' : ''}
       {lastUsed && ` · ${lastUsed}`}
     </span>
@@ -57,9 +54,19 @@ function UsageLine({ plugin }: { plugin: PluginInfo }) {
 function DuplicateWarning({ marketplaces }: { marketplaces: string[] }) {
   if (marketplaces.length === 0) return null
   return (
-    <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
-      <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-      Also from {marketplaces.join(', ')}
+    <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,149,0,0.07)] border border-[rgba(255,149,0,0.2)]">
+      <div className="flex items-start gap-1.5">
+        <span className="text-[12px] flex-shrink-0 mt-px">⚑</span>
+        <div>
+          <span className="text-[12px] text-apple-text2 leading-relaxed">
+            <strong className="text-[#B45309] font-semibold">Conflict:</strong> also in{' '}
+            {marketplaces.join(', ')}. This version runs; marketplace updates won't apply.
+          </span>
+          <span className="block mt-1 text-[12px] text-apple-blue font-medium cursor-pointer">
+            Resolve →
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -74,16 +81,14 @@ function ItemRow({ item }: { item: PluginItem }) {
   return (
     <div className="py-0.5">
       <div className="flex items-center justify-between text-xs">
-        <span className="text-gray-700 dark:text-gray-300 truncate">{item.name}</span>
-        <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap ml-2">
+        <span className="text-apple-text truncate">{item.name}</span>
+        <span className="text-apple-text3 whitespace-nowrap ml-2">
           {count > 0 ? `${count}\u00d7` : '\u2014'}
           {lastUsed && <span className="ml-2">{lastUsed}</span>}
         </span>
       </div>
       {item.description && (
-        <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-          {item.description}
-        </div>
+        <div className="text-[10px] text-apple-text3 truncate mt-0.5">{item.description}</div>
       )}
     </div>
   )
@@ -96,7 +101,7 @@ function ItemsSection({ kind, items }: { kind: string; items: PluginItem[] }) {
   const remaining = items.length - 5
   return (
     <div className="mt-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-apple-text3 mb-0.5">
         {kind} ({items.length})
       </div>
       {visible.map((item) => (
@@ -142,10 +147,12 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
     <button
       type="button"
       className={cn(
-        'group w-full text-left rounded-lg border p-3 transition-colors duration-200 cursor-pointer',
-        'border-gray-200 dark:border-gray-800',
-        'bg-white dark:bg-gray-900/50',
-        'hover:border-gray-300 dark:hover:border-gray-700',
+        'group w-full text-left rounded-xl border p-3 transition-all duration-200 cursor-pointer',
+        'border-apple-sep2 bg-white',
+        'hover:border-apple-sep hover:shadow-[0_3px_10px_rgba(0,0,0,0.08)]',
+        'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+        plugin.errors.length > 0 &&
+          'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.025)] hover:border-[rgba(255,59,48,0.45)]',
         !plugin.enabled && 'opacity-50',
       )}
       onClick={() => setExpanded(!expanded)}
@@ -153,11 +160,9 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
       {/* Row 1: name + scope + menu */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-            {plugin.name}
-          </h3>
+          <h3 className="text-sm font-semibold text-apple-text truncate">{plugin.name}</h3>
           {!plugin.enabled && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 flex-shrink-0">
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
               Disabled
             </span>
           )}
@@ -169,7 +174,7 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
       </div>
 
       {/* Row 2: marketplace + version + install count */}
-      <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 dark:text-gray-500">
+      <div className="flex items-center gap-2 mt-1 text-[10px] text-apple-text2">
         <span className="flex items-center gap-1">
           <span
             className={cn(
@@ -181,13 +186,13 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         </span>
         {version && (
           <>
-            <span className="text-gray-300 dark:text-gray-700">&middot;</span>
+            <span className="text-apple-sep">&middot;</span>
             <span className="font-mono">{version}</span>
           </>
         )}
         {plugin.installCount != null && (
           <>
-            <span className="text-gray-300 dark:text-gray-700">&middot;</span>
+            <span className="text-apple-sep">&middot;</span>
             <span>{formatInstallCount(plugin.installCount)} installs</span>
           </>
         )}
@@ -195,9 +200,7 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
 
       {/* Row 3: description (if available) */}
       {plugin.description && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-2">
-          {plugin.description}
-        </p>
+        <p className="text-xs text-apple-text2 mt-1.5 line-clamp-2">{plugin.description}</p>
       )}
 
       {/* Row 4: contents + usage */}
@@ -213,19 +216,38 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         </div>
       )}
 
-      {/* Error display */}
+      {/* Orphan block */}
       {plugin.errors.length > 0 && (
-        <div className="mt-2 text-[10px] text-red-500 dark:text-red-400">
-          {plugin.errors.map((err) => (
-            <div key={err}>{err}</div>
-          ))}
+        <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
+          <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
+          <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+            Source path missing. Can't update or verify.
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => onAction('reinstall', plugin.name, plugin.scope)}
+              disabled={isPending}
+              className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
+            >
+              Reinstall
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction('uninstall', plugin.name, plugin.scope, plugin.projectPath)}
+              disabled={isPending}
+              className="text-[11px] font-medium px-3 py-1 rounded-[7px] border-none bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] transition-colors disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
         </div>
       )}
 
       {/* Expanded: detailed items listing */}
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
-          <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+        <div className="mt-3 pt-3 border-t border-apple-sep2">
+          <div className="text-[10px] text-apple-text3 mb-1">
             Installed {plugin.installedAt.split('T')[0]}
             {plugin.lastUpdated && ` \u00b7 Updated ${plugin.lastUpdated.split('T')[0]}`}
             {plugin.gitSha && ` \u00b7 SHA: ${plugin.gitSha.slice(0, 12)}`}
