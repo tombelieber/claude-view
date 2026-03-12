@@ -1,7 +1,7 @@
 // apps/web/src/components/chat/ConnectionBanner.tsx
 import { RefreshCw, WifiOff } from 'lucide-react'
-import type { ConnectionHealth } from '../../hooks/use-session-control'
 import { cn } from '../../lib/utils'
+import type { ConnectionHealth } from '../../types/control'
 
 interface ConnectionBannerProps {
   health: ConnectionHealth
@@ -15,8 +15,7 @@ export function ConnectionBanner({ health, errorMessage, onRetry }: ConnectionBa
   const isDegraded = health === 'degraded'
 
   return (
-    <div
-      role="status"
+    <output
       className={cn(
         'flex items-center gap-2 px-4 py-2 text-xs font-medium',
         isDegraded
@@ -42,6 +41,6 @@ export function ConnectionBanner({ health, errorMessage, onRetry }: ConnectionBa
           Retry
         </button>
       )}
-    </div>
+    </output>
   )
 }
