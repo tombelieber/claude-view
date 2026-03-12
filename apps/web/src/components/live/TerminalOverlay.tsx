@@ -53,7 +53,15 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
     })
   }, [session.id])
 
-  const contextPercent = Math.min(100, Math.round((session.contextWindowTokens / 200_000) * 100))
+  const contextPercent =
+    session.statuslineUsedPct != null
+      ? Math.min(100, Math.round(session.statuslineUsedPct))
+      : Math.min(
+          100,
+          Math.round(
+            (session.contextWindowTokens / (session.statuslineContextWindowSize ?? 200_000)) * 100,
+          ),
+        )
   const totalCost = sessionTotalCost(session)
   const showUnavailableCost = hasUnavailableCost(
     totalCost,

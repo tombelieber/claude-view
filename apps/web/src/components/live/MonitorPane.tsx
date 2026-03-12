@@ -29,8 +29,9 @@ function formatCost(session: LiveSession): string {
 
 /** Compute context window percentage from tokens + model. */
 function contextPercent(session: LiveSession): number {
-  // Use the same 200k default the ContextGauge uses
-  const limit = 200_000
+  // Prefer authoritative statusline percentage when available
+  if (session.statuslineUsedPct != null) return Math.min(Math.round(session.statuslineUsedPct), 100)
+  const limit = session.statuslineContextWindowSize ?? 200_000
   return Math.min(Math.round((session.contextWindowTokens / limit) * 100), 100)
 }
 

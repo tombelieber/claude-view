@@ -189,6 +189,22 @@ export type LiveSession = {
    */
   control: ControlBinding | null
   /**
+   * Authoritative context window size from statusline (200_000 or 1_000_000).
+   * Set by the statusline wrapper on each turn. Null until first statusline event.
+   * Frontend prefers this over all heuristics when present.
+   */
+  statuslineContextWindowSize?: number | null
+  /**
+   * Authoritative context used percentage from statusline (0.0–100.0).
+   * Pre-computed by Claude Code — no division needed, no wrong denominator.
+   */
+  statuslineUsedPct?: number | null
+  /**
+   * Claude Code's own total cost in USD, from statusline.
+   * Cross-check against our token-based pricing engine.
+   */
+  statuslineCostUsd?: number | null
+  /**
    * Hook lifecycle events captured for the event log.
    * Skipped in SSE serialization (too large); streamed via WS only.
    */

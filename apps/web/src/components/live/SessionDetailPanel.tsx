@@ -670,6 +670,8 @@ export function SessionDetailPanel({
                 tokens={data.tokens}
                 turnCount={data.turnCount}
                 compactCount={data.compactCount}
+                statuslineContextWindowSize={data.statuslineContextWindowSize}
+                statuslineUsedPct={data.statuslineUsedPct}
                 expanded
               />
             </div>

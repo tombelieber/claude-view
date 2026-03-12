@@ -34,6 +34,7 @@ pub mod settings;
 pub mod share;
 pub mod stats;
 pub mod status;
+pub mod statusline;
 pub mod sync;
 pub mod system;
 pub mod teams;
@@ -146,6 +147,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", plans::router())
         .nest("/api", prompts::router())
         .nest("/api", share::router())
+        .nest("/api", statusline::router())
         .nest("/api", plugins::router())
         .nest("/api", teams::router())
         .nest("/api", workflows::router())

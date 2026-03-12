@@ -228,6 +228,9 @@ fn build_recovered_session(
         slug: None,
         closed_at: None,
         control: None,
+        statusline_context_window_size: None,
+        statusline_used_pct: None,
+        statusline_cost_usd: None,
         hook_events: Vec::new(),
         user_files: None,
     }
@@ -3318,6 +3321,9 @@ mod hook_event_tests {
             user_files: None,
             closed_at: None,
             control: None,
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
             hook_events: Vec::new(),
         }
     }

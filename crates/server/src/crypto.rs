@@ -12,11 +12,9 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
-/// Directory for storing keys: ~/.claude-view/
+/// Directory for storing keys — respects `CLAUDE_VIEW_DATA_DIR` for sandbox envs.
 fn storage_dir() -> Result<PathBuf, String> {
-    let dir = dirs::home_dir()
-        .ok_or("no home directory")?
-        .join(".claude-view");
+    let dir = claude_view_core::paths::crypto_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
     Ok(dir)
 }

@@ -19,15 +19,10 @@ interface ListViewProps {
 type SortColumn = 'status' | 'project' | 'branch' | 'turns' | 'cost' | 'context' | 'lastActive'
 type SortDir = 'asc' | 'desc'
 
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  'claude-opus-4': 200_000,
-  'claude-sonnet-4': 200_000,
-  'claude-haiku-4': 200_000,
-  default: 200_000,
-}
-
 function getContextPercent(session: LiveSession): number {
-  const limit = MODEL_CONTEXT_LIMITS[session.model ?? ''] ?? MODEL_CONTEXT_LIMITS.default
+  // Prefer authoritative statusline percentage when available
+  if (session.statuslineUsedPct != null) return Math.min(100, Math.round(session.statuslineUsedPct))
+  const limit = session.statuslineContextWindowSize ?? 200_000
   return Math.min(100, Math.round((session.contextWindowTokens / limit) * 100))
 }
 
