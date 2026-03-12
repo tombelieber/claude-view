@@ -78,8 +78,8 @@ pub struct KillFailure {
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/processes/{pid}/kill", post(kill_process))
         .route("/processes/cleanup", post(cleanup_processes))
+        .route("/processes/{pid}/kill", post(kill_process))
 }
 
 // =============================================================================
