@@ -26,4 +26,12 @@ export type PluginInfo = {
   duplicateMarketplaces: Array<string>
   updatable: boolean
   errors: Array<string>
+  /**
+   * Description from the marketplace listing (mirrors AvailablePlugin).
+   */
+  description: string | null
+  /**
+   * Global install count from the marketplace listing (mirrors AvailablePlugin).
+   */
+  installCount: bigint | null
 }

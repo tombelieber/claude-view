@@ -5,6 +5,7 @@
 //! - POST /plugins/action — Mutations (install/update/uninstall/enable/disable)
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
@@ -63,6 +64,10 @@ pub struct PluginInfo {
     pub duplicate_marketplaces: Vec<String>,
     pub updatable: bool,
     pub errors: Vec<String>,
+    /// Description from the marketplace listing (mirrors AvailablePlugin).
+    pub description: Option<String>,
+    /// Global install count from the marketplace listing (mirrors AvailablePlugin).
+    pub install_count: Option<u64>,
 }
 
 /// A plugin available for installation (not yet installed).
@@ -136,6 +141,9 @@ pub fn apply_filters(
         installed.retain(|p| {
             p.name.to_lowercase().contains(&needle)
                 || p.marketplace.to_lowercase().contains(&needle)
+                || p.description
+                    .as_deref()
+                    .is_some_and(|d| d.to_lowercase().contains(&needle))
                 || p.items
                     .iter()
                     .any(|i| i.name.to_lowercase().contains(&needle))
@@ -359,6 +367,120 @@ async fn fetch_plugin_cli_data() -> Result<CliAvailableResponse, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Disk enrichment — description + install counts from local CLI cache files
+// ---------------------------------------------------------------------------
+
+/// Enrichment data read from the CLI's local cache files.
+/// Keyed by plugin `id` (`"name@marketplace"`).
+struct DiskEnrichment {
+    /// Map of plugin_id → description (from `{installPath}/plugin.json`)
+    descriptions: HashMap<String, String>,
+    /// Map of plugin_id → unique install count (from `install-counts-cache.json`)
+    install_counts: HashMap<String, u64>,
+}
+
+/// Minimal serde types for the two cache files we read.
+#[derive(Deserialize)]
+struct InstallCountsCache {
+    counts: Vec<InstallCountEntry>,
+}
+
+#[derive(Deserialize)]
+struct InstallCountEntry {
+    plugin: String,
+    unique_installs: u64,
+}
+
+#[derive(Deserialize)]
+struct InstalledPluginsRegistry {
+    plugins: HashMap<String, Vec<InstalledPluginEntry>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledPluginEntry {
+    install_path: String,
+}
+
+#[derive(Deserialize)]
+struct PluginManifest {
+    #[serde(default)]
+    description: Option<String>,
+}
+
+/// Read description + install-count data from the CLI's local cache files.
+/// Both files live under `~/.claude/plugins/` and are maintained by the CLI.
+/// Returns an empty enrichment on any I/O or parse error (graceful degradation).
+fn read_disk_enrichment() -> DiskEnrichment {
+    let plugins_dir = match dirs::home_dir() {
+        Some(h) => h.join(".claude").join("plugins"),
+        None => {
+            return DiskEnrichment {
+                descriptions: HashMap::new(),
+                install_counts: HashMap::new(),
+            }
+        }
+    };
+
+    // 1. Install counts from the CLI's server-side cache.
+    let install_counts = read_install_counts(&plugins_dir);
+
+    // 2. Descriptions from per-plugin plugin.json manifests.
+    let descriptions = read_plugin_descriptions(&plugins_dir);
+
+    DiskEnrichment {
+        descriptions,
+        install_counts,
+    }
+}
+
+fn read_install_counts(plugins_dir: &PathBuf) -> HashMap<String, u64> {
+    let path = plugins_dir.join("install-counts-cache.json");
+    let data = match std::fs::read_to_string(&path) {
+        Ok(d) => d,
+        Err(_) => return HashMap::new(),
+    };
+    match serde_json::from_str::<InstallCountsCache>(&data) {
+        Ok(cache) => cache
+            .counts
+            .into_iter()
+            .map(|e| (e.plugin, e.unique_installs))
+            .collect(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+fn read_plugin_descriptions(plugins_dir: &PathBuf) -> HashMap<String, String> {
+    let registry_path = plugins_dir.join("installed_plugins.json");
+    let data = match std::fs::read_to_string(&registry_path) {
+        Ok(d) => d,
+        Err(_) => return HashMap::new(),
+    };
+    let registry = match serde_json::from_str::<InstalledPluginsRegistry>(&data) {
+        Ok(r) => r,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut descriptions = HashMap::new();
+    for (plugin_id, entries) in &registry.plugins {
+        // Use the first entry's installPath (duplicates have separate ids).
+        if let Some(entry) = entries.first() {
+            let manifest_path = PathBuf::from(&entry.install_path).join("plugin.json");
+            if let Ok(manifest_data) = std::fs::read_to_string(&manifest_path) {
+                if let Ok(manifest) = serde_json::from_str::<PluginManifest>(&manifest_data) {
+                    if let Some(desc) = manifest.description {
+                        if !desc.is_empty() {
+                            descriptions.insert(plugin_id.clone(), desc);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    descriptions
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -416,6 +538,18 @@ async fn list_plugins(
         };
 
     // 4. Build installed plugin list
+    // Load disk-based enrichment first (description from plugin.json, install count
+    // from install-counts-cache.json). Fall back to the CLI's --available list for
+    // plugins that appear in the marketplace catalog (covers uninstalled plugins shown
+    // in the available section).
+    let disk = read_disk_enrichment();
+
+    let available_by_name: HashMap<String, &CliAvailablePlugin> = cli_data
+        .available
+        .iter()
+        .map(|p| (p.name.clone(), p))
+        .collect();
+
     let mut installed: Vec<PluginInfo> = Vec::new();
     let mut name_to_marketplaces: HashMap<String, Vec<String>> = HashMap::new();
     let installed_names: HashSet<String> = cli_data
@@ -479,6 +613,21 @@ async fn list_plugins(
         // Sort items by usage descending
         items.sort_by(|a, b| b.invocation_count.cmp(&a.invocation_count));
 
+        // Resolve description: disk manifest > marketplace catalog entry > none
+        let marketplace_entry = available_by_name.get(&name);
+        let description = disk
+            .descriptions
+            .get(&cli_plugin.id)
+            .cloned()
+            .or_else(|| marketplace_entry.map(|e| e.description.clone()));
+
+        // Resolve install count: disk cache > marketplace catalog entry > none
+        let install_count = disk
+            .install_counts
+            .get(&cli_plugin.id)
+            .copied()
+            .or_else(|| marketplace_entry.and_then(|e| e.install_count));
+
         installed.push(PluginInfo {
             id: cli_plugin.id.clone(),
             name: name.clone(),
@@ -501,6 +650,8 @@ async fn list_plugins(
             duplicate_marketplaces: vec![], // Filled below
             updatable: cli_plugin.git_commit_sha.is_some(),
             errors: cli_plugin.errors.clone(),
+            description,
+            install_count,
         });
     }
 
@@ -1124,6 +1275,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
             PluginInfo {
                 id: "hookify@marketplace".to_string(),
@@ -1154,6 +1307,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
         ];
 
@@ -1206,6 +1361,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
             PluginInfo {
                 id: "b@m".to_string(),
@@ -1229,6 +1386,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
         ];
 
@@ -1279,6 +1438,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
             PluginInfo {
                 id: "high@m".to_string(),
@@ -1302,6 +1463,8 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                description: None,
+                install_count: None,
             },
         ];
 
@@ -1462,5 +1625,101 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Disk enrichment regression tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_disk_enrichment_populates_description_from_plugin_json() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let plugins_dir = dir.path();
+
+        // Write a plugin.json manifest for "my-plugin@my-marketplace"
+        let install_path = plugins_dir
+            .join("cache")
+            .join("my-marketplace")
+            .join("my-plugin")
+            .join("1.0.0");
+        std::fs::create_dir_all(&install_path).unwrap();
+        std::fs::write(
+            install_path.join("plugin.json"),
+            r#"{"name":"my-plugin","description":"A great plugin description"}"#,
+        )
+        .unwrap();
+
+        // Write installed_plugins.json pointing to that installPath
+        let registry = serde_json::json!({
+            "version": 2,
+            "plugins": {
+                "my-plugin@my-marketplace": [{
+                    "scope": "user",
+                    "installPath": install_path.to_str().unwrap(),
+                    "version": "1.0.0",
+                    "installedAt": "2026-01-01T00:00:00.000Z",
+                    "lastUpdated": "2026-01-01T00:00:00.000Z"
+                }]
+            }
+        });
+        std::fs::write(
+            plugins_dir.join("installed_plugins.json"),
+            registry.to_string(),
+        )
+        .unwrap();
+
+        // No install-counts-cache.json — should gracefully produce empty counts
+        let descriptions = read_plugin_descriptions(&plugins_dir.to_path_buf());
+
+        assert_eq!(
+            descriptions
+                .get("my-plugin@my-marketplace")
+                .map(String::as_str),
+            Some("A great plugin description"),
+            "description must be populated from plugin.json on disk"
+        );
+    }
+
+    #[test]
+    fn test_disk_enrichment_populates_install_count_from_cache() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let plugins_dir = dir.path();
+
+        let cache = serde_json::json!({
+            "version": 1,
+            "fetchedAt": "2026-03-01T00:00:00.000Z",
+            "counts": [
+                {"plugin": "my-plugin@my-marketplace", "unique_installs": 42000},
+                {"plugin": "other@other", "unique_installs": 1}
+            ]
+        });
+        std::fs::write(
+            plugins_dir.join("install-counts-cache.json"),
+            cache.to_string(),
+        )
+        .unwrap();
+
+        let counts = read_install_counts(&plugins_dir.to_path_buf());
+
+        assert_eq!(
+            counts.get("my-plugin@my-marketplace").copied(),
+            Some(42000u64),
+            "install count must be populated from install-counts-cache.json"
+        );
+    }
+
+    #[test]
+    fn test_disk_enrichment_returns_empty_when_files_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No files written — both helpers must return empty maps, not panic
+        let enrichment = {
+            let plugins_dir = dir.path().to_path_buf();
+            DiskEnrichment {
+                descriptions: read_plugin_descriptions(&plugins_dir),
+                install_counts: read_install_counts(&plugins_dir),
+            }
+        };
+        assert!(enrichment.descriptions.is_empty());
+        assert!(enrichment.install_counts.is_empty());
     }
 }
