@@ -397,6 +397,8 @@ export function SessionCard({
         agentLabel={session.agentState.label}
         agentStateKey={session.agentState.state}
         compactCount={session.compactCount}
+        statuslineContextWindowSize={session.statuslineContextWindowSize}
+        statuslineUsedPct={session.statuslineUsedPct}
       />
 
       {/* Footer: turns + compactions */}
