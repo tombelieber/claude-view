@@ -22,6 +22,19 @@ use crate::live::monitor::{
 };
 use crate::state::AppState;
 
+/// RAII guard that decrements the monitor subscriber count when dropped.
+///
+/// Guarantees the count is always decremented even if the SSE stream future
+/// is dropped mid-way (e.g. client disconnect during the initial snapshot).
+struct SubscriberGuard(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for SubscriberGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+        tracing::debug!("monitor SSE client disconnected");
+    }
+}
+
 /// Build the monitor sub-router.
 ///
 /// Routes:
@@ -69,6 +82,9 @@ async fn monitor_stream(
     if prev == 0 {
         start_polling_task(tx.clone(), subscribers.clone(), live_sessions.clone());
     }
+    // Guard lives outside the stream so it's dropped on any exit path —
+    // normal completion, client disconnect, or panic.
+    let _guard = SubscriberGuard(subscribers.clone());
 
     let mut rx = tx.subscribe();
 
@@ -140,10 +156,6 @@ async fn monitor_stream(
                 }
             }
         }
-
-        // Decrement subscriber count on disconnect
-        subscribers.fetch_sub(1, Ordering::SeqCst);
-        tracing::debug!("monitor SSE client disconnected");
     };
 
     Sse::new(stream).keep_alive(

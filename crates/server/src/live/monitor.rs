@@ -288,8 +288,9 @@ pub fn start_polling_task(
 
         // sysinfo::System must be reused across calls for CPU delta tracking
         let mut sys = System::new_all();
-        // Initial CPU measurement baseline — first reading is always 0
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Initial CPU measurement baseline — first reading is always 0.
+        // Use async sleep to avoid blocking the tokio worker thread.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         sys.refresh_cpu_usage();
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
