@@ -247,14 +247,39 @@ pub fn collect_snapshot(
 }
 
 // =============================================================================
+// Monitor Event
+// =============================================================================
+
+/// Events broadcast on the system monitor SSE channel.
+/// Replaces the previous bare `Sender<ResourceSnapshot>`.
+///
+/// IMPORTANT: Both variants must derive `Clone` because `broadcast::Sender<T>`
+/// requires `T: Clone + Send`.
+#[derive(Debug, Clone)]
+pub enum MonitorEvent {
+    /// System resource snapshot — emitted every 2 seconds.
+    Snapshot(ResourceSnapshot),
+    /// Classified process tree — emitted every 10 seconds (every 5th tick).
+    ProcessTree(crate::live::process_tree::ProcessTreeSnapshot),
+}
+
+// =============================================================================
 // Lazy Observer — Polling Task
 // =============================================================================
+
+/// Determine whether the current tick should trigger process classification.
+///
+/// Process classification runs every 5th tick (10s at 2s interval).
+/// Extracted as a pure function for testability.
+pub fn should_classify_on_tick(tick: u32) -> bool {
+    tick > 0 && tick % 5 == 0
+}
 
 /// Start the polling task that collects snapshots every 2 seconds.
 ///
 /// Returns immediately. The task runs until the subscriber count drops to 0.
 pub fn start_polling_task(
-    tx: broadcast::Sender<ResourceSnapshot>,
+    tx: broadcast::Sender<MonitorEvent>,
     subscriber_count: Arc<AtomicUsize>,
     live_sessions: LiveSessionMap,
 ) {
@@ -268,8 +293,11 @@ pub fn start_polling_task(
         sys.refresh_cpu_usage();
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+        let mut tick_count: u32 = 0;
         loop {
             interval.tick().await;
+            tick_count = tick_count.wrapping_add(1);
+            let should_classify = should_classify_on_tick(tick_count);
 
             // Stop polling when no subscribers remain
             if subscriber_count.load(Ordering::Relaxed) == 0 {
@@ -284,9 +312,17 @@ pub fn start_polling_task(
             };
 
             let mut sys_moved = std::mem::take(&mut sys);
-            let (snapshot, sys_back) = tokio::task::spawn_blocking(move || {
+            let (snapshot, maybe_tree, sys_back) = tokio::task::spawn_blocking(move || {
+                // collect_snapshot refreshes sys.processes() — must run first
                 let snap = collect_snapshot(&mut sys_moved, &sessions_clone);
-                (snap, sys_moved)
+                // classify_processes reads the already-refreshed process table (read-only)
+                // INVARIANT: classify_processes MUST run after collect_snapshot in the same tick
+                let tree = if should_classify {
+                    Some(crate::live::process_tree::classify_processes(&sys_moved))
+                } else {
+                    None
+                };
+                (snap, tree, sys_moved)
             })
             .await
             .unwrap_or_else(|e| {
@@ -302,13 +338,17 @@ pub fn start_polling_task(
                         top_processes: Vec::new(),
                         session_resources: Vec::new(),
                     },
+                    None,
                     System::new(),
                 )
             });
             sys = sys_back;
 
             // Broadcast — ignore error (no receivers is fine, count will hit 0 next tick)
-            let _ = tx.send(snapshot);
+            let _ = tx.send(MonitorEvent::Snapshot(snapshot));
+            if let Some(tree) = maybe_tree {
+                let _ = tx.send(MonitorEvent::ProcessTree(tree));
+            }
         }
     });
 }
@@ -455,5 +495,97 @@ mod tests {
         let json = serde_json::to_value(&sr).unwrap();
         assert_eq!(json["sessionId"], "abc-123");
         assert_eq!(json["pid"], 12345);
+    }
+
+    #[test]
+    fn monitor_event_snapshot_variant_has_clone() {
+        let snap = ResourceSnapshot {
+            timestamp: 1,
+            cpu_percent: 0.0,
+            memory_used_bytes: 0,
+            memory_total_bytes: 0,
+            disk_used_bytes: 0,
+            disk_total_bytes: 0,
+            top_processes: vec![],
+            session_resources: vec![],
+        };
+        let event = MonitorEvent::Snapshot(snap.clone());
+        let _cloned = event.clone();
+    }
+
+    #[test]
+    fn monitor_event_process_tree_variant_has_clone() {
+        use crate::live::process_tree::{
+            ClassifiedProcess, EcosystemTag, ProcessCategory, ProcessTreeSnapshot,
+            ProcessTreeTotals, Staleness,
+        };
+
+        let tree = ProcessTreeSnapshot {
+            timestamp: 1_700_000_000,
+            ecosystem: vec![ClassifiedProcess {
+                pid: 100,
+                ppid: 1,
+                name: "claude".to_string(),
+                command: "/usr/local/bin/claude".to_string(),
+                category: ProcessCategory::ClaudeEcosystem,
+                ecosystem_tag: Some(EcosystemTag::Cli),
+                cpu_percent: 5.0,
+                memory_bytes: 200_000_000,
+                uptime_secs: 3600,
+                start_time: 1_700_000_000,
+                is_unparented: true,
+                staleness: Staleness::Active,
+                descendant_count: 0,
+                descendant_cpu: 0.0,
+                descendant_memory: 0,
+                descendants: vec![],
+                is_self: false,
+            }],
+            children: vec![],
+            totals: ProcessTreeTotals {
+                ecosystem_cpu: 5.0,
+                ecosystem_memory: 200_000_000,
+                ecosystem_count: 1,
+                child_cpu: 0.0,
+                child_memory: 0,
+                child_count: 0,
+                unparented_count: 1,
+                unparented_memory: 200_000_000,
+            },
+        };
+
+        let event = MonitorEvent::ProcessTree(tree);
+        let cloned = event.clone();
+
+        if let MonitorEvent::ProcessTree(ref t) = cloned {
+            assert_eq!(t.timestamp, 1_700_000_000);
+            assert_eq!(t.ecosystem.len(), 1);
+            assert_eq!(t.ecosystem[0].pid, 100);
+            assert_eq!(t.totals.ecosystem_count, 1);
+        } else {
+            panic!("cloned MonitorEvent must be the ProcessTree variant");
+        }
+    }
+
+    #[test]
+    fn test_tick_counter_fires_every_5th_tick() {
+        assert!(should_classify_on_tick(5));
+        assert!(should_classify_on_tick(10));
+        assert!(should_classify_on_tick(15));
+        assert!(should_classify_on_tick(100));
+        assert!(should_classify_on_tick(255));
+
+        assert!(
+            !should_classify_on_tick(0),
+            "tick 0 is startup — no classification"
+        );
+        assert!(!should_classify_on_tick(1));
+        assert!(!should_classify_on_tick(2));
+        assert!(!should_classify_on_tick(3));
+        assert!(!should_classify_on_tick(4));
+        assert!(!should_classify_on_tick(6));
+        assert!(!should_classify_on_tick(9));
+        assert!(!should_classify_on_tick(11));
+        assert!(!should_classify_on_tick(99));
     }
 }

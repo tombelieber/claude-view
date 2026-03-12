@@ -17,7 +17,8 @@ use axum::{
 };
 
 use crate::live::monitor::{
-    collect_snapshot, collect_system_info, start_polling_task, ResourceSnapshot, SystemInfo,
+    collect_snapshot, collect_system_info, start_polling_task, MonitorEvent, ResourceSnapshot,
+    SystemInfo,
 };
 use crate::state::AppState;
 
@@ -112,10 +113,16 @@ async fn monitor_stream(
             tokio::select! {
                 event = rx.recv() => {
                     match event {
-                        Ok(snapshot) => {
+                        Ok(MonitorEvent::Snapshot(snapshot)) => {
                             match serde_json::to_string(&snapshot) {
                                 Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
                                 Err(e) => tracing::error!("failed to serialize snapshot: {e}"),
+                            }
+                        }
+                        Ok(MonitorEvent::ProcessTree(tree)) => {
+                            match serde_json::to_string(&tree) {
+                                Ok(data) => yield Ok(Event::default().event("process_tree").data(data)),
+                                Err(e) => tracing::error!("failed to serialize process_tree: {e}"),
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
