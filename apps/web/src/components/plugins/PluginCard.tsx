@@ -138,7 +138,8 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
   const version = plugin.gitSha ? plugin.gitSha.slice(0, 6) : plugin.version
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
         'group w-full text-left rounded-lg border p-3 transition-colors duration-200 cursor-pointer',
         'border-gray-200 dark:border-gray-800',
@@ -147,14 +148,6 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         !plugin.enabled && 'opacity-50',
       )}
       onClick={() => setExpanded(!expanded)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          setExpanded(!expanded)
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       {/* Row 1: name + scope + menu */}
       <div className="flex items-center justify-between gap-2">
@@ -174,7 +167,7 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         </div>
       </div>
 
-      {/* Row 2: marketplace + version */}
+      {/* Row 2: marketplace + version + install count */}
       <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 dark:text-gray-500">
         <span className="flex items-center gap-1">
           <span
@@ -191,9 +184,22 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
             <span className="font-mono">{version}</span>
           </>
         )}
+        {plugin.installCount != null && (
+          <>
+            <span className="text-gray-300 dark:text-gray-700">&middot;</span>
+            <span>{formatInstallCount(plugin.installCount)} installs</span>
+          </>
+        )}
       </div>
 
-      {/* Row 3: contents + usage */}
+      {/* Row 3: description (if available) */}
+      {plugin.description && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-2">
+          {plugin.description}
+        </p>
+      )}
+
+      {/* Row 4: contents + usage */}
       <div className="mt-2 flex flex-col gap-0.5">
         <ContentsLine plugin={plugin} />
         <UsageLine plugin={plugin} />
@@ -229,13 +235,20 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
           <ItemsSection kind="MCP Tools" items={mcpTools} />
         </div>
       )}
-    </div>
+    </button>
   )
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function formatInstallCount(count: bigint): string {
+  const n = Number(count)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toString()
+}
 
 function formatRelativeTime(epochSecs: number): string {
   const now = Math.floor(Date.now() / 1000)
