@@ -239,8 +239,8 @@ pub(super) fn classify_process_list(
     // Sort: MUST use total_cmp, NEVER partial_cmp (project hard rule -- NaN panics)
     ecosystem.sort_by(|a, b| b.cpu_percent.total_cmp(&a.cpu_percent));
     children.sort_by(|a, b| {
-        b.ppid
-            .cmp(&a.ppid)
+        a.ppid
+            .cmp(&b.ppid) // ascending: group children by parent PID
             .then_with(|| b.cpu_percent.total_cmp(&a.cpu_percent))
     });
 
