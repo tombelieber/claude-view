@@ -5,7 +5,7 @@
 //! - POST /plugins/action — Mutations (install/update/uninstall/enable/disable)
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::{
@@ -434,7 +434,7 @@ fn read_disk_enrichment() -> DiskEnrichment {
     }
 }
 
-fn read_install_counts(plugins_dir: &PathBuf) -> HashMap<String, u64> {
+fn read_install_counts(plugins_dir: &Path) -> HashMap<String, u64> {
     let path = plugins_dir.join("install-counts-cache.json");
     let data = match std::fs::read_to_string(&path) {
         Ok(d) => d,
@@ -450,7 +450,7 @@ fn read_install_counts(plugins_dir: &PathBuf) -> HashMap<String, u64> {
     }
 }
 
-fn read_plugin_descriptions(plugins_dir: &PathBuf) -> HashMap<String, String> {
+fn read_plugin_descriptions(plugins_dir: &Path) -> HashMap<String, String> {
     let registry_path = plugins_dir.join("installed_plugins.json");
     let data = match std::fs::read_to_string(&registry_path) {
         Ok(d) => d,
