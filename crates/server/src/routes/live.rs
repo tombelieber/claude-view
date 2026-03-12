@@ -556,6 +556,9 @@ mod tests {
             closed_at: None,
             control: None,
             hook_events: Vec::new(),
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
         };
         if closed {
             s.status = SessionStatus::Done;

@@ -1,22 +1,8 @@
 import { Minimize2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { getContextLimit } from '../../lib/model-context-windows'
 import type { AgentStateGroup } from './types'
-
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  'claude-opus-4': 200_000,
-  'claude-sonnet-4': 200_000,
-  'claude-haiku-4': 200_000,
-  'claude-3': 200_000,
-}
-
-function getContextLimit(model: string | null): number {
-  if (!model) return 200_000
-  for (const [prefix, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
-    if (model.startsWith(prefix)) return limit
-  }
-  return 200_000
-}
 
 interface ContextGaugeProps {
   /** Current context window fill (last turn's total input tokens). */
@@ -41,6 +27,10 @@ interface ContextGaugeProps {
   agentStateKey?: string
   /** Number of context compactions in this session. */
   compactCount?: number
+  /** Authoritative context window size from statusline (200_000 or 1_000_000). */
+  statuslineContextWindowSize?: number | null
+  /** Authoritative used percentage from statusline (0–100). Preferred over computed value. */
+  statuslineUsedPct?: number | null
 }
 
 const formatTokens = (n: number) => {
@@ -72,9 +62,12 @@ export function ContextGauge({
   agentLabel: _agentLabel,
   agentStateKey,
   compactCount,
+  statuslineContextWindowSize,
+  statuslineUsedPct,
 }: ContextGaugeProps) {
-  const contextLimit = getContextLimit(model)
-  const usedPct = Math.min((contextWindowTokens / contextLimit) * 100, 100)
+  const contextLimit = getContextLimit(model, contextWindowTokens, statuslineContextWindowSize)
+  // Prefer authoritative statusline percentage; fall back to computed
+  const usedPct = Math.min(statuslineUsedPct ?? (contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
 
   // Compacting state detection — use the state key, not the label text
