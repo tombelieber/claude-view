@@ -1,6 +1,6 @@
 import { StreamAccumulator, historyToBlocks } from '@claude-view/shared/lib'
 import type { ConversationBlock, NoticeBlock } from '@claude-view/shared/types/blocks'
-import type { SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
+import type { ModelUsageInfo, SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
@@ -16,7 +16,9 @@ export interface SessionSourceResult {
   send: ((msg: Record<string, unknown>) => void) | null
   isLive: boolean
   reconnect: () => void
-  resume: (permissionMode?: string) => Promise<void>
+  resume: (permissionMode?: string, model?: string) => Promise<void>
+  totalInputTokens: number
+  contextWindowSize: number
 }
 
 export function useSessionSource(sessionId: string | undefined): SessionSourceResult {
@@ -25,6 +27,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [sessionState, setSessionState] = useState<string>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
+  const [totalInputTokens, setTotalInputTokens] = useState(0)
+  const [contextWindowSize, setContextWindowSize] = useState(0)
 
   const wsRef = useRef<WebSocket | null>(null)
   const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
@@ -112,9 +116,24 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           }
           break
         case 'turn_complete':
-        case 'turn_error':
+        case 'turn_error': {
           setSessionState('waiting_input')
+          const mu = raw.modelUsage as Record<string, ModelUsageInfo> | undefined
+          if (mu) {
+            let sumInput = 0
+            let ctxWindow = 0
+            for (const info of Object.values(mu)) {
+              sumInput +=
+                (info.inputTokens ?? 0) +
+                (info.cacheReadInputTokens ?? 0) +
+                (info.cacheCreationInputTokens ?? 0)
+              if (ctxWindow === 0 && info.contextWindow > 0) ctxWindow = info.contextWindow
+            }
+            setTotalInputTokens(sumInput)
+            if (ctxWindow > 0) setContextWindowSize(ctxWindow)
+          }
           break
+        }
         case 'assistant_text':
         case 'tool_use_start':
           setSessionState('active')
@@ -168,13 +187,15 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
   // --- Open WS ---
   const openWs = useCallback(
-    (sid: string) => {
+    (sid: string, model?: string) => {
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
 
-      const ws = new WebSocket(wsUrl(`/api/control/connect?sessionId=${sid}`))
+      const params = new URLSearchParams({ sessionId: sid })
+      if (model) params.set('model', model)
+      const ws = new WebSocket(wsUrl(`/api/control/connect?${params.toString()}`))
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -273,21 +294,21 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
   // --- Resume ---
   const resume = useCallback(
-    async (permissionMode?: string) => {
+    async (permissionMode?: string, model?: string) => {
       if (!sessionId) return
 
       try {
         const res = await fetch('/api/control/sessions/resume', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, permissionMode }),
+          body: JSON.stringify({ sessionId, permissionMode, model }),
         })
         if (res.ok) {
           const data = await res.json()
           setControlId(data.controlId)
           showDividerRef.current = true
           setSessionState('initializing')
-          openWs(sessionId)
+          openWs(sessionId, model)
         }
       } catch {
         // Resume failed
@@ -321,5 +342,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     isLive,
     reconnect,
     resume,
+    totalInputTokens,
+    contextWindowSize,
   }
 }
