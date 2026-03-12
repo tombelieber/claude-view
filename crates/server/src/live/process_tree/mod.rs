@@ -11,7 +11,7 @@
 //! but `cmd` is empty, fall back to `ps -p <pid> -o command=` (same pattern as
 //! `get_cwd_via_lsof` in `process.rs`).
 
-pub mod classifier;
+mod classifier;
 mod helpers;
 pub mod types;
 
