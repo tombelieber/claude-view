@@ -1,10 +1,11 @@
-import { Blocks } from 'lucide-react'
+import { Blocks, TrendingUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { AvailablePluginCard } from '../components/plugins/AvailablePluginCard'
+import { AvailableSection } from '../components/plugins/AvailableSection'
+import { InstalledPluginsSection } from '../components/plugins/InstalledPluginsSection'
 import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
-import { PluginCard } from '../components/plugins/PluginCard'
-import { PluginHealthBanner } from '../components/plugins/PluginHealthBanner'
+import { PluginHealthPanel } from '../components/plugins/PluginHealthPanel'
 import { PluginToolbar } from '../components/plugins/PluginToolbar'
+import { UserItemSection } from '../components/plugins/UserItemSection'
 import { usePluginMutations } from '../hooks/use-plugin-mutations'
 import { usePlugins } from '../hooks/use-plugins'
 
@@ -21,7 +22,7 @@ export function PluginsPage() {
     return () => clearTimeout(id)
   }, [search])
 
-  const { data, isLoading, error } = usePlugins({
+  const { data } = usePlugins({
     search: debouncedSearch || undefined,
     scope,
     source,
@@ -58,33 +59,36 @@ export function PluginsPage() {
     }
   }
 
-  const totalCount = (data?.totalInstalled ?? 0) + (data?.totalAvailable ?? 0)
+  const totalCount =
+    (data?.totalInstalled ?? 0) +
+    (data?.totalAvailable ?? 0) +
+    (data?.userSkills?.length ?? 0) +
+    (data?.userCommands?.length ?? 0) +
+    (data?.userAgents?.length ?? 0)
 
   return (
-    <div className="h-full flex flex-col overflow-y-auto">
+    <div className="min-h-full bg-apple-bg">
       {/* Header */}
-      <div className="px-6 pt-6 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Blocks className="w-5 h-5 text-blue-500" />
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Plugins</h1>
-            {data && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">{totalCount} total</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <MarketplacesDialog />
-            {data && data.updatableCount > 0 && (
-              <button
-                type="button"
-                onClick={handleUpdateAll}
-                disabled={mutations.isPending}
-                className="text-xs px-3 py-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
-              >
-                Update All ({data.updatableCount})
-              </button>
-            )}
-          </div>
+      <div className="px-7 pt-6 pb-0 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[28px] font-bold tracking-[-0.4px] text-apple-text1">Plugins</h1>
+          <p className="text-[13px] text-apple-text3 mt-0.5">
+            {totalCount} items — skills, commands, agents &amp; installed plugins
+          </p>
+        </div>
+        <div className="flex gap-2 items-center pt-1.5">
+          <MarketplacesDialog />
+          {data && data.updatableCount > 0 && (
+            <button
+              type="button"
+              onClick={handleUpdateAll}
+              disabled={mutations.isPending}
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg bg-apple-blue text-white hover:opacity-85 transition-opacity disabled:opacity-50"
+            >
+              <TrendingUp className="w-3 h-3" />
+              Update All ({data.updatableCount})
+            </button>
+          )}
         </div>
       </div>
 
@@ -102,58 +106,54 @@ export function PluginsPage() {
         totalCount={totalCount}
       />
 
-      {/* Health banner */}
+      {/* Health panel */}
       {data && (
-        <PluginHealthBanner
-          duplicateCount={data.duplicateCount}
+        <PluginHealthPanel
+          orphanCount={data.orphanCount}
+          conflictCount={data.duplicateCount}
           unusedCount={data.unusedCount}
           cliError={data.cliError}
         />
       )}
 
-      {/* Content */}
-      <div className="flex-1 px-6 pb-6">
-        {isLoading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
-              <div key={i} className="h-28 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
-            ))}
-          </div>
+      {/* Content sections */}
+      <div className="px-7 py-5 flex flex-col gap-7">
+        {(data?.userSkills?.length ?? 0) > 0 && (
+          <UserItemSection title="Skills" items={data!.userSkills} pathPrefix="~/.claude/skills/" />
+        )}
+        {(data?.userCommands?.length ?? 0) > 0 && (
+          <UserItemSection
+            title="Commands"
+            items={data!.userCommands}
+            pathPrefix="~/.claude/commands/"
+          />
+        )}
+        {(data?.userAgents?.length ?? 0) > 0 && (
+          <UserItemSection title="Agents" items={data!.userAgents} pathPrefix="~/.claude/agents/" />
+        )}
+        {(data?.installed?.length ?? 0) > 0 && (
+          <InstalledPluginsSection
+            plugins={data!.installed}
+            onAction={handleAction}
+            isPending={mutations.isPending}
+          />
+        )}
+        {(data?.available?.length ?? 0) > 0 && (
+          <AvailableSection
+            plugins={data!.available}
+            onInstall={(name, scope) => handleAction('install', name, scope)}
+            isPending={mutations.isPending}
+          />
         )}
 
-        {error && (
-          <div className="text-sm text-red-500">Failed to load plugins: {error.message}</div>
-        )}
-
+        {/* Empty state */}
         {data && totalCount === 0 && !data.cliError && (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+          <div className="flex flex-col items-center justify-center py-16 text-apple-text3">
             <Blocks className="w-10 h-10 mb-3 opacity-40" />
             <p className="text-sm font-medium">No plugins found</p>
             <p className="text-xs mt-1">
               Install plugins with <code className="font-mono">claude plugin install</code>
             </p>
-          </div>
-        )}
-
-        {data && totalCount > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.installed.map((plugin) => (
-              <PluginCard
-                key={plugin.id}
-                plugin={plugin}
-                onAction={handleAction}
-                isPending={mutations.isPending}
-              />
-            ))}
-            {data.available.map((plugin) => (
-              <AvailablePluginCard
-                key={plugin.pluginId}
-                plugin={plugin}
-                onInstall={(name, installScope) => handleAction('install', name, installScope)}
-                isPending={mutations.isPending}
-              />
-            ))}
           </div>
         )}
       </div>
