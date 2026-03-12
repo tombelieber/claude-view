@@ -2,6 +2,7 @@
 import type { AvailablePlugin } from './AvailablePlugin'
 import type { MarketplaceInfo } from './MarketplaceInfo'
 import type { PluginInfo } from './PluginInfo'
+import type { UserItemInfo } from './UserItemInfo'
 
 /**
  * Full response for the plugins endpoint.
@@ -19,4 +20,8 @@ export type PluginsResponse = {
    * Non-empty when the CLI call failed — used by PluginHealthBanner.
    */
   cliError: string | null
+  orphanCount: number
+  userSkills: Array<UserItemInfo>
+  userCommands: Array<UserItemInfo>
+  userAgents: Array<UserItemInfo>
 }

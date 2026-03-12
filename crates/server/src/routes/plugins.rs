@@ -20,6 +20,7 @@ use ts_rs::TS;
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
+use claude_view_core::registry::{InvocableInfo, InvocableKind};
 
 // ---------------------------------------------------------------------------
 // Response types
@@ -84,6 +85,19 @@ pub struct AvailablePlugin {
     pub already_installed: bool,
 }
 
+/// A user-created skill, command, or agent (not from any marketplace).
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct UserItemInfo {
+    pub name: String,
+    pub kind: String, // "skill" | "command" | "agent"
+    pub path: String, // relative display path, e.g. "prove-it/SKILL.md"
+    pub total_invocations: i64,
+    pub session_count: i64,
+    pub last_used_at: Option<i64>,
+}
+
 /// Query parameters for filtering and sorting the plugins list.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +124,10 @@ pub struct PluginsResponse {
     pub marketplaces: Vec<MarketplaceInfo>,
     /// Non-empty when the CLI call failed — used by PluginHealthBanner.
     pub cli_error: Option<String>,
+    pub orphan_count: usize,
+    pub user_skills: Vec<UserItemInfo>,
+    pub user_commands: Vec<UserItemInfo>,
+    pub user_agents: Vec<UserItemInfo>,
 }
 
 // ---------------------------------------------------------------------------
@@ -508,21 +526,28 @@ async fn list_plugins(
         }
     };
 
-    // 2. Snapshot registry data (drop the RwLock guard before any .await)
-    let registry_snapshot: HashMap<String, Vec<claude_view_core::registry::InvocableInfo>> = {
+    // 2. Snapshot registry data — keyed map for plugin bucketing + flat list for user items
+    let (registry_snapshot, user_invocables): (
+        HashMap<String, Vec<InvocableInfo>>,
+        Vec<InvocableInfo>,
+    ) = {
         let guard = state.registry.read().unwrap();
         if let Some(reg) = guard.as_ref() {
-            let mut map: HashMap<String, Vec<claude_view_core::registry::InvocableInfo>> =
-                HashMap::new();
-            // Build a plugin_name → invocables map from the entire registry
+            let mut map: HashMap<String, Vec<InvocableInfo>> = HashMap::new();
+            let mut user_items: Vec<InvocableInfo> = Vec::new();
             for inv in reg.all_invocables() {
-                if let Some(ref pn) = inv.plugin_name {
-                    map.entry(pn.clone()).or_default().push(inv.clone());
+                match &inv.plugin_name {
+                    Some(pn) => {
+                        map.entry(pn.clone()).or_default().push(inv.clone());
+                    }
+                    None => {
+                        user_items.push(inv.clone());
+                    }
                 }
             }
-            map
+            (map, user_items)
         } else {
-            HashMap::new()
+            (HashMap::new(), vec![])
         }
     };
 
@@ -666,6 +691,33 @@ async fn list_plugins(
         }
     }
 
+    // Error count: plugins that have any CLI-reported errors.
+    let orphan_count = installed.iter().filter(|p| !p.errors.is_empty()).count();
+
+    // User items from the flat user_invocables list, defaulting usage to zeros.
+    let make_user_items = |kind: InvocableKind| -> Vec<UserItemInfo> {
+        user_invocables
+            .iter()
+            .filter(|i| i.kind == kind)
+            .map(|i| UserItemInfo {
+                name: i.name.clone(),
+                kind: i.kind.to_string(),
+                path: match kind {
+                    InvocableKind::Skill => format!("{}/SKILL.md", i.name),
+                    InvocableKind::Command => format!("commands/{}.md", i.name),
+                    InvocableKind::Agent => format!("agents/{}.md", i.name),
+                    _ => i.name.clone(),
+                },
+                total_invocations: 0,
+                session_count: 0,
+                last_used_at: None,
+            })
+            .collect()
+    };
+    let user_skills = make_user_items(InvocableKind::Skill);
+    let user_commands = make_user_items(InvocableKind::Command);
+    let user_agents = make_user_items(InvocableKind::Agent);
+
     // 6. Build available plugin list
     let available: Vec<AvailablePlugin> = cli_data
         .available
@@ -758,6 +810,10 @@ async fn list_plugins(
         updatable_count,
         marketplaces: all_marketplaces,
         cli_error,
+        orphan_count,
+        user_skills,
+        user_commands,
+        user_agents,
     }))
 }
 
@@ -1218,6 +1274,70 @@ mod tests {
         assert!(json["unusedCount"].is_number());
         assert!(json["updatableCount"].is_number());
         assert!(json["marketplaces"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_plugins_response_includes_user_sections() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+        let (status, body) = get_response(app, "/api/plugins").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        // New fields must exist (even if empty arrays/zero)
+        assert!(json["userSkills"].is_array(), "missing userSkills");
+        assert!(json["userCommands"].is_array(), "missing userCommands");
+        assert!(json["userAgents"].is_array(), "missing userAgents");
+        assert!(json["orphanCount"].is_number(), "missing orphanCount");
+    }
+
+    #[tokio::test]
+    async fn test_user_item_path_format_matches_mockup() {
+        // Verify that the path field uses kind-aware formatting:
+        // - skills: "prove-it/SKILL.md" (name/SKILL.md)
+        // - commands: "commands/wtf.md" (commands/name.md)
+        // - agents: "agents/scanner.md" (agents/name.md)
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let app = build_app(db);
+        let (status, body) = get_response(app, "/api/plugins").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // If there are user skills, verify path format
+        if let Some(skills) = json["userSkills"].as_array() {
+            for skill in skills {
+                let path = skill["path"].as_str().unwrap();
+                assert!(
+                    path.ends_with("/SKILL.md"),
+                    "skill path '{path}' should end with /SKILL.md"
+                );
+            }
+        }
+        if let Some(commands) = json["userCommands"].as_array() {
+            for cmd in commands {
+                let path = cmd["path"].as_str().unwrap();
+                assert!(
+                    path.starts_with("commands/"),
+                    "command path '{path}' should start with commands/"
+                );
+                assert!(
+                    path.ends_with(".md"),
+                    "command path '{path}' should end with .md"
+                );
+            }
+        }
+        if let Some(agents) = json["userAgents"].as_array() {
+            for agent in agents {
+                let path = agent["path"].as_str().unwrap();
+                assert!(
+                    path.starts_with("agents/"),
+                    "agent path '{path}' should start with agents/"
+                );
+                assert!(
+                    path.ends_with(".md"),
+                    "agent path '{path}' should end with .md"
+                );
+            }
+        }
     }
 
     #[test]
