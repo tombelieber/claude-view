@@ -13,6 +13,7 @@ const noopCallbacks = {
   onModelSwitch: vi.fn(),
   onPaletteModeChange: vi.fn(),
   onCommand: vi.fn(),
+  onAgent: vi.fn(),
   onClear: vi.fn(),
   onCompact: vi.fn(),
 }
@@ -51,6 +52,8 @@ describe('buildPaletteSections', () => {
     permissionMode: 'default',
     slashCommands: ['commit', 'test', 'review', 'custom-skill'],
     mcpServers: [{ name: 'github', status: 'connected' }],
+    skills: [],
+    agents: [],
   }
 
   it('returns Context, Model, Customize, and Slash Commands sections', () => {
@@ -59,7 +62,7 @@ describe('buildPaletteSections', () => {
       isStreaming: false,
     })
     const labels = sections.map((s) => s.label)
-    expect(labels).toEqual(['Context', 'Model', 'Customize', 'Slash Commands'])
+    expect(labels).toEqual(['Context', 'Model', 'Customize', 'MCP Servers', 'Commands'])
   })
 
   it('hides Slash Commands section when no commands from sidecar', () => {
@@ -68,7 +71,7 @@ describe('buildPaletteSections', () => {
       isLive: true,
       isStreaming: false,
     })
-    expect(sections.find((s) => s.label === 'Slash Commands')).toBeUndefined()
+    expect(sections.find((s) => s.label === 'Commands')).toBeUndefined()
   })
 
   it('disables resume actions when session is not live', () => {
@@ -127,7 +130,7 @@ describe('buildPaletteSections', () => {
       isLive: true,
       isStreaming: false,
     })
-    const cmdSection = sections.find((s) => s.label === 'Slash Commands')
+    const cmdSection = sections.find((s) => s.label === 'Commands')
     expect(cmdSection).toBeDefined()
     const commitItem = cmdSection?.items.find((i) => i.type === 'command' && i.name === 'commit')
     expect(commitItem?.type === 'command' && commitItem.description.length).toBeGreaterThan(0)
@@ -137,17 +140,17 @@ describe('buildPaletteSections', () => {
     expect(customItem?.type === 'command' && customItem.description).toBe('')
   })
 
-  it('MCP servers link shows connected count as badge', () => {
+  it('MCP servers section shows individual servers with status badge', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
       isLive: true,
       isStreaming: false,
     })
-    const customizeSection = sections.find((s) => s.label === 'Customize')
-    expect(customizeSection).toBeDefined()
-    const mcpItem = customizeSection?.items.find(
-      (i) => i.type === 'link' && i.label.includes('MCP'),
-    )
-    expect(mcpItem?.type === 'link' && mcpItem.badge).toBe('1 connected')
+    const mcpSection = sections.find((s) => s.label === 'MCP Servers')
+    expect(mcpSection).toBeDefined()
+    expect(mcpSection?.items).toHaveLength(1)
+    const githubItem = mcpSection?.items[0]
+    expect(githubItem?.type === 'link' && githubItem.label).toBe('github')
+    expect(githubItem?.type === 'link' && githubItem.badge).toBe('connected')
   })
 
   it('attach file action is disabled with hint', () => {

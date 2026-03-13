@@ -100,8 +100,13 @@ export function ChatPage() {
     sessionInfo.canResumeLazy,
   )
 
-  // Context gauge — not available yet from useConversation sessionInfo
-  const contextPercent = undefined
+  // Context gauge — only show for live or resumable sessions
+  const contextPercent =
+    (sessionInfo.isLive || sessionInfo.canResumeLazy) &&
+    sessionInfo.contextWindowSize > 0 &&
+    sessionInfo.totalInputTokens > 0
+      ? Math.round((sessionInfo.totalInputTokens / sessionInfo.contextWindowSize) * 100)
+      : undefined
 
   const handleSend = useCallback(
     (text: string) => {
@@ -250,11 +255,14 @@ export function ChatPage() {
               state={inputBarState}
               onModeChange={handleModeChangePermission}
               contextPercent={contextPercent}
+              model={selectedModel}
+              onModelChange={handleModelChange}
               capabilities={capabilities}
               modelOptions={modelOptions}
               onModelSwitch={handleModelSwitch}
               onPaletteModeChange={handlePaletteModeChange}
               onCommand={handlePaletteCommand}
+              onAgent={(agent) => actions.sendMessage(`@${agent}`)}
             />
           </div>
         </div>

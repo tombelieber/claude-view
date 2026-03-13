@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Cpu, FileText, Globe, Plug, RefreshCw, Shield, Trash2, Zap } from 'lucide-react'
+import { Cpu, FileText, Plug, RefreshCw, Server, Shield, Trash2, Zap } from 'lucide-react'
 import type { ModelOption } from '../../hooks/use-models'
 import type { SessionCapabilities } from '../../hooks/use-session-capabilities'
 import type { PermissionMode } from '../../types/control'
@@ -46,6 +46,7 @@ export interface PaletteCallbacks {
   onModelSwitch: (model: string) => void
   onPaletteModeChange: (mode: PermissionMode) => void
   onCommand: (command: string) => void
+  onAgent: (agent: string) => void
   onClear: () => void
   onCompact: () => void
 }
@@ -156,7 +157,6 @@ export function buildPaletteSections(
   })
 
   // --- Customize ---
-  const connectedCount = capabilities.mcpServers.filter((s) => s.status === 'connected').length
   sections.push({
     label: 'Customize',
     items: [
@@ -179,13 +179,6 @@ export function buildPaletteSections(
       },
       {
         type: 'link',
-        label: 'MCP servers',
-        icon: Globe,
-        href: '/settings#mcp',
-        badge: `${connectedCount} connected`,
-      },
-      {
-        type: 'link',
         label: 'Manage plugins',
         icon: Plug,
         href: '/plugins',
@@ -193,15 +186,57 @@ export function buildPaletteSections(
     ],
   })
 
+  // --- MCP Servers (individual rows with status) ---
+  if (capabilities.mcpServers.length > 0) {
+    sections.push({
+      label: 'MCP Servers',
+      items: capabilities.mcpServers.map((srv) => ({
+        type: 'link' as const,
+        label: srv.name,
+        icon: Server,
+        href: '/settings#mcp',
+        badge: srv.status,
+      })),
+    })
+  }
+
   // --- Slash Commands (only if sidecar provided any) ---
+  const slashSet = new Set(capabilities.slashCommands)
   if (capabilities.slashCommands.length > 0) {
     sections.push({
-      label: 'Slash Commands',
+      label: 'Commands',
       items: capabilities.slashCommands.map((name) => ({
         type: 'command' as const,
         name,
         description: KNOWN_COMMAND_DESCRIPTIONS[name] ?? '',
         onSelect: () => callbacks.onCommand(name),
+      })),
+    })
+  }
+
+  // --- Skills (deduped: only skills NOT already in slashCommands) ---
+  const uniqueSkills = capabilities.skills.filter((s) => !slashSet.has(s))
+  if (uniqueSkills.length > 0) {
+    sections.push({
+      label: 'Skills',
+      items: uniqueSkills.map((name) => ({
+        type: 'command' as const,
+        name,
+        description: KNOWN_COMMAND_DESCRIPTIONS[name] ?? '',
+        onSelect: () => callbacks.onCommand(name),
+      })),
+    })
+  }
+
+  // --- Agents (invoked via @agent-name) ---
+  if (capabilities.agents.length > 0) {
+    sections.push({
+      label: 'Agents',
+      items: capabilities.agents.map((name) => ({
+        type: 'command' as const,
+        name: `@${name}`,
+        description: '',
+        onSelect: () => callbacks.onAgent(name),
       })),
     })
   }

@@ -80,6 +80,8 @@ export interface ChatInputBarProps {
   onModelSwitch?: (model: string) => void
   // NEW: Palette-specific mode change (triggers resume)
   onPaletteModeChange?: (mode: PermissionMode) => void
+  // NEW: Palette agent invocation (sends @agent-name)
+  onAgent?: (agent: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,7 @@ export function ChatInputBar({
   modelOptions,
   onModelSwitch,
   onPaletteModeChange,
+  onAgent,
 }: ChatInputBarProps) {
   const config = STATE_CONFIG[state]
   const resolvedPlaceholder = placeholderProp ?? config.placeholder
@@ -239,10 +242,11 @@ export function ChatInputBar({
       onModelSwitch: onModelSwitch ?? (() => {}),
       onPaletteModeChange: onPaletteModeChange ?? (() => {}),
       onCommand: onCommand ?? (() => {}),
+      onAgent: onAgent ?? (() => {}),
       onClear: () => onCommand?.('clear'),
       onCompact: () => onCommand?.('compact'),
     }),
-    [onModelSwitch, onPaletteModeChange, onCommand],
+    [onModelSwitch, onPaletteModeChange, onCommand, onAgent],
   )
 
   const paletteSections = useMemo(() => {
