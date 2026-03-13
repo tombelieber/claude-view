@@ -6,6 +6,7 @@ import { ConversationThread } from '../components/conversation/ConversationThrea
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
+import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { deriveInputBarState } from '../lib/control-status-map'
@@ -188,7 +189,9 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6">
-              <ConversationThread blocks={blocks} renderers={registry} />
+              <ConversationActionsProvider actions={{ retryMessage: actions.retryMessage }}>
+                <ConversationThread blocks={blocks} renderers={registry} />
+              </ConversationActionsProvider>
             </div>
           )}
           {/* Bottom anchor for auto-scroll */}

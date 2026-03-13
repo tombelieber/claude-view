@@ -1,5 +1,5 @@
 import type { ConversationBlock, NoticeBlock, UserBlock } from '@claude-view/shared/types/blocks'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
@@ -17,11 +17,16 @@ export function useConversation(sessionId: string | undefined) {
   const history = useHistoryBlocks(sessionId ?? null)
   const source = useSessionSource(sessionId)
   const actions = useSessionActions(source.send)
+  const canResumeLazy = source.canResumeLazy
   // NOTE: useInputState is NOT called here — each consumer (ChatPage, ConversationView,
   // SessionDetailPanel) calls deriveInputBarState() or useInputState() directly with
   // canResumeLazy from sessionInfo. This avoids a dead hook call.
 
   const [optimisticBlocks, setOptimisticBlocks] = useState<UserBlock[]>([])
+
+  // Ref sync pattern: keep latest optimisticBlocks accessible in callbacks without stale closure
+  const optimisticBlocksRef = useRef<UserBlock[]>([])
+  optimisticBlocksRef.current = optimisticBlocks
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -35,7 +40,7 @@ export function useConversation(sessionId: string | undefined) {
         localId,
         text,
         timestamp: Date.now() / 1000,
-        status: 'optimistic',
+        status: canResumeLazy ? 'sending' : 'optimistic',
       }
       setOptimisticBlocks((prev) => [...prev, optimistic])
       actions.sendMessage(text)
@@ -48,7 +53,7 @@ export function useConversation(sessionId: string | undefined) {
 
       return () => clearTimeout(timer)
     },
-    [actions], // Only [actions] — source is NOT used in the callback body
+    [actions, canResumeLazy],
   )
 
   // Merge all block sources: history + divider + live + optimistic.
@@ -70,6 +75,41 @@ export function useConversation(sessionId: string | undefined) {
     return pendingOptimistic.length > 0 ? [...merged, ...pendingOptimistic] : merged
   }, [history.blocks, source.blocks, optimisticBlocks])
 
+  // Track previous isLive to detect the lazy-connect transition
+  const prevIsLiveRef = useRef(source.isLive)
+
+  // Transition 'sending' → 'sent' when WS connects (lazy connect completed)
+  useEffect(() => {
+    if (!prevIsLiveRef.current && source.isLive) {
+      setOptimisticBlocks((prev) =>
+        prev.map((ob) => (ob.status === 'sending' ? { ...ob, status: 'sent' as const } : ob)),
+      )
+    }
+    prevIsLiveRef.current = source.isLive
+  }, [source.isLive])
+
+  // Remove 'sent' blocks after 500ms (the checkmark flash)
+  useEffect(() => {
+    const sentBlocks = optimisticBlocks.filter((ob) => ob.status === 'sent')
+    if (sentBlocks.length === 0) return
+    const timer = setTimeout(() => {
+      setOptimisticBlocks((prev) => prev.filter((ob) => ob.status !== 'sent'))
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [optimisticBlocks])
+
+  const retryMessage = useCallback(
+    (localId: string) => {
+      const failed = optimisticBlocksRef.current.find(
+        (ob) => ob.localId === localId && ob.status === 'failed',
+      )
+      if (!failed) return
+      setOptimisticBlocks((prev) => prev.filter((ob) => ob.localId !== localId))
+      sendMessage(failed.text)
+    },
+    [sendMessage],
+  )
+
   const fork = useCallback(async () => {
     if (!sessionId) return null
     const res = await fetch('/api/control/sessions/fork', {
@@ -89,6 +129,7 @@ export function useConversation(sessionId: string | undefined) {
     actions: {
       ...actions,
       sendMessage,
+      retryMessage,
       resume: source.resume,
       fork,
     },

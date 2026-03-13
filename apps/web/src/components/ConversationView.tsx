@@ -23,6 +23,7 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
 import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
@@ -733,7 +734,11 @@ export function ConversationView() {
                   <ExpandProvider>
                     <div className="max-w-4xl mx-auto px-6 py-4">
                       <ErrorBoundary>
-                        <ConversationThread blocks={blocks} renderers={registry} />
+                        <ConversationActionsProvider
+                          actions={{ retryMessage: actions.retryMessage }}
+                        >
+                          <ConversationThread blocks={blocks} renderers={registry} />
+                        </ConversationActionsProvider>
                       </ErrorBoundary>
                     </div>
                   </ExpandProvider>

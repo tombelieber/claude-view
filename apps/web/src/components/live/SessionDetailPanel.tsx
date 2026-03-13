@@ -23,6 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
+import { ConversationActionsProvider } from '../../contexts/conversation-actions-context'
 import { useConversation } from '../../hooks/use-conversation'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
@@ -777,7 +778,9 @@ export function SessionDetailPanel({
         {/* ---- Chat tab (compact block renderer) ---- */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <CompactChatTab blocks={convBlocks} />
+            <ConversationActionsProvider actions={{ retryMessage: convActions.retryMessage }}>
+              <CompactChatTab blocks={convBlocks} />
+            </ConversationActionsProvider>
           </div>
         )}
 
