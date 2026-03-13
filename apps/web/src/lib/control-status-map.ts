@@ -7,8 +7,14 @@ import type { InputBarState } from '../components/chat/ChatInputBar'
  * Note: 'active' maps to 'streaming' (Claude is generating),
  * 'waiting_input' maps to 'active' (user can type).
  */
-export function deriveInputBarState(sessionState: string, isLive: boolean): InputBarState {
-  if (!isLive) return 'dormant'
+export function deriveInputBarState(
+  sessionState: string,
+  isLive: boolean,
+  canResumeLazy?: boolean,
+): InputBarState {
+  if (!isLive) {
+    return canResumeLazy ? 'active' : 'dormant'
+  }
   switch (sessionState) {
     case 'waiting_input':
       return 'active'
