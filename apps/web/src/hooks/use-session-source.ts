@@ -1,5 +1,6 @@
 import { StreamAccumulator } from '@claude-view/shared/lib'
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
 import type { ModelUsageInfo, SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
@@ -248,9 +249,11 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         setIsLive(true)
         reconnectAttemptRef.current = 0
 
-        if (lastSeqRef.current >= 0) {
-          ws.send(JSON.stringify({ type: 'resume', lastSeq: lastSeqRef.current }))
-        }
+        // Always replay buffered events — critical for new sessions where
+        // initialMessage response may have been emitted before WS connected.
+        // On first connect (lastSeq=-1), getAfter(-1) returns all buffered events.
+        // On reconnect (lastSeq=N), getAfter(N) returns only missed events.
+        ws.send(JSON.stringify({ type: 'resume', lastSeq: lastSeqRef.current }))
 
         // Drain any messages queued while WS was connecting.
         // pendingMessagesRef survives reconnects — messages queued before the initial
@@ -293,11 +296,15 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       try {
         const res = await fetch('/api/control/sessions')
         if (!cancelled && res.ok) {
-          const sessions: { controlId: string; sessionId: string }[] = await res.json()
+          const sessions: ActiveSession[] = await res.json()
           const active = sessions.find((s) => s.sessionId === sid)
           if (!cancelled && active) {
             setControlId(active.controlId)
-            // Don't open WS yet — wait for user to send first message (lazy connect)
+            // Auto-connect for sessions actively processing — user should see live output.
+            // Lazy connect (wait for user's next message) for idle sessions.
+            if (active.state === 'initializing' || active.state === 'active') {
+              openWs(sid)
+            }
           }
         }
       } catch {
