@@ -272,7 +272,7 @@ pub enum MonitorEvent {
 /// Process classification runs every 5th tick (10s at 2s interval).
 /// Extracted as a pure function for testability.
 pub fn should_classify_on_tick(tick: u32) -> bool {
-    tick > 0 && tick % 5 == 0
+    tick > 0 && tick.is_multiple_of(5)
 }
 
 /// Start the polling task that collects snapshots every 2 seconds.
