@@ -151,6 +151,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         available_ides: Vec::new(),
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
+        plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
     });
     api_routes(state)
 }
@@ -245,7 +247,20 @@ pub fn create_app_full(
         available_ides,
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
+        plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
     });
+
+    // Spawn the plugin operation worker (processes queued installs/updates serially).
+    {
+        let queue = state.plugin_op_queue.clone();
+        let notify = state.plugin_op_notify.clone();
+        let worker_state = state.clone();
+        routes::plugin_ops::spawn_op_worker(queue, notify, move |op| {
+            let st = worker_state.clone();
+            async move { routes::plugin_ops::execute_plugin_op(&st, op).await }
+        });
+    }
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
