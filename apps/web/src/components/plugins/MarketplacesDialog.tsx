@@ -39,7 +39,10 @@ export function MarketplacesDialog() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+        <Dialog.Content
+          className="fixed z-[51] top-1/2 left-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
+          style={{ transform: 'translate(-50%, -50%)' }}
+        >
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
             <Dialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Plugin Marketplaces
