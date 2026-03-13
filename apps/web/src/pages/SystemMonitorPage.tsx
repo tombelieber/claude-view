@@ -2,12 +2,13 @@ import { Activity } from 'lucide-react'
 import { useRef } from 'react'
 import { useLiveSessions } from '../components/live/use-live-sessions'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
+import { ProcessTreeSection } from '../components/monitor/ProcessTreeSection'
 import { SystemGaugeRow } from '../components/monitor/SystemGaugeRow'
 import { TopProcessesPanel } from '../components/monitor/TopProcessesPanel'
 import { useSystemMonitor } from '../hooks/use-system-monitor'
 
 export function SystemMonitorPage() {
-  const { status, systemInfo, snapshot } = useSystemMonitor()
+  const { status, systemInfo, snapshot, processTree, processTreeFreshAt } = useSystemMonitor()
   const { sessions } = useLiveSessions()
   const hasRevealedRef = useRef(false)
 
@@ -101,6 +102,9 @@ export function SystemMonitorPage() {
           >
             <TopProcessesPanel processes={snapshot.topProcesses} />
           </div>
+
+          {/* Claude Process Tree */}
+          {processTree && <ProcessTreeSection tree={processTree} freshAt={processTreeFreshAt} />}
         </div>
       )}
 
