@@ -1,6 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Bot, ExternalLink, FileText, Terminal, Wrench, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { cn } from '../../lib/utils'
 import type { AvailablePlugin, PluginInfo, PluginItem } from '../../types/generated'
 import { AppleToggle } from './AppleToggle'
@@ -15,19 +17,16 @@ function isInstalled(p: PluginInfo | AvailablePlugin): p is PluginInfo {
   return 'scope' in p
 }
 
-type ItemKind = 'skill' | 'command' | 'agent' | 'mcp_tool'
-
 function itemFileName(item: PluginItem): string {
-  const kind = item.kind as ItemKind
-  if (kind === 'mcp_tool') return item.name
+  if (item.kind === 'mcp_tool') return item.name
   return `${item.name.replace(/\s+/g, '-').toLowerCase()}.md`
 }
 
 function ItemIcon({ kind }: { kind: string }) {
-  if (kind === 'command') return <Terminal className="w-3.5 h-3.5 flex-shrink-0" />
-  if (kind === 'agent') return <Bot className="w-3.5 h-3.5 flex-shrink-0" />
-  if (kind === 'mcp_tool') return <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
-  return <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+  if (kind === 'command') return <Terminal className="w-3 h-3 flex-shrink-0" />
+  if (kind === 'agent') return <Bot className="w-3 h-3 flex-shrink-0" />
+  if (kind === 'mcp_tool') return <Wrench className="w-3 h-3 flex-shrink-0" />
+  return <FileText className="w-3 h-3 flex-shrink-0" />
 }
 
 function kindDotColor(kind: string): string {
@@ -37,27 +36,15 @@ function kindDotColor(kind: string): string {
   return 'bg-amber-400'
 }
 
-// ---------------------------------------------------------------------------
-// Scope badge
-// ---------------------------------------------------------------------------
-
-function ScopeBadge({ scope }: { scope: string }) {
-  return (
-    <span
-      className={cn(
-        'text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-[0.05em]',
-        scope.toLowerCase() === 'project'
-          ? 'bg-green-50 text-green-700'
-          : 'bg-blue-50 text-blue-600',
-      )}
-    >
-      {scope}
-    </span>
-  )
+function kindBadgeClass(kind: string): string {
+  if (kind === 'skill') return 'bg-indigo-50 text-indigo-600'
+  if (kind === 'command') return 'bg-emerald-50 text-emerald-700'
+  if (kind === 'agent') return 'bg-blue-50 text-blue-600'
+  return 'bg-amber-50 text-amber-600'
 }
 
 // ---------------------------------------------------------------------------
-// Dialog header (shared)
+// Header
 // ---------------------------------------------------------------------------
 
 interface HeaderProps {
@@ -81,25 +68,38 @@ function DialogHeader({
   onAction,
   isPending,
 }: HeaderProps) {
+  const scopeIsProject = scope?.toLowerCase() === 'project'
   return (
-    <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-apple-sep2 flex-shrink-0">
+    <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-apple-sep2 flex-shrink-0">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Dialog.Title className="text-[15px] font-bold text-apple-text1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Dialog.Title className="text-[14px] font-bold text-apple-text1">
             {plugin.name}
           </Dialog.Title>
-          {scope && <ScopeBadge scope={scope} />}
+          {scope && (
+            <span
+              className={cn(
+                'text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-[0.05em]',
+                scopeIsProject ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-600',
+              )}
+            >
+              {scope}
+            </span>
+          )}
           {!installed && (plugin as AvailablePlugin).alreadyInstalled && (
-            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]">
+            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]">
               INSTALLED
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mt-1 text-[11px] text-apple-text3">
-          <span className="flex items-center gap-1">
-            <span className={cn('w-1.5 h-1.5 rounded-full', marketplaceDotColor(marketplace))} />
-            {marketplace}
-          </span>
+        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-apple-text3">
+          <span
+            className={cn(
+              'w-1.5 h-1.5 rounded-full flex-shrink-0',
+              marketplaceDotColor(marketplace),
+            )}
+          />
+          <span>{marketplace}</span>
           <span className="text-apple-sep">·</span>
           <span className="font-mono">{version ?? '—'}</span>
           <span className="text-apple-sep">·</span>
@@ -107,7 +107,7 @@ function DialogHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5 flex-shrink-0 pt-0.5">
+      <div className="flex items-center gap-1 flex-shrink-0">
         {githubUrl && (
           <a
             href={githubUrl}
@@ -117,10 +117,9 @@ function DialogHeader({
             onClick={(e) => e.stopPropagation()}
             className="p-1.5 rounded-lg hover:bg-apple-sep2 transition-colors text-apple-text3"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-3.5 h-3.5" />
           </a>
         )}
-
         {installed && (
           <div className="flex flex-col items-center gap-0.5">
             <AppleToggle
@@ -136,7 +135,6 @@ function DialogHeader({
             </span>
           </div>
         )}
-
         <Dialog.Close asChild>
           <button
             type="button"
@@ -152,226 +150,239 @@ function DialogHeader({
 }
 
 // ---------------------------------------------------------------------------
-// Left panel: installed plugin details
+// Left panel: meta + contents list combined
 // ---------------------------------------------------------------------------
 
-function itemsSummary(items: PluginItem[]): string {
-  const counts: Array<[string, number]> = [
-    ['skill', items.filter((i) => i.kind === 'skill').length],
-    ['cmd', items.filter((i) => i.kind === 'command').length],
-    ['agent', items.filter((i) => i.kind === 'agent').length],
-    ['MCP tool', items.filter((i) => i.kind === 'mcp_tool').length],
-  ]
-  return counts
-    .filter(([, n]) => n > 0)
-    .map(([label, n]) => `${n} ${label}${n !== 1 && label !== 'MCP tool' ? 's' : ''}`)
-    .join(' · ')
-}
-
-interface InstalledLeftPanelProps {
+interface LeftPanelProps {
   plugin: PluginInfo
+  selectedIdx: number
+  onSelect: (idx: number) => void
   onAction?: (action: string, name: string, scope?: string, projectPath?: string | null) => void
   isPending: boolean
 }
 
-function InstalledLeftPanel({ plugin, onAction, isPending }: InstalledLeftPanelProps) {
+function LeftPanel({ plugin, selectedIdx, onSelect, onAction, isPending }: LeftPanelProps) {
   const invocations = Number(plugin.totalInvocations)
   const sessions = Number(plugin.sessionCount)
-  const summary = itemsSummary(plugin.items)
 
   return (
-    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+    <div className="w-[36%] flex-shrink-0 flex flex-col border-r border-apple-sep2 overflow-hidden">
       <Dialog.Description className="sr-only">{plugin.name} plugin details</Dialog.Description>
 
-      {/* Description */}
-      {plugin.description ? (
-        <p className="text-[13px] text-apple-text2 leading-relaxed">{plugin.description}</p>
-      ) : (
-        <p className="text-[13px] text-apple-text3 italic">No description provided.</p>
-      )}
+      {/* Meta section — tight spacing, zero waste */}
+      <div className="px-4 pt-3 pb-3 space-y-1.5 flex-shrink-0">
+        {plugin.description ? (
+          <p className="text-[12px] text-apple-text2 leading-relaxed">{plugin.description}</p>
+        ) : (
+          <p className="text-[12px] text-apple-text3 italic">No description.</p>
+        )}
 
-      {/* Dates */}
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-apple-text3">
-        <span>Installed {plugin.installedAt.split('T')[0]}</span>
-        {plugin.lastUpdated && <span>· Updated {plugin.lastUpdated.split('T')[0]}</span>}
-        {plugin.gitSha && (
-          <span className="font-mono text-[10px]">SHA {plugin.gitSha.slice(0, 12)}</span>
+        <div className="flex flex-wrap gap-x-2 text-[11px] text-apple-text3">
+          <span>Installed {plugin.installedAt.split('T')[0]}</span>
+          {plugin.lastUpdated && <span>· Updated {plugin.lastUpdated.split('T')[0]}</span>}
+          {plugin.gitSha && (
+            <span className="font-mono text-[10px]">SHA {plugin.gitSha.slice(0, 8)}</span>
+          )}
+        </div>
+
+        {invocations > 0 && (
+          <div className="text-[11px] text-apple-text3">
+            {invocations.toLocaleString()}× · {sessions} session{sessions !== 1 ? 's' : ''}
+            {plugin.lastUsedAt && ` · ${formatRelativeTime(Number(plugin.lastUsedAt))}`}
+          </div>
+        )}
+
+        {plugin.duplicateMarketplaces.length > 0 && (
+          <div className="px-2.5 py-1.5 rounded-lg bg-[rgba(255,149,0,0.07)] border border-[rgba(255,149,0,0.2)]">
+            <span className="text-[11px] text-apple-text2">
+              <strong className="text-[#B45309]">Conflict:</strong> also in{' '}
+              {plugin.duplicateMarketplaces.join(', ')}
+            </span>
+          </div>
+        )}
+
+        {plugin.errors.length > 0 && (
+          <div className="px-2.5 py-2 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
+            <div className="text-[11px] font-bold text-[#C0392B]">
+              {plugin.sourceExists ? 'CLI verification issue' : 'Orphaned install'}
+            </div>
+            <div className="flex gap-1.5 mt-1.5">
+              {!plugin.sourceExists && (
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAction?.('install', plugin.name, plugin.scope)
+                  }}
+                  className="text-[11px] px-2.5 py-0.5 rounded-[6px] border border-[rgba(255,59,48,0.3)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] disabled:opacity-50"
+                >
+                  Reinstall
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction?.('uninstall', plugin.name, plugin.scope, plugin.projectPath)
+                }}
+                className="text-[11px] px-2.5 py-0.5 rounded-[6px] bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Usage */}
-      {invocations > 0 && (
-        <div className="text-[12px] text-apple-text3">
-          {invocations.toLocaleString()}× across {sessions} session{sessions !== 1 ? 's' : ''}
-          {plugin.lastUsedAt && ` · ${formatRelativeTime(Number(plugin.lastUsedAt))}`}
-        </div>
-      )}
-
-      {/* Items summary */}
-      {summary && <div className="text-[11px] text-apple-text3">{summary}</div>}
-
-      {/* Conflict warning */}
-      {plugin.duplicateMarketplaces.length > 0 && (
-        <div className="p-2.5 rounded-lg bg-[rgba(255,149,0,0.07)] border border-[rgba(255,149,0,0.2)]">
-          <span className="text-[12px] text-apple-text2">
-            <strong className="text-[#B45309] font-semibold">Conflict:</strong> also in{' '}
-            {plugin.duplicateMarketplaces.join(', ')}. Updates won't apply.
-          </span>
-        </div>
-      )}
-
-      {/* Orphan error */}
-      {plugin.errors.length > 0 && (
-        <div className="p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
-          <div className="text-[12px] font-bold text-[#C0392B] mb-1">Orphaned install</div>
-          <div className="text-[12px] text-apple-text2 mb-2">
-            Source path missing. Can't update or verify.
+      {/* Contents list — scrollable, fills remaining height */}
+      {plugin.items.length > 0 && (
+        <>
+          <div className="px-4 py-1.5 border-t border-apple-sep2 flex-shrink-0">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-apple-text3">
+              Contents ({plugin.items.length})
+            </span>
           </div>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onAction?.('update', plugin.name, plugin.scope)
-              }}
-              disabled={isPending}
-              className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] disabled:opacity-50 disabled:cursor-wait transition-colors"
-            >
-              Reinstall
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onAction?.('uninstall', plugin.name, plugin.scope, plugin.projectPath)
-              }}
-              disabled={isPending}
-              className="text-[11px] font-medium px-3 py-1 rounded-[7px] bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] disabled:opacity-50 disabled:cursor-wait transition-colors"
-            >
-              Remove
-            </button>
+          <div className="flex-1 overflow-y-auto">
+            {plugin.items.map((item, idx) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onSelect(idx)
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2 py-1.5 px-4 text-left transition-colors',
+                  idx === selectedIdx
+                    ? 'bg-[rgba(0,122,255,0.08)] text-apple-blue'
+                    : 'hover:bg-apple-sep2 text-apple-text2',
+                )}
+              >
+                <span
+                  className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', kindDotColor(item.kind))}
+                />
+                <ItemIcon kind={item.kind} />
+                <span className="text-[12px] font-mono truncate">{itemFileName(item)}</span>
+              </button>
+            ))}
           </div>
-        </div>
+        </>
       )}
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Right panel: IDE file viewer
+// Right panel: react-markdown rendered file content
 // ---------------------------------------------------------------------------
 
-interface FileViewerPanelProps {
-  plugin: PluginInfo
-  open: boolean
+const mdComponents = {
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h1 className="text-[14px] font-bold text-apple-text1 mt-3 mb-1.5">{children}</h1>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h2 className="text-[13px] font-semibold text-apple-text1 mt-2.5 mb-1">{children}</h2>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h3 className="text-[12px] font-semibold text-apple-text2 mt-2 mb-0.5">{children}</h3>
+  ),
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="text-[12px] text-apple-text2 leading-relaxed mb-2">{children}</p>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="list-disc list-inside text-[12px] text-apple-text2 space-y-0.5 mb-2 pl-1">
+      {children}
+    </ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="list-decimal list-inside text-[12px] text-apple-text2 space-y-0.5 mb-2 pl-1">
+      {children}
+    </ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li className="leading-relaxed">{children}</li>
+  ),
+  code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+    const isBlock = className?.startsWith('language-')
+    return isBlock ? (
+      <code className="block bg-[#f0f2f5] border border-apple-sep2 rounded-lg p-3 text-[11px] font-mono text-apple-text1 whitespace-pre-wrap overflow-x-auto mb-2">
+        {children}
+      </code>
+    ) : (
+      <code className="bg-apple-sep2 text-apple-text1 rounded px-1 py-0.5 text-[11px] font-mono">
+        {children}
+      </code>
+    )
+  },
+  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-2 border-apple-sep pl-3 text-[12px] text-apple-text3 italic my-2">
+      {children}
+    </blockquote>
+  ),
+  hr: () => <hr className="border-apple-sep2 my-3" />,
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-apple-text1">{children}</strong>
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-apple-blue hover:underline"
+    >
+      {children}
+    </a>
+  ),
 }
 
-function FileViewerPanel({ plugin, open }: FileViewerPanelProps) {
-  const [selectedIdx, setSelectedIdx] = useState(0)
-  const items = plugin.items
+function FileContentViewer({ item }: { item: PluginItem | null }) {
+  const desc = item?.description && item.description !== '---' ? item.description : null
+  const invocations = item ? Number(item.invocationCount) : 0
+  const lastUsed = item?.lastUsedAt ? formatRelativeTime(Number(item.lastUsedAt)) : null
 
-  useEffect(() => {
-    setSelectedIdx(0)
-  }, [plugin.id])
-
-  useEffect(() => {
-    if (!open || items.length === 0) return
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setSelectedIdx((i) => Math.min(i + 1, items.length - 1))
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setSelectedIdx((i) => Math.max(i - 1, 0))
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [open, items])
-
-  if (items.length === 0) return null
-
-  const selected = items[selectedIdx]
-  const desc = selected?.description && selected.description !== '---' ? selected.description : null
-  const invocations = selected ? Number(selected.invocationCount) : 0
-  const lastUsed = selected?.lastUsedAt ? formatRelativeTime(Number(selected.lastUsedAt)) : null
+  if (!item) return null
 
   return (
-    <div className="w-[45%] flex-shrink-0 border-l border-apple-sep2 flex flex-col overflow-hidden bg-[#fafafa]">
-      {/* Panel header */}
-      <div className="px-3 py-2 border-b border-apple-sep2 flex-shrink-0">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-apple-text3">
-          Contents ({items.length})
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Breadcrumb bar */}
+      <div className="px-4 py-2 border-b border-apple-sep2 flex-shrink-0 flex items-center gap-2">
+        <span className="text-[12px] font-mono text-apple-text2 truncate">
+          {itemFileName(item)}
         </span>
-      </div>
-
-      {/* File list */}
-      <div className="overflow-y-auto" style={{ maxHeight: '60%' }}>
-        {items.map((item, idx) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setSelectedIdx(idx)
-            }}
-            className={cn(
-              'w-full flex items-center gap-2 py-1.5 px-3 text-left transition-colors',
-              idx === selectedIdx
-                ? 'bg-[rgba(0,122,255,0.1)] text-apple-blue'
-                : 'hover:bg-apple-sep2 text-apple-text2',
-            )}
-          >
-            <span
-              className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', kindDotColor(item.kind))}
-            />
-            <ItemIcon kind={item.kind} />
-            <span className="text-[12px] font-mono truncate">{itemFileName(item)}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Selected file content */}
-      {selected && (
-        <div className="flex-1 overflow-y-auto bg-[#f8f9fa] border-t border-apple-sep2 p-3 flex flex-col gap-2 min-h-0">
-          {/* Breadcrumb + meta row */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-mono text-apple-text2">{itemFileName(selected)}</span>
-            <span
-              className={cn(
-                'text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded',
-                selected.kind === 'skill' && 'bg-indigo-50 text-indigo-600',
-                selected.kind === 'command' && 'bg-emerald-50 text-emerald-600',
-                selected.kind === 'agent' && 'bg-blue-50 text-blue-600',
-                selected.kind === 'mcp_tool' && 'bg-amber-50 text-amber-600',
-              )}
-            >
-              {selected.kind.replace('_', ' ')}
-            </span>
-            {invocations > 0 && (
-              <span className="text-[10px] text-apple-text3 tabular-nums">
-                {invocations}×{lastUsed && ` · ${lastUsed}`}
-              </span>
-            )}
-          </div>
-
-          {/* Description */}
-          {desc ? (
-            <div className="text-[12px] text-apple-text2 leading-relaxed whitespace-pre-wrap font-mono bg-white border border-apple-sep2 rounded p-2 flex-1 overflow-y-auto">
-              {desc}
-            </div>
-          ) : (
-            <p className="text-[12px] text-apple-text3 italic">No description provided.</p>
+        <span
+          className={cn(
+            'text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0',
+            kindBadgeClass(item.kind),
           )}
-        </div>
-      )}
+        >
+          {item.kind.replace('_', ' ')}
+        </span>
+        {invocations > 0 && (
+          <span className="text-[10px] text-apple-text3 tabular-nums flex-shrink-0">
+            {invocations}×{lastUsed && ` · ${lastUsed}`}
+          </span>
+        )}
+      </div>
+
+      {/* Markdown content */}
+      <div className="flex-1 overflow-y-auto bg-[#fafafa] px-4 py-3">
+        {desc ? (
+          <Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+            {desc}
+          </Markdown>
+        ) : (
+          <p className="text-[12px] text-apple-text3 italic">No description provided.</p>
+        )}
+      </div>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Available plugin body (single panel)
+// Available plugin body
 // ---------------------------------------------------------------------------
 
 function AvailableBody({
@@ -384,7 +395,7 @@ function AvailableBody({
   isPending: boolean
 }) {
   return (
-    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+    <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
       <Dialog.Description className="sr-only">{plugin.name} plugin details</Dialog.Description>
       {plugin.description ? (
         <p className="text-[13px] text-apple-text2 leading-relaxed">{plugin.description}</p>
@@ -439,10 +450,30 @@ export function PluginDetailDialog({
       : plugin.version
     : plugin.version
   const scope = installed ? plugin.scope : null
-  const hasFileViewer = installed && plugin.items.length > 0
+
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  useEffect(() => {
+    setSelectedIdx(0)
+  }, [plugin])
+
+  useEffect(() => {
+    if (!open || !installed || plugin.items.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIdx((i) => Math.min(i + 1, plugin.items.length - 1))
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIdx((i) => Math.max(i - 1, 0))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, installed, plugin])
 
   const contentClass = cn(
-    'fixed z-[51] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+    'fixed z-[51] top-1/2 left-1/2',
     'w-[90vw] max-h-[85vh] flex flex-col rounded-2xl border border-apple-sep bg-white shadow-2xl overflow-hidden',
     installed ? 'max-w-4xl' : 'max-w-lg',
   )
@@ -451,7 +482,11 @@ export function PluginDetailDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30" />
-        <Dialog.Content className={contentClass} onClick={(e) => e.stopPropagation()}>
+        <Dialog.Content
+          className={contentClass}
+          style={{ transform: 'translate(-50%, -50%)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <DialogHeader
             plugin={plugin}
             installed={installed}
@@ -463,14 +498,17 @@ export function PluginDetailDialog({
             isPending={isPending}
           />
 
-          {/* Body */}
           <div className="flex flex-1 min-h-0">
             {installed ? (
               <>
-                <div className={cn('flex flex-col min-h-0', hasFileViewer ? 'w-[55%]' : 'flex-1')}>
-                  <InstalledLeftPanel plugin={plugin} onAction={onAction} isPending={isPending} />
-                </div>
-                {hasFileViewer && <FileViewerPanel plugin={plugin} open={open} />}
+                <LeftPanel
+                  plugin={plugin}
+                  selectedIdx={selectedIdx}
+                  onSelect={setSelectedIdx}
+                  onAction={onAction}
+                  isPending={isPending}
+                />
+                <FileContentViewer item={plugin.items[selectedIdx] ?? null} />
               </>
             ) : (
               <AvailableBody

@@ -28,7 +28,7 @@ export function UserItemCard({ item }: UserItemCardProps) {
         'hover:border-[rgba(88,86,214,0.38)] hover:shadow-[0_3px_10px_rgba(0,0,0,0.08)]',
         'transition-all duration-150',
         'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
-        invocations === 0 && 'opacity-50 hover:opacity-100',
+        // No muting — all cards always full opacity
       )}
     >
       {/* Row 1: name + kind badge + kebab */}

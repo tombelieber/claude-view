@@ -1,5 +1,5 @@
 import { ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { PluginInfo } from '../../types/generated'
 import { AppleToggle } from './AppleToggle'
@@ -88,6 +88,12 @@ export interface PluginCardProps {
 export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
 
+  // Optimistic toggle — flip immediately, sync back when server data arrives
+  const [optimisticEnabled, setOptimisticEnabled] = useState(plugin.enabled)
+  useEffect(() => {
+    setOptimisticEnabled(plugin.enabled)
+  }, [plugin.enabled])
+
   const version = plugin.gitSha ? plugin.gitSha.slice(0, 6) : plugin.version
   const installCount = formatInstallCount(plugin.installCount)
 
@@ -101,7 +107,6 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
           'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
           plugin.errors.length > 0 &&
             'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.025)] hover:border-[rgba(255,59,48,0.45)]',
-          !plugin.enabled && 'opacity-50',
         )}
         onClick={() => setDialogOpen(true)}
         role="button"
@@ -115,7 +120,7 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
           <div className="flex items-center gap-2 min-w-0">
             <h3 className="text-sm font-semibold text-apple-text truncate">{plugin.name}</h3>
             <ScopeBadge scope={plugin.scope} />
-            {!plugin.enabled && (
+            {!optimisticEnabled && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
                 Disabled
               </span>
@@ -136,20 +141,23 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
             )}
             <span onClick={(e) => e.stopPropagation()}>
               <AppleToggle
-                checked={plugin.enabled}
+                checked={optimisticEnabled}
                 size="sm"
-                onChange={() =>
+                onChange={() => {
+                  setOptimisticEnabled(!optimisticEnabled)
                   onAction(
-                    plugin.enabled ? 'disable' : 'enable',
+                    optimisticEnabled ? 'disable' : 'enable',
                     plugin.id,
                     plugin.scope,
                     plugin.projectPath,
                   )
-                }
+                }}
                 disabled={isPending}
               />
             </span>
-            <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
+            <span onClick={(e) => e.stopPropagation()}>
+              <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
+            </span>
           </div>
         </div>
 

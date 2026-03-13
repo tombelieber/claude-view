@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { expect, test } from 'vitest'
 import { UserItemSection } from '../UserItemSection'
 
@@ -12,25 +12,17 @@ const makeItems = (count: number) =>
     lastUsedAt: BigInt(Math.floor(Date.now() / 1000)),
   }))
 
-test('shows all items when <= 3', () => {
+test('shows all items when count is small', () => {
   render(<UserItemSection title="Skills" items={makeItems(2)} pathPrefix="~/.claude/skills/" />)
   expect(screen.getByText('skill-0')).toBeInTheDocument()
   expect(screen.getByText('skill-1')).toBeInTheDocument()
-  expect(screen.queryByText(/more/)).not.toBeInTheDocument()
 })
 
-test('shows only 3 items + "show more" when > 3', () => {
+test('shows all items without truncation', () => {
   render(<UserItemSection title="Skills" items={makeItems(6)} pathPrefix="~/.claude/skills/" />)
-  expect(screen.getByText('skill-0')).toBeInTheDocument()
-  expect(screen.getByText('skill-2')).toBeInTheDocument()
-  expect(screen.queryByText('skill-3')).not.toBeInTheDocument()
-  expect(screen.getByText('+ 3 more skills')).toBeInTheDocument()
-})
-
-test('expands to show all items when "show more" clicked', () => {
-  render(<UserItemSection title="Skills" items={makeItems(6)} pathPrefix="~/.claude/skills/" />)
-  fireEvent.click(screen.getByText('+ 3 more skills'))
-  expect(screen.getByText('skill-5')).toBeInTheDocument()
+  for (let i = 0; i < 6; i++) {
+    expect(screen.getByText(`skill-${i}`)).toBeInTheDocument()
+  }
   expect(screen.queryByText(/more/)).not.toBeInTheDocument()
 })
 
