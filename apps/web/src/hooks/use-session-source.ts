@@ -1,5 +1,5 @@
-import { StreamAccumulator, historyToBlocks } from '@claude-view/shared/lib'
-import type { ConversationBlock, NoticeBlock } from '@claude-view/shared/types/blocks'
+import { StreamAccumulator } from '@claude-view/shared/lib'
+import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ModelUsageInfo, SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../lib/ws-url'
@@ -19,10 +19,28 @@ export interface SessionSourceResult {
   resume: (permissionMode?: string, model?: string) => Promise<void>
   totalInputTokens: number
   contextWindowSize: number
+  /** True if session is known-active but WS not yet opened */
+  canResumeLazy: boolean
+}
+
+/** Exported for testing — determines which send function to use based on connection state. */
+export function deriveEffectiveSend(
+  isLive: boolean,
+  controlId: string | null,
+  send: ((msg: Record<string, unknown>) => void) | null,
+  connectAndSend: (msg: Record<string, unknown>) => void,
+): ((msg: Record<string, unknown>) => void) | null {
+  if (isLive) return send // WS is open, use direct send
+  if (controlId) return connectAndSend // Lazy resumable — queue + connect
+  return null // Truly dormant — no send capability
+}
+
+/** Exported for testing — true when session has a controlId but WS not yet opened. */
+export function deriveCanResumeLazy(controlId: string | null, isLive: boolean): boolean {
+  return !!controlId && !isLive
 }
 
 export function useSessionSource(sessionId: string | undefined): SessionSourceResult {
-  const [historyBlocks, setHistoryBlocks] = useState<ConversationBlock[]>([])
   const [liveBlocks, setLiveBlocks] = useState<ConversationBlock[]>([])
   const [sessionState, setSessionState] = useState<string>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
@@ -38,7 +56,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const pongReceivedRef = useRef(true)
   const reconnectAttemptRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showDividerRef = useRef(false)
+  const pendingMessagesRef = useRef<Record<string, unknown>[]>([])
 
   // --- Heartbeat ---
   const clearHeartbeat = useCallback(() => {
@@ -206,6 +224,14 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         if (lastSeqRef.current >= 0) {
           ws.send(JSON.stringify({ type: 'resume', lastSeq: lastSeqRef.current }))
         }
+
+        // Drain any messages queued while WS was connecting.
+        // pendingMessagesRef survives reconnects — messages queued before the initial
+        // WS connect are preserved and drained on the first successful onopen.
+        for (const msg of pendingMessagesRef.current) {
+          ws.send(JSON.stringify(msg))
+        }
+        pendingMessagesRef.current = []
       }
 
       ws.onmessage = (event) => handleWsMessage(ws, event)
@@ -217,10 +243,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     [handleWsMessage, handleWsClose],
   )
 
-  // --- Fetch history + check active sessions on sessionId change ---
+  // --- Check active sessions on sessionId change ---
   useEffect(() => {
     if (!sessionId) {
-      setHistoryBlocks([])
       setLiveBlocks([])
       setSessionState('idle')
       setControlId(null)
@@ -233,32 +258,19 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     accumulatorRef.current = new StreamAccumulator()
     lastSeqRef.current = -1
     reconnectAttemptRef.current = 0
-    showDividerRef.current = false
 
     let cancelled = false
 
     async function init() {
-      // Fetch history
-      try {
-        const res = await fetch(`/api/sessions/${sid}/messages`)
-        if (!cancelled && res.ok) {
-          const messages = await res.json()
-          setHistoryBlocks(historyToBlocks(messages))
-        }
-      } catch {
-        // History fetch failed — non-fatal, live may still work
-      }
-
       // Check if session is active
       try {
         const res = await fetch('/api/control/sessions')
         if (!cancelled && res.ok) {
           const sessions: { controlId: string; sessionId: string }[] = await res.json()
           const active = sessions.find((s) => s.sessionId === sid)
-          if (active) {
+          if (!cancelled && active) {
             setControlId(active.controlId)
-            showDividerRef.current = true
-            openWs(sid)
+            // Don't open WS yet — wait for user to send first message (lazy connect)
           }
         }
       } catch {
@@ -275,6 +287,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       wsRef.current?.close()
       wsRef.current = null
+      pendingMessagesRef.current = [] // prevent stale messages replaying to wrong session
     }
   }, [sessionId, openWs, clearHeartbeat])
 
@@ -284,6 +297,25 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify(msg))
   }, [])
+
+  // --- Connect and send (lazy WS connection) ---
+  const connectAndSend = useCallback(
+    (msg: Record<string, unknown>) => {
+      const ws = wsRef.current
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // Already connected — send directly
+        ws.send(JSON.stringify(msg))
+        return
+      }
+      // Queue the message for delivery on ws.onopen
+      pendingMessagesRef.current.push(msg)
+      // !ws means no WS at all (not merely CONNECTING) — CONNECTING WS will drain the queue in onopen.
+      if (!ws && sessionId && controlId) {
+        openWs(sessionId)
+      }
+    },
+    [sessionId, controlId, openWs],
+  )
 
   // --- Reconnect ---
   const reconnect = useCallback(() => {
@@ -306,7 +338,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         if (res.ok) {
           const data = await res.json()
           setControlId(data.controlId)
-          showDividerRef.current = true
           setSessionState('initializing')
           openWs(sessionId, model)
         }
@@ -317,32 +348,19 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     [sessionId, openWs],
   )
 
-  // --- Merge blocks ---
-  const divider: NoticeBlock = {
-    type: 'notice',
-    id: 'session-resumed-divider',
-    variant: 'session_resumed',
-    data: null,
-  }
-
-  const blocks =
-    showDividerRef.current && historyBlocks.length > 0 && liveBlocks.length > 0
-      ? [...historyBlocks, divider, ...liveBlocks]
-      : historyBlocks.length > 0 && liveBlocks.length > 0
-        ? [...historyBlocks, ...liveBlocks]
-        : liveBlocks.length > 0
-          ? liveBlocks
-          : historyBlocks
+  const effectiveSend = deriveEffectiveSend(isLive, controlId, send, connectAndSend)
+  const canResumeLazy = deriveCanResumeLazy(controlId, isLive)
 
   return {
-    blocks,
+    blocks: liveBlocks, // Only live/accumulator blocks — history comes from useHistoryBlocks
     sessionState,
     controlId,
-    send: isLive ? send : null,
+    send: effectiveSend,
     isLive,
     reconnect,
     resume,
     totalInputTokens,
     contextWindowSize,
+    canResumeLazy,
   }
 }

@@ -8,8 +8,21 @@ export interface InputState {
 }
 
 /** Pure function for testing without renderHook. */
-export function computeInputState(sessionState: string, isLive: boolean): InputState {
+export function computeInputState(
+  sessionState: string,
+  isLive: boolean,
+  canResumeLazy?: boolean,
+): InputState {
   if (!isLive) {
+    if (canResumeLazy) {
+      // Lazy-resumable: user CAN type — WS will connect on first send
+      return {
+        canSend: true,
+        disabled: false,
+        disabledReason: '',
+        placeholder: 'Message Claude...',
+      }
+    }
     return {
       canSend: false,
       disabled: true,
@@ -63,6 +76,13 @@ export function computeInputState(sessionState: string, isLive: boolean): InputS
   }
 }
 
-export function useInputState(sessionState: string, isLive: boolean): InputState {
-  return useMemo(() => computeInputState(sessionState, isLive), [sessionState, isLive])
+export function useInputState(
+  sessionState: string,
+  isLive: boolean,
+  canResumeLazy?: boolean,
+): InputState {
+  return useMemo(
+    () => computeInputState(sessionState, isLive, canResumeLazy),
+    [sessionState, isLive, canResumeLazy],
+  )
 }
