@@ -27,6 +27,7 @@ export function SessionCard({ session, onPress }: Props) {
           {session.projectDisplayName}
         </Text>
         <XStack items="center" gap="$2" mt="$1">
+          {/* biome-ignore lint/suspicious/noExplicitAny: Tamagui token string not assignable to bg prop type */}
           <Circle size={6} bg={statusColor as any} />
           <Text color="$gray400" fontSize="$sm">
             {session.status}
@@ -45,12 +46,12 @@ export function SessionCard({ session, onPress }: Props) {
             {session.lastUserMessage}
           </Text>
         ) : null}
-        {/* IDE file chip */}
-        {session.lastUserFile ? (
+        {/* User files */}
+        {session.userFiles && session.userFiles.length > 0 ? (
           <XStack items="center" gap="$1" mt="$1">
             <FileText size={12} color="$gray400" />
             <Text color="$gray400" fontSize="$xs" fontFamily="$mono">
-              {session.lastUserFile}
+              {session.userFiles[0].displayName}
             </Text>
           </XStack>
         ) : null}
