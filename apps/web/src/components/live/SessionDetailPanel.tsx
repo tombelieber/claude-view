@@ -800,10 +800,14 @@ export function SessionDetailPanel({
                 onRespond={convActions.respondPermission}
               />
             )}
-            {convInfo.isLive && (
+            {(convInfo.isLive || convInfo.canResumeLazy) && (
               <ChatInputBar
                 onSend={convActions.sendMessage}
-                state={deriveInputBarState(convInfo.sessionState, convInfo.isLive)}
+                state={deriveInputBarState(
+                  convInfo.sessionState,
+                  convInfo.isLive,
+                  convInfo.canResumeLazy,
+                )}
                 contextPercent={0}
               />
             )}
