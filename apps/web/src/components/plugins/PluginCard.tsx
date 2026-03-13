@@ -1,8 +1,11 @@
+import { ExternalLink } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
-import type { PluginInfo, PluginItem } from '../../types/generated'
+import type { PluginInfo } from '../../types/generated'
+import { AppleToggle } from './AppleToggle'
 import { PluginActionMenu } from './PluginActionMenu'
-import { formatRelativeTime } from './format-helpers'
+import { PluginDetailDialog } from './PluginDetailDialog'
+import { formatInstallCount, formatRelativeTime } from './format-helpers'
 import { marketplaceDotColor } from './marketplace-colors'
 
 // ---------------------------------------------------------------------------
@@ -72,219 +75,186 @@ function DuplicateWarning({ marketplaces }: { marketplaces: string[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Expanded items listing
-// ---------------------------------------------------------------------------
-
-function ItemRow({ item }: { item: PluginItem }) {
-  const count = Number(item.invocationCount)
-  const lastUsed = item.lastUsedAt ? formatRelativeTime(Number(item.lastUsedAt)) : null
-  return (
-    <div className="py-0.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-apple-text truncate">{item.name}</span>
-        <span className="text-apple-text3 whitespace-nowrap ml-2">
-          {count > 0 ? `${count}\u00d7` : '\u2014'}
-          {lastUsed && <span className="ml-2">{lastUsed}</span>}
-        </span>
-      </div>
-      {item.description && (
-        <div className="text-[10px] text-apple-text3 truncate mt-0.5">{item.description}</div>
-      )}
-    </div>
-  )
-}
-
-function ItemsSection({ kind, items }: { kind: string; items: PluginItem[] }) {
-  const [expanded, setExpanded] = useState(false)
-  if (items.length === 0) return null
-  const visible = expanded ? items : items.slice(0, 5)
-  const remaining = items.length - 5
-  return (
-    <div className="mt-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-apple-text3 mb-0.5">
-        {kind} ({items.length})
-      </div>
-      {visible.map((item) => (
-        <ItemRow key={item.id} item={item} />
-      ))}
-      {remaining > 0 && !expanded && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setExpanded(true)
-          }}
-          className="text-[10px] text-blue-500 hover:text-blue-600 mt-0.5"
-        >
-          +{remaining} more
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main card
 // ---------------------------------------------------------------------------
 
-interface PluginCardProps {
+export interface PluginCardProps {
   plugin: PluginInfo
   onAction: (action: string, name: string, scope?: string, projectPath?: string | null) => void
   isPending: boolean
+  githubUrl?: string | null
 }
 
-export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
-  const skills = plugin.items.filter((i) => i.kind === 'skill')
-  const agents = plugin.items.filter((i) => i.kind === 'agent')
-  const commands = plugin.items.filter((i) => i.kind === 'command')
-  const mcpTools = plugin.items.filter((i) => i.kind === 'mcp_tool')
+export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCardProps) {
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   const version = plugin.gitSha ? plugin.gitSha.slice(0, 6) : plugin.version
+  const installCount = formatInstallCount(plugin.installCount)
 
   return (
-    <button
-      type="button"
-      className={cn(
-        'group w-full text-left rounded-xl border p-3 transition-all duration-200 cursor-pointer',
-        'border-apple-sep2 bg-white',
-        'hover:border-apple-sep hover:shadow-[0_3px_10px_rgba(0,0,0,0.08)]',
-        'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
-        plugin.errors.length > 0 &&
-          'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.025)] hover:border-[rgba(255,59,48,0.45)]',
-        !plugin.enabled && 'opacity-50',
-      )}
-      onClick={() => setExpanded(!expanded)}
-    >
-      {/* Row 1: name + scope + menu */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-sm font-semibold text-apple-text truncate">{plugin.name}</h3>
-          {!plugin.enabled && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
-              Disabled
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <ScopeBadge scope={plugin.scope} />
-          <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
-        </div>
-      </div>
-
-      {/* Row 2: marketplace + version + install count */}
-      <div className="flex items-center gap-2 mt-1 text-[10px] text-apple-text2">
-        <span className="flex items-center gap-1">
-          <span
-            className={cn(
-              'w-2 h-2 rounded-full inline-block',
-              marketplaceDotColor(plugin.marketplace),
+    <>
+      <div
+        className={cn(
+          'group w-full text-left rounded-xl border p-3 transition-all duration-200 cursor-pointer',
+          'border-apple-sep2 bg-white',
+          'hover:border-apple-sep hover:shadow-[0_3px_10px_rgba(0,0,0,0.08)]',
+          'shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+          plugin.errors.length > 0 &&
+            'border-[rgba(255,59,48,0.22)] bg-[rgba(255,59,48,0.025)] hover:border-[rgba(255,59,48,0.45)]',
+          !plugin.enabled && 'opacity-50',
+        )}
+        onClick={() => setDialogOpen(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') setDialogOpen(true)
+        }}
+      >
+        {/* Row 1: name + scope badge + disabled badge | github link + toggle + menu */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="text-sm font-semibold text-apple-text truncate">{plugin.name}</h3>
+            <ScopeBadge scope={plugin.scope} />
+            {!plugin.enabled && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
+                Disabled
+              </span>
             )}
-          />
-          {plugin.marketplace}
-        </span>
-        {version && (
-          <>
-            <span className="text-apple-sep">&middot;</span>
-            <span className="font-mono">{version}</span>
-          </>
-        )}
-        {plugin.installCount != null && (
-          <>
-            <span className="text-apple-sep">&middot;</span>
-            <span>{formatInstallCount(plugin.installCount)} installs</span>
-          </>
-        )}
-      </div>
-
-      {/* Row 3: description (if available) */}
-      {plugin.description && (
-        <p className="text-xs text-apple-text2 mt-1.5 line-clamp-2">{plugin.description}</p>
-      )}
-
-      {/* Row 4: contents + usage */}
-      <div className="mt-2 flex flex-col gap-0.5">
-        <ContentsLine plugin={plugin} />
-        <UsageLine plugin={plugin} />
-      </div>
-
-      {/* Duplicate warning */}
-      {plugin.duplicateMarketplaces.length > 0 && (
-        <div className="mt-2">
-          <DuplicateWarning marketplaces={plugin.duplicateMarketplaces} />
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {githubUrl && (
+              <a
+                href={githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View on GitHub"
+                onClick={(e) => e.stopPropagation()}
+                className="p-1 rounded hover:bg-apple-sep2 text-apple-text3 hover:text-apple-text2 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            )}
+            <span onClick={(e) => e.stopPropagation()}>
+              <AppleToggle
+                checked={plugin.enabled}
+                size="sm"
+                onChange={() =>
+                  onAction(
+                    plugin.enabled ? 'disable' : 'enable',
+                    plugin.id,
+                    plugin.scope,
+                    plugin.projectPath,
+                  )
+                }
+                disabled={isPending}
+              />
+            </span>
+            <PluginActionMenu plugin={plugin} onAction={onAction} isPending={isPending} />
+          </div>
         </div>
-      )}
 
-      {/* Error block — source_exists from backend is the authoritative signal:
-          false = files missing (truly orphaned), true = CLI validation failure (files intact) */}
-      {plugin.errors.length > 0 && (
-        <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
-          {plugin.sourceExists ? (
+        {/* Row 2: marketplace + version + install count */}
+        <div className="flex items-center gap-2 mt-1 text-[10px] text-apple-text2">
+          <span className="flex items-center gap-1">
+            <span
+              className={cn(
+                'w-2 h-2 rounded-full inline-block',
+                marketplaceDotColor(plugin.marketplace),
+              )}
+            />
+            {plugin.marketplace}
+          </span>
+          {version && (
             <>
-              <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">
-                CLI verification issue
-              </div>
-              <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
-                Plugin files are intact. The CLI can't verify it against a marketplace catalog.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
-              <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
-                Source directory missing. Can't update or run.
-              </div>
+              <span className="text-apple-sep">&middot;</span>
+              <span className="font-mono">{version}</span>
             </>
           )}
-          <div className="flex gap-1.5">
-            {!plugin.sourceExists && (
+          {installCount != null && (
+            <>
+              <span className="text-apple-sep">&middot;</span>
+              <span>{installCount} installs</span>
+            </>
+          )}
+        </div>
+
+        {/* Row 3: description */}
+        {plugin.description && (
+          <p className="text-xs text-apple-text2 mt-1.5 line-clamp-2">{plugin.description}</p>
+        )}
+
+        {/* Row 4: contents + usage */}
+        <div className="mt-2 flex flex-col gap-0.5">
+          <ContentsLine plugin={plugin} />
+          <UsageLine plugin={plugin} />
+        </div>
+
+        {/* Duplicate warning */}
+        {plugin.duplicateMarketplaces.length > 0 && (
+          <div className="mt-2">
+            <DuplicateWarning marketplaces={plugin.duplicateMarketplaces} />
+          </div>
+        )}
+
+        {/* Error block — source_exists from backend is the authoritative signal:
+            false = files missing (truly orphaned), true = CLI validation failure (files intact) */}
+        {plugin.errors.length > 0 && (
+          <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
+            {plugin.sourceExists ? (
+              <>
+                <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">
+                  CLI verification issue
+                </div>
+                <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                  Plugin files are intact. The CLI can't verify it against a marketplace catalog.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
+                <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                  Source directory missing. Can't update or run.
+                </div>
+              </>
+            )}
+            <div className="flex gap-1.5">
+              {!plugin.sourceExists && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAction('install', plugin.name, plugin.scope)
+                  }}
+                  disabled={isPending}
+                  className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
+                >
+                  Reinstall
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => onAction('install', plugin.name, plugin.scope)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction('uninstall', plugin.name, plugin.scope, plugin.projectPath)
+                }}
                 disabled={isPending}
-                className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
+                className="text-[11px] font-medium px-3 py-1 rounded-[7px] border-none bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] transition-colors disabled:opacity-50"
               >
-                Reinstall
+                Remove
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onAction('uninstall', plugin.name, plugin.scope, plugin.projectPath)}
-              disabled={isPending}
-              className="text-[11px] font-medium px-3 py-1 rounded-[7px] border-none bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] transition-colors disabled:opacity-50"
-            >
-              Remove
-            </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Expanded: detailed items listing */}
-      {expanded && (
-        <div className="mt-3 pt-3 border-t border-apple-sep2">
-          <div className="text-[10px] text-apple-text3 mb-1">
-            Installed {plugin.installedAt.split('T')[0]}
-            {plugin.lastUpdated && ` \u00b7 Updated ${plugin.lastUpdated.split('T')[0]}`}
-            {plugin.gitSha && ` \u00b7 SHA: ${plugin.gitSha.slice(0, 12)}`}
-          </div>
-          <ItemsSection kind="Skills" items={skills} />
-          <ItemsSection kind="Agents" items={agents} />
-          <ItemsSection kind="Commands" items={commands} />
-          <ItemsSection kind="MCP Tools" items={mcpTools} />
-        </div>
-      )}
-    </button>
+      <PluginDetailDialog
+        plugin={plugin}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onAction={onAction}
+        isPending={isPending}
+        githubUrl={githubUrl}
+      />
+    </>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatInstallCount(count: bigint): string {
-  const n = Number(count)
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
 }
