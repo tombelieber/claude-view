@@ -116,6 +116,9 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let app = Router::new()

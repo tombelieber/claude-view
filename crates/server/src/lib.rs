@@ -151,6 +151,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         available_ides: Vec::new(),
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        transcript_to_session: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
     api_routes(state)
 }
@@ -182,14 +183,15 @@ pub fn create_app_full(
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
-    let (manager, live_sessions, live_tx) = live::manager::LiveSessionManager::start(
-        pricing.clone(),
-        db.clone(),
-        search_index.clone(),
-        registry.clone(),
-        Some(sidecar.clone()),
-        teams.clone(),
-    );
+    let (manager, live_sessions, transcript_to_session, live_tx) =
+        live::manager::LiveSessionManager::start(
+            pricing.clone(),
+            db.clone(),
+            search_index.clone(),
+            registry.clone(),
+            Some(sidecar.clone()),
+            teams.clone(),
+        );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
     let server_port = std::env::var("CLAUDE_VIEW_PORT")
@@ -245,6 +247,7 @@ pub fn create_app_full(
         available_ides,
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        transcript_to_session,
     });
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
