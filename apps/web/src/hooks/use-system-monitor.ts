@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { sseUrl } from '../lib/sse-url'
+import type { ProcessTreeSnapshot } from '../types/generated/ProcessTreeSnapshot'
 import type { ResourceSnapshot } from '../types/generated/ResourceSnapshot'
 import type { SystemInfo } from '../types/generated/SystemInfo'
 
@@ -9,12 +10,18 @@ export interface SystemMonitorState {
   status: MonitorStatus
   systemInfo: SystemInfo | null
   snapshot: ResourceSnapshot | null
+  /** Classified process tree. null until first `process_tree` SSE event (~10s after connect). */
+  processTree: ProcessTreeSnapshot | null
+  /** Unix timestamp (ms) when processTree was last updated. For freshness indicator. */
+  processTreeFreshAt: number | null
 }
 
 const INITIAL_STATE: SystemMonitorState = {
   status: 'connecting',
   systemInfo: null,
   snapshot: null,
+  processTree: null,
+  processTreeFreshAt: null,
 }
 
 const MAX_BACKOFF_MS = 30_000
@@ -39,11 +46,12 @@ export function useSystemMonitor(): SystemMonitorState {
         try {
           const data: { systemInfo: SystemInfo; snapshot: ResourceSnapshot } = JSON.parse(e.data)
           retriesRef.current = 0
-          setState({
+          setState((prev) => ({
+            ...prev,
             status: 'connected',
             systemInfo: data.systemInfo,
             snapshot: data.snapshot,
-          })
+          }))
         } catch {
           // ignore malformed data
         }
@@ -57,6 +65,20 @@ export function useSystemMonitor(): SystemMonitorState {
             ...prev,
             status: 'connected',
             snapshot: snap,
+          }))
+        } catch {
+          // ignore malformed data
+        }
+      })
+
+      es.addEventListener('process_tree', (e: MessageEvent) => {
+        if (unmounted || esRef.current !== es) return
+        try {
+          const tree: ProcessTreeSnapshot = JSON.parse(e.data)
+          setState((prev) => ({
+            ...prev,
+            processTree: tree,
+            processTreeFreshAt: Date.now(),
           }))
         } catch {
           // ignore malformed data

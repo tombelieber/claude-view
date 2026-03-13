@@ -146,7 +146,7 @@ pub struct AppState {
     /// IDEs detected at startup (cached for the lifetime of the server).
     pub available_ides: AvailableIdesHolder,
     /// Broadcast sender for system monitor resource snapshots (SSE).
-    pub monitor_tx: broadcast::Sender<crate::live::monitor::ResourceSnapshot>,
+    pub monitor_tx: broadcast::Sender<crate::live::monitor::MonitorEvent>,
     /// Number of active SSE subscribers to the system monitor.
     /// When 0→1, the polling task starts. When 1→0, it stops.
     pub monitor_subscribers: Arc<AtomicUsize>,
