@@ -23,6 +23,7 @@ pub mod monitor;
 pub mod oauth;
 pub mod pairing;
 pub mod plans;
+pub mod plugin_ops;
 pub mod plugins;
 pub mod processes;
 pub mod projects;
@@ -150,6 +151,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", share::router())
         .nest("/api", statusline::router())
         .nest("/api", plugins::router())
+        .nest("/api", plugin_ops::router())
         .nest("/api", teams::router())
         .nest("/api", workflows::router())
         .nest("/api", monitor::router())

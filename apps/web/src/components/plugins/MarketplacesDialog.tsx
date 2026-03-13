@@ -30,7 +30,7 @@ export function MarketplacesDialog() {
       <Dialog.Trigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-apple-sep text-apple-text2 hover:bg-apple-sep2 transition-colors"
           title="Manage marketplaces"
         >
           <Settings className="w-3.5 h-3.5" />
@@ -39,7 +39,10 @@ export function MarketplacesDialog() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+        <Dialog.Content
+          className="fixed z-[51] top-1/2 left-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
+          style={{ transform: 'translate(-50%, -50%)' }}
+        >
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
             <Dialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Plugin Marketplaces
@@ -50,7 +53,7 @@ export function MarketplacesDialog() {
                 onClick={handleRefreshAll}
                 disabled={mutations.isPending}
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-                title="Refresh all marketplaces"
+                title="Refresh all marketplaces — re-fetch the latest plugin catalog from every configured source"
               >
                 <RefreshCw className={cn('w-4 h-4', mutations.isPending && 'animate-spin')} />
               </button>

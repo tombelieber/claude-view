@@ -35,6 +35,8 @@ pub struct PluginItem {
     pub name: String,
     pub kind: String,
     pub description: String,
+    /// Full file content for the item (markdown for skills/commands/agents; pretty JSON for mcp_tool)
+    pub content: String,
     pub invocation_count: i64,
     pub last_used_at: Option<i64>,
 }
@@ -199,29 +201,25 @@ pub fn apply_filters(
     // --- Kind filter ---
     if let Some(ref kind) = query.kind {
         let kind_lower = kind.to_lowercase();
-        installed.retain(|p| p.items.iter().any(|i| i.kind.to_lowercase() == kind_lower));
+        // "plugin" means show installed+available plugins (they ARE plugins);
+        // any other kind filters installed to those containing items of that kind.
+        if kind_lower != "plugin" {
+            installed.retain(|p| p.items.iter().any(|i| i.kind.to_lowercase() == kind_lower));
+        }
         // Available plugins don't have kind metadata — don't filter them by kind
     }
 
-    // --- Sort installed ---
-    if let Some(ref sort) = query.sort {
-        match sort.as_str() {
-            "usage" => installed.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations)),
-            "updated" => installed.sort_by(|a, b| {
-                let a_ts = a.last_updated.as_deref().unwrap_or("");
-                let b_ts = b.last_updated.as_deref().unwrap_or("");
-                b_ts.cmp(a_ts)
-            }),
-            // "name" or default
-            _ => installed.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
-        }
-    } else {
-        // Default sort: by usage descending (most-used first)
-        installed.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
-    }
-
-    // Available plugins are always sorted alphabetically
-    available.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // --- Sort: always by install count descending ---
+    installed.sort_by(|a, b| {
+        b.install_count
+            .unwrap_or(0)
+            .cmp(&a.install_count.unwrap_or(0))
+    });
+    available.sort_by(|a, b| {
+        b.install_count
+            .unwrap_or(0)
+            .cmp(&a.install_count.unwrap_or(0))
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +305,10 @@ fn strip_ansi(s: &str) -> String {
 /// Run a `claude plugin` subcommand and return stdout as String.
 /// Strips ALL CLAUDE* env vars and ANSI codes per CLAUDE.md hard rules.
 /// Optional `cwd` sets the working directory (needed for project-scoped uninstall).
-async fn run_claude_plugin_in(args: &[&str], cwd: Option<&str>) -> Result<String, ApiError> {
+pub(crate) async fn run_claude_plugin_in(
+    args: &[&str],
+    cwd: Option<&str>,
+) -> Result<String, ApiError> {
     use std::process::Stdio;
 
     let cli_path = claude_view_core::resolved_cli_path().unwrap_or("claude");
@@ -371,7 +372,7 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
 // ---------------------------------------------------------------------------
 
 /// Bust the plugin CLI cache after a mutation so the next GET reflects changes.
-async fn invalidate_plugin_cache(state: &AppState) {
+pub(crate) async fn invalidate_plugin_cache(state: &AppState) {
     let _ = state
         .plugin_cli_cache
         .force_refresh(std::time::Duration::ZERO, fetch_plugin_cli_data)
@@ -663,6 +664,7 @@ async fn list_plugins(
                     name: inv.name.clone(),
                     kind: kind_str.to_string(),
                     description: inv.description.clone(),
+                    content: inv.content.clone(),
                     invocation_count: inv_count,
                     last_used_at: last_used,
                 });
@@ -763,9 +765,14 @@ async fn list_plugins(
             })
             .collect()
     };
-    let user_skills = make_user_items(InvocableKind::Skill);
-    let user_commands = make_user_items(InvocableKind::Command);
-    let user_agents = make_user_items(InvocableKind::Agent);
+    let mut user_skills = make_user_items(InvocableKind::Skill);
+    let mut user_commands = make_user_items(InvocableKind::Command);
+    let mut user_agents = make_user_items(InvocableKind::Agent);
+
+    // Sort user items by usage descending (most-used first)
+    user_skills.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
+    user_commands.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
+    user_agents.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
 
     // 6. Build available plugin list
     let available: Vec<AvailablePlugin> = cli_data
@@ -899,10 +906,10 @@ pub struct PluginActionResponse {
     pub message: Option<String>,
 }
 
-const VALID_ACTIONS: &[&str] = &["install", "update", "uninstall", "enable", "disable"];
+pub(crate) const VALID_ACTIONS: &[&str] = &["install", "update", "uninstall", "enable", "disable"];
 
 /// Reject CLI flag injection — only [a-zA-Z0-9._@-] allowed, must not start with `-`.
-fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
     if name.is_empty()
         || name.len() > 128
         || name.starts_with('-')
@@ -917,7 +924,7 @@ fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
+pub(crate) fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
     if let Some(s) = scope {
         if s != "user" && s != "project" {
             return Err(ApiError::BadRequest(format!(
@@ -928,83 +935,11 @@ fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
     Ok(())
 }
 
-// Single-mutation-at-a-time lock (shared across plugin + marketplace mutations).
-static MUTATION_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+// Marketplace-only mutation lock (plugin mutations go through the op queue).
+static MARKETPLACE_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
 
-fn get_mutation_lock() -> &'static tokio::sync::Mutex<()> {
-    MUTATION_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-}
-
-// ---------------------------------------------------------------------------
-// Mutation handler
-// ---------------------------------------------------------------------------
-
-/// POST /api/plugins/action — Run a plugin mutation via `claude plugin <action>`.
-async fn plugin_action(
-    State(state): State<Arc<AppState>>,
-    Json(req): Json<PluginActionRequest>,
-) -> ApiResult<Json<PluginActionResponse>> {
-    // Validate inputs before acquiring the lock
-    validate_plugin_name(&req.name)?;
-    validate_scope(&req.scope)?;
-
-    if !VALID_ACTIONS.contains(&req.action.as_str()) {
-        return Err(ApiError::BadRequest(format!(
-            "Invalid action: {}. Must be one of: {}",
-            req.action,
-            VALID_ACTIONS.join(", ")
-        )));
-    }
-
-    // try_lock — return 409 if another mutation is running
-    let _guard = get_mutation_lock().try_lock().map_err(|_| {
-        ApiError::Conflict("A plugin mutation is already in progress. Try again shortly.".into())
-    })?;
-
-    // Build CLI args.
-    // - install/uninstall: pass --scope so the CLI targets the correct scope.
-    // - uninstall of project-scoped plugins: also needs CWD set to the original
-    //   projectPath, because the CLI checks the current directory to find the
-    //   project-scoped installation.
-    // - enable/disable: operate on local settings files, no --scope needed.
-    let mut args: Vec<&str> = vec![&req.action, &req.name];
-    let scope_str;
-    if req.action == "install" || req.action == "uninstall" {
-        if let Some(ref scope) = req.scope {
-            scope_str = scope.clone();
-            args.push("--scope");
-            args.push(&scope_str);
-        }
-    }
-
-    let cwd = req.project_path.as_deref();
-    let output = run_claude_plugin_in(&args, cwd).await;
-
-    match output {
-        Ok(stdout) => {
-            invalidate_plugin_cache(&state).await;
-            Ok(Json(PluginActionResponse {
-                success: true,
-                action: req.action,
-                name: req.name,
-                message: if stdout.trim().is_empty() {
-                    None
-                } else {
-                    Some(stdout.trim().to_string())
-                },
-            }))
-        }
-        Err(e) => {
-            // Return a structured error response instead of 500
-            tracing::warn!("Plugin action {} {} failed: {e}", req.action, req.name);
-            Ok(Json(PluginActionResponse {
-                success: false,
-                action: req.action,
-                name: req.name,
-                message: Some(e.to_string()),
-            }))
-        }
-    }
+fn get_marketplace_lock() -> &'static tokio::sync::Mutex<()> {
+    MARKETPLACE_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
 // ---------------------------------------------------------------------------
@@ -1165,7 +1100,7 @@ async fn marketplace_action(
             let validated = validate_marketplace_source(source)?;
             validate_scope(&req.scope)?;
 
-            let _guard = get_mutation_lock()
+            let _guard = get_marketplace_lock()
                 .try_lock()
                 .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
 
@@ -1204,7 +1139,7 @@ async fn marketplace_action(
             })?;
             validate_plugin_name(name)?;
 
-            let _guard = get_mutation_lock()
+            let _guard = get_marketplace_lock()
                 .try_lock()
                 .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
 
@@ -1226,7 +1161,7 @@ async fn marketplace_action(
             result
         }
         "update" => {
-            let _guard = get_mutation_lock()
+            let _guard = get_marketplace_lock()
                 .try_lock()
                 .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
 
@@ -1269,7 +1204,6 @@ async fn marketplace_action(
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/plugins", get(list_plugins))
-        .route("/plugins/action", post(plugin_action))
         .route("/plugins/marketplaces", get(list_marketplaces))
         .route("/plugins/marketplaces/action", post(marketplace_action))
 }
@@ -1291,7 +1225,10 @@ mod tests {
     /// Helper: build a minimal router with just the plugins route.
     fn build_app(db: Database) -> axum::Router {
         let state = crate::state::AppState::new(db);
-        axum::Router::new().nest("/api", router()).with_state(state)
+        axum::Router::new()
+            .nest("/api", router())
+            .nest("/api", crate::routes::plugin_ops::router())
+            .with_state(state)
     }
 
     /// Helper: make a GET request and return status + body string.
@@ -1431,6 +1368,7 @@ mod tests {
                     name: "brainstorming".to_string(),
                     kind: "skill".to_string(),
                     description: "Explore ideas".to_string(),
+                    content: String::new(),
                     invocation_count: 5,
                     last_used_at: Some(1000),
                 }],
@@ -1464,6 +1402,7 @@ mod tests {
                     name: "format".to_string(),
                     kind: "command".to_string(),
                     description: "Format code".to_string(),
+                    content: String::new(),
                     invocation_count: 0,
                     last_used_at: None,
                 }],
@@ -1587,7 +1526,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_filters_sort_by_usage() {
+    fn test_apply_filters_sort_by_install_count() {
         let mut installed = vec![
             PluginInfo {
                 id: "low@m".to_string(),
@@ -1613,11 +1552,11 @@ mod tests {
                 errors: vec![],
                 source_exists: true,
                 description: None,
-                install_count: None,
+                install_count: Some(50),
             },
             PluginInfo {
                 id: "high@m".to_string(),
-                name: "high-usage".to_string(),
+                name: "high-installs".to_string(),
                 marketplace: "m".to_string(),
                 scope: "user".to_string(),
                 version: Some("1.0.0".to_string()),
@@ -1639,25 +1578,21 @@ mod tests {
                 errors: vec![],
                 source_exists: true,
                 description: None,
-                install_count: None,
+                install_count: Some(5000),
             },
         ];
 
         let mut available = vec![];
 
-        let query = PluginsQuery {
-            sort: Some("usage".to_string()),
-            ..Default::default()
-        };
-        apply_filters(&query, &mut installed, &mut available);
+        apply_filters(&PluginsQuery::default(), &mut installed, &mut available);
 
-        // Highest usage first
-        assert_eq!(installed[0].name, "high-usage");
+        // Higher install_count comes first
+        assert_eq!(installed[0].name, "high-installs");
         assert_eq!(installed[1].name, "low-usage");
     }
 
     #[tokio::test]
-    async fn test_plugin_action_rejects_invalid_name() {
+    async fn test_plugin_ops_rejects_invalid_name() {
         let db = Database::new_in_memory().await.expect("in-memory DB");
         let app = build_app(db);
 
@@ -1665,7 +1600,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/plugins/action")
+                    .uri("/api/plugins/ops")
                     .header("Content-Type", "application/json")
                     .body(Body::from(r#"{"action":"install","name":"--force"}"#))
                     .unwrap(),
@@ -1677,7 +1612,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plugin_action_rejects_invalid_action() {
+    async fn test_plugin_ops_rejects_invalid_action() {
         let db = Database::new_in_memory().await.expect("in-memory DB");
         let app = build_app(db);
 
@@ -1685,7 +1620,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/plugins/action")
+                    .uri("/api/plugins/ops")
                     .header("Content-Type", "application/json")
                     .body(Body::from(r#"{"action":"rm_rf","name":"test"}"#))
                     .unwrap(),
@@ -1697,7 +1632,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_plugin_action_rejects_invalid_scope() {
+    async fn test_plugin_ops_rejects_invalid_scope() {
         let db = Database::new_in_memory().await.expect("in-memory DB");
         let app = build_app(db);
 
@@ -1705,7 +1640,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/plugins/action")
+                    .uri("/api/plugins/ops")
                     .header("Content-Type", "application/json")
                     .body(Body::from(
                         r#"{"action":"install","name":"test","scope":"global"}"#,
