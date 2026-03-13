@@ -57,7 +57,7 @@ fn minimal_classified_process(pid: u32, name: &str, tag: EcosystemTag) -> Classi
         uptime_secs: 3600,
         start_time: 1_700_000_000,
         is_unparented: true,
-        staleness: Staleness::Active,
+        staleness: Staleness::Active, // cpu_percent=1.0 > 0.1% threshold → Active
         descendant_count: 0,
         descendant_cpu: 0.0,
         descendant_memory: 0,
@@ -134,6 +134,13 @@ async fn test_sse_stream_emits_process_tree_event() {
     assert!(
         parsed.get("ecosystem_count").is_none(),
         "must use camelCase 'ecosystemCount', not snake_case 'ecosystem_count'"
+    );
+
+    // Positive assertion: camelCase key must be present and correct
+    assert_eq!(
+        parsed["totals"]["ecosystemCount"].as_u64().unwrap(),
+        2,
+        "totals.ecosystemCount must be 2 (camelCase, not snake_case)"
     );
 }
 
@@ -220,6 +227,9 @@ async fn test_kill_endpoint_rejects_non_claude_pid() {
         .as_str()
         .expect("error field must be a string");
 
+    // On macOS: PID 1 (launchd) always exists in sysinfo with a non-zero start_time.
+    // Sending start_time=0 always hits the "recycled" branch (start_time mismatch).
+    // The "not found" and "not Claude-related" paths are only reachable on other platforms.
     // PID 1 on macOS (launchd) is a real process. Depending on system state:
     // - If start_time=0 mismatches → "recycled"
     // - If PID 1 isn't in the Claude process tree → "not Claude-related"
@@ -240,6 +250,8 @@ async fn test_cleanup_endpoint_batch_mixed() {
     let own_pid = std::process::id();
 
     // Three targets: two impossible PIDs + own PID
+    // 4_000_000 exceeds macOS max PID (~99,998), guaranteed to be absent on macOS.
+    // On Linux, adjust if targeting systems with /proc/sys/kernel/pid_max > 4M.
     let body = serde_json::json!({
         "targets": [
             { "pid": 4_000_000u32, "start_time": 0i64 },
