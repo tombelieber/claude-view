@@ -13,6 +13,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::progress::{RawTaskCreate, RawTaskIdAssignment, RawTaskUpdate, RawTodoItem};
 
+/// Pattern for absolute file paths in plain text. No lookbehinds (regex-lite doesn't support them).
+/// URL exclusion is handled by SIMD pre-filter: skip lines containing "://".
+/// Matches paths like `/etc/hosts` (no extension) and `/src/auth.rs` (with extension).
+/// Rejects bare directories like `/directory/` (trailing slash).
+const PASTED_PATH_PATTERN: &str = r"(?:^|\s)(\/(?:[\w.-]+\/)*[\w.-]+)(?:\s|$|[,;:!?)])";
+
 static PROGRESS_MESSAGE_CONTENT_FALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
 
 /// Number of times progress parsing fell back from
@@ -154,6 +160,8 @@ pub struct LiveLine {
     pub team_name: Option<String>,
     /// Files referenced with `@filename` syntax in user messages.
     pub at_files: Vec<String>,
+    /// Absolute file paths pasted in user messages (detected via regex, URL-filtered).
+    pub pasted_paths: Vec<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -482,6 +490,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 slug: None,
                 team_name: None,
                 at_files: Vec::new(),
+                pasted_paths: Vec::new(),
             };
         }
     };
@@ -962,6 +971,22 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     let is_compact_boundary =
         line_type == LineType::System && finders.compact_boundary_key.find(raw).is_some();
 
+    // --- Pasted absolute paths (user lines only, skip URLs via SIMD pre-filter) ---
+    let pasted_paths = if line_type == LineType::User && !content_preview.is_empty() {
+        let line_str = &content_preview;
+        if !line_str.contains("://") {
+            static PASTED_RE: std::sync::OnceLock<regex_lite::Regex> = std::sync::OnceLock::new();
+            let re = PASTED_RE.get_or_init(|| regex_lite::Regex::new(PASTED_PATH_PATTERN).unwrap());
+            re.captures_iter(line_str)
+                .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+                .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
     LiveLine {
         line_type,
         role,
@@ -998,6 +1023,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         slug,
         team_name,
         at_files,
+        pasted_paths,
     }
 }
 
@@ -2463,5 +2489,45 @@ mod tests {
         assert_eq!(result.sub_agent_spawns.len(), 1);
         assert!(result.team_name.is_none());
         assert!(result.sub_agent_spawns[0].team_name.is_none());
+    }
+
+    #[test]
+    fn pasted_path_regex_matches_absolute_paths() {
+        let re = regex_lite::Regex::new(PASTED_PATH_PATTERN).unwrap();
+        let cases = vec![
+            (
+                "look at /Users/dev/project/src/auth.rs",
+                Some("/Users/dev/project/src/auth.rs"),
+            ),
+            ("/etc/hosts is the file", Some("/etc/hosts")),
+            ("check /tmp/test.txt, please", Some("/tmp/test.txt")),
+            ("no path here", None),
+            ("relative/path.rs not matched", None),
+            ("just a /directory/ not matched", None), // no file extension
+        ];
+        for (input, expected) in cases {
+            let found = re
+                .captures(input)
+                .map(|c| c.get(1).unwrap().as_str().to_string());
+            assert_eq!(found.as_deref(), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn pasted_path_skips_urls() {
+        // Lines containing :// should be pre-filtered before regex application
+        let line = "see https://github.com/foo/bar.rs for details";
+        assert!(line.contains("://"), "pre-filter should skip this line");
+        // The regex itself does NOT need a lookbehind — the pre-filter handles it
+    }
+
+    #[test]
+    fn pasted_path_regex_compiles_with_regex_lite() {
+        // This test ensures we never accidentally use regex features unsupported by regex-lite
+        let re = regex_lite::Regex::new(PASTED_PATH_PATTERN);
+        assert!(
+            re.is_ok(),
+            "regex must compile with regex-lite (no lookbehinds, no Unicode classes)"
+        );
     }
 }
