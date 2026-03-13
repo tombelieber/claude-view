@@ -22,7 +22,7 @@
     "test": "turbo test",
     "preview": "turbo build --filter=@claude-view/web && unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT SHARE_WORKER_URL SHARE_VIEWER_URL && RUST_LOG=warn,claude_view_server=info,claude_view_core=info SUPABASE_URL=${SUPABASE_URL:-https://iebjyftoadahqptmfcio.supabase.co} SHARE_WORKER_URL=https://api-share.claudeview.ai SHARE_VIEWER_URL=https://share.claudeview.ai cargo run -p claude-view-server",
     "start": "cargo run -p claude-view-server --release",
-    "dev:server": "unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT SHARE_WORKER_URL SHARE_VIEWER_URL && RUST_LOG=warn,claude_view_server=info,claude_view_core=info VITE_PORT=5173 SUPABASE_URL=${SUPABASE_URL:-https://iebjyftoadahqptmfcio.supabase.co} SHARE_WORKER_URL=https://claude-view-share-worker-dev.workers.dev SHARE_VIEWER_URL=https://claude-view-share-viewer-dev.pages.dev cargo watch -w crates -x 'run -p claude-view-server'",
+    "dev:server": "unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT SHARE_WORKER_URL SHARE_VIEWER_URL && RUST_LOG=warn,claude_view_server=info,claude_view_core=info VITE_PORT=5173 SUPABASE_URL=${SUPABASE_URL:-https://iebjyftoadahqptmfcio.supabase.co} SHARE_VIEWER_URL=https://claude-view-share-viewer-dev.pages.dev cargo watch -w crates -x 'run -p claude-view-server'",
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace -- -D warnings",
     "lint:all": "turbo lint && cargo clippy --workspace -- -D warnings",
