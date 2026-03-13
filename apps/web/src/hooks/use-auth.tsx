@@ -105,7 +105,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl focus:outline-none">
+          <Dialog.Content
+            className="fixed left-1/2 top-1/2 z-[51] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl focus:outline-none"
+            style={{ transform: 'translate(-50%, -50%)' }}
+          >
             <Dialog.Title className="sr-only">Sign in</Dialog.Title>
             <Dialog.Description className="sr-only">
               Sign in with Google or email to enable sharing and sync

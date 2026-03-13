@@ -84,7 +84,10 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 dark:bg-black/70" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 focus:outline-none">
+        <Dialog.Content
+          className="fixed z-[51] left-1/2 top-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 focus:outline-none"
+          style={{ transform: 'translate(-50%, -50%)' }}
+        >
           <Dialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Resume Session
           </Dialog.Title>
