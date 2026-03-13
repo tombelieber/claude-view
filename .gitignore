@@ -101,6 +101,7 @@ __pycache__/
 
 # Auto-generated claude-mem files
 **/CLAUDE.md
+/CLAUDE.md
 
 # Internal docs
 docs/plans/
