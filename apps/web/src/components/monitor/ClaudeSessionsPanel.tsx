@@ -24,23 +24,27 @@ export function ClaudeSessionsPanel({
   processTree,
   systemInfo,
 }: ClaudeSessionsPanelProps) {
-  // --- Two-step merge: sessionId -> LiveSession, PID -> ClassifiedProcess ---
-  const sessionMap = new Map(liveSessions.map((s) => [s.id, s]))
+  // --- Primary source: liveSessions, supplemented by sessionResources for CPU/RAM ---
+  const resourceBySessionId = new Map(sessionResources.map((r) => [r.sessionId, r]))
+  const resourceByPid = new Map(sessionResources.map((r) => [r.pid, r]))
   const ecosystemByPid = new Map(processTree?.ecosystem.map((p) => [p.pid, p]) ?? [])
 
-  const merged = sessionResources.map((res) => ({
-    resource: res,
-    session: sessionMap.get(res.sessionId),
-    ecosystem: ecosystemByPid.get(res.pid) ?? null,
-  }))
+  const merged = liveSessions
+    .filter((s) => s.pid != null)
+    .map((session) => {
+      const resource =
+        resourceBySessionId.get(session.id) ?? resourceByPid.get(session.pid!) ?? null
+      const ecosystem = session.pid != null ? (ecosystemByPid.get(session.pid) ?? null) : null
+      return { session, resource, ecosystem }
+    })
 
   // --- Sort by rollup CPU desc (safe for NaN) ---
   merged.sort((a, b) => {
-    const cpuA = a.resource.cpuPercent + (a.ecosystem?.descendantCpu ?? 0)
-    const cpuB = b.resource.cpuPercent + (b.ecosystem?.descendantCpu ?? 0)
+    const cpuA = (a.resource?.cpuPercent ?? 0) + (a.ecosystem?.descendantCpu ?? 0)
+    const cpuB = (b.resource?.cpuPercent ?? 0) + (b.ecosystem?.descendantCpu ?? 0)
     const diff = cpuB - cpuA
     if (Number.isNaN(diff) || diff === 0) {
-      return a.resource.sessionId.localeCompare(b.resource.sessionId)
+      return a.session.id.localeCompare(b.session.id)
     }
     return diff
   })
@@ -54,11 +58,10 @@ export function ClaudeSessionsPanel({
   const [orphansExpanded, setOrphansExpanded] = useState(false)
   const prevSessionIdsRef = useRef<Set<string>>(new Set())
 
-  const allExpanded =
-    merged.length > 0 && merged.every((m) => expandedIds.has(m.resource.sessionId))
+  const allExpanded = merged.length > 0 && merged.every((m) => expandedIds.has(m.session.id))
 
   // Auto-expand new rows when all *previous* rows were already expanded
-  const currentSessionIds = new Set(merged.map((m) => m.resource.sessionId))
+  const currentSessionIds = new Set(merged.map((m) => m.session.id))
   useEffect(() => {
     const prev = prevSessionIdsRef.current
     const allPrevExpanded = prev.size > 0 && [...prev].every((id) => expandedIds.has(id))
@@ -89,7 +92,7 @@ export function ClaudeSessionsPanel({
       setExpandedIds(new Set())
       setSelfExpanded(false)
     } else {
-      setExpandedIds(new Set(merged.map((m) => m.resource.sessionId)))
+      setExpandedIds(new Set(merged.map((m) => m.session.id)))
       setSelfExpanded(true)
     }
   }
@@ -164,18 +167,21 @@ export function ClaudeSessionsPanel({
   const selfMem = selfProcess ? selfProcess.memoryBytes + selfProcess.descendantMemory : 0
   const totalCpu =
     selfCpu +
-    merged.reduce((sum, m) => sum + m.resource.cpuPercent + (m.ecosystem?.descendantCpu ?? 0), 0) +
+    merged.reduce(
+      (sum, m) => sum + (m.resource?.cpuPercent ?? 0) + (m.ecosystem?.descendantCpu ?? 0),
+      0,
+    ) +
     allOrphans.reduce((sum, p) => sum + p.cpuPercent, 0)
   const totalMem =
     selfMem +
     merged.reduce(
-      (sum, m) => sum + m.resource.memoryBytes + (m.ecosystem?.descendantMemory ?? 0),
+      (sum, m) => sum + (m.resource?.memoryBytes ?? 0) + (m.ecosystem?.descendantMemory ?? 0),
       0,
     ) +
     allOrphans.reduce((sum, p) => sum + p.memoryBytes, 0)
 
   // --- Empty state ---
-  if (sessionResources.length === 0 && allOrphans.length === 0) {
+  if (merged.length === 0 && allOrphans.length === 0) {
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -201,7 +207,7 @@ export function ClaudeSessionsPanel({
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Claude Sessions</h2>
         <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">
-          {sessionResources.length}
+          {merged.length}
         </span>
 
         {systemInfo && (
@@ -249,24 +255,17 @@ export function ClaudeSessionsPanel({
         )}
 
         {merged.map((m) => {
-          if (!m.session) {
-            // Fallback: resource exists but no live session match
-            // Show a minimal row with resource data only
-            return (
-              <div
-                key={m.resource.sessionId}
-                className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400"
-              >
-                Session {m.resource.sessionId.slice(0, 8)} (PID {m.resource.pid}) --
-                {m.resource.cpuPercent.toFixed(1)}% CPU, {formatBytes(m.resource.memoryBytes)}
-              </div>
-            )
+          const resource = m.resource ?? {
+            sessionId: m.session.id,
+            pid: m.session.pid ?? 0,
+            cpuPercent: 0,
+            memoryBytes: 0,
           }
           return (
             <SessionAccordionRow
-              key={m.resource.sessionId}
+              key={m.session.id}
               session={m.session}
-              resource={m.resource}
+              resource={resource}
               ecosystemProcess={m.ecosystem}
               systemInfo={
                 systemInfo ?? {
@@ -278,8 +277,8 @@ export function ClaudeSessionsPanel({
                   totalMemoryBytes: 1,
                 }
               }
-              expanded={expandedIds.has(m.resource.sessionId)}
-              onToggle={() => handleToggle(m.resource.sessionId)}
+              expanded={expandedIds.has(m.session.id)}
+              onToggle={() => handleToggle(m.session.id)}
               onKill={handleKill}
               pendingPids={pendingPids}
               expandAll={allExpanded}
