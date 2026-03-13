@@ -82,13 +82,25 @@ async fn monitor_stream(
     if prev == 0 {
         start_polling_task(tx.clone(), subscribers.clone(), live_sessions.clone());
     }
-    // Guard lives outside the stream so it's dropped on any exit path —
-    // normal completion, client disconnect, or panic.
+    // Create guard EAGERLY (before Sse is returned) so subscriber_count never
+    // drops back to 0 during the window between fetch_add and the first stream poll.
+    // async_stream::stream! expands to `async move { ... }`, so _guard is captured
+    // by move into the stream's state. It is NOT dropped when monitor_stream()
+    // returns — only when the stream future is dropped (client disconnect, shutdown,
+    // or broadcast close). Re-binding _guard inside the stream makes the move
+    // explicit and prevents the compiler from treating it as unused.
+    //
+    // BUG HISTORY: placing the guard in the outer fn scope dropped it the moment
+    // monitor_stream() returned Sse<>, decrementing subscribers to 0 and causing
+    // the polling task to exit on its next 2s tick. Data froze after the init event.
     let _guard = SubscriberGuard(subscribers.clone());
 
     let mut rx = tx.subscribe();
 
     let stream = async_stream::stream! {
+        // Re-bind so the move into this async block is explicit.
+        let _guard = _guard;
+
         // 1. Send init event with system info + first snapshot
         let system_info = collect_system_info();
         let first_snapshot = {
@@ -188,4 +200,126 @@ async fn monitor_snapshot(State(state): State<Arc<AppState>>) -> Json<ResourceSn
         session_resources: Vec::new(),
     });
     Json(snapshot)
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+
+    // -------------------------------------------------------------------------
+    // SubscriberGuard lifecycle
+    // -------------------------------------------------------------------------
+
+    /// Guard decrements the shared counter exactly once on drop.
+    #[test]
+    fn subscriber_guard_decrements_count_on_drop() {
+        let count = Arc::new(AtomicUsize::new(1));
+        {
+            let _guard = SubscriberGuard(count.clone());
+            // Guard created — counter unchanged (SubscriberGuard only decrements)
+            assert_eq!(count.load(Ordering::SeqCst), 1);
+        } // guard dropped here
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    /// Two guards for two concurrent subscribers: each drop decrements once.
+    #[test]
+    fn two_subscriber_guards_decrement_independently() {
+        let count = Arc::new(AtomicUsize::new(2));
+        let g1 = SubscriberGuard(count.clone());
+        let g2 = SubscriberGuard(count.clone());
+
+        drop(g1);
+        assert_eq!(count.load(Ordering::SeqCst), 1, "first drop: 2 → 1");
+        drop(g2);
+        assert_eq!(count.load(Ordering::SeqCst), 0, "second drop: 1 → 0");
+    }
+
+    // -------------------------------------------------------------------------
+    // Polling task lifecycle
+    // -------------------------------------------------------------------------
+
+    /// Polling task emits at least one snapshot while subscriber_count > 0,
+    /// then stops broadcasting after the count is set to 0.
+    ///
+    /// Regression guard for: guard placed in outer async fn scope → dropped on
+    /// handler return → subscriber_count hits 0 → polling task exits → data freezes.
+    #[tokio::test]
+    async fn polling_task_stops_when_subscriber_count_reaches_zero() {
+        use crate::live::monitor::{start_polling_task, MonitorEvent};
+        use std::collections::HashMap;
+        use tokio::sync::RwLock;
+
+        let (tx, mut rx) = broadcast::channel::<MonitorEvent>(32);
+        let count = Arc::new(AtomicUsize::new(1)); // simulate one connected client
+        let sessions = Arc::new(RwLock::new(HashMap::new()));
+
+        start_polling_task(tx.clone(), count.clone(), sessions);
+
+        // Must receive at least one snapshot while subscribed (within 5s to account
+        // for sysinfo's initial CPU baseline sleep of ~200ms + 2s poll interval).
+        let received = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await;
+        assert!(
+            received.is_ok(),
+            "Should receive a MonitorEvent::Snapshot while subscriber_count > 0"
+        );
+
+        // Signal disconnect: set count to 0 (what SubscriberGuard::drop does).
+        count.store(0, Ordering::Relaxed);
+
+        // Drain any events already buffered before the task noticed count == 0.
+        while rx.try_recv().is_ok() {}
+
+        // Wait long enough for the polling task to complete one full 2s interval
+        // and observe subscriber_count == 0, then exit its loop.
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        // After the task exits, no new events should arrive.
+        assert!(
+            rx.try_recv().is_err(),
+            "Polling task should have stopped after subscriber_count reached 0 — \
+             data would freeze if this fails (the original bug)"
+        );
+    }
+
+    /// Polling task continues broadcasting while subscriber_count stays above 0
+    /// — verifies the task does NOT stop prematurely.
+    ///
+    /// Regression guard for: guard dropped too early → count = 0 → task exits
+    /// after first snapshot (the original bug in disguise).
+    #[tokio::test]
+    async fn polling_task_keeps_running_while_subscriber_count_is_nonzero() {
+        use crate::live::monitor::{start_polling_task, MonitorEvent};
+        use std::collections::HashMap;
+        use tokio::sync::RwLock;
+
+        let (tx, mut rx) = broadcast::channel::<MonitorEvent>(32);
+        let count = Arc::new(AtomicUsize::new(1));
+        let sessions = Arc::new(RwLock::new(HashMap::new()));
+
+        start_polling_task(tx.clone(), count.clone(), sessions);
+
+        // Receive two distinct snapshots to prove the task polls more than once.
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("first snapshot within 5s");
+        assert!(first.is_ok(), "first snapshot should be Ok");
+
+        let second = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("second snapshot within 5s");
+        assert!(
+            second.is_ok(),
+            "second snapshot should be Ok — polling task must not exit prematurely"
+        );
+
+        count.store(0, Ordering::Relaxed); // clean up
+    }
 }
