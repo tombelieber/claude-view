@@ -105,3 +105,25 @@ export function formatHumanDuration(seconds: number): string {
   if (minutes === 0) return `${hours}h`
   return `${hours}h ${minutes}m`
 }
+
+/**
+ * Format byte count for compact display in tables/badges.
+ * Uses decimal-SI thresholds (1e9, 1e6, 1e3). GB shows one decimal; MB/KB show none.
+ *   500 → "1 KB"  |  4,200,000 → "4 MB"  |  1,500,000,000 → "1.5 GB"
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`
+  return `${(bytes / 1e3).toFixed(0)} KB`
+}
+
+/**
+ * Format seconds into single-unit compact uptime: "8s", "5m", "2h", "3d".
+ * For compound durations like "2h 15m", use `formatHumanDuration` instead.
+ */
+export function formatUptime(secs: number): string {
+  if (secs < 60) return `${secs}s`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`
+  return `${Math.floor(secs / 86400)}d`
+}
