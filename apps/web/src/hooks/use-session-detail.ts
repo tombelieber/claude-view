@@ -26,6 +26,7 @@ export function useSessionDetail(sessionId: string | null, version?: number) {
       return fetchSessionDetail(sessionId)
     },
     enabled: !!sessionId,
+    staleTime: 5 * 60_000,
     retry: (failureCount, error) => {
       if (isNotFoundError(error)) return false
       return failureCount < 3
