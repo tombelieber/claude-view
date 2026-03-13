@@ -10,9 +10,11 @@ import { SessionSidebar } from '../components/conversation/sidebar/SessionSideba
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
 import { useModelOptions } from '../hooks/use-models'
+import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { deriveInputBarState } from '../lib/control-status-map'
+import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
@@ -50,6 +52,7 @@ export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
 
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
+  const { data: richData } = useRichSessionData(sessionId || null)
 
   const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
     onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
@@ -100,13 +103,21 @@ export function ChatPage() {
     sessionInfo.canResumeLazy,
   )
 
-  // Context gauge — only show for live or resumable sessions
-  const contextPercent =
-    (sessionInfo.isLive || sessionInfo.canResumeLazy) &&
-    sessionInfo.contextWindowSize > 0 &&
-    sessionInfo.totalInputTokens > 0
-      ? Math.round((sessionInfo.totalInputTokens / sessionInfo.contextWindowSize) * 100)
-      : undefined
+  // Context gauge — live uses WS token data, history uses richData from JSONL
+  const contextPercent = (() => {
+    if (
+      (sessionInfo.isLive || sessionInfo.canResumeLazy) &&
+      sessionInfo.contextWindowSize > 0 &&
+      sessionInfo.totalInputTokens > 0
+    ) {
+      return Math.round((sessionInfo.totalInputTokens / sessionInfo.contextWindowSize) * 100)
+    }
+    if (richData && richData.contextWindowTokens > 0) {
+      const limit = getContextLimit(null, richData.contextWindowTokens)
+      return Math.round((richData.contextWindowTokens / limit) * 100)
+    }
+    return undefined
+  })()
 
   const handleSend = useCallback(
     (text: string) => {
