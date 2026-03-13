@@ -3,6 +3,7 @@ import { ChevronDown, Cpu } from 'lucide-react'
 import { useState } from 'react'
 import { type ModelOption, useModelOptions } from '../../hooks/use-models'
 import { cn } from '../../lib/utils'
+import { FALLBACK_MODELS } from './model-defaults'
 
 export type { ModelOption }
 
@@ -12,12 +13,6 @@ interface ModelSelectorProps {
   models?: ModelOption[]
   disabled?: boolean
 }
-
-const FALLBACK_MODELS: ModelOption[] = [
-  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-]
 
 function getLabel(models: ModelOption[], modelId: string): string {
   const found = models.find((m) => m.id === modelId)

@@ -140,6 +140,10 @@ export function useConversation(sessionId: string | undefined) {
       canResumeLazy: source.canResumeLazy,
       totalInputTokens: source.totalInputTokens,
       contextWindowSize: source.contextWindowSize,
+      model: source.model,
+      slashCommands: source.slashCommands,
+      mcpServers: source.mcpServers,
+      permissionMode: source.permissionMode,
     },
   }
 }
