@@ -1919,7 +1919,6 @@ mod tests {
             pid: Some(12345),
             title: String::new(),
             last_user_message: String::new(),
-            last_user_file: None,
             current_activity: String::new(),
             turn_count: 1,
             started_at: Some(1000),
