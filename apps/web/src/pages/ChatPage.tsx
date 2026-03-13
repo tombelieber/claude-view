@@ -10,7 +10,6 @@ import { ConversationActionsProvider } from '../contexts/conversation-actions-co
 import { useConversation } from '../hooks/use-conversation'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { deriveInputBarState } from '../lib/control-status-map'
-import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
@@ -98,15 +97,8 @@ export function ChatPage() {
     sessionInfo.canResumeLazy,
   )
 
-  // Context gauge from live WS token data
-  const contextWindow = getContextLimit(
-    null,
-    sessionInfo.totalInputTokens || undefined,
-    sessionInfo.contextWindowSize || null,
-  )
-  const contextPercent = sessionInfo.totalInputTokens
-    ? Math.round((sessionInfo.totalInputTokens / contextWindow) * 100)
-    : undefined
+  // Context gauge — not available yet from useConversation sessionInfo
+  const contextPercent = undefined
 
   const handleSend = useCallback(
     (text: string) => {

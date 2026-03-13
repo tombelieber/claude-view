@@ -55,11 +55,12 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 
     match original_command {
         Some(cmd) if !cmd.trim().is_empty() => {
-            // Forward stdin to user's original command, preserve its output + exit code
+            // Escape single quotes in the original command for sh -c '...' context.
+            let escaped = cmd.replace('\'', "'\\''");
             format!(
-                "#!/bin/sh\n{post_block}\nprintf '%s' \"$input\" | {cmd}\n",
+                "#!/bin/sh\n{post_block}\nprintf '%s' \"$input\" | sh -c '{escaped}'\n",
                 post_block = post_block,
-                cmd = cmd,
+                escaped = escaped,
             )
         }
         _ => {
@@ -131,7 +132,9 @@ pub fn register(port: u16) {
     let script_content = build_wrapper_script(port, original_command.as_deref());
 
     if let Some(parent) = wrapper_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(error = %e, path = %parent.display(), "statusline_injector: failed to create wrapper directory");
+        }
     }
 
     if let Err(e) = std::fs::write(&wrapper_path, &script_content) {
@@ -259,7 +262,8 @@ mod tests {
         assert!(script.starts_with("#!/bin/sh\n"));
         assert!(script.contains(SENTINEL));
         assert!(script.contains("http://localhost:47892/api/live/statusline"));
-        assert!(script.contains("bash ~/.claude/statusline-command.sh"));
+        // Command must be wrapped in sh -c '...' for shell safety
+        assert!(script.contains("sh -c 'bash ~/.claude/statusline-command.sh'"));
         // Must read stdin once and reuse $input — not read stdin twice
         assert!(script.contains("input=$(cat)"));
         let cat_count = script.matches("$(cat)").count();
@@ -282,5 +286,53 @@ mod tests {
         let script_empty = build_wrapper_script(47892, Some(""));
         // Both should produce the same output (no forwarding)
         assert_eq!(script_none, script_empty);
+    }
+
+    #[test]
+    fn shell_injection_single_quotes_escaped() {
+        let script = build_wrapper_script(47892, Some("echo 'hello world'"));
+        // Single quotes in the original command must be escaped for sh -c '...' context
+        assert!(script.contains("sh -c '"), "must use sh -c wrapper");
+        assert!(
+            script.contains(r"'\''"),
+            "single quotes must be escaped as '\\''"
+        );
+        // Verify the command is NOT interpolated raw (without sh -c wrapper)
+        assert!(
+            !script.contains("| echo 'hello world'\n"),
+            "command must be inside sh -c, not raw-interpolated after pipe"
+        );
+        // Verify the full sh -c invocation contains the escaped command
+        assert!(
+            script.contains("sh -c 'echo '\\''hello world'\\'''"),
+            "full escaped command must appear inside sh -c wrapper"
+        );
+    }
+
+    #[test]
+    fn shell_injection_semicolon_neutralized() {
+        let script = build_wrapper_script(47892, Some("foo; rm -rf ~"));
+        // Inside sh -c '...', semicolons are literal, not command separators
+        assert!(script.contains("sh -c '"));
+        // The semicolon MUST be inside the single-quoted sh -c argument,
+        // NOT as a bare command separator outside the wrapper.
+        let sh_c_idx = script.find("sh -c '").expect("must have sh -c wrapper");
+        let after_sh_c = &script[sh_c_idx..];
+        assert!(
+            after_sh_c.contains("foo; rm -rf ~"),
+            "dangerous payload must be INSIDE sh -c single-quoted argument, got: {after_sh_c}"
+        );
+        let before_sh_c = &script[..sh_c_idx];
+        assert!(
+            !before_sh_c.contains("foo; rm -rf ~"),
+            "dangerous payload must NOT appear before sh -c wrapper"
+        );
+    }
+
+    #[test]
+    fn shell_injection_backtick_neutralized() {
+        let script = build_wrapper_script(47892, Some("echo `whoami`"));
+        // Inside sh -c '...', backticks are literal
+        assert!(script.contains("sh -c '"));
     }
 }
