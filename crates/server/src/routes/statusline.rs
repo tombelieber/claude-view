@@ -473,6 +473,143 @@ mod tests {
             .unwrap());
     }
 
+    #[tokio::test]
+    async fn debug_endpoint_returns_raw_statusline() {
+        use crate::live::state::test_live_session;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        let mut session = test_live_session("test-1");
+        session.statusline_raw =
+            Some(serde_json::json!({"session_id": "test-1", "version": "1.0"}));
+
+        let mut map = HashMap::new();
+        map.insert("test-1".to_string(), session);
+        let sessions: crate::live::manager::LiveSessionMap = Arc::new(RwLock::new(map));
+
+        let lock = sessions.read().await;
+        let session = lock.get("test-1").unwrap();
+        let raw = session.statusline_raw.as_ref().unwrap();
+        assert_eq!(raw["version"], "1.0");
+        assert_eq!(raw["session_id"], "test-1");
+
+        let session2 = test_live_session("test-2");
+        assert!(session2.statusline_raw.is_none());
+    }
+
+    #[tokio::test]
+    async fn statusline_post_updates_live_session_fields() {
+        use crate::live::state::test_live_session;
+        use std::collections::HashMap;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        let mut map = HashMap::new();
+        map.insert("test-1".to_string(), test_live_session("test-1"));
+        let sessions = Arc::new(RwLock::new(map));
+
+        let payload = serde_json::json!({
+            "session_id": "test-1",
+            "model": { "id": "claude-opus-4-6", "display_name": "Opus" },
+            "context_window": {
+                "context_window_size": 1000000,
+                "used_percentage": 42.5,
+                "remaining_percentage": 57.5,
+                "total_input_tokens": 425000,
+                "current_usage": {
+                    "input_tokens": 8500,
+                    "output_tokens": 1200,
+                    "cache_creation_input_tokens": 5000,
+                    "cache_read_input_tokens": 2000
+                }
+            },
+            "cost": { "total_cost_usd": 1.23 }
+        });
+
+        let parsed: StatuslinePayload = serde_json::from_value(payload).unwrap();
+        {
+            let mut sessions_lock = sessions.write().await;
+            let session = sessions_lock.get_mut("test-1").unwrap();
+            apply_statusline(session, &parsed);
+        }
+
+        let sessions_lock = sessions.read().await;
+        let session = sessions_lock.get("test-1").unwrap();
+        assert_eq!(session.model_display_name.as_deref(), Some("Opus"));
+        assert_eq!(session.statusline_context_window_size, Some(1_000_000));
+        assert_eq!(session.statusline_cost_usd, Some(1.23));
+        assert_eq!(session.statusline_input_tokens, Some(8500));
+        assert_eq!(session.statusline_output_tokens, Some(1200));
+        assert_eq!(session.statusline_cache_read_tokens, Some(2000));
+        assert_eq!(session.statusline_cache_creation_tokens, Some(5000));
+
+        // Verify SSE serialization shape
+        let json = serde_json::to_value(session.clone()).unwrap();
+        assert_eq!(json["modelDisplayName"], "Opus");
+        assert_eq!(json["statuslineContextWindowSize"], 1_000_000);
+        assert_eq!(json["statuslineCostUsd"], 1.23);
+        assert!(
+            json["statuslineRaw"].is_null(),
+            "statusline_raw has #[serde(skip)] — must not appear in SSE"
+        );
+    }
+
+    #[tokio::test]
+    async fn transcript_dedup_merges_sessions_integration() {
+        use crate::live::state::test_live_session;
+        use std::collections::HashMap;
+        use std::path::PathBuf;
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+
+        let mut map = HashMap::new();
+        map.insert("old-uuid".to_string(), test_live_session("old-uuid"));
+        map.insert("new-uuid".to_string(), test_live_session("new-uuid"));
+        let sessions = Arc::new(RwLock::new(map));
+
+        let mut tmap_inner = HashMap::new();
+        tmap_inner.insert(
+            PathBuf::from("/tmp/sessions/shared.jsonl"),
+            "old-uuid".to_string(),
+        );
+        let transcript_map = Arc::new(RwLock::new(tmap_inner));
+
+        let payload = serde_json::json!({
+            "session_id": "new-uuid",
+            "transcript_path": "/tmp/sessions/shared.jsonl",
+            "cost": { "total_cost_usd": 0.50 }
+        });
+        let parsed: StatuslinePayload = serde_json::from_value(payload).unwrap();
+
+        // Step 1: Check transcript dedup
+        let dedup_action = {
+            let tp = PathBuf::from(parsed.transcript_path.as_ref().unwrap());
+            let tmap = transcript_map.read().await;
+            tmap.get(&tp)
+                .filter(|existing| existing.as_str() != &parsed.session_id)
+                .cloned()
+        };
+
+        assert_eq!(dedup_action, Some("old-uuid".to_string()));
+
+        if let Some(older_id) = dedup_action {
+            let mut sessions_lock = sessions.write().await;
+            sessions_lock.remove(&parsed.session_id);
+            if let Some(older) = sessions_lock.get_mut(&older_id) {
+                apply_statusline(older, &parsed);
+            }
+        }
+
+        let sessions_lock = sessions.read().await;
+        assert!(
+            sessions_lock.get("new-uuid").is_none(),
+            "new-uuid must be removed"
+        );
+        let old = sessions_lock.get("old-uuid").unwrap();
+        assert_eq!(old.statusline_cost_usd, Some(0.50));
+    }
+
     #[test]
     fn apply_statusline_maps_all_fields() {
         use crate::live::state::test_live_session;
