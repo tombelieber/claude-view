@@ -8,6 +8,8 @@ export type PluginItem = {
   name: string
   kind: string
   description: string
+  /** Full file content (markdown for skills/commands/agents; pretty JSON for mcp_tool) */
+  content: string
   invocationCount: bigint
   lastUsedAt: bigint | null
 }

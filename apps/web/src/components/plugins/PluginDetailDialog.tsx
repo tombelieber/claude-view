@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Bot, ExternalLink, FileText, Terminal, Wrench, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { Bot, ExternalLink, FileText, Server, Terminal, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../../lib/utils'
@@ -25,7 +25,7 @@ function itemFileName(item: PluginItem): string {
 function ItemIcon({ kind }: { kind: string }) {
   if (kind === 'command') return <Terminal className="w-3 h-3 flex-shrink-0" />
   if (kind === 'agent') return <Bot className="w-3 h-3 flex-shrink-0" />
-  if (kind === 'mcp_tool') return <Wrench className="w-3 h-3 flex-shrink-0" />
+  if (kind === 'mcp_tool') return <Server className="w-3 h-3 flex-shrink-0" />
   return <FileText className="w-3 h-3 flex-shrink-0" />
 }
 
@@ -159,9 +159,17 @@ interface LeftPanelProps {
   onSelect: (idx: number) => void
   onAction?: (action: string, name: string, scope?: string, projectPath?: string | null) => void
   isPending: boolean
+  itemRefs: React.MutableRefObject<(HTMLButtonElement | null)[]>
 }
 
-function LeftPanel({ plugin, selectedIdx, onSelect, onAction, isPending }: LeftPanelProps) {
+function LeftPanel({
+  plugin,
+  selectedIdx,
+  onSelect,
+  onAction,
+  isPending,
+  itemRefs,
+}: LeftPanelProps) {
   const invocations = Number(plugin.totalInvocations)
   const sessions = Number(plugin.sessionCount)
 
@@ -248,6 +256,9 @@ function LeftPanel({ plugin, selectedIdx, onSelect, onAction, isPending }: LeftP
             {plugin.items.map((item, idx) => (
               <button
                 key={item.id}
+                ref={(el) => {
+                  itemRefs.current[idx] = el
+                }}
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
@@ -275,7 +286,7 @@ function LeftPanel({ plugin, selectedIdx, onSelect, onAction, isPending }: LeftP
 }
 
 // ---------------------------------------------------------------------------
-// Right panel: react-markdown rendered file content
+// Right panel — markdown file viewer (skill / command / agent)
 // ---------------------------------------------------------------------------
 
 const mdComponents = {
@@ -339,11 +350,17 @@ const mdComponents = {
 }
 
 function FileContentViewer({ item }: { item: PluginItem | null }) {
-  const desc = item?.description && item.description !== '---' ? item.description : null
   const invocations = item ? Number(item.invocationCount) : 0
   const lastUsed = item?.lastUsedAt ? formatRelativeTime(Number(item.lastUsedAt)) : null
 
   if (!item) return null
+
+  // MCP server items get a dedicated structured config viewer
+  if (item.kind === 'mcp_tool') {
+    return <McpServerViewer item={item} invocations={invocations} lastUsed={lastUsed} />
+  }
+
+  const content = item.content?.trim() || null
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -369,12 +386,154 @@ function FileContentViewer({ item }: { item: PluginItem | null }) {
 
       {/* Markdown content */}
       <div className="flex-1 overflow-y-auto bg-[#fafafa] px-4 py-3">
-        {desc ? (
+        {content ? (
           <Markdown remarkPlugins={[remarkGfm]} components={mdComponents}>
-            {desc}
+            {content}
           </Markdown>
         ) : (
-          <p className="text-[12px] text-apple-text3 italic">No description provided.</p>
+          <p className="text-[12px] text-apple-text3 italic">No content available.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MCP server viewer — structured config display
+// ---------------------------------------------------------------------------
+
+interface McpConfig {
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  type?: string
+  [key: string]: unknown
+}
+
+function McpServerViewer({
+  item,
+  invocations,
+  lastUsed,
+}: {
+  item: PluginItem
+  invocations: number
+  lastUsed: string | null
+}) {
+  let config: McpConfig | null = null
+  try {
+    if (item.content) config = JSON.parse(item.content) as McpConfig
+  } catch {
+    // malformed JSON — fall back to raw display
+  }
+
+  const isHttp = config?.url || config?.type === 'http' || config?.type === 'sse'
+  const cmdParts = config?.command ? [config.command, ...(config.args ?? [])].join(' ') : null
+  const envVars = config?.env ? Object.entries(config.env) : []
+  const otherKeys = config
+    ? Object.keys(config).filter((k) => !['command', 'args', 'env', 'url', 'type'].includes(k))
+    : []
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* Header bar */}
+      <div className="px-4 py-2 border-b border-apple-sep2 flex-shrink-0 flex items-center gap-2">
+        <Server className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+        <span className="text-[12px] font-mono text-apple-text2 truncate">{item.name}</span>
+        <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 bg-amber-50 text-amber-600">
+          {isHttp ? (config?.type ?? 'http') : 'stdio'}
+        </span>
+        {invocations > 0 && (
+          <span className="text-[10px] text-apple-text3 tabular-nums flex-shrink-0">
+            {invocations}×{lastUsed && ` · ${lastUsed}`}
+          </span>
+        )}
+      </div>
+
+      {/* Config body */}
+      <div className="flex-1 overflow-y-auto bg-[#fafafa] px-4 py-3 space-y-3">
+        {!config ? (
+          <p className="text-[12px] text-apple-text3 italic">No server configuration available.</p>
+        ) : (
+          <>
+            {/* Command */}
+            {cmdParts && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                  Command
+                </div>
+                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-[11px] text-apple-text1 whitespace-pre-wrap break-all">
+                  {cmdParts}
+                </div>
+              </div>
+            )}
+
+            {/* URL */}
+            {config.url && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                  URL
+                </div>
+                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-[11px] text-apple-text1 break-all">
+                  {config.url}
+                </div>
+              </div>
+            )}
+
+            {/* Environment variables */}
+            {envVars.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                  Environment ({envVars.length})
+                </div>
+                <div className="border border-apple-sep2 rounded-lg overflow-hidden">
+                  {envVars.map(([key, val], i) => (
+                    <div
+                      key={key}
+                      className={cn(
+                        'flex items-start gap-3 px-3 py-1.5 text-[11px]',
+                        i > 0 && 'border-t border-apple-sep2',
+                      )}
+                    >
+                      <span className="font-mono text-apple-text1 font-semibold flex-shrink-0 min-w-0 w-[40%] truncate">
+                        {key}
+                      </span>
+                      <span className="font-mono text-apple-text3 min-w-0 break-all">{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Other top-level keys */}
+            {otherKeys.length > 0 && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                  Config
+                </div>
+                <div className="border border-apple-sep2 rounded-lg overflow-hidden">
+                  {otherKeys.map((key, i) => (
+                    <div
+                      key={key}
+                      className={cn(
+                        'flex items-start gap-3 px-3 py-1.5 text-[11px]',
+                        i > 0 && 'border-t border-apple-sep2',
+                      )}
+                    >
+                      <span className="font-mono text-apple-text3 font-medium flex-shrink-0 w-[40%] truncate">
+                        {key}
+                      </span>
+                      <span className="font-mono text-apple-text2 min-w-0 break-all">
+                        {typeof config[key] === 'string'
+                          ? config[key]
+                          : JSON.stringify(config[key])}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -452,10 +611,22 @@ export function PluginDetailDialog({
   const scope = installed ? plugin.scope : null
 
   const [selectedIdx, setSelectedIdx] = useState(0)
+  // Ref array for each list item — used for auto-scroll on keyboard nav
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+
+  // Reset selection when plugin changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: plugin identity is the intentional trigger
   useEffect(() => {
     setSelectedIdx(0)
+    itemRefs.current = []
   }, [plugin])
 
+  // Auto-scroll selected item into view when index changes via keyboard
+  useEffect(() => {
+    itemRefs.current[selectedIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedIdx])
+
+  // Keyboard navigation
   useEffect(() => {
     if (!open || !installed || plugin.items.length === 0) return
     const onKey = (e: KeyboardEvent) => {
@@ -507,6 +678,7 @@ export function PluginDetailDialog({
                   onSelect={setSelectedIdx}
                   onAction={onAction}
                   isPending={isPending}
+                  itemRefs={itemRefs}
                 />
                 <FileContentViewer item={plugin.items[selectedIdx] ?? null} />
               </>
