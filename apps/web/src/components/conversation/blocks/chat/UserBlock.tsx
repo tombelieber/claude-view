@@ -1,5 +1,6 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
+import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 
 interface UserBlockProps {
   block: UserBlockType
@@ -23,6 +24,8 @@ function StatusDot({ status }: { status: UserBlockType['status'] }) {
 }
 
 export function ChatUserBlock({ block }: UserBlockProps) {
+  const convActions = useConversationActions()
+
   return (
     <div className="flex justify-end">
       <div className="max-w-[80%]">
@@ -32,7 +35,21 @@ export function ChatUserBlock({ block }: UserBlockProps) {
         <div className="flex items-center justify-end gap-1.5 mt-1 px-1">
           <StatusDot status={block.status} />
           {block.status === 'failed' && (
-            <span className="text-[10px] text-red-500 dark:text-red-400">Failed</span>
+            <span className="text-[10px] text-red-500 dark:text-red-400">
+              Failed
+              {convActions && block.localId && (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={() => convActions.retryMessage(block.localId!)}
+                    className="underline hover:no-underline"
+                  >
+                    Retry
+                  </button>
+                </>
+              )}
+            </span>
           )}
         </div>
       </div>
