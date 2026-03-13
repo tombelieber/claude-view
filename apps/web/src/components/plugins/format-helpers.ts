@@ -1,3 +1,11 @@
+export function formatInstallCount(count: bigint | null): string | null {
+  if (count === null) return null
+  const n = Number(count)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toString()
+}
+
 // Shared time formatting — verbatim copy from PluginCard.tsx formatRelativeTime
 export function formatRelativeTime(epochSecs: number): string {
   const now = Math.floor(Date.now() / 1000)

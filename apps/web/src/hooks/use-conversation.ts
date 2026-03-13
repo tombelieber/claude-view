@@ -70,6 +70,8 @@ export function useConversation(sessionId: string | undefined) {
       isLive: source.isLive,
       sessionState: source.sessionState,
       controlId: source.controlId,
+      totalInputTokens: source.totalInputTokens,
+      contextWindowSize: source.contextWindowSize,
     },
   }
 }
