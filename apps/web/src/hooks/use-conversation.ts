@@ -143,6 +143,7 @@ export function useConversation(sessionId: string | undefined) {
       model: source.model,
       slashCommands: source.slashCommands,
       mcpServers: source.mcpServers,
+      permissionMode: source.permissionMode,
     },
   }
 }
