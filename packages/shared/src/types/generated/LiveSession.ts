@@ -10,6 +10,7 @@ import type { SubAgentInfo } from './SubAgentInfo'
 import type { TeamMember } from './TeamMember'
 import type { TokenUsage } from './TokenUsage'
 import type { ToolUsed } from './ToolUsed'
+import type { VerifiedFile } from './VerifiedFile'
 
 /**
  * A live session snapshot broadcast to connected SSE clients.
@@ -72,10 +73,6 @@ export type LiveSession = {
    * The last user message text (truncated for display).
    */
   lastUserMessage: string
-  /**
-   * Filename from `<ide_opened_file>` tag in the last user message, if present.
-   */
-  lastUserFile: string | null
   /**
    * Human-readable description of the current activity.
    */
@@ -174,10 +171,10 @@ export type LiveSession = {
    */
   slug: string | null
   /**
-   * Files referenced with `@filename` syntax in user messages.
-   * Deduplicated set across session lifetime (≤10, first-N-wins).
+   * Verified file references detected from user messages.
+   * Deduplicated by absolute path across session lifetime (≤10, first-N-wins).
    */
-  userFiles?: Array<string> | null
+  userFiles?: Array<VerifiedFile> | null
   /**
    * Unix timestamp when this session's process exited (None = still running).
    * Set by reconciliation loop or SessionEnd hook. Used by frontend for

@@ -62,11 +62,11 @@ export function SessionDetailSheet({ session, open, onOpenChange }: Props) {
               <Text color="$gray200" fontSize="$sm" numberOfLines={4}>
                 {session.lastUserMessage}
               </Text>
-              {session.lastUserFile ? (
+              {session.userFiles && session.userFiles.length > 0 ? (
                 <XStack items="center" gap="$1" mt="$2">
                   <FileText size={14} color="$gray400" />
                   <Text color="$gray400" fontSize="$xs" fontFamily="$mono">
-                    Viewing: {session.lastUserFile}
+                    Viewing: {session.userFiles[0].displayName}
                   </Text>
                 </XStack>
               ) : null}

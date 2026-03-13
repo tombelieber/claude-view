@@ -7,6 +7,7 @@ import {
   CirclePause,
   Clock,
   FileCheck,
+  FileCode,
   FileText,
   FolderOpen,
   GitBranch,
@@ -209,65 +210,63 @@ export function SessionCard({
         </p>
       )}
 
-      {/* File context: @mention chips (emerald) + IDE file chip (sky), deduplicated, ≤3 + overflow */}
+      {/* File context: VerifiedFile chips by kind (mention=emerald, ide=sky, pasted=violet) */}
       {(() => {
-        const mentionFiles: string[] = session.userFiles ?? []
-        const ideFile: string | null = session.lastUserFile ?? null
-        const ideFileDeduped = ideFile && !mentionFiles.includes(ideFile) ? ideFile : null
-        const allFiles: Array<{ path: string; kind: 'mention' | 'ide' }> = [
-          ...mentionFiles.map((p) => ({ path: p, kind: 'mention' as const })),
-          ...(ideFileDeduped ? [{ path: ideFileDeduped, kind: 'ide' as const }] : []),
-        ]
-        if (allFiles.length === 0) return null
-        const projectRoot = session.projectPath || null
-        function displayName(fullPath: string): string {
-          if (projectRoot && fullPath.startsWith(`${projectRoot}/`)) {
-            return fullPath.slice(projectRoot.length + 1)
-          }
-          return fullPath.split('/').pop() ?? fullPath
-        }
-        const visible = allFiles.slice(0, MAX_VISIBLE_FILES)
-        const overflow = allFiles.slice(MAX_VISIBLE_FILES)
+        const files = session.userFiles ?? []
+        if (files.length === 0) return null
+        const visible = files.slice(0, MAX_VISIBLE_FILES)
+        const overflow = files.slice(MAX_VISIBLE_FILES)
+
+        const kindStyle = {
+          mention: {
+            bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
+            icon: <span className="shrink-0 font-semibold">@</span>,
+            tooltipIcon: (
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                @
+              </span>
+            ),
+          },
+          ide: {
+            bg: 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300',
+            icon: <FileText className="h-2.5 w-2.5 shrink-0" />,
+            tooltipIcon: <FileText className="h-3 w-3 shrink-0 text-sky-500 dark:text-sky-400" />,
+          },
+          pasted: {
+            bg: 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300',
+            icon: <FileCode className="h-2.5 w-2.5 shrink-0" />,
+            tooltipIcon: (
+              <FileCode className="h-3 w-3 shrink-0 text-violet-500 dark:text-violet-400" />
+            ),
+          },
+        } as const
+
         return (
           <Tooltip.Provider delayDuration={200}>
             <div className="flex flex-wrap items-center gap-1 mb-1">
-              {visible.map(({ path, kind }) =>
-                kind === 'mention' ? (
-                  <Tooltip.Root key={`mention-${path}`}>
+              {visible.map((file) => {
+                const style = kindStyle[file.kind] ?? kindStyle.mention
+                return (
+                  <Tooltip.Root key={`${file.kind}-${file.path}`}>
                     <Tooltip.Trigger asChild>
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono rounded bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 max-w-[160px] truncate cursor-default">
-                        <span className="shrink-0 font-semibold">@</span>
-                        <span className="truncate">{displayName(path)}</span>
+                      <span
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono rounded border max-w-[160px] truncate cursor-default ${style.bg}`}
+                      >
+                        {style.icon}
+                        <span className="truncate">{file.displayName}</span>
                       </span>
                     </Tooltip.Trigger>
                     <Tooltip.Portal>
                       <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
                         <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
-                          {path}
+                          {file.path}
                         </span>
                         <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
                       </Tooltip.Content>
                     </Tooltip.Portal>
                   </Tooltip.Root>
-                ) : (
-                  <Tooltip.Root key={`ide-${path}`}>
-                    <Tooltip.Trigger asChild>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono rounded bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 max-w-[160px] truncate cursor-default">
-                        <FileText className="h-2.5 w-2.5 shrink-0" />
-                        <span className="truncate">{displayName(path)}</span>
-                      </span>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
-                        <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
-                          {path}
-                        </span>
-                        <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                ),
-              )}
+                )
+              })}
               {overflow.length > 0 && (
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>
@@ -278,20 +277,20 @@ export function SessionCard({
                   <Tooltip.Portal>
                     <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
                       <div className="space-y-1">
-                        {overflow.map(({ path, kind }) => (
-                          <div key={`${kind}-${path}`} className="flex items-center gap-1.5">
-                            {kind === 'mention' ? (
-                              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
-                                @
+                        {overflow.map((file) => {
+                          const style = kindStyle[file.kind] ?? kindStyle.mention
+                          return (
+                            <div
+                              key={`${file.kind}-${file.path}`}
+                              className="flex items-center gap-1.5"
+                            >
+                              {style.tooltipIcon}
+                              <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
+                                {file.path}
                               </span>
-                            ) : (
-                              <FileText className="h-3 w-3 shrink-0 text-sky-500 dark:text-sky-400" />
-                            )}
-                            <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
-                              {path}
-                            </span>
-                          </div>
-                        ))}
+                            </div>
+                          )
+                        })}
                       </div>
                       <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
                     </Tooltip.Content>
@@ -401,9 +400,29 @@ export function SessionCard({
         statuslineUsedPct={session.statuslineUsedPct}
       />
 
-      {/* Footer: turns + compactions */}
+      {/* Footer: turns + cost + lines + compactions */}
       <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
         <span>{session.turnCount} turns</span>
+        {session.statuslineCostUsd != null && session.statuslineCostUsd > 0 && (
+          <span className="font-mono tabular-nums">${session.statuslineCostUsd.toFixed(2)}</span>
+        )}
+        {(session.statuslineLinesAdded != null || session.statuslineLinesRemoved != null) && (
+          <span className="font-mono tabular-nums">
+            {session.statuslineLinesAdded != null && (
+              <span className="text-green-500 dark:text-green-400">
+                +{Number(session.statuslineLinesAdded)}
+              </span>
+            )}
+            {session.statuslineLinesAdded != null &&
+              session.statuslineLinesRemoved != null &&
+              ' / '}
+            {session.statuslineLinesRemoved != null && (
+              <span className="text-red-500 dark:text-red-400">
+                -{Number(session.statuslineLinesRemoved)}
+              </span>
+            )}
+          </span>
+        )}
         {(session.compactCount ?? 0) > 0 && (
           <span className="inline-flex items-center gap-0.5 text-sky-500 dark:text-sky-400">
             <Minimize2 className="h-3 w-3" />
