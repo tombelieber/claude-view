@@ -35,6 +35,8 @@ pub struct PluginItem {
     pub name: String,
     pub kind: String,
     pub description: String,
+    /// Full file content for the item (markdown for skills/commands/agents; pretty JSON for mcp_tool)
+    pub content: String,
     pub invocation_count: i64,
     pub last_used_at: Option<i64>,
 }
@@ -303,7 +305,10 @@ fn strip_ansi(s: &str) -> String {
 /// Run a `claude plugin` subcommand and return stdout as String.
 /// Strips ALL CLAUDE* env vars and ANSI codes per CLAUDE.md hard rules.
 /// Optional `cwd` sets the working directory (needed for project-scoped uninstall).
-async fn run_claude_plugin_in(args: &[&str], cwd: Option<&str>) -> Result<String, ApiError> {
+pub(crate) async fn run_claude_plugin_in(
+    args: &[&str],
+    cwd: Option<&str>,
+) -> Result<String, ApiError> {
     use std::process::Stdio;
 
     let cli_path = claude_view_core::resolved_cli_path().unwrap_or("claude");
@@ -367,7 +372,7 @@ async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
 // ---------------------------------------------------------------------------
 
 /// Bust the plugin CLI cache after a mutation so the next GET reflects changes.
-async fn invalidate_plugin_cache(state: &AppState) {
+pub(crate) async fn invalidate_plugin_cache(state: &AppState) {
     let _ = state
         .plugin_cli_cache
         .force_refresh(std::time::Duration::ZERO, fetch_plugin_cli_data)
@@ -659,6 +664,7 @@ async fn list_plugins(
                     name: inv.name.clone(),
                     kind: kind_str.to_string(),
                     description: inv.description.clone(),
+                    content: inv.content.clone(),
                     invocation_count: inv_count,
                     last_used_at: last_used,
                 });
@@ -900,10 +906,10 @@ pub struct PluginActionResponse {
     pub message: Option<String>,
 }
 
-const VALID_ACTIONS: &[&str] = &["install", "update", "uninstall", "enable", "disable"];
+pub(crate) const VALID_ACTIONS: &[&str] = &["install", "update", "uninstall", "enable", "disable"];
 
 /// Reject CLI flag injection — only [a-zA-Z0-9._@-] allowed, must not start with `-`.
-fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
     if name.is_empty()
         || name.len() > 128
         || name.starts_with('-')
@@ -918,7 +924,7 @@ fn validate_plugin_name(name: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
+pub(crate) fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
     if let Some(s) = scope {
         if s != "user" && s != "project" {
             return Err(ApiError::BadRequest(format!(
@@ -1432,6 +1438,7 @@ mod tests {
                     name: "brainstorming".to_string(),
                     kind: "skill".to_string(),
                     description: "Explore ideas".to_string(),
+                    content: String::new(),
                     invocation_count: 5,
                     last_used_at: Some(1000),
                 }],
@@ -1465,6 +1472,7 @@ mod tests {
                     name: "format".to_string(),
                     kind: "command".to_string(),
                     description: "Format code".to_string(),
+                    content: String::new(),
                     invocation_count: 0,
                     last_used_at: None,
                 }],
