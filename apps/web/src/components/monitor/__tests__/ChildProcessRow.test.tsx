@@ -43,7 +43,7 @@ describe('ChildProcessRow', () => {
         process={makeProcess()}
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={false}
+        pendingPids={new Set()}
       />,
     )
     expect(screen.getByText('cargo build')).toBeInTheDocument()
@@ -58,7 +58,7 @@ describe('ChildProcessRow', () => {
         process={makeProcess({ cpuPercent: 200 })} // 2 full cores
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={false}
+        pendingPids={new Set()}
       />,
     )
     // 200 / 10 = 20% of system
@@ -72,7 +72,7 @@ describe('ChildProcessRow', () => {
         process={makeProcess({ uptimeSecs: 30 })}
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={false}
+        pendingPids={new Set()}
       />,
     )
     const ageEl = container.querySelector('[data-testid="process-age"]')
@@ -85,7 +85,7 @@ describe('ChildProcessRow', () => {
         process={makeProcess({ uptimeSecs: 600, staleness: 'Idle' })}
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={false}
+        pendingPids={new Set()}
       />,
     )
     const ageEl = container.querySelector('[data-testid="process-age"]')
@@ -96,7 +96,12 @@ describe('ChildProcessRow', () => {
     const onKill = vi.fn()
     const proc = makeProcess({ pid: 5678, startTime: 1000 })
     render(
-      <ChildProcessRow process={proc} systemInfo={systemInfo} onKill={onKill} isPending={false} />,
+      <ChildProcessRow
+        process={proc}
+        systemInfo={systemInfo}
+        onKill={onKill}
+        pendingPids={new Set()}
+      />,
     )
     // Click the kill button to show confirmation
     fireEvent.click(screen.getByTitle('Terminate process'))
@@ -111,7 +116,7 @@ describe('ChildProcessRow', () => {
         process={makeProcess({ isSelf: true })}
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={false}
+        pendingPids={new Set()}
       />,
     )
     const killBtn = screen.getByTitle('Cannot kill this server process')
@@ -119,16 +124,69 @@ describe('ChildProcessRow', () => {
   })
 
   it('disables kill confirmation when isPending', () => {
+    const proc = makeProcess({ pid: 1234 })
     render(
       <ChildProcessRow
-        process={makeProcess()}
+        process={proc}
         systemInfo={systemInfo}
         onKill={vi.fn()}
-        isPending={true}
+        pendingPids={new Set([1234])}
       />,
     )
     fireEvent.click(screen.getByTitle('Terminate process'))
     const yesBtn = screen.getByText('Yes')
     expect(yesBtn).toBeDisabled()
+  })
+
+  it('shows chevron and child count when descendants exist', () => {
+    const proc = makeProcess({
+      descendants: [
+        makeProcess({ pid: 2001, name: 'node worker' }),
+        makeProcess({ pid: 2002, name: 'tsc --watch' }),
+      ],
+      descendantCount: 2,
+    })
+    render(
+      <ChildProcessRow
+        process={proc}
+        systemInfo={systemInfo}
+        onKill={vi.fn()}
+        pendingPids={new Set()}
+      />,
+    )
+    expect(screen.getByLabelText('Toggle child processes')).toBeInTheDocument()
+    expect(screen.getByText('+2')).toBeInTheDocument()
+  })
+
+  it('expands to show nested children on click', () => {
+    const proc = makeProcess({
+      descendants: [makeProcess({ pid: 2001, name: 'node worker' })],
+      descendantCount: 1,
+    })
+    render(
+      <ChildProcessRow
+        process={proc}
+        systemInfo={systemInfo}
+        onKill={vi.fn()}
+        pendingPids={new Set()}
+      />,
+    )
+    // Children not visible initially
+    expect(screen.queryByText('node worker')).not.toBeInTheDocument()
+    // Expand
+    fireEvent.click(screen.getByLabelText('Toggle child processes'))
+    expect(screen.getByText('node worker')).toBeInTheDocument()
+  })
+
+  it('shows spacer instead of chevron when no descendants', () => {
+    render(
+      <ChildProcessRow
+        process={makeProcess()}
+        systemInfo={systemInfo}
+        onKill={vi.fn()}
+        pendingPids={new Set()}
+      />,
+    )
+    expect(screen.queryByLabelText('Toggle child processes')).not.toBeInTheDocument()
   })
 })
