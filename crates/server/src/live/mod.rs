@@ -1,3 +1,4 @@
+pub mod file_resolver;
 pub mod hook_registrar;
 pub mod manager;
 pub mod monitor;

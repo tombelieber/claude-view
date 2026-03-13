@@ -197,7 +197,7 @@ async fn handle_hook(
                             .as_ref()
                             .map(|p| p.chars().take(500).collect())
                             .unwrap_or_default(),
-                        last_user_file: None,
+
                         current_activity: agent_state.label.clone(),
                         turn_count: 0,
                         started_at: None,
@@ -225,6 +225,21 @@ async fn handle_hook(
                         statusline_context_window_size: None,
                         statusline_used_pct: None,
                         statusline_cost_usd: None,
+                        model_display_name: None,
+                        statusline_cwd: None,
+                        statusline_project_dir: None,
+                        statusline_total_duration_ms: None,
+                        statusline_api_duration_ms: None,
+                        statusline_lines_added: None,
+                        statusline_lines_removed: None,
+                        statusline_input_tokens: None,
+                        statusline_output_tokens: None,
+                        statusline_cache_read_tokens: None,
+                        statusline_cache_creation_tokens: None,
+                        statusline_version: None,
+                        exceeds_200k_tokens: None,
+                        statusline_transcript_path: None,
+                        statusline_raw: None,
                         hook_events: Vec::new(),
                     };
                     append_capped_hook_events(
@@ -350,7 +365,6 @@ async fn handle_hook(
                     pid: claude_pid,
                     title: String::new(),
                     last_user_message: String::new(),
-                    last_user_file: None,
                     current_activity: agent_state.label.clone(),
                     turn_count: 0,
                     started_at: Some(now),
@@ -378,6 +392,21 @@ async fn handle_hook(
                     statusline_context_window_size: None,
                     statusline_used_pct: None,
                     statusline_cost_usd: None,
+                    model_display_name: None,
+                    statusline_cwd: None,
+                    statusline_project_dir: None,
+                    statusline_total_duration_ms: None,
+                    statusline_api_duration_ms: None,
+                    statusline_lines_added: None,
+                    statusline_lines_removed: None,
+                    statusline_input_tokens: None,
+                    statusline_output_tokens: None,
+                    statusline_cache_read_tokens: None,
+                    statusline_cache_creation_tokens: None,
+                    statusline_version: None,
+                    exceeds_200k_tokens: None,
+                    statusline_transcript_path: None,
+                    statusline_raw: None,
                     hook_events: Vec::new(),
                 };
                 append_capped_hook_events(
@@ -551,9 +580,15 @@ async fn handle_hook(
                 .as_secs() as i64;
 
             let we_closed_it;
+            let transcript_path_to_clean: Option<std::path::PathBuf>;
             {
                 let mut sessions = state.live_sessions.write().await;
                 if let Some(session) = sessions.get_mut(&session_id) {
+                    // Collect transcript path for dedup map cleanup (before dropping lock)
+                    transcript_path_to_clean = session
+                        .statusline_transcript_path
+                        .as_ref()
+                        .map(std::path::PathBuf::from);
                     // Idempotency guard: reconciliation loop may have already closed this session
                     if session.closed_at.is_some() {
                         // Already closed by PID-death detection — skip duplicate close
@@ -573,7 +608,13 @@ async fn handle_hook(
                     }
                 } else {
                     we_closed_it = false;
+                    transcript_path_to_clean = None;
                 }
+            }
+
+            // Clean up transcript dedup map (lock ordering: acquired AFTER live_sessions released)
+            if let Some(tp) = transcript_path_to_clean {
+                state.transcript_to_session.write().await.remove(&tp);
             }
 
             if let Some(mgr) = &state.live_manager {
@@ -1171,7 +1212,6 @@ mod tests {
             pid: None,
             title: "Test session".into(),
             last_user_message: String::new(),
-            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 5,
             started_at: Some(1000),
@@ -1199,6 +1239,21 @@ mod tests {
             statusline_context_window_size: None,
             statusline_used_pct: None,
             statusline_cost_usd: None,
+            model_display_name: None,
+            statusline_cwd: None,
+            statusline_project_dir: None,
+            statusline_total_duration_ms: None,
+            statusline_api_duration_ms: None,
+            statusline_lines_added: None,
+            statusline_lines_removed: None,
+            statusline_input_tokens: None,
+            statusline_output_tokens: None,
+            statusline_cache_read_tokens: None,
+            statusline_cache_creation_tokens: None,
+            statusline_version: None,
+            exceeds_200k_tokens: None,
+            statusline_transcript_path: None,
+            statusline_raw: None,
             hook_events: Vec::new(),
         }
     }

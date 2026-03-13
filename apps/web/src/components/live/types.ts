@@ -10,7 +10,7 @@ export interface AgentState {
   group: AgentStateGroup
   state: string // open string — v1 states listed above, more added over time
   label: string
-  context?: Record<string, unknown> | null
+  context?: unknown
 }
 
 // v1 known states (for icon/color mapping, but unknown states render with generic style)

@@ -10,6 +10,7 @@ import type { SubAgentInfo } from './SubAgentInfo'
 import type { TeamMember } from './TeamMember'
 import type { TokenUsage } from './TokenUsage'
 import type { ToolUsed } from './ToolUsed'
+import type { VerifiedFile } from './VerifiedFile'
 
 /**
  * A live session snapshot broadcast to connected SSE clients.
@@ -72,10 +73,6 @@ export type LiveSession = {
    * The last user message text (truncated for display).
    */
   lastUserMessage: string
-  /**
-   * Filename from `<ide_opened_file>` tag in the last user message, if present.
-   */
-  lastUserFile: string | null
   /**
    * Human-readable description of the current activity.
    */
@@ -174,10 +171,10 @@ export type LiveSession = {
    */
   slug: string | null
   /**
-   * Files referenced with `@filename` syntax in user messages.
-   * Deduplicated set across session lifetime (≤10, first-N-wins).
+   * Verified file references detected from user messages.
+   * Deduplicated by absolute path across session lifetime (≤10, first-N-wins).
    */
-  userFiles?: Array<string> | null
+  userFiles?: Array<VerifiedFile> | null
   /**
    * Unix timestamp when this session's process exited (None = still running).
    * Set by reconciliation loop or SessionEnd hook. Used by frontend for
@@ -204,6 +201,62 @@ export type LiveSession = {
    * Cross-check against our token-based pricing engine.
    */
   statuslineCostUsd?: number | null
+  /**
+   * Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
+   */
+  modelDisplayName?: string | null
+  /**
+   * Working directory from statusline workspace.current_dir.
+   */
+  statuslineCwd?: string | null
+  /**
+   * Project directory from statusline workspace.project_dir.
+   */
+  statuslineProjectDir?: string | null
+  /**
+   * Wall-clock session duration from statusline cost.total_duration_ms.
+   */
+  statuslineTotalDurationMs?: bigint | null
+  /**
+   * API-only duration from statusline cost.total_api_duration_ms.
+   */
+  statuslineApiDurationMs?: bigint | null
+  /**
+   * Total lines added from statusline cost.total_lines_added.
+   */
+  statuslineLinesAdded?: bigint | null
+  /**
+   * Total lines removed from statusline cost.total_lines_removed.
+   */
+  statuslineLinesRemoved?: bigint | null
+  /**
+   * Current turn input tokens from statusline current_usage.input_tokens.
+   */
+  statuslineInputTokens?: bigint | null
+  /**
+   * Current turn output tokens from statusline current_usage.output_tokens.
+   */
+  statuslineOutputTokens?: bigint | null
+  /**
+   * Cache read tokens from statusline current_usage.cache_read_input_tokens.
+   */
+  statuslineCacheReadTokens?: bigint | null
+  /**
+   * Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
+   */
+  statuslineCacheCreationTokens?: bigint | null
+  /**
+   * Claude Code version from statusline.
+   */
+  statuslineVersion?: string | null
+  /**
+   * Whether the session exceeds 200K tokens (from statusline).
+   */
+  exceeds200kTokens?: boolean | null
+  /**
+   * Transcript path from statusline (used for session dedup).
+   */
+  statuslineTranscriptPath?: string | null
   /**
    * Hook lifecycle events captured for the event log.
    * Skipped in SSE serialization (too large); streamed via WS only.
