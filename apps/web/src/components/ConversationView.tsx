@@ -55,6 +55,7 @@ import { SessionMetricsBar } from './SessionMetricsBar'
 import { ShareModal } from './ShareModal'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
+import { ModelSelector } from './chat/ModelSelector'
 import { ConversationThread } from './conversation/ConversationThread'
 import { chatRegistry } from './conversation/blocks/chat/registry'
 import { developerRegistry } from './conversation/blocks/developer/registry'
@@ -141,12 +142,6 @@ export function ConversationView() {
       return 'default'
     }
   })
-  const [chatModel, setChatModel] = useState('claude-sonnet-4-6')
-
-  useEffect(() => {
-    if (sessionDetail?.primaryModel) setChatModel(sessionDetail.primaryModel)
-  }, [sessionDetail?.primaryModel])
-
   const handleModeChange = useCallback(
     (mode: PermissionMode) => {
       setChatMode(mode)
@@ -164,6 +159,23 @@ export function ConversationView() {
       actions.setPermissionMode(chatMode)
     }
   }, [isLive, chatMode, actions])
+
+  // Model selection for resume (persisted in localStorage)
+  const [resumeModel, setResumeModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('claude-view:last-model') ?? 'claude-sonnet-4-20250514'
+    } catch {
+      return 'claude-sonnet-4-20250514'
+    }
+  })
+  const handleResumeModelChange = useCallback((model: string) => {
+    setResumeModel(model)
+    try {
+      localStorage.setItem('claude-view:last-model', model)
+    } catch {
+      /* noop */
+    }
+  }, [])
 
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
@@ -550,6 +562,24 @@ export function ConversationView() {
             </button>
             {resumeMenuOpen && (
               <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                {/* Model selector */}
+                <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 block mb-1.5">
+                    Model
+                  </span>
+                  <ModelSelector model={resumeModel} onModelChange={handleResumeModelChange} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    actions.resume(chatMode, resumeModel)
+                    setResumeMenuOpen(false)
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <Terminal className="w-4 h-4" />
+                  Resume in Browser
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -700,8 +730,6 @@ export function ConversationView() {
             contextPercent={contextPercent}
             mode={chatMode}
             onModeChange={handleModeChange}
-            model={chatModel}
-            onModelChange={setChatModel}
           />
         </div>
 

@@ -1,13 +1,18 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
+import { ModelSelector } from '../components/chat/ModelSelector'
 import { ConversationThread } from '../components/conversation/ConversationThread'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import { useConversation } from '../hooks/use-conversation'
 import { deriveInputBarState } from '../lib/control-status-map'
+import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
+
+const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
+const MODEL_STORAGE_KEY = 'claude-view:last-model'
 
 // NOTE: Display mode (chat/developer) is NOT the same as permission mode (default/plan/auto/etc.)
 // Display mode: which block renderers to use — client-side only, always toggleable
@@ -42,6 +47,24 @@ export function ChatPage() {
 
   const { blocks, actions, sessionInfo } = useConversation(sessionId)
 
+  // Model selection persisted in localStorage (used at session creation)
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem(MODEL_STORAGE_KEY) ?? DEFAULT_MODEL
+    } catch {
+      return DEFAULT_MODEL
+    }
+  })
+
+  const handleModelChange = useCallback((model: string) => {
+    setSelectedModel(model)
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, model)
+    } catch {
+      /* noop */
+    }
+  }, [])
+
   // Display mode persisted in localStorage
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
     try {
@@ -63,6 +86,16 @@ export function ChatPage() {
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
   const inputBarState = deriveInputBarState(sessionInfo.sessionState, sessionInfo.isLive)
 
+  // Context gauge from live WS token data
+  const contextWindow = getContextLimit(
+    null,
+    sessionInfo.totalInputTokens || undefined,
+    sessionInfo.contextWindowSize || null,
+  )
+  const contextPercent = sessionInfo.totalInputTokens
+    ? Math.round((sessionInfo.totalInputTokens / contextWindow) * 100)
+    : undefined
+
   const handleSend = useCallback(
     (text: string) => {
       if (!sessionId) {
@@ -70,7 +103,7 @@ export function ChatPage() {
         fetch('/api/control/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', initialMessage: text }),
+          body: JSON.stringify({ model: selectedModel, initialMessage: text }),
         })
           .then((r) => r.json())
           .then((data) => {
@@ -83,7 +116,7 @@ export function ChatPage() {
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate],
+    [sessionId, actions, navigate, selectedModel],
   )
 
   const handleModeChangePermission = useCallback(
@@ -119,7 +152,12 @@ export function ChatPage() {
             <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
               <div className="text-center">
                 <p className="text-lg font-medium mb-2">Start a conversation</p>
-                <p className="text-sm">Send a message to begin.</p>
+                <p className="text-sm mb-4">Send a message to begin.</p>
+                {!sessionId && (
+                  <div className="flex justify-center">
+                    <ModelSelector model={selectedModel} onModelChange={handleModelChange} />
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -136,6 +174,7 @@ export function ChatPage() {
               onSend={handleSend}
               state={inputBarState}
               onModeChange={handleModeChangePermission}
+              contextPercent={contextPercent}
             />
           </div>
         </div>
