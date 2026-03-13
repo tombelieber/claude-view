@@ -116,6 +116,8 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         });
 
         let app = Router::new()

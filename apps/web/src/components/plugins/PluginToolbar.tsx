@@ -2,6 +2,14 @@ import { Search } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { MarketplaceInfo } from '../../types/generated'
 
+interface KindCounts {
+  plugin: number
+  skill: number
+  command: number
+  agent: number
+  mcp_tool: number
+}
+
 interface PluginToolbarProps {
   search: string
   onSearchChange: (value: string) => void
@@ -13,6 +21,7 @@ interface PluginToolbarProps {
   onKindChange: (kind: string | undefined) => void
   marketplaces: MarketplaceInfo[]
   totalCount: number
+  kindCounts: KindCounts
 }
 
 const KIND_TABS = [
@@ -45,6 +54,7 @@ export function PluginToolbar({
   onKindChange,
   marketplaces,
   totalCount,
+  kindCounts,
 }: PluginToolbarProps) {
   return (
     <div className="px-6 pb-3 flex flex-col gap-2">
@@ -111,8 +121,9 @@ export function PluginToolbar({
                     ),
               )}
             >
-              {tab.label}
-              {tab.value === undefined && ` ${totalCount}`}
+              {tab.value === undefined
+                ? `${tab.label} (${totalCount})`
+                : `${tab.label} (${kindCounts[tab.value]})`}
             </button>
           )
         })}

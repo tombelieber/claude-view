@@ -1206,6 +1206,8 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         });
 
         // Register the session in the live sessions map
@@ -1418,6 +1420,8 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
