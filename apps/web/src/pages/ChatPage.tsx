@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { ModelSelector } from '../components/chat/ModelSelector'
 import { ConversationThread } from '../components/conversation/ConversationThread'
@@ -8,7 +9,9 @@ import { developerRegistry } from '../components/conversation/blocks/developer/r
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
+import { useModelOptions } from '../hooks/use-models'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
+import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { deriveInputBarState } from '../lib/control-status-map'
 import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
@@ -138,6 +141,55 @@ export function ChatPage() {
     [actions],
   )
 
+  // --- Command palette ---
+  const capabilities = useSessionCapabilities(sessionInfo)
+  const { options: modelOptions } = useModelOptions()
+
+  const handleModelSwitch = useCallback(
+    (newModel: string) => {
+      toast('Switch model?', {
+        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
+        action: {
+          label: 'Switch',
+          onClick: () => {
+            actions.resume(capabilities.permissionMode, newModel).catch(() => {
+              toast.error('Failed to switch model', {
+                description: 'Session may need manual resume.',
+              })
+            })
+          },
+        },
+      })
+    },
+    [actions, capabilities.permissionMode, sessionInfo.totalInputTokens],
+  )
+
+  const handlePaletteModeChange = useCallback(
+    (newMode: PermissionMode) => {
+      toast('Change permissions?', {
+        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
+        action: {
+          label: 'Change',
+          onClick: () => {
+            actions.resume(newMode, capabilities.model).catch(() => {
+              toast.error('Failed to change permissions', {
+                description: 'Session may need manual resume.',
+              })
+            })
+          },
+        },
+      })
+    },
+    [actions, capabilities.model, sessionInfo.totalInputTokens],
+  )
+
+  const handlePaletteCommand = useCallback(
+    (command: string) => {
+      actions.sendMessage(`/${command}`)
+    },
+    [actions],
+  )
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Sidebar */}
@@ -206,6 +258,11 @@ export function ChatPage() {
               state={inputBarState}
               onModeChange={handleModeChangePermission}
               contextPercent={contextPercent}
+              capabilities={capabilities}
+              modelOptions={modelOptions}
+              onModelSwitch={handleModelSwitch}
+              onPaletteModeChange={handlePaletteModeChange}
+              onCommand={handlePaletteCommand}
             />
           </div>
         </div>
