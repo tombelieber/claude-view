@@ -38,6 +38,7 @@ export function useSession(sessionId: string | null) {
       return fetchSession(sessionId)
     },
     enabled: !!sessionId,
+    staleTime: 60_000,
     retry: (_, error) => !isNotFoundError(error),
   })
 }

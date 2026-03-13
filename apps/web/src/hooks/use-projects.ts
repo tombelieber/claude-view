@@ -14,6 +14,7 @@ export function useProjectSummaries() {
   return useQuery({
     queryKey: ['project-summaries'],
     queryFn: fetchProjectSummaries,
+    staleTime: 60_000,
   })
 }
 
