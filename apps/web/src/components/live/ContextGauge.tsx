@@ -1,6 +1,7 @@
 import { Minimize2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { getContextLimit } from '../../lib/model-context-windows'
 import type { AgentStateGroup } from './types'
 
 interface ContextGaugeProps {
@@ -64,8 +65,9 @@ export function ContextGauge({
   statuslineContextWindowSize,
   statuslineUsedPct,
 }: ContextGaugeProps) {
-  const contextLimit = statuslineContextWindowSize ?? null
-  const usedPct = statuslineUsedPct != null ? Math.min(statuslineUsedPct, 100) : null
+  const contextLimit = getContextLimit(model, contextWindowTokens, statuslineContextWindowSize)
+  // Prefer authoritative statusline percentage; fall back to computed from tokens
+  const usedPct = Math.min(statuslineUsedPct ?? (contextWindowTokens / contextLimit) * 100, 100)
   const [isOpen, setIsOpen] = useState(false)
 
   // Compacting state detection — use the state key, not the label text
@@ -133,8 +135,8 @@ export function ContextGauge({
     timeoutRef.current = setTimeout(() => setIsOpen(false), 100)
   }
 
-  // No statusline data yet — show dash instead of wrong guess
-  if (usedPct == null || !Number.isFinite(usedPct) || contextLimit == null) {
+  // No data yet (0 tokens, 0 fill) — show dash
+  if (!Number.isFinite(usedPct) || contextWindowTokens === 0) {
     return <div className="text-sm text-zinc-500 dark:text-zinc-400">&mdash;</div>
   }
 

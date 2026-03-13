@@ -193,15 +193,19 @@ function SubmenuView({
     setActiveIdx(0)
   }, [item.items.length])
 
-  // Scroll active into view (reset to top on wrap)
+  // Scroll active into view
   useEffect(() => {
-    if (!listRef.current) return
-    if (activeIdx === 0) {
-      listRef.current.scrollTop = 0
-      return
-    }
-    const el = listRef.current.querySelector('[data-active="true"]') as HTMLElement | null
-    el?.scrollIntoView({ block: 'nearest' })
+    const container = listRef.current
+    if (!container) return
+    requestAnimationFrame(() => {
+      const el = container.querySelector('[data-active="true"]') as HTMLElement | null
+      if (!el) return
+      if (el.offsetTop < container.clientHeight / 2) {
+        container.scrollTop = 0
+      } else {
+        el.scrollIntoView({ block: 'nearest' })
+      }
+    })
   }, [activeIdx])
 
   // Keyboard nav inside submenu
@@ -310,15 +314,21 @@ export function ChatPalette({ sections, filter, onClose }: ChatPaletteProps) {
     setActiveIndex(0)
   }, [itemCount, filter])
 
-  // Scroll active item into view (reset scroll to top when wrapping)
+  // Scroll active item into view
   useEffect(() => {
-    if (!listRef.current) return
-    if (activeIndex === 0) {
-      listRef.current.scrollTop = 0
-      return
-    }
-    const el = listRef.current.querySelector('[data-active="true"]') as HTMLElement | null
-    el?.scrollIntoView({ block: 'nearest' })
+    const container = listRef.current
+    if (!container) return
+    // Use rAF to ensure DOM is committed before scrolling
+    requestAnimationFrame(() => {
+      const el = container.querySelector('[data-active="true"]') as HTMLElement | null
+      if (!el) return
+      // If the active element is at or near the top of the list, snap scroll to 0
+      if (el.offsetTop < container.clientHeight / 2) {
+        container.scrollTop = 0
+      } else {
+        el.scrollIntoView({ block: 'nearest' })
+      }
+    })
   }, [activeIndex])
 
   // Find next non-disabled index
