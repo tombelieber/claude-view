@@ -1,6 +1,6 @@
 import type { ActiveSession, AvailableSession } from '@claude-view/shared'
 import { PenSquare, Search } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
@@ -36,10 +36,13 @@ export function SessionSidebar() {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
+  const VISIBLE_BATCH = 30
+
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [historySessions, setHistorySessions] = useState<AvailableSession[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
 
   // Fetch active and available sessions
   useEffect(() => {
@@ -94,8 +97,40 @@ export function SessionSidebar() {
     )
   }, [restSessions, searchQuery])
 
+  // Reset visibleCount when search query changes.
+  // searchQuery is intentionally listed as the dependency to trigger on change,
+  // even though it is not read inside the effect body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers the reset
+  useEffect(() => {
+    setVisibleCount(VISIBLE_BATCH)
+  }, [searchQuery])
+
   const now = Math.floor(Date.now() / 1000)
-  const timeGroups = useMemo(() => groupByTime(filteredRest, now), [filteredRest, now])
+  const hasMore = visibleCount < filteredRest.length
+  const visibleTimeGroups = useMemo(
+    () => groupByTime(filteredRest.slice(0, visibleCount), now),
+    [filteredRest, visibleCount, now],
+  )
+
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sentinel = loadMoreRef.current
+    const container = scrollContainerRef.current
+    if (!sentinel || !container || !hasMore) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount((prev) => prev + VISIBLE_BATCH)
+        }
+      },
+      { root: container, threshold: 0.1 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore])
 
   const handleSelect = useCallback((id: string) => navigate(`/chat/${id}`), [navigate])
   const handleNewChat = useCallback(() => navigate('/chat'), [navigate])
@@ -135,6 +170,7 @@ export function SessionSidebar() {
       <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200 dark:border-gray-800">
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Chats</span>
         <button
+          type="button"
           onClick={handleNewChat}
           className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
           title="New chat"
@@ -158,7 +194,7 @@ export function SessionSidebar() {
       </div>
 
       {/* Session list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-2">
         {loading ? (
           <div className="px-3 py-8 text-center text-sm text-gray-400">Loading...</div>
         ) : (
@@ -183,7 +219,7 @@ export function SessionSidebar() {
             )}
 
             {/* Time-grouped history */}
-            {timeGroups.map((group) => (
+            {visibleTimeGroups.map((group) => (
               <div key={group.label} className="mb-2">
                 <p className="px-3 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
                   {group.label}
@@ -200,6 +236,13 @@ export function SessionSidebar() {
                 ))}
               </div>
             ))}
+
+            {/* Load-more sentinel */}
+            {hasMore && (
+              <div ref={loadMoreRef} className="flex justify-center py-3">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-400" />
+              </div>
+            )}
 
             {!loading && enrichedHistory.length === 0 && (
               <div className="px-3 py-8 text-center text-sm text-gray-400">
