@@ -49,6 +49,10 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_live_session_messages),
         )
         .route("/live/sessions/{id}/kill", post(kill_session))
+        .route(
+            "/live/sessions/{id}/statusline",
+            get(get_session_statusline_debug),
+        )
         .route("/live/sessions/{id}/dismiss", delete(dismiss_session))
         .route("/live/recently-closed", delete(dismiss_all_closed))
         .route("/live/summary", get(get_live_summary))
@@ -276,6 +280,21 @@ async fn get_live_session_messages(
             )
                 .into_response()
         }
+    }
+}
+
+/// GET /api/live/sessions/{id}/statusline -- debug endpoint returning raw statusline JSON.
+async fn get_session_statusline_debug(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    let sessions = state.live_sessions.read().await;
+    match sessions.get(&id) {
+        Some(session) => match &session.statusline_raw {
+            Some(raw) => Json(raw.clone()).into_response(),
+            None => (axum::http::StatusCode::NOT_FOUND, "No statusline data yet").into_response(),
+        },
+        None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }
 
@@ -530,7 +549,6 @@ mod tests {
             pid: None,
             title: "Test session".into(),
             last_user_message: String::new(),
-            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 5,
             started_at: Some(1000),
@@ -559,6 +577,21 @@ mod tests {
             statusline_context_window_size: None,
             statusline_used_pct: None,
             statusline_cost_usd: None,
+            model_display_name: None,
+            statusline_cwd: None,
+            statusline_project_dir: None,
+            statusline_total_duration_ms: None,
+            statusline_api_duration_ms: None,
+            statusline_lines_added: None,
+            statusline_lines_removed: None,
+            statusline_input_tokens: None,
+            statusline_output_tokens: None,
+            statusline_cache_read_tokens: None,
+            statusline_cache_creation_tokens: None,
+            statusline_version: None,
+            exceeds_200k_tokens: None,
+            statusline_transcript_path: None,
+            statusline_raw: None,
         };
         if closed {
             s.status = SessionStatus::Done;

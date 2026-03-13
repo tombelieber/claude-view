@@ -16,6 +16,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'needs_you',
       state: 'awaiting_input',
       label: 'Waiting for your next message',
+      context: null,
     },
     gitBranch: 'main',
     worktreeBranch: null,
@@ -29,11 +30,15 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     startedAt: 1_700_000_000,
     lastActivityAt: 1_700_000_120,
     model: 'claude-sonnet-4',
+    currentTurnStartedAt: null,
+    lastTurnTaskSeconds: null,
     tokens: {
       inputTokens: 1_000,
       outputTokens: 500,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hrTokens: 0,
       totalTokens: 1_500,
     },
     contextWindowTokens: 1_500,
@@ -53,8 +58,17 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       totalCostSource: 'computed_priced_tokens_full',
     },
     cacheStatus: 'warm',
+    subAgents: [],
+    teamName: null,
+    progressItems: [],
+    toolsUsed: [],
+    lastCacheHitAt: null,
+    compactCount: 0,
+    slug: null,
     closedAt: null,
+    control: null,
     editCount: 0,
+    hookEvents: [],
     ...overrides,
   }
 }
@@ -87,7 +101,7 @@ describe('SessionCard pulse dot', () => {
   it('shows pulse dot for autonomous (running) sessions', () => {
     const session = createMockSession({
       status: 'working',
-      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working' },
+      agentState: { state: 'tool_use', group: 'autonomous', label: 'Working', context: null },
     })
     renderCard(session)
     expect(screen.getByTestId('pulse-dot')).toBeInTheDocument()
@@ -95,7 +109,7 @@ describe('SessionCard pulse dot', () => {
 
   it('does not show pulse dot for waiting sessions', () => {
     const session = createMockSession({
-      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting' },
+      agentState: { state: 'awaiting_input', group: 'needs_you', label: 'Waiting', context: null },
     })
     renderCard(session)
     expect(screen.queryByTestId('pulse-dot')).not.toBeInTheDocument()
@@ -197,6 +211,7 @@ describe('SessionCard question display', () => {
         group: 'needs_you',
         state: 'awaiting_input',
         label: 'Waiting for your next message',
+        context: null,
       },
     })
     renderCard(session)
@@ -209,6 +224,7 @@ describe('SessionCard question display', () => {
         group: 'autonomous',
         state: 'acting',
         label: 'Using tools...',
+        context: null,
       },
     })
     renderCard(session)
