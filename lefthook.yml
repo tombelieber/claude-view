@@ -13,7 +13,7 @@ pre-commit:
       run: bunx turbo typecheck
     cargo-fmt:
       glob: "*.rs"
-      run: cargo fmt && git add {staged_files}
+      run: rustfmt {staged_files} && git add {staged_files}
     skill-sync:
       glob: "{claude-view/**,packages/mcp/src/tools/**,plugin.json,marketplace.json}"
       run: bash test/skill-sync.sh
