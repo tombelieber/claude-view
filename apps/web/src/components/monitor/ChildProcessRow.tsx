@@ -6,12 +6,50 @@ import type { SystemInfo } from '../../types/generated/SystemInfo'
 
 const MAX_DEPTH = 3
 
+const GENERIC_RUNTIMES = new Set([
+  'node',
+  'python',
+  'python3',
+  'ruby',
+  'java',
+  'perl',
+  'deno',
+  'bun',
+  'bash',
+  'sh',
+  'zsh',
+  'tail',
+  'cat',
+  'grep',
+])
+
+/** Extract a short label from command line for generic process names. */
+function processLabel(name: string, command: string): string {
+  if (!command || !GENERIC_RUNTIMES.has(name)) return name
+
+  const parts = command.split(/\s+/)
+  // Skip executable path, find first non-flag argument
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i]
+    if (!part.startsWith('-')) {
+      const basename = part.split('/').pop() ?? part
+      if (basename && basename !== name) {
+        return `${name} · ${basename}`
+      }
+      break
+    }
+  }
+  return name
+}
+
 interface ChildProcessRowProps {
   process: ClassifiedProcess
   systemInfo: SystemInfo
   onKill: (pid: number, startTime: number, force: boolean) => void
   pendingPids: Set<number>
   depth?: number
+  /** When true, force all nested children open (driven by "Expand All"). */
+  expandAll?: boolean
 }
 
 function cpuBarColor(pct: number): string {
@@ -33,14 +71,16 @@ export function ChildProcessRow({
   onKill,
   pendingPids,
   depth = 0,
+  expandAll = false,
 }: ChildProcessRowProps) {
   const [confirmKill, setConfirmKill] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [localExpanded, setLocalExpanded] = useState(false)
 
   const isPending = pendingPids.has(proc.pid)
   const normalizedCpu = proc.cpuPercent / systemInfo.cpuCoreCount
   const clampedCpu = Math.min(normalizedCpu, 100)
   const hasChildren = proc.descendants.length > 0 && depth < MAX_DEPTH
+  const expanded = localExpanded || expandAll
 
   return (
     <>
@@ -52,7 +92,7 @@ export function ChildProcessRow({
           <button
             type="button"
             aria-label="Toggle child processes"
-            onClick={() => setExpanded((prev) => !prev)}
+            onClick={() => setLocalExpanded((prev) => !prev)}
             className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 shrink-0"
           >
             {expanded ? (
@@ -65,8 +105,14 @@ export function ChildProcessRow({
           <div className="w-5 shrink-0" />
         )}
 
-        <span className="text-gray-700 dark:text-gray-300 truncate min-w-0 flex-shrink">
-          {proc.name}
+        <span
+          className="text-gray-700 dark:text-gray-300 truncate min-w-0 flex-shrink"
+          title={proc.command}
+        >
+          {processLabel(proc.name, proc.command)}
+        </span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
+          {proc.pid}
         </span>
 
         {hasChildren && !expanded && (
@@ -105,17 +151,20 @@ export function ChildProcessRow({
           {formatUptime(proc.uptimeSecs)}
         </span>
 
-        {confirmKill ? (
+        {isPending ? (
+          <span className="text-xs text-amber-600 dark:text-amber-400 animate-pulse shrink-0">
+            Killing {proc.pid}…
+          </span>
+        ) : confirmKill ? (
           <div className="flex items-center gap-1 shrink-0">
             <span className="text-xs text-red-600 dark:text-red-400">Kill {proc.pid}?</span>
             <button
               type="button"
-              disabled={isPending}
               onClick={() => {
                 onKill(proc.pid, proc.startTime, false)
                 setConfirmKill(false)
               }}
-              className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/40 disabled:opacity-50 disabled:cursor-wait"
+              className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800/40"
             >
               Yes
             </button>
@@ -149,6 +198,7 @@ export function ChildProcessRow({
             onKill={onKill}
             pendingPids={pendingPids}
             depth={depth + 1}
+            expandAll={expandAll}
           />
         ))}
     </>
