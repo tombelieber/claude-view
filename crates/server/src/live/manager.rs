@@ -81,6 +81,8 @@ struct SessionAccumulator {
     skills: std::collections::HashSet<String>,
     /// Accumulated @file mentions from user messages (deduplicated, ≤10, first-N-wins).
     at_files: std::collections::HashSet<String>,
+    /// Accumulated pasted absolute paths from user messages (deduplicated, ≤10, first-N-wins).
+    pasted_paths: std::collections::HashSet<String>,
     /// Path to the JSONL file on disk (set on first process_jsonl_update).
     file_path: Option<PathBuf>,
     /// Decoded project path (set on first process_jsonl_update).
@@ -128,6 +130,7 @@ impl SessionAccumulator {
             mcp_servers: std::collections::HashSet::new(),
             skills: std::collections::HashSet::new(),
             at_files: std::collections::HashSet::new(),
+            pasted_paths: std::collections::HashSet::new(),
             file_path: None,
             project_path: None,
             resolved_cwd: None,
@@ -170,6 +173,7 @@ struct JsonlMetadata {
     compact_count: u32,
     slug: Option<String>,
     user_files: Option<Vec<String>>,
+    pasted_paths: Vec<String>,
     edit_count: u32,
 }
 
@@ -231,6 +235,21 @@ fn build_recovered_session(
         statusline_context_window_size: None,
         statusline_used_pct: None,
         statusline_cost_usd: None,
+        model_display_name: None,
+        statusline_cwd: None,
+        statusline_project_dir: None,
+        statusline_total_duration_ms: None,
+        statusline_api_duration_ms: None,
+        statusline_lines_added: None,
+        statusline_lines_removed: None,
+        statusline_input_tokens: None,
+        statusline_output_tokens: None,
+        statusline_cache_read_tokens: None,
+        statusline_cache_creation_tokens: None,
+        statusline_version: None,
+        exceeds_200k_tokens: None,
+        statusline_transcript_path: None,
+        statusline_raw: None,
         hook_events: Vec::new(),
         user_files: None,
     }
@@ -585,6 +604,11 @@ impl LiveSessionManager {
                 let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
                 files.sort();
                 Some(files)
+            },
+            pasted_paths: {
+                let mut paths: Vec<String> = acc.pasted_paths.iter().cloned().collect();
+                paths.sort();
+                paths
             },
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
@@ -941,6 +965,12 @@ impl LiveSessionManager {
                                             acc.at_files.iter().cloned().collect();
                                         files.sort();
                                         Some(files)
+                                    },
+                                    pasted_paths: {
+                                        let mut paths: Vec<String> =
+                                            acc.pasted_paths.iter().cloned().collect();
+                                        paths.sort();
+                                        paths
                                     },
                                     edit_count: acc.tool_counts_edit + acc.tool_counts_write,
                                 };
@@ -1595,6 +1625,7 @@ impl LiveSessionManager {
             acc.mcp_servers.clear();
             acc.skills.clear();
             acc.at_files.clear();
+            acc.pasted_paths.clear();
             acc.tokens = TokenUsage::default();
             acc.tool_counts_edit = 0;
             acc.tool_counts_read = 0;
@@ -1760,6 +1791,12 @@ impl LiveSessionManager {
                 for file in &line.at_files {
                     if acc.at_files.len() < 10 {
                         acc.at_files.insert(file.clone());
+                    }
+                }
+                // Accumulate pasted paths (first-N-wins, cap at 10)
+                for path in &line.pasted_paths {
+                    if acc.pasted_paths.len() < 10 {
+                        acc.pasted_paths.insert(path.clone());
                     }
                 }
             }
@@ -2160,6 +2197,11 @@ impl LiveSessionManager {
                 let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
                 files.sort();
                 Some(files)
+            },
+            pasted_paths: {
+                let mut paths: Vec<String> = acc.pasted_paths.iter().cloned().collect();
+                paths.sort();
+                paths
             },
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
@@ -3324,6 +3366,21 @@ mod hook_event_tests {
             statusline_context_window_size: None,
             statusline_used_pct: None,
             statusline_cost_usd: None,
+            model_display_name: None,
+            statusline_cwd: None,
+            statusline_project_dir: None,
+            statusline_total_duration_ms: None,
+            statusline_api_duration_ms: None,
+            statusline_lines_added: None,
+            statusline_lines_removed: None,
+            statusline_input_tokens: None,
+            statusline_output_tokens: None,
+            statusline_cache_read_tokens: None,
+            statusline_cache_creation_tokens: None,
+            statusline_version: None,
+            exceeds_200k_tokens: None,
+            statusline_transcript_path: None,
+            statusline_raw: None,
             hook_events: Vec::new(),
         }
     }
@@ -3355,6 +3412,7 @@ mod hook_event_tests {
             compact_count: 0,
             slug: None,
             user_files: None,
+            pasted_paths: Vec::new(),
             edit_count: 0,
         }
     }
