@@ -31,7 +31,7 @@ export function SessionRollupBar({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 w-10 shrink-0">
+      <span className="text-xs font-medium text-gray-500 dark:text-gray-400 w-8 shrink-0">
         {label}
       </span>
       <div
