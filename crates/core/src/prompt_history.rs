@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn parse_prompt_entry_with_session_id() {
-        let json = r#"{"display":"fix the auth error","pastedContents":null,"timestamp":1772924399103,"project":"/Users/alice/dev/claude-view","sessionId":"f9548f02-cd02-4644-a1a7-d1d81347c9b9"}"#;
+        let json = r#"{"display":"fix the auth error","pastedContents":null,"timestamp":1772924399103,"project":"/Users/testuser/dev/claude-view","sessionId":"f9548f02-cd02-4644-a1a7-d1d81347c9b9"}"#;
         let entry: PromptEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.display, "fix the auth error");
         assert_eq!(entry.timestamp_ms, 1772924399103u64);
@@ -309,15 +309,15 @@ mod tests {
 
     #[test]
     fn parse_prompt_entry_without_session_id() {
-        let json = r#"{"display":"hello","pastedContents":{},"timestamp":1762138954132,"project":"/Users/alice/dev/project"}"#;
+        let json = r#"{"display":"hello","pastedContents":{},"timestamp":1762138954132,"project":"/Users/testuser/dev/project"}"#;
         let entry: PromptEntry = serde_json::from_str(json).unwrap();
         assert!(entry.session_id.is_none());
-        assert_eq!(entry.project, "/Users/alice/dev/project");
+        assert_eq!(entry.project, "/Users/testuser/dev/project");
     }
 
     #[test]
     fn parse_prompt_entry_with_paste_content() {
-        let json = r#"{"display":"[Pasted text #1 +18 lines]","pastedContents":{"1":{"id":1,"type":"text","content":"error log here"}},"timestamp":1772924399103,"project":"/Users/alice/dev/proj"}"#;
+        let json = r#"{"display":"[Pasted text #1 +18 lines]","pastedContents":{"1":{"id":1,"type":"text","content":"error log here"}},"timestamp":1772924399103,"project":"/Users/testuser/dev/proj"}"#;
         let entry: PromptEntry = serde_json::from_str(json).unwrap();
         let pastes = entry.pasted_contents.unwrap();
         assert_eq!(pastes.len(), 1);
@@ -379,14 +379,14 @@ mod tests {
                 display: "fix the bug".into(),
                 pasted_contents: None,
                 timestamp_ms: 1772924399103,
-                project: "/Users/alice/dev/proj-a".into(),
+                project: "/Users/testuser/dev/proj-a".into(),
                 session_id: Some("abc".into()),
             },
             PromptEntry {
                 display: "/clear".into(),
                 pasted_contents: None,
                 timestamp_ms: 1772924400000,
-                project: "/Users/alice/dev/proj-b".into(),
+                project: "/Users/testuser/dev/proj-b".into(),
                 session_id: None,
             },
         ];
