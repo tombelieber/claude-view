@@ -23,11 +23,13 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
+import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
 import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
+import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
@@ -112,7 +114,13 @@ export function ConversationView() {
   const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   // Unified conversation hook: blocks + actions + session state
-  const { blocks, actions, sessionInfo: convInfo } = useConversation(sessionId)
+  const { blocks, history, actions, sessionInfo: convInfo } = useConversation(sessionId)
+
+  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
+    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
+    isFetchingOlder: history.isFetchingOlder,
+    blockCount: blocks.length,
+  })
   const { isLive, sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
@@ -370,7 +378,7 @@ export function ConversationView() {
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // Derived UI state from new hook
-  const inputBarState = deriveInputBarState(sessionState, isLive)
+  const inputBarState = deriveInputBarState(sessionState, isLive, convInfo.canResumeLazy)
   const connectionHealth = deriveConnectionHealth(sessionState)
 
   // ----- Early returns -----
@@ -702,7 +710,19 @@ export function ConversationView() {
             </div>
           )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 min-h-0 overflow-y-auto"
+          >
+            {/* Top sentinel for infinite scroll — OUTSIDE the mode-switching block */}
+            <div ref={topSentinelRef} className="h-1" />
+            {history.isFetchingOlder && (
+              <div className="flex justify-center py-3">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+              </div>
+            )}
+
             {verboseMode ? (
               <HistoryRichPane
                 messages={richMessagesWithHookEvents}
@@ -714,13 +734,20 @@ export function ConversationView() {
                   <ExpandProvider>
                     <div className="max-w-4xl mx-auto px-6 py-4">
                       <ErrorBoundary>
-                        <ConversationThread blocks={blocks} renderers={registry} />
+                        <ConversationActionsProvider
+                          actions={{ retryMessage: actions.retryMessage }}
+                        >
+                          <ConversationThread blocks={blocks} renderers={registry} />
+                        </ConversationActionsProvider>
                       </ErrorBoundary>
                     </div>
                   </ExpandProvider>
                 </ThreadHighlightProvider>
               </FindProvider>
             )}
+
+            {/* Bottom anchor — OUTSIDE the mode-switching block */}
+            <div ref={bottomRef} />
           </div>
 
           <ConnectionBanner health={connectionHealth} />
