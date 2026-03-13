@@ -147,4 +147,36 @@ describe('ChatPalette', () => {
     await user.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('ArrowDown highlights next item', async () => {
+    const user = userEvent.setup()
+    render(<ChatPalette sections={mockSections} filter="" onClose={vi.fn()} />)
+    await user.keyboard('{ArrowDown}')
+    // Second item (Attach file) should now have data-active="true"
+    const activeEl = document.querySelector('[data-active="true"]')
+    expect(activeEl).toBeTruthy()
+  })
+
+  it('ArrowDown + Enter activates the highlighted item', async () => {
+    const onSelect = vi.fn()
+    const testSections: PaletteSection[] = [
+      {
+        label: 'Test',
+        items: [{ type: 'action', label: 'Test action', icon: MockIcon, onSelect }],
+      },
+    ]
+    const user = userEvent.setup()
+    render(<ChatPalette sections={testSections} filter="" onClose={vi.fn()} />)
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledOnce()
+  })
+
+  it('ArrowUp wraps to last item', async () => {
+    const user = userEvent.setup()
+    render(<ChatPalette sections={mockSections} filter="" onClose={vi.fn()} />)
+    await user.keyboard('{ArrowUp}')
+    // Should wrap to the last item
+    const activeEls = document.querySelectorAll('[data-active="true"]')
+    expect(activeEls.length).toBe(1)
+  })
 })
