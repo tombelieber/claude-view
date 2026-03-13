@@ -30,7 +30,7 @@ async function deleteWorkflow(id: string): Promise<void> {
 }
 
 export function useWorkflows() {
-  return useQuery({ queryKey: ['workflows'], queryFn: fetchWorkflows })
+  return useQuery({ queryKey: ['workflows'], queryFn: fetchWorkflows, staleTime: 60_000 })
 }
 
 export function useWorkflow(id: string) {
@@ -38,6 +38,7 @@ export function useWorkflow(id: string) {
     queryKey: ['workflows', id],
     queryFn: () => fetchWorkflow(id),
     enabled: !!id,
+    staleTime: 60_000,
   })
 }
 
