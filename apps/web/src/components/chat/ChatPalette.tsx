@@ -193,9 +193,13 @@ function SubmenuView({
     setActiveIdx(0)
   }, [item.items.length])
 
-  // Scroll active into view
+  // Scroll active into view (reset to top on wrap)
   useEffect(() => {
     if (!listRef.current) return
+    if (activeIdx === 0) {
+      listRef.current.scrollTop = 0
+      return
+    }
     const el = listRef.current.querySelector('[data-active="true"]') as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIdx])
@@ -306,9 +310,13 @@ export function ChatPalette({ sections, filter, onClose }: ChatPaletteProps) {
     setActiveIndex(0)
   }, [itemCount, filter])
 
-  // Scroll active item into view
+  // Scroll active item into view (reset scroll to top when wrapping)
   useEffect(() => {
     if (!listRef.current) return
+    if (activeIndex === 0) {
+      listRef.current.scrollTop = 0
+      return
+    }
     const el = listRef.current.querySelector('[data-active="true"]') as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
