@@ -24,6 +24,7 @@ export interface SessionSourceResult {
   model: string
   slashCommands: string[]
   mcpServers: { name: string; status: string }[]
+  permissionMode: string
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -53,6 +54,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [model, setModel] = useState('')
   const [slashCommands, setSlashCommands] = useState<string[]>([])
   const [mcpServers, setMcpServers] = useState<{ name: string; status: string }[]>([])
+  const [permissionMode, setPermissionMode] = useState('default')
 
   const wsRef = useRef<WebSocket | null>(null)
   const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
@@ -137,10 +139,12 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             model?: string
             slashCommands?: string[]
             mcpServers?: { name: string; status: string }[]
+            permissionMode?: string
           }
           if (init.model) setModel(init.model)
           if (init.slashCommands) setSlashCommands(init.slashCommands)
           if (init.mcpServers) setMcpServers(init.mcpServers)
+          if (init.permissionMode) setPermissionMode(init.permissionMode)
           break
         }
         case 'session_status':
@@ -380,5 +384,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     model,
     slashCommands,
     mcpServers,
+    permissionMode,
   }
 }
