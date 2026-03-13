@@ -73,5 +73,5 @@ export function useRevokeShare() {
 }
 
 export function useShares() {
-  return useQuery({ queryKey: ['shares'], queryFn: fetchShares })
+  return useQuery({ queryKey: ['shares'], queryFn: fetchShares, staleTime: 60_000 })
 }

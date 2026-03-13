@@ -40,6 +40,7 @@ export function useSessionMessages(sessionId: string | null) {
       return prevOffset
     },
     enabled: !!sessionId,
+    staleTime: 30_000,
     retry: (_, error) => !isNotFoundError(error),
   })
 }
