@@ -335,7 +335,9 @@ describe('ClaudeSessionsPanel', () => {
   })
 
   it('orphan cleanup button calls fetch', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({ killed: [999], failed: [] }) })
     vi.stubGlobal('fetch', fetchMock)
 
     const orphan = makeEcosystem(999, {
@@ -435,7 +437,12 @@ describe('ClaudeSessionsPanel', () => {
   })
 
   it('kill process callback invoked via fetch', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ killed: true, pid: 101, error: null }),
+      })
     vi.stubGlobal('fetch', fetchMock)
 
     const resources = [makeResource('s1', 100)]

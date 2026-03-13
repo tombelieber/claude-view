@@ -94,11 +94,17 @@ export function ClaudeSessionsPanel({
   const handleKill = useCallback(async (pid: number, startTime: number, force: boolean) => {
     setPendingPids((prev) => new Set(prev).add(pid))
     try {
-      await fetch(`/api/processes/${pid}/kill`, {
+      const resp = await fetch(`/api/processes/${pid}/kill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ start_time: startTime, force }),
       })
+      const data = await resp.json()
+      if (data.killed) {
+        toast.success(`Process ${pid} terminated`)
+      } else {
+        toast.error(`Kill failed: ${data.error ?? 'unknown error'}`)
+      }
     } catch (e) {
       toast.error('Failed to terminate process')
       console.error('Kill failed:', e)
@@ -121,13 +127,23 @@ export function ClaudeSessionsPanel({
     if (stale.length === 0) return
     setCleanupPending(true)
     try {
-      await fetch('/api/processes/cleanup', {
+      const resp = await fetch('/api/processes/cleanup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targets: stale.map((p) => ({ pid: p.pid, start_time: p.startTime })),
         }),
       })
+      const data = await resp.json()
+      const killedCount = data.killed?.length ?? 0
+      const failedCount = data.failed?.length ?? 0
+      if (killedCount > 0 && failedCount === 0) {
+        toast.success(`Cleaned up ${killedCount} process${killedCount > 1 ? 'es' : ''}`)
+      } else if (killedCount > 0 && failedCount > 0) {
+        toast.warning(`Cleaned ${killedCount}, failed ${failedCount}`)
+      } else if (failedCount > 0) {
+        toast.error(`Cleanup failed for ${failedCount} process${failedCount > 1 ? 'es' : ''}`)
+      }
     } catch (e) {
       toast.error('Failed to clean up processes')
       console.error('Cleanup failed:', e)
@@ -179,12 +195,7 @@ export function ClaudeSessionsPanel({
         {systemInfo && (
           <div className="flex items-center gap-3 ml-2">
             <div className="w-28">
-              <SessionRollupBar
-                label="CPU"
-                value={totalCpu}
-                max={systemInfo.cpuCoreCount * 100}
-                suffix={`of ${systemInfo.cpuCoreCount} cores`}
-              />
+              <SessionRollupBar label="CPU" value={totalCpu} max={systemInfo.cpuCoreCount * 100} />
             </div>
             <div className="w-28">
               <SessionRollupBar
@@ -192,7 +203,6 @@ export function ClaudeSessionsPanel({
                 value={totalMem}
                 max={systemInfo.totalMemoryBytes}
                 formatValue={(v) => formatBytes(v)}
-                suffix={`of ${formatBytes(systemInfo.totalMemoryBytes)}`}
               />
             </div>
           </div>
@@ -324,7 +334,7 @@ export function ClaudeSessionsPanel({
                     }
                   }
                   onKill={handleKill}
-                  isPending={pendingPids.has(orphan.pid)}
+                  pendingPids={pendingPids}
                 />
               ))}
             </div>
