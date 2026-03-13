@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn regex_slot_replaces_absolute_path() {
-        let result = normalize_to_template("'/Users/alice/dev/project/file.rs'");
+        let result = normalize_to_template("'/Users/testuser/dev/project/file.rs'");
         assert!(result.contains("<PATH>"));
     }
 

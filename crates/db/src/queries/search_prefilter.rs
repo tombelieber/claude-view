@@ -47,7 +47,7 @@ impl Database {
 
         if let Some(ref project) = filter.project {
             // Polymorphic project filter — check BOTH project_id AND git_root.
-            // The sidebar sends git_root paths (e.g. `/Users/alice/dev/project`)
+            // The sidebar sends git_root paths (e.g. `/Users/testuser/dev/project`)
             // for 98%+ of sessions; project_id is the encoded form (e.g. `-Users-...`).
             qb.push(" AND (project_id = ");
             qb.push_bind(project);
