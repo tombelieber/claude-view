@@ -45,6 +45,8 @@ pub struct InvocableInfo {
     pub kind: InvocableKind,
     /// Human-readable description (may be empty)
     pub description: String,
+    /// Full file content (markdown for skills/commands/agents; pretty JSON for mcp_tool; empty for builtins)
+    pub content: String,
 }
 
 #[derive(Clone)]
@@ -333,6 +335,7 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
             name: tool_name.to_string(),
             kind: InvocableKind::BuiltinTool,
             description: String::new(),
+            content: String::new(),
         });
     }
 
@@ -350,6 +353,7 @@ pub async fn build_registry(claude_dir: &Path) -> Registry {
             name: agent_name.to_string(),
             kind: InvocableKind::BuiltinTool,
             description: String::new(),
+            content: String::new(),
         });
     }
 
@@ -410,12 +414,14 @@ fn scan_skills(install_path: &Path, plugin_name: &str, _plugin_desc: &str) -> Ve
                         .unwrap_or("unknown")
                         .to_string();
                     let description = read_first_line_description(&skill_md);
+                    let content = std::fs::read_to_string(&skill_md).unwrap_or_default();
                     results.push(InvocableInfo {
                         id: format!("{plugin_name}:{skill_name}"),
                         plugin_name: Some(plugin_name.to_string()),
                         name: skill_name,
                         kind: InvocableKind::Skill,
                         description,
+                        content,
                     });
                 }
             }
@@ -437,12 +443,14 @@ fn scan_skills(install_path: &Path, plugin_name: &str, _plugin_desc: &str) -> Ve
                             .unwrap_or("unknown")
                             .to_string();
                         let description = read_first_line_description(&skill_md);
+                        let content = std::fs::read_to_string(&skill_md).unwrap_or_default();
                         results.push(InvocableInfo {
                             id: format!("{plugin_name}:{skill_name}"),
                             plugin_name: Some(plugin_name.to_string()),
                             name: skill_name,
                             kind: InvocableKind::Skill,
                             description,
+                            content,
                         });
                     }
                 }
@@ -470,12 +478,14 @@ fn scan_md_dir(dir: &Path, plugin_name: &str, kind: InvocableKind) -> Vec<Invoca
                 .unwrap_or("unknown")
                 .to_string();
             let description = read_first_line_description(&path);
+            let content = std::fs::read_to_string(&path).unwrap_or_default();
             results.push(InvocableInfo {
                 id: format!("{plugin_name}:{name}"),
                 plugin_name: Some(plugin_name.to_string()),
                 name,
                 kind,
                 description,
+                content,
             });
         }
     }
@@ -498,13 +508,14 @@ fn scan_mcp_json(install_path: &Path, plugin_name: &str) -> Vec<InvocableInfo> {
         }
     };
 
-    mcp.keys()
-        .map(|server_name| InvocableInfo {
+    mcp.iter()
+        .map(|(server_name, server_config)| InvocableInfo {
             id: format!("mcp:{plugin_name}:{server_name}"),
             plugin_name: Some(plugin_name.to_string()),
             name: server_name.clone(),
             kind: InvocableKind::McpTool,
             description: String::new(),
+            content: serde_json::to_string_pretty(server_config).unwrap_or_default(),
         })
         .collect()
 }
@@ -551,12 +562,14 @@ fn scan_user_skills(claude_dir: &Path) -> Vec<InvocableInfo> {
                     .unwrap_or("unknown")
                     .to_string();
                 let description = read_first_line_description(&skill_md);
+                let content = std::fs::read_to_string(&skill_md).unwrap_or_default();
                 results.push(InvocableInfo {
                     id: format!("user:{skill_name}"),
                     plugin_name: None,
                     name: skill_name,
                     kind: InvocableKind::Skill,
                     description,
+                    content,
                 });
             }
         }
@@ -583,12 +596,14 @@ fn scan_user_commands(claude_dir: &Path) -> Vec<InvocableInfo> {
             None => continue,
         };
         let description = read_first_line_description(&path);
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
         results.push(InvocableInfo {
             id: format!("user:command:{name}"),
             plugin_name: None,
             name,
             kind: InvocableKind::Command,
             description,
+            content,
         });
     }
     results
@@ -612,12 +627,14 @@ fn scan_user_agents(claude_dir: &Path) -> Vec<InvocableInfo> {
             None => continue,
         };
         let description = read_first_line_description(&path);
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
         results.push(InvocableInfo {
             id: format!("user:agent:{name}"),
             plugin_name: None,
             name,
             kind: InvocableKind::Agent,
             description,
+            content,
         });
     }
     results
@@ -687,6 +704,7 @@ mod tests {
             name: "brainstorming".to_string(),
             kind: InvocableKind::Skill,
             description: "Explore ideas".to_string(),
+            content: String::new(),
         }]);
 
         let result = registry.lookup("superpowers:brainstorming");
@@ -702,6 +720,7 @@ mod tests {
             name: "commit".to_string(),
             kind: InvocableKind::Command,
             description: "Create a git commit".to_string(),
+            content: String::new(),
         }]);
 
         let result = registry.lookup("commit");
@@ -724,6 +743,7 @@ mod tests {
                 name: "foo".to_string(),
                 kind: InvocableKind::Skill,
                 description: String::new(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "plugin-b:foo".to_string(),
@@ -731,6 +751,7 @@ mod tests {
                 name: "foo".to_string(),
                 kind: InvocableKind::Command,
                 description: String::new(),
+                content: String::new(),
             },
         ]);
 
@@ -758,6 +779,7 @@ mod tests {
             name: "browser_navigate".to_string(),
             kind: InvocableKind::McpTool,
             description: String::new(),
+            content: String::new(),
         }]);
 
         let result = registry.lookup_mcp("playwright", "browser_navigate");
@@ -1033,6 +1055,7 @@ mod tests {
                 name: "commit".to_string(),
                 kind: InvocableKind::Command,
                 description: "From A".to_string(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "plugin-b:commit".to_string(),
@@ -1040,6 +1063,7 @@ mod tests {
                 name: "commit".to_string(),
                 kind: InvocableKind::Command,
                 description: "From B".to_string(),
+                content: String::new(),
             },
         ]);
 
@@ -1073,6 +1097,7 @@ mod tests {
             name: "Bash".to_string(),
             kind: InvocableKind::BuiltinTool,
             description: String::new(),
+            content: String::new(),
         }]);
         assert_eq!(one.len(), 1);
         assert!(!one.is_empty());
@@ -1091,6 +1116,7 @@ mod tests {
                 name: "brainstorming".to_string(),
                 kind: InvocableKind::Skill,
                 description: String::new(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "superpowers:tdd".to_string(),
@@ -1098,6 +1124,7 @@ mod tests {
                 name: "tdd".to_string(),
                 kind: InvocableKind::Skill,
                 description: String::new(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "hookify:format".to_string(),
@@ -1105,6 +1132,7 @@ mod tests {
                 name: "format".to_string(),
                 kind: InvocableKind::Command,
                 description: String::new(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "builtin:Bash".to_string(),
@@ -1112,6 +1140,7 @@ mod tests {
                 name: "Bash".to_string(),
                 kind: InvocableKind::BuiltinTool,
                 description: String::new(),
+                content: String::new(),
             },
         ];
         let registry = registry_from(entries);
@@ -1158,6 +1187,7 @@ mod tests {
                 name: "one".to_string(),
                 kind: InvocableKind::Skill,
                 description: String::new(),
+                content: String::new(),
             },
             InvocableInfo {
                 id: "b:two".to_string(),
@@ -1165,6 +1195,7 @@ mod tests {
                 name: "two".to_string(),
                 kind: InvocableKind::Command,
                 description: String::new(),
+                content: String::new(),
             },
         ]);
 
