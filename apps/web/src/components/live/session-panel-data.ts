@@ -35,8 +35,8 @@ export interface SessionPanelData {
     outputTokens: number
     cacheReadTokens: number
     cacheCreationTokens: number
-    cacheCreation5mTokens?: number
-    cacheCreation1hrTokens?: number
+    cacheCreation5mTokens: number
+    cacheCreation1hrTokens: number
     totalTokens: number
   }
   contextWindowTokens: number
@@ -74,6 +74,19 @@ export interface SessionPanelData {
   // Statusline fields (authoritative from Claude Code per-turn summary)
   statuslineContextWindowSize?: number | null
   statuslineUsedPct?: number | null
+
+  // NEW statusline authority fields (live sessions only)
+  modelDisplayName?: string | null
+  statuslineCostUsd?: number | null
+  statuslineTotalDurationMs?: number | null
+  statuslineLinesAdded?: number | null
+  statuslineLinesRemoved?: number | null
+  statuslineInputTokens?: number | null
+  statuslineOutputTokens?: number | null
+  statuslineCacheReadTokens?: number | null
+  statuslineCacheCreationTokens?: number | null
+  statuslineCwd?: string | null
+  statuslineProjectDir?: string | null
 
   // Live-only fields (optional)
   startedAt?: number | null
@@ -125,6 +138,26 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     compactCount: session.compactCount,
     statuslineContextWindowSize: session.statuslineContextWindowSize ?? null,
     statuslineUsedPct: session.statuslineUsedPct ?? null,
+    modelDisplayName: session.modelDisplayName ?? null,
+    statuslineCostUsd: session.statuslineCostUsd ?? null,
+    statuslineTotalDurationMs:
+      session.statuslineTotalDurationMs != null ? Number(session.statuslineTotalDurationMs) : null,
+    statuslineLinesAdded:
+      session.statuslineLinesAdded != null ? Number(session.statuslineLinesAdded) : null,
+    statuslineLinesRemoved:
+      session.statuslineLinesRemoved != null ? Number(session.statuslineLinesRemoved) : null,
+    statuslineInputTokens:
+      session.statuslineInputTokens != null ? Number(session.statuslineInputTokens) : null,
+    statuslineOutputTokens:
+      session.statuslineOutputTokens != null ? Number(session.statuslineOutputTokens) : null,
+    statuslineCacheReadTokens:
+      session.statuslineCacheReadTokens != null ? Number(session.statuslineCacheReadTokens) : null,
+    statuslineCacheCreationTokens:
+      session.statuslineCacheCreationTokens != null
+        ? Number(session.statuslineCacheCreationTokens)
+        : null,
+    statuslineCwd: session.statuslineCwd ?? null,
+    statuslineProjectDir: session.statuslineProjectDir ?? null,
     startedAt: session.startedAt,
     lastActivityAt: session.lastActivityAt,
     lastUserMessage: session.lastUserMessage,
@@ -200,6 +233,18 @@ export function historyToPanelData(
     lastUserMessage: richData?.lastUserMessage ?? undefined,
     slug: sessionDetail.slug ?? null,
     hasPlans: sessionDetail.hasPlans ?? false,
+    // Statusline fields are not available for history sessions
+    modelDisplayName: null,
+    statuslineCostUsd: null,
+    statuslineTotalDurationMs: null,
+    statuslineLinesAdded: null,
+    statuslineLinesRemoved: null,
+    statuslineInputTokens: null,
+    statuslineOutputTokens: null,
+    statuslineCacheReadTokens: null,
+    statuslineCacheCreationTokens: null,
+    statuslineCwd: null,
+    statuslineProjectDir: null,
     historyExtras: {
       sessionDetail,
       sessionInfo,

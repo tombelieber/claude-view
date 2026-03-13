@@ -1,79 +1,9 @@
-import type { ControlBinding } from '@claude-view/shared/types/generated'
+import type { LiveSession } from '@claude-view/shared/types/generated'
+export type { LiveSession }
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sseUrl } from '../../lib/sse-url'
-import type { ProgressItem } from '../../types/generated/ProgressItem'
-import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import type { TeamMember } from '../../types/generated/TeamMember'
-import type { AgentState } from './types'
 
 const STALL_THRESHOLD_MS = 3000
-
-export interface LiveSession {
-  id: string
-  project: string
-  projectDisplayName: string
-  projectPath: string
-  filePath: string
-  status: 'working' | 'paused' | 'done'
-  agentState: AgentState
-  gitBranch: string | null
-  worktreeBranch: string | null
-  isWorktree: boolean
-  effectiveBranch: string | null
-  pid: number | null
-  title: string
-  lastUserMessage: string
-  lastUserFile?: string | null
-  userFiles?: string[] | null
-  currentActivity: string
-  turnCount: number
-  startedAt: number | null
-  lastActivityAt: number
-  model: string | null
-  tokens: {
-    inputTokens: number
-    outputTokens: number
-    cacheReadTokens: number
-    cacheCreationTokens: number
-    cacheCreation5mTokens?: number
-    cacheCreation1hrTokens?: number
-    totalTokens: number
-  }
-  contextWindowTokens: number
-  cost: {
-    totalUsd: number
-    inputCostUsd: number
-    outputCostUsd: number
-    cacheReadCostUsd: number
-    cacheCreationCostUsd: number
-    cacheSavingsUsd: number
-    hasUnpricedUsage: boolean
-    unpricedInputTokens: number
-    unpricedOutputTokens: number
-    unpricedCacheReadTokens: number
-    unpricedCacheCreationTokens: number
-    pricedTokenCoverage: number
-    totalCostSource: string
-  }
-  cacheStatus: 'warm' | 'cold' | 'unknown'
-  currentTurnStartedAt?: number | null
-  lastTurnTaskSeconds?: number | null
-  subAgents?: SubAgentInfo[]
-  teamName?: string | null
-  progressItems?: ProgressItem[]
-  lastCacheHitAt?: number | null
-  toolsUsed?: { name: string; kind: 'mcp' | 'skill' }[]
-  slug?: string | null
-  closedAt: number | null
-  compactCount?: number
-  teamMembers?: TeamMember[] // Tier 1: embedded from disk
-  teamInboxCount?: number // Tier 1: version signal for inbox
-  editCount: number // Tier 2: version signal for file/plan queries
-  control?: ControlBinding | null
-  statuslineContextWindowSize?: number | null
-  statuslineUsedPct?: number | null
-  statuslineCostUsd?: number | null
-}
 
 export interface LiveSummary {
   needsYouCount: number

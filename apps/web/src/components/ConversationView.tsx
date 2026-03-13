@@ -41,7 +41,6 @@ import {
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
 import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
 import { messagesToRichMessages } from '../lib/message-to-rich'
-import { getContextLimit } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
@@ -121,14 +120,8 @@ export function ConversationView() {
   // Loading: gate on sessionDetail only (blocks arrive async from new hook)
   const isLoading = isFileGone ? false : !sessionDetail && !detailError
 
-  // Context gauge seeded from DB (live updates not available from new hook)
-  const contextWindow = getContextLimit(
-    sessionDetail?.primaryModel,
-    sessionDetail?.totalInputTokens ?? undefined,
-  )
-  const contextPercent = sessionDetail?.totalInputTokens
-    ? Math.round((sessionDetail.totalInputTokens / contextWindow) * 100)
-    : 0
+  // Context gauge — history sessions don't have statusline, show null
+  const contextPercent = undefined
 
   // Mode state for ChatInputBar
   const [chatMode, setChatMode] = useState<PermissionMode>(() => {
@@ -533,7 +526,7 @@ export function ConversationView() {
             <PanelRight className="w-4 h-4" />
           </button>
           <ShareModal
-            sessionId={sessionId!}
+            sessionId={sessionId as string}
             messages={session?.messages}
             projectName={projectName}
           />

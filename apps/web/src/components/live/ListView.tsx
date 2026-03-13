@@ -19,11 +19,9 @@ interface ListViewProps {
 type SortColumn = 'status' | 'project' | 'branch' | 'turns' | 'cost' | 'context' | 'lastActive'
 type SortDir = 'asc' | 'desc'
 
-function getContextPercent(session: LiveSession): number {
-  // Prefer authoritative statusline percentage when available
+function getContextPercent(session: LiveSession): number | null {
   if (session.statuslineUsedPct != null) return Math.min(100, Math.round(session.statuslineUsedPct))
-  const limit = session.statuslineContextWindowSize ?? 200_000
-  return Math.min(100, Math.round((session.contextWindowTokens / limit) * 100))
+  return null
 }
 
 function formatRelativeTime(ts: number): string {
@@ -81,8 +79,8 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
           cmp = sessionTotalCost(a) - sessionTotalCost(b)
           break
         case 'context': {
-          const aPct = getContextPercent(a)
-          const bPct = getContextPercent(b)
+          const aPct = getContextPercent(a) ?? -1
+          const bPct = getContextPercent(b) ?? -1
           cmp = aPct - bPct
           break
         }
@@ -125,6 +123,17 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 )}
                 style={col.width === 'flex-1' ? {} : undefined}
                 onClick={col.sortable ? () => handleHeaderClick(col.key as SortColumn) : undefined}
+                onKeyDown={
+                  col.sortable
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleHeaderClick(col.key as SortColumn)
+                        }
+                      }
+                    : undefined
+                }
+                tabIndex={col.sortable ? 0 : undefined}
               >
                 <span className="inline-flex items-center gap-1">
                   {col.label}
@@ -153,6 +162,13 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                 key={session.id}
                 data-session-id={session.id}
                 onClick={() => onSelect(session.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelect(session.id)
+                  }
+                }}
+                tabIndex={0}
                 className={cn(
                   'border-b border-gray-200/50 dark:border-gray-800/50 transition-colors cursor-pointer',
                   isSelected
@@ -218,7 +234,11 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Context% */}
                 <td className="px-2 py-2 w-[65px]">
-                  <ContextBar percent={contextPercent} />
+                  {contextPercent != null ? (
+                    <ContextBar percent={contextPercent} />
+                  ) : (
+                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">&mdash;</span>
+                  )}
                 </td>
 
                 {/* Last Active */}

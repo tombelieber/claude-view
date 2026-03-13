@@ -3,7 +3,7 @@ import { Plug2, Zap } from 'lucide-react'
 
 interface ToolUsed {
   name: string
-  kind: 'mcp' | 'skill'
+  kind: string
 }
 
 interface SessionToolChipsProps {

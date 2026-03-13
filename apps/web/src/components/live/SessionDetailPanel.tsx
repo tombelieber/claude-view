@@ -31,6 +31,7 @@ import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { deriveInputBarState } from '../../lib/control-status-map'
+import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
@@ -106,18 +107,6 @@ const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Format model name for display (strip long prefixes) */
-function formatModel(model: string | null): string {
-  if (!model) return 'unknown'
-  // "claude-sonnet-4-5-20250929" -> "sonnet-4.5"
-  const match = model.match(/claude-(\w+)-(\d+)(?:-(\d+))?/)
-  if (match) {
-    const [, name, major, minor] = match
-    return minor ? `${name}-${major}.${minor}` : `${name}-${major}`
-  }
-  return model
-}
 
 // ---------------------------------------------------------------------------
 // Resize persistence
@@ -591,7 +580,9 @@ export function SessionDetailPanel({
                 ·
               </span>
               <span className="font-mono text-gray-600 dark:text-gray-400">
-                {formatModel(data.model)}
+                {data.modelDisplayName ??
+                  (data.model ? formatModelName(data.model) : null) ??
+                  'unknown'}
               </span>
             </div>
 
