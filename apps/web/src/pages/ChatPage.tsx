@@ -130,10 +130,16 @@ export function ChatPage() {
         })
           .then((r) => r.json())
           .then((data) => {
-            if (data.sessionId) navigate(`/chat/${data.sessionId}`)
+            if (data.sessionId) {
+              navigate(`/chat/${data.sessionId}`)
+            } else {
+              toast.error('Failed to create session', {
+                description: data.error || 'No session ID returned',
+              })
+            }
           })
           .catch(() => {
-            /* silently fail */
+            toast.error('Failed to create session')
           })
         return
       }
