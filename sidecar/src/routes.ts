@@ -12,6 +12,7 @@ import {
   listAvailableSessions,
   resumeControlSession,
   sendMessage,
+  waitForSessionInit,
 } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
@@ -25,6 +26,20 @@ export function createRoutes(registry: SessionRegistry) {
 
     try {
       const cs = createControlSession(body, registry)
+
+      // V2 SDK only initializes (emits session_init, assigns sessionId) after
+      // the first send(). Without a message, stream() blocks forever.
+      if (body.initialMessage) {
+        // Start processing the message — this triggers the SDK to connect to the API.
+        // sendMessage is fire-and-forget for the response (which comes via WS stream),
+        // but the send() call itself triggers stream() to yield system.init.
+        sendMessage(cs, body.initialMessage).catch((err) => {
+          console.error(`[sidecar] initialMessage send error for ${cs.controlId}: ${err}`)
+        })
+        // Wait for session_init to populate sessionId (fires during send processing).
+        await waitForSessionInit(cs)
+      }
+
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
