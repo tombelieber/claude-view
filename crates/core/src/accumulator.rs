@@ -654,6 +654,7 @@ mod tests {
             slug: None,
             team_name: None,
             at_files: Vec::new(),
+            pasted_paths: Vec::new(),
         }
     }
 
