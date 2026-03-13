@@ -15,6 +15,7 @@ test('active tab has white pill class', () => {
       onKindChange={() => {}}
       marketplaces={[]}
       totalCount={0}
+      kindCounts={{ plugin: 0, skill: 0, command: 0, agent: 0, mcp_tool: 0 }}
     />,
   )
   // The "Skills" tab should have active styling (bg-white)

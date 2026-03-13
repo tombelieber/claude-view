@@ -30,7 +30,7 @@ export function MarketplacesDialog() {
       <Dialog.Trigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded-md border border-apple-sep text-apple-text2 hover:bg-apple-sep2 transition-colors"
           title="Manage marketplaces"
         >
           <Settings className="w-3.5 h-3.5" />
@@ -50,7 +50,7 @@ export function MarketplacesDialog() {
                 onClick={handleRefreshAll}
                 disabled={mutations.isPending}
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-                title="Refresh all marketplaces"
+                title="Refresh all marketplaces — re-fetch the latest plugin catalog from every configured source"
               >
                 <RefreshCw className={cn('w-4 h-4', mutations.isPending && 'animate-spin')} />
               </button>
