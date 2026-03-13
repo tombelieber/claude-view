@@ -83,30 +83,29 @@ export function SessionAccordionRow({
           className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(session.status)}`}
         />
 
-        <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
-          {session.projectDisplayName}
-        </span>
-
-        {session.effectiveBranch && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-            {session.effectiveBranch}
+        {/* Text section — truncates when space is tight */}
+        <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
+          <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
+            {session.projectDisplayName}
           </span>
-        )}
 
-        {badge && (
-          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
-            {badge}
-          </span>
-        )}
+          {session.effectiveBranch && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              {session.effectiveBranch}
+            </span>
+          )}
 
-        <div className="flex-1 min-w-0 flex items-center gap-3">
+          {badge && (
+            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+              {badge}
+            </span>
+          )}
+        </div>
+
+        {/* Metrics — fixed width, never shrinks */}
+        <div className="flex items-center gap-3 shrink-0">
           <div className="w-28">
-            <SessionRollupBar
-              label="CPU"
-              value={rollupCpu}
-              max={systemInfo.cpuCoreCount * 100}
-              suffix={`of ${systemInfo.cpuCoreCount} cores`}
-            />
+            <SessionRollupBar label="CPU" value={rollupCpu} max={systemInfo.cpuCoreCount * 100} />
           </div>
           <div className="w-28">
             <SessionRollupBar
@@ -114,7 +113,6 @@ export function SessionAccordionRow({
               value={rollupMem}
               max={systemInfo.totalMemoryBytes}
               formatValue={(v) => formatBytes(v)}
-              suffix={`of ${formatBytes(systemInfo.totalMemoryBytes)}`}
             />
           </div>
         </div>
@@ -153,7 +151,7 @@ export function SessionAccordionRow({
             process={child}
             systemInfo={systemInfo}
             onKill={onKill}
-            isPending={pendingPids.has(child.pid)}
+            pendingPids={pendingPids}
           />
         ))}
     </div>
