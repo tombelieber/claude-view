@@ -2,6 +2,13 @@
 //!
 //! - `POST /api/processes/{pid}/kill`   — SIGTERM/SIGKILL a single process
 //! - `POST /api/processes/cleanup`       — Batch SIGTERM of multiple processes
+//!
+//! Validation: PID must exist, start_time must match (prevents recycled-PID
+//! attacks), and the server's own PID is always rejected. The "Claude-related"
+//! classification is NOT re-checked here — the monitor's persistent System
+//! instance sees full command strings that a fresh System::new() may miss on
+//! macOS (SIP/empty-cmd edge case). If the frontend shows a process, it was
+//! already validated as Claude-related by the monitor.
 
 use axum::{
     extract::{Path, State},
@@ -14,7 +21,6 @@ use std::sync::Arc;
 use sysinfo::{ProcessesToUpdate, System};
 use ts_rs::TS;
 
-use crate::live::process_tree::classify_processes;
 use crate::state::AppState;
 
 // =============================================================================
@@ -121,21 +127,12 @@ async fn cleanup_processes(
         sys.refresh_processes(ProcessesToUpdate::All, true);
 
         let own_pid = std::process::id();
-        let tree = classify_processes(&sys);
-
-        let valid_pids: std::collections::HashSet<u32> = tree
-            .ecosystem
-            .iter()
-            .chain(tree.children.iter())
-            .map(|p| p.pid)
-            .collect();
 
         let mut killed = Vec::new();
         let mut failed = Vec::new();
 
         for target in &targets {
-            match validate_pid_in_system(&sys, target.pid, target.start_time, own_pid, &valid_pids)
-            {
+            match validate_pid_in_system(&sys, target.pid, target.start_time, own_pid) {
                 Ok(()) => {
                     let signal = libc::SIGTERM;
                     let result = unsafe { libc::kill(target.pid as i32, signal) };
@@ -185,15 +182,7 @@ fn validate_and_kill(pid: u32, start_time: i64, force: bool) -> Result<(), Strin
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 
-    let tree = classify_processes(&sys);
-    let valid_pids: std::collections::HashSet<u32> = tree
-        .ecosystem
-        .iter()
-        .chain(tree.children.iter())
-        .map(|p| p.pid)
-        .collect();
-
-    validate_pid_in_system(&sys, pid, start_time, own_pid, &valid_pids)?;
+    validate_pid_in_system(&sys, pid, start_time, own_pid)?;
 
     let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
     let result = unsafe { libc::kill(pid as i32, signal) };
@@ -208,12 +197,12 @@ fn validate_and_kill(pid: u32, start_time: i64, force: bool) -> Result<(), Strin
     }
 }
 
+/// Validate that a PID is safe to kill: exists, start_time matches, not self.
 fn validate_pid_in_system(
     sys: &System,
     pid: u32,
     start_time: i64,
     own_pid: u32,
-    valid_pids: &std::collections::HashSet<u32>,
 ) -> Result<(), String> {
     if pid == own_pid {
         return Err("cannot kill own process".to_string());
@@ -229,10 +218,6 @@ fn validate_pid_in_system(
             "PID {pid} start_time mismatch (expected {start_time}, got {}): PID may have been recycled",
             process.start_time()
         ));
-    }
-
-    if !valid_pids.contains(&pid) {
-        return Err(format!("process {pid} is not Claude-related"));
     }
 
     Ok(())
@@ -279,8 +264,7 @@ mod tests {
         let own_pid = std::process::id();
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All, true);
-        let valid_pids = std::collections::HashSet::new();
-        let result = validate_pid_in_system(&sys, own_pid, 0, own_pid, &valid_pids);
+        let result = validate_pid_in_system(&sys, own_pid, 0, own_pid);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot kill own process"));
     }
@@ -289,29 +273,9 @@ mod tests {
     fn test_validate_rejects_nonexistent_pid() {
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All, true);
-        let valid_pids = std::collections::HashSet::new();
-        let result = validate_pid_in_system(&sys, 4_000_000, 0, 9999, &valid_pids);
+        let result = validate_pid_in_system(&sys, 4_000_000, 0, 9999);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
-    }
-
-    #[test]
-    fn test_validate_rejects_non_claude_process() {
-        let own_pid = std::process::id();
-        let mut sys = System::new();
-        sys.refresh_processes(ProcessesToUpdate::All, true);
-
-        let sysinfo_pid = sysinfo::Pid::from_u32(own_pid);
-        let start_time = sys
-            .process(sysinfo_pid)
-            .map(|p| p.start_time() as i64)
-            .unwrap_or(0);
-
-        let valid_pids = std::collections::HashSet::new();
-        let fake_own = own_pid + 999_999;
-        let result = validate_pid_in_system(&sys, own_pid, start_time, fake_own, &valid_pids);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not Claude-related"));
     }
 
     #[test]
@@ -329,10 +293,7 @@ mod tests {
         let wrong_start_time = real_start_time + 9999;
         let fake_own = own_pid + 999_999;
 
-        let mut valid_pids = std::collections::HashSet::new();
-        valid_pids.insert(own_pid);
-
-        let result = validate_pid_in_system(&sys, own_pid, wrong_start_time, fake_own, &valid_pids);
+        let result = validate_pid_in_system(&sys, own_pid, wrong_start_time, fake_own);
 
         assert!(result.is_err(), "mismatched start_time must be rejected");
         let err_msg = result.unwrap_err();

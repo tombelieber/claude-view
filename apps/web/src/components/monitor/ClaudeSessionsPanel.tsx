@@ -7,6 +7,7 @@ import type { SessionResource } from '../../types/generated/SessionResource'
 import type { SystemInfo } from '../../types/generated/SystemInfo'
 import type { LiveSession } from '../live/use-live-sessions'
 import { ChildProcessRow } from './ChildProcessRow'
+import { SelfAppRow } from './SelfAppRow'
 import { SessionAccordionRow } from './SessionAccordionRow'
 import { SessionRollupBar } from './SessionRollupBar'
 
@@ -44,8 +45,12 @@ export function ClaudeSessionsPanel({
     return diff
   })
 
+  // --- Self process (This App) ---
+  const selfProcess = processTree?.ecosystem.find((p) => p.isSelf) ?? null
+
   // --- Expand/collapse state ---
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [selfExpanded, setSelfExpanded] = useState(false)
   const [orphansExpanded, setOrphansExpanded] = useState(false)
   const prevSessionIdsRef = useRef<Set<string>>(new Set())
 
@@ -82,8 +87,10 @@ export function ClaudeSessionsPanel({
   function handleExpandCollapseAll() {
     if (allExpanded) {
       setExpandedIds(new Set())
+      setSelfExpanded(false)
     } else {
       setExpandedIds(new Set(merged.map((m) => m.resource.sessionId)))
+      setSelfExpanded(true)
     }
   }
 
@@ -123,7 +130,7 @@ export function ClaudeSessionsPanel({
   )
 
   const handleCleanup = useCallback(async () => {
-    const stale = allOrphans.filter((p) => p.staleness === 'LikelyStale' && !p.isSelf)
+    const stale = allOrphans.filter((p) => p.staleness !== 'Active' && !p.isSelf)
     if (stale.length === 0) return
     setCleanupPending(true)
     try {
@@ -153,14 +160,19 @@ export function ClaudeSessionsPanel({
   }, [allOrphans])
 
   // --- Header rollup totals ---
+  const selfCpu = selfProcess ? selfProcess.cpuPercent + selfProcess.descendantCpu : 0
+  const selfMem = selfProcess ? selfProcess.memoryBytes + selfProcess.descendantMemory : 0
   const totalCpu =
+    selfCpu +
     merged.reduce((sum, m) => sum + m.resource.cpuPercent + (m.ecosystem?.descendantCpu ?? 0), 0) +
     allOrphans.reduce((sum, p) => sum + p.cpuPercent, 0)
   const totalMem =
+    selfMem +
     merged.reduce(
       (sum, m) => sum + m.resource.memoryBytes + (m.ecosystem?.descendantMemory ?? 0),
       0,
-    ) + allOrphans.reduce((sum, p) => sum + p.memoryBytes, 0)
+    ) +
+    allOrphans.reduce((sum, p) => sum + p.memoryBytes, 0)
 
   // --- Empty state ---
   if (sessionResources.length === 0 && allOrphans.length === 0) {
@@ -181,7 +193,7 @@ export function ClaudeSessionsPanel({
     )
   }
 
-  const hasStaleOrphans = allOrphans.some((p) => p.staleness === 'LikelyStale' && !p.isSelf)
+  const hasStaleOrphans = allOrphans.some((p) => p.staleness !== 'Active' && !p.isSelf)
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
@@ -193,10 +205,11 @@ export function ClaudeSessionsPanel({
         </span>
 
         {systemInfo && (
-          <div className="flex items-center gap-3 ml-2">
+          <div className="flex items-center gap-4 ml-2">
             <div className="w-28">
               <SessionRollupBar label="CPU" value={totalCpu} max={systemInfo.cpuCoreCount * 100} />
             </div>
+            <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
             <div className="w-28">
               <SessionRollupBar
                 label="RAM"
@@ -221,8 +234,20 @@ export function ClaudeSessionsPanel({
         )}
       </div>
 
-      {/* Session rows */}
+      {/* This App row + Session rows */}
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {selfProcess && systemInfo && (
+          <SelfAppRow
+            process={selfProcess}
+            systemInfo={systemInfo}
+            expanded={selfExpanded}
+            onToggle={() => setSelfExpanded((prev) => !prev)}
+            onKill={handleKill}
+            pendingPids={pendingPids}
+            expandAll={allExpanded}
+          />
+        )}
+
         {merged.map((m) => {
           if (!m.session) {
             // Fallback: resource exists but no live session match
@@ -257,6 +282,7 @@ export function ClaudeSessionsPanel({
               onToggle={() => handleToggle(m.resource.sessionId)}
               onKill={handleKill}
               pendingPids={pendingPids}
+              expandAll={allExpanded}
             />
           )
         })}
@@ -286,7 +312,7 @@ export function ClaudeSessionsPanel({
             </span>
 
             {systemInfo && (
-              <div className="flex items-center gap-3 ml-2">
+              <div className="flex items-center gap-4 ml-2">
                 <div className="w-24">
                   <SessionRollupBar
                     label="CPU"
@@ -294,6 +320,7 @@ export function ClaudeSessionsPanel({
                     max={systemInfo.cpuCoreCount * 100}
                   />
                 </div>
+                <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
                 <div className="w-24">
                   <SessionRollupBar
                     label="RAM"
@@ -311,9 +338,9 @@ export function ClaudeSessionsPanel({
               type="button"
               onClick={handleCleanup}
               disabled={!hasStaleOrphans || cleanupPending}
-              className="text-xs font-medium px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`text-xs font-medium px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${cleanupPending ? 'animate-pulse' : ''}`}
             >
-              Clean up
+              {cleanupPending ? 'Cleaning up…' : 'Clean up'}
             </button>
           </div>
 

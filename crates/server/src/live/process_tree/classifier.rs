@@ -200,18 +200,21 @@ pub(super) fn classify_process_list(
             let mut desc_count = 0u32;
             let mut desc_cpu = 0.0f32;
             let mut desc_mem = 0u64;
+            let mut direct_descendants = Vec::new();
 
             for &cpid in &direct_child_pids {
-                if let Some(child) = child_classified.get(&cpid) {
+                if let Some(child) = child_classified.remove(&cpid) {
                     desc_count += 1 + child.descendant_count;
                     desc_cpu += child.cpu_percent + child.descendant_cpu;
                     desc_mem += child.memory_bytes + child.descendant_memory;
+                    direct_descendants.push(child);
                 }
             }
 
             eco_proc.descendant_count = desc_count;
             eco_proc.descendant_cpu = desc_cpu;
             eco_proc.descendant_memory = desc_mem;
+            eco_proc.descendants = direct_descendants;
 
             totals.ecosystem_count += 1;
             totals.ecosystem_cpu += eco_proc.cpu_percent;
@@ -530,12 +533,19 @@ mod tests {
         let snap = classify_process_list(&processes, 9999);
 
         assert_eq!(snap.ecosystem.len(), 1);
-        assert_eq!(snap.children.len(), 3);
+        // Children are now nested inside ecosystem descendants (not flat)
+        assert_eq!(snap.children.len(), 0);
 
         let parent = &snap.ecosystem[0];
         assert_eq!(parent.descendant_count, 3);
         assert!((parent.descendant_cpu - 75.0).abs() < 0.1);
         assert_eq!(parent.descendant_memory, 550_000_000);
+        // Direct children are accessible via descendants
+        assert_eq!(parent.descendants.len(), 3);
+        let child_names: Vec<&str> = parent.descendants.iter().map(|c| c.name.as_str()).collect();
+        assert!(child_names.contains(&"node"));
+        assert!(child_names.contains(&"cargo"));
+        assert!(child_names.contains(&"bun"));
     }
 
     #[test]
@@ -564,9 +574,10 @@ mod tests {
         assert_eq!(snap.totals.ecosystem_count, 1);
         assert!((snap.totals.ecosystem_cpu - 10.0).abs() < 0.1);
         assert_eq!(snap.totals.ecosystem_memory, 400_000_000);
-        assert_eq!(snap.totals.child_count, 1);
-        assert!((snap.totals.child_cpu - 5.0).abs() < 0.1);
-        assert_eq!(snap.totals.child_memory, 100_000_000);
+        // Children are now nested inside ecosystem descendants
+        assert_eq!(snap.totals.child_count, 0);
+        assert_eq!(snap.ecosystem[0].descendants.len(), 1);
+        assert_eq!(snap.ecosystem[0].descendants[0].name, "node");
     }
 
     #[test]
@@ -753,15 +764,18 @@ mod tests {
         let snap = classify_process_list(&processes, 9999);
 
         assert_eq!(snap.ecosystem.len(), 1);
+        // PID 101 (PPID=100) is now nested inside ecosystem[0].descendants
+        assert_eq!(snap.children.len(), 0);
         assert_eq!(
-            snap.children.len(),
+            snap.ecosystem[0].descendants.len(),
             1,
-            "only PID 101 (PPID=100) should be a child, got: {:?}",
-            snap.children
+            "only PID 101 (PPID=100) should be a descendant of claude, got: {:?}",
+            snap.ecosystem[0]
+                .descendants
                 .iter()
                 .map(|p| (p.pid, p.ppid))
                 .collect::<Vec<_>>()
         );
-        assert_eq!(snap.children[0].pid, 101);
+        assert_eq!(snap.ecosystem[0].descendants[0].pid, 101);
     }
 }
