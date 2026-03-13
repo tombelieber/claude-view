@@ -18,6 +18,10 @@ vi.mock('./use-session-source', () => ({
     totalInputTokens: 0,
     contextWindowSize: 0,
     canResumeLazy: false,
+    model: '',
+    slashCommands: [],
+    mcpServers: [],
+    permissionMode: 'default',
   }),
 }))
 
@@ -64,6 +68,10 @@ describe('useConversation block merging', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -118,6 +126,10 @@ describe('useConversation block merging', () => {
       totalInputTokens: 100,
       contextWindowSize: 200000,
       canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -184,6 +196,10 @@ describe('useConversation block merging', () => {
       totalInputTokens: 100,
       contextWindowSize: 200000,
       canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -217,6 +233,10 @@ describe('useConversation block merging', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: true,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -257,5 +277,70 @@ describe('useConversation block merging', () => {
       // Should be 1 (from history), not 2 (history + stale optimistic)
       expect(userBlocks.length).toBeLessThanOrEqual(1)
     })
+  })
+})
+
+describe('sessionInfo includes palette fields', () => {
+  it('forwards model from useSessionSource', () => {
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: 'claude-opus-4-6',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+    })
+    const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
+    expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
+  })
+
+  it('forwards slashCommands from useSessionSource', () => {
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: ['commit', 'test'],
+      mcpServers: [],
+      permissionMode: 'default',
+    })
+    const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
+    expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
+  })
+
+  it('forwards mcpServers from useSessionSource', () => {
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [{ name: 'gh', status: 'connected' }],
+      permissionMode: 'default',
+    })
+    const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
+    expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
   })
 })

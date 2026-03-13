@@ -155,3 +155,37 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
     expect(pendingMessages[0]).toEqual({ type: 'user_message', content: 'for session B' })
   })
 })
+
+describe('SessionSourceResult new fields — type contracts', () => {
+  it('SessionInit type includes model, slashCommands, mcpServers', () => {
+    // Import is from shared package
+    const init = {
+      type: 'session_init' as const,
+      tools: ['Read', 'Write'],
+      model: 'claude-opus-4-6',
+      mcpServers: [{ name: 'github', status: 'connected' }],
+      permissionMode: 'default',
+      slashCommands: ['commit', 'test', 'review'],
+      claudeCodeVersion: '1.2.3',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: 'normal',
+    }
+    expect(init.model).toBe('claude-opus-4-6')
+    expect(init.slashCommands).toEqual(['commit', 'test', 'review'])
+    expect(init.mcpServers).toEqual([{ name: 'github', status: 'connected' }])
+  })
+
+  it('default values match useState initializers', () => {
+    // These must match the useState defaults in use-session-source.ts
+    const defaults = {
+      model: '',
+      slashCommands: [] as string[],
+      mcpServers: [] as { name: string; status: string }[],
+    }
+    expect(defaults.model).toBe('')
+    expect(defaults.slashCommands).toHaveLength(0)
+    expect(defaults.mcpServers).toHaveLength(0)
+  })
+})

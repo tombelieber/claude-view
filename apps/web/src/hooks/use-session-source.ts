@@ -21,6 +21,10 @@ export interface SessionSourceResult {
   contextWindowSize: number
   /** True if session is known-active but WS not yet opened */
   canResumeLazy: boolean
+  model: string
+  slashCommands: string[]
+  mcpServers: { name: string; status: string }[]
+  permissionMode: string
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -47,6 +51,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [isLive, setIsLive] = useState(false)
   const [totalInputTokens, setTotalInputTokens] = useState(0)
   const [contextWindowSize, setContextWindowSize] = useState(0)
+  const [model, setModel] = useState('')
+  const [slashCommands, setSlashCommands] = useState<string[]>([])
+  const [mcpServers, setMcpServers] = useState<{ name: string; status: string }[]>([])
+  const [permissionMode, setPermissionMode] = useState('default')
 
   const wsRef = useRef<WebSocket | null>(null)
   const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
@@ -125,9 +133,20 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
       // Track session state from events
       switch (raw.type) {
-        case 'session_init':
+        case 'session_init': {
           setSessionState('waiting_input')
+          const init = raw as unknown as {
+            model?: string
+            slashCommands?: string[]
+            mcpServers?: { name: string; status: string }[]
+            permissionMode?: string
+          }
+          if (init.model) setModel(init.model)
+          if (init.slashCommands) setSlashCommands(init.slashCommands)
+          if (init.mcpServers) setMcpServers(init.mcpServers)
+          if (init.permissionMode) setPermissionMode(init.permissionMode)
           break
+        }
         case 'session_status':
           if (raw.status === 'compacting') {
             setSessionState('compacting')
@@ -362,5 +381,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     totalInputTokens,
     contextWindowSize,
     canResumeLazy,
+    model,
+    slashCommands,
+    mcpServers,
+    permissionMode,
   }
 }
