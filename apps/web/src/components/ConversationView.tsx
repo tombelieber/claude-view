@@ -28,6 +28,7 @@ import { useHookEvents } from '../hooks/use-hook-events'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
+import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
@@ -112,8 +113,13 @@ export function ConversationView() {
   const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   // Unified conversation hook: blocks + actions + session state
-  const { blocks, actions, sessionInfo: convInfo } = useConversation(sessionId)
-  // history is wired for scroll-up pagination (see useScrollAnchor in Task 5)
+  const { blocks, history, actions, sessionInfo: convInfo } = useConversation(sessionId)
+
+  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
+    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
+    isFetchingOlder: history.isFetchingOlder,
+    blockCount: blocks.length,
+  })
   const { isLive, sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
@@ -703,7 +709,19 @@ export function ConversationView() {
             </div>
           )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 min-h-0 overflow-y-auto"
+          >
+            {/* Top sentinel for infinite scroll — OUTSIDE the mode-switching block */}
+            <div ref={topSentinelRef} className="h-1" />
+            {history.isFetchingOlder && (
+              <div className="flex justify-center py-3">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+              </div>
+            )}
+
             {verboseMode ? (
               <HistoryRichPane
                 messages={richMessagesWithHookEvents}
@@ -722,6 +740,9 @@ export function ConversationView() {
                 </ThreadHighlightProvider>
               </FindProvider>
             )}
+
+            {/* Bottom anchor — OUTSIDE the mode-switching block */}
+            <div ref={bottomRef} />
           </div>
 
           <ConnectionBanner health={connectionHealth} />
