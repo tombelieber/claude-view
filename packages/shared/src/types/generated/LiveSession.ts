@@ -205,6 +205,62 @@ export type LiveSession = {
    */
   statuslineCostUsd?: number | null
   /**
+   * Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
+   */
+  modelDisplayName?: string | null
+  /**
+   * Working directory from statusline workspace.current_dir.
+   */
+  statuslineCwd?: string | null
+  /**
+   * Project directory from statusline workspace.project_dir.
+   */
+  statuslineProjectDir?: string | null
+  /**
+   * Wall-clock session duration from statusline cost.total_duration_ms.
+   */
+  statuslineTotalDurationMs?: bigint | null
+  /**
+   * API-only duration from statusline cost.total_api_duration_ms.
+   */
+  statuslineApiDurationMs?: bigint | null
+  /**
+   * Total lines added from statusline cost.total_lines_added.
+   */
+  statuslineLinesAdded?: bigint | null
+  /**
+   * Total lines removed from statusline cost.total_lines_removed.
+   */
+  statuslineLinesRemoved?: bigint | null
+  /**
+   * Current turn input tokens from statusline current_usage.input_tokens.
+   */
+  statuslineInputTokens?: bigint | null
+  /**
+   * Current turn output tokens from statusline current_usage.output_tokens.
+   */
+  statuslineOutputTokens?: bigint | null
+  /**
+   * Cache read tokens from statusline current_usage.cache_read_input_tokens.
+   */
+  statuslineCacheReadTokens?: bigint | null
+  /**
+   * Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
+   */
+  statuslineCacheCreationTokens?: bigint | null
+  /**
+   * Claude Code version from statusline.
+   */
+  statuslineVersion?: string | null
+  /**
+   * Whether the session exceeds 200K tokens (from statusline).
+   */
+  exceeds200kTokens?: boolean | null
+  /**
+   * Transcript path from statusline (used for session dedup).
+   */
+  statuslineTranscriptPath?: string | null
+  /**
    * Hook lifecycle events captured for the event log.
    * Skipped in SSE serialization (too large); streamed via WS only.
    */

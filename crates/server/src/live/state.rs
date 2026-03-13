@@ -220,6 +220,51 @@ pub struct LiveSession {
     /// Cross-check against our token-based pricing engine.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statusline_cost_usd: Option<f64>,
+    /// Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_display_name: Option<String>,
+    /// Working directory from statusline workspace.current_dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_cwd: Option<String>,
+    /// Project directory from statusline workspace.project_dir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_project_dir: Option<String>,
+    /// Wall-clock session duration from statusline cost.total_duration_ms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_total_duration_ms: Option<u64>,
+    /// API-only duration from statusline cost.total_api_duration_ms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_api_duration_ms: Option<u64>,
+    /// Total lines added from statusline cost.total_lines_added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_lines_added: Option<u64>,
+    /// Total lines removed from statusline cost.total_lines_removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_lines_removed: Option<u64>,
+    /// Current turn input tokens from statusline current_usage.input_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_input_tokens: Option<u64>,
+    /// Current turn output tokens from statusline current_usage.output_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_output_tokens: Option<u64>,
+    /// Cache read tokens from statusline current_usage.cache_read_input_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_cache_read_tokens: Option<u64>,
+    /// Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_cache_creation_tokens: Option<u64>,
+    /// Claude Code version from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_version: Option<String>,
+    /// Whether the session exceeds 200K tokens (from statusline).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exceeds_200k_tokens: Option<bool>,
+    /// Transcript path from statusline (used for session dedup).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_transcript_path: Option<String>,
+    /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
+    #[serde(skip)]
+    pub statusline_raw: Option<serde_json::Value>,
     /// Hook lifecycle events captured for the event log.
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]
@@ -368,6 +413,76 @@ pub fn status_from_agent_state(agent_state: &AgentState) -> SessionStatus {
             AgentStateGroup::Autonomous => SessionStatus::Working,
             AgentStateGroup::NeedsYou => SessionStatus::Paused,
         },
+    }
+}
+
+/// Minimal LiveSession factory for cross-module tests.
+#[cfg(test)]
+pub(crate) fn test_live_session(id: &str) -> LiveSession {
+    LiveSession {
+        id: id.to_string(),
+        project: String::new(),
+        project_display_name: "test".to_string(),
+        project_path: "/tmp/test".to_string(),
+        file_path: "/tmp/test.jsonl".to_string(),
+        status: SessionStatus::Working,
+        agent_state: AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "acting".into(),
+            label: "Working".into(),
+            context: None,
+        },
+        git_branch: None,
+        worktree_branch: None,
+        is_worktree: false,
+        effective_branch: None,
+        pid: None,
+        title: "Test session".into(),
+        last_user_message: String::new(),
+        last_user_file: None,
+        current_activity: "Working".into(),
+        turn_count: 5,
+        started_at: Some(1000),
+        last_activity_at: 1000,
+        model: None,
+        tokens: TokenUsage::default(),
+        context_window_tokens: 0,
+        cost: CostBreakdown::default(),
+        cache_status: CacheStatus::Unknown,
+        current_turn_started_at: None,
+        last_turn_task_seconds: None,
+        sub_agents: Vec::new(),
+        team_name: None,
+        team_members: Vec::new(),
+        team_inbox_count: 0,
+        edit_count: 0,
+        progress_items: Vec::new(),
+        tools_used: Vec::new(),
+        last_cache_hit_at: None,
+        compact_count: 0,
+        slug: None,
+        user_files: None,
+        closed_at: None,
+        control: None,
+        statusline_context_window_size: None,
+        statusline_used_pct: None,
+        statusline_cost_usd: None,
+        model_display_name: None,
+        statusline_cwd: None,
+        statusline_project_dir: None,
+        statusline_total_duration_ms: None,
+        statusline_api_duration_ms: None,
+        statusline_lines_added: None,
+        statusline_lines_removed: None,
+        statusline_input_tokens: None,
+        statusline_output_tokens: None,
+        statusline_cache_read_tokens: None,
+        statusline_cache_creation_tokens: None,
+        statusline_version: None,
+        exceeds_200k_tokens: None,
+        statusline_transcript_path: None,
+        statusline_raw: None,
+        hook_events: Vec::new(),
     }
 }
 
@@ -537,56 +652,7 @@ mod tests {
 
     /// Minimal LiveSession for tests.
     fn minimal_live_session(id: &str) -> LiveSession {
-        LiveSession {
-            id: id.to_string(),
-            project: String::new(),
-            project_display_name: "test".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: "/tmp/test.jsonl".to_string(),
-            status: SessionStatus::Working,
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working".into(),
-                context: None,
-            },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            pid: None,
-            title: "Test session".into(),
-            last_user_message: String::new(),
-            last_user_file: None,
-            current_activity: "Working".into(),
-            turn_count: 5,
-            started_at: Some(1000),
-            last_activity_at: 1000,
-            model: None,
-            tokens: TokenUsage::default(),
-            context_window_tokens: 0,
-            cost: CostBreakdown::default(),
-            cache_status: CacheStatus::Unknown,
-            current_turn_started_at: None,
-            last_turn_task_seconds: None,
-            sub_agents: Vec::new(),
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            progress_items: Vec::new(),
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            compact_count: 0,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            statusline_context_window_size: None,
-            statusline_used_pct: None,
-            statusline_cost_usd: None,
-            hook_events: Vec::new(),
-        }
+        test_live_session(id)
     }
 
     #[test]
