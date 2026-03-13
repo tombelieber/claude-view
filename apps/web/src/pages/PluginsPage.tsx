@@ -77,11 +77,11 @@ export function PluginsPage() {
     })
   }
 
-  const handleUpdateAll = async () => {
+  const handleUpdateAll = () => {
     if (!data) return
     const updatable = data.installed.filter((p) => p.updatable)
     for (const plugin of updatable) {
-      await mutations.execute({
+      mutations.execute({
         action: 'update',
         name: plugin.name,
         scope: plugin.scope,
@@ -177,7 +177,7 @@ export function PluginsPage() {
           <InstalledPluginsSection
             plugins={filteredInstalled}
             onAction={handleAction}
-            pendingName={mutations.pendingName}
+            isPluginPending={mutations.isPluginPending}
             marketplaces={data.marketplaces}
           />
         )}
@@ -186,7 +186,7 @@ export function PluginsPage() {
           <AvailableSection
             plugins={filteredAvailable}
             onInstall={(name, scope) => handleAction('install', name, scope)}
-            pendingName={mutations.pendingName}
+            isPluginPending={mutations.isPluginPending}
             marketplaces={data.marketplaces}
           />
         )}

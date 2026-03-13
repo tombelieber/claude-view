@@ -11,6 +11,7 @@ use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap};
 use crate::live::state::SessionEvent;
 use crate::routes::oauth::OAuthUsageResponse;
+use crate::routes::plugin_ops::PluginOpQueue;
 use crate::routes::plugins::CliAvailableResponse;
 use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
@@ -150,6 +151,10 @@ pub struct AppState {
     /// Number of active SSE subscribers to the system monitor.
     /// When 0→1, the polling task starts. When 1→0, it stops.
     pub monitor_subscribers: Arc<AtomicUsize>,
+    /// Queued plugin operations (replaces the old try_lock/409 mutex pattern).
+    pub plugin_op_queue: Arc<PluginOpQueue>,
+    /// Notify channel to wake the plugin op worker when new ops are enqueued.
+    pub plugin_op_notify: Arc<tokio::sync::Notify>,
 }
 
 impl AppState {
@@ -196,6 +201,8 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         })
     }
 
@@ -241,6 +248,8 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         })
     }
 
@@ -289,6 +298,8 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            plugin_op_queue: Arc::new(PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         })
     }
 
