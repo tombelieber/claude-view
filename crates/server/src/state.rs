@@ -8,7 +8,7 @@ use crate::facet_ingest::FacetIngestState;
 use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
-use crate::live::manager::{LiveSessionManager, LiveSessionMap};
+use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
 use crate::live::state::SessionEvent;
 use crate::routes::oauth::OAuthUsageResponse;
 use crate::routes::plugins::CliAvailableResponse;
@@ -150,6 +150,10 @@ pub struct AppState {
     /// Number of active SSE subscribers to the system monitor.
     /// When 0→1, the polling task starts. When 1→0, it stops.
     pub monitor_subscribers: Arc<AtomicUsize>,
+    /// Transcript path → session ID map for dedup (used by statusline handler).
+    /// Prevents duplicate sessions when Claude Code restarts with a new session ID
+    /// but the same transcript file path.
+    pub transcript_to_session: TranscriptMap,
 }
 
 impl AppState {
@@ -196,6 +200,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -241,6 +246,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -289,6 +295,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 

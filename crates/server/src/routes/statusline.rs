@@ -189,15 +189,53 @@ async fn handle_statusline(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<StatuslinePayload>,
 ) -> Json<serde_json::Value> {
+    // Step 1: Check transcript dedup FIRST (acquire + release transcript lock).
+    // Lock ordering: transcript_to_session → live_sessions → accumulators.
+    let dedup_action = if let Some(ref tp) = payload.transcript_path {
+        let transcript_path = std::path::PathBuf::from(tp);
+        let mut tmap = state.transcript_to_session.write().await;
+        if let Some(existing_id) = tmap.get(&transcript_path) {
+            if existing_id != &payload.session_id {
+                Some(existing_id.clone())
+            } else {
+                None
+            }
+        } else {
+            tmap.insert(transcript_path, payload.session_id.clone());
+            None
+        }
+        // tmap lock dropped here
+    } else {
+        None
+    };
+
+    // Step 2: Now acquire sessions lock (no other lock held)
     let mut sessions = state.live_sessions.write().await;
 
-    if let Some(session) = sessions.get_mut(&payload.session_id) {
+    if let Some(older_id) = dedup_action {
+        // Merge: apply statusline to older session, remove newer one
+        if let Some(_newer) = sessions.remove(&payload.session_id) {
+            if let Some(older) = sessions.get_mut(&older_id) {
+                apply_statusline(older, &payload);
+                tracing::info!(
+                    older_id = %older_id,
+                    newer_id = %payload.session_id,
+                    "Merged duplicate session via transcript_path dedup"
+                );
+            }
+        } else if let Some(older) = sessions.get_mut(&older_id) {
+            // Newer session not in map yet — just apply to the older one
+            apply_statusline(older, &payload);
+            tracing::debug!(
+                older_id = %older_id,
+                newer_id = %payload.session_id,
+                "Statusline applied to existing session (newer not yet registered)"
+            );
+        }
+    } else if let Some(session) = sessions.get_mut(&payload.session_id) {
         apply_statusline(session, &payload);
-
         tracing::debug!(
             session_id = %payload.session_id,
-            context_window_size = ?payload.context_window.as_ref().and_then(|c| c.context_window_size),
-            used_pct = ?payload.context_window.as_ref().and_then(|c| c.used_percentage),
             "Statusline update applied"
         );
     } else {
