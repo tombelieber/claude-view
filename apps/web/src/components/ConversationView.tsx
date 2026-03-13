@@ -45,6 +45,7 @@ import {
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
 import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
 import { messagesToRichMessages } from '../lib/message-to-rich'
+import { getContextLimit } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
@@ -129,9 +130,6 @@ export function ConversationView() {
 
   // Loading: gate on sessionDetail only (blocks arrive async from new hook)
   const isLoading = isFileGone ? false : !sessionDetail && !detailError
-
-  // Context gauge — history sessions don't have statusline, show null
-  const contextPercent = undefined
 
   // Command palette capabilities
   const paletteCapabilities = useSessionCapabilities(convInfo)
@@ -375,6 +373,26 @@ export function ConversationView() {
       richMessagesWithHookEvents,
     )
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
+
+  // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL
+  const contextPercent = useMemo(() => {
+    if (
+      (isLive || convInfo.canResumeLazy) &&
+      convInfo.contextWindowSize > 0 &&
+      convInfo.totalInputTokens > 0
+    ) {
+      return Math.round((convInfo.totalInputTokens / convInfo.contextWindowSize) * 100)
+    }
+    if (panelData && panelData.contextWindowTokens > 0) {
+      const limit = getContextLimit(
+        panelData.model,
+        panelData.contextWindowTokens,
+        panelData.statuslineContextWindowSize,
+      )
+      return Math.round((panelData.contextWindowTokens / limit) * 100)
+    }
+    return undefined
+  }, [isLive, convInfo, panelData])
 
   // Derived UI state from new hook
   const inputBarState = deriveInputBarState(sessionState, isLive, convInfo.canResumeLazy)
@@ -756,9 +774,12 @@ export function ConversationView() {
             contextPercent={contextPercent}
             mode={chatMode}
             onModeChange={handleModeChange}
+            model={resumeModel}
+            onModelChange={handleResumeModelChange}
             capabilities={paletteCapabilities}
             modelOptions={paletteModelOptions}
             onCommand={(cmd) => actions.sendMessage(`/${cmd}`)}
+            onAgent={(agent) => actions.sendMessage(`@${agent}`)}
           />
         </div>
 

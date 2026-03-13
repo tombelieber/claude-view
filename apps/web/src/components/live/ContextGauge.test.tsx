@@ -18,24 +18,24 @@ const baseProps = {
   statuslineUsedPct: 40,
 }
 
-describe('ContextGauge early return (no statusline)', () => {
-  it('shows dash when statuslineUsedPct is null', () => {
+describe('ContextGauge fallback (no statusline)', () => {
+  it('computes from contextWindowTokens when statusline props are null', () => {
     render(
       <ContextGauge {...baseProps} statuslineUsedPct={null} statuslineContextWindowSize={null} />,
     )
-    expect(screen.getByText('\u2014')).toBeInTheDocument()
-    expect(screen.queryByText(/200\.0k/)).not.toBeInTheDocument()
+    // 80K / 200K default = 40%
+    expect(screen.queryByText('\u2014')).not.toBeInTheDocument()
   })
 
-  it('shows dash when statuslineContextWindowSize is null even if usedPct is set', () => {
+  it('uses statuslineUsedPct even when statuslineContextWindowSize is null', () => {
     render(
       <ContextGauge {...baseProps} statuslineUsedPct={50} statuslineContextWindowSize={null} />,
     )
-    expect(screen.getByText('\u2014')).toBeInTheDocument()
+    expect(screen.queryByText('\u2014')).not.toBeInTheDocument()
   })
 
-  it('shows dash when both statusline props are undefined', () => {
-    render(<ContextGauge contextWindowTokens={80_000} model="claude-sonnet-4" group="autonomous" />)
+  it('shows dash when contextWindowTokens is 0 and no statusline', () => {
+    render(<ContextGauge contextWindowTokens={0} model="claude-sonnet-4" group="autonomous" />)
     expect(screen.getByText('\u2014')).toBeInTheDocument()
   })
 })

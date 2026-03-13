@@ -15,6 +15,8 @@ describe('useSessionCapabilities', () => {
       slashCommands: ['commit', 'test'],
       mcpServers: [{ name: 'gh', status: 'connected' }],
       permissionMode: 'default',
+      skills: [],
+      agents: [],
     }
     const { result } = renderHook(() => useSessionCapabilities(sessionInfo))
     expect(result.current.model).toBe('claude-sonnet-4-6')
@@ -35,6 +37,8 @@ describe('useSessionCapabilities', () => {
       slashCommands: [],
       mcpServers: [],
       permissionMode: 'default',
+      skills: [],
+      agents: [],
     }
     const { result } = renderHook(() => useSessionCapabilities(sessionInfo))
     expect(result.current.model).toBe('')
@@ -54,6 +58,8 @@ describe('useSessionCapabilities', () => {
       slashCommands: [],
       mcpServers: [],
       permissionMode: 'default',
+      skills: [],
+      agents: [],
     }
     const { result } = renderHook(() => useSessionCapabilities(sessionInfo))
     expect(result.current.fastModeState).toBeUndefined()

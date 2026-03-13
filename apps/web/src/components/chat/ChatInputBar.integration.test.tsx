@@ -32,6 +32,8 @@ const defaultCapabilities: SessionCapabilities = {
   permissionMode: 'default',
   slashCommands: ['commit', 'test'],
   mcpServers: [{ name: 'gh', status: 'connected' }],
+  skills: [],
+  agents: [],
 }
 
 describe('ChatInputBar + ChatPalette integration', () => {
