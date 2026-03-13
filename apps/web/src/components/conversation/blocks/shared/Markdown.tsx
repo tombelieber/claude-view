@@ -8,12 +8,10 @@ interface MarkdownProps {
 
 export function Markdown({ content }: MarkdownProps) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={markdownComponents}
-      className="text-sm text-gray-900 dark:text-gray-100 leading-relaxed prose-sm max-w-none"
-    >
-      {content}
-    </ReactMarkdown>
+    <div className="text-sm text-gray-900 dark:text-gray-100 leading-relaxed prose-sm max-w-none">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }

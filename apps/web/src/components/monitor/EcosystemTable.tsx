@@ -4,9 +4,10 @@ import { ClassifiedProcessRow } from './ClassifiedProcessRow'
 interface EcosystemTableProps {
   processes: ClassifiedProcess[]
   onKill: (pid: number, startTime: number, force: boolean) => void
+  pendingPids?: Set<number>
 }
 
-export function EcosystemTable({ processes, onKill }: EcosystemTableProps) {
+export function EcosystemTable({ processes, onKill, pendingPids }: EcosystemTableProps) {
   if (processes.length === 0) {
     return (
       <p className="text-sm text-gray-400 dark:text-gray-500 px-3 py-3">
@@ -27,7 +28,12 @@ export function EcosystemTable({ processes, onKill }: EcosystemTableProps) {
         <span className="w-5 shrink-0" />
       </div>
       {processes.map((proc) => (
-        <ClassifiedProcessRow key={proc.pid} process={proc} onKill={onKill} />
+        <ClassifiedProcessRow
+          key={proc.pid}
+          process={proc}
+          onKill={onKill}
+          isPending={pendingPids?.has(proc.pid)}
+        />
       ))}
     </div>
   )

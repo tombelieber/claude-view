@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import type { ProcessTreeSnapshot } from '../../types/generated/ProcessTreeSnapshot'
+import { ClassifiedProcessRow } from './ClassifiedProcessRow'
 import { ProcessTreeSection } from './ProcessTreeSection'
 
 function makeTree(overrides: Partial<ProcessTreeSnapshot> = {}): ProcessTreeSnapshot {
@@ -133,5 +135,63 @@ describe('ClassifiedProcessRow kill button', () => {
     render(<ProcessTreeSection tree={tree} freshAt={Date.now()} />)
     const killButton = screen.getByTitle('Cannot kill this server process')
     expect(killButton).toBeDisabled()
+  })
+})
+
+describe('ProcessTreeSection kill and cleanup endpoints', () => {
+  it('calls kill callback when user opens dropdown, clicks Terminate, then confirms', async () => {
+    const user = userEvent.setup()
+    const proc = makeEcosystemProc(1234)
+    const onKill = vi.fn()
+    render(<ClassifiedProcessRow process={proc} onKill={onKill} />)
+
+    // Open the dropdown via userEvent (Radix requires pointer events)
+    const actionsButton = screen.getByTitle('Process actions')
+    await user.click(actionsButton)
+
+    // Radix portals the content into document.body — findByText searches the whole document
+    const terminateButton = await screen.findByText('Terminate')
+    await user.click(terminateButton)
+
+    // Confirm dialog should appear
+    const confirmButton = await screen.findByText('Yes')
+    await user.click(confirmButton)
+
+    expect(onKill).toHaveBeenCalledWith(1234, proc.startTime, false)
+  })
+
+  it('calls cleanup endpoint when cleanup button clicked', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const staleProc = {
+      ...makeEcosystemProc(5678),
+      isUnparented: true,
+      staleness: 'LikelyStale' as const,
+    }
+    const tree = makeTree({
+      ecosystem: [staleProc],
+      totals: {
+        ecosystemCpu: 0,
+        ecosystemMemory: 0,
+        ecosystemCount: 1,
+        childCpu: 0,
+        childMemory: 0,
+        childCount: 0,
+        unparentedCount: 1,
+        unparentedMemory: 100_000_000,
+      },
+    })
+    render(<ProcessTreeSection tree={tree} freshAt={Date.now()} />)
+
+    const cleanupButton = screen.getByText('Clean up stale')
+    fireEvent.click(cleanupButton)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/processes/cleanup',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
   })
 })
