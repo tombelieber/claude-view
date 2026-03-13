@@ -65,6 +65,10 @@ pub struct PluginInfo {
     pub duplicate_marketplaces: Vec<String>,
     pub updatable: bool,
     pub errors: Vec<String>,
+    /// True when the plugin's install directory exists on disk.
+    /// False = truly orphaned (files deleted/moved).
+    /// True + errors = CLI validation failure (catalog mismatch), but files are intact.
+    pub source_exists: bool,
     /// Description from the marketplace listing (mirrors AvailablePlugin).
     pub description: Option<String>,
     /// Global install count from the marketplace listing (mirrors AvailablePlugin).
@@ -395,6 +399,9 @@ struct DiskEnrichment {
     descriptions: HashMap<String, String>,
     /// Map of plugin_id → unique install count (from `install-counts-cache.json`)
     install_counts: HashMap<String, u64>,
+    /// Map of plugin_id → whether installPath exists on disk.
+    /// The authoritative signal for "truly orphaned" vs "CLI validation error".
+    source_exists: HashMap<String, bool>,
 }
 
 /// Minimal serde types for the two cache files we read.
@@ -436,6 +443,7 @@ fn read_disk_enrichment() -> DiskEnrichment {
             return DiskEnrichment {
                 descriptions: HashMap::new(),
                 install_counts: HashMap::new(),
+                source_exists: HashMap::new(),
             }
         }
     };
@@ -443,12 +451,13 @@ fn read_disk_enrichment() -> DiskEnrichment {
     // 1. Install counts from the CLI's server-side cache.
     let install_counts = read_install_counts(&plugins_dir);
 
-    // 2. Descriptions from per-plugin plugin.json manifests.
-    let descriptions = read_plugin_descriptions(&plugins_dir);
+    // 2. Descriptions + source-exists from per-plugin registrations.
+    let (descriptions, source_exists) = read_plugin_descriptions_and_existence(&plugins_dir);
 
     DiskEnrichment {
         descriptions,
         install_counts,
+        source_exists,
     }
 }
 
@@ -468,22 +477,49 @@ fn read_install_counts(plugins_dir: &Path) -> HashMap<String, u64> {
     }
 }
 
-fn read_plugin_descriptions(plugins_dir: &Path) -> HashMap<String, String> {
+/// Reads `installed_plugins.json` once and returns two maps:
+/// - descriptions: plugin_id → description string (from `.claude-plugin/plugin.json`)
+/// - source_exists: plugin_id → whether the installPath directory exists on disk
+///
+/// `source_exists` is the authoritative signal for orphan status. A plugin whose
+/// installPath is present is functional regardless of what the CLI marketplace
+/// validator reports.
+fn read_plugin_descriptions_and_existence(
+    plugins_dir: &Path,
+) -> (HashMap<String, String>, HashMap<String, bool>) {
     let registry_path = plugins_dir.join("installed_plugins.json");
     let data = match std::fs::read_to_string(&registry_path) {
         Ok(d) => d,
-        Err(_) => return HashMap::new(),
+        Err(_) => return (HashMap::new(), HashMap::new()),
     };
     let registry = match serde_json::from_str::<InstalledPluginsRegistry>(&data) {
         Ok(r) => r,
-        Err(_) => return HashMap::new(),
+        Err(_) => return (HashMap::new(), HashMap::new()),
     };
 
     let mut descriptions = HashMap::new();
+    let mut source_exists = HashMap::new();
+
     for (plugin_id, entries) in &registry.plugins {
         // Use the first entry's installPath (duplicates have separate ids).
         if let Some(entry) = entries.first() {
-            let manifest_path = PathBuf::from(&entry.install_path).join("plugin.json");
+            let install_dir = PathBuf::from(&entry.install_path);
+
+            // Ground truth: does the directory exist?
+            source_exists.insert(plugin_id.clone(), install_dir.exists());
+
+            // Description from `.claude-plugin/plugin.json` (new layout) or
+            // legacy `plugin.json` at the root.
+            let manifest_path = if install_dir
+                .join(".claude-plugin")
+                .join("plugin.json")
+                .exists()
+            {
+                install_dir.join(".claude-plugin").join("plugin.json")
+            } else {
+                install_dir.join("plugin.json")
+            };
+
             if let Ok(manifest_data) = std::fs::read_to_string(&manifest_path) {
                 if let Ok(manifest) = serde_json::from_str::<PluginManifest>(&manifest_data) {
                     if let Some(desc) = manifest.description {
@@ -495,7 +531,8 @@ fn read_plugin_descriptions(plugins_dir: &Path) -> HashMap<String, String> {
             }
         }
     }
-    descriptions
+
+    (descriptions, source_exists)
 }
 
 // ---------------------------------------------------------------------------
@@ -653,6 +690,13 @@ async fn list_plugins(
             .copied()
             .or_else(|| marketplace_entry.and_then(|e| e.install_count));
 
+        // Default to true when registry has no entry (conservative: assume files exist).
+        let source_exists = disk
+            .source_exists
+            .get(&cli_plugin.id)
+            .copied()
+            .unwrap_or(true);
+
         installed.push(PluginInfo {
             id: cli_plugin.id.clone(),
             name: name.clone(),
@@ -675,6 +719,7 @@ async fn list_plugins(
             duplicate_marketplaces: vec![], // Filled below
             updatable: cli_plugin.git_commit_sha.is_some(),
             errors: cli_plugin.errors.clone(),
+            source_exists,
             description,
             install_count,
         });
@@ -691,8 +736,12 @@ async fn list_plugins(
         }
     }
 
-    // Error count: plugins that have any CLI-reported errors.
-    let orphan_count = installed.iter().filter(|p| !p.errors.is_empty()).count();
+    // Orphan count: only plugins whose source directory is genuinely missing.
+    // Plugins with errors but intact source dirs are CLI validation failures, not orphans.
+    let orphan_count = installed
+        .iter()
+        .filter(|p| !p.errors.is_empty() && !p.source_exists)
+        .count();
 
     // User items from the flat user_invocables list, defaulting usage to zeros.
     let make_user_items = |kind: InvocableKind| -> Vec<UserItemInfo> {
@@ -1395,6 +1444,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1427,6 +1477,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1481,6 +1532,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1506,6 +1558,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1558,6 +1611,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1583,6 +1637,7 @@ mod tests {
                 duplicate_marketplaces: vec![],
                 updatable: false,
                 errors: vec![],
+                source_exists: true,
                 description: None,
                 install_count: None,
             },
@@ -1788,8 +1843,8 @@ mod tests {
         )
         .unwrap();
 
-        // No install-counts-cache.json — should gracefully produce empty counts
-        let descriptions = read_plugin_descriptions(&plugins_dir.to_path_buf());
+        let (descriptions, source_exists) =
+            read_plugin_descriptions_and_existence(&plugins_dir.to_path_buf());
 
         assert_eq!(
             descriptions
@@ -1797,6 +1852,11 @@ mod tests {
                 .map(String::as_str),
             Some("A great plugin description"),
             "description must be populated from plugin.json on disk"
+        );
+        assert_eq!(
+            source_exists.get("my-plugin@my-marketplace"),
+            Some(&true),
+            "installPath exists → source_exists=true"
         );
     }
 
@@ -1831,15 +1891,55 @@ mod tests {
     #[test]
     fn test_disk_enrichment_returns_empty_when_files_missing() {
         let dir = tempfile::tempdir().expect("tempdir");
-        // No files written — both helpers must return empty maps, not panic
-        let enrichment = {
-            let plugins_dir = dir.path().to_path_buf();
-            DiskEnrichment {
-                descriptions: read_plugin_descriptions(&plugins_dir),
-                install_counts: read_install_counts(&plugins_dir),
+        // No files written — all helpers must return empty maps, not panic
+        let plugins_dir = dir.path().to_path_buf();
+        let (descriptions, source_exists) = read_plugin_descriptions_and_existence(&plugins_dir);
+        let install_counts = read_install_counts(&plugins_dir);
+        assert!(descriptions.is_empty());
+        assert!(install_counts.is_empty());
+        assert!(source_exists.is_empty());
+    }
+
+    /// Regression: source_exists is derived from the filesystem, not from CLI errors.
+    /// A plugin with CLI errors but an intact installPath must have source_exists=true.
+    /// A plugin with a deleted installPath must have source_exists=false.
+    #[test]
+    fn test_source_exists_reflects_filesystem_not_cli_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugins_dir = dir.path();
+
+        // Plugin A: directory exists (local user-created plugin like "wtf")
+        let plugin_a_path = plugins_dir.join("wtf");
+        std::fs::create_dir_all(&plugin_a_path).unwrap();
+
+        // Plugin B: directory does NOT exist (truly orphaned)
+        let plugin_b_path = plugins_dir.join("gone");
+        // intentionally not created
+
+        let registry_json = serde_json::json!({
+            "version": 2,
+            "plugins": {
+                "wtf@local": [{ "installPath": plugin_a_path.to_str().unwrap() }],
+                "gone@some-marketplace": [{ "installPath": plugin_b_path.to_str().unwrap() }],
             }
-        };
-        assert!(enrichment.descriptions.is_empty());
-        assert!(enrichment.install_counts.is_empty());
+        });
+        std::fs::write(
+            plugins_dir.join("installed_plugins.json"),
+            registry_json.to_string(),
+        )
+        .unwrap();
+
+        let (_, source_exists) = read_plugin_descriptions_and_existence(plugins_dir);
+
+        assert_eq!(
+            source_exists.get("wtf@local"),
+            Some(&true),
+            "wtf dir exists → source_exists=true"
+        );
+        assert_eq!(
+            source_exists.get("gone@some-marketplace"),
+            Some(&false),
+            "gone dir missing → source_exists=false"
+        );
     }
 }

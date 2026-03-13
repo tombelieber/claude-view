@@ -5,6 +5,7 @@ import { InstalledPluginsSection } from '../components/plugins/InstalledPluginsS
 import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
 import { PluginHealthPanel } from '../components/plugins/PluginHealthPanel'
 import { PluginToolbar } from '../components/plugins/PluginToolbar'
+import { PluginsPageSkeleton } from '../components/plugins/PluginsPageSkeleton'
 import { UserItemSection } from '../components/plugins/UserItemSection'
 import { usePluginMutations } from '../hooks/use-plugin-mutations'
 import { usePlugins } from '../hooks/use-plugins'
@@ -59,12 +60,14 @@ export function PluginsPage() {
     }
   }
 
+  if (!data) return <PluginsPageSkeleton />
+
   const totalCount =
-    (data?.totalInstalled ?? 0) +
-    (data?.totalAvailable ?? 0) +
-    (data?.userSkills?.length ?? 0) +
-    (data?.userCommands?.length ?? 0) +
-    (data?.userAgents?.length ?? 0)
+    (data.totalInstalled ?? 0) +
+    (data.totalAvailable ?? 0) +
+    (data.userSkills?.length ?? 0) +
+    (data.userCommands?.length ?? 0) +
+    (data.userAgents?.length ?? 0)
 
   return (
     <div className="min-h-full bg-apple-bg">
@@ -78,7 +81,7 @@ export function PluginsPage() {
         </div>
         <div className="flex gap-2 items-center pt-1.5">
           <MarketplacesDialog />
-          {data && data.updatableCount > 0 && (
+          {data.updatableCount > 0 && (
             <button
               type="button"
               onClick={handleUpdateAll}
@@ -102,52 +105,50 @@ export function PluginsPage() {
         onSourceChange={setSource}
         kind={kind}
         onKindChange={setKind}
-        marketplaces={data?.marketplaces ?? []}
+        marketplaces={data.marketplaces ?? []}
         totalCount={totalCount}
       />
 
       {/* Health panel */}
-      {data && (
-        <PluginHealthPanel
-          orphanCount={data.orphanCount}
-          conflictCount={data.duplicateCount}
-          unusedCount={data.unusedCount}
-          cliError={data.cliError}
-        />
-      )}
+      <PluginHealthPanel
+        orphanCount={data.orphanCount}
+        conflictCount={data.duplicateCount}
+        unusedCount={data.unusedCount}
+        cliError={data.cliError}
+      />
 
       {/* Content sections */}
       <div className="px-7 py-5 flex flex-col gap-7">
-        {(data?.userSkills?.length ?? 0) > 0 && (
-          <UserItemSection title="Skills" items={data!.userSkills} pathPrefix="~/.claude/skills/" />
+        {(data.userSkills?.length ?? 0) > 0 && (
+          <UserItemSection title="Skills" items={data.userSkills} pathPrefix="~/.claude/skills/" />
         )}
-        {(data?.userCommands?.length ?? 0) > 0 && (
+        {(data.userCommands?.length ?? 0) > 0 && (
           <UserItemSection
             title="Commands"
-            items={data!.userCommands}
+            items={data.userCommands}
             pathPrefix="~/.claude/commands/"
           />
         )}
-        {(data?.userAgents?.length ?? 0) > 0 && (
-          <UserItemSection title="Agents" items={data!.userAgents} pathPrefix="~/.claude/agents/" />
+        {(data.userAgents?.length ?? 0) > 0 && (
+          <UserItemSection title="Agents" items={data.userAgents} pathPrefix="~/.claude/agents/" />
         )}
-        {(data?.installed?.length ?? 0) > 0 && (
+        {(data.installed?.length ?? 0) > 0 && (
           <InstalledPluginsSection
-            plugins={data!.installed}
+            plugins={data.installed}
             onAction={handleAction}
             isPending={mutations.isPending}
           />
         )}
-        {(data?.available?.length ?? 0) > 0 && (
+        {(data.available?.length ?? 0) > 0 && (
           <AvailableSection
-            plugins={data!.available}
+            plugins={data.available}
             onInstall={(name, scope) => handleAction('install', name, scope)}
             isPending={mutations.isPending}
           />
         )}
 
         {/* Empty state */}
-        {data && totalCount === 0 && !data.cliError && (
+        {totalCount === 0 && !data.cliError && (
           <div className="flex flex-col items-center justify-center py-16 text-apple-text3">
             <Blocks className="w-10 h-10 mb-3 opacity-40" />
             <p className="text-sm font-medium">No plugins found</p>
