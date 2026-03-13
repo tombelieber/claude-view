@@ -144,6 +144,8 @@ export function useConversation(sessionId: string | undefined) {
       slashCommands: source.slashCommands,
       mcpServers: source.mcpServers,
       permissionMode: source.permissionMode,
+      skills: source.skills,
+      agents: source.agents,
     },
   }
 }

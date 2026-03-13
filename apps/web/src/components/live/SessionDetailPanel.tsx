@@ -36,6 +36,7 @@ import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { deriveInputBarState } from '../../lib/control-status-map'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
+import { getContextLimit } from '../../lib/model-context-windows'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
 import { COST_CATEGORY_COLORS } from '../../theme'
@@ -808,10 +809,27 @@ export function SessionDetailPanel({
                   convInfo.isLive,
                   convInfo.canResumeLazy,
                 )}
-                contextPercent={0}
+                contextPercent={
+                  data.contextWindowTokens > 0
+                    ? Math.min(
+                        100,
+                        Math.round(
+                          data.statuslineUsedPct ??
+                            (data.contextWindowTokens /
+                              getContextLimit(
+                                data.model,
+                                data.contextWindowTokens,
+                                data.statuslineContextWindowSize,
+                              )) *
+                              100,
+                        ),
+                      )
+                    : undefined
+                }
                 capabilities={sdpCapabilities}
                 modelOptions={sdpModelOptions}
                 onCommand={(cmd) => convActions.sendMessage(`/${cmd}`)}
+                onAgent={(agent) => convActions.sendMessage(`@${agent}`)}
               />
             )}
           </div>
