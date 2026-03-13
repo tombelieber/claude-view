@@ -1261,6 +1261,21 @@ mod tests {
                 statusline_context_window_size: None,
                 statusline_used_pct: None,
                 statusline_cost_usd: None,
+                model_display_name: None,
+                statusline_cwd: None,
+                statusline_project_dir: None,
+                statusline_total_duration_ms: None,
+                statusline_api_duration_ms: None,
+                statusline_lines_added: None,
+                statusline_lines_removed: None,
+                statusline_input_tokens: None,
+                statusline_output_tokens: None,
+                statusline_cache_read_tokens: None,
+                statusline_cache_creation_tokens: None,
+                statusline_version: None,
+                exceeds_200k_tokens: None,
+                statusline_transcript_path: None,
+                statusline_raw: None,
             };
             map.insert(session_id.to_string(), session);
         }
