@@ -1,73 +1,32 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatBytes } from '../../lib/format-utils'
 import type { ClassifiedProcess } from '../../types/generated/ClassifiedProcess'
-import type { EcosystemTag } from '../../types/generated/EcosystemTag'
-import type { SessionResource } from '../../types/generated/SessionResource'
 import type { SystemInfo } from '../../types/generated/SystemInfo'
-import { type LiveSession, sessionTotalCost } from '../live/use-live-sessions'
 import { ChildProcessRow } from './ChildProcessRow'
 import { SessionRollupBar } from './SessionRollupBar'
 
-interface SessionAccordionRowProps {
-  session: LiveSession
-  resource: SessionResource
-  ecosystemProcess: ClassifiedProcess | null
+interface SelfAppRowProps {
+  process: ClassifiedProcess
   systemInfo: SystemInfo
   expanded: boolean
   onToggle: () => void
   onKill: (pid: number, startTime: number, force: boolean) => void
   pendingPids: Set<number>
-  /** When true, force all nested child processes open. */
   expandAll?: boolean
 }
 
-function ecosystemLabel(tag: EcosystemTag | null | undefined): string {
-  switch (tag) {
-    case 'cli':
-      return 'CLI'
-    case 'ide':
-      return 'IDE'
-    case 'desktop':
-      return 'Desktop'
-    case 'self':
-      return 'Server'
-    default:
-      return ''
-  }
-}
-
-function statusDotClass(status: LiveSession['status']): string {
-  switch (status) {
-    case 'working':
-      return 'bg-green-500 animate-pulse'
-    case 'paused':
-      return 'bg-amber-500'
-    default:
-      return 'bg-gray-400'
-  }
-}
-
-export function SessionAccordionRow({
-  session,
-  resource,
-  ecosystemProcess,
+export function SelfAppRow({
+  process: proc,
   systemInfo,
   expanded,
   onToggle,
   onKill,
   pendingPids,
   expandAll = false,
-}: SessionAccordionRowProps) {
-  const rollupCpu = ecosystemProcess
-    ? resource.cpuPercent + ecosystemProcess.descendantCpu
-    : resource.cpuPercent
-  const rollupMem = ecosystemProcess
-    ? resource.memoryBytes + ecosystemProcess.descendantMemory
-    : resource.memoryBytes
-
-  const cost = sessionTotalCost(session)
-  const badge = ecosystemLabel(ecosystemProcess?.ecosystemTag)
-  const descendantCount = ecosystemProcess?.descendantCount ?? 0
+}: SelfAppRowProps) {
+  const rollupCpu = proc.cpuPercent + proc.descendantCpu
+  const rollupMem = proc.memoryBytes + proc.descendantMemory
+  const descendantCount = proc.descendantCount
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -75,7 +34,7 @@ export function SessionAccordionRow({
         {descendantCount > 0 ? (
           <button
             type="button"
-            aria-label="Toggle session details"
+            aria-label="Toggle app details"
             onClick={onToggle}
             className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 shrink-0"
           >
@@ -85,33 +44,17 @@ export function SessionAccordionRow({
           <div className="w-5 shrink-0" />
         )}
 
-        <div
-          data-testid="status-dot"
-          className={`w-2 h-2 rounded-full shrink-0 ${statusDotClass(session.status)}`}
-        />
+        <div className="w-2 h-2 rounded-full shrink-0 bg-green-500" />
 
-        {/* Text section — truncates when space is tight */}
         <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
-            {session.projectDisplayName}
+            claude-view
           </span>
 
-          {session.effectiveBranch && (
-            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {session.effectiveBranch}
-            </span>
-          )}
-
-          {badge && (
-            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
-              {badge}
-            </span>
-          )}
+          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shrink-0">
+            This App
+          </span>
         </div>
-
-        <span className="text-xs font-medium tabular-nums text-gray-700 dark:text-gray-300 shrink-0">
-          ${cost.toFixed(2)}
-        </span>
 
         {descendantCount > 0 && (
           <span className="text-[10px] tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full shrink-0">
@@ -120,7 +63,7 @@ export function SessionAccordionRow({
         )}
 
         <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
-          T:{session.turnCount}
+          PID:{proc.pid}
         </span>
 
         {/* CPU | RAM — right-aligned */}
@@ -146,20 +89,8 @@ export function SessionAccordionRow({
         </div>
       )}
 
-      {expanded && ecosystemProcess === null && session.pid === null && (
-        <div className="pl-11 py-2 text-xs text-gray-400 dark:text-gray-500">
-          PID unknown — process tree unavailable
-        </div>
-      )}
-
-      {expanded && ecosystemProcess === null && session.pid !== null && (
-        <div className="pl-11 py-2 animate-pulse text-xs text-gray-400 dark:text-gray-500">
-          Loading child processes...
-        </div>
-      )}
-
       {expanded &&
-        ecosystemProcess?.descendants.map((child) => (
+        proc.descendants.map((child) => (
           <ChildProcessRow
             key={child.pid}
             process={child}
