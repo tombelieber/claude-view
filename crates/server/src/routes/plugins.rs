@@ -199,29 +199,25 @@ pub fn apply_filters(
     // --- Kind filter ---
     if let Some(ref kind) = query.kind {
         let kind_lower = kind.to_lowercase();
-        installed.retain(|p| p.items.iter().any(|i| i.kind.to_lowercase() == kind_lower));
+        // "plugin" means show installed+available plugins (they ARE plugins);
+        // any other kind filters installed to those containing items of that kind.
+        if kind_lower != "plugin" {
+            installed.retain(|p| p.items.iter().any(|i| i.kind.to_lowercase() == kind_lower));
+        }
         // Available plugins don't have kind metadata — don't filter them by kind
     }
 
-    // --- Sort installed ---
-    if let Some(ref sort) = query.sort {
-        match sort.as_str() {
-            "usage" => installed.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations)),
-            "updated" => installed.sort_by(|a, b| {
-                let a_ts = a.last_updated.as_deref().unwrap_or("");
-                let b_ts = b.last_updated.as_deref().unwrap_or("");
-                b_ts.cmp(a_ts)
-            }),
-            // "name" or default
-            _ => installed.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
-        }
-    } else {
-        // Default sort: by usage descending (most-used first)
-        installed.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
-    }
-
-    // Available plugins are always sorted alphabetically
-    available.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // --- Sort: always by install count descending ---
+    installed.sort_by(|a, b| {
+        b.install_count
+            .unwrap_or(0)
+            .cmp(&a.install_count.unwrap_or(0))
+    });
+    available.sort_by(|a, b| {
+        b.install_count
+            .unwrap_or(0)
+            .cmp(&a.install_count.unwrap_or(0))
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -763,9 +759,14 @@ async fn list_plugins(
             })
             .collect()
     };
-    let user_skills = make_user_items(InvocableKind::Skill);
-    let user_commands = make_user_items(InvocableKind::Command);
-    let user_agents = make_user_items(InvocableKind::Agent);
+    let mut user_skills = make_user_items(InvocableKind::Skill);
+    let mut user_commands = make_user_items(InvocableKind::Command);
+    let mut user_agents = make_user_items(InvocableKind::Agent);
+
+    // Sort user items by usage descending (most-used first)
+    user_skills.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
+    user_commands.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
+    user_agents.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
 
     // 6. Build available plugin list
     let available: Vec<AvailablePlugin> = cli_data
@@ -1587,7 +1588,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_filters_sort_by_usage() {
+    fn test_apply_filters_sort_by_install_count() {
         let mut installed = vec![
             PluginInfo {
                 id: "low@m".to_string(),
@@ -1613,11 +1614,11 @@ mod tests {
                 errors: vec![],
                 source_exists: true,
                 description: None,
-                install_count: None,
+                install_count: Some(50),
             },
             PluginInfo {
                 id: "high@m".to_string(),
-                name: "high-usage".to_string(),
+                name: "high-installs".to_string(),
                 marketplace: "m".to_string(),
                 scope: "user".to_string(),
                 version: Some("1.0.0".to_string()),
@@ -1639,20 +1640,16 @@ mod tests {
                 errors: vec![],
                 source_exists: true,
                 description: None,
-                install_count: None,
+                install_count: Some(5000),
             },
         ];
 
         let mut available = vec![];
 
-        let query = PluginsQuery {
-            sort: Some("usage".to_string()),
-            ..Default::default()
-        };
-        apply_filters(&query, &mut installed, &mut available);
+        apply_filters(&PluginsQuery::default(), &mut installed, &mut available);
 
-        // Highest usage first
-        assert_eq!(installed[0].name, "high-usage");
+        // Higher install_count comes first
+        assert_eq!(installed[0].name, "high-installs");
         assert_eq!(installed[1].name, "low-usage");
     }
 

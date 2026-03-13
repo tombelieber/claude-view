@@ -5,14 +5,14 @@ import { SectionHeader } from './SectionHeader'
 interface InstalledPluginsSectionProps {
   plugins: PluginInfo[]
   onAction: (action: string, name: string, scope?: string, projectPath?: string | null) => void
-  isPending: boolean
+  pendingName: string | null
   marketplaces?: MarketplaceInfo[]
 }
 
 export function InstalledPluginsSection({
   plugins,
   onAction,
-  isPending,
+  pendingName,
   marketplaces = [],
 }: InstalledPluginsSectionProps) {
   return (
@@ -31,7 +31,7 @@ export function InstalledPluginsSection({
               key={plugin.id}
               plugin={plugin}
               onAction={onAction}
-              isPending={isPending}
+              isPending={pendingName === plugin.name}
               githubUrl={githubUrl}
             />
           )

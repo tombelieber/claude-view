@@ -28,7 +28,10 @@ export function UninstallConfirmDialog({
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Content className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 shadow-xl">
+        <AlertDialog.Content
+          className="fixed z-[51] top-1/2 left-1/2 w-full max-w-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 shadow-xl"
+          style={{ transform: 'translate(-50%, -50%)' }}
+        >
           <AlertDialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Uninstall {plugin.name}?
           </AlertDialog.Title>
