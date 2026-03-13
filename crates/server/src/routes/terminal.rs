@@ -1208,6 +1208,9 @@ mod tests {
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         // Register the session in the live sessions map
@@ -1234,7 +1237,6 @@ mod tests {
                 pid: None,
                 title: "Test session".to_string(),
                 last_user_message: "test".to_string(),
-                last_user_file: None,
                 current_activity: "testing".to_string(),
                 turn_count: 0,
                 started_at: None,
@@ -1263,6 +1265,21 @@ mod tests {
                 statusline_context_window_size: None,
                 statusline_used_pct: None,
                 statusline_cost_usd: None,
+                model_display_name: None,
+                statusline_cwd: None,
+                statusline_project_dir: None,
+                statusline_total_duration_ms: None,
+                statusline_api_duration_ms: None,
+                statusline_lines_added: None,
+                statusline_lines_removed: None,
+                statusline_input_tokens: None,
+                statusline_output_tokens: None,
+                statusline_cache_read_tokens: None,
+                statusline_cache_creation_tokens: None,
+                statusline_version: None,
+                exceeds_200k_tokens: None,
+                statusline_transcript_path: None,
+                statusline_raw: None,
             };
             map.insert(session_id.to_string(), session);
         }
@@ -1422,6 +1439,9 @@ mod tests {
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

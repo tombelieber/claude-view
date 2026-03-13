@@ -153,6 +153,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+        transcript_to_session: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
     });
     api_routes(state)
 }
@@ -184,14 +185,15 @@ pub fn create_app_full(
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
-    let (manager, live_sessions, live_tx) = live::manager::LiveSessionManager::start(
-        pricing.clone(),
-        db.clone(),
-        search_index.clone(),
-        registry.clone(),
-        Some(sidecar.clone()),
-        teams.clone(),
-    );
+    let (manager, live_sessions, transcript_to_session, live_tx) =
+        live::manager::LiveSessionManager::start(
+            pricing.clone(),
+            db.clone(),
+            search_index.clone(),
+            registry.clone(),
+            Some(sidecar.clone()),
+            teams.clone(),
+        );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
     let server_port = std::env::var("CLAUDE_VIEW_PORT")
@@ -249,6 +251,7 @@ pub fn create_app_full(
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+        transcript_to_session,
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).

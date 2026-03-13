@@ -84,6 +84,8 @@ describe('CostBreakdown', () => {
       outputTokens: 500,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hrTokens: 0,
       totalTokens: 1500,
     }
     render(<CostBreakdown cost={cost} tokens={tokens} subAgents={[]} />)

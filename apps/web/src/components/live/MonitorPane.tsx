@@ -27,12 +27,10 @@ function formatCost(session: LiveSession): string {
     : formatCostUsd(usd)
 }
 
-/** Compute context window percentage from tokens + model. */
-function contextPercent(session: LiveSession): number {
-  // Prefer authoritative statusline percentage when available
+/** Compute context window percentage from statusline (authoritative). */
+function contextPercent(session: LiveSession): number | null {
   if (session.statuslineUsedPct != null) return Math.min(Math.round(session.statuslineUsedPct), 100)
-  const limit = session.statuslineContextWindowSize ?? 200_000
-  return Math.min(Math.round((session.contextWindowTokens / limit) * 100), 100)
+  return null
 }
 
 /** Color class for context percentage text. */
@@ -199,7 +197,7 @@ function FullHeader({
   session: LiveSession
   name: string
   cost: string
-  ctxPct: number
+  ctxPct: number | null
   isPinned: boolean
   onExpand: () => void
   onPin: () => void
@@ -210,6 +208,14 @@ function FullHeader({
     <div
       className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-[#161B22] border-b border-gray-200 dark:border-[#21262D] cursor-pointer select-none"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick(e as unknown as React.MouseEvent)
+        }
+      }}
+      tabIndex={0}
+      role="button"
     >
       {/* Project name */}
       <span
@@ -239,9 +245,12 @@ function FullHeader({
         {cost}
       </span>
       <span
-        className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}
+        className={cn(
+          'text-[10px] font-mono tabular-nums flex-shrink-0',
+          ctxPct != null ? contextColor(ctxPct) : 'text-zinc-400 dark:text-zinc-500',
+        )}
       >
-        {ctxPct}% ctx
+        {ctxPct != null ? `${ctxPct}% ctx` : '\u2014'}
       </span>
 
       {/* Status icon */}
@@ -258,6 +267,7 @@ function FullHeader({
 
       {/* Action buttons */}
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           onPin()
@@ -274,6 +284,7 @@ function FullHeader({
       </button>
 
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           onExpand()
@@ -285,6 +296,7 @@ function FullHeader({
       </button>
 
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           onHide()
@@ -312,7 +324,7 @@ function CompactHeader({
   session: LiveSession
   name: string
   cost: string
-  ctxPct: number
+  ctxPct: number | null
   isPinned: boolean
   onExpand: () => void
   onClick: (e: React.MouseEvent) => void
@@ -321,6 +333,14 @@ function CompactHeader({
     <div
       className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 dark:bg-[#161B22] border-b border-gray-200 dark:border-[#21262D] cursor-pointer select-none"
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick(e as unknown as React.MouseEvent)
+        }
+      }}
+      tabIndex={0}
+      role="button"
     >
       {/* Project name (shorter truncation) */}
       <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
@@ -335,9 +355,12 @@ function CompactHeader({
 
       {/* Context % */}
       <span
-        className={cn('text-[10px] font-mono tabular-nums flex-shrink-0', contextColor(ctxPct))}
+        className={cn(
+          'text-[10px] font-mono tabular-nums flex-shrink-0',
+          ctxPct != null ? contextColor(ctxPct) : 'text-zinc-400 dark:text-zinc-500',
+        )}
       >
-        {ctxPct}%
+        {ctxPct != null ? `${ctxPct}%` : '\u2014'}
       </span>
 
       {/* Turn count */}
@@ -353,6 +376,7 @@ function CompactHeader({
 
       {/* Expand only in compact mode */}
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation()
           onExpand()
@@ -373,7 +397,7 @@ function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => 
     session.currentActivity ||
     (session.lastUserMessage ? cleanPreviewText(session.lastUserMessage) : '') ||
     ''
-  const truncatedActivity = activity.length > 40 ? activity.slice(0, 37) + '...' : activity
+  const truncatedActivity = activity.length > 40 ? `${activity.slice(0, 37)}...` : activity
 
   return (
     <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] text-[10px] text-gray-400 dark:text-[#6E7681]">

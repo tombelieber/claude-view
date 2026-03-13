@@ -54,14 +54,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
   }, [session.id])
 
   const contextPercent =
-    session.statuslineUsedPct != null
-      ? Math.min(100, Math.round(session.statuslineUsedPct))
-      : Math.min(
-          100,
-          Math.round(
-            (session.contextWindowTokens / (session.statuslineContextWindowSize ?? 200_000)) * 100,
-          ),
-        )
+    session.statuslineUsedPct != null ? Math.min(100, Math.round(session.statuslineUsedPct)) : null
   const totalCost = sessionTotalCost(session)
   const showUnavailableCost = hasUnavailableCost(
     totalCost,
@@ -88,6 +81,11 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
       <div
         className="absolute inset-0 bg-black/40 dark:bg-[#010409]/80 backdrop-blur-sm"
         onClick={onClose}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose()
+        }}
+        role="button"
+        tabIndex={-1}
       />
 
       {/* Panel */}
@@ -131,6 +129,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           <StateBadge agentState={session.agentState} />
 
           <button
+            type="button"
             onClick={copySessionId}
             title={`Copy session ID: ${session.id}`}
             className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
@@ -153,7 +152,11 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             Turn {session.turnCount}
           </span>
           <div className="w-16">
-            <ContextBar percent={contextPercent} />
+            {contextPercent != null ? (
+              <ContextBar percent={contextPercent} />
+            ) : (
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">&mdash;</span>
+            )}
           </div>
 
           {/* Chat / Debug + Rich / JSON */}
@@ -161,6 +164,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
           {/* Close */}
           <button
+            type="button"
             onClick={onClose}
             className="p-1 rounded text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] hover:bg-gray-200 dark:hover:bg-[#30363D] transition-colors"
             aria-label="Close terminal overlay"

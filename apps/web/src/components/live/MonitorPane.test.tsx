@@ -16,6 +16,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       group: 'autonomous',
       state: 'tool_use',
       label: 'Working',
+      context: null,
     },
     gitBranch,
     worktreeBranch: null,
@@ -29,11 +30,15 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     startedAt: 1700000000,
     lastActivityAt: 1700001000,
     model: 'claude-sonnet-4-20250514',
+    currentTurnStartedAt: null,
+    lastTurnTaskSeconds: null,
     tokens: {
       inputTokens: 50000,
       outputTokens: 10000,
       cacheReadTokens: 30000,
       cacheCreationTokens: 5000,
+      cacheCreation5mTokens: 0,
+      cacheCreation1hrTokens: 0,
       totalTokens: 95000,
     },
     contextWindowTokens: 120000,
@@ -53,8 +58,17 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
       totalCostSource: 'computed_priced_tokens_full',
     },
     cacheStatus: 'warm',
+    subAgents: [],
+    teamName: null,
+    progressItems: [],
+    toolsUsed: [],
+    lastCacheHitAt: null,
+    compactCount: 0,
+    slug: null,
     closedAt: null,
+    control: null,
     editCount: 0,
+    hookEvents: [],
     ...overrides,
   }
 }
@@ -148,12 +162,20 @@ describe('MonitorPane', () => {
       expect(screen.getByText('Unavailable')).toBeInTheDocument()
     })
 
-    it('renders context percentage with sky color when low', () => {
+    it('shows dash when no statusline data', () => {
       renderMonitorPane({
         session: createMockSession({ contextWindowTokens: 40000 }),
       })
 
-      // 40000 / 200000 = 20%
+      // No statuslineUsedPct → shows dash
+      expect(screen.getByText('\u2014')).toBeInTheDocument()
+    })
+
+    it('renders context percentage from statusline with sky color when low', () => {
+      renderMonitorPane({
+        session: createMockSession({ statuslineUsedPct: 20 }),
+      })
+
       const ctxEl = screen.getByText('20% ctx')
       expect(ctxEl).toBeInTheDocument()
       expect(ctxEl.className).toContain('text-sky-400')
@@ -161,10 +183,9 @@ describe('MonitorPane', () => {
 
     it('renders context percentage with amber color when moderate', () => {
       renderMonitorPane({
-        session: createMockSession({ contextWindowTokens: 160000 }),
+        session: createMockSession({ statuslineUsedPct: 80 }),
       })
 
-      // 160000 / 200000 = 80%, hits >= 75 amber zone
       const ctxEl = screen.getByText('80% ctx')
       expect(ctxEl).toBeInTheDocument()
       expect(ctxEl.className).toContain('text-amber-400')
@@ -172,10 +193,9 @@ describe('MonitorPane', () => {
 
     it('renders context percentage with red color when high', () => {
       renderMonitorPane({
-        session: createMockSession({ contextWindowTokens: 190000 }),
+        session: createMockSession({ statuslineUsedPct: 95 }),
       })
 
-      // 190000 / 200000 = 95%, hits > 90 red zone
       const ctxEl = screen.getByText('95% ctx')
       expect(ctxEl).toBeInTheDocument()
       expect(ctxEl.className).toContain('text-red-400')
