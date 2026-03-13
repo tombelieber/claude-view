@@ -23,16 +23,67 @@ use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
+use super::file_resolver::resolve_file_path;
 use super::process::{count_claude_processes, is_pid_alive};
 use super::state::{
-    append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, HookEvent,
-    LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
-    MAX_HOOK_EVENTS_PER_SESSION,
+    append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
+    HookEvent, LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
+    VerifiedFile, MAX_HOOK_EVENTS_PER_SESSION,
 };
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
 /// Type alias for the shared session map used by both the manager and route handlers.
 pub type LiveSessionMap = Arc<RwLock<HashMap<String, LiveSession>>>;
+
+/// Type alias for the transcript path → session ID dedup map.
+/// Shared between `LiveSessionManager` (cleanup on PID death) and `AppState` (statusline handler).
+pub type TranscriptMap = Arc<RwLock<HashMap<PathBuf, String>>>;
+
+/// Resolve accumulated raw file references (at_files + pasted_paths) into VerifiedFiles.
+/// Deduplicates by absolute path, caps at 10 total entries.
+fn resolve_accumulated_files(
+    at_files: &std::collections::HashSet<String>,
+    pasted_paths: &std::collections::HashSet<String>,
+    cwd: Option<&str>,
+    project_dir: Option<&str>,
+) -> Option<Vec<VerifiedFile>> {
+    let mut seen = std::collections::HashSet::new();
+    let mut resolved = Vec::new();
+
+    // Resolve @file mentions first
+    let mut sorted_at: Vec<_> = at_files.iter().cloned().collect();
+    sorted_at.sort();
+    for raw in &sorted_at {
+        if resolved.len() >= 10 {
+            break;
+        }
+        if let Some(vf) = resolve_file_path(raw, FileSourceKind::Mention, cwd, project_dir) {
+            if seen.insert(vf.path.clone()) {
+                resolved.push(vf);
+            }
+        }
+    }
+
+    // Then pasted absolute paths
+    let mut sorted_pasted: Vec<_> = pasted_paths.iter().cloned().collect();
+    sorted_pasted.sort();
+    for raw in &sorted_pasted {
+        if resolved.len() >= 10 {
+            break;
+        }
+        if let Some(vf) = resolve_file_path(raw, FileSourceKind::Pasted, cwd, project_dir) {
+            if seen.insert(vf.path.clone()) {
+                resolved.push(vf);
+            }
+        }
+    }
+
+    if resolved.is_empty() {
+        None
+    } else {
+        Some(resolved)
+    }
+}
 
 /// Accumulated per-session state that persists across tail polls.
 struct SessionAccumulator {
@@ -52,8 +103,6 @@ struct SessionAccumulator {
     first_user_message: String,
     /// The last user message content (truncated).
     last_user_message: String,
-    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
-    last_user_file: Option<String>,
     /// Git branch name extracted from user messages.
     git_branch: Option<String>,
     /// Latest cwd from user messages (for worktree branch resolution).
@@ -116,7 +165,6 @@ impl SessionAccumulator {
             user_turn_count: 0,
             first_user_message: String::new(),
             last_user_message: String::new(),
-            last_user_file: None,
             git_branch: None,
             latest_cwd: None,
             started_at: None,
@@ -154,7 +202,6 @@ struct JsonlMetadata {
     pid: Option<u32>,
     title: String,
     last_user_message: String,
-    last_user_file: Option<String>,
     turn_count: u32,
     started_at: Option<i64>,
     last_activity_at: i64,
@@ -172,8 +219,7 @@ struct JsonlMetadata {
     tools_used: Vec<super::state::ToolUsed>,
     compact_count: u32,
     slug: Option<String>,
-    user_files: Option<Vec<String>>,
-    pasted_paths: Vec<String>,
+    user_files: Option<Vec<super::state::VerifiedFile>>,
     edit_count: u32,
 }
 
@@ -208,7 +254,6 @@ fn build_recovered_session(
         pid: Some(entry.pid),
         title: String::new(),
         last_user_message: String::new(),
-        last_user_file: None,
         current_activity: entry.agent_state.label.clone(),
         turn_count: 0,
         started_at: None,
@@ -377,9 +422,6 @@ fn apply_jsonl_metadata(
     if !m.last_user_message.is_empty() {
         session.last_user_message = m.last_user_message.clone();
     }
-    if m.last_user_file.is_some() {
-        session.last_user_file = m.last_user_file.clone();
-    }
     session.turn_count = m.turn_count;
     if m.started_at.is_some() {
         session.started_at = m.started_at;
@@ -433,13 +475,15 @@ pub struct LiveSessionManager {
     sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
     /// Teams store for embedding team members in SSE payloads.
     teams: Arc<crate::teams::TeamsStore>,
+    /// Transcript path → session ID dedup map, shared with AppState.
+    transcript_to_session: TranscriptMap,
 }
 
 impl LiveSessionManager {
     /// Start the live session manager and all background tasks.
     ///
-    /// Returns the manager, a shared session map for route handlers, and the
-    /// broadcast sender for SSE event streaming.
+    /// Returns the manager, a shared session map, the transcript dedup map,
+    /// and the broadcast sender for SSE event streaming.
     pub fn start(
         pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
         db: Database,
@@ -447,9 +491,15 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
-    ) -> (Arc<Self>, LiveSessionMap, broadcast::Sender<SessionEvent>) {
+    ) -> (
+        Arc<Self>,
+        LiveSessionMap,
+        TranscriptMap,
+        broadcast::Sender<SessionEvent>,
+    ) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+        let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
 
         // Debounced snapshot writer channel (bounded to 1 — extra signals are coalesced)
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(1);
@@ -467,6 +517,7 @@ impl LiveSessionManager {
             snapshot_tx,
             sidecar,
             teams,
+            transcript_to_session: transcript_to_session.clone(),
         });
 
         // Spawn background tasks
@@ -484,7 +535,7 @@ impl LiveSessionManager {
 
         info!("LiveSessionManager started with 5 background tasks (file watcher, reconciliation loop, cleanup, relay client, db writer)");
 
-        (manager, sessions, tx)
+        (manager, sessions, transcript_to_session, tx)
     }
 
     /// Subscribe to session events for SSE streaming.
@@ -557,7 +608,6 @@ impl LiveSessionManager {
             pid: None, // hooks own PID binding
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
-            last_user_file: acc.last_user_file.clone(),
             turn_count: acc.user_turn_count,
             started_at: acc.started_at,
             last_activity_at,
@@ -598,18 +648,12 @@ impl LiveSessionManager {
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
             slug: acc.slug.clone(),
-            user_files: if acc.at_files.is_empty() {
-                None
-            } else {
-                let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
-                files.sort();
-                Some(files)
-            },
-            pasted_paths: {
-                let mut paths: Vec<String> = acc.pasted_paths.iter().cloned().collect();
-                paths.sort();
-                paths
-            },
+            user_files: resolve_accumulated_files(
+                &acc.at_files,
+                &acc.pasted_paths,
+                acc.resolved_cwd.as_deref(),
+                acc.project_path.as_deref(),
+            ),
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
         drop(accumulators);
@@ -915,7 +959,6 @@ impl LiveSessionManager {
                                     pid: Some(entry.pid),
                                     title: acc.first_user_message.clone(),
                                     last_user_message: acc.last_user_message.clone(),
-                                    last_user_file: acc.last_user_file.clone(),
                                     turn_count: acc.user_turn_count,
                                     started_at: acc.started_at,
                                     last_activity_at: entry.last_activity_at,
@@ -958,20 +1001,12 @@ impl LiveSessionManager {
                                     last_cache_hit_at: acc.last_cache_hit_at,
                                     compact_count: acc.compact_count,
                                     slug: acc.slug.clone(),
-                                    user_files: if acc.at_files.is_empty() {
-                                        None
-                                    } else {
-                                        let mut files: Vec<String> =
-                                            acc.at_files.iter().cloned().collect();
-                                        files.sort();
-                                        Some(files)
-                                    },
-                                    pasted_paths: {
-                                        let mut paths: Vec<String> =
-                                            acc.pasted_paths.iter().cloned().collect();
-                                        paths.sort();
-                                        paths
-                                    },
+                                    user_files: resolve_accumulated_files(
+                                        &acc.at_files,
+                                        &acc.pasted_paths,
+                                        acc.resolved_cwd.as_deref(),
+                                        acc.project_path.as_deref(),
+                                    ),
                                     edit_count: acc.tool_counts_edit + acc.tool_counts_write,
                                 };
                                 drop(accumulators);
@@ -1336,6 +1371,7 @@ impl LiveSessionManager {
                 // Phase 1: Lightweight liveness check (every tick = 10s)
                 // =============================================================
                 let mut dead_sessions: Vec<String> = Vec::new();
+                let mut transcript_paths_to_clean: Vec<PathBuf> = Vec::new();
                 let mut snapshot_dirty = false;
 
                 {
@@ -1367,6 +1403,10 @@ impl LiveSessionManager {
                                     .as_secs() as i64;
                                 session.closed_at = Some(now);
                                 session.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
+                                                             // Collect transcript path for dedup map cleanup
+                                if let Some(ref tp) = session.statusline_transcript_path {
+                                    transcript_paths_to_clean.push(PathBuf::from(tp));
+                                }
                                 dead_sessions.push(session_id.clone());
                                 snapshot_dirty = true;
                                 continue;
@@ -1385,6 +1425,15 @@ impl LiveSessionManager {
                     let mut accumulators = manager.accumulators.write().await;
                     for session_id in &dead_sessions {
                         accumulators.remove(session_id);
+                    }
+                }
+
+                // Clean transcript dedup map for dead sessions
+                // (lock ordering: transcript_to_session acquired AFTER live_sessions released)
+                if !transcript_paths_to_clean.is_empty() {
+                    let mut tmap = manager.transcript_to_session.write().await;
+                    for path in &transcript_paths_to_clean {
+                        tmap.remove(path);
                     }
                 }
 
@@ -1783,8 +1832,11 @@ impl LiveSessionManager {
                         acc.first_user_message = line.content_preview.clone();
                     }
                     acc.last_user_message = line.content_preview.clone();
-                    if line.ide_file.is_some() {
-                        acc.last_user_file = line.ide_file.clone();
+                }
+                // Accumulate IDE opened files (first-N-wins, merged into at_files)
+                if let Some(ref ide_file) = line.ide_file {
+                    if acc.at_files.len() < 10 {
+                        acc.at_files.insert(ide_file.clone());
                     }
                 }
                 // Accumulate @file mentions (first-N-wins, cap at 10)
@@ -2150,7 +2202,6 @@ impl LiveSessionManager {
             pid: None,
             title: acc.first_user_message.clone(),
             last_user_message: acc.last_user_message.clone(),
-            last_user_file: acc.last_user_file.clone(),
             turn_count: acc.user_turn_count,
             started_at: acc.started_at,
             last_activity_at,
@@ -2191,18 +2242,12 @@ impl LiveSessionManager {
             last_cache_hit_at: acc.last_cache_hit_at,
             compact_count: acc.compact_count,
             slug: acc.slug.clone(),
-            user_files: if acc.at_files.is_empty() {
-                None
-            } else {
-                let mut files: Vec<String> = acc.at_files.iter().cloned().collect();
-                files.sort();
-                Some(files)
-            },
-            pasted_paths: {
-                let mut paths: Vec<String> = acc.pasted_paths.iter().cloned().collect();
-                paths.sort();
-                paths
-            },
+            user_files: resolve_accumulated_files(
+                &acc.at_files,
+                &acc.pasted_paths,
+                acc.resolved_cwd.as_deref(),
+                acc.project_path.as_deref(),
+            ),
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
         };
 
@@ -2947,6 +2992,55 @@ mod tests {
         let state = derive_agent_state_from_jsonl(&path).await;
         assert!(state.is_none());
     }
+
+    #[test]
+    fn transcript_dedup_detects_duplicate_session_ids() {
+        let transcript = PathBuf::from("/tmp/sessions/abc.jsonl");
+        let mut transcript_map: HashMap<PathBuf, String> = HashMap::new();
+
+        // First session registers its transcript
+        transcript_map.insert(transcript.clone(), "old-uuid".to_string());
+
+        // Second session arrives with same transcript but different ID
+        let new_id = "new-uuid";
+        let dedup_target = transcript_map
+            .get(&transcript)
+            .filter(|existing| existing.as_str() != new_id)
+            .cloned();
+
+        assert_eq!(
+            dedup_target,
+            Some("old-uuid".to_string()),
+            "dedup must identify the older session for merging"
+        );
+
+        // Same session ID re-registering should NOT trigger dedup
+        let same_id_target = transcript_map
+            .get(&transcript)
+            .filter(|existing| existing.as_str() != "old-uuid")
+            .cloned();
+        assert_eq!(
+            same_id_target, None,
+            "same session re-registering must not trigger dedup"
+        );
+    }
+
+    #[test]
+    fn transcript_dedup_different_transcripts_no_collision() {
+        let mut transcript_map: HashMap<PathBuf, String> = HashMap::new();
+        transcript_map.insert(PathBuf::from("/tmp/a.jsonl"), "session-1".to_string());
+        transcript_map.insert(PathBuf::from("/tmp/b.jsonl"), "session-2".to_string());
+
+        assert_eq!(transcript_map.len(), 2);
+        assert_eq!(
+            transcript_map.get(&PathBuf::from("/tmp/a.jsonl")).unwrap(),
+            "session-1"
+        );
+        assert_eq!(
+            transcript_map.get(&PathBuf::from("/tmp/b.jsonl")).unwrap(),
+            "session-2"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3338,7 +3432,6 @@ mod hook_event_tests {
             pid: None,
             title: "Test".into(),
             last_user_message: String::new(),
-            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 0,
             started_at: None,
@@ -3393,7 +3486,6 @@ mod hook_event_tests {
             pid: None,
             title: String::new(),
             last_user_message: String::new(),
-            last_user_file: None,
             turn_count: 0,
             started_at: None,
             last_activity_at: 0,
@@ -3412,7 +3504,6 @@ mod hook_event_tests {
             compact_count: 0,
             slug: None,
             user_files: None,
-            pasted_paths: Vec::new(),
             edit_count: 0,
         }
     }

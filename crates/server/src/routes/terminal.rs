@@ -1206,6 +1206,9 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         // Register the session in the live sessions map
@@ -1232,7 +1235,6 @@ mod tests {
                 pid: None,
                 title: "Test session".to_string(),
                 last_user_message: "test".to_string(),
-                last_user_file: None,
                 current_activity: "testing".to_string(),
                 turn_count: 0,
                 started_at: None,
@@ -1433,6 +1435,9 @@ mod tests {
             available_ides: Vec::new(),
             monitor_tx: tokio::sync::broadcast::channel(64).0,
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

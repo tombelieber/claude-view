@@ -549,7 +549,6 @@ mod tests {
             pid: None,
             title: "Test session".into(),
             last_user_message: String::new(),
-            last_user_file: None,
             current_activity: "Working".into(),
             turn_count: 5,
             started_at: Some(1000),

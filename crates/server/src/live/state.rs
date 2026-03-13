@@ -82,6 +82,44 @@ pub struct ToolUsed {
     pub kind: String,
 }
 
+/// A verified file reference detected from user messages.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifiedFile {
+    /// Absolute path (verified to exist via stat()).
+    pub path: String,
+    /// How this file was detected.
+    pub kind: FileSourceKind,
+    /// Project-relative path for UI display.
+    pub display_name: String,
+}
+
+/// How a file reference was detected in user messages.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FileSourceKind {
+    /// @file mention in user message.
+    Mention,
+    /// <ide_opened_file> tag from IDE.
+    Ide,
+    /// Bare absolute path pasted in message.
+    Pasted,
+}
+
 fn is_zero_u32(v: &u32) -> bool {
     *v == 0
 }
@@ -126,8 +164,6 @@ pub struct LiveSession {
     pub title: String,
     /// The last user message text (truncated for display).
     pub last_user_message: String,
-    /// Filename from `<ide_opened_file>` tag in the last user message, if present.
-    pub last_user_file: Option<String>,
     /// Human-readable description of the current activity.
     pub current_activity: String,
     /// Number of user/assistant turn pairs.
@@ -195,10 +231,10 @@ pub struct LiveSession {
     pub compact_count: u32,
     /// Session slug for plan file association.
     pub slug: Option<String>,
-    /// Files referenced with `@filename` syntax in user messages.
-    /// Deduplicated set across session lifetime (≤10, first-N-wins).
+    /// Verified file references detected from user messages.
+    /// Deduplicated by absolute path across session lifetime (≤10, first-N-wins).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user_files: Option<Vec<String>>,
+    pub user_files: Option<Vec<VerifiedFile>>,
     /// Unix timestamp when this session's process exited (None = still running).
     /// Set by reconciliation loop or SessionEnd hook. Used by frontend for
     /// "closed Xm ago" display and by recently-closed persistence.
@@ -439,7 +475,6 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         pid: None,
         title: "Test session".into(),
         last_user_message: String::new(),
-        last_user_file: None,
         current_activity: "Working".into(),
         turn_count: 5,
         started_at: Some(1000),
@@ -493,6 +528,32 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verified_file_serializes_to_camel_case() {
+        let file = VerifiedFile {
+            path: "/Users/dev/project/src/auth.rs".into(),
+            kind: FileSourceKind::Mention,
+            display_name: "src/auth.rs".into(),
+        };
+        let json = serde_json::to_value(&file).unwrap();
+        assert_eq!(json["path"], "/Users/dev/project/src/auth.rs");
+        assert_eq!(json["kind"], "mention");
+        assert_eq!(json["displayName"], "src/auth.rs");
+    }
+
+    #[test]
+    fn file_source_kind_serializes_as_snake_case() {
+        assert_eq!(
+            serde_json::to_value(FileSourceKind::Mention).unwrap(),
+            "mention"
+        );
+        assert_eq!(serde_json::to_value(FileSourceKind::Ide).unwrap(), "ide");
+        assert_eq!(
+            serde_json::to_value(FileSourceKind::Pasted).unwrap(),
+            "pasted"
+        );
+    }
 
     #[test]
     fn test_status_from_autonomous_acting() {
