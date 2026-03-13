@@ -84,7 +84,11 @@ export function ChatPage() {
   }, [])
 
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
-  const inputBarState = deriveInputBarState(sessionInfo.sessionState, sessionInfo.isLive)
+  const inputBarState = deriveInputBarState(
+    sessionInfo.sessionState,
+    sessionInfo.isLive,
+    sessionInfo.canResumeLazy,
+  )
 
   // Context gauge from live WS token data
   const contextWindow = getContextLimit(

@@ -113,6 +113,7 @@ export function ConversationView() {
 
   // Unified conversation hook: blocks + actions + session state
   const { blocks, actions, sessionInfo: convInfo } = useConversation(sessionId)
+  // history is wired for scroll-up pagination (see useScrollAnchor in Task 5)
   const { isLive, sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
@@ -370,7 +371,7 @@ export function ConversationView() {
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // Derived UI state from new hook
-  const inputBarState = deriveInputBarState(sessionState, isLive)
+  const inputBarState = deriveInputBarState(sessionState, isLive, convInfo.canResumeLazy)
   const connectionHealth = deriveConnectionHealth(sessionState)
 
   // ----- Early returns -----
