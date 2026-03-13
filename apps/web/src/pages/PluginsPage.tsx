@@ -1,5 +1,5 @@
 import { Blocks, TrendingUp } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AvailableSection } from '../components/plugins/AvailableSection'
 import { InstalledPluginsSection } from '../components/plugins/InstalledPluginsSection'
 import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
@@ -16,20 +16,50 @@ export function PluginsPage() {
   const [source, setSource] = useState<string | undefined>()
   const [kind, setKind] = useState<string | undefined>('plugin')
 
-  // Debounce search to avoid thrashing the API
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(id)
-  }, [search])
-
   const { data } = usePlugins({
-    search: debouncedSearch || undefined,
     scope,
     source,
     kind,
     sort: 'installs',
   })
+
+  // Frontend-only name filter — instant, no API round-trip
+  const needle = search.toLowerCase()
+  const filteredInstalled = useMemo(
+    () =>
+      needle
+        ? (data?.installed ?? []).filter((p) => p.name.toLowerCase().includes(needle))
+        : (data?.installed ?? []),
+    [data?.installed, needle],
+  )
+  const filteredAvailable = useMemo(
+    () =>
+      needle
+        ? (data?.available ?? []).filter((p) => p.name.toLowerCase().includes(needle))
+        : (data?.available ?? []),
+    [data?.available, needle],
+  )
+  const filteredSkills = useMemo(
+    () =>
+      needle
+        ? (data?.userSkills ?? []).filter((i) => i.name.toLowerCase().includes(needle))
+        : (data?.userSkills ?? []),
+    [data?.userSkills, needle],
+  )
+  const filteredCommands = useMemo(
+    () =>
+      needle
+        ? (data?.userCommands ?? []).filter((i) => i.name.toLowerCase().includes(needle))
+        : (data?.userCommands ?? []),
+    [data?.userCommands, needle],
+  )
+  const filteredAgents = useMemo(
+    () =>
+      needle
+        ? (data?.userAgents ?? []).filter((i) => i.name.toLowerCase().includes(needle))
+        : (data?.userAgents ?? []),
+    [data?.userAgents, needle],
+  )
 
   const mutations = usePluginMutations()
 
@@ -127,37 +157,36 @@ export function PluginsPage() {
       {/* Content sections */}
       <div className="px-7 py-5 flex flex-col gap-7">
         {/* Skills section — only when kind is undefined or 'skill' */}
-        {(!kind || kind === 'skill') && (data.userSkills?.length ?? 0) > 0 && (
-          <UserItemSection title="Skills" items={data.userSkills} pathPrefix="~/.claude/skills/" />
+        {(!kind || kind === 'skill') && filteredSkills.length > 0 && (
+          <UserItemSection title="Skills" items={filteredSkills} pathPrefix="~/.claude/skills/" />
         )}
         {/* Commands section */}
-        {(!kind || kind === 'command') && (data.userCommands?.length ?? 0) > 0 && (
+        {(!kind || kind === 'command') && filteredCommands.length > 0 && (
           <UserItemSection
             title="Commands"
-            items={data.userCommands}
+            items={filteredCommands}
             pathPrefix="~/.claude/commands/"
           />
         )}
         {/* Agents section */}
-        {(!kind || kind === 'agent') && (data.userAgents?.length ?? 0) > 0 && (
-          <UserItemSection title="Agents" items={data.userAgents} pathPrefix="~/.claude/agents/" />
+        {(!kind || kind === 'agent') && filteredAgents.length > 0 && (
+          <UserItemSection title="Agents" items={filteredAgents} pathPrefix="~/.claude/agents/" />
         )}
         {/* Installed plugins — shown for 'plugin', 'mcp_tool', or all */}
-        {(!kind || kind === 'plugin' || kind === 'mcp_tool') &&
-          (data.installed?.length ?? 0) > 0 && (
-            <InstalledPluginsSection
-              plugins={data.installed}
-              onAction={handleAction}
-              isPending={mutations.isPending}
-              marketplaces={data.marketplaces}
-            />
-          )}
+        {(!kind || kind === 'plugin' || kind === 'mcp_tool') && filteredInstalled.length > 0 && (
+          <InstalledPluginsSection
+            plugins={filteredInstalled}
+            onAction={handleAction}
+            pendingName={mutations.pendingName}
+            marketplaces={data.marketplaces}
+          />
+        )}
         {/* Available plugins — only for 'plugin' or all */}
-        {(!kind || kind === 'plugin') && (data.available?.length ?? 0) > 0 && (
+        {(!kind || kind === 'plugin') && filteredAvailable.length > 0 && (
           <AvailableSection
-            plugins={data.available}
+            plugins={filteredAvailable}
             onInstall={(name, scope) => handleAction('install', name, scope)}
-            isPending={mutations.isPending}
+            pendingName={mutations.pendingName}
             marketplaces={data.marketplaces}
           />
         )}
