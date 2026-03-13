@@ -28,7 +28,9 @@ import { useConversation } from '../../hooks/use-conversation'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
+import { useModelOptions } from '../../hooks/use-models'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
+import { useSessionCapabilities } from '../../hooks/use-session-capabilities'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
 import { deriveInputBarState } from '../../lib/control-status-map'
@@ -179,6 +181,10 @@ export function SessionDetailPanel({
     actions: convActions,
     sessionInfo: convInfo,
   } = useConversation(data.id)
+
+  // Command palette capabilities
+  const sdpCapabilities = useSessionCapabilities(convInfo)
+  const { options: sdpModelOptions } = useModelOptions()
 
   // Build ControlCallbacks from convActions for RichPane interactive cards
   const controlCallbacks = useMemo(
@@ -803,6 +809,9 @@ export function SessionDetailPanel({
                   convInfo.canResumeLazy,
                 )}
                 contextPercent={0}
+                capabilities={sdpCapabilities}
+                modelOptions={sdpModelOptions}
+                onCommand={(cmd) => convActions.sendMessage(`/${cmd}`)}
               />
             )}
           </div>
