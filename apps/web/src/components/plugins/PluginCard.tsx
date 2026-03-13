@@ -216,22 +216,38 @@ export function PluginCard({ plugin, onAction, isPending }: PluginCardProps) {
         </div>
       )}
 
-      {/* Orphan block */}
+      {/* Error block — source_exists from backend is the authoritative signal:
+          false = files missing (truly orphaned), true = CLI validation failure (files intact) */}
       {plugin.errors.length > 0 && (
         <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
-          <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
-          <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
-            Source path missing. Can't update or verify.
-          </div>
+          {plugin.sourceExists ? (
+            <>
+              <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">
+                CLI verification issue
+              </div>
+              <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                Plugin files are intact. The CLI can't verify it against a marketplace catalog.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
+              <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                Source directory missing. Can't update or run.
+              </div>
+            </>
+          )}
           <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => onAction('reinstall', plugin.name, plugin.scope)}
-              disabled={isPending}
-              className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
-            >
-              Reinstall
-            </button>
+            {!plugin.sourceExists && (
+              <button
+                type="button"
+                onClick={() => onAction('install', plugin.name, plugin.scope)}
+                disabled={isPending}
+                className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
+              >
+                Reinstall
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onAction('uninstall', plugin.name, plugin.scope, plugin.projectPath)}

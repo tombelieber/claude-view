@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 import { PluginCard } from '../PluginCard'
 
@@ -24,6 +24,7 @@ const basePlugin = {
   duplicateMarketplaces: ['claude-plugins-official'],
   updatable: false,
   errors: [],
+  sourceExists: true,
   description: null,
   installCount: null,
 }
@@ -35,23 +36,50 @@ test('shows clear conflict message not "Also from"', () => {
   expect(screen.getByText(/This version runs/)).toBeInTheDocument()
 })
 
-const orphanPlugin = {
+// Local plugin: errors reported by CLI but installPath exists on disk (sourceExists=true)
+const localErrorPlugin = {
   ...basePlugin,
   duplicateMarketplaces: [],
-  errors: ['Source path missing'],
+  errors: ['Plugin wtf not found in marketplace local'],
+  sourceExists: true,
 }
 
-test('shows orphan block with Reinstall and Remove buttons', () => {
-  render(<PluginCard plugin={orphanPlugin} onAction={() => {}} isPending={false} />)
+test('plugin with errors but intact source shows "CLI verification issue", no Reinstall', () => {
+  render(<PluginCard plugin={localErrorPlugin} onAction={() => {}} isPending={false} />)
+  expect(screen.queryByText(/Orphaned install/)).not.toBeInTheDocument()
+  expect(screen.getByText(/CLI verification issue/)).toBeInTheDocument()
+  expect(screen.getByText(/files are intact/)).toBeInTheDocument()
+  expect(screen.queryByText('Reinstall')).not.toBeInTheDocument()
+  expect(screen.getByText('Remove')).toBeInTheDocument()
+})
+
+test('intact-source Remove button calls uninstall', () => {
+  const onAction = vi.fn()
+  render(<PluginCard plugin={localErrorPlugin} onAction={onAction} isPending={false} />)
+  fireEvent.click(screen.getByText('Remove'))
+  expect(onAction).toHaveBeenCalledWith('uninstall', 'test', 'user', null)
+})
+
+// Truly orphaned: installPath deleted, sourceExists=false
+const trueOrphanPlugin = {
+  ...basePlugin,
+  marketplace: 'claude-plugins-official',
+  duplicateMarketplaces: [],
+  errors: ['Source path missing'],
+  sourceExists: false,
+}
+
+test('truly orphaned plugin (sourceExists=false) shows "Orphaned install" with Reinstall', () => {
+  render(<PluginCard plugin={trueOrphanPlugin} onAction={() => {}} isPending={false} />)
   expect(screen.getByText('Orphaned install')).toBeInTheDocument()
-  expect(screen.getByText("Source path missing. Can't update or verify.")).toBeInTheDocument()
+  expect(screen.getByText(/Source directory missing/)).toBeInTheDocument()
   expect(screen.getByText('Reinstall')).toBeInTheDocument()
   expect(screen.getByText('Remove')).toBeInTheDocument()
 })
 
-test('orphan Reinstall button calls onAction with reinstall', () => {
+test('orphan Reinstall button calls install action', () => {
   const onAction = vi.fn()
-  render(<PluginCard plugin={orphanPlugin} onAction={onAction} isPending={false} />)
-  screen.getByText('Reinstall').click()
-  expect(onAction).toHaveBeenCalledWith('reinstall', 'test', 'user')
+  render(<PluginCard plugin={trueOrphanPlugin} onAction={onAction} isPending={false} />)
+  fireEvent.click(screen.getByText('Reinstall'))
+  expect(onAction).toHaveBeenCalledWith('install', 'test', 'user')
 })

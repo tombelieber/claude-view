@@ -27,6 +27,12 @@ export type PluginInfo = {
   updatable: boolean
   errors: Array<string>
   /**
+   * True when the plugin's install directory exists on disk.
+   * False = truly orphaned (files deleted/moved).
+   * True + errors = CLI validation failure (catalog mismatch), but files are intact.
+   */
+  sourceExists: boolean
+  /**
    * Description from the marketplace listing (mirrors AvailablePlugin).
    */
   description: string | null
