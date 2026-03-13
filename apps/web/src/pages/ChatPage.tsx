@@ -6,7 +6,9 @@ import { ConversationThread } from '../components/conversation/ConversationThrea
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
+import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
+import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { deriveInputBarState } from '../lib/control-status-map'
 import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
@@ -45,7 +47,13 @@ export function ChatPage() {
   const navigate = useNavigate()
   const { sessionId } = useParams<{ sessionId?: string }>()
 
-  const { blocks, actions, sessionInfo } = useConversation(sessionId)
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
+
+  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
+    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
+    isFetchingOlder: history.isFetchingOlder,
+    blockCount: blocks.length,
+  })
 
   // Model selection persisted in localStorage (used at session creation)
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -84,7 +92,11 @@ export function ChatPage() {
   }, [])
 
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
-  const inputBarState = deriveInputBarState(sessionInfo.sessionState, sessionInfo.isLive)
+  const inputBarState = deriveInputBarState(
+    sessionInfo.sessionState,
+    sessionInfo.isLive,
+    sessionInfo.canResumeLazy,
+  )
 
   // Context gauge from live WS token data
   const contextWindow = getContextLimit(
@@ -147,7 +159,22 @@ export function ChatPage() {
         </div>
 
         {/* Thread */}
-        <div className="flex-1 overflow-y-auto">
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          {/* Top sentinel for infinite scroll */}
+          <div ref={topSentinelRef} className="h-1" />
+          {history.isFetchingOlder && (
+            <div className="flex justify-center py-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+            </div>
+          )}
+          {history.error && (
+            <div className="flex justify-center py-3 text-sm text-red-500">
+              Failed to load messages.{' '}
+              <button type="button" onClick={history.fetchOlderMessages} className="underline">
+                Retry
+              </button>
+            </div>
+          )}
           {blocks.length === 0 ? (
             <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
               <div className="text-center">
@@ -162,9 +189,13 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6">
-              <ConversationThread blocks={blocks} renderers={registry} />
+              <ConversationActionsProvider actions={{ retryMessage: actions.retryMessage }}>
+                <ConversationThread blocks={blocks} renderers={registry} />
+              </ConversationActionsProvider>
             </div>
           )}
+          {/* Bottom anchor for auto-scroll */}
+          <div ref={bottomRef} />
         </div>
 
         {/* Input */}
