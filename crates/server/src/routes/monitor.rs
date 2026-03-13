@@ -17,9 +17,23 @@ use axum::{
 };
 
 use crate::live::monitor::{
-    collect_snapshot, collect_system_info, start_polling_task, ResourceSnapshot, SystemInfo,
+    collect_snapshot, collect_system_info, start_polling_task, MonitorEvent, ResourceSnapshot,
+    SystemInfo,
 };
 use crate::state::AppState;
+
+/// RAII guard that decrements the monitor subscriber count when dropped.
+///
+/// Guarantees the count is always decremented even if the SSE stream future
+/// is dropped mid-way (e.g. client disconnect during the initial snapshot).
+struct SubscriberGuard(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Drop for SubscriberGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+        tracing::debug!("monitor SSE client disconnected");
+    }
+}
 
 /// Build the monitor sub-router.
 ///
@@ -68,6 +82,9 @@ async fn monitor_stream(
     if prev == 0 {
         start_polling_task(tx.clone(), subscribers.clone(), live_sessions.clone());
     }
+    // Guard lives outside the stream so it's dropped on any exit path —
+    // normal completion, client disconnect, or panic.
+    let _guard = SubscriberGuard(subscribers.clone());
 
     let mut rx = tx.subscribe();
 
@@ -112,10 +129,16 @@ async fn monitor_stream(
             tokio::select! {
                 event = rx.recv() => {
                     match event {
-                        Ok(snapshot) => {
+                        Ok(MonitorEvent::Snapshot(snapshot)) => {
                             match serde_json::to_string(&snapshot) {
                                 Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
                                 Err(e) => tracing::error!("failed to serialize snapshot: {e}"),
+                            }
+                        }
+                        Ok(MonitorEvent::ProcessTree(tree)) => {
+                            match serde_json::to_string(&tree) {
+                                Ok(data) => yield Ok(Event::default().event("process_tree").data(data)),
+                                Err(e) => tracing::error!("failed to serialize process_tree: {e}"),
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -133,10 +156,6 @@ async fn monitor_stream(
                 }
             }
         }
-
-        // Decrement subscriber count on disconnect
-        subscribers.fetch_sub(1, Ordering::SeqCst);
-        tracing::debug!("monitor SSE client disconnected");
     };
 
     Sse::new(stream).keep_alive(
