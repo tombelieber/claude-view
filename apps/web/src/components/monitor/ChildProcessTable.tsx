@@ -5,16 +5,19 @@ import type { ClassifiedProcess } from '../../types/generated/ClassifiedProcess'
 import { ClassifiedProcessRow } from './ClassifiedProcessRow'
 
 interface ChildProcessTableProps {
-  children: ClassifiedProcess[]
+  processes: ClassifiedProcess[]
   onKill: (pid: number, startTime: number, force: boolean) => void
+  pendingPids?: Set<number>
 }
 
 function ChildProcessGroup({
   proc,
   onKill,
+  pendingPids,
 }: {
   proc: ClassifiedProcess
   onKill: (pid: number, startTime: number, force: boolean) => void
+  pendingPids?: Set<number>
 }) {
   const [expanded, setExpanded] = useState(false)
   const hasDescendants = proc.descendants.length > 0
@@ -34,23 +37,32 @@ function ChildProcessGroup({
           <span className="w-4 shrink-0" />
         )}
         <div className="flex-1">
-          <ClassifiedProcessRow process={proc} onKill={onKill} />
+          <ClassifiedProcessRow
+            process={proc}
+            onKill={onKill}
+            isPending={pendingPids?.has(proc.pid)}
+          />
           {hasDescendants && !expanded && (
             <span className="text-xs text-gray-400 dark:text-gray-500 pl-14">
-              +{proc.descendantCount} — {proc.descendantCpu.toFixed(1)}% CPU, {formatBytes(proc.descendantMemory)}
+              +{proc.descendantCount} — {proc.descendantCpu.toFixed(1)}% CPU,{' '}
+              {formatBytes(proc.descendantMemory)}
             </span>
           )}
         </div>
       </div>
       {expanded &&
         proc.descendants.map((desc) => (
-          <ChildProcessGroup key={desc.pid} proc={desc} onKill={onKill} />
+          <ChildProcessGroup key={desc.pid} proc={desc} onKill={onKill} pendingPids={pendingPids} />
         ))}
     </div>
   )
 }
 
-export function ChildProcessTable({ children: procs, onKill }: ChildProcessTableProps) {
+export function ChildProcessTable({
+  processes: procs,
+  onKill,
+  pendingPids,
+}: ChildProcessTableProps) {
   if (procs.length === 0) {
     return (
       <p className="text-sm text-gray-400 dark:text-gray-500 px-3 py-3">
@@ -72,7 +84,7 @@ export function ChildProcessTable({ children: procs, onKill }: ChildProcessTable
         <span className="w-5 shrink-0" />
       </div>
       {procs.map((proc) => (
-        <ChildProcessGroup key={proc.pid} proc={proc} onKill={onKill} />
+        <ChildProcessGroup key={proc.pid} proc={proc} onKill={onKill} pendingPids={pendingPids} />
       ))}
     </div>
   )

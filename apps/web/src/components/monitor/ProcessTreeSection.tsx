@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 import type { ProcessTreeSnapshot } from '../../types/generated/ProcessTreeSnapshot'
 import { ChildProcessTable } from './ChildProcessTable'
 import { EcosystemTable } from './EcosystemTable'
@@ -13,44 +14,48 @@ const STALE_THRESHOLD_MS = 15_000
 
 export function ProcessTreeSection({ tree, freshAt }: ProcessTreeSectionProps) {
   const [killPending, setKillPending] = useState(false)
+  const [pendingPids, setPendingPids] = useState<Set<number>>(new Set())
 
   const isStale = freshAt == null || Date.now() - freshAt > STALE_THRESHOLD_MS
 
-  const handleKill = useCallback(
-    async (pid: number, startTime: number, force: boolean) => {
-      try {
-        await fetch(`/api/processes/${pid}/kill`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start_time: startTime, force }),
-        })
-      } catch (e) {
-        console.error('Kill failed:', e)
-      }
-    },
-    [],
-  )
+  const handleKill = useCallback(async (pid: number, startTime: number, force: boolean) => {
+    setPendingPids((prev) => new Set(prev).add(pid))
+    try {
+      await fetch(`/api/processes/${pid}/kill`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_time: startTime, force }),
+      })
+    } catch (e) {
+      toast.error('Failed to terminate process')
+      console.error('Kill failed:', e)
+    } finally {
+      setPendingPids((prev) => {
+        const next = new Set(prev)
+        next.delete(pid)
+        return next
+      })
+    }
+  }, [])
 
-  const handleCleanup = useCallback(
-    async (targets: Array<{ pid: number; startTime: number }>) => {
-      if (targets.length === 0) return
-      setKillPending(true)
-      try {
-        await fetch('/api/processes/cleanup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            targets: targets.map((t) => ({ pid: t.pid, start_time: t.startTime })),
-          }),
-        })
-      } catch (e) {
-        console.error('Cleanup failed:', e)
-      } finally {
-        setKillPending(false)
-      }
-    },
-    [],
-  )
+  const handleCleanup = useCallback(async (targets: Array<{ pid: number; startTime: number }>) => {
+    if (targets.length === 0) return
+    setKillPending(true)
+    try {
+      await fetch('/api/processes/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targets: targets.map((t) => ({ pid: t.pid, start_time: t.startTime })),
+        }),
+      })
+    } catch (e) {
+      toast.error('Failed to clean up processes')
+      console.error('Cleanup failed:', e)
+    } finally {
+      setKillPending(false)
+    }
+  }, [])
 
   const allProcesses = [...tree.ecosystem, ...tree.children]
 
@@ -74,15 +79,20 @@ export function ProcessTreeSection({ tree, freshAt }: ProcessTreeSectionProps) {
         </span>
       </div>
 
-      <UnparentedBanner totals={tree.totals} allProcesses={allProcesses} onCleanup={handleCleanup} />
+      <UnparentedBanner
+        totals={tree.totals}
+        allProcesses={allProcesses}
+        onCleanup={handleCleanup}
+        isPending={killPending}
+      />
 
-      {killPending && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">Sending signals…</p>
-      )}
+      {killPending && <p className="text-xs text-gray-400 dark:text-gray-500">Sending signals…</p>}
 
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">Claude Ecosystem</h3>
+          <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            Claude Ecosystem
+          </h3>
           <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full">
             {tree.totals.ecosystemCount}
           </span>
@@ -90,13 +100,15 @@ export function ProcessTreeSection({ tree, freshAt }: ProcessTreeSectionProps) {
             {tree.totals.ecosystemCpu.toFixed(1)}% CPU
           </span>
         </div>
-        <EcosystemTable processes={tree.ecosystem} onKill={handleKill} />
+        <EcosystemTable processes={tree.ecosystem} onKill={handleKill} pendingPids={pendingPids} />
       </div>
 
       {tree.children.length > 0 && (
         <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-800">
-            <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">Child Processes</h3>
+            <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              Child Processes
+            </h3>
             <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full">
               {tree.totals.childCount}
             </span>
@@ -104,7 +116,11 @@ export function ProcessTreeSection({ tree, freshAt }: ProcessTreeSectionProps) {
               {tree.totals.childCpu.toFixed(1)}% CPU
             </span>
           </div>
-          <ChildProcessTable children={tree.children} onKill={handleKill} />
+          <ChildProcessTable
+            processes={tree.children}
+            onKill={handleKill}
+            pendingPids={pendingPids}
+          />
         </div>
       )}
     </div>
