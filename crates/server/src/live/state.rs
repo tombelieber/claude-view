@@ -717,6 +717,29 @@ mod tests {
     }
 
     #[test]
+    fn verified_file_in_live_session_serializes_correctly() {
+        let mut session = minimal_live_session("test-1");
+        session.user_files = Some(vec![
+            VerifiedFile {
+                path: "/Users/dev/src/auth.rs".into(),
+                kind: FileSourceKind::Mention,
+                display_name: "src/auth.rs".into(),
+            },
+            VerifiedFile {
+                path: "/Users/dev/src/main.rs".into(),
+                kind: FileSourceKind::Ide,
+                display_name: "src/main.rs".into(),
+            },
+        ]);
+        let json = serde_json::to_value(&session).unwrap();
+        let files = json["userFiles"].as_array().unwrap();
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0]["kind"], "mention");
+        assert_eq!(files[0]["displayName"], "src/auth.rs");
+        assert_eq!(files[1]["kind"], "ide");
+    }
+
+    #[test]
     fn test_session_closed_event_serializes_with_type_tag() {
         let mut session = minimal_live_session("abc-123");
         session.status = SessionStatus::Done;
