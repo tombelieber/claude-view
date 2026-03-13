@@ -26,11 +26,13 @@ import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
 import { useHookEvents } from '../hooks/use-hook-events'
+import { useModelOptions } from '../hooks/use-models'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
+import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
 import { deriveInputBarState } from '../lib/control-status-map'
@@ -137,6 +139,10 @@ export function ConversationView() {
   const contextPercent = sessionDetail?.totalInputTokens
     ? Math.round((sessionDetail.totalInputTokens / contextWindow) * 100)
     : 0
+
+  // Command palette capabilities
+  const paletteCapabilities = useSessionCapabilities(convInfo)
+  const { options: paletteModelOptions } = useModelOptions()
 
   // Mode state for ChatInputBar
   const [chatMode, setChatMode] = useState<PermissionMode>(() => {
@@ -757,6 +763,9 @@ export function ConversationView() {
             contextPercent={contextPercent}
             mode={chatMode}
             onModeChange={handleModeChange}
+            capabilities={paletteCapabilities}
+            modelOptions={paletteModelOptions}
+            onCommand={(cmd) => actions.sendMessage(`/${cmd}`)}
           />
         </div>
 

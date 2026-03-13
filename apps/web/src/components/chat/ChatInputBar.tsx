@@ -1,13 +1,17 @@
 import { ArrowUp, Square } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import type { ModelOption } from '../../hooks/use-models'
+import type { SessionCapabilities } from '../../hooks/use-session-capabilities'
 import { cn } from '../../lib/utils'
 import type { PermissionMode } from '../../types/control'
 import { AttachButton, AttachmentChips } from './AttachButton'
 import { ChatContextGauge } from './ChatContextGauge'
+import { ChatPalette } from './ChatPalette'
 import { ModeSwitch } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
 import type { SlashCommand } from './commands'
+import { buildPaletteSections } from './palette-items'
 
 // ---------------------------------------------------------------------------
 // Dormant state machine
@@ -68,6 +72,14 @@ export interface ChatInputBarProps {
   contextPercent?: number
   commands?: SlashCommand[]
   onCommand?: (command: string) => void
+  // NEW: Session capabilities for command palette
+  capabilities?: SessionCapabilities
+  // NEW: Model options for palette submenu
+  modelOptions?: ModelOption[]
+  // NEW: Palette-specific model switch (triggers resume)
+  onModelSwitch?: (model: string) => void
+  // NEW: Palette-specific mode change (triggers resume)
+  onPaletteModeChange?: (mode: PermissionMode) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +103,10 @@ export function ChatInputBar({
   contextPercent,
   commands: commandsProp,
   onCommand,
+  capabilities,
+  modelOptions,
+  onModelSwitch,
+  onPaletteModeChange,
 }: ChatInputBarProps) {
   const config = STATE_CONFIG[state]
   const resolvedPlaceholder = placeholderProp ?? config.placeholder
@@ -217,6 +233,38 @@ export function ChatInputBar({
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }, [])
 
+  // ---- Command palette sections ----
+  const paletteCallbacks = useMemo(
+    () => ({
+      onModelSwitch: onModelSwitch ?? (() => {}),
+      onPaletteModeChange: onPaletteModeChange ?? (() => {}),
+      onCommand: onCommand ?? (() => {}),
+      onClear: () => onCommand?.('clear'),
+      onCompact: () => onCommand?.('compact'),
+    }),
+    [onModelSwitch, onPaletteModeChange, onCommand],
+  )
+
+  const paletteSections = useMemo(() => {
+    if (!capabilities || !modelOptions) return null
+    return buildPaletteSections(capabilities, modelOptions, paletteCallbacks, {
+      isLive: state !== 'dormant' && state !== 'completed',
+      isStreaming,
+    })
+  }, [capabilities, modelOptions, paletteCallbacks, state, isStreaming])
+
+  const handlePaletteClose = useCallback(() => {
+    setSlashOpen(false)
+    setInput('')
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.style.height = 'auto'
+        el.focus()
+      }
+    })
+  }, [])
+
   // ---- Send/Stop button ----
   const canSend = input.trim().length > 0 && !isDisabled
 
@@ -227,15 +275,25 @@ export function ChatInputBar({
         isMuted && 'bg-gray-50 dark:bg-gray-900/50',
       )}
     >
-      {/* Slash command popover — positioned above */}
-      <SlashCommandPopover
-        input={input}
-        open={slashOpen}
-        onSelect={handleSlashSelect}
-        onClose={() => setSlashOpen(false)}
-        commands={commandsProp}
-        anchorRef={textareaRef}
-      />
+      {/* Command palette or legacy slash popover — positioned above */}
+      {slashOpen && paletteSections ? (
+        <div className="absolute bottom-full left-0 right-0 mb-1 z-50">
+          <ChatPalette
+            sections={paletteSections}
+            filter={input.replace(/^\//, '')}
+            onClose={handlePaletteClose}
+          />
+        </div>
+      ) : (
+        <SlashCommandPopover
+          input={input}
+          open={slashOpen}
+          onSelect={handleSlashSelect}
+          onClose={() => setSlashOpen(false)}
+          commands={commandsProp}
+          anchorRef={textareaRef}
+        />
+      )}
 
       {/* Input chrome */}
       <div
@@ -280,6 +338,7 @@ export function ChatInputBar({
           )}
           style={{ minHeight: '36px', maxHeight: '200px' }}
           aria-label="Message input"
+          data-testid="chat-input"
         />
 
         {/* Attachment chips */}
