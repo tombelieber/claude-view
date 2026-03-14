@@ -19,10 +19,10 @@ services:
     ports:
       - "47892:47892"
     volumes:
-      # Mount Claude Code session data from Windows host
-      # Uses USERPROFILE which is set on Windows (e.g. C:\Users\YourName)
-      # Read-write so the server can register hooks in settings.json for live monitoring
-      - "${USERPROFILE}/.claude:/root/.claude"
+      # Mount Claude Code session data from host
+      # Uses CLAUDE_HOME_DIR env var, or defaults to $HOME/.claude (Linux/macOS).
+      # On Windows: set CLAUDE_HOME_DIR in a .env file (e.g. C:/Users/YourName/.claude)
+      - "${CLAUDE_HOME_DIR:-${HOME}/.claude}:/root/.claude"
 
       # Persistent volume for DB, search index, and config
       - claude-view-data:/data

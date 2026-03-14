@@ -82,9 +82,6 @@ RUN cargo build -p claude-view-server --release 2>/dev/null || true
 # Copy actual source code
 COPY crates/ crates/
 
-# Re-apply LTO override since COPY overwrites Cargo.toml
-RUN sed -i 's/lto = true/lto = false/' Cargo.toml
-
 # Touch source files to invalidate the cached dummy build
 RUN touch crates/core/src/lib.rs crates/db/src/lib.rs crates/search/src/lib.rs crates/server/src/main.rs
 
@@ -93,15 +90,14 @@ RUN cargo build -p claude-view-server --release
 
 
 # ------ Stage 4: Runtime ------
-FROM debian:bookworm-slim
+# Use Node 22 to match sidecar build target (node20+)
+FROM node:22-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
-    nodejs \
-    npm \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @anthropic-ai/claude-code
+    && npm install -g @anthropic-ai/claude-code@2.1.76
 
 WORKDIR /app
 
