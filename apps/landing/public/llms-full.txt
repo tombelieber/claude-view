@@ -1,0 +1,3060 @@
+--- blog/building-rust-react-tool-48-hours.mdx ---
+
+---
+title: "Building a Rust + React Developer Tool in 48 Hours"
+description: "How we went from zero to a working session browser with a Rust Axum backend and React frontend in two days of focused development."
+date: 2026-01-27
+author: claude-view team
+---
+
+On January 25th we wrote an implementation plan. By January 27th we had v0.1.1 shipping — a working session browser with full JSONL parsing, syntax highlighting, HTML export, and pre-built binaries for four platforms. Building a Rust and React developer tool in 48 hours meant making a hundred small decisions fast and getting most of them right.
+
+## Start with the data model
+
+The first thing we built was the JSONL parser. Claude Code stores conversations as newline-delimited JSON files — one line per message, with nested content blocks for text, tool calls, and thinking. Getting the parser right before touching any UI code was the single best decision of the sprint.
+
+We spent roughly 6 hours on the parser alone. Every message has a `type` field (`user`, `assistant`, `system`, `summary`) and content blocks that can be `text`, `tool_use`, `tool_result`, `thinking`, or `image`. Some fields are optional. Timestamps are strings, not numbers. The `usage` object on assistant messages contains token counts across four categories.
+
+Once the parser was solid, every downstream feature — search, export, analytics — was just a different view of the same data.
+
+## Axum for the HTTP layer
+
+We chose Axum because it's the thinnest Rust web framework that doesn't make you fight the type system. The entire HTTP layer is about 200 lines: serve the React SPA from embedded static files, expose `/api/sessions` for the list and `/api/sessions/:id` for detail, and a health check endpoint.
+
+Memory-mapped file reading (`mmap`) let us parse JSONL files without copying them into heap memory. For a tool that scans hundreds of session files on startup, this matters — we measured 3x lower peak RSS compared to `std::fs::read_to_string`.
+
+```rust
+let mmap = unsafe { Mmap::map(&file)? };
+let finder = memmem::Finder::new(b"\"type\"");
+for line in mmap.split(|&b| b == b'\n') {
+    if finder.find(line).is_some() {
+        // only parse lines that look like messages
+    }
+}
+```
+
+The SIMD pre-filter (`memmem::Finder`) skips lines that can't possibly be message objects, which cuts parse time by roughly 40% on large session files.
+
+## React with Virtuoso for long conversations
+
+Some Claude Code sessions have 500+ messages. Rendering all of them at once is a non-starter. We used `react-virtuoso` to virtualize the message list — only DOM nodes visible in the viewport are rendered, with smooth scrolling for everything else.
+
+Syntax highlighting uses `shiki` with lazy-loaded grammars. We highlight code blocks inside messages but skip the highlighting pass entirely for messages without triple-backtick fences. This shaved about 200ms off initial render for typical sessions.
+
+## What we cut
+
+The 48-hour constraint forced ruthless prioritization. We cut:
+
+- **Full-text search** — shipped as a simple substring filter in v0.1, Tantivy integration came later
+- **Analytics** — no charts, no cost tracking, just raw session browsing
+- **Settings page** — hardcoded everything, including the port (47892)
+- **Incremental parsing** — we re-parsed all files on every server restart; fine for ~100 sessions, painful for 1,000+
+
+Every cut became a v0.2 or v0.3 feature. The key insight: none of these were needed for the core experience of "browse and read your Claude Code sessions."
+
+## The binary distribution trick
+
+We wanted `npx claude-view` to work on day one, which meant cross-compiling Rust for macOS ARM64, macOS Intel, Linux x86_64, and Linux ARM64. GitHub Actions builds all four targets on every tag push, uploads them as release assets, and the npm wrapper downloads the right one at runtime.
+
+Total binary size: ~15MB. No runtime dependencies. No Docker. No Node.js runtime embedded.
+
+## Takeaway
+
+The 48-hour build taught us that developer tools benefit enormously from "parser first, UI second." If your data layer is solid, the frontend can iterate in minutes. If your data layer is wrong, every frontend change is debugging in disguise. We've carried that lesson through every subsequent version — get the data right, then make it look good.
+
+
+--- blog/e2e-encrypted-sharing.mdx ---
+
+---
+title: "End-to-End Encrypted Sharing Without a Backend Database"
+description: "How we built zero-knowledge conversation sharing using client-side encryption, Cloudflare R2, and a static SPA viewer."
+date: 2026-02-25
+author: claude-view team
+---
+
+You want to share a Claude Code conversation with a teammate. But the session contains API keys, internal architecture discussions, and code from a private repo. End-to-end encrypted sharing solves this: the server stores ciphertext it can never read, and the decryption key lives only in the URL you send.
+
+Here's how we built zero-knowledge conversation sharing with client-side encryption and a static viewer SPA.
+
+## The architecture
+
+The sharing flow has four components:
+
+1. **Rust server** (local) — serializes the session, generates a random key, encrypts with AES-256-GCM, uploads ciphertext
+2. **Cloudflare Worker** (API at `api-share.claudeview.ai`) — receives encrypted blob, stores in R2, stores metadata in D1
+3. **R2 bucket** — blob storage for encrypted session data
+4. **Viewer SPA** (static site at `share.claudeview.ai`) — fetches the encrypted blob, decrypts in the browser, renders the conversation
+
+The critical property: **the Worker never sees plaintext**. Encryption happens on the user's machine before the data leaves localhost. Decryption happens in the recipient's browser. The server is a dumb pipe for ciphertext.
+
+## Why the URL fragment matters
+
+When you share a session, the URL looks like:
+
+```
+https://share.claudeview.ai/s/abc123#key=base64encodedkey
+```
+
+The part after `#` is the **fragment identifier**. This is not a design accident — it's the security model. URL fragments are never sent to the server. When the viewer SPA loads at `share.claudeview.ai/s/abc123`, the web server receives a request for `/s/abc123` but never sees `#key=base64encodedkey`. The key exists only in the browser's address bar and JavaScript runtime.
+
+Compare this to a query parameter (`?key=...`), which would be sent to the server in the HTTP request, logged in access logs, cached by CDNs, and visible to any network intermediary.
+
+## The encryption details
+
+Key generation uses the Web Crypto API (in Rust, via the `aes-gcm` crate on the server side):
+
+- Generate a 256-bit random key
+- Generate a 96-bit random nonce (IV)
+- Encrypt the serialized session JSON with AES-256-GCM
+- Prepend the 12-byte nonce to the ciphertext (the recipient needs it to decrypt)
+- Base64url-encode the key for URL-safe embedding
+
+AES-GCM provides both confidentiality and integrity — if anyone tampers with the ciphertext on R2, decryption fails with an authentication error rather than producing garbage output.
+
+## No accounts needed
+
+Viewers don't need an account, an API key, or even JavaScript beyond what the static SPA provides. Click the link, the SPA fetches the blob from the Worker API, extracts the nonce, decrypts with the key from the URL fragment, and renders. The entire viewer is a static site on Cloudflare Pages — no server-side processing, no session cookies, no tracking.
+
+This was a deliberate constraint. Requiring accounts for viewers kills sharing adoption. The person you're sharing with might be a contractor, a friend helping you debug, or a Stack Overflow user. They shouldn't need to create an account to see a conversation.
+
+## The trade-off: lose the link, lose the data
+
+If the URL is lost — browser history cleared, Slack message deleted, no copy saved — the encrypted blob on R2 is permanently unrecoverable. There's no "forgot password" flow because there's no password. The key exists only in the URL fragment.
+
+This is a feature, not a bug. The same property that prevents the server from reading your data also prevents anyone (including us) from recovering it. It's the same trade-off made by Firefox Send (RIP), Bitwarden Send, and PrivateBin. Users who need durability can bookmark the link or save it to a password manager.
+
+## Expiration and cleanup
+
+Shared sessions expire after a configurable TTL (default: 7 days). A scheduled Worker runs daily to delete expired blobs from R2 and metadata from D1. This bounds storage costs and limits the exposure window — even if a URL leaks, the ciphertext won't be there forever.
+
+The D1 metadata table stores only: share ID, creation timestamp, expiration timestamp, and blob size. No session content, no user identifiers, no IP addresses.
+
+## Takeaway
+
+Zero-knowledge sharing is surprisingly straightforward to implement. The hard part isn't the cryptography — AES-GCM is well-understood and available in every platform's standard library. The hard part is resisting the urge to add features that break the security model. Account systems, server-side search, preview thumbnails — every "nice to have" either requires server-side decryption or leaks metadata. We chose to keep the server blind and let the URL fragment carry the trust.
+
+
+--- blog/introducing-claude-view.mdx ---
+
+---
+title: Introducing claude-view
+description: Monitor, orchestrate, and command your Claude Code sessions from a web dashboard or your phone.
+date: 2026-02-28
+author: claude-view team
+---
+
+Today we're launching **claude-view** — an open-source tool that brings Mission Control to your Claude Code workflows.
+
+## What it is
+
+claude-view monitors every Claude Code session on your machine in real time. It shows you what each agent is working on, how many tokens it's using, and how much it costs — all in one dashboard.
+
+Run it with one command:
+
+```bash
+npx claude-view
+```
+
+No config. No signup. Your browser opens automatically at `http://localhost:47892`.
+
+## Why we built it
+
+As we started running multiple Claude Code agents simultaneously, we lost visibility. Which agent is working on what? Is that session still running or is it waiting for input? How much have I spent today?
+
+Mission Control answers all of these questions — live.
+
+## What you get
+
+**Session browser** — every Claude Code session, past and present. Full-text search across all conversations. Filter by project, model, or date.
+
+**Live dashboard** — real-time view of all running agents. Watch token counts tick up, see which tools are being called, monitor costs as they accumulate.
+
+**Cost tracking** — per-session and aggregate costs with cache hit ratio. Know exactly where your tokens are going.
+
+**AI Fluency Score** — a 0–100 metric that measures how effectively you collaborate with AI agents. Track your progress over time.
+
+**Claude Code plugin** — ships as a native plugin (`claude plugin add @claude-view/plugin`) with 8 read-only tools, 3 skills (`/session-recap`, `/daily-cost`, `/standup`), and auto-start. Ask Claude "what did I work on last week?" and get a real answer.
+
+## The mobile app (coming soon)
+
+The next milestone is the mobile app — native iOS and Android. Monitor your agents from your phone, receive push notifications when agents need approval, and ship features from anywhere.
+
+## Get started
+
+```bash
+npx claude-view
+```
+
+[Read the docs →](/docs/) · [GitHub →](https://github.com/tombelieber/claude-view)
+
+
+--- blog/monitoring-multiple-ai-agents.mdx ---
+
+---
+title: "Monitoring Multiple AI Agents: The Problem Nobody Talks About"
+description: "When you run 3-5 Claude Code agents simultaneously, you lose track of what each one is doing, how much it costs, and whether it needs your input."
+date: 2026-02-14
+author: claude-view team
+---
+
+You have three Claude Code agents running. One is refactoring your auth middleware. Another is writing integration tests. A third is fixing a CSS regression in a git worktree. You switch between terminal tabs trying to remember which is which. Monitoring multiple AI agents is the operational problem that emerges the moment you go from one agent to two.
+
+## The three questions
+
+Every developer running parallel agents asks the same three questions, constantly:
+
+1. **What is each agent working on right now?** Not what you told it to do 20 minutes ago — what is it actually doing at this moment?
+2. **How much have I spent?** Token costs accumulate silently. A long-running agent with low cache hit rates can burn through $5-10 before you notice.
+3. **Does any agent need me?** Claude Code sometimes needs user approval for tool calls, or gets stuck and asks a clarifying question. If you don't see the prompt, the agent just waits indefinitely.
+
+Existing tools don't solve this. Your terminal shows one session at a time. `tmux` panes give you parallel visibility but no aggregation — you're scanning raw output across four panes trying to mentally parse which agent is autonomous and which is blocked.
+
+## State classification
+
+The core abstraction we landed on is **session state classification**. Every running agent is in one of a few states:
+
+- **Needs You** — the agent asked a question or is waiting for tool approval
+- **Autonomous** — actively working, no human input needed
+- **Idle** — process is alive but no recent activity
+- **Done** — session ended, process exited
+
+Classifying state sounds simple until you try to implement it. Claude Code doesn't expose a structured "I'm waiting for input" signal. We infer it from a combination of process liveness checks, JSONL tail watching, and message type analysis. If the last message is from the assistant and contains a question mark with no subsequent user message, it's likely in a "needs you" state.
+
+Process liveness itself is tricky on macOS. We use `kill(pid, 0)` as the primary check (returns 0 if the process exists, regardless of signal delivery). But `sysinfo` on macOS doesn't reliably report process working directories or command lines, so we fall back to `lsof -a -p <pid> -d cwd -Fn` to get the actual cwd for project association.
+
+## Cost tracking with cache awareness
+
+Token costs aren't as simple as `input_tokens * price + output_tokens * price`. Claude's prompt caching creates three pricing tiers:
+
+- **Cache creation** — tokens written to cache, billed at 1.25x the base input price
+- **Cache read** — tokens read from an existing cache, billed at 0.1x the base price
+- **No cache** — standard input pricing
+
+A session with a 90% cache hit rate costs roughly 10x less per input token than one with 0% hits. Reporting raw token counts without cache breakdown is misleading — you'd think two sessions with the same token count cost the same, when one might be 8x cheaper.
+
+We compute cost per session using the model's pricing table and the four usage fields that Claude Code logs on every assistant message: `input_tokens`, `output_tokens`, `cache_read_input_tokens`, and `cache_creation_input_tokens`.
+
+## The Kanban layout
+
+A flat list of sessions doesn't match how you think about parallel work. We added a Kanban view that groups sessions into swimlane columns — by project or by branch. This is the same spatial metaphor that Kubernetes dashboards use for pod distribution across nodes, or that Grafana uses for service health across clusters. The difference is that each card is an AI agent on your laptop, not a container in a data center.
+
+The Kanban view makes the "what is each agent working on" question answerable at a glance. Your API project column has two agents — one is green (autonomous), one is yellow (needs you). Your frontend column has one agent, and it's done.
+
+## Why this matters now
+
+The trend toward multi-agent workflows is accelerating. Today it's 3-5 agents. Next year it might be 10-20, working across repos, branches, and even machines. The monitoring problem doesn't scale linearly — it scales combinatorially. Every new agent multiplies the state you need to track.
+
+We built claude-view's Mission Control specifically for this problem. But regardless of the tooling you use, the pattern is clear: once you run more than one AI agent, you need the same observability infrastructure that DevOps teams built for distributed systems. Dashboards, state classification, cost aggregation, and alerting. The only difference is that your "cluster" is a set of AI processes on your dev machine.
+
+
+--- blog/session-browser-to-mission-control.mdx ---
+
+---
+title: "From Session Browser to Mission Control: Evolving a Developer Tool"
+description: "How claude-view evolved from a simple JSONL viewer into a real-time multi-agent monitoring dashboard in 25 days."
+date: 2026-02-19
+author: claude-view team
+---
+
+claude-view started as a weekend project to browse Claude Code sessions. Twenty-five days later it was a real-time multi-agent monitoring dashboard. The evolution from session browser to Mission Control wasn't planned — each phase was driven by a pain point that made the previous version insufficient.
+
+## Phase 1: Session browser (days 1-2)
+
+The original problem was simple: Claude Code stores conversations as JSONL files in `~/.claude/projects/`, but there's no way to browse them. You can `cat` the files, but they're raw JSON with nested content blocks and base64-encoded images. We built a session list, a message viewer with syntax highlighting, and HTML export. That was v0.1.
+
+The architecture was minimal — Rust reads JSONL files on startup, serves a React SPA from embedded static assets, exposes two API endpoints. No database, no indexing, no background processes.
+
+## Phase 2: Search and analytics (days 3-8)
+
+Once you have 200+ sessions, you need search. Substring matching on in-memory data worked for a week, then we hit sessions with 1,000+ messages and search took 800ms. We integrated Tantivy, a Rust full-text search engine (think Lucene but without the JVM), and got query times under 5ms.
+
+Analytics came from the same data. Every assistant message includes token usage — `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`. Aggregate those across sessions and you have cost tracking. Plot them over time and you have trend charts. The data was always there; we just started computing over it.
+
+The architecture gained SQLite for persistent metadata and Tantivy for the search index. Both rebuild from JSONL source files on startup if the schema version changes.
+
+## Phase 3: Git integration (days 9-14)
+
+A natural question after browsing sessions: "What did this session actually produce?" We added git log scanning to link sessions with commits by timestamp correlation. If a commit happened during or shortly after a session in the same project directory, it's associated with that session.
+
+This phase also added contribution analysis — what percentage of your git output involved AI assistance, broken down by project and time period. The data model expanded from "conversations" to "conversations + their real-world outputs."
+
+## Phase 4: Live monitoring (days 15-22)
+
+This was the inflection point. Everything before this was historical — browsing past sessions, analyzing completed work. Live monitoring meant watching active sessions in real time.
+
+The technical jump was significant. We added:
+
+- **Process discovery** — scanning the process table for running Claude Code instances, associating them with project directories via `lsof`
+- **JSONL tail watching** — using `notify` (inotify/kqueue) to detect new messages as they're written
+- **Server-Sent Events** — pushing session state updates to the browser in real time
+- **Session state classification** — inferring whether each agent is autonomous, waiting for input, or done
+
+The architecture went from request-response to event-driven. SSE streams replaced polling. A background task continuously monitors process liveness and file changes, broadcasting state transitions to connected clients.
+
+## Phase 5: Plugin and relay (days 23-25)
+
+Two extensions emerged from the monitoring work. The Claude Code plugin (`@claude-view/plugin`) exposes session data as MCP tools — so Claude itself can answer "what did I work on today?" by querying its own session history. The WebSocket relay enables the mobile app to receive live updates from the local server without port forwarding.
+
+## The key inflection
+
+When live monitoring became the primary use case, we moved Mission Control to the home page. Session history became a secondary view, accessible from the sidebar. This was a product decision driven by usage: we opened claude-view 10x more often to check on running agents than to browse past conversations.
+
+## What the evolution taught us
+
+Every architecture decision from Phase 1 became either a foundation or a liability in Phase 4. mmap-based JSONL parsing (foundation) — same code reads historical and live files. Embedded static assets (foundation) — one binary, no build step for users. No database (liability) — had to add SQLite when in-memory data didn't scale. No real-time layer (liability) — had to add SSE and background workers.
+
+The lesson: if your tool reads data that changes over time, build the real-time path early. Retrofitting event-driven architecture onto a request-response system is possible but expensive. We did it in 7 days; starting with SSE from day 1 would have saved 3 of those days.
+
+
+--- blog/v0-10-0-kanban-and-polish.mdx ---
+
+---
+title: "Managing Multiple AI Agents: Why We Built the Kanban View"
+description: When you're running 3-5 Claude Code agents at once, a flat list doesn't cut it. v0.10.0 adds Kanban swimlanes, cost popovers, worktree drift detection, and more.
+date: 2026-03-08
+author: claude-view team
+---
+
+You're running five Claude Code agents. One is refactoring auth in your API server. Another is writing tests for the frontend. A third is debugging a migration in a git worktree. You glance at your session list and see... five rows. No grouping, no spatial context. Which agent belongs to which project?
+
+A flat list doesn't match how you think about parallel work. **v0.10.0 fixes that.**
+
+## Kanban swimlanes
+
+The live dashboard now supports a Kanban view that groups running sessions into swimlane columns by project or branch. Instead of scanning a list and mentally sorting "this one is my API repo, that one is frontend," you see it at a glance — each column is a project, and the sessions within it are the agents working in that context.
+
+A **group-by dropdown** lets you switch perspectives instantly. Group by project to see workload distribution across repos. Group by branch to track feature work across worktrees. The view you need depends on the question you're asking, so we let you switch without losing state.
+
+This matters most when you're running agents across 3+ projects simultaneously. The spatial layout gives you the same kind of overview a physical Kanban board gives a team — except each card is an AI agent doing real work.
+
+## Cost and token breakdown popover
+
+Hover any session card — in the Kanban view or the list view — and a popover shows the full cost breakdown: input tokens, output tokens, cache read vs. cache creation, and the dollar cost per category. No more navigating into a session detail page just to check if an agent is burning through your budget.
+
+This is especially useful in the Kanban layout. You can scan across projects and quickly spot which project's agents are the most expensive.
+
+## Worktree branch drift detection
+
+If you use git worktrees to run agents on separate branches simultaneously, you've probably hit this: an agent starts on `feat/auth`, but somewhere during its work the worktree's HEAD drifts to a different branch. Maybe a rebase went wrong, maybe another tool switched it.
+
+claude-view now detects when a worktree's current branch doesn't match the branch it was on when the session started. You'll see a visual indicator on the session card so you can intervene before the agent commits to the wrong branch.
+
+## Hook event tracking
+
+Claude Code hooks — pre/post-tool scripts that run alongside your agent — now get full visibility in the dashboard. You can see which hooks fired, when they ran, and whether they succeeded or failed. When an agent's behavior looks off, check the hook log before digging into the conversation.
+
+## Bulk select and archive
+
+Session history grows fast when you're running multiple agents daily. You can now select multiple sessions and archive them in bulk. Shift-click for ranges, checkbox for individual picks. Keeps your history manageable without deleting anything — archived sessions are still searchable.
+
+## Crash recovery
+
+The sidecar process that bridges Claude Code sessions to the dashboard now auto-recovers from crashes. If the sidecar dies — OOM, signal, panic — it restarts and reconnects to all active sessions without losing data. You shouldn't have to babysit the tool that's supposed to help you babysit your agents.
+
+## Zero-config local mode
+
+This has always been a goal, but worth restating: `npx claude-view` works with zero environment files, zero signup, zero configuration. The server starts, your browser opens, and you see your sessions. Every cloud feature (sharing, auth, sync) is additive — the core experience is fully local and fully free.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you're already running claude-view, that's all you need. The Kanban view is available immediately in the live dashboard.
+
+[Full changelog on GitHub](https://github.com/tombelieber/claude-view/releases) · [Read the docs](/docs/)
+
+
+--- blog/v0-11-2-plans-prompts-teams.mdx ---
+
+---
+title: "Plan Tabs, Prompt History, and Team Dashboards"
+description: "v0.11.2 brings Claude Code plans, full-text prompt search, and dedicated team intelligence views."
+date: 2026-03-08
+author: claude-view team
+---
+
+Three features that complete the visibility picture: plans you wrote, prompts you sent, and teams you're part of. Together, they answer questions you've never been able to answer before.
+
+## Plan browser
+
+Every session starts with a prompt to Claude Code. That prompt often references a plan — a design doc, an architecture decision, a spec you wrote to guide the conversation.
+
+Before v0.11.2, finding that plan meant digging through `~/.claude/plans/` manually. Now, plans are indexed, linked to sessions by slug, and browsable directly in the session detail panel.
+
+Click the new **Plans** tab in any session, and you see:
+
+- All plans referenced by that session
+- Plan file contents with syntax highlighting
+- Links to jump between related sessions and plans
+- Full-text search across all your plans
+
+This is especially useful for Mission Control sessions, where you may reference multiple phases of the same long-running plan. See the whole context without leaving claude-view.
+
+## Prompt history
+
+You've sent thousands of prompts to Claude Code. Each one is stored in `~/.claude/prompts/`. But without a way to search them, they're effectively invisible.
+
+v0.11.2 adds a **Prompt History** view with:
+
+- **Full-text search** on the display content you saw
+- **Intent classification** — automatically labels prompts as "feature", "debug", "refactor", "review", etc.
+- **Template clustering** — uses Drain clustering to group similar prompts and detect patterns
+- **Statistics** — leaderboards of your top prompt templates, intents, and usage over time
+- **Copy to new session** — find a prompt that worked well and reuse it
+
+The intent classification and template detection happen automatically as prompts are indexed. No configuration needed. The search index is built in Tantivy (the same engine behind Quickwit), so even with 10k+ prompts, searches are instant.
+
+This is powerful for learning: you can see patterns in how you prompt Claude Code. You can identify which prompt structures lead to better outcomes. You can spot when you're repeating yourself and find better ways to phrase things.
+
+## Team dashboards
+
+If you're a team lead in Claude Code, you've seen the magic: spawn a sub-agent, give it a task, and watch it work. But visibility into what your team members are doing — which agents they spawned, what tasks they're running, which files are changing — has been scattered.
+
+v0.11.2 adds a **Teams** page that shows:
+
+- **Team members** — all agents in your teams config
+- **Inbox** — messages from agents, team leads, and system notifications
+- **Tasks** — tasks spawned across all team members, with status and duration
+- **File changes** — which files are being read, edited, created across team sessions
+
+It reads from `~/.claude/teams/` configs and the inbox files automatically. No manual setup. Click any team member to drill into their sessions, or click any task to see the full context.
+
+## Under the hood
+
+The Plan Tab feature required:
+
+- A new plan_files module in Rust to parse `~/.claude/plans/` directory structure
+- A slug field on every session (extracted from JSONL, stored in database)
+- API endpoints to fetch plans and link them to sessions
+- React components with lazy loading so opening a session with 50 plans doesn't tank performance
+
+The Prompt History feature added:
+
+- A complete JSONL parser for the prompt history format
+- Tantivy indexing on prompts with configurable filters (display, paste, clipboard)
+- Drain clustering algorithm for template detection
+- Intent classification via regex patterns + SIMD pre-filter
+
+The Teams Dashboard feature wired:
+
+- A new teams parser that reads config files + inbox JSONL
+- API endpoints for team list, detail, and inbox
+- React hooks for team queries and real-time updates
+- Full TypeScript type generation via ts-rs
+
+All three features share the same architectural philosophy: **index once, query many times**. Plans, prompts, and teams are indexed on startup, then served via fast APIs. Changes are detected and reindexed in the background.
+
+## What's next
+
+- **Mobile team integration** — Expo app will show teams and tasks alongside live sessions
+- **Custom session layouts** — drag-and-drop column resizing for the live monitor
+- **Codex verification protocols** — statistical verification of parsed data across historical and live sessions
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Plans tab on an old session. Search your prompt history. Check the Teams page to see what your agents are up to.
+
+
+
+--- blog/v0-12-0-plugin-manager.mdx ---
+
+---
+title: "Visual Plugin Management for Claude Code"
+description: "v0.12.0 brings a full Plugin Manager to claude-view — browse, install, enable, disable, and uninstall Claude Code plugins without touching the terminal."
+date: 2026-03-09
+author: claude-view team
+---
+
+Claude Code's plugin system is powerful. But managing plugins has meant memorizing CLI commands, remembering scope flags, and parsing terminal output. v0.12.0 changes that with a dedicated Plugin Manager page in the browser.
+
+## The problem with CLI-only plugin management
+
+If you wanted to see what plugins you had installed, you ran `claude plugin list`. To install one, `claude plugin install <name> --scope user`. To disable it for a single project, `claude plugin disable <name> --scope project`. Every action was a terminal round-trip, and forgetting the `--scope` flag meant operating on the wrong level.
+
+Worse, there was no overview. No way to see at a glance which plugins were active, which were disabled, or which scope each one was installed at. You had to hold that state in your head.
+
+## Plugin Manager page
+
+Open claude-view and navigate to the new **Plugins** page. You see:
+
+- **Health banner** at the top showing overall plugin system status
+- **Card grid** of every installed plugin, each displaying name, description, version, scope (user or project), and enabled state
+- **Search bar** with debounced filtering to find plugins instantly across large collections
+- **Action menu** on each card for enable, disable, and uninstall operations
+
+The card layout gives you the same information density as `claude plugin list` but in a format you can scan in seconds rather than parse line by line.
+
+## Marketplace and installation
+
+Click **Browse Marketplace** to open the marketplace dialog. It lists available plugins you haven't installed yet. Each entry shows the plugin name and description.
+
+When you click install, a **scope picker** appears. Choose user-level (applies everywhere) or project-level (applies only to the current project). The choice is explicit and visible, no more guessing which flag to pass.
+
+After installation, the plugin card appears in your grid immediately. No page refresh needed.
+
+## Scoped actions that actually work
+
+This was a subtle but critical fix. In earlier builds, scope forwarding only worked for the install action. Enabling, disabling, and uninstalling a project-scoped plugin silently operated at the user level, creating confusing states where a plugin appeared disabled but kept running in a project.
+
+v0.12.0 forwards the scope parameter for every action. Disable a project-scoped plugin and it disables at the project scope. Uninstall it and it uninstalls from the project. The behavior matches what you see on the card.
+
+## Under the hood
+
+The Plugin Manager is built on the same architectural pattern as the rest of claude-view: the Rust backend does the heavy lifting, the React frontend renders it.
+
+**Server-side caching.** The backend calls `claude plugin list` and caches the parsed output with a 5-minute TTL using the CachedUpstream pattern. Opening the Plugins page doesn't shell out to the CLI every time. The cache invalidates automatically on any mutation (install, enable, disable, uninstall).
+
+**ANSI stripping.** The `claude` CLI outputs colored text with ANSI escape codes. The server sets `NO_COLOR=1` on the subprocess environment and strips any remaining escape sequences as a safety net. Browser toast messages and error dialogs render clean text, not garbled control characters.
+
+**Type safety.** Plugin response types are defined as Rust structs with `#[derive(TS)]`, generating TypeScript types automatically. The frontend imports from `types/generated/` and never hand-writes API response shapes. When the backend adds a field, the frontend type updates on the next build.
+
+**Scope forwarding.** Every plugin mutation endpoint accepts a `scope` parameter. The backend passes it directly to the `claude plugin <action> --scope <value>` subprocess call. No action silently defaults to user scope.
+
+## Also in this release
+
+- **Mobile:** Expo SDK 55 compatibility with updated react-native-screens and expo-router. Push notifications are platform-gated so they compile cleanly on web. EAS build artifacts are properly gitignored.
+- **Registry:** New `invocables_for_plugin` method for querying which tools a specific plugin provides.
+
+## What's next
+
+- **Plugin usage analytics** — track which plugins fire most often and in which sessions
+- **Mobile plugin management** — view and toggle plugins from the Expo native app
+- **Plugin dependency graph** — visualize which plugins depend on each other
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Plugins page from the sidebar. See every plugin you have installed. Try disabling one, then re-enabling it. Browse the marketplace and install something new.
+
+
+--- blog/v0-12-1-project-scoped-plugin-fix.mdx ---
+
+---
+title: "Fixing Project-Scoped Plugin Actions"
+description: "v0.12.1 fixes a silent failure where project-scoped plugin operations (uninstall, enable, disable) didn't pass the correct working directory to the CLI subprocess."
+date: 2026-03-09
+author: claude-view team
+---
+
+v0.12.0 shipped a full Plugin Manager. But if you had plugins installed at the project scope, some actions failed silently. v0.12.1 fixes this by wiring `projectPath` through the entire stack.
+
+## The bug
+
+Claude Code's CLI enforces a rule for project-scoped plugins: the subprocess must run from the directory where the plugin was originally installed. If you installed a plugin with `--scope project` in `/Users/me/my-project`, uninstalling it requires CWD to be that same path. Without it, the CLI returns an error.
+
+The Plugin Manager's backend had the project path in the `installed_plugins.json` data, but it never passed it forward. The path stopped at the Rust struct and never made it to the API response, the TypeScript types, the React components, or back to the CLI subprocess. The UI showed a toast error, but the root cause was invisible.
+
+## The fix
+
+Full-stack wiring of `projectPath`, traced end-to-end:
+
+1. **Rust struct** — Added `project_path: Option<String>` to `CliInstalledPlugin` and `PluginInfo`
+2. **API response** — `project_path` serializes as `projectPath` in JSON (matching the `#[derive(TS)]` convention)
+3. **Generated types** — `PluginInfo.projectPath: string | null` auto-generated from the Rust struct
+4. **React components** — `PluginActionMenu` and `PluginCard` pass `plugin.projectPath` through the `onAction` callback
+5. **Mutation hook** — `usePluginMutations` sends `projectPath` in the POST body to `/api/plugins/action`
+6. **Backend handler** — Sets `Command::current_dir()` on the subprocess when `projectPath` is present
+
+The "Update All" button also needed fixing — it was missing `projectPath` in its mutation call, so bulk updates would fail for project-scoped plugins.
+
+## Scope flag behavior
+
+While debugging, we discovered that the `--scope` flag only applies to two CLI actions:
+
+- **install** — tells the CLI where to install (user or project)
+- **uninstall** — tells the CLI which scope to remove from
+
+For **enable** and **disable**, the CLI auto-detects scope. Passing `--scope` to these actions is harmless but unnecessary. v0.12.1 now only adds `--scope` for install and uninstall, matching the CLI's actual contract.
+
+## E2E test guard
+
+This class of bug — full-stack wiring gaps where a field exists at one layer but not the next — is hard to catch with unit tests. Each layer passes its own tests because missing an optional field doesn't cause an error. The failure only surfaces when a real user clicks a button.
+
+To guard against regressions, v0.12.1 adds 26 Playwright E2E tests for the Plugins page:
+
+- **API contract** — Response shape, field presence, query param filtering, error responses
+- **Search & filters** — Debounced search, scope dropdown, kind tabs, active styling
+- **Card interactions** — Expand/collapse, marketplace display, disabled state
+- **Action menu** — Opens correctly, uninstall confirmation dialog, click doesn't propagate to card
+- **Health banner** — Visibility matches API data (duplicate count, unused count, CLI errors)
+- **Accessibility** — Keyboard navigation with Enter/Space, focus management
+
+Tests are resilient to different plugin configurations — they skip gracefully when no plugins are installed, so they pass on CI machines without a local Claude CLI.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you have project-scoped plugins, open the Plugins page and try disabling or uninstalling one. It should work correctly now regardless of scope.
+
+
+--- blog/v0-13-0-workflows-and-live-chat.mdx ---
+
+---
+title: "Workflows: Build Multi-Stage AI Pipelines from a Chat"
+description: "v0.13.0 introduces a workflow system where you describe a pipeline in natural language and watch it render as a live Mermaid diagram, plus unified live chat and recently closed sessions."
+date: 2026-03-11
+author: claude-view team
+---
+
+What if you could describe a multi-stage process in plain English and have it turn into an executable pipeline — while you watch? That's the idea behind Workflows, the headline feature in v0.13.0.
+
+## Designing pipelines through conversation
+
+The Workflows page is a new section in the sidebar. Open it and you see a library grid of your saved workflows. Create a new one, and you land in a detail view with a familiar VS Code-style layout: resizable panels, a tab strip, and a chat rail on the right.
+
+The chat rail is where it gets interesting. Describe what you want — "polish this implementation plan by checking each step against the codebase, then rewrite unclear steps" — and the LLM streams back a YAML workflow definition in real time. As it writes, the Mermaid diagram in the preview tab updates live. You see your pipeline take shape as a directed graph while the AI is still generating it.
+
+Two chat modes let you shape the workflow iteratively. **Control mode** modifies the workflow definition directly. **Review mode** critiques the current definition and suggests improvements without changing it. Switch between them as you refine the pipeline.
+
+## Running workflows
+
+The runner tab shows your workflow as stage columns, similar to a kanban board turned sideways. Each stage has attempt cards that track execution state: pending, running, succeeded, failed. A progress bar across the top shows overall completion.
+
+Under the hood, the Node.js sidecar process handles execution. Each stage runs in sequence with gate polling — the runner checks whether the previous stage's output satisfies the next stage's preconditions before proceeding. If a stage crashes, the runner recovers automatically: it detects the failure, logs the crash context, and can retry the stage without losing progress on earlier stages.
+
+Two built-in workflows ship with v0.13.0: **Plan Polisher** (reviews and tightens implementation plans) and **Plan Executor** (runs plan steps sequentially with verification). Both are stored as YAML files and can be forked or edited.
+
+## Unified live chat
+
+Before v0.13.0, watching a live session meant seeing only real-time messages as they arrived. If you opened the live monitor after a session had been running for a while, you missed everything that happened before.
+
+Now the live session view loads the full message history first, then appends real-time messages seamlessly below. One continuous scroll view, no tab switching, no "load earlier messages" button. History and live events merge into a single conversation stream.
+
+## Recently closed sessions
+
+Sessions used to disappear from the Live Monitor the moment they ended. If you stepped away for five minutes and came back, you'd have no idea which sessions had just finished or what they accomplished.
+
+The Live Monitor now has a "Recently Closed" section. When a session's process exits, the session moves from the active list to the recently closed list with a timestamp. You can dismiss individual sessions or clear the entire section. The closed state persists in SQLite, so recently closed sessions survive server restarts.
+
+## Everything else
+
+- **Dynamic model list** — The model selector fetches available models from the backend, with full model IDs in tooltips
+- **Queued message indicators** — Pending user messages show as faded bubbles with a "Queued" badge
+- **Production hardening** — Six security and correctness fixes across the workflow endpoints
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Workflows page to create your first pipeline. Try describing a process you run manually today and watch it become a diagram.
+
+
+--- blog/v0-14-0-open-in-ide-and-mentions.mdx ---
+
+---
+title: "Open Files in Your Editor, See What Claude Referenced"
+description: "v0.14.0 adds one-click Open in IDE from session views, @file mention chips on session cards, and a richer live chat experience with thinking blocks and a context gauge."
+date: 2026-03-11
+author: claude-view team
+---
+
+The gap between reading a Claude Code session and acting on it just got smaller. v0.14.0 introduces two features that connect what you see in claude-view to the work you do in your editor.
+
+## Open in IDE
+
+Claude Code sessions reference files constantly — edits, reads, searches, diffs. Until now, seeing a file referenced in a session meant manually navigating to it in your editor.
+
+v0.14.0 adds an **Open in IDE button** wherever files appear: the Changes tab, individual file headers in the diff view, and the project headers in the Kanban live monitor. Click it and the file opens in your editor at the right path.
+
+claude-view auto-detects which editors you have installed — VS Code, Cursor, Zed, and others. If you have more than one, it asks once and remembers. The detection runs locally against your installed applications; nothing is sent to a server.
+
+The button is intentionally small and secondary — it doesn't get in the way of reading the session, but it's there when you want to act on something you see.
+
+## @File mention chips
+
+When Claude references a file using `@filename` notation, that mention is now extracted and displayed as a chip on the session card. You can see at a glance which files a session touched before you open it — useful for finding sessions that worked on a specific file, or for understanding what a long-running agent was doing.
+
+Chips show abbreviated names to keep cards compact. Hover a chip to see the full path. The extraction runs at parse time, so mentions appear on both live sessions and historical ones without any extra work.
+
+## Richer live chat
+
+The live chat rail — which shows the streaming conversation between you and Claude during an active session — now renders the full structure of assistant responses:
+
+- **Thinking blocks** are shown in a collapsible aside, so you can see Claude's reasoning without it dominating the view
+- **Tool calls** show the function name and arguments with syntax highlighting
+- **Tool results** are formatted and collapsible for long outputs
+
+A **mode selector** at the top of the rail lets you switch between Control mode (direct commands) and Review mode (critique and suggestions). A **context gauge** shows what percentage of the current model's context window is in use — useful for knowing when you're approaching limits on a long session.
+
+## Teams panel improvements
+
+The teams panel now separates human team members from Claude sub-agents. Previously they were mixed together, which made it hard to see who was coordinating the session versus which agents were doing work. The new layout puts people and agents in distinct sections with clear labels.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open a session that references files and try the Open in IDE button. Check the session cards for @mention chips on your recent sessions.
+
+
+--- blog/v0-15-0-unified-search-and-sidecar.mdx ---
+
+---
+title: "Search That Always Works, Teams That Survive Restarts"
+description: "v0.15.0 ships a unified search engine with automatic fallback, a ground-up sidecar rewrite for Agent SDK v0.2.72, SSE-driven live data, and persistent team browsing via JSONL reconstruction."
+date: 2026-03-12
+author: claude-view team
+---
+
+Two problems that show up differently but have the same root cause: data that should be there isn't. v0.15.0 fixes both — for search and for teams.
+
+## Search that finds what you're looking for
+
+The previous search architecture had a gap. Tantivy's full-text index is fast and precise for keyword queries, but it only knows about sessions it has indexed. If you searched for something before indexing completed, or used a query that Tantivy couldn't tokenize well, you got nothing.
+
+v0.15.0 introduces a unified search engine that never gives up empty-handed. The flow:
+
+1. **SQLite pre-filter** — structured filters (project, date range, model) run first against the database to narrow the candidate session IDs
+2. **Tantivy full-text** — runs against the pre-filtered set, returns ranked results with snippets
+3. **ripgrep fallback** — if Tantivy returns 0 results, grep scans the JSONL files directly for substring matches
+
+The fallback is automatic and transparent. Results from grep are labeled "Substring matches" so you know which engine answered — useful for understanding whether your query hit the full-text index or a literal match.
+
+The frontend sends a single request to `/api/search`. It doesn't know or care which engine responded. This follows the project's one-endpoint principle: backend decides the strategy, frontend renders the result.
+
+## The sidecar rewrite
+
+The Node.js sidecar — which brokers communication between the Rust server and Claude Agent SDK sessions — has been rewritten from scratch for Agent SDK v0.2.72.
+
+The old sidecar accumulated debt: a growing list of edge cases, a protocol that had evolved organically, and two bugs that caused real failures in production (a broken resume URL and a pipe deadlock that could freeze a session).
+
+The new sidecar is built around four distinct modules:
+
+- **Session registry** — a typed map of active sessions with sequenced event emission, so events always arrive in order
+- **Permission handler** — routes `canUseTool` decisions with full context forwarded to the frontend, enabling per-tool approval UI
+- **Event mapper** — a pure function that translates all 22 SDK message types to the new typed protocol (27 server events, 8 client messages), with no side effects
+- **SDK session** — manages create/resume lifecycle with a long-lived stream loop and clean shutdown
+
+The resume URL bug (wrong path) and pipe deadlock (read loop not draining stderr) are both fixed. Crash recovery now works reliably.
+
+## SSE-driven live data
+
+The live monitor previously fetched session state on a polling interval. Between polls, you could be looking at stale data — a session that had already ended, or a new session that hadn't appeared yet.
+
+Live data now comes through server-sent events. The Rust server pushes updates as they happen. The browser receives them immediately. The polling loop is gone.
+
+## Persistent team browsing
+
+When you opened claude-view after a restart, team data was often missing. The live session store is in-memory, so anything that happened before the restart wasn't there. Teams showed as empty or incomplete until sessions were re-indexed.
+
+v0.15.0 adds a JSONL fallback layer for teams. When the in-memory store is cold — either because the server just started or a session was closed — claude-view reconstructs team composition and message inbox directly from the JSONL files. The reconstruction is a single-pass scan per session, not a full re-index.
+
+Teams now persist across server restarts. If you were in the middle of a multi-agent session last night, you can open claude-view this morning and still see the full team composition and message history.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Run a search to see the unified engine in action. Start a multi-agent session, restart the server, and check whether the team is still there.
+
+
+--- blog/v0-16-0-zero-config-cloud.mdx ---
+
+---
+title: "npx claude-view Just Works"
+description: "v0.16.0 bakes prod URLs into the distributed binary so sharing and auth work out of the box — while self-hosted builds stay clean with no embedded config."
+date: 2026-03-12
+author: claude-view team
+---
+
+There's a tension in distributing a tool that has both local and cloud features. If you embed cloud URLs in the binary, self-hosters pick up config they didn't ask for. If you don't, `npx` users have to set env vars before anything cloud-related works.
+
+v0.16.0 resolves this cleanly.
+
+## Two binaries, one codebase
+
+The distributed binary — the one you get via `npx claude-view@latest` or the install script — now has Supabase and relay URLs baked in at CI build time. Sharing works. Auth works. No configuration required.
+
+The source build — `cargo build` from the repo — produces a binary with none of those URLs embedded. It's a clean slate. Cloud features activate only when you explicitly set the env vars:
+
+```bash
+export SUPABASE_URL=...
+export SHARE_WORKER_URL=...
+export SHARE_VIEWER_URL=...
+cargo run --release
+```
+
+Same source. Different build contexts. The right defaults for each audience.
+
+## How it works
+
+The CI workflow injects the prod URLs as environment variables during the release build. Rust's `env!()` macro embeds them at compile time — they're baked into the binary, not loaded at runtime. No `.env` files, no dynamic resolution, no failure modes.
+
+```rust
+// In the binary: resolved at compile time
+const SHARE_WORKER_URL: &str = env!("SHARE_WORKER_URL");
+```
+
+When the same code is built locally without those vars set, the `env!()` macro falls back to an empty string, and the server disables the feature. The `GET /api/config` endpoint tells the frontend which features are available, so the UI adapts automatically.
+
+## Self-hosting is a first-class path
+
+This change came from a real gap: the README didn't explain the distribution model clearly. Someone building from source would see sharing UI but get errors because the backend URLs weren't set — and have no idea why.
+
+The README now has an explicit self-hosting section. It explains which env vars activate which features, what works with zero config (everything local), and what requires cloud setup (sharing, auth).
+
+If you're running claude-view on your own machine with your own data, `cargo build && ./target/release/claude-view` gives you the full local experience — history browser, search, live monitor, analytics — with no cloud dependencies at all.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you're an npx user, sharing and auth now work without any setup. If you're self-hosting, the README has the full picture.
+
+
+--- blog/v0-17-0-system-monitor.mdx ---
+
+---
+title: "See Your Machine While Your Agents Run"
+description: "v0.17.0 adds a System Monitor page with live CPU, memory, and disk gauges — streamed via SSE with smooth animations, right alongside your Claude sessions."
+date: 2026-03-12
+author: claude-view team
+---
+
+When you're running several Claude agents in parallel, your machine is working hard. But until now, you had to switch to Activity Monitor or `htop` to see what was actually happening — breaking your flow every time you wanted to check if you were close to memory pressure or a CPU spike.
+
+v0.17.0 adds a System Monitor page directly in the claude-view sidebar.
+
+## What you see
+
+Open the System Monitor from the sidebar and you get live gauges for:
+
+- **CPU usage** — overall utilization, updated in real time
+- **Memory** — used vs. available, so you can see when agents are pushing limits
+- **Disk** — current read/write activity
+
+Below the gauges is a **top processes list** — the most CPU-hungry processes on your machine, grouped by name and sorted live. You can see at a glance whether it's your Claude sessions, your IDE, or something else driving load.
+
+## Smooth, not jumpy
+
+Raw system metrics change every second and the numbers can jump around. A gauge that snaps from 23% to 67% in one frame is hard to track visually.
+
+The monitor uses a rAF-based tween hook that interpolates values between readings. The gauge needle moves smoothly toward each new reading rather than teleporting. This is the same technique Activity Monitor uses — your eye can track a moving needle; it can't track a number that jumps.
+
+Cards also animate in with a staggered reveal on first load — each one fades in slightly after the previous. It's a small detail, but it makes the page feel responsive rather than just appearing fully-formed.
+
+## SSE, not polling
+
+The system data streams from the Rust backend via server-sent events — the same mechanism as the live session monitor. The server pushes updates as they happen; the browser receives them without polling. No stale reads, no interval timers, no unnecessary requests.
+
+`★ Insight ─────────────────────────────────────`
+This is a natural extension of the SSE infrastructure already used for live sessions — once the server can push session events, pushing system metrics costs almost nothing architecturally.
+`─────────────────────────────────────────────────`
+
+Under the hood, the observer runs in a `spawn_blocking` task so the `std::thread::sleep` between readings never blocks the async runtime. This matters on macOS where the Tokio runtime is used for everything from HTTP to file I/O — a blocking sleep in the wrong place can stall unrelated requests.
+
+## What's next
+
+- Linux and Windows builds are next on the platform roadmap
+- More monitor metrics: network I/O, per-session resource attribution
+- Cost tracking improvements across multi-agent sessions
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the System Monitor from the sidebar while running a few agents. Watch what your machine does.
+
+
+--- blog/v0-19-0-unified-model-catalog.mdx ---
+
+---
+title: "One Catalog for Every Model"
+description: "v0.19.0 introduces a unified model catalog — a single source of truth for pricing, context windows, and capabilities across all Claude models."
+date: 2026-03-14
+author: claude-view team
+---
+
+Model metadata was scattered. Pricing lived in one file, context windows in another, display names in a third. When Anthropic shipped a new model, you had to update multiple places — and if you missed one, cost calculations silently drifted.
+
+v0.19.0 consolidates everything into a **unified model catalog**.
+
+## What changed
+
+Every model now has a single entry that declares its pricing tiers, context window, capabilities, and display metadata. The catalog is the sole authority — cost calculations, model selectors, and insights all read from the same source.
+
+This means:
+- **Accurate cost tracking** for all Claude models, including cache pricing tiers
+- **One place to update** when new models ship
+- **Consistent metadata** across the dashboard, activity page, and session detail views
+
+## Sidebar deduplication fix
+
+A subtle bug: if you ran Claude Code sessions after starting the claude-view server, the sidebar could show the same project twice — once with 2 sessions, once with 1,296. The root cause was interesting.
+
+The indexer resolves `git_root` (the repository root path) for each session so that worktree sessions group under their parent repo. But the resolution only used path pattern matching (`/.worktrees/` markers). Sessions at the actual repo root — the common case — got `None`. A startup backfill caught historical gaps via `git rev-parse`, but sessions indexed *after* the backfill ran accumulated with a missing `git_root`. The grouping query fell through to a sanitized project ID, creating a separate entry with the same display name.
+
+The fix: call `git rev-parse --git-common-dir` inline during indexing when path-based inference returns nothing. One subprocess call per project, ~5ms. The startup backfill continues to handle historical data.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+
+--- blog/v0-2-0-security-and-ui-redesign.mdx ---
+
+---
+title: "Security First: Hardening claude-view Before Launch"
+description: "v0.2.0 adds security hardening across CI, CORS, and error handling, plus a semantic card UI redesign for conversation browsing."
+date: 2026-01-30
+author: claude-view team
+---
+
+Most tools ship features first and patch security later. We did the opposite. Before adding a single analytics feature, v0.2.0 locks down the foundation.
+
+## Why security before features
+
+claude-view runs a local web server on your machine. It reads your Claude Code session files — full conversation histories, tool calls, code snippets. If the server leaks data through verbose error messages, accepts requests from any origin, or runs CI without dependency auditing, none of the features on top matter. You wouldn't trust a monitoring tool that's itself a liability.
+
+## What we hardened
+
+**CORS lockdown** — the Axum server now rejects cross-origin requests by default. Only `localhost` origins on the expected port are allowed. This prevents a malicious page in another tab from querying your session data through the local server.
+
+**Error response sanitization** — before this release, server errors could leak internal paths, stack traces, and file system structure. Every error response now returns a generic message to the client while logging the full details server-side. Debugging stays easy; information disclosure stops.
+
+**CI security pipeline** — every PR now runs `cargo deny` for dependency auditing and `cargo audit` for known vulnerabilities. Supply chain attacks against Rust crates are rare but not zero, and we'd rather catch them in CI than in production.
+
+**Input validation** — query parameters and path segments are validated before they hit any handler. Malformed session IDs, path traversal attempts, and oversized payloads are rejected at the edge.
+
+## Semantic card UI
+
+The other half of v0.2.0 is a full UI redesign for conversation browsing. The old layout dumped raw messages into a scrolling list — functional but hard to scan.
+
+The new design uses **semantic cards** that group messages by context. Each card shows the session's project, duration, model, and a preview of the first user message. You can scan 50 sessions and find the one you want in seconds instead of scrolling through raw transcript dumps.
+
+Cards are interactive — click to expand into the full conversation view, hover for metadata. The visual hierarchy makes it obvious which sessions are long multi-turn conversations and which are quick one-shot questions.
+
+## The philosophy
+
+Ship safe defaults. A user who runs `npx claude-view` for the first time shouldn't need to think about CORS policies or error leakage. Those decisions are made for them, correctly, from day one. The 1% who need to customize can override — but the defaults protect everyone.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Security isn't a feature you market. It's a foundation you build on.
+
+
+--- blog/v0-3-0-git-integration.mdx ---
+
+---
+title: "Git Integration: Connecting AI Sessions to Your Codebase"
+description: "v0.3.0 adds git integration and AI contribution tracking — see which commits your Claude Code agent helped produce."
+date: 2026-02-09
+author: claude-view team
+---
+
+You finish a Claude Code session. The agent wrote code, you reviewed it, ran tests, iterated. Then you `git commit`. A week later, looking at `git log`, there's no trace that an AI agent was involved. The commit looks like any other. The session that produced it is buried in `~/.claude/projects/`.
+
+v0.3.0 bridges that gap.
+
+## Session discovery follows your projects
+
+claude-view now understands your project structure. Instead of dumping every session into a flat list, sessions are grouped by the project directory they were started in. Open a repo in Claude Code, and claude-view knows which sessions belong to that repo.
+
+This is powered by parsing the JSONL session files, which encode the working directory. No configuration required — claude-view reads what Claude Code already writes.
+
+## AI contribution tracking
+
+The headline feature: claude-view now links Claude Code sessions to the git commits they produced.
+
+When a session ends and commits exist in the repo's history that fall within the session's time window, claude-view attributes them. You can see, per-session, which commits were produced with AI assistance and what percentage of your recent work involved an agent.
+
+**We chose to undercount rather than overcount.** A commit is only attributed to a session if the timing and working directory match. If you were coding manually in the same repo during a session, those commits won't be falsely attributed. Conservative attribution means the numbers you see are trustworthy — when claude-view says a commit was AI-assisted, it was.
+
+This matters for teams thinking about AI adoption metrics. Inflated numbers breed skepticism. Provable-only attribution builds trust.
+
+## How it works
+
+```bash
+npx claude-view
+```
+
+Navigate to any session and you'll see a "Commits" section showing linked git commits with their hashes, messages, and timestamps. The contribution tracking runs automatically — no git hooks to install, no config files to write.
+
+Under the hood, claude-view shells out to `git log` with time-range filters scoped to the session's start and end timestamps. It cross-references the repo path from the session metadata with the actual git repository. If the paths don't match or no commits fall in the window, nothing is shown. No phantom data.
+
+## Why this matters
+
+AI-assisted development is becoming normal, but the tooling hasn't caught up. Your git history doesn't know about AI. Your project management tool doesn't know about AI. claude-view is the connective tissue — it links the AI work to the artifacts it produced.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Your git history now has context. Every commit, every session, connected.
+
+
+--- blog/v0-4-0-dashboard-analytics.mdx ---
+
+---
+title: "Dashboard Analytics: Measuring Your AI Fluency"
+description: "v0.4.0 transforms claude-view from a session browser into an analytics platform with time filters, heatmaps, and model usage breakdowns."
+date: 2026-02-10
+author: claude-view team
+---
+
+Until now, claude-view answered "what happened in this session?" With v0.4.0, it answers a bigger question: "how am I using AI over time?"
+
+## From browser to analytics platform
+
+The session list was useful for reviewing individual conversations. But if you've been using Claude Code daily for weeks, you need patterns, not transcripts. How many sessions did you run last week? Which model are you using most? Are you getting more efficient or just running more sessions?
+
+v0.4.0 adds a full analytics dashboard that surfaces these patterns automatically.
+
+## Time range filters with URL state
+
+Every chart and metric on the dashboard respects a time range selector — last 7 days, 30 days, 90 days, or a custom range. The selected range is persisted in URL parameters, so you can bookmark a specific view or share a link with a colleague and they see the same data window.
+
+Internally, this uses a copy-then-modify pattern for URL params. The filter state is the single source of truth, and every component reads from it rather than maintaining its own date range. One filter, applied everywhere.
+
+## Contribution heatmap
+
+A GitHub-style heatmap shows your daily Claude Code activity over the past year. Each cell is a day, colored by session count. Hover any cell to see the exact count and date.
+
+This sounds simple, but the implementation required careful timestamp handling. Session timestamps in Claude Code JSONL files are strings, not numbers. Every timestamp conversion guards against `ts <= 0` to prevent `new Date(0)` from rendering as January 1, 1970.
+
+## Model usage breakdown
+
+A breakdown chart shows which models you've used and how tokens distribute across them. If you're running a mix of Sonnet and Opus sessions, you'll see the cost implications immediately — Opus sessions use more tokens per turn but often finish tasks in fewer turns.
+
+## Performance gains
+
+v0.4.0 also consolidates database queries. The previous version made separate queries for sessions, contributions, and metadata. Now a single query returns everything the dashboard needs, reducing database round-trips by roughly 65%. On a machine with 500+ sessions, the dashboard loads noticeably faster.
+
+The test suite grew to 922 tests across the Rust backend and React frontend, covering edge cases like zero-duration sessions, sessions with no commits, and time ranges that span timezone boundaries.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the dashboard tab and see your AI usage patterns for the first time. The data was always there — now it's visible.
+
+
+--- blog/v0-5-0-mission-control.mdx ---
+
+---
+title: "Mission Control: Watching Your AI Agents Work in Real Time"
+description: "v0.5.0 is the biggest release yet — live dashboards for every running Claude Code agent with sub-agent visualization, cost tracking, and full-text search."
+date: 2026-02-19
+author: claude-view team
+---
+
+You have three Claude Code agents running. One is refactoring your API layer. Another is writing integration tests. A third is debugging a deployment script. You alt-tab between terminal windows trying to remember which is which, whether any are waiting for approval, and how much you've spent in the last hour.
+
+v0.5.0 ends the alt-tabbing. This is Mission Control.
+
+## Real-time session state machine
+
+Every running Claude Code session is now tracked with a state machine: **Needs You** (waiting for human input), **Autonomous** (actively working), and **Done** (completed). The live dashboard shows all sessions at a glance, color-coded by state. You know instantly which agents need attention and which are working autonomously.
+
+State transitions are detected by monitoring the JSONL output in real time. When an agent emits a user-facing question or hits a permission boundary, it flips to "Needs You." When it starts executing tool calls again, it's back to "Autonomous."
+
+## Sub-agent swim lanes
+
+Claude Code can spawn sub-agents — child processes that handle specific subtasks. Before v0.5.0, these were invisible. Now the dashboard shows sub-agent hierarchies as nested swim lanes. You can see the parent agent coordinating work and each sub-agent executing its piece.
+
+This is critical for complex tasks where a top-level agent delegates to 2-3 sub-agents simultaneously. Without visualization, you're flying blind.
+
+## Verbose mode
+
+Click any session card and toggle verbose mode to see every tool call as it happens. File reads, writes, shell commands, search queries — the full stream. This is the equivalent of watching over the agent's shoulder, except you can monitor multiple agents at once.
+
+## Full-text search with Tantivy
+
+Session history is now indexed by a Tantivy search engine — the same engine that powers parts of GitHub's search. Type a query and get results across all your sessions instantly. Fuzzy matching handles typos. Results highlight the matching text in context.
+
+This replaced a naive substring search that slowed down linearly with session count. Tantivy builds an inverted index at startup, and queries return in single-digit milliseconds regardless of how many sessions you have.
+
+## AI Fluency Score
+
+A new composite metric — the AI Fluency Score — rates your collaboration with AI agents on a 0-100 scale. It factors in session efficiency (tokens per useful output), tool usage patterns, and iteration count. The score trends over time so you can see whether you're getting better at directing AI agents.
+
+## Navigation restructure
+
+Mission Control is now the landing page when you open claude-view. Session history, analytics, and search are still one click away, but the live dashboard is front and center. If you're running agents, that's what you need to see first.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Start a few Claude Code sessions, then open claude-view. You'll never go back to alt-tabbing.
+
+
+--- blog/v0-6-0-rebrand.mdx ---
+
+---
+title: "From vibe-recall to claude-view: Why We Renamed"
+description: "v0.6.0 officially rebrands the project to claude-view — a name that tells you exactly what it does."
+date: 2026-02-20
+author: claude-view team
+---
+
+The project used to be called **vibe-recall**. It was a fun name — catchy, a nod to the "vibe coding" movement. But every time someone saw the name for the first time, they asked: "What does it do?"
+
+That's a naming failure. A tool's name should answer that question, not raise it.
+
+## Why names matter for developer tools
+
+Developer tools live or die by discoverability. You search "Claude Code dashboard" or "monitor Claude sessions" and you need to find the tool. "vibe-recall" doesn't match any of those queries. It's a brand name, not a descriptor.
+
+**claude-view** tells you exactly what it is: you view your Claude sessions. It's searchable, memorable, and self-explanatory. When someone mentions it in a Slack channel, the person reading doesn't need to click a link to understand what the tool does.
+
+## The scope of the rename
+
+Renaming a project isn't a one-line change. Every reference had to be updated:
+
+- npm package name: `vibe-recall` to `claude-view`
+- Rust crate names: `vibe-recall-server`, `vibe-recall-core`, etc. to `claude-view-server`, `claude-view-core`
+- Binary name: the CLI command itself
+- All import paths in TypeScript and Rust
+- CI/CD pipeline references
+- Documentation, README, and config files
+- The default port stayed at `47892` — some things don't need to change
+
+We scripted most of it with find-and-replace, then manually verified every file. The test suite caught several places we missed on the first pass.
+
+## What else shipped in v0.6.0
+
+The rename was the headline, but v0.6.0 also includes:
+
+**Hook event logging** — Claude Code hooks (pre/post-tool scripts) now emit structured events that claude-view captures. You can see when hooks fire, how long they take, and whether they succeed. This is essential for debugging custom hook workflows where a failing hook silently changes agent behavior.
+
+**Context gauge improvements** — the context window usage indicator is now more accurate. It accounts for cache read tokens separately from fresh input tokens, giving you a clearer picture of how close a session is to the context limit. When a session is approaching the limit, you'll know before the agent starts degrading.
+
+## Going forward
+
+The `npx` command is now:
+
+```bash
+npx claude-view
+```
+
+If you previously installed `vibe-recall`, uninstall it and switch to the new package name. The old name will stop receiving updates.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Same tool, better name. Everything else works exactly as before.
+
+
+--- blog/v0-7-0-crash-recovery.mdx ---
+
+---
+title: "Crash Recovery: Building a Tool You Don't Have to Babysit"
+description: "v0.7.0 adds server crash recovery with persistent snapshots, work reports with cost analysis, and the cleanup CLI command."
+date: 2026-02-20
+author: claude-view team
+---
+
+Here's a scenario that actually happened: you're running four Claude Code agents overnight. claude-view is monitoring all of them. At 3am, the server crashes — maybe an OOM kill, maybe a panic on a malformed session file. You wake up and check the dashboard. All four sessions show as "unknown." The live state is gone. The agents finished hours ago but you have no record of their final status, token usage, or costs.
+
+v0.7.0 makes sure that never happens again.
+
+## Persistent session snapshots
+
+The live monitor now writes session state to disk using a v2 snapshot format. Every state transition — Autonomous to Needs You, token count update, sub-agent spawn — is persisted. If the server crashes and restarts, it reads the snapshot file and reconstructs the exact state of every session that was running.
+
+This isn't a full replay of the JSONL files (that would be slow). The snapshot is a compact binary format that captures the derived state: current status, accumulated tokens, cost, active sub-agents, and the last known message. Recovery takes milliseconds, not minutes.
+
+The format is versioned so future changes to the state model don't break older snapshots. v1 snapshots (from before this release) are detected and discarded gracefully — you lose the old state but the server doesn't crash on startup.
+
+## Work Reports
+
+A new Work Reports page shows completed sessions with a focus on output: what files were modified, how many commits were produced, and the total cost. Think of it as a daily standup for your AI agents — here's what they did, here's what it cost.
+
+Each report includes a **token breakdown** by category: input tokens, output tokens, cache reads, and cache creation. Cache reads are significantly cheaper than fresh input, so knowing your cache hit ratio tells you whether your sessions are cost-efficient or re-processing context unnecessarily.
+
+**Cost analysis** converts raw token counts into dollar amounts using per-model pricing. You see the actual cost per session, per project, and per day. No more mental math with token counts and pricing pages.
+
+## The cleanup command
+
+Session files accumulate. After months of daily use, `~/.claude/projects/` can grow to gigabytes. The new CLI command handles this:
+
+```bash
+claude-view cleanup --older-than 90d
+```
+
+It removes session files older than the specified duration. It's non-destructive by default — run without `--confirm` to see what would be deleted. The search index is updated automatically after cleanup.
+
+## Philosophy
+
+A monitoring tool should be the most reliable piece of software you run. If it needs babysitting, it's adding overhead instead of removing it. Crash recovery, persistent state, and self-maintenance are not features — they're table stakes. v0.7.0 brings claude-view to that standard.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Start it, forget about it. It'll be there when you need it.
+
+
+--- blog/v0-8-0-plugin-and-search.mdx ---
+
+---
+title: "The Claude Code Plugin: Ask Your Agent About Your Work"
+description: "v0.8.0 ships the claude-view plugin with 8 MCP tools, 3 skills, and a Tantivy-powered unified search engine."
+date: 2026-02-22
+author: claude-view team
+---
+
+Sometimes you don't want to leave your terminal. You're in the middle of a Claude Code session and you think, "What did I work on yesterday?" or "How much have I spent this week?" Opening a browser tab breaks your flow. You want the answer right here, inside the agent conversation.
+
+v0.8.0 ships the **claude-view plugin** — a native Claude Code plugin that brings your session data into the agent itself.
+
+## Install and go
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+That's it. The plugin auto-starts the claude-view server if it isn't already running. No separate process management needed.
+
+## 8 MCP tools
+
+The plugin exposes 8 read-only MCP tools that Claude Code can call during conversations:
+
+- **list-sessions** — recent sessions with metadata
+- **get-session** — full detail for a specific session
+- **search-sessions** — full-text search across all sessions
+- **get-costs** — token usage and cost breakdown
+- **get-activity** — session counts by day/week
+- **get-contributions** — git commits linked to AI sessions
+- **get-projects** — all tracked projects
+- **get-status** — server health and indexing status
+
+These are read-only by design. The plugin never modifies your session data, never writes files, never changes state. It observes.
+
+## 3 skills
+
+Skills are pre-built prompts you can invoke with a `/` command:
+
+**`/session-recap`** — summarizes your most recent session: what was accomplished, which files were changed, how many tokens were used. Useful when you pick up work the next morning and need context.
+
+**`/daily-cost`** — shows today's total spend across all sessions, broken down by model. Run this at end of day to know your burn rate.
+
+**`/standup`** — generates a standup-style summary of your last 24 hours of AI-assisted work. Sessions, commits, projects touched, total cost. Copy-paste it into your team's standup channel.
+
+## Unified Tantivy search
+
+The search engine got a major upgrade in v0.8.0. Previous versions indexed session metadata (title, project, date). Now the full conversation content is indexed — every user message, every assistant response, every tool call result.
+
+The Tantivy engine supports fuzzy matching, so `refactr` finds results for "refactor." Queries return ranked results with highlighted snippets showing the matching text in context. On a machine with 1,000+ sessions, queries return in under 10ms.
+
+## Rich message rendering
+
+Conversation history now renders with **paired tool cards**. When Claude calls a tool and gets a result, both the call and the result are displayed as a single visual unit. File reads show the file content inline. Shell commands show the command and its output together. This makes it dramatically easier to follow what an agent actually did versus reading raw JSON blocks.
+
+**Hook events** are also visible in conversation history. If a pre-tool hook modified the agent's behavior, you'll see it in the timeline where it happened, not buried in a separate log.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Then install the plugin:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+Ask your agent "what did I work on this week?" and get a real answer backed by real data.
+
+
+--- blog/v0-9-0-activity-and-sharing.mdx ---
+
+---
+title: "Activity Dashboard and End-to-End Encrypted Sharing"
+description: "v0.9.0 adds a calendar heatmap activity page and zero-knowledge encrypted conversation sharing via share.claudeview.ai."
+date: 2026-02-25
+author: claude-view team
+---
+
+Two features that sound unrelated but share a common thread: making your AI work visible. The activity dashboard makes it visible to you. Encrypted sharing makes it visible to others — on your terms.
+
+## Activity dashboard
+
+The new Activity page shows a **calendar heatmap** of your Claude Code usage over the past year. Each cell is a day, shaded by session count. It answers a question that's surprisingly hard to answer otherwise: "Am I using AI more or less than I was three months ago?"
+
+Below the heatmap, a **daily timeline** expands when you click a specific day. You see every session from that day, ordered chronologically, with project names, durations, and token counts. It's a granular view of how your day was structured — when you started your first session, how long the gaps were, whether you ran agents in parallel or sequentially.
+
+A **project breakdown** panel shows the distribution of work across repositories. If 80% of your sessions last week were in one project, you'll see it immediately. This is useful for weekly retrospectives or when deciding where to allocate more agent time.
+
+## End-to-end encrypted sharing
+
+You found a Claude Code session that perfectly demonstrates a technique — a clean refactoring approach, a debugging workflow, a prompt pattern that worked well. You want to share it with a colleague. But the session contains your file paths, your code, your project structure. Pasting raw JSONL into Slack isn't an option.
+
+v0.9.0 adds encrypted sharing. Click the share button on any session, and claude-view:
+
+1. **Encrypts the session client-side** using AES-256-GCM with a randomly generated key
+2. **Uploads the encrypted blob** to our infrastructure (Cloudflare R2)
+3. **Gives you a URL** like `share.claudeview.ai/s/abc123#key=xyz`
+
+The encryption key is in the URL fragment (after `#`), which browsers never send to the server. The server stores ciphertext it cannot decrypt. This is zero-knowledge architecture — even if our infrastructure were compromised, your session data remains encrypted.
+
+Recipients open the link in their browser. The share viewer SPA downloads the encrypted blob, extracts the key from the URL fragment, decrypts in-browser, and renders the conversation. **No account required.** No install. Just a link.
+
+Shared sessions expire after 30 days by default, or you can delete them immediately from the sharing panel.
+
+## Unified indexing pipeline
+
+Under the hood, v0.9.0 consolidates three separate indexing paths (session metadata, full-text content, git contributions) into a **single three-phase pipeline**: discover, parse, and index. This eliminates race conditions where the search index and the database disagreed about which sessions existed. It also makes startup faster — one pass through the session directory instead of three.
+
+## CLAUDE_VIEW_DATA_DIR
+
+For sandboxed environments (containers, CI runners, managed workstations), you can now point claude-view at a custom data directory:
+
+```bash
+CLAUDE_VIEW_DATA_DIR=/path/to/sessions npx claude-view
+```
+
+This overrides the default `~/.claude` path. Useful if your Claude Code sessions live on a mounted volume or a shared filesystem.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Check the Activity page to see your usage patterns. Share a session to see zero-knowledge encryption in action.
+
+
+--- blog/why-rust-over-nodejs.mdx ---
+
+---
+title: "Why We Chose Rust Over Node.js for a Local-First CLI Tool"
+description: "Rust gives us a 15MB binary with sub-second startup, mmap file parsing, and zero runtime dependencies. Here's why that matters for developer tools."
+date: 2026-01-30
+author: claude-view team
+---
+
+The first prototype of claude-view was a Node.js script. It worked. We shipped it. Five days later we rewrote the entire backend in Rust. Here's why we chose Rust over Node.js for a local-first CLI tool, and what the numbers actually look like.
+
+## The numbers
+
+| Metric | Node.js prototype | Rust (current) |
+|--------|-------------------|----------------|
+| Binary/bundle size | ~80MB (bundled runtime) | 15MB |
+| Cold startup to listening | 2.3s | 0.4s |
+| Parse 500 JSONL sessions | 4.1s | 0.9s |
+| Peak RSS (500 sessions) | 340MB | 85MB |
+| Runtime dependencies | node_modules tree | Zero |
+
+These aren't synthetic benchmarks. They're measurements from the same MacBook Air M2 with real session data — about 500 JSONL files totaling 180MB.
+
+## Memory-mapped parsing
+
+The biggest win came from `mmap`. In Node, reading a JSONL file means `fs.readFileSync` or streaming — either way the file contents land in V8's heap. With mmap, the OS maps the file directly into the process address space. We scan the bytes in place without copying.
+
+Combined with `memchr`'s SIMD-accelerated byte search, we can pre-filter lines before parsing JSON. Most lines in a JSONL file are message content — only a fraction are the metadata lines we need for session listings. Skipping non-matching lines without JSON parsing saves roughly 40% of parse time.
+
+```rust
+// SIMD pre-filter: only parse lines containing "type"
+let finder = memmem::Finder::new(b"\"type\"");
+for line in mmap_bytes.split(|&b| b == b'\n') {
+    if finder.find(line).is_none() {
+        continue; // skip without parsing
+    }
+    if let Ok(msg) = serde_json::from_slice::<Message>(line) {
+        // process message
+    }
+}
+```
+
+Node.js can't do this. V8 doesn't expose mmap, and even with `Buffer` tricks you're still copying data across the native boundary.
+
+## Zero runtime dependencies
+
+When a user runs `npx claude-view`, the npm wrapper downloads a single static binary from GitHub Releases. No `node_modules`. No Python. No Rust toolchain. The binary has everything baked in — the HTTP server (Axum), the SQLite engine (rusqlite with bundled SQLite), the search index (Tantivy), and the React frontend (embedded as static assets via `rust-embed`).
+
+This matters more than it sounds. `node_modules` introduces supply chain attack surface, version conflicts, and platform-specific native module compilation. A static Rust binary eliminates all three. We verify downloads with SHA256 checksums and publish with npm provenance attestation via Sigstore.
+
+## SQLite without an ORM
+
+Local state lives in SQLite via `rusqlite` — session metadata, search indexes, user preferences. In Node, you'd typically use `better-sqlite3` (which compiles a C extension on install) or Prisma (which downloads a query engine binary). In Rust, `rusqlite` with the `bundled` feature compiles SQLite from source as part of the build — no native module surprises, no download steps.
+
+We batch all writes in transactions. A typical session index update touches 50-200 rows; wrapping them in a single transaction takes it from 200ms to 8ms.
+
+## The trade-offs
+
+Rust is not free. Development velocity is genuinely slower. A refactor that would take 30 minutes in TypeScript takes 2 hours in Rust, mostly fighting the borrow checker on lifetime issues in async code. Compile times on a clean build are about 45 seconds.
+
+We mitigate this with `cargo-watch` for hot reloading (rebuilds only changed crates, usually 3-5s) and by keeping the frontend in React with Vite HMR. The Rust code changes less frequently than the UI — it's the stable core that parses, indexes, and serves data.
+
+## When Node.js is the right call
+
+For web servers, API gateways, or anything where developer velocity matters more than binary size — Node.js is excellent. We still use it for the npx CLI wrapper, the Cloudflare Workers, and our build tooling.
+
+The calculus changes for local-first developer tools. Users install your tool alongside their own projects. A tool that adds 80MB and takes 3 seconds to start competes poorly with one that adds 15MB and starts instantly. Developer tools are judged by the experience of running them, and Rust lets us deliver an experience that feels native because it is native.
+
+
+--- blog/zero-config-npx-distribution.mdx ---
+
+---
+title: "Zero-Config Developer Tools: The UX of npx Distribution"
+description: "How we distribute a Rust binary through npm so users get a native tool with one command and zero configuration."
+date: 2026-02-03
+author: claude-view team
+---
+
+The best developer tools are the ones you don't have to think about installing. Zero-config distribution through npx means a single command — no build tools, no runtime dependencies, no configuration files. Here's how we built that experience for a Rust binary and what we learned about the UX of distribution.
+
+## The distribution problem
+
+claude-view is a Rust binary. Users shouldn't need Rust installed. They shouldn't need Docker. They definitely shouldn't need to clone a repo and compile from source. The installation experience should be:
+
+```bash
+npx claude-view
+```
+
+That's it. Browser opens. You're looking at your sessions.
+
+## How the npx wrapper works
+
+The `claude-view` npm package is a thin Node.js wrapper — about 150 lines of code. When you run `npx claude-view`, it:
+
+1. **Detects your platform** — `process.platform` + `process.arch` gives us `darwin-arm64`, `darwin-x64`, `linux-x64`, or `linux-arm64`
+2. **Checks for a cached binary** — stored in `~/.claude-view/bin/` so repeat runs skip the download
+3. **Downloads from GitHub Releases** — fetches the platform-specific tarball for the matching version
+4. **Verifies the SHA256 checksum** — every release publishes a `checksums.txt` signed by the CI pipeline
+5. **Extracts and executes** — unpacks the tarball, sets the executable bit, and spawns the server process
+
+The entire wrapper is 12KB. The downloaded binary is ~15MB. Total time from `npx` to browser open is about 3 seconds on a first run, sub-second after that.
+
+## Why not the alternatives
+
+**`cargo install`** requires a working Rust toolchain. About 5% of developers have Rust installed. We'd be asking 95% of our users to install a 500MB toolchain to build a 15MB binary.
+
+**Homebrew** is macOS-only (Linuxbrew exists but has low adoption). It also requires us to maintain a tap formula, handle bottle builds, and deal with Homebrew's own update cadence. We added it as a secondary option, but it can't be the primary path.
+
+**Docker** is a non-starter for local-first tools. claude-view reads JSONL files from `~/.claude/projects/` — bind-mounting your home directory into a container raises permission issues, breaks symlinks, and adds latency to file watchers. Plus, Docker Desktop on macOS uses a Linux VM, so file access goes through VirtioFS.
+
+**curl | bash** works but users rightly distrust it. npm's provenance chain (Sigstore attestation, npm audit signatures) gives a stronger trust signal than a raw curl script.
+
+## npm provenance and supply chain security
+
+Every published version of `claude-view` on npm includes a Sigstore provenance attestation. This cryptographically links the published package to a specific GitHub Actions workflow run, commit SHA, and source repo. You can verify it:
+
+```bash
+npm audit signatures
+```
+
+The binary checksums are generated in CI and published alongside the GitHub Release. The npx wrapper verifies the checksum before execution — if someone tampers with the binary on the CDN, the hash won't match and the tool refuses to run.
+
+## The port and auto-open dance
+
+Default port is 47892 — chosen to be unlikely to conflict with anything. If it's taken (maybe you're already running a session), the server tries ephemeral port allocation and prints the actual URL. The npx wrapper captures the server's stdout, parses the port, and opens your default browser with `open` (macOS) or `xdg-open` (Linux).
+
+One subtle detail: the server binds the port and prints the URL *before* starting any background work like indexing. This means the browser opens immediately even if the server is still scanning your session files. The UI shows a loading state until data arrives. Users perceive this as fast because the window appears instantly.
+
+## Lessons from zero-config distribution
+
+The biggest lesson: **every prompt is friction**. We removed the config file. We removed the port selection. We removed the "which sessions directory" question (we auto-detect `~/.claude/projects/`). The default behavior should be correct for 99% of users. The 1% who need custom paths can set `CLAUDE_VIEW_SESSIONS_DIR`.
+
+Developer tools live or die by their first-run experience. If `npx your-tool` doesn't produce a useful result in under 5 seconds, most developers won't try again. Treat distribution as a product feature, not an afterthought.
+
+
+--- changelog/v0.1.1.md ---
+
+---
+title: "v0.1.1 — First Public Release"
+date: 2026-01-27
+version: v0.1.1
+---
+
+## New features
+
+- Session browser with instant search and project grouping
+- Rich conversation previews with syntax-highlighted code, rendered markdown, and HTML export
+- Ships binaries for macOS (ARM & Intel), Linux x64, Windows x64
+- Zero-config: `npx claude-view` opens at localhost:47892
+
+## Improvements
+
+- First public release — foundational architecture established
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.11.2.md ---
+
+---
+title: v0.11.2 — Plans, Prompts & Teams
+date: 2026-03-08
+version: v0.11.2
+---
+
+## New features
+
+**Plan Tab** — View Claude Code plans (`.claude/plans/`) directly in the session detail panel. Plans are parsed, indexed, and linked to sessions via slug. No more hunting through files.
+
+**Prompt History** — Full-text search across all prompts you've sent to Claude Code. Browse by intent (feature, debug, refactor), see template usage patterns, and get statistics on prompt types. Includes Drain clustering for automatic template detection.
+
+**Teams Dashboard** — Dedicated teams view showing team leads, inbox messages, team tasks, and file changes across team members. End-to-end team intelligence powered by `~/.claude/teams/` config files.
+
+**Unified Project & Branch Design Tokens** — Consistent color and typography tokens for project names and branch labels across all views (live monitor, history, dashboard).
+
+## Improvements
+
+- **Agent tool support** — `Agent` tool now extracts `subagent_type` like the legacy `Task` tool. Full parity with prompt history pipeline.
+- **Builtin tools registry sync** — 5 missing tools (verify-before-completion, receiving-code-review, requesting-code-review, executing-plans, dispatching-parallel-agents) now in BUILTIN_TOOLS registry.
+- **File history paths** — Resolve paths from hashes + improved diff UI for new/deleted files.
+- **OAuth cache timing** — Server-driven cache control for usage pill updates.
+- **Phantom filter wiring** — All prompt history filters now fully wired (display, paste, clipboard).
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+## What's next
+
+- Mobile app enhancements (Expo SDK 56 upgrade)
+- Custom session layouts (drag-and-drop column resizing)
+- Codex historical + live verification protocols
+
+
+--- changelog/v0.12.0.md ---
+
+---
+title: v0.12.0 — Plugin Manager
+date: 2026-03-09
+version: v0.12.0
+---
+
+## New features
+
+**Plugin Manager** — A full GUI for browsing, installing, enabling, disabling, and uninstalling Claude Code plugins directly from the claude-view web UI. No terminal needed.
+
+**Plugin Card Grid** — Each installed plugin renders as a card showing name, status, scope (user or project), and version. A health banner at the top shows plugin system status at a glance.
+
+**Marketplace Dialog** — Browse available plugins and install them with a scope picker (user-level or project-level). Debounced search filtering across all plugin cards for instant discovery.
+
+**Plugin Actions** — Right-click or use the action menu on any plugin card to enable, disable, or uninstall with a confirmation dialog. All actions correctly forward the scope parameter to the underlying CLI.
+
+## Improvements
+
+- **Full TUI data parity** — Plugin cards now display the same data as `claude plugin list` terminal output (description, installed scope, enabled state, version).
+- **Server-side CLI caching** — Plugin list output is cached with a 5-minute TTL (CachedUpstream pattern), so the page loads instantly on repeat visits.
+- **ANSI stripping** — Raw CLI escape codes are stripped server-side before reaching the browser. No more garbled text in toast messages or error dialogs.
+- **Scoped mutations** — Enable, disable, install, and uninstall all forward the correct scope parameter. Previously only install passed scope, leaving other actions broken for project-scoped plugins.
+- **Mobile: Expo SDK 55 compatibility** — Updated react-native-screens (4.23.0), expo-router (55.0.4), platform-gated push notifications on web, cleaned up EAS build artifacts.
+- **Registry** — New `invocables_for_plugin` method for querying plugin-specific invocable tools.
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+## What's next
+
+- Plugin usage analytics (which plugins you use most, per-session breakdown)
+- Mobile plugin management (view and toggle plugins from the Expo app)
+- Plugin dependency graph visualization
+
+
+--- changelog/v0.12.1.md ---
+
+---
+title: v0.12.1 — Project-Scoped Plugin Actions
+date: 2026-03-09
+version: v0.12.1
+---
+
+## Fixes
+
+**Project-scoped plugin actions** — Fixed a bug where uninstalling, enabling, or disabling a project-scoped plugin failed silently because the CLI subprocess wasn't given the correct working directory. The `projectPath` field is now wired end-to-end from the Rust backend through the API response, TypeScript types, React components, and back to the CLI subprocess as its CWD.
+
+**Update All for project plugins** — The "Update All" button now correctly passes each plugin's `projectPath`, so bulk updates work for project-scoped plugins that require CWD context.
+
+## Improvements
+
+- **E2E test suite for Plugins page** — 26 Playwright tests covering API contract, search/filter, card interactions, action menu, health banner, marketplaces dialog, and keyboard accessibility. The Plugins page is now fully guarded against regressions.
+- **Scope flag forwarding** — `--scope` is now only passed to the CLI for `install` and `uninstall` actions, matching the Claude CLI's actual behavior. Enable/disable use auto-detection.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+## What's next
+
+- Plugin usage analytics (which plugins you use most, per-session breakdown)
+- Mobile plugin management (view and toggle plugins from the Expo app)
+- Plugin dependency graph visualization
+
+
+--- changelog/v0.13.0.md ---
+
+---
+title: "v0.13.0 — Workflows and Live Chat"
+date: 2026-03-11
+version: v0.13.0
+---
+
+## New features
+
+**Workflow system** — Create, browse, and run multi-stage workflows from a dedicated Workflows page. Each workflow has a VS Code-style detail layout with a Mermaid diagram preview, YAML editor, and a streaming LLM chat rail that generates workflow definitions in real time. The runner tab shows stage columns, attempt cards, and a progress bar. Two built-in seed workflows ship out of the box: Plan Polisher and Plan Executor.
+
+**Unified live chat** — The live session view now combines history and real-time messages in a single scrollable conversation. No more switching between tabs to see what happened before you opened the session versus what's happening now.
+
+**Recently closed sessions** — When a session ends, it appears in a "Recently Closed" section on the Live Monitor instead of vanishing. Dismiss individual sessions or clear them all. Closed sessions persist across server restarts via SQLite.
+
+**Dynamic model list** — The model selector now fetches available models from the backend instead of using a hardcoded list. Full model IDs are shown in tooltips for disambiguation.
+
+**Queued message indicators** — User messages waiting in the queue appear as pending bubbles with a "Queued" badge, so you can see what's been sent but not yet processed.
+
+## Improvements
+
+- **Workflow sidecar runner** — Stage execution with gate polling and automatic crash recovery in the Node.js sidecar process.
+- **Queue operation metadata** — System messages and queue operations now carry metadata through WebSocket events to the event cards.
+- **Production hardening** — Six security and correctness fixes for the workflow endpoints.
+- **Live monitor polish** — Resume button, consistent labels, batched SQLite writes, and FileEvent persistence.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.14.0.md ---
+
+---
+title: "v0.14.0 — Open in IDE, @Mentions, and Agent Chat"
+date: 2026-03-11
+version: v0.14.0
+---
+
+## New features
+
+**Open in IDE** — Files referenced in your Claude Code sessions now have a one-click button to open them directly in your editor. claude-view auto-detects VS Code, Cursor, Zed, and other installed editors. The button appears in the Changes tab, file headers, and Kanban project headers. Your preferred editor is remembered across sessions.
+
+**@File mention chips** — When Claude references files during a session, the `@filename` mentions are extracted and shown as chips on session cards in both the Live Monitor and session history. Hover a chip to see the full path.
+
+**Agent SDK live chat upgrades** — The live chat rail now renders thinking blocks, tool calls, and tool results with full syntax highlighting and collapsible sections. A mode selector lets you switch between Control and Review modes. A token usage gauge shows how much of the context window is in use.
+
+**Teams: members vs sub-agents** — The team panel now clearly separates human team members from Claude sub-agents spawned during the session. The layout is cleaner and easier to scan at a glance.
+
+## Improvements
+
+- **`teamName` extraction fixed** — Now correctly read from the top-level JSONL field instead of a phantom `input.team_name` path that never existed in real data.
+- **Branch metadata guard** — Fixed a bug where `apply_jsonl_metadata` could overwrite an existing branch value with `None`.
+- **File history filenames** — Resolved by content hash rather than `backupFileName`, which was unreliable for renamed files.
+- **Live monitor animation** — Compacting card animation strengthened with border and glow pulse for clearer visual feedback.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.15.0.md ---
+
+---
+title: "v0.15.0 — Unified Search, Sidecar Rewrite, and Persistent Teams"
+date: 2026-03-12
+version: v0.15.0
+---
+
+## New features
+
+**Unified search engine** — Search now uses Tantivy full-text indexing as the primary engine, with automatic ripgrep fallback when the index returns no results. A SQLite pre-filter narrows candidates by project, date, and model before the full-text pass. Results from the grep fallback are labeled "Substring matches" so you can see which engine answered.
+
+**Sidecar ground-up rewrite** — The Node.js sidecar has been rewritten for Agent SDK v0.2.72 with a new typed protocol (27 server events, 8 client messages), a permission handler for `canUseTool` routing, a pure event mapper for all 22 SDK message types, and a session registry with sequenced event emission. Resume URL and pipe deadlock bugs are fixed.
+
+**SSE-driven live data** — The live monitor now receives session data via server-sent events instead of polling, eliminating stale-cache risks.
+
+**Persistent team browsing** — Team composition and inbox messages are now reconstructed from JSONL files on disk when the in-memory store is cold. Teams survive server restarts without losing member or message history.
+
+**Evidence audit Phase 3** — Every `release.sh` run now verifies field coverage (6,874 paths) and detects phantom fields (struct fields with zero occurrences in real data) across all JSONL files as a pre-release gate.
+
+## Improvements
+
+- **Single-pass team summaries** — JSONL reconstruction for team summaries now does one pass instead of multiple, reducing startup I/O.
+- **Search scope removed** — The scope selector has been removed from the frontend; the backend handles scope internally for a cleaner interface.
+- **Session count accuracy** — `/api/search` now returns a true `total_sessions` count rather than a capped estimate.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.16.0.md ---
+
+---
+title: "v0.16.0 — Zero-Config Cloud Features"
+date: 2026-03-12
+version: v0.16.0
+---
+
+## New features
+
+**Zero-config sharing and auth** — Supabase and relay URLs are now baked into the distributed binary at CI build time. `npx claude-view@latest` works with sharing and auth enabled out of the box — no env vars, no setup.
+
+**Self-hosting stays clean** — Building from source (`cargo build`) produces a binary with no embedded URLs. Cloud features are opt-in: set `SUPABASE_URL`, `SHARE_WORKER_URL`, and `SHARE_VIEWER_URL` to enable them.
+
+## Improvements
+
+- **Self-hosting guide** — README now explains the opt-in cloud features model clearly, with instructions for running fully local.
+- **Expanded feature docs** — npx README reorganized into grouped sections covering all major features.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.17.0.md ---
+
+---
+title: "v0.17.0 — System Monitor"
+date: 2026-03-12
+version: v0.17.0
+---
+
+## New features
+
+**System Monitor page** — A new sidebar section shows real-time CPU, memory, and disk usage for your machine alongside your Claude sessions. Open it to see live gauges and a top-process list, all streaming via server-sent events.
+
+**Animated gauges** — Gauge values tween smoothly using a rAF-based animation hook. Values interpolate between readings instead of snapping, making CPU spikes and memory changes easy to track visually.
+
+**Live process list** — Processes are grouped and normalized by name, sorted by CPU usage, and updated in real time. See what your machine is actually doing while your agents run.
+
+**Staggered card reveal** — On first load, monitor cards animate in sequentially for a clean entry.
+
+## Improvements
+
+- **Async correctness** — `std::thread::sleep` moved into `spawn_blocking`; the system observer no longer blocks the async runtime.
+- **SSE event alignment** — `init` and `snapshot` event names now match between the Rust backend and the React frontend.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.19.0.md ---
+
+---
+title: v0.19.0 — Unified Model Catalog
+date: 2026-03-14
+version: v0.19.0
+---
+
+## New features
+
+**Unified Model Catalog** — single source of truth for all model metadata including pricing, context windows, and capabilities. Eliminates scattered hardcoded model data and ensures accurate cost calculations across all supported Claude models.
+
+## Fixes
+
+**Sidebar Deduplication** — fixed duplicate project entries appearing when sessions were indexed after server startup. Non-worktree sessions now resolve `git_root` inline during indexing instead of relying on a one-shot startup backfill.
+
+**Status Line** — suppressed curl response body from leaking into terminal output.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.2.0.md ---
+
+---
+title: "v0.2.0 — Security & UI Redesign"
+date: 2026-01-30
+version: v0.2.0
+---
+
+## New features
+
+- Semantic card components for conversation UI redesign
+
+## Improvements
+
+- Hardening/security robustness across the application
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.2.1.md ---
+
+---
+title: "v0.2.1 — First Automated Release"
+date: 2026-02-02
+version: v0.2.1
+---
+
+## New features
+
+- Full JSONL parsing — all 7 message types rendered
+- Compact/Full toggle, syntax-highlighted code blocks, dark mode
+- Analytics dashboard — token/model tracking, metrics engine, git correlation
+- Rust backend (Axum) ~15MB binary, parallel JSONL indexing with mmap + SIMD
+
+## Improvements
+
+- SHA256 checksum verification, npm provenance attestation via Sigstore
+- 4-platform CI builds
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.2.2.md ---
+
+---
+title: "v0.2.2 — Performance & Dark Mode"
+date: 2026-02-02
+version: v0.2.2
+---
+
+## New features
+
+- Full dark mode support
+- Thread visualization
+- Paginated messages API
+
+## Improvements
+
+- Rusqlite write phase, typed struct dispatch, SIMD pre-filter, batch transactions, gzip compression
+- Tail-first loading with infinite scroll
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.2.3.md ---
+
+---
+title: "v0.2.3 — Performance & Thread Viz"
+date: 2026-02-02
+version: v0.2.3
+---
+
+## New features
+
+- Thread visualization and paginated messages API
+- Auto re-index on data changes
+- ErrorBoundary for graceful error handling
+
+## Improvements
+
+- ~8,000 lines changed across 98 files
+- Performance: rusqlite, SIMD pre-filter, batch transactions, gzip, timing instrumentation
+- Tail-first loading, infinite scroll, dark mode polish
+- busy_timeout for database resilience
+- Security hardening
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.2.4.md ---
+
+---
+title: "v0.2.4 — Plugin Dedup & CI"
+date: 2026-02-03
+version: v0.2.4
+---
+
+## New features
+
+- README "Why claude-view?" highlights section
+
+## Improvements
+
+- Fix duplicate plugin entries in skill registry
+- Cargo.toml version verification in release workflow
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.3.0.md ---
+
+---
+title: "v0.3.0 — Git Integration"
+date: 2026-02-09
+version: v0.3.0
+---
+
+## New features
+
+- Session discovery & navigation
+- Git integration & AI contribution tracking
+
+## Improvements
+
+- Improved session indexing and project detection
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.0.md ---
+
+---
+title: "v0.4.0 — Dashboard Analytics"
+date: 2026-02-10
+version: v0.4.0
+---
+
+## New features
+
+- Time range filter with presets (today, 7d, 30d, 90d, all time)
+- Heatmap tooltips and Git sync redesign with SSE
+- AI generation breakdown with model usage distribution
+- Storage overview with donut chart
+- Project/branch filters
+
+## Improvements
+
+- 65% fewer database round-trips (26 → 9 queries)
+- 17 production-readiness fixes, epoch-zero guards
+- 922+ tests (548 backend, 374+ frontend)
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.1.md ---
+
+---
+title: "v0.4.1 — Patch Release"
+date: 2026-02-10
+version: v0.4.1
+---
+
+## New features
+
+- No new features in this patch release
+
+## Improvements
+
+- Bug fixes and stability improvements following v0.4.0
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.2.md ---
+
+---
+title: "v0.4.2 — Patch Release"
+date: 2026-02-11
+version: v0.4.2
+---
+
+## New features
+
+- No new features in this patch release
+
+## Improvements
+
+- Bug fixes and stability improvements
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.3.md ---
+
+---
+title: "v0.4.3 — Chat Insights & Worktrees"
+date: 2026-02-11
+version: v0.4.3
+---
+
+## New features
+
+- Chat Insights & Pattern Discovery (Theme 4)
+- Unified session detail API endpoints
+- Git worktree session support with DB file_path fallback
+- Resume button for quick session re-entry
+
+## Improvements
+
+- Release script bumps all version sources
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.4.md ---
+
+---
+title: "v0.4.4 — Mission Control Phase A"
+date: 2026-02-11
+version: v0.4.4
+---
+
+## New features
+
+- Live session monitoring dashboard
+- Continue This Chat (Cmd+Shift+R) with context summary
+- Unified Settings page (merged System status)
+- Cold start UX with bandwidth-aware progress tracking
+
+## Improvements
+
+- Streamlined navigation with consolidated settings
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.4.5.md ---
+
+---
+title: "v0.4.5 — Multi-View & HTML Export"
+date: 2026-02-14
+version: v0.4.5
+---
+
+## New features
+
+- Multi-view support: Grid, List, Kanban, Monitor
+- Live filtering by status, project, branch
+- Keyboard navigation (j/k, 1-4, Enter, ?)
+- Command palette (Cmd+K)
+
+## Improvements
+
+- HTML export upgrade: dark/light toggle, metadata header, collapsible thinking blocks
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.5.0.md ---
+
+---
+title: "v0.5.0 — Mission Control"
+date: 2026-02-19
+version: v0.5.0
+---
+
+## New features
+
+- Biggest release — live agent monitoring dashboard
+- Sub-agent visualization with swim lanes and drill-down
+- Rich tool rendering with verbose mode
+- Unified SessionDetailPanel (Overview, Sub-Agents, Timeline, Cost)
+- Tantivy full-text search, Cmd+K palette
+- Cost tracking with tiered cache pricing
+- AI Fluency Score (0-100)
+- Smart Rules Engine
+
+## Improvements
+
+- Major architecture overhaul for real-time monitoring
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.6.0.md ---
+
+---
+title: "v0.6.0 — Rebranded to claude-view"
+date: 2026-02-20
+version: v0.6.0
+---
+
+## New features
+
+- Project renamed from vibe-recall to claude-view
+- Hook events logging support
+- Terminal view modes
+- Context gauge auto-compact threshold marker
+
+## Improvements
+
+- Full rebrand across all packages and documentation
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.6.1.md ---
+
+---
+title: "v0.6.1 — Live Monitor Fix"
+date: 2026-02-20
+version: v0.6.1
+---
+
+## New features
+
+- README rewrite with live monitoring focus
+
+## Improvements
+
+- Fixed Live Monitor blank on first load (isInitialized flag)
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.7.0.md ---
+
+---
+title: "v0.7.0 — Work Reports & Crash Recovery"
+date: 2026-02-20
+version: v0.7.0
+---
+
+## New features
+
+- Work Reports page with expandable session details
+- Token breakdown and cost analysis
+- Sessions survive server crashes — v2 snapshot format
+- Live session cards show MCP servers and skills
+- `claude-view cleanup` CLI command
+
+## Improvements
+
+- CWD-based session discovery fixes
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.8.0.md ---
+
+---
+title: v0.8.0 — Mission Control
+date: 2026-02-28
+version: v0.8.0
+---
+
+## New features
+
+**Mission Control** — real-time dashboard for all running Claude Code agents. See status, cost, and current tool calls live.
+
+**Agent Control** — approve/reject tool calls, send messages to agents (requires cloud relay).
+
+**Claude Code Plugin** — `@claude-view/plugin` ships as a native Claude Code plugin with 8 read-only MCP tools, 3 skills (`/session-recap`, `/daily-cost`, `/standup`), and a SessionStart hook that auto-starts the dashboard. Install with `claude plugin add @claude-view/plugin`.
+
+**AI Fluency Score** — composite 0–100 metric measuring AI collaboration effectiveness.
+
+## Improvements
+
+- Full-text search now uses Tantivy for faster, more relevant results
+- Cost tracking includes cache read/write breakdown
+- Session browser shows model and git commit per session
+- Performance: ~15MB binary with sub-second startup
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- changelog/v0.9.0.md ---
+
+---
+title: v0.9.0 — Activity & Sharing
+date: 2026-03-08
+version: v0.9.0
+---
+
+## New features
+
+**Activity Page** — calendar heatmap, project breakdown, daily timeline, and summary stats. See your Claude Code usage patterns at a glance.
+
+**Conversation Sharing** — share any session via end-to-end encrypted link on share.claudeview.ai. Recipients view in-browser with zero setup. Your data is never readable by our servers.
+
+**Content-based Session Classification** — sessions are automatically classified using SIMD pre-filter for fast, accurate categorization.
+
+**Kanban Swimlane View** — organize sessions visually with drag-and-drop swimlanes.
+
+**Bulk Select & Archive** — select multiple sessions and archive them in one action.
+
+**Hook Event Tracking** — monitor Claude Code hook events (SessionStart, tool calls) directly in the dashboard.
+
+## Improvements
+
+- Session topology and cwd resolution from JSONL — project paths are sandbox-proof
+- `CLAUDE_VIEW_DATA_DIR` env var for sandbox and corporate environments
+- Mobile app pivot from PWA to Expo/React Native (Tamagui v2)
+- Unified pipeline with batch reliability fixes (fixes 1–6)
+- Project path resolution no longer depends on encoded directory names
+
+## Getting started
+
+```bash
+npx claude-view
+```
+
+
+--- docs/docs.mdx ---
+
+---
+title: Getting Started
+description: Install claude-view and start monitoring your Claude Code sessions in 15 seconds.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+**claude-view** is an open-source developer tool that monitors Claude Code sessions in real time. Watch token usage, costs, tool calls, and agent state — from your browser or phone.
+
+**Zero config. One command.**
+
+<Steps>
+1. **Install** — run `npx claude-view` in any terminal
+2. **Open** — your browser opens automatically at `http://localhost:47892`
+3. **Monitor** — all active Claude Code sessions appear automatically
+</Steps>
+
+## What you'll see
+
+- **Session browser** — searchable list of all past and active sessions
+- **Mission Control** — live view of running agents with real-time cost tracking
+- **Agent Control** — approve/reject tool calls, send messages (with cloud relay)
+- **AI Fluency Score** — measure how effectively you collaborate with AI
+
+## Requirements
+
+- macOS (Apple Silicon or Intel) — Linux support in v2.1
+- Node.js 18 or later (for `npx`)
+- Claude Code installed and running
+
+## Next steps
+
+- [Installation →](/docs/installation/) — detailed setup, ports, and config
+- [Mission Control →](/docs/features/mission-control/) — real-time agent monitoring
+- [Claude Code Plugin →](/docs/guides/plugin/) — 8 tools, 3 skills, auto-start hook
+
+
+--- docs/docs/features/agent-control.mdx ---
+
+---
+title: Agent Control
+description: Send messages, approve tool calls, and resume Claude Code sessions from your web dashboard.
+---
+
+Agent Control lets you interact with running Claude Code sessions directly from the web dashboard — approve tool calls, send follow-up messages, review plans, or stop runaway agents.
+
+## What you can do
+
+- **Approve tool calls** — when an agent requests permission (e.g., `git push`), approve or reject from the dashboard
+- **Send messages** — inject a follow-up message into the agent's conversation
+- **Review plans** — approve or reject agent plans before implementation starts
+- **Answer questions** — respond to agent clarification prompts (AskUserQuestion, Elicitation)
+- **Stop agent** — gracefully stop a running session
+
+## How it works
+
+Agent control uses a Node.js sidecar process powered by the Claude Agent SDK. The sidecar connects to your running Claude Code sessions via IPC and exposes control actions through the claude-view web dashboard.
+
+All control actions work **locally** — no cloud relay needed for web dashboard control.
+
+## Remote control (mobile)
+
+For controlling agents from your phone or a remote browser, the cloud relay is required. The relay forwards encrypted control messages between your device and the desktop server.
+
+> **Pro plan** — Cloud relay access is included in the Pro tier (coming soon). The web dashboard is always free.
+
+## Chat interface
+
+The dashboard includes a full chat interface with:
+- Streaming message display
+- Interactive permission cards with countdown auto-deny
+- Plan approval cards
+- Elicitation/question response cards
+- Session resume with cost estimation (ResumePreFlight)
+
+## Related
+
+- [Mission Control →](/docs/features/mission-control/) — live agent monitoring
+- [Mobile Setup →](/docs/guides/mobile-setup/) — iOS and Android app setup
+- [Claude Code Plugin →](/docs/guides/plugin/) — auto-start, 8 tools, 3 skills
+
+
+--- docs/docs/features/ai-fluency-score.mdx ---
+
+---
+title: AI Fluency Score
+description: Measure how effectively you collaborate with Claude Code agents.
+---
+
+The AI Fluency Score (0–100) measures how effectively you work with AI coding agents. It's a composite metric derived from session patterns, not a simple token count.
+
+## What it measures
+
+The score combines multiple signals:
+- **Session efficiency** — cost per meaningful outcome (commits, files changed)
+- **Cache utilization** — how well you leverage prompt caching
+- **Session patterns** — consistent, focused sessions score higher
+- **Recovery rate** — how quickly errors are resolved
+
+## Interpreting your score
+
+| Range | Level | Description |
+|-------|-------|-------------|
+| 0–39 | Beginner | Learning to work with AI agents effectively |
+| 40–59 | Developing | Good fundamentals, room to optimize |
+| 60–79 | Proficient | Consistent, effective AI collaboration |
+| 80–100 | Expert | Highly optimized AI-first workflow |
+
+## Improving your score
+
+- **Keep sessions focused** — one task per session is more efficient than context-switching
+- **Reuse context** — start sessions from the same project to maximize cache hits
+- **Review tool calls** — unnecessary tool calls increase cost without outcomes
+
+## Plugin access
+
+After [installing the plugin](/docs/guides/plugin/), ask Claude Code directly:
+
+```
+"What's my AI Fluency Score?"
+→ Uses get_fluency_score tool automatically
+```
+
+
+--- docs/docs/features/cost-tracking.mdx ---
+
+---
+title: Cost Tracking
+description: Real-time token usage and USD cost tracking for all Claude Code sessions.
+---
+
+claude-view tracks token usage and cost for every session in real time.
+
+## How costs are calculated
+
+Token counts are read from Claude Code's JSONL event log (`~/.claude/projects/`). claude-view applies Anthropic's current pricing to calculate USD costs.
+
+| Token type | Description |
+|------------|-------------|
+| Input | Tokens sent to Claude in the prompt |
+| Output | Tokens generated by Claude |
+| Cache read | Prompt cache hits (reduced cost) |
+| Cache write | Tokens stored in prompt cache |
+
+## Cache efficiency
+
+The cache hit ratio shows what percentage of input tokens were served from the prompt cache. A higher ratio means lower costs. claude-view displays this prominently because it's one of the most actionable cost metrics.
+
+## Daily / session breakdown
+
+The dashboard shows:
+- **Today's total cost** across all sessions
+- **Per-session cost** in the session browser
+- **Running total** in Mission Control (live updates)
+
+## Cost & token breakdown popover
+
+Hover over any cost figure in the live monitor or session detail to see a full breakdown:
+- **Color-coded categories** — input tokens, output tokens, cache read tokens, and cache creation tokens each have a distinct color
+- **Per-category estimated cost** based on current model pricing
+- **Cache savings** highlighted in green, showing how much you saved from prompt cache hits
+- Available in both the live monitor agent cards and the session detail panel
+
+## MCP tools
+
+Access cost data programmatically via the MCP server:
+- `get_token_stats` — token usage with cache hit ratio
+- `get_live_summary` — aggregate cost and status for today
+- `get_stats` — dashboard overview with cost trends
+
+
+--- docs/docs/features/mission-control.mdx ---
+
+---
+title: Mission Control
+description: Real-time dashboard for monitoring and controlling all active Claude Code agents.
+---
+
+Mission Control is a live view of all running Claude Code sessions. It updates in real time via WebSocket — no refresh needed.
+
+## What you see
+
+Each agent card shows:
+- **Status** — running (green), waiting for input (amber), done (gray), error (red)
+- **Current task** — the most recent tool call or user message
+- **Cost** — cumulative token cost for the session
+- **Duration** — time elapsed since session start
+- **Context gauge** — real-time context window usage
+- **Cache countdown** — time until prompt cache expires
+- **IDE file** — which file the user was editing when they last messaged
+
+## Views
+
+Mission Control offers three layout modes:
+- **Grid** — compact card grid for monitoring many agents at once
+- **List** — detailed single-column view with more information per session
+- **Monitor** — live chat grid showing streaming conversations side by side
+- **Kanban swimlanes** — group running sessions into visual swimlanes by project or branch. Use the group-by dropdown to switch between project grouping, branch grouping, or flat view. Swimlane headers show the project/branch name with session counts.
+
+You can also create **custom layouts** using drag-and-drop panels (powered by dockview). Save and load layout presets.
+
+## Cost tracking
+
+Token costs update live as agents work. claude-view uses current Anthropic pricing per model (with tiered pricing for large contexts). The total across all active agents is shown in the header.
+
+## Sub-agent visualization
+
+When a session spawns sub-agents (via the Agent tool), Mission Control shows the full agent tree — parent and children, each with their own status and cost tracking.
+
+## Session control
+
+From Mission Control, you can:
+- **Click a session** to open the full session detail view with chat history
+- **Send messages** to a running agent
+- **Approve or reject** tool call permissions
+- **Review plans** before the agent implements them
+- **Stop a session** (with confirmation)
+
+## Hook events
+
+Mission Control tracks hook events from two sources — live events captured in real-time via the file watcher (Channel A) and historical events backfilled from JSONL files (Channel B). Events are deduplicated automatically, so you see a complete timeline even for sessions that started before claude-view.
+
+## Real-time updates
+
+Mission Control connects via WebSocket to the claude-view server. Data refreshes every second. If the connection drops (network issue, server restart), it reconnects automatically with exponential backoff.
+
+## Crash recovery
+
+If the sidecar process crashes, Mission Control automatically detects stale bindings and recovers on the next startup. Active sessions resume monitoring without manual intervention.
+
+## Related
+
+- [Agent Control →](/docs/features/agent-control/) — interactive control details
+- [Cost Tracking →](/docs/features/cost-tracking/) — detailed token usage breakdown
+- [Session Browser →](/docs/features/session-browser/) — historical session list
+
+
+--- docs/docs/features/search.mdx ---
+
+---
+title: Search
+description: Full-text search across all Claude Code sessions.
+---
+
+claude-view includes full-text search powered by Tantivy — a Rust-native search library comparable to Lucene/Elasticsearch, but embedded directly in the claude-view binary.
+
+## What's indexed
+
+- All message content (user and assistant)
+- Tool call inputs and outputs
+- File paths referenced in sessions
+- Session metadata (project, model, date)
+
+## Using search
+
+**In the UI:** Click the search bar or press `Cmd+K` / `Ctrl+K`.
+
+**Via MCP:**
+```
+search_sessions(query: "authentication refactor", limit: 10)
+```
+
+## Search syntax
+
+Tantivy supports standard query syntax:
+- Plain text: `refactor auth module`
+- Phrase search: `"git push origin"`
+- Field filters: `project:my-app`
+
+## Performance
+
+The search index is built incrementally as sessions are added. Initial indexing of existing sessions happens at startup. Search results return in under 50ms for typical databases (thousands of sessions).
+
+
+--- docs/docs/features/session-browser.mdx ---
+
+---
+title: Session Browser
+description: Search and browse all past and active Claude Code sessions.
+---
+
+The Session Browser is the main view in claude-view. It shows a searchable, filterable list of all Claude Code sessions detected on your machine.
+
+## What's tracked
+
+For each session:
+- Project name and directory
+- Start time, end time, duration
+- Token counts (input, output, cache read, cache write)
+- Total cost (USD)
+- Model used (e.g., `claude-opus-4-5`, `claude-sonnet-4-5`)
+- Git commit (if a commit was made during the session)
+
+## Search
+
+Full-text search across all session content — tool calls, messages, file names. Uses Tantivy (Rust-native search library, similar to Lucene) for fast in-process search.
+
+Search is available via:
+- The search bar in the Session Browser
+- `Cmd+K` / `Ctrl+K` global shortcut
+- The MCP `search_sessions` tool
+
+## Filters
+
+Filter sessions by:
+- **Project** — sessions grouped by project directory
+- **Model** — filter by Claude model used
+- **Date range** — sessions from a specific period
+- **Status** — active, completed, or error sessions
+
+## Bulk select & archive
+
+Select multiple sessions using checkboxes (click the checkbox on each row, or use the bulk select mode toggle). An archive toolbar appears with options to archive the selected sessions. Filter state persists in the URL, so you can bookmark filtered views.
+
+## Collapsible sidebar sections
+
+The sidebar uses VS Code-style collapsible sections. Click any section header to collapse or expand it. Collapse state persists across sessions.
+
+## Session detail
+
+Click any session to see:
+- Full conversation timeline (all messages, tool calls, results)
+- Per-message token counts
+- Tool call details (input/output)
+- Timeline of events
+
+
+--- docs/docs/guides/mobile-setup.mdx ---
+
+---
+title: Mobile App Setup
+description: Set up the claude-view mobile app on iOS or Android.
+---
+import WaitlistForm from '../../../../components/WaitlistForm.astro';
+
+The claude-view mobile app lets you monitor and control your Claude Code agents from your phone.
+
+> **Status:** The mobile app is currently in development. Join the waitlist to be notified when it launches.
+
+<WaitlistForm variant="compact" />
+
+## Prerequisites
+
+- claude-view server running on your desktop (`npx claude-view`)
+- iOS 16+ or Android 12+
+- Same network OR cloud relay (Pro tier)
+
+## Coming soon
+
+The mobile app will include:
+- Real-time Mission Control view
+- Push notifications for agent events (tool approvals, completions)
+- Agent control (approve/reject tool calls, send messages)
+- QR code pairing — scan once, connect automatically
+
+## Pairing flow (preview)
+
+1. Install the claude-view app (App Store or Google Play)
+2. Open claude-view on desktop and click **Pair Mobile**
+3. A QR code appears — scan it with the mobile app
+4. Your phone connects securely via end-to-end encrypted relay
+
+All data in transit is encrypted with NaCl (libsodium). The relay never sees decrypted content.
+
+## Notifications
+
+The mobile app receives push notifications when:
+- An agent requests tool approval
+- A long-running session completes
+- An agent encounters an error
+
+Notification delivery requires the cloud relay (Pro tier).
+
+
+--- docs/docs/guides/plugin.mdx ---
+
+---
+title: Claude Code Plugin
+description: Install the claude-view plugin for Claude Code — auto-starts the dashboard, adds 8 tools and 3 skills. One command, zero config.
+---
+
+import { MCP_TOOL_COUNT } from '../../../../data/site';
+
+## Overview
+
+`@claude-view/plugin` is a **Claude Code plugin** that gives Claude native access to {MCP_TOOL_COUNT} session tools and 3 skills — no manual `settings.json` editing required.
+
+Install with one command:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+## What you get
+
+### Auto-start hook
+
+Every time you start a Claude Code session, the plugin checks if the claude-view server is running. If not, it starts it in the background. The web dashboard appears at `http://localhost:47892` — no manual `npx claude-view` needed.
+
+### {MCP_TOOL_COUNT} MCP tools
+
+The plugin exposes {MCP_TOOL_COUNT} read-only tools via MCP (Model Context Protocol):
+
+| Tool | Description |
+|------|-------------|
+| `list_sessions` | Browse sessions with filters (project, model, date, status) |
+| `get_session` | Session detail with messages, tool calls, and metrics |
+| `search_sessions` | Full-text search across all conversations |
+| `get_stats` | Dashboard overview — total sessions, costs, trends |
+| `get_fluency_score` | AI Fluency Score (0–100) with breakdown |
+| `get_token_stats` | Token usage with cache hit ratio |
+| `list_live_sessions` | Currently running agents (real-time) |
+| `get_live_summary` | Aggregate cost and status for today |
+
+All tools are read-only. All data stays local — no external requests.
+
+### 3 skills
+
+| Skill | Description |
+|-------|-------------|
+| `/session-recap` | Summarize a specific session — commits, metrics, duration |
+| `/daily-cost` | Today's spending, running sessions, token usage |
+| `/standup` | Multi-session work log for standup updates |
+
+## Example usage
+
+```
+"How much have I spent on Claude Code today?"
+→ Uses get_live_summary
+
+"Find my last session about authentication"
+→ Uses search_sessions(query: "authentication")
+
+"What's my AI Fluency Score?"
+→ Uses get_fluency_score
+
+/session-recap
+→ Summarizes your most recent session
+
+/standup
+→ Generates a standup update from the last 24h
+```
+
+## Architecture
+
+The plugin connects to the running claude-view server on `localhost:47892`. The auto-start hook ensures the server is always running when Claude Code starts.
+
+```
+Claude Code session starts
+  → Plugin SessionStart hook fires
+  → Hook checks localhost:47892/api/health
+    → Running? Skip.
+    → Not running? Spawn: npx claude-view (background)
+  → MCP server registered via plugin .mcp.json
+  → Claude has 8 tools + 3 skills available
+  → Web dashboard at localhost:47892
+```
+
+## Prerequisites
+
+- **Node.js 18+** — required by the MCP server
+- The plugin auto-starts the server, but `npx claude-view` must be available (downloads the Rust binary on first run)
+
+:::note[First run]
+The very first session after install may take 5–30 seconds to download the Rust binary. The hook times out gracefully — the server starts in the background and will be ready for your next tool call or session.
+:::
+
+## Configuration
+
+Set `CLAUDE_VIEW_PORT` to override the default port (47892). Both the hook and MCP client respect this variable.
+
+
+--- docs/docs/installation.mdx ---
+
+---
+title: Installation
+description: Install claude-view on macOS. Zero config — one command.
+---
+
+import { DEFAULT_PORT, PLATFORM } from '../../../data/site';
+
+<script is:inline type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Install claude-view",
+  "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
+  "totalTime": "PT15S",
+  "tool": [{"@type": "HowToTool", "name": `Node.js (v${PLATFORM.nodeMin} or later)`}],
+  "step": [
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": `claude-view starts a local server and opens your browser to http://localhost:${DEFAULT_PORT}. You'll see all active Claude Code sessions automatically detected.`}
+  ]
+})} />
+
+## Quick install
+
+```bash
+npx claude-view
+```
+
+That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+
+## Claude Code plugin (recommended)
+
+If you use Claude Code, install the plugin for the best experience — it auto-starts the server, adds 8 MCP tools, and 3 skills:
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+After installing, every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed. See the [plugin guide](/docs/guides/plugin/) for details.
+
+## Requirements
+
+<table>
+  <thead>
+    <tr><th>Requirement</th><th>Version</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>macOS</td><td>{PLATFORM.macosMin} or later</td></tr>
+    <tr><td>Node.js</td><td>{PLATFORM.nodeMin} or later</td></tr>
+    <tr><td>Claude Code</td><td>Latest</td></tr>
+  </tbody>
+</table>
+
+> **Linux:** Supported in {PLATFORM.linuxVersion} (coming soon). Windows in {PLATFORM.windowsVersion}.
+
+## What happens on first run
+
+1. `npx` downloads the pre-built `claude-view` binary for your platform
+2. The binary starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
+3. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
+4. claude-view scans for active Claude Code processes automatically
+
+## Configuration
+
+### Change the port
+
+```bash
+CLAUDE_VIEW_PORT=8080 npx claude-view
+```
+
+Or set permanently in your shell profile:
+
+```bash
+export CLAUDE_VIEW_PORT=8080
+```
+
+If port <code>{DEFAULT_PORT}</code> is unavailable, claude-view automatically falls back to an ephemeral port and prints the URL.
+
+### Persistent binary (faster startup)
+
+```bash
+npm install -g claude-view
+claude-view
+```
+
+Global install skips the `npx` download step on subsequent runs.
+
+## Verify it's running
+
+Open <code>http://localhost:{DEFAULT_PORT}</code> in your browser. You should see the session browser. If Claude Code is running, your active sessions appear automatically.
+
+## Troubleshooting
+
+**"Port {DEFAULT_PORT} already in use"**
+Another instance is running. Kill it with `pkill claude-view` or use a different port.
+
+**"No sessions found"**
+Start a Claude Code session in another terminal: `claude`. Sessions appear within a few seconds.
+
+**Binary download fails**
+Check your Node.js version: `node --version`. Requires v{PLATFORM.nodeMin}+. If behind a proxy, set `HTTPS_PROXY`.
+
+
+--- docs/docs/reference/api.mdx ---
+
+---
+title: API Reference
+description: HTTP API endpoints exposed by the claude-view server.
+---
+
+The claude-view server exposes a REST API on `http://localhost:47892/api`. All endpoints return JSON.
+
+## Sessions
+
+### `GET /api/sessions`
+
+Returns a list of sessions.
+
+**Query params:**
+- `limit` — max results (default: 50)
+- `offset` — pagination offset
+- `project` — filter by project name
+- `model` — filter by model ID
+
+### `GET /api/sessions/{id}`
+
+Returns full session detail including messages and metrics.
+
+### `GET /api/sessions/{id}/messages`
+
+Returns all messages for a session.
+
+### `GET /api/sessions/{id}/parsed`
+
+Returns parsed session data.
+
+## Live sessions
+
+### `GET /api/live/sessions`
+
+Returns currently active (running) sessions.
+
+### `GET /api/live/sessions/{id}`
+
+Returns detail for a specific live session.
+
+### `GET /api/live/summary`
+
+Returns aggregate stats for today's sessions.
+
+### `GET /api/live/stream`
+
+Server-Sent Events stream. Connect with `EventSource` for real-time updates.
+
+**Events:**
+- `session_update` — session status changed
+- `live_update` — live session data refreshed
+
+### `GET /api/live/pricing`
+
+Returns current model pricing used for cost calculations.
+
+## Stats
+
+### `GET /api/stats/dashboard`
+
+Returns dashboard overview: total sessions, costs, fluency score, trends.
+
+### `GET /api/stats/storage`
+
+Returns storage usage statistics.
+
+## Search
+
+### `GET /api/search?q=<query>`
+
+Full-text search across all session content.
+
+**Query params:**
+- `q` — search query (required)
+- `limit` — max results (default: 20)
+
+## Score
+
+### `GET /api/score`
+
+Returns the AI Fluency Score (0–100) with breakdown.
+
+## Health
+
+### `GET /api/health`
+
+Health check endpoint. Returns server status.
+
+
+--- docs/docs/reference/cli-options.mdx ---
+
+---
+title: CLI Options
+description: Command-line usage, subcommands, and environment variables for claude-view.
+---
+
+import { DEFAULT_PORT } from '../../../../data/site';
+
+## Usage
+
+```bash
+npx claude-view
+```
+
+Or if globally installed:
+```bash
+claude-view
+```
+
+The server starts, opens your browser, and begins discovering Claude Code sessions automatically.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `cleanup` | Remove stale lock files and temporary data |
+
+```bash
+claude-view cleanup
+```
+
+## Environment variables
+
+<table>
+  <thead>
+    <tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>CLAUDE_VIEW_PORT</code></td><td>Override server port</td><td><code>{DEFAULT_PORT}</code></td></tr>
+    <tr><td><code>PORT</code></td><td>Alternative port variable (fallback)</td><td>—</td></tr>
+    <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>warn</code></td></tr>
+  </tbody>
+</table>
+
+## Examples
+
+```bash
+# Default — starts server and opens browser
+npx claude-view
+
+# Custom port via env var
+CLAUDE_VIEW_PORT=8080 npx claude-view
+
+# Verbose logging
+RUST_LOG=info npx claude-view
+
+# Debug logging for the server crate only
+RUST_LOG=warn,claude_view_server=debug npx claude-view
+
+# Clean up stale data
+npx claude-view cleanup
+```
+
+## Port fallback
+
+If the specified port (default <code>{DEFAULT_PORT}</code>) is unavailable, claude-view automatically binds to an ephemeral port and prints the actual URL. Logs show the actual address on startup.
+
+
+--- docs/docs/reference/keyboard-shortcuts.mdx ---
+
+---
+title: Keyboard Shortcuts
+description: Keyboard shortcuts for the claude-view web dashboard.
+---
+
+## Global
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` / `Ctrl+K` | Open search |
+| `Escape` | Close dialog / clear search |
+| `?` | Show keyboard shortcuts |
+
+## Session browser
+
+| Shortcut | Action |
+|----------|--------|
+| `↑` / `↓` | Navigate sessions |
+| `Enter` | Open selected session |
+| `F` | Toggle filters panel |
+
+## Session detail
+
+| Shortcut | Action |
+|----------|--------|
+| `←` | Back to session list |
+| `T` | Jump to timeline |
+| `Cmd+F` / `Ctrl+F` | Search within session |
