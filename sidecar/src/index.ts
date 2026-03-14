@@ -4,6 +4,7 @@ import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
 import { healthRouter } from './health.js'
+import { startModelCacheRefresh } from './model-cache.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
@@ -48,6 +49,8 @@ const server = createAdaptorServer(app)
 server.listen(SOCKET_PATH, () => {
   console.log(`[sidecar] Listening on ${SOCKET_PATH}`)
   console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+  // Populate supported models cache (fire-and-forget, refreshes hourly)
+  startModelCacheRefresh()
 })
 
 // WS upgrade
