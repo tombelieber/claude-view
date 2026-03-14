@@ -38,7 +38,10 @@ impl Database {
     pub async fn get_all_models(&self) -> DbResult<Vec<ModelWithStats>> {
         let rows: Vec<ModelWithStats> = sqlx::query_as(
             r#"
-            SELECT m.id, m.provider, m.family, m.first_seen, m.last_seen,
+            SELECT m.id, m.provider, m.family,
+                   m.display_name, m.description,
+                   m.max_input_tokens, m.max_output_tokens,
+                   m.first_seen, m.last_seen,
                    COUNT(t.uuid) as total_turns,
                    COUNT(DISTINCT t.session_id) as total_sessions
             FROM models m

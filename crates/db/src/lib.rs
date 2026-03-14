@@ -54,6 +54,7 @@ pub use claude_view_core::pricing::{
     CostBreakdown, ModelPricing, TokenBreakdown, TokenUsage,
 };
 // Re-export DB-owned pricing refresh helpers.
+pub use pricing::LiteLlmModelContext;
 pub use pricing::{fetch_litellm_pricing, load_pricing_cache, merge_pricing, save_pricing_cache};
 
 // Re-export snapshots types
@@ -132,6 +133,7 @@ impl Database {
             db_path: path.to_owned(),
         };
         db.run_migrations().await?;
+        db.seed_models_if_empty().await?;
 
         info!("Database opened at {}", path.display());
         Ok(db)
@@ -163,6 +165,7 @@ impl Database {
             db_path: PathBuf::new(),
         };
         db.run_migrations().await?;
+        db.seed_models_if_empty().await?;
         Ok(db)
     }
 

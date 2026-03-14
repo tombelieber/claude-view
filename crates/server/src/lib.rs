@@ -274,13 +274,14 @@ pub fn create_app_full(
     {
         let pricing = state.pricing.clone();
         let db = state.db.clone();
+        let socket_path = std::path::PathBuf::from(state.sidecar.socket_path());
         tokio::spawn(async move {
-            refresh_pricing(&pricing, &db).await;
+            refresh_pricing(&pricing, &db, Some(socket_path.as_path())).await;
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
             interval.tick().await;
             loop {
                 interval.tick().await;
-                refresh_pricing(&pricing, &db).await;
+                refresh_pricing(&pricing, &db, Some(socket_path.as_path())).await;
             }
         });
     }
@@ -302,10 +303,11 @@ pub fn create_app_full(
 async fn refresh_pricing(
     pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>,
     db: &Database,
+    sidecar_socket: Option<&std::path::Path>,
 ) {
     // Tier 1: Try litellm fetch
     match claude_view_db::fetch_litellm_pricing().await {
-        Ok(litellm) => {
+        Ok((litellm, context_data)) => {
             let defaults = claude_view_db::default_pricing();
             let mut merged = claude_view_db::merge_pricing(&defaults, &litellm);
             claude_view_core::pricing::fill_tiering_gaps(&mut merged);
@@ -321,6 +323,11 @@ async fn refresh_pricing(
                 models = count,
                 "Pricing refreshed from litellm + cached to SQLite"
             );
+
+            // Upsert model context data (max_input_tokens, max_output_tokens) into models table
+            if let Err(e) = db.upsert_litellm_context(&context_data).await {
+                tracing::warn!("Failed to upsert LiteLLM model context: {e}");
+            }
         }
         Err(e) => {
             tracing::warn!("litellm fetch failed: {e}");
@@ -343,6 +350,97 @@ async fn refresh_pricing(
             }
         }
     }
+
+    // Best-effort: fetch SDK model display names from sidecar
+    if let Some(socket) = sidecar_socket {
+        match fetch_sdk_models_from_sidecar(socket).await {
+            Ok(sdk_models) => match db.upsert_sdk_models(&sdk_models).await {
+                Ok(n) => tracing::info!(models = n, "SDK model display names upserted"),
+                Err(e) => tracing::warn!("Failed to upsert SDK models: {e}"),
+            },
+            Err(e) => tracing::debug!("SDK model fetch skipped: {e}"),
+        }
+    }
+}
+
+/// Best-effort fetch of SDK model list from sidecar.
+/// Returns Vec of (id, provider, family, display_name, description).
+async fn fetch_sdk_models_from_sidecar(
+    socket_path: &std::path::Path,
+) -> Result<Vec<(String, String, String, Option<String>, Option<String>)>, String> {
+    use bytes::Bytes;
+    use http_body_util::{BodyExt, Full};
+    use hyper::client::conn::http1;
+    use hyper_util::rt::TokioIo;
+    use tokio::net::UnixStream;
+
+    if !tokio::fs::try_exists(socket_path).await.unwrap_or(false) {
+        return Err("sidecar socket does not exist".into());
+    }
+
+    let stream = UnixStream::connect(socket_path)
+        .await
+        .map_err(|e| format!("connect: {e}"))?;
+    let io = TokioIo::new(stream);
+
+    let (mut sender, conn) = http1::handshake(io)
+        .await
+        .map_err(|e| format!("handshake: {e}"))?;
+    tokio::spawn(async move {
+        if let Err(e) = conn.await {
+            tracing::debug!("SDK model fetch connection closed: {e}");
+        }
+    });
+
+    let req = hyper::Request::builder()
+        .method("GET")
+        .uri("/supported-models")
+        .header("host", "localhost")
+        .body(Full::new(Bytes::new()))
+        .map_err(|e| format!("build request: {e}"))?;
+
+    let resp = sender
+        .send_request(req)
+        .await
+        .map_err(|e| format!("send: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("sidecar returned {}", resp.status()));
+    }
+
+    let bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|e| format!("read body: {e}"))?
+        .to_bytes();
+
+    // Parse: { models: [{ value, displayName, description }], updatedAt }
+    let json: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("parse json: {e}"))?;
+
+    let models = json["models"]
+        .as_array()
+        .ok_or_else(|| "missing 'models' array".to_string())?;
+
+    let mut result = Vec::with_capacity(models.len());
+    for m in models {
+        let id = m["value"]
+            .as_str()
+            .ok_or_else(|| "model missing 'value'".to_string())?;
+
+        // Derive provider/family BEFORE moving id
+        let (provider, family) = claude_view_core::parse_model_id(id);
+        let provider = provider.to_string();
+        let family = family.to_string();
+
+        let display_name = m["displayName"].as_str().map(|s| s.to_string());
+        let description = m["description"].as_str().map(|s| s.to_string());
+
+        result.push((id.to_string(), provider, family, display_name, description));
+    }
+
+    Ok(result)
 }
 
 /// Create the Axum application with an external `IndexingState` and optional
