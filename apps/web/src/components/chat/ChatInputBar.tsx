@@ -2,6 +2,7 @@ import { ArrowUp, Square } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ModelOption } from '../../hooks/use-models'
 import type { SessionCapabilities } from '../../hooks/use-session-capabilities'
+import { FEATURES } from '../../lib/feature-flags'
 import { cn } from '../../lib/utils'
 import type { PermissionMode } from '../../types/control'
 import { AttachButton, AttachmentChips } from './AttachButton'
@@ -271,6 +272,8 @@ export function ChatInputBar({
 
   // ---- Send/Stop button ----
   const canSend = input.trim().length > 0 && !isDisabled
+
+  if (!FEATURES.chat) return null
 
   return (
     <div
