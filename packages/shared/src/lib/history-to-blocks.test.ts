@@ -194,4 +194,36 @@ describe('historyToBlocks', () => {
     expect(block.variant).toBe('unknown')
     expect(block.rawJson).toEqual(raw)
   })
+
+  // ── Timestamp propagation ──────────────────────────────────────────────
+
+  it('parses ISO timestamp on UserBlock', () => {
+    const blocks = historyToBlocks([
+      { role: 'user', content: 'hi', uuid: 'u1', timestamp: '2026-03-15T04:30:00Z' } as Msg,
+    ])
+    const block = blocks[0] as UserBlock
+    expect(block.timestamp).toBeCloseTo(new Date('2026-03-15T04:30:00Z').getTime() / 1000, 0)
+  })
+
+  it('sets UserBlock timestamp to 0 when timestamp is null', () => {
+    const blocks = historyToBlocks([
+      { role: 'user', content: 'hi', uuid: 'u1', timestamp: null } as Msg,
+    ])
+    expect((blocks[0] as UserBlock).timestamp).toBe(0)
+  })
+
+  it('parses ISO timestamp on AssistantBlock', () => {
+    const blocks = historyToBlocks([
+      { role: 'assistant', content: 'Reply', uuid: 'a1', timestamp: '2026-03-15T04:31:00Z' } as Msg,
+    ])
+    const block = blocks[0] as AssistantBlock
+    expect(block.timestamp).toBeCloseTo(new Date('2026-03-15T04:31:00Z').getTime() / 1000, 0)
+  })
+
+  it('leaves AssistantBlock timestamp undefined when timestamp is null', () => {
+    const blocks = historyToBlocks([
+      { role: 'assistant', content: 'Reply', uuid: 'a1', timestamp: null } as Msg,
+    ])
+    expect((blocks[0] as AssistantBlock).timestamp).toBeUndefined()
+  })
 })
