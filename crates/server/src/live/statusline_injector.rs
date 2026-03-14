@@ -48,7 +48,7 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
   curl -s -X POST "http://localhost:{port}/api/live/statusline" \
     -H 'Content-Type: application/json' \
     --data-binary @- \
-    2>/dev/null & {sentinel}"#,
+    > /dev/null 2>&1 & {sentinel}"#,
         port = port,
         sentinel = SENTINEL,
     );
