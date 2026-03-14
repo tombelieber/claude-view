@@ -210,8 +210,14 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           lastSeqRef.current = -1
           break
         case 'query_result': {
-          const evt = raw as { requestId?: string; data: unknown }
+          const evt = raw as { requestId?: string; queryType?: string; data: unknown }
           if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.data)
+          // Also update local state for commands/agents so palette auto-refreshes
+          if (evt.queryType === 'commands' && Array.isArray(evt.data)) {
+            setSlashCommands(evt.data as string[])
+          } else if (evt.queryType === 'agents' && Array.isArray(evt.data)) {
+            setAgents(evt.data as string[])
+          }
           break
         }
         case 'rewind_result': {

@@ -83,6 +83,8 @@ export interface ChatInputBarProps {
   onPaletteModeChange?: (mode: PermissionMode) => void
   // NEW: Palette agent invocation (sends @agent-name)
   onAgent?: (agent: string) => void
+  // NEW: Called when palette opens — refresh commands/agents via WS
+  onPaletteOpen?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +113,7 @@ export function ChatInputBar({
   onModelSwitch,
   onPaletteModeChange,
   onAgent,
+  onPaletteOpen,
 }: ChatInputBarProps) {
   const config = STATE_CONFIG[state]
   const resolvedPlaceholder = placeholderProp ?? config.placeholder
@@ -177,6 +180,7 @@ export function ChatInputBar({
       // Open slash popover when input starts with "/" (single-line, at start)
       const trimmed = value.trimStart()
       if (trimmed.startsWith('/') && !trimmed.includes('\n')) {
+        if (!slashOpen) onPaletteOpen?.()
         setSlashOpen(true)
       } else {
         setSlashOpen(false)
