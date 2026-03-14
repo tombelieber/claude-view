@@ -112,6 +112,7 @@ export function createControlSession(
     eventBuffer: new RingBuffer(200),
     nextSeq: 0,
     permissions,
+    permissionMode: req.permissionMode ?? 'default',
   }
 
   registry.register(cs)
@@ -125,7 +126,18 @@ export async function resumeControlSession(
   registry: SessionRegistry,
 ): Promise<ControlSession> {
   const existing = registry.getBySessionId(req.sessionId)
-  if (existing) return existing
+  if (existing) {
+    // If the requested mode differs from the existing session's mode,
+    // close the old session and re-resume with the new mode.
+    // This is needed for bypassPermissions which can't be set mid-session
+    // via setPermissionMode() — it must be passed at query() init time.
+    if (req.permissionMode && req.permissionMode !== existing.permissionMode) {
+      closeSession(existing, registry)
+      // Fall through to create new session with the requested mode
+    } else {
+      return existing
+    }
+  }
 
   const controlId = crypto.randomUUID()
   const emitter = new EventEmitter()
@@ -167,6 +179,7 @@ export async function resumeControlSession(
     startedAt: Date.now(),
     emitter,
     eventBuffer: new RingBuffer(200),
+    permissionMode: req.permissionMode ?? 'default',
     nextSeq: 0,
     permissions,
   }
@@ -223,6 +236,7 @@ export function forkControlSession(
     eventBuffer: new RingBuffer(200),
     nextSeq: 0,
     permissions,
+    permissionMode: req.permissionMode ?? 'default',
   }
 
   registry.register(cs)
@@ -368,7 +382,7 @@ export async function setSessionMode(
   cs: ControlSession,
   mode: string,
   registry: SessionRegistry,
-): Promise<void> {
+): Promise<{ ok: boolean; currentMode: string }> {
   if (cs.state === 'active') {
     registry.emitSequenced(cs, {
       type: 'error',
@@ -376,10 +390,12 @@ export async function setSessionMode(
         'Cannot change mode while agent is processing. Wait for the current turn to complete.',
       fatal: false,
     })
-    return
+    return { ok: false, currentMode: cs.permissionMode }
   }
 
   await cs.query.setPermissionMode(mode as PermissionMode)
+  cs.permissionMode = mode
+  return { ok: true, currentMode: mode }
 }
 
 /**

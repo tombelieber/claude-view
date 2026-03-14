@@ -73,6 +73,13 @@ const MODE_CONFIG: Record<
 
 const MODES: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']
 
+/** Cycle to next mode (wraps around, skips bypassPermissions for safety). */
+export function cycleMode(current: PermissionMode): PermissionMode {
+  const safe: PermissionMode[] = MODES.filter((m) => m !== 'bypassPermissions')
+  const idx = safe.indexOf(current)
+  return safe[(idx + 1) % safe.length]
+}
+
 export function ModeSwitch({ mode, onModeChange, disabled }: ModeSwitchProps) {
   const [open, setOpen] = useState(false)
   const [confirmBypass, setConfirmBypass] = useState(false)

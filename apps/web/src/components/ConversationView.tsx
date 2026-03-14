@@ -135,11 +135,12 @@ export function ConversationView() {
   const paletteCapabilities = useSessionCapabilities(convInfo)
   const { options: paletteModelOptions } = useModelOptions()
 
-  // Mode state for ChatInputBar
+  // Mode state — read from session-specific key, fallback to global last-used
   const [chatMode, setChatMode] = useState<PermissionMode>(() => {
-    if (!sessionId) return 'default'
     try {
-      const stored = localStorage.getItem(`claude-view:mode:${sessionId}`)
+      const sessionStored = sessionId ? localStorage.getItem(`claude-view:mode:${sessionId}`) : null
+      const globalStored = localStorage.getItem('claude-view:last-mode')
+      const stored = sessionStored ?? globalStored
       return stored && VALID_MODES.includes(stored as PermissionMode)
         ? (stored as PermissionMode)
         : 'default'
@@ -150,16 +151,49 @@ export function ConversationView() {
   const handleModeChange = useCallback(
     (mode: PermissionMode) => {
       setChatMode(mode)
+      // Persist both session-specific and global
       if (sessionId) localStorage.setItem(`claude-view:mode:${sessionId}`, mode)
+      try {
+        localStorage.setItem('claude-view:last-mode', mode)
+      } catch {
+        /* noop */
+      }
+      // sendIfLive: no-ops if dormant, sends if live.
+      // bypassPermissions will fail mid-session but sidecar falls back to close+re-resume.
       actions.setPermissionMode(mode)
     },
     [sessionId, actions],
   )
 
-  // Push persisted mode once session goes live
+  // Sync chatMode from sidecar rejections only (mode_rejected reverts optimistic update)
+  const sidecarMode = convInfo.permissionMode as PermissionMode
+  const prevSidecarModeRef = useRef(sidecarMode)
+  useEffect(() => {
+    // Only revert on mode_rejected (sidecar sets permissionMode back to actual mode).
+    // mode_changed confirmations are no-ops since chatMode already matches.
+    if (sidecarMode !== prevSidecarModeRef.current) {
+      prevSidecarModeRef.current = sidecarMode
+      // Only revert if chatMode differs — don't clobber optimistic updates
+      // that haven't been confirmed/rejected yet
+      setChatMode((current) => {
+        if (current === sidecarMode) return current // already matches, skip
+        // Sidecar disagrees — revert to sidecar's actual mode
+        if (sessionId) localStorage.setItem(`claude-view:mode:${sessionId}`, sidecarMode)
+        return sidecarMode
+      })
+    }
+  }, [sidecarMode, sessionId])
+
+  // Push persisted mode once session goes live (triggered by user sending a message)
   const lastSentModeRef = useRef<PermissionMode | null>(null)
   useEffect(() => {
-    if (isLive && chatMode !== 'default' && lastSentModeRef.current !== chatMode) {
+    if (!isLive) return
+    // Skip sending 'default' on initial connect — SDK already defaults to it
+    if (lastSentModeRef.current === null && chatMode === 'default') {
+      lastSentModeRef.current = chatMode
+      return
+    }
+    if (lastSentModeRef.current !== chatMode) {
       lastSentModeRef.current = chatMode
       actions.setPermissionMode(chatMode)
     }
