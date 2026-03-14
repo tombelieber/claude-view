@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { formatModelName } from '../lib/format-model'
+import { formatContextWindow, formatModelName } from '../lib/format-model'
 import type { ModelWithStats } from '../types/generated'
 
 async function fetchModels(): Promise<ModelWithStats[]> {
@@ -54,7 +54,12 @@ export function useModelOptions(): { options: ModelOption[]; isLoading: boolean 
     const family = m.family ?? 'unknown'
     if (seen.has(family)) continue
     seen.add(family)
-    options.push({ id: m.id, label: formatModelName(m.id) })
+    options.push({
+      id: m.id,
+      label: m.displayName ?? formatModelName(m.id),
+      description: m.description ?? undefined,
+      contextWindow: formatContextWindow(m.maxInputTokens),
+    })
   }
 
   return { options, isLoading }
