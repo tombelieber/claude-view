@@ -10,6 +10,7 @@ import type {
 import {
   closeSession,
   createControlSession,
+  forkControlSession,
   listAvailableSessions,
   resumeControlSession,
   sendMessage,
@@ -25,32 +26,16 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<CreateSessionRequest>()
     if (!body.model) return c.json({ error: 'model is required' }, 400)
 
-    let cs: ReturnType<typeof createControlSession> | undefined
+    const cs = createControlSession(body, registry)
     try {
-      cs = createControlSession(body, registry)
-
-      // V2 SDK only initializes (emits session_init, assigns sessionId) after
-      // the first send(). Without a message, stream() blocks forever.
-      if (body.initialMessage) {
-        // Race sendMessage against waitForSessionInit:
-        // - sendMessage triggers SDK to connect → stream() yields system.init
-        // - waitForSessionInit resolves when session_init event fires
-        // - If sendMessage rejects (auth error, rate limit), fail fast with the
-        //   real error instead of hanging for 15s on waitForSessionInit timeout.
-        // sendMessage resolves when SDK accepts the message (before turn completes),
-        // so both promises resolve around the same time.
-        await Promise.all([sendMessage(cs, body.initialMessage), waitForSessionInit(cs)])
-      }
-
+      await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
         status: 'created',
       })
     } catch (err) {
-      // Clean up orphaned session — it was registered in the registry but init failed.
-      // Without cleanup, ghost sessions accumulate with empty sessionId.
-      if (cs) await closeSession(cs, registry)
+      closeSession(cs, registry)
       return c.json({ error: `Create failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
   })
@@ -84,34 +69,36 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Fork existing session — deferred: V2 SDK does not yet expose resume+forkSession in SDKSessionOptions.
-  // Endpoint registered so the Rust proxy route doesn't 502; returns 501 with a clear message.
-  // biome-ignore lint/suspicious/useAwait: async required by Hono handler signature
+  // Fork existing session — creates a new session branching from an existing one
   app.post('/sessions/fork', async (c) => {
-    const _body = await c.req.json<ForkSessionRequest>()
-    return c.json(
-      { error: 'Fork is not yet supported by the V2 SDK. Planned for a future release.' },
-      501,
-    )
+    const body = await c.req.json<ForkSessionRequest>()
+    if (!body.sessionId) return c.json({ error: 'sessionId is required' }, 400)
+
+    const cs = forkControlSession(body, registry)
+    try {
+      await waitForSessionInit(cs, 15_000)
+      return c.json({
+        controlId: cs.controlId,
+        sessionId: cs.sessionId,
+        status: 'forked',
+      })
+    } catch (err) {
+      closeSession(cs, registry)
+      return c.json({ error: `Fork failed: ${err instanceof Error ? err.message : err}` }, 500)
+    }
   })
 
-  // Send message — fire-and-forget by design.
+  // Send message — synchronous bridge.push, fire-and-forget by design.
   // Returns immediately after queuing; the SDK processes the message and emits
   // response events (assistant_text, tool_use_start, turn_complete, etc.) over
-  // the WS stream. Errors from sendMessage propagate as 'error' events on the stream.
+  // the WS stream.
   app.post('/send', async (c) => {
     const body = await c.req.json<{ controlId: string; message: string }>()
     const cs = registry.get(body.controlId)
     if (!cs) return c.json({ error: 'Session not found' }, 404)
 
-    try {
-      sendMessage(cs, body.message).catch((err) => {
-        console.error(`[sidecar] sendMessage error: ${err}`)
-      })
-      return c.json({ status: 'sent' })
-    } catch (err) {
-      return c.json({ error: `Send failed: ${err}` }, 500)
-    }
+    sendMessage(cs, body.message)
+    return c.json({ status: 'sent' })
   })
 
   // List active control sessions
@@ -162,7 +149,7 @@ export function createRoutes(registry: SessionRegistry) {
   app.delete('/sessions/:controlId', async (c) => {
     const controlId = c.req.param('controlId')
     const cs = registry.get(controlId)
-    if (cs) await closeSession(cs, registry)
+    if (cs) closeSession(cs, registry)
     return c.json({ status: 'terminated' })
   })
 
