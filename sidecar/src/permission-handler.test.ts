@@ -180,6 +180,163 @@ describe('PermissionHandler', () => {
     expect(result.behavior).toBe('allow')
   })
 
+  // ─── SDK Zod schema compliance: all allow results must include updatedInput ───
+
+  it('resolvePermission(allow) includes updatedInput for SDK Zod compliance', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'WebSearch',
+      { query: 'test' },
+      { signal, toolUseID: 'tu_zod_1' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolvePermission(requestId, true)
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+    if (result.behavior === 'allow') {
+      expect(result.updatedInput).toBeDefined()
+      expect(typeof result.updatedInput).toBe('object')
+    }
+  })
+
+  it('resolvePermission(deny) includes message for SDK Zod compliance', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'Bash',
+      { command: 'test' },
+      { signal, toolUseID: 'tu_zod_2' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolvePermission(requestId, false)
+
+    const result = await promise
+    expect(result.behavior).toBe('deny')
+    if (result.behavior === 'deny') {
+      expect(typeof result.message).toBe('string')
+      expect(result.message!.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('resolvePlan(approve) includes updatedInput for SDK Zod compliance', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'ExitPlanMode',
+      { plan: 'do things' },
+      { signal, toolUseID: 'tu_zod_3' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolvePlan(requestId, true)
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+    if (result.behavior === 'allow') {
+      expect(result.updatedInput).toBeDefined()
+      expect(typeof result.updatedInput).toBe('object')
+    }
+  })
+
+  it('resolveQuestion includes updatedInput with answers', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'AskUserQuestion',
+      { questions: [{ question: 'Color?', header: 'H', options: [], multiSelect: false }] },
+      { signal, toolUseID: 'tu_zod_4' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolveQuestion(requestId, { 'Color?': 'Blue' })
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+    if (result.behavior === 'allow') {
+      expect(result.updatedInput).toEqual({ answers: { 'Color?': 'Blue' } })
+    }
+  })
+
+  it('resolveElicitation includes updatedInput with response', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'mcp__test__prompt',
+      { prompt: 'Enter name:' },
+      { signal, toolUseID: 'tu_zod_5' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    handler.resolveElicitation(requestId, 'Alice')
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+    if (result.behavior === 'allow') {
+      expect(result.updatedInput).toEqual({ response: 'Alice' })
+    }
+  })
+
+  it('timeout includes message for SDK Zod compliance', async () => {
+    vi.useFakeTimers()
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'Bash',
+      { command: 'test' },
+      { signal, toolUseID: 'tu_zod_6' },
+      emit,
+      { timeoutMs: 500 },
+    )
+
+    vi.advanceTimersByTime(501)
+    const result = await promise
+    expect(result.behavior).toBe('deny')
+    if (result.behavior === 'deny') {
+      expect(typeof result.message).toBe('string')
+      expect(result.message!.length).toBeGreaterThan(0)
+    }
+    vi.useRealTimers()
+  })
+
   it('does NOT route standard tools with prompt field to elicitation (heuristic boundary)', async () => {
     const handler = new PermissionHandler()
     const events: unknown[] = []
