@@ -12,45 +12,66 @@ type LocalResponse =
   | { variant: 'plan'; approved: boolean }
   | { variant: 'elicitation' }
 
-export function useInteractionHandlers() {
+/**
+ * Module-level cache of responded requestIds.
+ * Survives component unmount/remount (e.g. Chat ↔ Developer mode switch)
+ * so the user's Allow/Deny choice persists across display mode changes.
+ */
+const respondedCache = new Map<string, LocalResponse>()
+
+/** @internal — test-only cache reset */
+export function _clearRespondedCacheForTesting(): void {
+  respondedCache.clear()
+}
+
+export function useInteractionHandlers(requestId: string) {
   const ctx = useConversationActions()
-  const [localResponse, setLocalResponse] = useState<LocalResponse | null>(null)
+  const [localResponse, setLocalResponse] = useState<LocalResponse | null>(
+    () => respondedCache.get(requestId) ?? null,
+  )
 
   const respondPermission = useCallback(
-    (requestId: string, allowed: boolean) => {
-      ctx?.respondPermission?.(requestId, allowed)
-      setLocalResponse({ variant: 'permission', allowed })
+    (reqId: string, allowed: boolean) => {
+      ctx?.respondPermission?.(reqId, allowed)
+      const response: LocalResponse = { variant: 'permission', allowed }
+      setLocalResponse(response)
+      respondedCache.set(reqId, response)
     },
     [ctx],
   )
 
   const answerQuestion = useCallback(
-    (requestId: string, answers: Record<string, string>) => {
-      ctx?.answerQuestion?.(requestId, answers)
-      setLocalResponse({ variant: 'question' })
+    (reqId: string, answers: Record<string, string>) => {
+      ctx?.answerQuestion?.(reqId, answers)
+      const response: LocalResponse = { variant: 'question' }
+      setLocalResponse(response)
+      respondedCache.set(reqId, response)
     },
     [ctx],
   )
 
   const approvePlan = useCallback(
-    (requestId: string, approved: boolean, feedback?: string) => {
-      ctx?.approvePlan?.(requestId, approved, feedback)
-      setLocalResponse({ variant: 'plan', approved })
+    (reqId: string, approved: boolean, feedback?: string) => {
+      ctx?.approvePlan?.(reqId, approved, feedback)
+      const response: LocalResponse = { variant: 'plan', approved }
+      setLocalResponse(response)
+      respondedCache.set(reqId, response)
     },
     [ctx],
   )
 
   const submitElicitation = useCallback(
-    (requestId: string, response: string) => {
-      ctx?.submitElicitation?.(requestId, response)
-      setLocalResponse({ variant: 'elicitation' })
+    (reqId: string, response: string) => {
+      ctx?.submitElicitation?.(reqId, response)
+      const resp: LocalResponse = { variant: 'elicitation' }
+      setLocalResponse(resp)
+      respondedCache.set(reqId, resp)
     },
     [ctx],
   )
 
   return {
     localResponse,
-    // Only expose handlers when context provides them — otherwise undefined → read-only cards
     respondPermission: ctx?.respondPermission ? respondPermission : undefined,
     answerQuestion: ctx?.answerQuestion ? answerQuestion : undefined,
     approvePlan: ctx?.approvePlan ? approvePlan : undefined,

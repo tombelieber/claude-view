@@ -1,11 +1,16 @@
 import type { InteractionBlock as InteractionBlockType } from '@claude-view/shared/types/blocks'
 import type { PermissionRequest } from '@claude-view/shared/types/sidecar-protocol'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationActionsProvider } from '../../../../contexts/conversation-actions-context'
 import type { ConversationActions } from '../../../../contexts/conversation-actions-context'
 import { ChatInteractionBlock } from '../chat/InteractionBlock'
 import { DevInteractionBlock } from '../developer/InteractionBlock'
+import { _clearRespondedCacheForTesting } from './use-interaction-handlers'
+
+beforeEach(() => {
+  _clearRespondedCacheForTesting()
+})
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -286,5 +291,87 @@ describe('InteractionBlock — read-only without context', () => {
     render(<ChatInteractionBlock block={makeElicitationBlock()} />)
     expect(screen.getByText(/enter value/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /submit/i })).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tests: Mode switch persistence — resolved state survives unmount/remount
+// ---------------------------------------------------------------------------
+
+describe('InteractionBlock — mode switch persistence', () => {
+  it('Allow response persists when switching Chat → Developer (same requestId)', () => {
+    const block = makePermissionBlock()
+    const actions = makeActions({ respondPermission: vi.fn() })
+
+    // Render in Chat mode, click Allow
+    const { unmount } = render(
+      <ConversationActionsProvider actions={actions}>
+        <ChatInteractionBlock block={block} />
+      </ConversationActionsProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /allow/i }))
+    expect(screen.getByText(/allowed/i)).toBeInTheDocument()
+
+    // Unmount (simulates mode switch)
+    unmount()
+
+    // Remount in Developer mode with SAME block (same requestId)
+    render(
+      <ConversationActionsProvider actions={actions}>
+        <DevInteractionBlock block={block} />
+      </ConversationActionsProvider>,
+    )
+
+    // Should still show Allowed, no buttons
+    expect(screen.getByText(/allowed/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /allow/i })).not.toBeInTheDocument()
+  })
+
+  it('Deny response persists when switching Chat → Developer', () => {
+    const block = makePermissionBlock({ requestId: 'persist-deny-test' })
+    block.requestId = 'persist-deny-test'
+    const actions = makeActions({ respondPermission: vi.fn() })
+
+    const { unmount } = render(
+      <ConversationActionsProvider actions={actions}>
+        <ChatInteractionBlock block={block} />
+      </ConversationActionsProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /deny/i }))
+    expect(screen.getByText(/denied/i)).toBeInTheDocument()
+    unmount()
+
+    render(
+      <ConversationActionsProvider actions={actions}>
+        <DevInteractionBlock block={block} />
+      </ConversationActionsProvider>,
+    )
+    expect(screen.getByText(/denied/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /deny/i })).not.toBeInTheDocument()
+  })
+
+  it('different requestIds are independent', () => {
+    const block1 = makePermissionBlock({ requestId: 'independent-1' })
+    block1.requestId = 'independent-1'
+    const block2 = makePermissionBlock({ requestId: 'independent-2' })
+    block2.requestId = 'independent-2'
+    const actions = makeActions({ respondPermission: vi.fn() })
+
+    // Respond to block1
+    const { unmount } = render(
+      <ConversationActionsProvider actions={actions}>
+        <ChatInteractionBlock block={block1} />
+      </ConversationActionsProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /allow/i }))
+    unmount()
+
+    // block2 should still have buttons (different requestId)
+    render(
+      <ConversationActionsProvider actions={actions}>
+        <ChatInteractionBlock block={block2} />
+      </ConversationActionsProvider>,
+    )
+    expect(screen.getByRole('button', { name: /allow/i })).toBeInTheDocument()
   })
 })
