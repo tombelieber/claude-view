@@ -130,6 +130,7 @@ export interface SessionInit {
   agents: string[]
   skills: string[]
   outputStyle: string
+  capabilities?: string[]
 }
 
 export interface SessionStatus {
@@ -398,18 +399,23 @@ export interface StopTaskMsg {
 // Info queries
 export interface QueryModelsMsg {
   type: 'query_models'
+  requestId?: string
 }
 export interface QueryCommandsMsg {
   type: 'query_commands'
+  requestId?: string
 }
 export interface QueryAgentsMsg {
   type: 'query_agents'
+  requestId?: string
 }
 export interface QueryMcpStatusMsg {
   type: 'query_mcp_status'
+  requestId?: string
 }
 export interface QueryAccountInfoMsg {
   type: 'query_account_info'
+  requestId?: string
 }
 
 // MCP management
@@ -425,6 +431,7 @@ export interface ToggleMcpMsg {
 export interface SetMcpServersMsg {
   type: 'set_mcp_servers'
   servers: Record<string, unknown>
+  requestId?: string
 }
 
 // File management
@@ -432,6 +439,7 @@ export interface RewindFilesMsg {
   type: 'rewind_files'
   userMessageId: string
   dryRun?: boolean
+  requestId?: string
 }
 
 export type ClientMessage =
@@ -467,14 +475,17 @@ export interface QueryResult {
   type: 'query_result'
   queryType: string
   data: unknown
+  requestId?: string
 }
 export interface RewindResult {
   type: 'rewind_result'
   result: unknown
+  requestId?: string
 }
 export interface McpSetResult {
   type: 'mcp_set_result'
   result: unknown
+  requestId?: string
 }
 
 // ─── HTTP Request/Response Types ──────────────────────────────────

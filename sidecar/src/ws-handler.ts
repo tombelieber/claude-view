@@ -142,7 +142,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         case 'query_models':
           try {
             const models = await session.query.supportedModels()
-            ws.send(JSON.stringify({ type: 'query_result', queryType: 'models', data: models }))
+            ws.send(
+              JSON.stringify({
+                type: 'query_result',
+                queryType: 'models',
+                data: models,
+                requestId: msg.requestId,
+              }),
+            )
           } catch (err) {
             sendError(ws, err)
           }
@@ -151,7 +158,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         case 'query_commands':
           try {
             const cmds = await session.query.supportedCommands()
-            ws.send(JSON.stringify({ type: 'query_result', queryType: 'commands', data: cmds }))
+            ws.send(
+              JSON.stringify({
+                type: 'query_result',
+                queryType: 'commands',
+                data: cmds,
+                requestId: msg.requestId,
+              }),
+            )
           } catch (err) {
             sendError(ws, err)
           }
@@ -160,7 +174,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         case 'query_agents':
           try {
             const agents = await session.query.supportedAgents()
-            ws.send(JSON.stringify({ type: 'query_result', queryType: 'agents', data: agents }))
+            ws.send(
+              JSON.stringify({
+                type: 'query_result',
+                queryType: 'agents',
+                data: agents,
+                requestId: msg.requestId,
+              }),
+            )
           } catch (err) {
             sendError(ws, err)
           }
@@ -169,7 +190,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         case 'query_mcp_status':
           try {
             const status = await session.query.mcpServerStatus()
-            ws.send(JSON.stringify({ type: 'query_result', queryType: 'mcp_status', data: status }))
+            ws.send(
+              JSON.stringify({
+                type: 'query_result',
+                queryType: 'mcp_status',
+                data: status,
+                requestId: msg.requestId,
+              }),
+            )
           } catch (err) {
             sendError(ws, err)
           }
@@ -178,7 +206,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         case 'query_account_info':
           try {
             const info = await session.query.accountInfo()
-            ws.send(JSON.stringify({ type: 'query_result', queryType: 'account_info', data: info }))
+            ws.send(
+              JSON.stringify({
+                type: 'query_result',
+                queryType: 'account_info',
+                data: info,
+                requestId: msg.requestId,
+              }),
+            )
           } catch (err) {
             sendError(ws, err)
           }
@@ -202,8 +237,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
 
         case 'set_mcp_servers':
           try {
+            // biome-ignore lint/suspicious/noExplicitAny: SDK type mismatch
             const result = await session.query.setMcpServers(msg.servers as any)
-            ws.send(JSON.stringify({ type: 'mcp_set_result', result }))
+            ws.send(JSON.stringify({ type: 'mcp_set_result', result, requestId: msg.requestId }))
           } catch (err) {
             sendError(ws, err)
           }
@@ -214,7 +250,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
             const result = await session.query.rewindFiles(msg.userMessageId, {
               dryRun: msg.dryRun,
             })
-            ws.send(JSON.stringify({ type: 'rewind_result', result }))
+            ws.send(JSON.stringify({ type: 'rewind_result', result, requestId: msg.requestId }))
           } catch (err) {
             sendError(ws, err)
           }
