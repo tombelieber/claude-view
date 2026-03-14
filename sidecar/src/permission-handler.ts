@@ -223,7 +223,7 @@ export class PermissionHandler {
     this.permissions.delete(requestId)
     pending.resolve(
       allowed
-        ? { behavior: 'allow', updatedPermissions }
+        ? { behavior: 'allow', updatedInput: {}, updatedPermissions }
         : { behavior: 'deny', message: 'User denied' },
     )
     return true
@@ -242,7 +242,9 @@ export class PermissionHandler {
     if (!pending) return false
     this.plans.delete(requestId)
     pending.resolve(
-      approved ? { behavior: 'allow' } : { behavior: 'deny', message: feedback ?? 'Plan rejected' },
+      approved
+        ? { behavior: 'allow', updatedInput: {} }
+        : { behavior: 'deny', message: feedback ?? 'Plan rejected' },
     )
     return true
   }
