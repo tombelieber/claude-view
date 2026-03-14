@@ -252,6 +252,28 @@ async fn proxy_resume(
         .as_str()
         .ok_or_else(|| ApiError::Internal("No controlId in resume response".into()))?
         .to_string();
+
+    // Fire-and-forget: refresh SDK model list in DB after session create/resume.
+    // The sidecar refreshes its model cache from the new SDK session's
+    // initializationResult(), then we pull it into the DB.
+    // Delayed 2s to give the sidecar time to update its cache from the new session.
+    let sidecar = state.sidecar.clone();
+    let db = state.db.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Ok(socket_path) = sidecar.ensure_running().await {
+            match crate::fetch_sdk_models_from_sidecar(std::path::Path::new(&socket_path)).await {
+                Ok(sdk_models) => match db.upsert_sdk_models(&sdk_models).await {
+                    Ok(n) => {
+                        tracing::debug!(models = n, "SDK models refreshed after session resume")
+                    }
+                    Err(e) => tracing::warn!("Failed to upsert SDK models after resume: {e}"),
+                },
+                Err(e) => tracing::debug!("SDK model refresh skipped after resume: {e}"),
+            }
+        }
+    });
+
     Ok(control_id)
 }
 

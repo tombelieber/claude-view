@@ -42,6 +42,7 @@ pub async fn list_models(
                     last_seen: None,
                     total_turns: 0,
                     total_sessions: 0,
+                    sdk_supported: false,
                 }
             })
             .collect()

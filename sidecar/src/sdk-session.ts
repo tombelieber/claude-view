@@ -11,6 +11,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { mapSdkMessage } from './event-mapper.js'
 import { MessageBridge } from './message-bridge.js'
+import { updateModelCacheFromSession } from './model-cache.js'
 import { PermissionHandler } from './permission-handler.js'
 import type {
   AvailableSession,
@@ -233,6 +234,7 @@ export function forkControlSession(
 /** One long-lived stream loop per session. Runs until session closes or errors. */
 function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
   void (async () => {
+    let modelCacheRefreshed = false
     try {
       for await (const msg of cs.query) {
         updateSessionStateFromRawMsg(cs, msg)
@@ -240,6 +242,16 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
         for (const event of events) {
           updateSessionState(cs, event)
           registry.emitSequenced(cs, event)
+
+          // On first session_init, refresh model cache from SDK (fire-and-forget).
+          // SDK is the source of truth for available models.
+          if (event.type === 'session_init' && !modelCacheRefreshed) {
+            modelCacheRefreshed = true
+            cs.query
+              .supportedModels()
+              .then((models) => updateModelCacheFromSession(models))
+              .catch((err) => console.warn('[model-cache] Failed to refresh from session:', err))
+          }
         }
       }
       // Stream ended normally
