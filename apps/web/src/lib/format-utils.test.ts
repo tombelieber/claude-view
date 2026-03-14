@@ -1,26 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import { formatBytes, formatUptime } from './format-utils'
 
-describe('formatBytes', () => {
+describe('formatBytes (binary / 1024-based)', () => {
   it('formats sub-megabyte as KB', () => {
     expect(formatBytes(0)).toBe('0 KB')
-    expect(formatBytes(999)).toBe('1 KB')
-    expect(formatBytes(500_000)).toBe('500 KB')
+    expect(formatBytes(1024)).toBe('1 KB')
+    expect(formatBytes(512_000)).toBe('500 KB')
   })
 
   it('formats megabytes without decimals', () => {
-    expect(formatBytes(1_000_000)).toBe('1 MB')
-    expect(formatBytes(47_500_000)).toBe('48 MB')
+    expect(formatBytes(1024 ** 2)).toBe('1 MB')
+    expect(formatBytes(50 * 1024 ** 2)).toBe('50 MB')
   })
 
   it('formats gigabytes with one decimal', () => {
-    expect(formatBytes(1_000_000_000)).toBe('1.0 GB')
-    expect(formatBytes(1_500_000_000)).toBe('1.5 GB')
+    expect(formatBytes(1024 ** 3)).toBe('1.0 GB')
+    expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.5 GB')
+  })
+
+  it('shows 64 GB for a 64 GiB machine', () => {
+    // 64 GiB = 68,719,476,736 bytes — must show "64.0 GB", not "68.7 GB"
+    expect(formatBytes(64 * 1024 ** 3)).toBe('64.0 GB')
   })
 
   it('handles exact boundaries', () => {
-    expect(formatBytes(1e6)).toBe('1 MB')
-    expect(formatBytes(1e9)).toBe('1.0 GB')
+    expect(formatBytes(1024 ** 2)).toBe('1 MB')
+    expect(formatBytes(1024 ** 3)).toBe('1.0 GB')
   })
 })
 
