@@ -5,9 +5,10 @@ import type { ConversationBlock, UserBlock } from '@claude-view/shared/types/blo
  * turn positions. Each user message is placed before the first assistant
  * block of its corresponding turn.
  *
- * Turn detection: the first assistant/interaction block in the stream marks
- * turn 1. Each subsequent turn_boundary resets, so the next assistant block
- * marks the start of the next turn.
+ * Optimistic blocks are only placed AFTER the last turn_boundary in the
+ * stream — they belong to the latest/new turn, not replayed previous turns.
+ * Without this guard, a session resume replays all previous turns' events
+ * and the optimistic message gets placed before the FIRST turn's response.
  */
 export function interleaveUserBlocks(
   userBlocks: UserBlock[],
@@ -16,13 +17,20 @@ export function interleaveUserBlocks(
   if (userBlocks.length === 0) return streamBlocks
   if (streamBlocks.length === 0) return [...userBlocks]
 
+  // Find the last turn_boundary — everything before it is completed/replayed turns.
+  // Optimistic user messages belong AFTER it (in the latest turn).
+  const lastBoundaryIdx = findLastIndex(streamBlocks, (b) => b.type === 'turn_boundary')
+
   const result: ConversationBlock[] = []
   let userIdx = 0
   let turnStarted = false
 
-  for (const block of streamBlocks) {
-    // Before the first assistant-like block of each turn, insert the user message
+  for (let i = 0; i < streamBlocks.length; i++) {
+    const block = streamBlocks[i]
+
+    // Only interleave user messages after the last turn boundary
     if (
+      i > lastBoundaryIdx &&
       userIdx < userBlocks.length &&
       !turnStarted &&
       (block.type === 'assistant' || block.type === 'interaction')
@@ -33,7 +41,6 @@ export function interleaveUserBlocks(
 
     result.push(block)
 
-    // turn_boundary marks end of a turn — reset for next turn
     if (block.type === 'turn_boundary') {
       turnStarted = false
     }
@@ -45,4 +52,12 @@ export function interleaveUserBlocks(
   }
 
   return result
+}
+
+/** Array.findLastIndex polyfill (not available in all targets). */
+function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (pred(arr[i])) return i
+  }
+  return -1
 }

@@ -72,6 +72,7 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     nextSeq: 0,
     // biome-ignore lint/suspicious/noExplicitAny: stub for testing
     permissions: { drainAll: vi.fn() } as any,
+    permissionMode: 'default',
     ...overrides,
   }
 }
@@ -404,12 +405,14 @@ describe('setSessionMode', () => {
     })
     registry.register(cs)
 
-    await setSessionMode(cs, 'plan', registry)
+    const result = await setSessionMode(cs, 'plan', registry)
 
     expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('plan')
+    expect(result).toEqual({ ok: true, currentMode: 'plan' })
+    expect(cs.permissionMode).toBe('plan')
   })
 
-  it('emits error when state is active', async () => {
+  it('emits error and returns failure when state is active', async () => {
     const registry = new SessionRegistry()
     const mockQuery = makeMockQuery()
     const cs = makeStubCs({
@@ -422,7 +425,7 @@ describe('setSessionMode', () => {
     const messages: unknown[] = []
     cs.emitter.on('message', (msg) => messages.push(msg))
 
-    await setSessionMode(cs, 'plan', registry)
+    const result = await setSessionMode(cs, 'plan', registry)
 
     // Should NOT have called setPermissionMode
     expect(mockQuery.setPermissionMode).not.toHaveBeenCalled()
@@ -433,6 +436,10 @@ describe('setSessionMode', () => {
     expect(errorMsg.type).toBe('error')
     expect(errorMsg.fatal).toBe(false)
     expect(errorMsg.message).toContain('Cannot change mode')
+
+    // Should return failure with current mode unchanged
+    expect(result).toEqual({ ok: false, currentMode: 'default' })
+    expect(cs.permissionMode).toBe('default')
   })
 
   it('allows mode change in waiting_permission state', async () => {

@@ -8,7 +8,7 @@ import type { PermissionMode } from '../../types/control'
 import { AttachButton, AttachmentChips } from './AttachButton'
 import { ChatContextGauge } from './ChatContextGauge'
 import { ChatPalette } from './ChatPalette'
-import { ModeSwitch } from './ModeSwitch'
+import { ModeSwitch, cycleMode } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
 import type { SlashCommand } from './commands'
@@ -198,7 +198,10 @@ export function ChatInputBar({
       // (the popover handles its own keyboard events)
       if (slashOpen) return
 
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Tab' && e.shiftKey && onModeChange) {
+        e.preventDefault()
+        onModeChange(cycleMode(mode))
+      } else if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         send()
       } else if (e.key === 'Escape' && isStreaming && onStop) {
@@ -206,7 +209,7 @@ export function ChatInputBar({
         onStop()
       }
     },
-    [slashOpen, send, isStreaming, onStop],
+    [slashOpen, send, isStreaming, onStop, mode, onModeChange],
   )
 
   // ---- Image paste handler ----

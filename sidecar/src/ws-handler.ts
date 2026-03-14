@@ -101,9 +101,28 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
 
         case 'set_mode':
           try {
-            await setSessionMode(session, msg.mode, registry)
+            const result = await setSessionMode(session, msg.mode, registry)
+            if (result.ok) {
+              ws.send(JSON.stringify({ type: 'mode_changed', mode: result.currentMode }))
+            } else {
+              ws.send(
+                JSON.stringify({
+                  type: 'mode_rejected',
+                  mode: result.currentMode,
+                  requestedMode: msg.mode,
+                }),
+              )
+            }
           } catch (err) {
-            sendError(ws, `setPermissionMode failed: ${err}`)
+            const message = err instanceof Error ? err.message : String(err)
+            ws.send(
+              JSON.stringify({
+                type: 'mode_rejected',
+                mode: session.permissionMode,
+                requestedMode: msg.mode,
+                error: message,
+              }),
+            )
           }
           break
 

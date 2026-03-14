@@ -17,7 +17,7 @@ const RESUMED_DIVIDER: NoticeBlock = {
 export function useConversation(sessionId: string | undefined) {
   const history = useHistoryBlocks(sessionId ?? null)
   const source = useSessionSource(sessionId)
-  const actions = useSessionActions(source.send, source.channel)
+  const actions = useSessionActions(source.send, source.sendIfLive, source.channel)
   // NOTE: useInputState is NOT called here — each consumer (ChatPage, ConversationView,
   // SessionDetailPanel) calls deriveInputBarState() or useInputState() directly with
   // canResumeLazy from sessionInfo. This avoids a dead hook call.

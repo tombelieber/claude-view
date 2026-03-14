@@ -134,7 +134,11 @@ export function ChatPage() {
         fetch('/api/control/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: selectedModel, initialMessage: text }),
+          body: JSON.stringify({
+            model: selectedModel,
+            initialMessage: text,
+            permissionMode: permMode,
+          }),
         })
           .then((r) => r.json())
           .then((data) => {
@@ -156,8 +160,28 @@ export function ChatPage() {
     [sessionId, actions, navigate, selectedModel],
   )
 
+  // Permission mode — persisted globally (like model), applied at session creation/resume
+  const MODE_STORAGE_KEY = 'claude-view:last-mode'
+  const [permMode, setPermMode] = useState<PermissionMode>(() => {
+    try {
+      const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
+      return stored ?? 'default'
+    } catch {
+      return 'default'
+    }
+  })
+
   const handleModeChangePermission = useCallback(
     (mode: PermissionMode) => {
+      setPermMode(mode)
+      try {
+        localStorage.setItem(MODE_STORAGE_KEY, mode)
+      } catch {
+        /* noop */
+      }
+      // Push to sidecar if live (sendIfLive no-ops if dormant).
+      // bypassPermissions will fail mid-session via setPermissionMode but the
+      // sidecar falls back to close+re-resume internally.
       actions.setPermissionMode(mode)
     },
     [actions],
@@ -333,6 +357,7 @@ export function ChatPage() {
               onSend={handleSend}
               onStop={actions.interrupt}
               state={inputBarState}
+              mode={permMode}
               onModeChange={handleModeChangePermission}
               contextPercent={contextPercent}
               model={selectedModel}
