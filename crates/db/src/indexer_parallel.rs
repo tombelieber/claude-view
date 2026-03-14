@@ -2371,9 +2371,16 @@ pub async fn pass_1_read_indexes(
             });
         let entry_cwd = entry_cwd_owned.as_deref();
 
-        // Infer git_root from cwd path (detects /.claude/worktrees/ and /.worktrees/ patterns)
+        // Resolve git_root: try worktree path pattern first, then fall back to git rev-parse.
+        // Without the fallback, non-worktree sessions indexed after the startup backfill
+        // get git_root=NULL, causing duplicate sidebar entries.
         let inferred_git_root =
             entry_cwd.and_then(claude_view_core::discovery::infer_git_root_from_worktree_path);
+        let inferred_git_root = match (&inferred_git_root, entry_cwd) {
+            (Some(_), _) => inferred_git_root,
+            (None, Some(cwd)) => claude_view_core::discovery::resolve_git_root(cwd).await,
+            (None, None) => None,
+        };
 
         // Worktree consolidation — reparent under the main project
         let (effective_encoded, effective_resolved) =
@@ -6217,5 +6224,73 @@ mod scan_and_index_tests {
         .unwrap();
         assert_eq!(indexed2, 0, "second scan should index 0 files");
         assert_eq!(skipped2, 1, "second scan should skip 1 file");
+    }
+
+    /// Regression: pass 1 must resolve git_root for non-worktree sessions via
+    /// `git rev-parse`, not just worktree path pattern matching.
+    /// Without this, sessions indexed after the startup backfill get git_root=NULL,
+    /// causing duplicate project entries in the sidebar.
+    #[tokio::test]
+    async fn test_pass_1_resolves_git_root_for_non_worktree_sessions() {
+        // 1. Create a real git repo in a temp dir
+        let repo_tmp = tempfile::TempDir::new().unwrap();
+        let repo_path = repo_tmp.path();
+        let git_init = std::process::Command::new("git")
+            .args(["init", "--initial-branch=main"])
+            .current_dir(repo_path)
+            .output()
+            .expect("git must be available for this test");
+        assert!(git_init.status.success(), "git init failed");
+
+        let repo_path_str = repo_path.to_str().unwrap().to_string();
+
+        // 2. Set up claude dir with a session whose sessionCwd = repo path (not a worktree)
+        let tmp = tempfile::TempDir::new().unwrap();
+        let claude_dir = tmp.path().to_path_buf();
+        let project_dir = claude_dir.join("projects").join("test-repo-project");
+        std::fs::create_dir_all(&project_dir).unwrap();
+
+        let jsonl_path = project_dir.join("sess-git-001.jsonl");
+        std::fs::write(
+            &jsonl_path,
+            br#"{"type":"user","message":{"content":"hello"}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}
+"#,
+        )
+        .unwrap();
+
+        let index = format!(
+            r#"[{{
+                "sessionId": "sess-git-001",
+                "fullPath": "{}",
+                "firstPrompt": "hello",
+                "messageCount": 2,
+                "modified": "2026-01-25T17:18:30.718Z",
+                "isSidechain": false,
+                "sessionCwd": "{}"
+            }}]"#,
+            jsonl_path.to_string_lossy().replace('\\', "\\\\"),
+            repo_path_str.replace('\\', "\\\\")
+        );
+        std::fs::write(project_dir.join("sessions-index.json"), index).unwrap();
+
+        // 3. Run pass 1
+        let db = Database::new_in_memory().await.unwrap();
+        let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        assert_eq!(projects, 1);
+        assert_eq!(sessions, 1);
+
+        // 4. Assert git_root is set to the repo path
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT git_root FROM sessions WHERE id = 'sess-git-001'")
+                .fetch_optional(db.pool())
+                .await
+                .unwrap();
+        let git_root = row.expect("session must exist").0;
+        assert_eq!(
+            git_root.as_deref(),
+            Some(repo_path_str.as_str()),
+            "pass 1 must resolve git_root for non-worktree sessions via git rev-parse"
+        );
     }
 }
