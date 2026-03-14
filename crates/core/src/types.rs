@@ -75,6 +75,9 @@ pub struct Message {
     pub metadata: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "any")]
+    pub raw_json: Option<serde_json::Value>,
 }
 
 impl Message {
@@ -90,6 +93,7 @@ impl Message {
             parent_uuid: None,
             metadata: None,
             category: None,
+            raw_json: None,
         }
     }
 
@@ -143,6 +147,11 @@ impl Message {
 
     pub fn with_category(mut self, category: impl Into<String>) -> Self {
         self.category = Some(category.into());
+        self
+    }
+
+    pub fn with_raw_json(mut self, raw: serde_json::Value) -> Self {
+        self.raw_json = Some(raw);
         self
     }
 }
