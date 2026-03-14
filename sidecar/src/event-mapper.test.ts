@@ -346,6 +346,34 @@ describe('mapSdkMessage', () => {
     })
   })
 
+  describe('session_init capabilities', () => {
+    it('includes capabilities array with all 13 V1 control methods', () => {
+      const msg = {
+        type: 'system',
+        subtype: 'init',
+        tools: [],
+        model: 'claude-sonnet-4-20250514',
+        mcp_servers: [],
+        permissionMode: 'default',
+        slash_commands: [],
+        claude_code_version: '1.0.0',
+        cwd: '/tmp',
+        agents: [],
+        skills: [],
+        output_style: '',
+        session_id: 'sess-1',
+      } as unknown as SDKMessage
+      const events = mapSdkMessage(msg)
+      const init = events[0] as SessionInit
+      expect(init.type).toBe('session_init')
+      expect(init.capabilities).toContain('interrupt')
+      expect(init.capabilities).toContain('rewind_files')
+      expect(init.capabilities).toContain('set_model')
+      expect(init.capabilities).toContain('query_mcp_status')
+      expect(init.capabilities).toHaveLength(13)
+    })
+  })
+
   describe('unknown message types', () => {
     it('maps completely unknown type to unknown_sdk_event', () => {
       const msg = { type: 'brand_new_thing', data: 42 } as unknown as SDKMessage
