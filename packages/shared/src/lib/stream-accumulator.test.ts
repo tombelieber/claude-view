@@ -609,10 +609,158 @@ describe('StreamAccumulator', () => {
     expect(sys?.type === 'system' && sys.variant === 'command_output').toBe(true)
   })
 
-  it('stream_delta creates SystemBlock', () => {
+  it('accumulates stream_delta text into streaming assistant block', () => {
     const acc = makeAcc()
-    acc.push(ev('stream_delta', { event: {}, messageId: 'm1' }, 1))
 
+    // content_block_start creates placeholder
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'text', text: '' },
+          },
+          messageId: 'msg-1',
+          deltaType: 'content_block_start',
+        },
+        1,
+      ),
+    )
+
+    // content_block_delta appends text
+    acc.push(
+      ev(
+        'stream_delta',
+        { event: {}, messageId: 'msg-1', deltaType: 'content_block_delta', textDelta: 'Hello ' },
+        2,
+      ),
+    )
+    acc.push(
+      ev(
+        'stream_delta',
+        { event: {}, messageId: 'msg-1', deltaType: 'content_block_delta', textDelta: 'world' },
+        3,
+      ),
+    )
+
+    const blocks = acc.getBlocks()
+    const assistant = blocks.find((b) => b.type === 'assistant') as AssistantBlock
+    expect(assistant).toBeDefined()
+    expect(assistant.streaming).toBe(true)
+    expect(assistant.segments).toHaveLength(1)
+    expect(assistant.segments[0]).toEqual({
+      kind: 'text',
+      text: 'Hello world',
+      parentToolUseId: null,
+    })
+  })
+
+  it('accumulates stream_delta thinking into assistant block', () => {
+    const acc = makeAcc()
+
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'thinking', thinking: '' },
+          },
+          messageId: 'msg-1',
+          deltaType: 'content_block_start',
+        },
+        1,
+      ),
+    )
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {},
+          messageId: 'msg-1',
+          deltaType: 'content_block_delta',
+          thinkingDelta: 'Let me ',
+        },
+        2,
+      ),
+    )
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {},
+          messageId: 'msg-1',
+          deltaType: 'content_block_delta',
+          thinkingDelta: 'think...',
+        },
+        3,
+      ),
+    )
+
+    const blocks = acc.getBlocks()
+    const assistant = blocks.find((b) => b.type === 'assistant') as AssistantBlock
+    expect(assistant).toBeDefined()
+    expect(assistant.thinking).toBe('Let me think...')
+  })
+
+  it('stream_delta content_block_stop finalizes assistant block', () => {
+    const acc = makeAcc()
+
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'text', text: '' },
+          },
+          messageId: 'msg-1',
+          deltaType: 'content_block_start',
+        },
+        1,
+      ),
+    )
+    acc.push(
+      ev(
+        'stream_delta',
+        { event: {}, messageId: 'msg-1', deltaType: 'content_block_delta', textDelta: 'Done' },
+        2,
+      ),
+    )
+    acc.push(
+      ev(
+        'stream_delta',
+        { event: { type: 'message_stop' }, messageId: 'msg-1', deltaType: 'message_stop' },
+        3,
+      ),
+    )
+
+    const blocks = acc.getBlocks()
+    const assistant = blocks.find((b) => b.type === 'assistant') as AssistantBlock
+    expect(assistant).toBeDefined()
+    expect(assistant.streaming).toBe(false)
+  })
+
+  it('stream_delta with toolInputDelta is stored as system block (not accumulated)', () => {
+    const acc = makeAcc()
+    acc.push(
+      ev(
+        'stream_delta',
+        {
+          event: {},
+          messageId: 'msg-1',
+          deltaType: 'content_block_delta',
+          toolInputDelta: '{"file":',
+        },
+        1,
+      ),
+    )
+
+    // Tool input deltas go to system blocks — tool_use_start handles full tool creation
     const sys = acc.getBlocks().findLast((b) => b.type === 'system')
     expect(sys?.type === 'system' && sys.variant === 'stream_delta').toBe(true)
   })

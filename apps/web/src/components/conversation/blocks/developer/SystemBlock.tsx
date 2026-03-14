@@ -20,9 +20,11 @@ import {
   GitBranch,
   Play,
   Settings,
+  StopCircle,
   Terminal,
   Zap,
 } from 'lucide-react'
+import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import { Markdown } from '../shared/Markdown'
 import { RENDERED_KEYS as API_ERROR_KEYS, ApiErrorDetail } from './details/ApiErrorDetail'
 import { RENDERED_KEYS as HOOK_KEYS, HookMetadataDetail } from './details/HookMetadataDetail'
@@ -125,11 +127,22 @@ function HookEventDetail({ data }: { data: SidecarHookEvent }) {
 }
 
 function TaskStartedDetail({ data }: { data: TaskStarted }) {
+  const convActions = useConversationActions()
   return (
     <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
       <Play className="w-3 h-3" />
       <span>Task started: {data.description}</span>
       <span className="font-mono">[{data.taskId.slice(0, 8)}]</span>
+      {convActions?.stopTask && (
+        <button
+          type="button"
+          onClick={() => convActions.stopTask?.(data.taskId)}
+          className="ml-auto text-red-400 hover:text-red-500 transition-colors"
+          title="Stop task"
+        >
+          <StopCircle className="w-3 h-3" />
+        </button>
+      )}
     </div>
   )
 }
