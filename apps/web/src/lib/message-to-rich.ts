@@ -48,6 +48,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
 
   for (const msg of messages) {
     const ts = parseTimestamp(msg.timestamp)
+    const rawJson = (msg.raw_json as Record<string, unknown> | null | undefined) ?? undefined
 
     // Emit thinking block first (if present on assistant messages)
     if (msg.thinking) {
@@ -61,7 +62,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       case 'user': {
         const content = stripCommandTags(msg.content)
         if (content) {
-          result.push({ type: 'user', content, ts })
+          result.push({ type: 'user', content, ts, rawJson })
         }
         break
       }
@@ -69,7 +70,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       case 'assistant': {
         const content = stripCommandTags(msg.content)
         if (content) {
-          result.push({ type: 'assistant', content, ts })
+          result.push({ type: 'assistant', content, ts, rawJson })
         }
         break
       }
@@ -90,6 +91,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
             inputData: inputStr ? tryParseJson(inputStr) : undefined,
             ts,
             category,
+            rawJson,
           })
           lastToolCategory = category
         } else {
@@ -105,6 +107,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
               inputData,
               ts,
               category,
+              rawJson,
             })
             lastToolCategory = category
           }
@@ -115,7 +118,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
       case 'tool_result': {
         const content = stripCommandTags(msg.content)
         if (content) {
-          result.push({ type: 'tool_result', content, ts, category: lastToolCategory })
+          result.push({ type: 'tool_result', content, ts, category: lastToolCategory, rawJson })
         }
         break
       }
@@ -128,6 +131,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           ts,
           category: (msg.category as ActionCategory) ?? 'system',
           metadata: msg.metadata ?? undefined,
+          rawJson,
         })
         break
       }
@@ -145,6 +149,7 @@ export function messagesToRichMessages(messages: Message[]): RichMessage[] {
           ts,
           category: progressCategory,
           metadata: msg.metadata ?? undefined,
+          rawJson,
         })
         break
       }

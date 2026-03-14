@@ -32,6 +32,7 @@ import { MessageQueueEventCard } from '../MessageQueueEventCard'
 import { TaskQueueCard } from '../TaskQueueCard'
 // System event cards (reused from MessageTyped)
 import { TurnDurationCard } from '../TurnDurationCard'
+import { RawEnvelopeDetail } from '../conversation/blocks/developer/details/RawEnvelopeDetail'
 import { isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { CompactCodeBlock } from './CompactCodeBlock'
 import { JsonTree } from './JsonTree'
@@ -62,6 +63,7 @@ export interface RichMessage {
   category?: ActionCategory // set for tool_use, tool_result, hook, error
   metadata?: Record<string, unknown> // system/progress/summary subtype data
   pending?: boolean // true for queued user messages not yet processed
+  rawJson?: Record<string, unknown> | null // full original JSONL line (only when ?raw=true)
 }
 
 export interface RichPaneProps {
@@ -733,26 +735,47 @@ function MessageCard({
   index,
   verboseMode = false,
 }: { message: RichMessage; index: number; verboseMode?: boolean }) {
+  let content: React.ReactNode = null
   switch (message.type) {
     case 'user':
-      return <UserMessage message={message} index={index} verboseMode={verboseMode} />
+      content = <UserMessage message={message} index={index} verboseMode={verboseMode} />
+      break
     case 'assistant':
-      return <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
+      content = <AssistantMessage message={message} index={index} verboseMode={verboseMode} />
+      break
     case 'tool_result':
-      return <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
+      content = <ToolResultMessage message={message} index={index} verboseMode={verboseMode} />
+      break
     case 'thinking':
-      return <ThinkingMessage message={message} verboseMode={verboseMode} />
+      content = <ThinkingMessage message={message} verboseMode={verboseMode} />
+      break
     case 'error':
-      return <ErrorMessage message={message} index={index} />
+      content = <ErrorMessage message={message} index={index} />
+      break
     case 'hook':
-      return <HookMessage message={message} />
+      content = <HookMessage message={message} />
+      break
     case 'system':
-      return <SystemMessageCard message={message} verboseMode={verboseMode} />
+      content = <SystemMessageCard message={message} verboseMode={verboseMode} />
+      break
     case 'progress':
-      return <ProgressMessageCard message={message} verboseMode={verboseMode} />
+      content = <ProgressMessageCard message={message} verboseMode={verboseMode} />
+      break
     default:
       return null
   }
+
+  // In verbose mode, append raw envelope showing ALL original JSONL fields
+  if (verboseMode && message.rawJson) {
+    return (
+      <>
+        {content}
+        <RawEnvelopeDetail rawJson={message.rawJson} />
+      </>
+    )
+  }
+
+  return content
 }
 
 function DisplayItemCard({
