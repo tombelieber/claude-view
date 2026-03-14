@@ -17,6 +17,7 @@ pub mod insights;
 pub mod invocables;
 pub mod jobs;
 pub mod live;
+pub mod marketplace_refresh;
 pub mod metrics;
 pub mod models;
 pub mod monitor;
@@ -152,6 +153,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", statusline::router())
         .nest("/api", plugins::router())
         .nest("/api", plugin_ops::router())
+        .nest("/api", marketplace_refresh::router())
         .nest("/api", teams::router())
         .nest("/api", workflows::router())
         .nest("/api", monitor::router())

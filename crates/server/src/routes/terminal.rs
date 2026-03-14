@@ -1208,6 +1208,9 @@ mod tests {
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(
+                crate::routes::marketplace_refresh::MarketplaceRefreshTracker::new(),
+            ),
         });
 
         // Register the session in the live sessions map
@@ -1422,6 +1425,9 @@ mod tests {
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(
+                crate::routes::marketplace_refresh::MarketplaceRefreshTracker::new(),
+            ),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
