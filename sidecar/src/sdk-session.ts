@@ -288,6 +288,10 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
 
     const handler = (event: { type: string; message?: string; fatal?: boolean }) => {
       if (event.type === 'session_init') {
+        // Don't resolve if sessionId is still empty — updateSessionState's try/catch
+        // may have silently failed to read sdkSession.sessionId. Keep waiting for the
+        // next event that populates it, or timeout.
+        if (!cs.sessionId) return
         clearTimeout(timeout)
         cs.emitter.off('message', handler)
         resolve()
