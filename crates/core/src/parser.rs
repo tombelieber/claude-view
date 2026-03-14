@@ -35,6 +35,18 @@ fn attach_common_fields(
     message
 }
 
+/// Conditionally attach the full raw JSON value to a message.
+///
+/// When `include_raw` is true, clones the JSONL `Value` into `message.raw_json`.
+/// On the default path (`include_raw = false`) this is a no-op — zero allocation cost.
+fn maybe_attach_raw(message: Message, value: &serde_json::Value, include_raw: bool) -> Message {
+    if include_raw {
+        message.with_raw_json(value.clone())
+    } else {
+        message
+    }
+}
+
 /// Parse a Claude Code session JSONL file into a structured `ParsedSession`.
 ///
 /// # Features
@@ -59,6 +71,19 @@ fn attach_common_fields(
 /// println!("Parsed {} messages", session.messages.len());
 /// ```
 pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError> {
+    parse_session_inner(file_path, false).await
+}
+
+/// Like [`parse_session`], but attaches the full raw JSONL value to each message
+/// as `Message.raw_json`. Used by the debug UI to inspect the original data.
+pub async fn parse_session_with_raw(file_path: &Path) -> Result<ParsedSession, ParseError> {
+    parse_session_inner(file_path, true).await
+}
+
+async fn parse_session_inner(
+    file_path: &Path,
+    include_raw: bool,
+) -> Result<ParsedSession, ParseError> {
     let file = File::open(file_path)
         .await
         .map_err(|e| ParseError::io(file_path, e))?;
@@ -153,6 +178,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                 let message = Message::tool_result(content);
                                 let message =
                                     attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                                let message = maybe_attach_raw(message, &value, include_raw);
                                 messages.push(message);
                             }
                         } else {
@@ -180,6 +206,8 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                             &uuid,
                                             &parent_uuid,
                                         );
+                                        let message =
+                                            maybe_attach_raw(message, &value, include_raw);
                                         messages.push(message);
                                     }
                                 }
@@ -203,6 +231,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                             let message = Message::user(cleaned_content);
                             let message =
                                 attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
+                            let message = maybe_attach_raw(message, &value, include_raw);
                             messages.push(message);
                         }
                     }
@@ -230,6 +259,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                                         &uuid,
                                         &parent_uuid,
                                     );
+                                    let message = maybe_attach_raw(message, &value, include_raw);
                                     messages.push(message);
                                 }
                             }
@@ -284,6 +314,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                         } else if let Some(thinking) = thinking_text {
                             message = message.with_thinking(thinking);
                         }
+                        let message = maybe_attach_raw(message, &value, include_raw);
                         messages.push(message);
                     }
                 }
@@ -320,6 +351,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("system");
+                let message = maybe_attach_raw(message, &value, include_raw);
                 messages.push(message);
             }
             "progress" => {
@@ -355,6 +387,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                 } else {
                     message
                 };
+                let message = maybe_attach_raw(message, &value, include_raw);
                 messages.push(message);
             }
             "queue-operation" => {
@@ -390,6 +423,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("queue");
+                let message = maybe_attach_raw(message, &value, include_raw);
                 messages.push(message);
             }
             "file-history-snapshot" => {
@@ -417,6 +451,7 @@ pub async fn parse_session(file_path: &Path) -> Result<ParsedSession, ParseError
                     Message::system(content).with_metadata(serde_json::Value::Object(meta));
                 let message = attach_common_fields(message, &timestamp, &uuid, &parent_uuid);
                 let message = message.with_category("snapshot");
+                let message = maybe_attach_raw(message, &value, include_raw);
                 messages.push(message);
             }
             _ => {
@@ -442,7 +477,25 @@ pub async fn parse_session_paginated(
     limit: usize,
     offset: usize,
 ) -> Result<PaginatedMessages, ParseError> {
-    let session = parse_session(file_path).await?;
+    parse_session_paginated_inner(file_path, limit, offset, false).await
+}
+
+/// Like [`parse_session_paginated`], but includes raw JSONL on each message.
+pub async fn parse_session_paginated_with_raw(
+    file_path: &Path,
+    limit: usize,
+    offset: usize,
+) -> Result<PaginatedMessages, ParseError> {
+    parse_session_paginated_inner(file_path, limit, offset, true).await
+}
+
+async fn parse_session_paginated_inner(
+    file_path: &Path,
+    limit: usize,
+    offset: usize,
+    include_raw: bool,
+) -> Result<PaginatedMessages, ParseError> {
+    let session = parse_session_inner(file_path, include_raw).await?;
     let total = session.messages.len();
     let messages: Vec<Message> = session
         .messages
@@ -1332,5 +1385,31 @@ mod tests {
         assert_eq!(result.messages.len(), 0);
         assert_eq!(result.total, 200);
         assert!(!result.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_parse_session_with_raw_populates_raw_json() {
+        let path = fixtures_path().join("simple.jsonl");
+        let session = parse_session_with_raw(&path).await.unwrap();
+        for msg in &session.messages {
+            assert!(
+                msg.raw_json.is_some(),
+                "raw_json should be Some for role {:?}",
+                msg.role
+            );
+            assert!(msg.raw_json.as_ref().unwrap().is_object());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parse_session_without_raw_has_none() {
+        let path = fixtures_path().join("simple.jsonl");
+        let session = parse_session(&path).await.unwrap();
+        for msg in &session.messages {
+            assert!(
+                msg.raw_json.is_none(),
+                "raw_json should be None without _with_raw"
+            );
+        }
     }
 }
