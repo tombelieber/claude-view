@@ -1,6 +1,7 @@
 import { historyToBlocks } from '@claude-view/shared/lib'
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useMemo } from 'react'
+import { useMonitorStore } from '../store/monitor-store'
 import { useSessionMessages } from './use-session-messages'
 
 export interface HistoryBlocksResult {
@@ -23,6 +24,7 @@ export interface HistoryBlocksResult {
 }
 
 export function useHistoryBlocks(sessionId: string | null): HistoryBlocksResult {
+  const verboseMode = useMonitorStore((s) => s.verboseMode)
   const {
     data,
     error,
@@ -31,7 +33,7 @@ export function useHistoryBlocks(sessionId: string | null): HistoryBlocksResult 
     isFetchingPreviousPage,
     isFetching,
     isLoading,
-  } = useSessionMessages(sessionId)
+  } = useSessionMessages(sessionId, { raw: verboseMode })
 
   const blocks = useMemo(() => {
     if (!data?.pages) return []
