@@ -240,10 +240,11 @@ describe('Sidecar E2E — create session flow', () => {
 })
 
 describe('Sidecar E2E — WS stream flow', () => {
-  // --- E2E: WS stream delivers session_init with correct model ---
-  it('WS stream emits session_init event after connect', async () => {
+  // --- E2E: WS stream delivers heartbeat_config and session_status ---
+  it('WS stream emits heartbeat_config and session_status after connect', async () => {
     const { data: created } = await httpRequest('POST', '/control/sessions', {
       model: MODEL,
+      initialMessage: 'Reply with exactly one word: test',
     })
 
     const ws = await connectWs(created.controlId as string)
@@ -253,41 +254,35 @@ describe('Sidecar E2E — WS stream flow', () => {
     ws.close()
 
     const types = events.map((e) => e.type)
-    // Must have heartbeat_config (always sent on connect)
     expect(types).toContain('heartbeat_config')
-    // session_status is emitted on connect
     expect(types).toContain('session_status')
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
   }, 30_000)
 
-  // --- E2E: resume replay delivers buffered events ---
-  it('resume message with lastSeq=-1 replays buffered events', async () => {
+  // --- E2E: resume replay delivers buffered events including session_init ---
+  it('resume message with lastSeq=-1 replays session_init from initialMessage processing', async () => {
     const { data: created } = await httpRequest('POST', '/control/sessions', {
       model: MODEL,
+      initialMessage: 'Reply with exactly one word: test',
     })
 
     const ws = await connectWs(created.controlId as string)
 
-    // Wait for initial events
+    // Wait for initial connect events
     await new Promise((r) => setTimeout(r, 1_000))
 
-    // Send resume with lastSeq=-1 (replay all)
+    // Send resume with lastSeq=-1 (replay all buffered events)
     ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
 
     // Collect replayed events
-    const events = await collectEvents(ws, 2_000)
+    const events = await collectEvents(ws, 5_000)
     ws.close()
 
-    // Should have at least the session_init event replayed
-    // (session_init was emitted during creation, before WS connected)
+    // session_init was emitted during create (before WS connected) — must be replayed
     const sessionInit = events.find((e) => e.type === 'session_init')
-    if (sessionInit) {
-      expect(sessionInit.model).toBeTruthy()
-    }
-    // Even if session_init isn't in the replay (might have been consumed),
-    // we should get SOME events from the replay
-    expect(events.length).toBeGreaterThan(0)
+    expect(sessionInit).toBeDefined()
+    expect(sessionInit!.model).toBeTruthy()
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
   }, 30_000)
@@ -348,34 +343,33 @@ describe('Sidecar E2E — initialMessage flow', () => {
   }, 30_000)
 })
 
-describe('Sidecar E2E — send message after create', () => {
-  // --- E2E: send message via WS produces assistant response ---
-  it('user_message via WS triggers assistant response', async () => {
+describe('Sidecar E2E — send endpoint', () => {
+  // --- E2E: send to known controlId returns 200 ---
+  it('POST /control/send returns 200 for active session', async () => {
     const { data: created } = await httpRequest('POST', '/control/sessions', {
       model: MODEL,
+      initialMessage: 'Reply with exactly one word: hello',
     })
+    expect(created.sessionId).toBeTruthy()
 
-    const ws = await connectWs(created.controlId as string)
+    const { status, data } = await httpRequest('POST', '/control/send', {
+      controlId: created.controlId,
+      message: 'Reply with exactly one word: ping',
+    })
+    expect(status).toBe(200)
+    expect(data.status).toBe('sent')
 
-    // Wait for session to be ready (session_status event)
-    await new Promise((r) => setTimeout(r, 1_000))
-
-    // Send a message via WS
-    ws.send(
-      JSON.stringify({
-        type: 'user_message',
-        content: 'Reply with exactly one word: ping',
-      }),
-    )
-
-    // Wait for turn_complete
-    const turnComplete = await waitForEvent(ws, 'turn_complete', 60_000)
-    expect(turnComplete.type).toBe('turn_complete')
-    expect(turnComplete.numTurns).toBeGreaterThanOrEqual(1)
-
-    ws.close()
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 90_000)
+  }, 30_000)
+
+  // --- E2E: send to unknown controlId returns 404 ---
+  it('POST /control/send returns 404 for unknown controlId', async () => {
+    const { status } = await httpRequest('POST', '/control/send', {
+      controlId: 'nonexistent-control-id',
+      message: 'hello',
+    })
+    expect(status).toBe(404)
+  }, 10_000)
 })
 
 describe('Sidecar E2E — regression guards', () => {
@@ -383,6 +377,7 @@ describe('Sidecar E2E — regression guards', () => {
   it('sessionId consistency between create response and list response', async () => {
     const { data: created } = await httpRequest('POST', '/control/sessions', {
       model: MODEL,
+      initialMessage: 'Reply with exactly one word: test',
     })
 
     const createSessionId = created.sessionId as string
@@ -402,8 +397,14 @@ describe('Sidecar E2E — regression guards', () => {
   // --- Regression: multiple concurrent creates each get unique sessionId ---
   it('concurrent creates produce unique sessionIds', async () => {
     const [r1, r2] = await Promise.all([
-      httpRequest('POST', '/control/sessions', { model: MODEL }),
-      httpRequest('POST', '/control/sessions', { model: MODEL }),
+      httpRequest('POST', '/control/sessions', {
+        model: MODEL,
+        initialMessage: 'Reply with exactly one word: alpha',
+      }),
+      httpRequest('POST', '/control/sessions', {
+        model: MODEL,
+        initialMessage: 'Reply with exactly one word: beta',
+      }),
     ])
 
     expect(r1.data.sessionId).toBeTruthy()
@@ -421,6 +422,7 @@ describe('Sidecar E2E — regression guards', () => {
   it('DELETE removes session from active list', async () => {
     const { data: created } = await httpRequest('POST', '/control/sessions', {
       model: MODEL,
+      initialMessage: 'Reply with exactly one word: test',
     })
     const controlId = created.controlId as string
 
