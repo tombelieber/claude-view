@@ -17,7 +17,7 @@ interface InteractionBlockProps {
 
 export function DevInteractionBlock({ block }: InteractionBlockProps) {
   const { localResponse, respondPermission, answerQuestion, approvePlan, submitElicitation } =
-    useInteractionHandlers()
+    useInteractionHandlers(block.requestId)
 
   const responded = block.resolved || localResponse !== null
 
