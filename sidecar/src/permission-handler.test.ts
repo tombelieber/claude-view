@@ -203,8 +203,9 @@ describe('PermissionHandler', () => {
     const result = await promise
     expect(result.behavior).toBe('allow')
     if (result.behavior === 'allow') {
-      expect(result.updatedInput).toBeDefined()
-      expect(typeof result.updatedInput).toBe('object')
+      // Must pass through the original input — NOT empty object!
+      // Empty {} would cause tool to receive undefined for all fields.
+      expect(result.updatedInput).toEqual({ query: 'test' })
     }
   })
 
@@ -234,7 +235,7 @@ describe('PermissionHandler', () => {
     }
   })
 
-  it('resolvePlan(approve) includes updatedInput for SDK Zod compliance', async () => {
+  it('resolvePlan(approve) passes through original input for SDK Zod compliance', async () => {
     const handler = new PermissionHandler()
     const events: unknown[] = []
     const emit = (e: unknown) => {
@@ -255,8 +256,7 @@ describe('PermissionHandler', () => {
     const result = await promise
     expect(result.behavior).toBe('allow')
     if (result.behavior === 'allow') {
-      expect(result.updatedInput).toBeDefined()
-      expect(typeof result.updatedInput).toBe('object')
+      expect(result.updatedInput).toEqual({ plan: 'do things' })
     }
   })
 
