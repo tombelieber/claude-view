@@ -11,6 +11,8 @@ interface ModelSelectorProps {
   onModelChange: (model: string) => void
   models?: ModelOption[]
   disabled?: boolean
+  isLive?: boolean
+  onSetModel?: (model: string) => void
 }
 
 function getLabel(models: ModelOption[], modelId: string): string {
@@ -22,7 +24,14 @@ function getLabel(models: ModelOption[], modelId: string): string {
  * Model selector chip with popover dropdown.
  * Shows model name, description, and context window size.
  */
-export function ModelSelector({ model, onModelChange, models, disabled }: ModelSelectorProps) {
+export function ModelSelector({
+  model,
+  onModelChange,
+  models,
+  disabled,
+  isLive,
+  onSetModel,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false)
   const { options: fetchedModels, isLoading } = useModelOptions()
   const options = models ?? fetchedModels
@@ -75,7 +84,13 @@ export function ModelSelector({ model, onModelChange, models, disabled }: ModelS
               <Popover.Close key={opt.id} asChild>
                 <button
                   type="button"
-                  onClick={() => onModelChange(opt.id)}
+                  onClick={() => {
+                    if (isLive && onSetModel) {
+                      onSetModel(opt.id)
+                    } else {
+                      onModelChange(opt.id)
+                    }
+                  }}
                   className={cn(
                     'flex items-start justify-between w-full px-2.5 py-2 rounded-md transition-colors cursor-pointer',
                     isActive
