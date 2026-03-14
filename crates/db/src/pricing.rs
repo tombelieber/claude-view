@@ -3,6 +3,16 @@
 use claude_view_core::pricing::ModelPricing;
 use std::collections::HashMap;
 
+/// Context window data extracted from LiteLLM JSON alongside pricing.
+/// Returned separately from ModelPricing to keep pricing structs USD-only.
+pub struct LiteLlmModelContext {
+    pub model_id: String,
+    pub provider: String,
+    pub family: String,
+    pub max_input_tokens: Option<i64>,
+    pub max_output_tokens: Option<i64>,
+}
+
 const LITELLM_URL: &str =
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json";
 
@@ -11,7 +21,8 @@ const LITELLM_URL: &str =
 /// Filters to `claude-`, `claude/`, and `anthropic/` entries.
 /// Returns a map keyed by model ID without provider prefix.
 /// On any network or parse error, returns `Err`.
-pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, String> {
+pub async fn fetch_litellm_pricing(
+) -> Result<(HashMap<String, ModelPricing>, Vec<LiteLlmModelContext>), String> {
     let response = reqwest::get(LITELLM_URL)
         .await
         .map_err(|e| format!("HTTP fetch failed: {e}"))?
@@ -25,6 +36,7 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
 
     let obj = body.as_object().ok_or("Expected top-level JSON object")?;
     let mut result = HashMap::new();
+    let mut context_data: Vec<LiteLlmModelContext> = Vec::new();
 
     for (key, value) in obj {
         let model_id = if let Some(stripped) = key.strip_prefix("anthropic/") {
@@ -75,6 +87,18 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
             .get("cache_creation_input_token_cost_above_1hr")
             .and_then(|v| v.as_f64());
 
+        // Extract context window data (before model_id is moved by result.insert)
+        let max_input = value.get("max_input_tokens").and_then(|v| v.as_i64());
+        let max_output = value.get("max_output_tokens").and_then(|v| v.as_i64());
+        let (ctx_provider, ctx_family) = claude_view_core::parse_model_id(&model_id);
+        context_data.push(LiteLlmModelContext {
+            model_id: model_id.clone(),
+            provider: ctx_provider.to_string(),
+            family: ctx_family.to_string(),
+            max_input_tokens: max_input,
+            max_output_tokens: max_output,
+        });
+
         result.insert(
             model_id,
             ModelPricing {
@@ -95,7 +119,7 @@ pub async fn fetch_litellm_pricing() -> Result<HashMap<String, ModelPricing>, St
         return Err("No Claude models found in litellm data".into());
     }
 
-    Ok(result)
+    Ok((result, context_data))
 }
 
 /// Merge litellm pricing into hardcoded defaults.
