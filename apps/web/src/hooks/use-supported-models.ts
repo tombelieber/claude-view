@@ -19,16 +19,6 @@ interface SupportedModelsResponse {
   updatedAt: number | null
 }
 
-/** Derive context window display string from model ID. All current Claude models are 200K. */
-function formatContextWindow(modelId: string): string {
-  // Haiku 4.5 is 200K, Sonnet 4.6 is 200K, Opus 4.6 is 200K
-  // Future models may differ — this is a best-effort display hint
-  if (modelId.includes('haiku')) return '200K'
-  if (modelId.includes('sonnet')) return '200K'
-  if (modelId.includes('opus')) return '200K'
-  return '200K'
-}
-
 async function fetchSupportedModels(): Promise<SupportedModelsResponse> {
   const res = await fetch('/api/control/supported-models')
   if (!res.ok) throw new Error(`GET /api/control/supported-models failed: ${res.status}`)
@@ -62,7 +52,6 @@ export function useSupportedModels(): { options: ModelOption[]; isLoading: boole
     id: m.value,
     label: m.displayName,
     description: m.description,
-    contextWindow: formatContextWindow(m.value),
   }))
 
   return { options, isLoading }
