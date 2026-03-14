@@ -298,7 +298,9 @@ export function ChatPage() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6">
-              <ConversationActionsProvider actions={{ retryMessage: actions.retryMessage }}>
+              <ConversationActionsProvider
+                actions={{ retryMessage: actions.retryMessage, stopTask: actions.stopTask }}
+              >
                 <ConversationThread blocks={blocks} renderers={registry} />
               </ConversationActionsProvider>
             </div>
