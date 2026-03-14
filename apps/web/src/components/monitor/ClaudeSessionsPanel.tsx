@@ -11,6 +11,27 @@ import { SelfAppRow } from './SelfAppRow'
 import { SessionAccordionRow } from './SessionAccordionRow'
 import { SessionRollupBar } from './SessionRollupBar'
 
+/** Skeleton placeholder for the Self App / process-tree row while loading. */
+function ProcessTreeRowSkeleton() {
+  return (
+    <div className="border-b border-gray-100 dark:border-gray-800 animate-pulse">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-800 shrink-0" />
+        <div className="w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
+        <div className="min-w-0 flex-1 flex items-center gap-2">
+          <div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
+          <div className="h-4 w-16 rounded bg-gray-100 dark:bg-gray-800" />
+        </div>
+        <div className="h-4 w-14 rounded-full bg-gray-100 dark:bg-gray-800 shrink-0" />
+        <div className="h-3.5 w-16 rounded bg-gray-100 dark:bg-gray-800 shrink-0" />
+      </div>
+      <div className="pl-11 pb-1">
+        <div className="h-3 w-20 rounded bg-gray-100 dark:bg-gray-800" />
+      </div>
+    </div>
+  )
+}
+
 interface ClaudeSessionsPanelProps {
   sessionResources: SessionResource[]
   liveSessions: LiveSession[]
@@ -51,6 +72,7 @@ export function ClaudeSessionsPanel({
 
   // --- Self process (This App) ---
   const selfProcess = processTree?.ecosystem.find((p) => p.isSelf) ?? null
+  const processTreePending = processTree === null
 
   // --- Expand/collapse state ---
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -242,7 +264,7 @@ export function ClaudeSessionsPanel({
 
       {/* This App row + Session rows */}
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {selfProcess && systemInfo && (
+        {selfProcess && systemInfo ? (
           <SelfAppRow
             process={selfProcess}
             systemInfo={systemInfo}
@@ -252,7 +274,9 @@ export function ClaudeSessionsPanel({
             pendingPids={pendingPids}
             expandAll={allExpanded}
           />
-        )}
+        ) : processTreePending ? (
+          <ProcessTreeRowSkeleton />
+        ) : null}
 
         {merged.map((m) => {
           const resource = m.resource ?? {
@@ -282,10 +306,22 @@ export function ClaudeSessionsPanel({
               onKill={handleKill}
               pendingPids={pendingPids}
               expandAll={allExpanded}
+              processTreePending={processTreePending}
             />
           )
         })}
       </div>
+
+      {/* Orphaned Processes skeleton — shown while process tree is loading */}
+      {processTreePending && allOrphans.length === 0 && (
+        <div className="border-t border-gray-200 dark:border-gray-700 animate-pulse">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <div className="w-5 h-5 rounded bg-gray-100 dark:bg-gray-800 shrink-0" />
+            <div className="w-4 h-4 rounded bg-amber-200 dark:bg-amber-900/40 shrink-0" />
+            <div className="h-4 w-36 rounded bg-gray-200 dark:bg-gray-700" />
+          </div>
+        </div>
+      )}
 
       {/* Orphaned Processes row */}
       {allOrphans.length > 0 && (
