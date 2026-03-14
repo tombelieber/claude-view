@@ -308,6 +308,7 @@ fn strip_ansi(s: &str) -> String {
 pub(crate) async fn run_claude_plugin_in(
     args: &[&str],
     cwd: Option<&str>,
+    timeout_secs: u64,
 ) -> Result<String, ApiError> {
     use std::process::Stdio;
 
@@ -335,9 +336,9 @@ pub(crate) async fn run_claude_plugin_in(
         cmd.env_remove(key);
     }
 
-    let output = tokio::time::timeout(std::time::Duration::from_secs(30), cmd.output())
+    let output = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
         .await
-        .map_err(|_| ApiError::Internal("claude CLI timed out after 30s".into()))?
+        .map_err(|_| ApiError::Internal(format!("claude CLI timed out after {timeout_secs}s")))?
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 ApiError::Internal(
@@ -362,9 +363,9 @@ pub(crate) async fn run_claude_plugin_in(
     Ok(strip_ansi(&stdout))
 }
 
-/// Convenience: run `claude plugin` in the default CWD.
+/// Convenience: run `claude plugin` in the default CWD with the default 30s timeout.
 async fn run_claude_plugin(args: &[&str]) -> Result<String, ApiError> {
-    run_claude_plugin_in(args, None).await
+    run_claude_plugin_in(args, None, 30).await
 }
 
 // ---------------------------------------------------------------------------
@@ -938,7 +939,7 @@ pub(crate) fn validate_scope(scope: &Option<String>) -> Result<(), ApiError> {
 // Marketplace-only mutation lock (plugin mutations go through the op queue).
 static MARKETPLACE_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
 
-fn get_marketplace_lock() -> &'static tokio::sync::Mutex<()> {
+pub(crate) fn get_marketplace_lock() -> &'static tokio::sync::Mutex<()> {
     MARKETPLACE_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
@@ -1161,22 +1162,22 @@ async fn marketplace_action(
             result
         }
         "update" => {
+            let name = req.name.as_deref().ok_or_else(|| {
+                ApiError::BadRequest(
+                    "Use POST /api/plugins/marketplaces/refresh-all for bulk updates".into(),
+                )
+            })?;
+            validate_plugin_name(name)?;
+
             let _guard = get_marketplace_lock()
                 .try_lock()
                 .map_err(|_| ApiError::Conflict("A mutation is already in progress.".into()))?;
 
-            let args = if let Some(ref name) = req.name {
-                validate_plugin_name(name)?;
-                vec!["marketplace", "update", name.as_str()]
-            } else {
-                vec!["marketplace", "update"]
-            };
-
-            let result = match run_claude_plugin(&args).await {
+            let result = match run_claude_plugin(&["marketplace", "update", name]).await {
                 Ok(stdout) => Ok(Json(PluginActionResponse {
                     success: true,
                     action: "update".into(),
-                    name: req.name.unwrap_or_default(),
+                    name: name.to_string(),
                     message: if stdout.trim().is_empty() {
                         None
                     } else {
@@ -1186,7 +1187,7 @@ async fn marketplace_action(
                 Err(e) => Ok(Json(PluginActionResponse {
                     success: false,
                     action: "update".into(),
-                    name: req.name.unwrap_or_default(),
+                    name: name.to_string(),
                     message: Some(e.to_string()),
                 })),
             };

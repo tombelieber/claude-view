@@ -1,5 +1,6 @@
 // sidecar/src/routes.ts
 import { Hono } from 'hono'
+import { getCacheState } from './model-cache.js'
 import type {
   CreateSessionRequest,
   ForkSessionRequest,
@@ -12,6 +13,7 @@ import {
   listAvailableSessions,
   resumeControlSession,
   sendMessage,
+  waitForSessionInit,
 } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
@@ -23,14 +25,32 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<CreateSessionRequest>()
     if (!body.model) return c.json({ error: 'model is required' }, 400)
 
+    let cs: ReturnType<typeof createControlSession> | undefined
     try {
-      const cs = createControlSession(body, registry)
+      cs = createControlSession(body, registry)
+
+      // V2 SDK only initializes (emits session_init, assigns sessionId) after
+      // the first send(). Without a message, stream() blocks forever.
+      if (body.initialMessage) {
+        // Race sendMessage against waitForSessionInit:
+        // - sendMessage triggers SDK to connect → stream() yields system.init
+        // - waitForSessionInit resolves when session_init event fires
+        // - If sendMessage rejects (auth error, rate limit), fail fast with the
+        //   real error instead of hanging for 15s on waitForSessionInit timeout.
+        // sendMessage resolves when SDK accepts the message (before turn completes),
+        // so both promises resolve around the same time.
+        await Promise.all([sendMessage(cs, body.initialMessage), waitForSessionInit(cs)])
+      }
+
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
         status: 'created',
       })
     } catch (err) {
+      // Clean up orphaned session — it was registered in the registry but init failed.
+      // Without cleanup, ghost sessions accumulate with empty sessionId.
+      if (cs) await closeSession(cs, registry)
       return c.json({ error: `Create failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
   })
@@ -145,6 +165,9 @@ export function createRoutes(registry: SessionRegistry) {
     if (cs) await closeSession(cs, registry)
     return c.json({ status: 'terminated' })
   })
+
+  // Supported models (cached from SDK, refreshed on every session create/resume)
+  app.get('/supported-models', (c) => c.json(getCacheState()))
 
   return app
 }

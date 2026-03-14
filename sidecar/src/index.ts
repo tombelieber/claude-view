@@ -4,6 +4,7 @@ import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
 import { healthRouter } from './health.js'
+import { startModelCacheRefresh } from './model-cache.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
@@ -51,13 +52,17 @@ if (tcpMatch) {
   server.listen(Number.parseInt(port), host, () => {
     console.log(`[sidecar] Listening on TCP ${SIDECAR_ADDR}`)
     console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+    // Populate supported models cache (fire-and-forget, refreshes hourly)
+    startModelCacheRefresh()
   })
 } else {
   // Unix socket mode (macOS/Linux)
-  if (!tcpMatch && fs.existsSync(SIDECAR_ADDR)) fs.unlinkSync(SIDECAR_ADDR)
+  if (fs.existsSync(SIDECAR_ADDR)) fs.unlinkSync(SIDECAR_ADDR)
   server.listen(SIDECAR_ADDR, () => {
     console.log(`[sidecar] Listening on ${SIDECAR_ADDR}`)
     console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+    // Populate supported models cache (fire-and-forget, refreshes hourly)
+    startModelCacheRefresh()
   })
 }
 

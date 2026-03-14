@@ -1,7 +1,12 @@
 import { Activity } from 'lucide-react'
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useLiveSessions } from '../components/live/use-live-sessions'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
+import {
+  ClaudeSessionsPanelSkeleton,
+  GaugeRowSkeleton,
+  TopProcessesPanelSkeleton,
+} from '../components/monitor/MonitorSkeletons'
 import { SystemGaugeRow } from '../components/monitor/SystemGaugeRow'
 import { TopProcessesPanel } from '../components/monitor/TopProcessesPanel'
 import { useSystemMonitor } from '../hooks/use-system-monitor'
@@ -10,6 +15,9 @@ export function SystemMonitorPage() {
   const { status, systemInfo, snapshot, processTree } = useSystemMonitor()
   const { sessions } = useLiveSessions()
   const hasRevealedRef = useRef(false)
+
+  // Single source of truth: same filter as ClaudeSessionsPanel's `merged` list
+  const activeSessionCount = useMemo(() => sessions.filter((s) => s.pid != null).length, [sessions])
 
   // Track first data arrival for stagger animation
   if (snapshot && !hasRevealedRef.current) {
@@ -56,20 +64,10 @@ export function SystemMonitorPage() {
 
       {/* Content */}
       {!snapshot ? (
-        <div className="space-y-4">
-          {/* Gauge skeleton */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={`gauge-skeleton-${i}`}
-                className="h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse"
-              />
-            ))}
-          </div>
-          {/* Session panel skeleton */}
-          <div className="h-48 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
-          {/* Process panel skeleton */}
-          <div className="h-40 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        <div className="space-y-4 animate-pulse">
+          <GaugeRowSkeleton />
+          <ClaudeSessionsPanelSkeleton rows={2} />
+          <TopProcessesPanelSkeleton rows={5} />
         </div>
       ) : (
         <div className="flex flex-col gap-4 flex-1 min-h-0">
@@ -78,7 +76,11 @@ export function SystemMonitorPage() {
             className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-950 -mx-4 px-4 py-2"
             style={shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out both' } : undefined}
           >
-            <SystemGaugeRow snapshot={snapshot} systemInfo={systemInfo} />
+            <SystemGaugeRow
+              snapshot={snapshot}
+              systemInfo={systemInfo}
+              activeSessionCount={activeSessionCount}
+            />
           </div>
 
           {/* Claude Sessions */}

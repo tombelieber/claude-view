@@ -268,6 +268,43 @@ export function setSessionMode(cs: ControlSession, mode: string, registry: Sessi
   runStreamLoop(cs, registry)
 }
 
+/**
+ * Wait for session_init event to populate cs.sessionId.
+ *
+ * New sessions start with sessionId='' because the SDK hasn't initialized yet.
+ * The stream loop emits session_init once the SDK is ready, at which point
+ * updateSessionState sets cs.sessionId = cs.sdkSession.sessionId.
+ *
+ * Exported for testing.
+ */
+export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Promise<void> {
+  if (cs.sessionId) return Promise.resolve()
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cs.emitter.off('message', handler)
+      reject(new Error(`Session initialization timed out (${timeoutMs}ms)`))
+    }, timeoutMs)
+
+    const handler = (event: { type: string; message?: string; fatal?: boolean }) => {
+      if (event.type === 'session_init') {
+        // Don't resolve if sessionId is still empty — updateSessionState's try/catch
+        // may have silently failed to read sdkSession.sessionId. Keep waiting for the
+        // next event that populates it, or timeout.
+        if (!cs.sessionId) return
+        clearTimeout(timeout)
+        cs.emitter.off('message', handler)
+        resolve()
+      } else if (event.type === 'error' && event.fatal) {
+        clearTimeout(timeout)
+        cs.emitter.off('message', handler)
+        reject(new Error(event.message ?? 'Session init failed'))
+      }
+    }
+    cs.emitter.on('message', handler)
+  })
+}
+
 export async function listAvailableSessions(): Promise<AvailableSession[]> {
   const sessions = await listSessions()
   return sessions.map((s) => ({

@@ -7,4 +7,6 @@ export const FEATURES = {
   classify: false,
   /** Insights tab inside Analytics */
   insights: false,
+  /** Chat input UI (resume/send messages in browser). On in dev, off in prod builds. */
+  chat: import.meta.env.DEV,
 } as const

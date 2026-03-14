@@ -1,7 +1,8 @@
 import * as Popover from '@radix-ui/react-popover'
-import { ChevronDown, Cpu } from 'lucide-react'
+import { Check, ChevronDown, Cpu } from 'lucide-react'
 import { useState } from 'react'
 import { type ModelOption, useModelOptions } from '../../hooks/use-models'
+import { useSupportedModels } from '../../hooks/use-supported-models'
 import { cn } from '../../lib/utils'
 import { FALLBACK_MODELS } from './model-defaults'
 
@@ -21,12 +22,16 @@ function getLabel(models: ModelOption[], modelId: string): string {
 
 /**
  * Model selector chip with popover dropdown.
- * Displays as: [Opus 4.6 ▾]
+ * Shows model name, description, and context window size.
  */
 export function ModelSelector({ model, onModelChange, models, disabled }: ModelSelectorProps) {
   const [open, setOpen] = useState(false)
+  const { options: sdkModels } = useSupportedModels()
   const { options: fetchedModels } = useModelOptions()
-  const options = models ?? (fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS)
+  // Priority: prop override → SDK canonical list → usage-based /api/models → hardcoded fallback
+  const options =
+    models ??
+    (sdkModels.length > 0 ? sdkModels : fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS)
   const label = getLabel(options, model)
 
   return (
@@ -57,8 +62,11 @@ export function ModelSelector({ model, onModelChange, models, disabled }: ModelS
           side="top"
           sideOffset={6}
           align="start"
-          className="z-50 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 animate-in fade-in-0 zoom-in-95"
+          className="z-50 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1.5 animate-in fade-in-0 zoom-in-95"
         >
+          <div className="px-2.5 py-1.5 text-xs font-medium text-gray-400 dark:text-gray-500">
+            Select a model
+          </div>
           {options.map((opt) => {
             const isActive = opt.id === model
             return (
@@ -67,14 +75,34 @@ export function ModelSelector({ model, onModelChange, models, disabled }: ModelS
                   type="button"
                   onClick={() => onModelChange(opt.id)}
                   className={cn(
-                    'flex items-center gap-2 w-full px-3 py-2 text-sm rounded-md transition-colors cursor-pointer',
+                    'flex items-start justify-between w-full px-2.5 py-2 rounded-md transition-colors cursor-pointer',
                     isActive
-                      ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+                      ? 'bg-gray-50 dark:bg-gray-800/60'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/40',
                   )}
                 >
-                  <Cpu className="w-4 h-4" aria-hidden="true" />
-                  <span title={opt.id}>{opt.label}</span>
+                  <div className="flex flex-col gap-0.5 text-left min-w-0">
+                    <span
+                      className={cn(
+                        'text-sm leading-tight',
+                        isActive
+                          ? 'font-semibold text-gray-900 dark:text-gray-100'
+                          : 'font-medium text-gray-800 dark:text-gray-200',
+                      )}
+                    >
+                      {opt.label}
+                    </span>
+                    {(opt.description || opt.contextWindow) && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 leading-tight">
+                        {opt.description}
+                        {opt.description && opt.contextWindow && ' · '}
+                        {opt.contextWindow && `${opt.contextWindow} context`}
+                      </span>
+                    )}
+                  </div>
+                  {isActive && (
+                    <Check className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0 mt-0.5" />
+                  )}
                 </button>
               </Popover.Close>
             )

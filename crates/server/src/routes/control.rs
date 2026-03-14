@@ -576,6 +576,11 @@ async fn list_available_sessions(State(state): State<Arc<AppState>>) -> Result<R
     proxy_to_sidecar(&state, "GET", "/control/available-sessions", None).await
 }
 
+/// GET /api/control/supported-models — SDK-provided model list (cached in sidecar)
+async fn get_supported_models(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    proxy_to_sidecar(&state, "GET", "/control/supported-models", None).await
+}
+
 /// POST /api/control/sessions/fork — fork an existing session
 async fn fork_session(
     State(state): State<Arc<AppState>>,
@@ -629,6 +634,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route(
             "/control/available-sessions",
             axum::routing::get(list_available_sessions),
+        )
+        .route(
+            "/control/supported-models",
+            axum::routing::get(get_supported_models),
         )
 }
 

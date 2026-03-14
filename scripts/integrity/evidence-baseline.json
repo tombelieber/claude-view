@@ -199,7 +199,8 @@
       "customTitle",
       "apiError",
       "data",
-      "data.message.message"
+      "data.message.message",
+      "promptId"
     ],
     "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Not needed by our parser for session display, cost tracking, or live monitoring."
   }
