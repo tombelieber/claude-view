@@ -1,0 +1,33 @@
+# Build artifacts
+target/
+node_modules/
+apps/web/dist/
+apps/share/dist/
+apps/landing/dist/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Docs & misc
+docs/
+*.md
+LICENSE
+.github/
+lefthook.yml
+biome.json

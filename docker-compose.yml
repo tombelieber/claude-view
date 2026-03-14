@@ -1,0 +1,48 @@
+# docker-compose.yml — claude-view on Docker (Windows compatible)
+#
+# Usage:
+#   docker compose up --build       # First run (builds image, ~10min)
+#   docker compose up               # Subsequent runs (uses cache)
+#   docker compose down             # Stop
+#
+# Then open http://localhost:47892 in your browser.
+#
+# Claude Code hooks: Claude Code running on the host will POST events
+# to localhost:47892 which Docker forwards to the container.
+
+services:
+  claude-view:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-view
+    ports:
+      - "47892:47892"
+    volumes:
+      # Mount Claude Code session data from Windows host
+      # Uses USERPROFILE which is set on Windows (e.g. C:\Users\YourName)
+      # Read-write so the server can register hooks in settings.json for live monitoring
+      - "${USERPROFILE}/.claude:/root/.claude"
+
+      # Persistent volume for DB, search index, and config
+      - claude-view-data:/data
+    environment:
+      - CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1
+      - CLAUDE_VIEW_BIND_ADDR=0.0.0.0
+      - CLAUDE_VIEW_PORT=47892
+      - CLAUDE_VIEW_DATA_DIR=/data
+      - CLAUDE_VIEW_NO_OPEN=1
+      - STATIC_DIR=/app/dist
+      - SIDECAR_DIR=/app/sidecar
+      - RUST_LOG=warn,claude_view_server=info,claude_view_core=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:47892/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  claude-view-data:
+    name: claude-view-data
