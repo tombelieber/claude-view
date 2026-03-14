@@ -48,6 +48,8 @@ export type AssistantBlock = {
   segments: AssistantSegment[]
   thinking?: string
   streaming: boolean
+  /** Unix seconds — populated from JSONL timestamp or Date.now() for live blocks */
+  timestamp?: number
   rawJson?: Record<string, unknown> | null
 }
 

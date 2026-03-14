@@ -358,6 +358,7 @@ export class StreamAccumulator {
         id: messageId,
         segments: [],
         streaming: true,
+        timestamp: Date.now() / 1000,
       }
     }
     return this.currentAssistant
