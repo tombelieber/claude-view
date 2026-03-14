@@ -28,6 +28,8 @@ export function useModels() {
 export interface ModelOption {
   id: string
   label: string
+  description?: string
+  contextWindow?: string
 }
 
 /**
