@@ -77,6 +77,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           segments,
           thinking: msg.thinking ?? undefined,
           streaming: false,
+          timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : undefined,
           rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)

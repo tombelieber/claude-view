@@ -1,5 +1,7 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { Check, Loader2, X } from 'lucide-react'
+import { formatFullTimestamp } from '../shared/MessageTimestamp'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
 import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
 
@@ -48,9 +50,25 @@ export function DevUserBlock({ block }: UserBlockProps) {
             {block.id.slice(0, 8)}
           </span>
           {block.timestamp > 0 && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">
-              {formatTime(block.timestamp)}
-            </span>
+            <Tooltip.Provider delayDuration={200}>
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 cursor-default">
+                    {formatTime(block.timestamp)}
+                  </span>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    side="bottom"
+                    sideOffset={4}
+                    className="z-50 rounded-md px-2.5 py-1.5 text-xs bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 shadow-lg animate-in fade-in-0 zoom-in-95"
+                  >
+                    {formatFullTimestamp(block.timestamp)}
+                    <Tooltip.Arrow className="fill-gray-900 dark:fill-gray-100" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            </Tooltip.Provider>
           )}
           <StatusDot status={block.status} />
         </div>

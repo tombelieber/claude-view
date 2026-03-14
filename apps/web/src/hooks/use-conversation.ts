@@ -1,5 +1,6 @@
 import type { ConversationBlock, NoticeBlock, UserBlock } from '@claude-view/shared/types/blocks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { interleaveUserBlocks } from '../lib/interleave-user-blocks'
 import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
@@ -87,9 +88,9 @@ export function useConversation(sessionId: string | undefined) {
       )
     })
 
-    // Build timeline: history → [divider] → optimistic (user msgs) → stream (responses).
-    // This ensures user messages appear BEFORE the assistant's response, not after.
-    const liveSection = [...pendingOptimistic, ...source.blocks]
+    // Interleave user messages with stream blocks by turn position.
+    // Each user message is inserted before the corresponding assistant response.
+    const liveSection = interleaveUserBlocks(pendingOptimistic, source.blocks)
 
     if (liveSection.length === 0) return history.blocks
     if (history.blocks.length > 0) {
