@@ -60,23 +60,48 @@ impl SidecarManager {
     /// Idempotent: if the child is already alive, returns immediately.
     /// If the child died (crash), restarts it.
     pub async fn ensure_running(&self) -> Result<String, SidecarError> {
-        {
+        // Determine action under the lock, then release lock before any async work.
+        // Mutex<Option<Child>> is !Send, so no .await can be held while guard is alive.
+        let action = {
             let mut guard = self.child.lock().map_err(|_| {
                 SidecarError::RequestError("sidecar mutex poisoned, another thread panicked".into())
             })?;
 
-            // Check if existing child is still alive
             if let Some(ref mut child) = *guard {
                 match child.try_wait() {
-                    Ok(None) => return Ok(self.socket_path.clone()), // still running
+                    Ok(None) if std::path::Path::new(&self.socket_path).exists() => {
+                        return Ok(self.socket_path.clone()); // running + socket ready
+                    }
+                    Ok(None) => {
+                        // Child alive but socket not yet created — concurrent caller
+                        // arrived while first caller is still in health check loop.
+                        // Just wait for readiness, don't re-spawn.
+                        "wait"
+                    }
                     Ok(Some(status)) => {
                         tracing::warn!("Sidecar exited with {status}, restarting...");
+                        "spawn"
                     }
                     Err(e) => {
                         tracing::warn!("Failed to check sidecar status: {e}");
+                        "spawn"
                     }
                 }
+            } else {
+                "spawn"
             }
+        }; // guard dropped here — safe for async
+
+        if action == "wait" {
+            return self.wait_for_ready().await;
+        }
+
+        // Spawn new sidecar process
+        {
+            let mut guard = self
+                .child
+                .lock()
+                .map_err(|_| SidecarError::RequestError("sidecar mutex poisoned".into()))?;
 
             // Find sidecar directory
             let sidecar_dir = Self::find_sidecar_dir()?;
@@ -120,7 +145,12 @@ impl SidecarManager {
             *guard = Some(child);
         } // drop lock before async health check
 
-        // Wait for sidecar to be ready (poll health endpoint)
+        self.wait_for_ready().await
+    }
+
+    /// Poll sidecar health endpoint until it responds. Used after spawn
+    /// and by concurrent callers that see the child alive but socket not yet ready.
+    async fn wait_for_ready(&self) -> Result<String, SidecarError> {
         for attempt in 0..30 {
             sleep(Duration::from_millis(100)).await;
             if self.health_check().await.is_ok() {
@@ -128,7 +158,6 @@ impl SidecarManager {
                 return Ok(self.socket_path.clone());
             }
         }
-
         Err(SidecarError::HealthCheckTimeout)
     }
 
