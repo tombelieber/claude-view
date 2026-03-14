@@ -62,6 +62,12 @@ pub struct ModelWithStats {
     pub id: String,
     pub provider: Option<String>,
     pub family: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    #[ts(type = "number | null")]
+    pub max_input_tokens: Option<i64>,
+    #[ts(type = "number | null")]
+    pub max_output_tokens: Option<i64>,
     #[ts(type = "number | null")]
     pub first_seen: Option<i64>,
     #[ts(type = "number | null")]
@@ -79,6 +85,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
             id: row.try_get("id")?,
             provider: row.try_get("provider")?,
             family: row.try_get("family")?,
+            display_name: row.try_get("display_name")?,
+            description: row.try_get("description")?,
+            max_input_tokens: row.try_get("max_input_tokens")?,
+            max_output_tokens: row.try_get("max_output_tokens")?,
             first_seen: row.try_get("first_seen")?,
             last_seen: row.try_get("last_seen")?,
             total_turns: row.try_get("total_turns")?,
