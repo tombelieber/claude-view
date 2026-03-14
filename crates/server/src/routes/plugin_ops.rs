@@ -218,7 +218,7 @@ pub async fn execute_plugin_op(
     }
 
     let cwd = op.project_path.as_deref();
-    match super::plugins::run_claude_plugin_in(&args, cwd).await {
+    match super::plugins::run_claude_plugin_in(&args, cwd, 30).await {
         Ok(stdout) => {
             super::plugins::invalidate_plugin_cache(state).await;
             let msg = stdout.trim().to_string();

@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { ExternalLink, Plus, RefreshCw, Settings, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
+import { useMarketplaceRefresh } from '../../hooks/use-marketplace-refresh'
 import { useMarketplaceMutations, useMarketplaces } from '../../hooks/use-marketplaces'
 import { cn } from '../../lib/utils'
 import { marketplaceDotColor } from './marketplace-colors'
@@ -10,6 +11,7 @@ export function MarketplacesDialog() {
   const [newSource, setNewSource] = useState('')
   const { data: marketplaces, isLoading } = useMarketplaces()
   const mutations = useMarketplaceMutations()
+  const { refreshAll, isActive, getStatus, getError } = useMarketplaceRefresh()
 
   const handleAdd = () => {
     if (!newSource.trim()) return
@@ -22,7 +24,7 @@ export function MarketplacesDialog() {
   }
 
   const handleRefreshAll = () => {
-    mutations.mutateAsync({ action: 'update', source: null, name: null, scope: null })
+    refreshAll()
   }
 
   return (
@@ -39,10 +41,7 @@ export function MarketplacesDialog() {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content
-          className="fixed z-[51] top-1/2 left-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl"
-          style={{ transform: 'translate(-50%, -50%)' }}
-        >
+        <Dialog.Content className="fixed z-[51] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
             <Dialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Plugin Marketplaces
@@ -51,11 +50,11 @@ export function MarketplacesDialog() {
               <button
                 type="button"
                 onClick={handleRefreshAll}
-                disabled={mutations.isPending}
+                disabled={isActive}
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-500 dark:text-gray-400"
-                title="Refresh all marketplaces — re-fetch the latest plugin catalog from every configured source"
+                title="Refresh all marketplaces"
               >
-                <RefreshCw className={cn('w-4 h-4', mutations.isPending && 'animate-spin')} />
+                <RefreshCw className={cn('w-4 h-4', isActive && 'animate-spin')} />
               </button>
               <Dialog.Close asChild>
                 <button
@@ -81,59 +80,108 @@ export function MarketplacesDialog() {
               </div>
             )}
 
-            {marketplaces?.map((m) => (
-              <div
-                key={m.name}
-                className="py-2.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className={cn(
-                        'w-2 h-2 rounded-full flex-shrink-0',
-                        marketplaceDotColor(m.name),
-                      )}
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {m.name}
-                      </div>
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                        {m.source}
+            {marketplaces?.map((m) => {
+              const rowStatus = getStatus(m.name)
+              const isRowBusy = rowStatus === 'queued' || rowStatus === 'running'
+
+              return (
+                <div
+                  key={m.name}
+                  className="py-2.5 border-b border-gray-50 dark:border-gray-800 last:border-0"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full flex-shrink-0',
+                          (() => {
+                            const status = getStatus(m.name)
+                            if (status === 'queued')
+                              return 'bg-gray-300 dark:bg-gray-600 animate-pulse'
+                            if (status === 'running')
+                              return cn(marketplaceDotColor(m.name), 'animate-ping')
+                            if (status === 'failed') return 'bg-red-500'
+                            return marketplaceDotColor(m.name)
+                          })(),
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {m.name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                          {m.source}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {m.repo && (
-                      <a
-                        href={m.repo.startsWith('http') ? m.repo : `https://github.com/${m.repo}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                        title="Open repository"
-                        onClick={(e) => e.stopPropagation()}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {m.repo && (
+                        <a
+                          href={m.repo.startsWith('http') ? m.repo : `https://github.com/${m.repo}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                          title="Open repository"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(m.name)}
+                        disabled={mutations.isPending || isRowBusy}
+                        className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"
+                        title={`Remove ${m.name}`}
                       >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(m.name)}
-                      disabled={mutations.isPending}
-                      className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-colors"
-                      title={`Remove ${m.name}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Status / Counts row */}
+                  <div className="flex items-center gap-3 mt-1 ml-4 text-[10px]">
+                    {(() => {
+                      const status = getStatus(m.name)
+                      if (!status || status === 'completed') {
+                        return (
+                          <span className="text-gray-400 dark:text-gray-500">
+                            {m.installedCount} installed · {m.availableCount} available
+                          </span>
+                        )
+                      }
+                      if (status === 'queued') {
+                        return (
+                          <output className="text-gray-400 dark:text-gray-500 animate-pulse">
+                            Queued
+                          </output>
+                        )
+                      }
+                      if (status === 'running') {
+                        return (
+                          <output className="text-blue-500 dark:text-blue-400">Updating...</output>
+                        )
+                      }
+                      if (status === 'failed') {
+                        return (
+                          <span className="flex items-center gap-1.5">
+                            <output className="text-red-500">{getError(m.name) || 'Failed'}</output>
+                            <button
+                              type="button"
+                              onClick={() => refreshAll([m.name])}
+                              className="p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-400 hover:text-red-600 transition-colors"
+                              aria-label={`Retry updating ${m.name}`}
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </button>
+                          </span>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                 </div>
-                {/* Counts row */}
-                <div className="flex items-center gap-3 mt-1 ml-4 text-[10px] text-gray-400 dark:text-gray-500">
-                  <span>{m.installedCount} installed</span>
-                  <span>{m.availableCount} available</span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="p-4 border-t border-gray-100 dark:border-gray-800">
