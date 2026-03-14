@@ -23,6 +23,29 @@ import {
   Terminal,
   Zap,
 } from 'lucide-react'
+import { Markdown } from '../shared/Markdown'
+import { RENDERED_KEYS as API_ERROR_KEYS, ApiErrorDetail } from './details/ApiErrorDetail'
+import { RENDERED_KEYS as HOOK_KEYS, HookMetadataDetail } from './details/HookMetadataDetail'
+import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
+import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
+import { RENDERED_KEYS as RETRY_KEYS, RetryDetail } from './details/RetryDetail'
+import { RENDERED_KEYS as STOP_KEYS, StopReasonDetail } from './details/StopReasonDetail'
+
+const SYSTEM_RENDERED_KEYS = [
+  ...RETRY_KEYS,
+  ...API_ERROR_KEYS,
+  ...HOOK_KEYS,
+  ...STOP_KEYS,
+  ...LINEAGE_KEYS,
+  'permissionMode',
+  'planContent',
+  'prUrl',
+  'prNumber',
+  'prRepository',
+  'customTitle',
+  'promptId',
+  'durationMs',
+] as string[]
 
 interface SystemBlockProps {
   block: SystemBlockType
@@ -176,30 +199,76 @@ function UnknownDetail({ data }: { data: UnknownSdkEvent }) {
 }
 
 export function DevSystemBlock({ block }: SystemBlockProps) {
-  switch (block.variant) {
-    case 'session_init':
-      return <SessionInitDetail data={block.data as SessionInit} />
-    case 'session_status':
-      return <SessionStatusDetail data={block.data as SidecarSessionStatus} />
-    case 'elicitation_complete':
-      return <ElicitationCompleteDetail data={block.data as ElicitationComplete} />
-    case 'hook_event':
-      return <HookEventDetail data={block.data as SidecarHookEvent} />
-    case 'task_started':
-      return <TaskStartedDetail data={block.data as TaskStarted} />
-    case 'task_progress':
-      return <TaskProgressDetail data={block.data as TaskProgressEvent} />
-    case 'task_notification':
-      return <TaskNotificationDetail data={block.data as TaskNotification} />
-    case 'files_saved':
-      return <FilesSavedDetail data={block.data as FilesSaved} />
-    case 'command_output':
-      return <CommandOutputDetail data={block.data as CommandOutput} />
-    case 'stream_delta':
-      return <StreamDeltaDetail data={block.data as StreamDelta} />
-    case 'unknown':
-      return <UnknownDetail data={block.data as UnknownSdkEvent} />
-    default:
-      return null
-  }
+  const variantContent = (() => {
+    switch (block.variant) {
+      case 'session_init':
+        return <SessionInitDetail data={block.data as SessionInit} />
+      case 'session_status':
+        return <SessionStatusDetail data={block.data as SidecarSessionStatus} />
+      case 'elicitation_complete':
+        return <ElicitationCompleteDetail data={block.data as ElicitationComplete} />
+      case 'hook_event':
+        return <HookEventDetail data={block.data as SidecarHookEvent} />
+      case 'task_started':
+        return <TaskStartedDetail data={block.data as TaskStarted} />
+      case 'task_progress':
+        return <TaskProgressDetail data={block.data as TaskProgressEvent} />
+      case 'task_notification':
+        return <TaskNotificationDetail data={block.data as TaskNotification} />
+      case 'files_saved':
+        return <FilesSavedDetail data={block.data as FilesSaved} />
+      case 'command_output':
+        return <CommandOutputDetail data={block.data as CommandOutput} />
+      case 'stream_delta':
+        return <StreamDeltaDetail data={block.data as StreamDelta} />
+      case 'unknown':
+        return <UnknownDetail data={block.data as UnknownSdkEvent} />
+      default:
+        return null
+    }
+  })()
+
+  return (
+    <>
+      {variantContent}
+      {block.rawJson && (
+        <>
+          {block.rawJson.permissionMode && (
+            <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+              {String(block.rawJson.permissionMode)}
+            </span>
+          )}
+          {block.rawJson.durationMs != null && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">
+              {String(block.rawJson.durationMs)}ms
+            </span>
+          )}
+          {typeof block.rawJson.planContent === 'string' && block.rawJson.planContent && (
+            <details className="mt-1">
+              <summary className="text-[10px] text-gray-500 dark:text-gray-400 cursor-pointer">
+                Plan content
+              </summary>
+              <Markdown content={block.rawJson.planContent} />
+            </details>
+          )}
+          {block.rawJson.prUrl && (
+            <a
+              href={String(block.rawJson.prUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              PR #{String(block.rawJson.prNumber ?? '')}
+            </a>
+          )}
+          <RetryDetail rawJson={block.rawJson} />
+          <ApiErrorDetail rawJson={block.rawJson} />
+          <HookMetadataDetail rawJson={block.rawJson} />
+          <StopReasonDetail rawJson={block.rawJson} />
+          <MessageLineageDetail rawJson={block.rawJson} />
+          <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={SYSTEM_RENDERED_KEYS} />
+        </>
+      )}
+    </>
+  )
 }
