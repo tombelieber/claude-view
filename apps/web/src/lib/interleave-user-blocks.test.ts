@@ -97,29 +97,40 @@ describe('interleaveUserBlocks', () => {
 
   // ── Single turn ────────────────────────────────────────────────────────
 
-  it('places user before assistant in a single turn', () => {
+  it('places user after completed single turn (boundary present)', () => {
     const u = user('hi')
     const a = assistant('a1')
     const b = boundary('b1')
 
     const result = interleaveUserBlocks([u], [a, b])
-    expect(result.map((r) => r.id)).toEqual(['u-hi', 'a1', 'b1'])
+    // Turn is complete (has boundary), user is new → goes at end
+    expect(result.map((r) => r.id)).toEqual(['a1', 'b1', 'u-hi'])
   })
 
-  it('places user after system blocks but before first assistant', () => {
+  it('places user before assistant in active turn (no boundary)', () => {
+    const u = user('hi')
+    const a = assistant('a1')
+
+    const result = interleaveUserBlocks([u], [a])
+    // No boundary → active turn → user placed before assistant
+    expect(result.map((r) => r.id)).toEqual(['u-hi', 'a1'])
+  })
+
+  it('places user after system blocks but before first assistant (no boundary)', () => {
     const sys = systemBlock('sys')
     const u = user('hi')
     const a = assistant('a1')
-    const b = boundary('b1')
 
-    const result = interleaveUserBlocks([u], [sys, a, b])
-    expect(result.map((r) => r.id)).toEqual(['sys', 'u-hi', 'a1', 'b1'])
+    const result = interleaveUserBlocks([u], [sys, a])
+    expect(result.map((r) => r.id)).toEqual(['sys', 'u-hi', 'a1'])
   })
 
   // ── Multiple turns ─────────────────────────────────────────────────────
 
-  it('interleaves 3 users with 3 complete turns', () => {
-    const users = [user('q1'), user('q2'), user('q3')]
+  it('places optimistic users AFTER all completed turns (replay-safe)', () => {
+    // On replay, stream has 3 complete turns. Optimistic messages are NEW — they belong
+    // after the last boundary, not interleaved with replayed turns.
+    const users = [user('new-q')]
     const stream: ConversationBlock[] = [
       systemBlock('sys'),
       assistant('a1'),
@@ -131,18 +142,23 @@ describe('interleaveUserBlocks', () => {
     ]
 
     const result = interleaveUserBlocks(users, stream)
-    expect(result.map((r) => r.id)).toEqual([
-      'sys',
-      'u-q1',
-      'a1',
-      'b1',
-      'u-q2',
-      'a2',
-      'b2',
-      'u-q3',
-      'a3',
-      'b3',
-    ])
+    // User message goes at the end (after all completed turns)
+    expect(result.map((r) => r.id)).toEqual(['sys', 'a1', 'b1', 'a2', 'b2', 'a3', 'b3', 'u-new-q'])
+  })
+
+  it('places user before assistant in latest turn after completed turns', () => {
+    // Live session: 2 completed turns + new turn starting
+    const users = [user('q3')]
+    const stream: ConversationBlock[] = [
+      assistant('a1'),
+      boundary('b1'),
+      assistant('a2'),
+      boundary('b2'),
+      assistant('a3'), // new turn starting
+    ]
+
+    const result = interleaveUserBlocks(users, stream)
+    expect(result.map((r) => r.id)).toEqual(['a1', 'b1', 'a2', 'b2', 'u-q3', 'a3'])
   })
 
   // ── Streaming (incomplete turn) ────────────────────────────────────────
@@ -165,17 +181,27 @@ describe('interleaveUserBlocks', () => {
 
   // ── Interaction blocks (permission requests) ───────────────────────────
 
-  it('treats interaction as a turn start', () => {
+  it('treats interaction as a turn start (completed turn → user at end)', () => {
     const u = user('do something')
     const stream: ConversationBlock[] = [interaction('perm1'), assistant('a1'), boundary('b1')]
 
     const result = interleaveUserBlocks([u], stream)
-    expect(result.map((r) => r.id)).toEqual(['u-do something', 'perm1', 'a1', 'b1'])
+    // b1 is last boundary, so user goes at end (completed turn)
+    expect(result.map((r) => r.id)).toEqual(['perm1', 'a1', 'b1', 'u-do something'])
+  })
+
+  it('treats interaction as a turn start in active turn (no boundary)', () => {
+    const u = user('do something')
+    const stream: ConversationBlock[] = [interaction('perm1'), assistant('a1')]
+
+    const result = interleaveUserBlocks([u], stream)
+    // No boundary → lastBoundaryIdx=-1 → user placed before first assistant/interaction
+    expect(result.map((r) => r.id)).toEqual(['u-do something', 'perm1', 'a1'])
   })
 
   it('does not insert extra users for interaction mid-turn', () => {
     const users = [user('q1')]
-    // Assistant starts, then requests permission mid-turn, then continues
+    // Completed turn with interaction mid-turn
     const stream: ConversationBlock[] = [
       assistant('a1'),
       interaction('perm1'),
@@ -184,8 +210,8 @@ describe('interleaveUserBlocks', () => {
     ]
 
     const result = interleaveUserBlocks(users, stream)
-    // user inserted before first assistant (turn start), interaction/continuation are mid-turn
-    expect(result.map((r) => r.id)).toEqual(['u-q1', 'a1', 'perm1', 'a1-cont', 'b1'])
+    // All completed (b1 is last boundary), user goes at end
+    expect(result.map((r) => r.id)).toEqual(['a1', 'perm1', 'a1-cont', 'b1', 'u-q1'])
   })
 
   // ── Edge: more turns than users ────────────────────────────────────────
@@ -195,18 +221,20 @@ describe('interleaveUserBlocks', () => {
     const stream: ConversationBlock[] = [
       assistant('a1'),
       boundary('b1'),
-      assistant('a2'), // no matching user
+      assistant('a2'),
       boundary('b2'),
     ]
 
     const result = interleaveUserBlocks(users, stream)
-    expect(result.map((r) => r.id)).toEqual(['u-q1', 'a1', 'b1', 'a2', 'b2'])
+    // All turns are completed (last boundary = b2), user goes at end
+    expect(result.map((r) => r.id)).toEqual(['a1', 'b1', 'a2', 'b2', 'u-q1'])
   })
 
   // ── Edge: notice blocks between turns ──────────────────────────────────
 
-  it('preserves notice blocks between turns', () => {
-    const users = [user('q1'), user('q2')]
+  it('preserves notice blocks between turns, users only in latest turn', () => {
+    // 1 completed turn + 1 new turn with notice between
+    const users = [user('q2')]
     const stream: ConversationBlock[] = [
       assistant('a1'),
       boundary('b1'),
@@ -216,7 +244,21 @@ describe('interleaveUserBlocks', () => {
     ]
 
     const result = interleaveUserBlocks(users, stream)
-    expect(result.map((r) => r.id)).toEqual(['u-q1', 'a1', 'b1', 'rate', 'u-q2', 'a2', 'b2'])
+    // User placed after last boundary (b2 is last), so appended at end
+    expect(result.map((r) => r.id)).toEqual(['a1', 'b1', 'rate', 'a2', 'b2', 'u-q2'])
+  })
+
+  it('preserves notice blocks with user in active latest turn', () => {
+    const users = [user('q2')]
+    const stream: ConversationBlock[] = [
+      assistant('a1'),
+      boundary('b1'),
+      notice('rate'),
+      assistant('a2'), // latest turn (no boundary after)
+    ]
+
+    const result = interleaveUserBlocks(users, stream)
+    expect(result.map((r) => r.id)).toEqual(['a1', 'b1', 'rate', 'u-q2', 'a2'])
   })
 
   // ── Edge: only system/notice blocks, no assistant ──────────────────────

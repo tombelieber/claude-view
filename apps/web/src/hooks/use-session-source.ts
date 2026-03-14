@@ -15,7 +15,11 @@ export interface SessionSourceResult {
   blocks: ConversationBlock[]
   sessionState: string
   controlId: string | null
+  /** Send that may trigger session resume (for user_message only). */
   send: ((msg: Record<string, unknown>) => void) | null
+  /** Send that only works when WS is open — for control commands (set_mode, interrupt, etc.).
+   *  Never triggers session resume. Null when not connected. */
+  sendIfLive: ((msg: Record<string, unknown>) => void) | null
   isLive: boolean
   reconnect: () => void
   resume: (permissionMode?: string, model?: string) => Promise<void>
@@ -209,6 +213,13 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           setControlId(null)
           lastSeqRef.current = -1
           break
+        case 'mode_changed':
+          setPermissionMode(raw.mode as string)
+          break
+        case 'mode_rejected':
+          // Revert to the sidecar's actual mode
+          setPermissionMode(raw.mode as string)
+          break
         case 'query_result': {
           const evt = raw as { requestId?: string; queryType?: string; data: unknown }
           if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.data)
@@ -395,12 +406,23 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           // Have controlId — just open WS
           openWs(sessionId)
         } else if (!resumingRef.current) {
-          // Dormant session — auto-resume, then connect
+          // Dormant session — auto-resume, then connect.
+          // Include persisted permission mode so the session starts with the correct mode.
+          // Check session-specific key first, then global last-used mode.
+          let permissionMode: string | undefined
+          try {
+            permissionMode =
+              localStorage.getItem(`claude-view:mode:${sessionId}`) ??
+              localStorage.getItem('claude-view:last-mode') ??
+              undefined
+          } catch {
+            /* noop */
+          }
           resumingRef.current = true
           fetch('/api/control/sessions/resume', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId }),
+            body: JSON.stringify({ sessionId, permissionMode }),
           })
             .then((res) => {
               if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
@@ -468,6 +490,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     sessionState,
     controlId,
     send: effectiveSend,
+    sendIfLive: isLive ? send : null,
     isLive,
     reconnect,
     resume,

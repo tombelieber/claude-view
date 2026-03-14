@@ -32,6 +32,7 @@ export interface ControlSession {
   eventBuffer: RingBuffer<{ seq: number; msg: SequencedEvent }>
   nextSeq: number
   permissions: PermissionHandler
+  permissionMode: string
 }
 
 export class SessionRegistry {
