@@ -2,6 +2,11 @@ import { Activity } from 'lucide-react'
 import { useRef } from 'react'
 import { useLiveSessions } from '../components/live/use-live-sessions'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
+import {
+  ClaudeSessionsPanelSkeleton,
+  GaugeRowSkeleton,
+  TopProcessesPanelSkeleton,
+} from '../components/monitor/MonitorSkeletons'
 import { SystemGaugeRow } from '../components/monitor/SystemGaugeRow'
 import { TopProcessesPanel } from '../components/monitor/TopProcessesPanel'
 import { useSystemMonitor } from '../hooks/use-system-monitor'
@@ -56,20 +61,10 @@ export function SystemMonitorPage() {
 
       {/* Content */}
       {!snapshot ? (
-        <div className="space-y-4">
-          {/* Gauge skeleton */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={`gauge-skeleton-${i}`}
-                className="h-24 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse"
-              />
-            ))}
-          </div>
-          {/* Session panel skeleton */}
-          <div className="h-48 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
-          {/* Process panel skeleton */}
-          <div className="h-40 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        <div className="space-y-4 animate-pulse">
+          <GaugeRowSkeleton />
+          <ClaudeSessionsPanelSkeleton rows={2} />
+          <TopProcessesPanelSkeleton rows={5} />
         </div>
       ) : (
         <div className="flex flex-col gap-4 flex-1 min-h-0">
