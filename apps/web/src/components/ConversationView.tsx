@@ -752,7 +752,13 @@ export function ConversationView() {
                     <div className="max-w-4xl mx-auto px-6 py-4">
                       <ErrorBoundary>
                         <ConversationActionsProvider
-                          actions={{ retryMessage: actions.retryMessage }}
+                          actions={{
+                            retryMessage: actions.retryMessage,
+                            respondPermission: actions.respondPermission,
+                            answerQuestion: actions.answerQuestion,
+                            approvePlan: actions.approvePlan,
+                            submitElicitation: actions.submitElicitation,
+                          }}
                         >
                           <ConversationThread blocks={blocks} renderers={registry} />
                         </ConversationActionsProvider>

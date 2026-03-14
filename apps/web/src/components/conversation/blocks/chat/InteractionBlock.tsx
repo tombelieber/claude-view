@@ -9,53 +9,53 @@ import { AskUserQuestionCard } from '../shared/AskUserQuestionCard'
 import { ElicitationCard } from '../shared/ElicitationCard'
 import { PermissionCard } from '../shared/PermissionCard'
 import { PlanApprovalCard } from '../shared/PlanApprovalCard'
+import { useInteractionHandlers } from '../shared/use-interaction-handlers'
 
 interface InteractionBlockProps {
   block: InteractionBlockType
-  onPermissionRespond?: (requestId: string, allowed: boolean) => void
-  onQuestionAnswer?: (requestId: string, answers: Record<string, string>) => void
-  onPlanApprove?: (requestId: string, approved: boolean, feedback?: string) => void
-  onElicitationSubmit?: (requestId: string, response: string) => void
 }
 
-export function ChatInteractionBlock({
-  block,
-  onPermissionRespond,
-  onQuestionAnswer,
-  onPlanApprove,
-  onElicitationSubmit,
-}: InteractionBlockProps) {
+export function ChatInteractionBlock({ block }: InteractionBlockProps) {
+  const { localResponse, respondPermission, answerQuestion, approvePlan, submitElicitation } =
+    useInteractionHandlers()
+
+  const responded = block.resolved || localResponse !== null
+
   switch (block.variant) {
-    case 'permission':
+    case 'permission': {
+      const allowed = localResponse?.variant === 'permission' ? localResponse.allowed : true
       return (
         <PermissionCard
           permission={block.data as PermissionRequest}
-          onRespond={onPermissionRespond}
-          resolved={block.resolved ? { allowed: true } : undefined}
+          onRespond={responded ? undefined : respondPermission}
+          resolved={responded ? { allowed } : undefined}
         />
       )
+    }
     case 'question':
       return (
         <AskUserQuestionCard
           question={block.data as AskQuestion}
-          onAnswer={onQuestionAnswer}
-          answered={block.resolved}
+          onAnswer={responded ? undefined : answerQuestion}
+          answered={responded}
         />
       )
-    case 'plan':
+    case 'plan': {
+      const approved = localResponse?.variant === 'plan' ? localResponse.approved : true
       return (
         <PlanApprovalCard
           plan={block.data as PlanApproval}
-          onApprove={onPlanApprove}
-          resolved={block.resolved ? { approved: true } : undefined}
+          onApprove={responded ? undefined : approvePlan}
+          resolved={responded ? { approved } : undefined}
         />
       )
+    }
     case 'elicitation':
       return (
         <ElicitationCard
           elicitation={block.data as Elicitation}
-          onSubmit={onElicitationSubmit}
-          resolved={block.resolved}
+          onSubmit={responded ? undefined : submitElicitation}
+          resolved={responded}
         />
       )
     default:

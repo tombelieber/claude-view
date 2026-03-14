@@ -776,7 +776,15 @@ export function SessionDetailPanel({
         {/* ---- Chat tab (compact block renderer) ---- */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-full overflow-hidden">
-            <ConversationActionsProvider actions={{ retryMessage: convActions.retryMessage }}>
+            <ConversationActionsProvider
+              actions={{
+                retryMessage: convActions.retryMessage,
+                respondPermission: convActions.respondPermission,
+                answerQuestion: convActions.answerQuestion,
+                approvePlan: convActions.approvePlan,
+                submitElicitation: convActions.submitElicitation,
+              }}
+            >
               <CompactChatTab blocks={convBlocks} />
             </ConversationActionsProvider>
           </div>
