@@ -269,6 +269,7 @@ export function ChatPage() {
           <div className="max-w-3xl mx-auto px-4 py-3">
             <ChatInputBar
               onSend={handleSend}
+              onStop={actions.interrupt}
               state={inputBarState}
               onModeChange={handleModeChangePermission}
               contextPercent={contextPercent}
