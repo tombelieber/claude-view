@@ -1,5 +1,5 @@
 import { Activity } from 'lucide-react'
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useLiveSessions } from '../components/live/use-live-sessions'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
 import {
@@ -15,6 +15,9 @@ export function SystemMonitorPage() {
   const { status, systemInfo, snapshot, processTree } = useSystemMonitor()
   const { sessions } = useLiveSessions()
   const hasRevealedRef = useRef(false)
+
+  // Single source of truth: same filter as ClaudeSessionsPanel's `merged` list
+  const activeSessionCount = useMemo(() => sessions.filter((s) => s.pid != null).length, [sessions])
 
   // Track first data arrival for stagger animation
   if (snapshot && !hasRevealedRef.current) {
@@ -73,7 +76,11 @@ export function SystemMonitorPage() {
             className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-950 -mx-4 px-4 py-2"
             style={shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out both' } : undefined}
           >
-            <SystemGaugeRow snapshot={snapshot} systemInfo={systemInfo} />
+            <SystemGaugeRow
+              snapshot={snapshot}
+              systemInfo={systemInfo}
+              activeSessionCount={activeSessionCount}
+            />
           </div>
 
           {/* Claude Sessions */}

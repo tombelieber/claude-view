@@ -108,13 +108,13 @@ export function formatHumanDuration(seconds: number): string {
 
 /**
  * Format byte count for compact display in tables/badges.
- * Uses decimal-SI thresholds (1e9, 1e6, 1e3). GB shows one decimal; MB/KB show none.
- *   500 → "1 KB"  |  4,200,000 → "4 MB"  |  1,500,000,000 → "1.5 GB"
+ * Uses binary units (1024-based) so RAM matches how it's marketed (64 GB = 64 GiB).
+ *   500 → "1 KB"  |  4,200,000 → "4 MB"  |  1,610,612,736 → "1.5 GB"
  */
 export function formatBytes(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
-  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`
-  return `${(bytes / 1e3).toFixed(0)} KB`
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(0)} MB`
+  return `${(bytes / 1024).toFixed(0)} KB`
 }
 
 /**
