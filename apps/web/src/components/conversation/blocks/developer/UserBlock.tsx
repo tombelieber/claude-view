@@ -1,5 +1,9 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
+import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
+import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
+
+const USER_RENDERED_KEYS = [...LINEAGE_KEYS, 'imagePasteIds'] as string[]
 
 interface UserBlockProps {
   block: UserBlockType
@@ -50,6 +54,17 @@ export function DevUserBlock({ block }: UserBlockProps) {
           )}
           <StatusDot status={block.status} />
         </div>
+        {block.rawJson && (
+          <>
+            {block.rawJson.imagePasteIds && Array.isArray(block.rawJson.imagePasteIds) && (
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                {(block.rawJson.imagePasteIds as unknown[]).length} image(s) pasted
+              </span>
+            )}
+            <MessageLineageDetail rawJson={block.rawJson} />
+            <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={USER_RENDERED_KEYS} />
+          </>
+        )}
       </div>
     </div>
   )
