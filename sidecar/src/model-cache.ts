@@ -25,6 +25,26 @@ export function getCacheState(): { models: ModelInfo[]; updatedAt: number | null
   }
 }
 
+/**
+ * Update model cache directly from a live session's supportedModels() result.
+ * Called on every session create/resume — the SDK is the source of truth.
+ * No-op if the model list hasn't changed.
+ */
+export function updateModelCacheFromSession(models: ModelInfo[]): void {
+  if (!models || models.length === 0) return
+
+  const newIds = models.map((m) => m.value).sort()
+  const oldIds = cache ? cache.models.map((m) => m.value).sort() : []
+
+  if (JSON.stringify(newIds) !== JSON.stringify(oldIds)) {
+    // biome-ignore lint/suspicious/noConsoleLog: sidecar server logging convention
+    console.log(
+      `[model-cache] Updated from session: ${models.length} models (was ${cache?.models.length ?? 0})`,
+    )
+    cache = { models, updatedAt: Date.now() }
+  }
+}
+
 /** Promise.race with a timeout — prevents initializationResult() from hanging forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([

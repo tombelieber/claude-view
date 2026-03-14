@@ -742,6 +742,10 @@ ALTER TABLE models ADD COLUMN max_input_tokens INTEGER;
 ALTER TABLE models ADD COLUMN max_output_tokens INTEGER;
 ALTER TABLE models ADD COLUMN updated_at INTEGER DEFAULT 0;
 COMMIT;"#,
+    // Migration 58: sdk_supported flag — true only for models reported by Agent SDK.
+    // Chat model selector filters on this to show only usable models.
+    // Default 0 — only set to 1 when SDK actually reports via upsert_sdk_models().
+    r#"ALTER TABLE models ADD COLUMN sdk_supported INTEGER NOT NULL DEFAULT 0;"#,
 ];
 
 // ============================================================================

@@ -47,16 +47,27 @@ impl Database {
             .unwrap_or_default()
             .as_secs() as i64;
 
+        // Clear sdk_supported for all models first — SDK is source of truth.
+        // Only models in the current SDK list should be marked supported.
+        sqlx::query("UPDATE models SET sdk_supported = 0 WHERE sdk_supported = 1")
+            .execute(self.pool())
+            .await?;
+
         let mut count = 0;
         for (id, provider, family, display_name, description) in models {
             sqlx::query(
-                r#"INSERT INTO models (id, provider, family, display_name, description, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?)
+                // display_name and description use direct assignment (not COALESCE)
+                // because SDK is the authoritative source. Passing NULL intentionally
+                // clears stale alias names ("Default (recommended)") so the frontend
+                // falls back to formatModelName(id) → "Claude Opus 4.6".
+                r#"INSERT INTO models (id, provider, family, display_name, description, sdk_supported, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?)
                    ON CONFLICT(id) DO UPDATE SET
                        provider = COALESCE(excluded.provider, models.provider),
                        family = COALESCE(excluded.family, models.family),
-                       display_name = COALESCE(excluded.display_name, models.display_name),
-                       description = COALESCE(excluded.description, models.description),
+                       display_name = excluded.display_name,
+                       description = excluded.description,
+                       sdk_supported = 1,
                        updated_at = excluded.updated_at"#,
             )
             .bind(id)
