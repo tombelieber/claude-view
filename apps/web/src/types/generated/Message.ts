@@ -15,4 +15,5 @@ export type Message = {
   parent_uuid?: string | null
   metadata?: any
   category?: string | null
+  raw_json?: any
 }

@@ -21,7 +21,6 @@ export type RichSessionData = {
   turnCount: number
   firstUserMessage: string | null
   lastUserMessage: string | null
-  lastUserFile: string | null
   lastCacheHitAt: number | null
   slug: string | null
 }
