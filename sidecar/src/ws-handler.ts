@@ -1,7 +1,7 @@
 // sidecar/src/ws-handler.ts
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ResumeMsg, SetModeMsg } from './protocol.js'
+import type { ClientMessage, ResumeMsg } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
@@ -31,14 +31,12 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
 
   // Handle incoming messages
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     try {
       const msg: ClientMessage = JSON.parse(raw.toString())
       switch (msg.type) {
         case 'user_message':
-          sendMessage(session, msg.content).catch((err) => {
-            ws.send(JSON.stringify({ type: 'error', message: String(err), fatal: false }))
-          })
+          sendMessage(session, msg.content)
           break
 
         case 'permission_response':
@@ -101,39 +99,126 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           ws.send(JSON.stringify({ type: 'pong' }))
           break
 
-        case 'set_mode': {
-          const modeMsg = msg as SetModeMsg
-          const VALID_MODES = new Set([
-            'default',
-            'acceptEdits',
-            'bypassPermissions',
-            'plan',
-            'dontAsk',
-          ])
-          if (!VALID_MODES.has(modeMsg.mode)) {
-            ws.send(
-              JSON.stringify({
-                type: 'error',
-                message: `Invalid mode: ${modeMsg.mode}`,
-                fatal: false,
-              }),
-            )
-            break
-          }
-          // V2 SDK: close + re-resume with new permission mode (synchronous — errors emitted via registry)
+        case 'set_mode':
           try {
-            setSessionMode(session, modeMsg.mode, registry)
-          } catch (err: unknown) {
-            ws.send(
-              JSON.stringify({
-                type: 'error',
-                message: `Mode change failed: ${err}`,
-                fatal: false,
-              }),
-            )
+            await setSessionMode(session, msg.mode, registry)
+          } catch (err) {
+            sendError(ws, `setPermissionMode failed: ${err}`)
           }
           break
-        }
+
+        case 'interrupt':
+          try {
+            await session.query.interrupt()
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'set_model':
+          try {
+            await session.query.setModel(msg.model)
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'set_max_thinking_tokens':
+          try {
+            await session.query.setMaxThinkingTokens(msg.maxThinkingTokens)
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'stop_task':
+          try {
+            await session.query.stopTask(msg.taskId)
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'query_models':
+          try {
+            const models = await session.query.supportedModels()
+            ws.send(JSON.stringify({ type: 'query_result', queryType: 'models', data: models }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'query_commands':
+          try {
+            const cmds = await session.query.supportedCommands()
+            ws.send(JSON.stringify({ type: 'query_result', queryType: 'commands', data: cmds }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'query_agents':
+          try {
+            const agents = await session.query.supportedAgents()
+            ws.send(JSON.stringify({ type: 'query_result', queryType: 'agents', data: agents }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'query_mcp_status':
+          try {
+            const status = await session.query.mcpServerStatus()
+            ws.send(JSON.stringify({ type: 'query_result', queryType: 'mcp_status', data: status }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'query_account_info':
+          try {
+            const info = await session.query.accountInfo()
+            ws.send(JSON.stringify({ type: 'query_result', queryType: 'account_info', data: info }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'reconnect_mcp':
+          try {
+            await session.query.reconnectMcpServer(msg.serverName)
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'toggle_mcp':
+          try {
+            await session.query.toggleMcpServer(msg.serverName, msg.enabled)
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'set_mcp_servers':
+          try {
+            const result = await session.query.setMcpServers(msg.servers as any)
+            ws.send(JSON.stringify({ type: 'mcp_set_result', result }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
+
+        case 'rewind_files':
+          try {
+            const result = await session.query.rewindFiles(msg.userMessageId, {
+              dryRun: msg.dryRun,
+            })
+            ws.send(JSON.stringify({ type: 'rewind_result', result }))
+          } catch (err) {
+            sendError(ws, err)
+          }
+          break
       }
     } catch {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format', fatal: false }))
@@ -145,4 +230,11 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     session.emitter.removeListener('message', onMessage)
     session.permissions.drainInteractive()
   })
+}
+
+function sendError(ws: WebSocket, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err)
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify({ type: 'error', message, fatal: false }))
+  }
 }
