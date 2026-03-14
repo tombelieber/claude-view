@@ -231,9 +231,9 @@ describe('Sidecar E2E — create session flow', () => {
       (s) => s.controlId === created.controlId,
     )
     expect(found).toBeDefined()
-    expect(found!.sessionId).toBe(created.sessionId)
-    expect(found!.sessionId).toBeTruthy() // NOT empty string
-    expect(found!.state).toBeTruthy()
+    expect(found?.sessionId).toBe(created.sessionId)
+    expect(found?.sessionId).toBeTruthy() // NOT empty string
+    expect(found?.state).toBeTruthy()
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
   }, 30_000)
@@ -282,7 +282,7 @@ describe('Sidecar E2E — WS stream flow', () => {
     // session_init was emitted during create (before WS connected) — must be replayed
     const sessionInit = events.find((e) => e.type === 'session_init')
     expect(sessionInit).toBeDefined()
-    expect(sessionInit!.model).toBeTruthy()
+    expect(sessionInit?.model).toBeTruthy()
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
   }, 30_000)
@@ -389,7 +389,7 @@ describe('Sidecar E2E — regression guards', () => {
       (s) => s.controlId === created.controlId,
     )
     expect(found).toBeDefined()
-    expect(found!.sessionId).toBe(createSessionId)
+    expect(found?.sessionId).toBe(createSessionId)
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
   }, 30_000)
