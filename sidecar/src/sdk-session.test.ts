@@ -209,6 +209,26 @@ describe('waitForSessionInit', () => {
     expect(cs.sessionId).toBe('populated')
   })
 
+  // --- Regression: session_init fires but sessionId still empty (sdkSession.sessionId threw) ---
+  it('does NOT resolve if session_init fires but sessionId is still empty', async () => {
+    const cs = makeStubCs({ sessionId: '' })
+    const promise = waitForSessionInit(cs, 100)
+
+    // Simulate: session_init fires but updateSessionState's try/catch silently
+    // failed to read sdkSession.sessionId — cs.sessionId stays ''
+    setTimeout(() => {
+      // Do NOT set cs.sessionId — simulates the silent catch in updateSessionState
+      cs.emitter.emit('message', { type: 'session_init', seq: 0 })
+    }, 10)
+
+    // Should NOT resolve — sessionId is still empty
+    vi.advanceTimersByTime(10)
+
+    // Should timeout because sessionId was never populated
+    vi.advanceTimersByTime(100)
+    await expect(promise).rejects.toThrow('timed out')
+  })
+
   // --- Edge: rapid session_init before any timers tick ---
   it('resolves when session_init fires synchronously after listen', async () => {
     const cs = makeStubCs()

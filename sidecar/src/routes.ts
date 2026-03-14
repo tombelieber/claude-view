@@ -25,8 +25,9 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<CreateSessionRequest>()
     if (!body.model) return c.json({ error: 'model is required' }, 400)
 
+    let cs: ReturnType<typeof createControlSession> | undefined
     try {
-      const cs = createControlSession(body, registry)
+      cs = createControlSession(body, registry)
 
       // V2 SDK only initializes (emits session_init, assigns sessionId) after
       // the first send(). Without a message, stream() blocks forever.
@@ -47,6 +48,9 @@ export function createRoutes(registry: SessionRegistry) {
         status: 'created',
       })
     } catch (err) {
+      // Clean up orphaned session — it was registered in the registry but init failed.
+      // Without cleanup, ghost sessions accumulate with empty sessionId.
+      if (cs) await closeSession(cs, registry)
       return c.json({ error: `Create failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
   })
