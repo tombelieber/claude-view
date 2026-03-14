@@ -2138,7 +2138,7 @@ impl Database {
         }
 
         // Sort by sessions descending
-        results.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+        results.sort_by_key(|r| std::cmp::Reverse(r.sessions));
 
         Ok(results)
     }

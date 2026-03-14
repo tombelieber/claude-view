@@ -355,7 +355,7 @@ async fn build_context_digest(
         .collect();
 
     // Sort projects by session count descending
-    projects.sort_by(|a, b| b.session_count.cmp(&a.session_count));
+    projects.sort_by_key(|p| std::cmp::Reverse(p.session_count));
 
     let total_sessions = sessions.len();
     let total_projects = projects.len();

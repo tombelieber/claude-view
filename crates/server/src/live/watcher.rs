@@ -238,7 +238,7 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
     }
 
     // Sort by modification time, newest first
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.1));
     entries.into_iter().map(|(p, _)| p).collect()
 }
 

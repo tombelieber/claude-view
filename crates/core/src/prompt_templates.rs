@@ -107,7 +107,7 @@ pub fn drain_cluster(prompts: &[&str], threshold: f64) -> Vec<DrainCluster> {
         }
     }
 
-    all_clusters.sort_by(|a, b| b.members.len().cmp(&a.members.len()));
+    all_clusters.sort_by_key(|c| std::cmp::Reverse(c.members.len()));
     all_clusters
 }
 
@@ -173,7 +173,7 @@ pub fn detect_templates(prompts: &[&str], min_frequency: usize) -> Vec<PromptTem
         }
     }
 
-    templates.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+    templates.sort_by_key(|t| std::cmp::Reverse(t.frequency));
     templates
 }
 

@@ -17,6 +17,7 @@ pub mod trends;
 
 pub use queries::facets::{FacetAggregateStats, FacetRow};
 pub use queries::hook_events::{self as hook_events_queries, HookEventRow};
+pub use queries::presets::{Preset, PresetState, PresetSummary, PresetsListResponse};
 pub use queries::reports::{ProjectPreview, ReportPreview, ReportRow};
 pub use queries::settings::AppSettings;
 pub use queries::AIGenerationStats;

@@ -179,7 +179,7 @@ pub async fn live_stream(
 async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
     let mut all_sessions: Vec<_> = map.values().cloned().collect();
-    all_sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
+    all_sessions.sort_by_key(|s| std::cmp::Reverse(s.last_activity_at));
     let (active, recently_closed): (Vec<_>, Vec<_>) = all_sessions
         .into_iter()
         .partition(|s| s.closed_at.is_none());
@@ -316,14 +316,11 @@ async fn kill_session(
 
     match session_info {
         Some(Some(pid)) => {
-            let pid_i32 = pid as i32; // safe: macOS PIDs max ~99999, Linux ~4M
-            let result = unsafe { libc::kill(pid_i32, libc::SIGTERM) };
-            if result != 0 {
-                let errno = std::io::Error::last_os_error();
-                tracing::warn!(session_id = %session_id, pid, %errno, "Failed to send SIGTERM");
+            if let Err(e) = crate::platform::terminate_process(pid) {
+                tracing::warn!(session_id = %session_id, pid, error = %e, "Failed to terminate process");
                 return (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": format!("SIGTERM failed: {}", errno), "pid": pid })),
+                    Json(serde_json::json!({ "error": format!("Terminate failed: {}", e), "pid": pid })),
                 )
                     .into_response();
             }

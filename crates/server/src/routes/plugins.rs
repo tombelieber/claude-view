@@ -676,7 +676,7 @@ async fn list_plugins(
         let last_used_at = items.iter().filter_map(|i| i.last_used_at).max();
 
         // Sort items by usage descending
-        items.sort_by(|a, b| b.invocation_count.cmp(&a.invocation_count));
+        items.sort_by_key(|i| std::cmp::Reverse(i.invocation_count));
 
         // Resolve description: disk manifest > marketplace catalog entry > none
         let marketplace_entry = available_by_name.get(&name);
@@ -771,9 +771,9 @@ async fn list_plugins(
     let mut user_agents = make_user_items(InvocableKind::Agent);
 
     // Sort user items by usage descending (most-used first)
-    user_skills.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
-    user_commands.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
-    user_agents.sort_by(|a, b| b.total_invocations.cmp(&a.total_invocations));
+    user_skills.sort_by_key(|i| std::cmp::Reverse(i.total_invocations));
+    user_commands.sort_by_key(|i| std::cmp::Reverse(i.total_invocations));
+    user_agents.sort_by_key(|i| std::cmp::Reverse(i.total_invocations));
 
     // 6. Build available plugin list
     let available: Vec<AvailablePlugin> = cli_data

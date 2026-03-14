@@ -985,7 +985,7 @@ impl TeamsStore {
             }
         }
 
-        summaries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        summaries.sort_by_key(|s| std::cmp::Reverse(s.created_at));
         summaries
     }
 
