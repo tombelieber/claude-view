@@ -2,7 +2,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 // sidecar/src/event-mapper.test.ts
 import { describe, expect, it } from 'vitest'
 import { mapSdkMessage } from './event-mapper.js'
-import type { SessionInit, TurnComplete, TurnError } from './protocol.js'
+import type { SessionInit, StreamDelta, TurnComplete, TurnError } from './protocol.js'
 
 // Helper to create a minimal SDKAssistantMessage
 function assistantMsg(
@@ -222,6 +222,127 @@ describe('mapSdkMessage', () => {
       } as unknown as SDKMessage
       const events = mapSdkMessage(msg)
       expect(events[0].type).toBe('unknown_sdk_event')
+    })
+  })
+
+  describe('stream_event (StreamDelta enrichment)', () => {
+    function streamMsg(event: Record<string, unknown>, uuid?: string): SDKMessage {
+      return {
+        type: 'stream_event',
+        event,
+        parent_tool_use_id: null,
+        uuid: uuid ?? '00000000-0000-0000-0000-000000000010',
+        session_id: 'sess-1',
+      } as unknown as SDKMessage
+    }
+
+    it('extracts textDelta from content_block_delta with text_delta', () => {
+      const events = mapSdkMessage(
+        streamMsg({
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text: 'hello ' },
+        }),
+      )
+      expect(events).toHaveLength(1)
+      const e = events[0] as StreamDelta
+      expect(e.type).toBe('stream_delta')
+      expect(e.deltaType).toBe('content_block_delta')
+      expect(e.textDelta).toBe('hello ')
+      expect(e.thinkingDelta).toBeUndefined()
+      expect(e.toolInputDelta).toBeUndefined()
+    })
+
+    it('extracts thinkingDelta from content_block_delta with thinking_delta', () => {
+      const events = mapSdkMessage(
+        streamMsg({
+          type: 'content_block_delta',
+          delta: { type: 'thinking_delta', thinking: 'Let me consider...' },
+        }),
+      )
+      const e = events[0] as StreamDelta
+      expect(e.deltaType).toBe('content_block_delta')
+      expect(e.thinkingDelta).toBe('Let me consider...')
+      expect(e.textDelta).toBeUndefined()
+      expect(e.toolInputDelta).toBeUndefined()
+    })
+
+    it('extracts toolInputDelta from content_block_delta with input_json_delta', () => {
+      const events = mapSdkMessage(
+        streamMsg({
+          type: 'content_block_delta',
+          delta: { type: 'input_json_delta', partial_json: '{"file_' },
+        }),
+      )
+      const e = events[0] as StreamDelta
+      expect(e.deltaType).toBe('content_block_delta')
+      expect(e.toolInputDelta).toBe('{"file_')
+      expect(e.textDelta).toBeUndefined()
+      expect(e.thinkingDelta).toBeUndefined()
+    })
+
+    it('handles content_block_start without extracting deltas', () => {
+      const events = mapSdkMessage(
+        streamMsg({
+          type: 'content_block_start',
+          content_block: { type: 'text', text: '' },
+        }),
+      )
+      const e = events[0] as StreamDelta
+      expect(e.deltaType).toBe('content_block_start')
+      expect(e.textDelta).toBeUndefined()
+      expect(e.thinkingDelta).toBeUndefined()
+      expect(e.toolInputDelta).toBeUndefined()
+    })
+
+    it('handles content_block_stop without extracting deltas', () => {
+      const events = mapSdkMessage(streamMsg({ type: 'content_block_stop', index: 0 }))
+      const e = events[0] as StreamDelta
+      expect(e.deltaType).toBe('content_block_stop')
+      expect(e.textDelta).toBeUndefined()
+    })
+
+    it('uses empty string messageId when uuid is missing', () => {
+      const msg = {
+        type: 'stream_event',
+        event: { type: 'message_start' },
+        parent_tool_use_id: null,
+        session_id: 'sess-1',
+      } as unknown as SDKMessage
+      const events = mapSdkMessage(msg)
+      const e = events[0] as StreamDelta
+      expect(e.messageId).toBe('')
+      expect(e.deltaType).toBe('message_start')
+    })
+
+    it('preserves raw event object in event field', () => {
+      const rawEvent = { type: 'content_block_delta', delta: { type: 'text_delta', text: 'x' } }
+      const events = mapSdkMessage(streamMsg(rawEvent))
+      const e = events[0] as StreamDelta
+      expect(e.event).toEqual(rawEvent)
+    })
+  })
+
+  describe('session_init sessionId', () => {
+    it('includes sessionId from raw SDK message', () => {
+      const msg = {
+        type: 'system',
+        subtype: 'init',
+        tools: [],
+        model: 'claude-sonnet-4-20250514',
+        mcp_servers: [],
+        permissionMode: 'default',
+        slash_commands: [],
+        claude_code_version: '1.0.0',
+        cwd: '/tmp',
+        agents: [],
+        skills: [],
+        output_style: 'normal',
+        uuid: 'u1',
+        session_id: 'sess-abc-123',
+      } as unknown as SDKMessage
+      const events = mapSdkMessage(msg)
+      const e = events[0] as SessionInit
+      expect(e.sessionId).toBe('sess-abc-123')
     })
   })
 
