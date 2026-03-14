@@ -7,15 +7,26 @@ import type { ModelOption } from './use-models'
 
 // Mirrors @anthropic-ai/claude-agent-sdk ModelInfo shape.
 // Can't import directly — SDK is a sidecar-only dependency.
-// Only the fields we consume are declared (value + displayName for dropdown).
+// Only the fields we consume are declared.
 interface SdkModelInfo {
   value: string
   displayName: string
+  description: string
 }
 
 interface SupportedModelsResponse {
   models: SdkModelInfo[]
   updatedAt: number | null
+}
+
+/** Derive context window display string from model ID. All current Claude models are 200K. */
+function formatContextWindow(modelId: string): string {
+  // Haiku 4.5 is 200K, Sonnet 4.6 is 200K, Opus 4.6 is 200K
+  // Future models may differ — this is a best-effort display hint
+  if (modelId.includes('haiku')) return '200K'
+  if (modelId.includes('sonnet')) return '200K'
+  if (modelId.includes('opus')) return '200K'
+  return '200K'
 }
 
 async function fetchSupportedModels(): Promise<SupportedModelsResponse> {
@@ -50,6 +61,8 @@ export function useSupportedModels(): { options: ModelOption[]; isLoading: boole
   const options: ModelOption[] = data.models.map((m) => ({
     id: m.value,
     label: m.displayName,
+    description: m.description,
+    contextWindow: formatContextWindow(m.value),
   }))
 
   return { options, isLoading }
