@@ -1,0 +1,33 @@
+---
+title: "One Catalog for Every Model"
+description: "v0.19.0 introduces a unified model catalog — a single source of truth for pricing, context windows, and capabilities across all Claude models."
+date: 2026-03-14
+author: claude-view team
+---
+
+Model metadata was scattered. Pricing lived in one file, context windows in another, display names in a third. When Anthropic shipped a new model, you had to update multiple places — and if you missed one, cost calculations silently drifted.
+
+v0.19.0 consolidates everything into a **unified model catalog**.
+
+## What changed
+
+Every model now has a single entry that declares its pricing tiers, context window, capabilities, and display metadata. The catalog is the sole authority — cost calculations, model selectors, and insights all read from the same source.
+
+This means:
+- **Accurate cost tracking** for all Claude models, including cache pricing tiers
+- **One place to update** when new models ship
+- **Consistent metadata** across the dashboard, activity page, and session detail views
+
+## Sidebar deduplication fix
+
+A subtle bug: if you ran Claude Code sessions after starting the claude-view server, the sidebar could show the same project twice — once with 2 sessions, once with 1,296. The root cause was interesting.
+
+The indexer resolves `git_root` (the repository root path) for each session so that worktree sessions group under their parent repo. But the resolution only used path pattern matching (`/.worktrees/` markers). Sessions at the actual repo root — the common case — got `None`. A startup backfill caught historical gaps via `git rev-parse`, but sessions indexed *after* the backfill ran accumulated with a missing `git_root`. The grouping query fell through to a sanitized project ID, creating a separate entry with the same display name.
+
+The fix: call `git rev-parse --git-common-dir` inline during indexing when path-based inference returns nothing. One subprocess call per project, ~5ms. The startup backfill continues to handle historical data.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
