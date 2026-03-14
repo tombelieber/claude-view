@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
@@ -11,10 +11,11 @@ import { developerRegistry } from '../components/conversation/blocks/developer/r
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
-import { useModelOptions } from '../hooks/use-models'
+import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
+import { useSessionDetail } from '../hooks/use-session-detail'
 import { deriveInputBarState } from '../lib/control-status-map'
 import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
@@ -55,6 +56,7 @@ export function ChatPage() {
 
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
+  const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
   const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
     onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
@@ -164,6 +166,14 @@ export function ChatPage() {
   // --- Command palette ---
   const capabilities = useSessionCapabilities(sessionInfo)
   const { options: modelOptions } = useModelOptions()
+
+  // History session: auto-select the session's primary model if SDK-supported,
+  // otherwise keep the user's default (from localStorage).
+  useEffect(() => {
+    if (!sessionId || !sessionDetail?.primaryModel || modelOptions.length === 0) return
+    const resolved = resolveSessionModel(sessionDetail.primaryModel, modelOptions)
+    if (resolved) setSelectedModel(resolved)
+  }, [sessionId, sessionDetail?.primaryModel, modelOptions])
 
   const handleModelSwitch = useCallback(
     (newModel: string) => {
@@ -299,7 +309,14 @@ export function ChatPage() {
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6">
               <ConversationActionsProvider
-                actions={{ retryMessage: actions.retryMessage, stopTask: actions.stopTask }}
+                actions={{
+                  retryMessage: actions.retryMessage,
+                  stopTask: actions.stopTask,
+                  respondPermission: actions.respondPermission,
+                  answerQuestion: actions.answerQuestion,
+                  approvePlan: actions.approvePlan,
+                  submitElicitation: actions.submitElicitation,
+                }}
               >
                 <ConversationThread blocks={blocks} renderers={registry} />
               </ConversationActionsProvider>
