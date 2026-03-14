@@ -37,6 +37,7 @@ export type UserBlock = {
   timestamp: number
   status?: 'optimistic' | 'sending' | 'sent' | 'failed'
   localId?: string
+  rawJson?: Record<string, unknown> | null
 }
 
 // ── AssistantBlock ──────────────────────────────────────────────────────────
@@ -47,6 +48,7 @@ export type AssistantBlock = {
   segments: AssistantSegment[]
   thinking?: string
   streaming: boolean
+  rawJson?: Record<string, unknown> | null
 }
 
 export type AssistantSegment =
@@ -156,6 +158,7 @@ export type SystemBlock = {
     | CommandOutput
     | StreamDelta
     | UnknownSdkEvent
+  rawJson?: Record<string, unknown> | null
 }
 
 // ── ConversationBlock union ─────────────────────────────────────────────────

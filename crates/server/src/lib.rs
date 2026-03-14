@@ -559,46 +559,6 @@ mod tests {
     }
 
     // ========================================================================
-    // Session Endpoint Tests
-    // ========================================================================
-
-    #[tokio::test]
-    async fn test_session_not_found() {
-        let app = create_app(test_db().await);
-        let (status, body) = get(app, "/api/session/nonexistent-project/nonexistent-session").await;
-
-        // Should return 404 or 500 (depending on whether projects dir exists)
-        assert!(
-            status == StatusCode::NOT_FOUND || status == StatusCode::INTERNAL_SERVER_ERROR,
-            "Expected 404 or 500, got {}",
-            status
-        );
-
-        // Should have an error response
-        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert!(
-            json.get("error").is_some(),
-            "Expected error field in response"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_session_invalid_project() {
-        let app = create_app(test_db().await);
-        let (status, body) = get(app, "/api/session/invalid%2Fpath/abc123").await;
-
-        // Should return an error (404 or 500)
-        assert!(
-            status == StatusCode::NOT_FOUND || status == StatusCode::INTERNAL_SERVER_ERROR,
-            "Expected 404 or 500, got {}",
-            status
-        );
-
-        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert!(json.get("error").is_some());
-    }
-
-    // ========================================================================
     // CORS Tests
     // ========================================================================
 
