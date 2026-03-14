@@ -199,7 +199,7 @@ impl From<&SessionInfo> for DerivedMetrics {
 // Paginated Messages Query
 // ============================================================================
 
-/// Query parameters for GET /api/session/:project_dir/:session_id/messages
+/// Query parameters for GET /api/sessions/:id/messages
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 pub struct SessionMessagesQuery {
