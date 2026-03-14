@@ -1,20 +1,63 @@
 // sidecar/src/sdk-session.test.ts
-// Tests for waitForSessionInit — the async gate that prevents returning
-// empty sessionId from the create route.
+// Comprehensive V1 unit tests for sdk-session: waitForSessionInit, sendMessage,
+// closeSession, setSessionMode, and lifecycle integration.
 
 import { EventEmitter } from 'node:events'
+import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MessageBridge } from './message-bridge.js'
-import { waitForSessionInit } from './sdk-session.js'
+import { closeSession, sendMessage, setSessionMode, waitForSessionInit } from './sdk-session.js'
+import { SessionRegistry } from './session-registry.js'
 import type { ControlSession } from './session-registry.js'
+
+type MockQuery = Query & { unblock: () => void }
+
+function makeMockQuery(): MockQuery {
+  let blockResolve: (() => void) | null = null
+  const mock = {
+    [Symbol.asyncIterator]() {
+      return this
+    },
+    async next() {
+      // Block indefinitely until unblock() or close() is called
+      return new Promise<IteratorResult<unknown>>((resolve) => {
+        blockResolve = () => resolve({ done: true, value: undefined })
+      })
+    },
+    close: vi.fn(() => {
+      blockResolve?.()
+    }),
+    unblock: () => {
+      blockResolve?.()
+    },
+    return: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+    throw: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    setPermissionMode: vi.fn().mockResolvedValue(undefined),
+    setModel: vi.fn().mockResolvedValue(undefined),
+    setMaxThinkingTokens: vi.fn().mockResolvedValue(undefined),
+    supportedModels: vi.fn().mockResolvedValue([]),
+    supportedCommands: vi.fn().mockResolvedValue([]),
+    supportedAgents: vi.fn().mockResolvedValue([]),
+    mcpServerStatus: vi.fn().mockResolvedValue([]),
+    accountInfo: vi.fn().mockResolvedValue({}),
+    rewindFiles: vi.fn().mockResolvedValue({}),
+    reconnectMcpServer: vi.fn().mockResolvedValue(undefined),
+    toggleMcpServer: vi.fn().mockResolvedValue(undefined),
+    setMcpServers: vi.fn().mockResolvedValue({}),
+    stopTask: vi.fn().mockResolvedValue(undefined),
+    streamInput: vi.fn().mockResolvedValue(undefined),
+    initializationResult: vi.fn().mockResolvedValue({}),
+  } as unknown as MockQuery
+  return mock
+}
 
 function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
   return {
     controlId: 'ctrl-test',
     sessionId: '',
     model: 'claude-haiku-4-5-20251001',
-    // biome-ignore lint/suspicious/noExplicitAny: stub for testing
-    query: {} as any,
+    query: makeMockQuery(),
     bridge: new MessageBridge(),
     abort: new AbortController(),
     closeReason: undefined,
@@ -28,7 +71,7 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     eventBuffer: { push: vi.fn() } as any,
     nextSeq: 0,
     // biome-ignore lint/suspicious/noExplicitAny: stub for testing
-    permissions: {} as any,
+    permissions: { drainAll: vi.fn() } as any,
     ...overrides,
   }
 }
@@ -237,5 +280,188 @@ describe('waitForSessionInit', () => {
 
     await waitForSessionInit(cs)
     expect(cs.sessionId).toBe('instant-id')
+  })
+})
+
+describe('sendMessage', () => {
+  it('pushes user message to bridge and sets state to active', async () => {
+    const cs = makeStubCs({ sessionId: 'sess-1', state: 'waiting_input' })
+    sendMessage(cs, 'Hello, Claude')
+
+    expect(cs.state).toBe('active')
+
+    // Bridge should yield the pushed message
+    const result = await cs.bridge.next()
+    expect(result.done).toBe(false)
+    expect(result.value).toEqual({
+      type: 'user',
+      session_id: 'sess-1',
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'Hello, Claude' }],
+      },
+      parent_tool_use_id: null,
+    })
+  })
+
+  it('uses current sessionId in the message', async () => {
+    const cs = makeStubCs({ sessionId: 'abc-123' })
+    sendMessage(cs, 'test')
+
+    const result = await cs.bridge.next()
+    expect(result.value.session_id).toBe('abc-123')
+  })
+
+  it('sends multiple messages sequentially through bridge', async () => {
+    const cs = makeStubCs({ sessionId: 'sess-1' })
+    sendMessage(cs, 'first')
+    sendMessage(cs, 'second')
+
+    const r1 = await cs.bridge.next()
+    const r2 = await cs.bridge.next()
+    expect(r1.value.message.content[0].text).toBe('first')
+    expect(r2.value.message.content[0].text).toBe('second')
+  })
+})
+
+describe('closeSession', () => {
+  it('sets closeReason to user_closed', () => {
+    const registry = new SessionRegistry()
+    const cs = makeStubCs({ sessionId: 'sess-1', state: 'waiting_input' })
+    registry.register(cs)
+
+    closeSession(cs, registry)
+
+    expect(cs.closeReason).toBe('user_closed')
+  })
+
+  it('closes the bridge', () => {
+    const registry = new SessionRegistry()
+    const cs = makeStubCs({ sessionId: 'sess-1' })
+    registry.register(cs)
+
+    closeSession(cs, registry)
+
+    // Bridge should be closed — next() returns done: true
+    return cs.bridge.next().then((result) => {
+      expect(result.done).toBe(true)
+    })
+  })
+
+  it('calls query.return() to terminate the async generator', () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({ query: mockQuery, sessionId: 'sess-1' })
+    registry.register(cs)
+
+    closeSession(cs, registry)
+
+    expect(mockQuery.return).toHaveBeenCalledWith(undefined)
+  })
+
+  it('drains pending permissions', () => {
+    const registry = new SessionRegistry()
+    const drainAll = vi.fn()
+    const cs = makeStubCs({
+      sessionId: 'sess-1',
+      // biome-ignore lint/suspicious/noExplicitAny: stub for testing
+      permissions: { drainAll } as any,
+    })
+    registry.register(cs)
+
+    closeSession(cs, registry)
+
+    expect(drainAll).toHaveBeenCalled()
+  })
+
+  it('does not emit session_closed directly (left to runStreamLoop)', () => {
+    const registry = new SessionRegistry()
+    const cs = makeStubCs({ sessionId: 'sess-1' })
+    registry.register(cs)
+
+    const messages: unknown[] = []
+    cs.emitter.on('message', (msg) => messages.push(msg))
+
+    closeSession(cs, registry)
+
+    // closeSession does NOT emit session_closed — runStreamLoop handles it
+    const closedEvents = messages.filter(
+      (m) =>
+        typeof m === 'object' && m !== null && (m as { type: string }).type === 'session_closed',
+    )
+    expect(closedEvents).toHaveLength(0)
+  })
+})
+
+describe('setSessionMode', () => {
+  it('calls query.setPermissionMode when state is not active', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'waiting_input',
+    })
+    registry.register(cs)
+
+    await setSessionMode(cs, 'plan', registry)
+
+    expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('plan')
+  })
+
+  it('emits error when state is active', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'active',
+    })
+    registry.register(cs)
+
+    const messages: unknown[] = []
+    cs.emitter.on('message', (msg) => messages.push(msg))
+
+    await setSessionMode(cs, 'plan', registry)
+
+    // Should NOT have called setPermissionMode
+    expect(mockQuery.setPermissionMode).not.toHaveBeenCalled()
+
+    // Should have emitted a non-fatal error via registry.emitSequenced
+    expect(messages).toHaveLength(1)
+    const errorMsg = messages[0] as { type: string; fatal: boolean; message: string }
+    expect(errorMsg.type).toBe('error')
+    expect(errorMsg.fatal).toBe(false)
+    expect(errorMsg.message).toContain('Cannot change mode')
+  })
+
+  it('allows mode change in waiting_permission state', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'waiting_permission',
+    })
+    registry.register(cs)
+
+    await setSessionMode(cs, 'auto', registry)
+
+    expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('auto')
+  })
+
+  it('allows mode change in initializing state', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'initializing',
+    })
+    registry.register(cs)
+
+    await setSessionMode(cs, 'default', registry)
+
+    expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('default')
   })
 })
