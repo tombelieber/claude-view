@@ -1,6 +1,7 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
+import { MessageTimestamp } from '../shared/MessageTimestamp'
 
 interface UserBlockProps {
   block: UserBlockType
@@ -33,6 +34,7 @@ export function ChatUserBlock({ block }: UserBlockProps) {
           <p className="text-sm whitespace-pre-wrap break-words">{block.text}</p>
         </div>
         <div className="flex items-center justify-end gap-1.5 mt-1 px-1">
+          <MessageTimestamp timestamp={block.timestamp} align="right" />
           <StatusDot status={block.status} />
           {block.status === 'failed' && (
             <span className="text-[10px] text-red-500 dark:text-red-400">

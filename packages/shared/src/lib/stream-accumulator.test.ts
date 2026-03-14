@@ -51,6 +51,19 @@ describe('StreamAccumulator', () => {
     expect(assistant!.streaming).toBe(true)
   })
 
+  it('sets a timestamp on new assistant blocks', () => {
+    const before = Date.now() / 1000
+    const acc = makeAcc()
+    acc.push(ev('assistant_text', { text: 'Hi', messageId: 'a1', parentToolUseId: null }, 1))
+    const after = Date.now() / 1000
+
+    const blocks = acc.getBlocks()
+    const assistant = blocks.find((b) => b.type === 'assistant') as AssistantBlock
+    expect(assistant.timestamp).toBeDefined()
+    expect(assistant.timestamp).toBeGreaterThanOrEqual(before)
+    expect(assistant.timestamp).toBeLessThanOrEqual(after)
+  })
+
   it('creates separate text segments when parentToolUseId changes', () => {
     const acc = makeAcc()
     acc.push(ev('assistant_text', { text: 'top-level', messageId: 'a1', parentToolUseId: null }, 1))
