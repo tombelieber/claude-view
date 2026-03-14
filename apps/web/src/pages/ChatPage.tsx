@@ -2,7 +2,9 @@ import { useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
+import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
+import { ThinkingBudgetControl } from '../components/chat/ThinkingBudgetControl'
 import { ConversationThread } from '../components/conversation/ConversationThread'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
@@ -77,6 +79,10 @@ export function ChatPage() {
       /* noop */
     }
   }, [])
+
+  // Thinking budget (optimistic local state)
+  const [thinkingBudget, setThinkingBudget] = useState<number | null>(null)
+  const [mcpPanelOpen, setMcpPanelOpen] = useState(false)
 
   // Display mode persisted in localStorage
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
@@ -221,8 +227,40 @@ export function ChatPage() {
               </span>
             )}
           </div>
-          <ModeToggle mode={displayMode} onChange={handleModeChange} />
+          <div className="flex items-center gap-2">
+            {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
+              <ThinkingBudgetControl
+                value={thinkingBudget}
+                onChange={(tokens) => {
+                  setThinkingBudget(tokens)
+                  actions.setMaxThinkingTokens(tokens)
+                }}
+                disabled={!sessionInfo.isLive}
+              />
+            )}
+            {sessionInfo.capabilities?.includes('query_mcp_status') && (
+              <button
+                type="button"
+                onClick={() => setMcpPanelOpen((o) => !o)}
+                className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                MCP
+              </button>
+            )}
+            <ModeToggle mode={displayMode} onChange={handleModeChange} />
+          </div>
         </div>
+
+        {/* MCP Panel (collapsible) */}
+        {mcpPanelOpen && sessionInfo.capabilities?.includes('query_mcp_status') && (
+          <div className="border-b border-gray-200 dark:border-gray-800">
+            <McpPanel
+              queryMcpStatus={() => actions.queryMcpStatus()}
+              toggleMcp={(name, enabled) => actions.toggleMcp(name, enabled)}
+              reconnectMcp={(name) => actions.reconnectMcp(name)}
+            />
+          </div>
+        )}
 
         {/* Thread */}
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
@@ -248,7 +286,12 @@ export function ChatPage() {
                 <p className="text-sm mb-4">Send a message to begin.</p>
                 {!sessionId && (
                   <div className="flex justify-center">
-                    <ModelSelector model={selectedModel} onModelChange={handleModelChange} />
+                    <ModelSelector
+                      model={selectedModel}
+                      onModelChange={handleModelChange}
+                      isLive={sessionInfo.isLive}
+                      onSetModel={actions.setModel}
+                    />
                   </div>
                 )}
               </div>
