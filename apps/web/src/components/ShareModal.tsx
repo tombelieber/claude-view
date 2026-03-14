@@ -9,6 +9,7 @@ import { getAccessToken } from '../lib/supabase'
 import { cn } from '../lib/utils'
 // Use the SAME Message type as ConversationView (generated, not shared)
 import type { Message } from '../types/generated'
+import { DialogContent, DialogOverlay } from './ui/CenteredDialog'
 
 // NO sessionTitle prop — derived internally from messages + projectName
 interface ShareModalProps {
@@ -109,11 +110,8 @@ export function ShareModal({ sessionId, messages, projectName }: ShareModalProps
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-        <Dialog.Content
-          className="fixed z-[51] top-1/2 left-1/2 bg-white dark:bg-gray-900 rounded-lg p-6 w-full max-w-md shadow-xl"
-          style={{ transform: 'translate(-50%, -50%)' }}
-        >
+        <DialogOverlay className="bg-black/50" />
+        <DialogContent className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-md shadow-xl">
           <Dialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Share Conversation
           </Dialog.Title>
@@ -177,7 +175,7 @@ export function ShareModal({ sessionId, messages, projectName }: ShareModalProps
               </button>
             </div>
           ) : null}
-        </Dialog.Content>
+        </DialogContent>
       </Dialog.Portal>
     </Dialog.Root>
   )

@@ -1,5 +1,6 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import type { PluginInfo } from '../../types/generated'
+import { AlertDialogContent, AlertDialogOverlay } from '../ui/CenteredDialog'
 
 interface UninstallConfirmDialogProps {
   plugin: PluginInfo
@@ -27,11 +28,8 @@ export function UninstallConfirmDialog({
   return (
     <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <AlertDialog.Content
-          className="fixed z-[51] top-1/2 left-1/2 w-full max-w-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 shadow-xl"
-          style={{ transform: 'translate(-50%, -50%)' }}
-        >
+        <AlertDialogOverlay />
+        <AlertDialogContent className="max-w-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6 shadow-xl">
           <AlertDialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             Uninstall {plugin.name}?
           </AlertDialog.Title>
@@ -59,7 +57,7 @@ export function UninstallConfirmDialog({
               </button>
             </AlertDialog.Action>
           </div>
-        </AlertDialog.Content>
+        </AlertDialogContent>
       </AlertDialog.Portal>
     </AlertDialog.Root>
   )
