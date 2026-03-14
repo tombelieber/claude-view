@@ -20,6 +20,7 @@ interface CanUseToolOptions {
 interface PendingPermission {
   resolve: (result: PermissionResult) => void
   timer: ReturnType<typeof setTimeout> | null
+  originalInput: Record<string, unknown>
 }
 
 interface PendingQuestion {
@@ -28,6 +29,7 @@ interface PendingQuestion {
 
 interface PendingPlan {
   resolve: (result: PermissionResult) => void
+  originalInput: Record<string, unknown>
 }
 
 interface PendingElicitation {
@@ -107,6 +109,7 @@ export class PermissionHandler {
     return new Promise((resolve) => {
       this.plans.set(requestId, {
         resolve: (result) => resolve(result),
+        originalInput: input,
       })
 
       options.signal.addEventListener(
@@ -180,6 +183,7 @@ export class PermissionHandler {
       this.permissions.set(requestId, {
         resolve: (result) => resolve(result),
         timer,
+        originalInput: input,
       })
 
       options.signal.addEventListener(
@@ -223,7 +227,7 @@ export class PermissionHandler {
     this.permissions.delete(requestId)
     pending.resolve(
       allowed
-        ? { behavior: 'allow', updatedInput: {}, updatedPermissions }
+        ? { behavior: 'allow', updatedInput: pending.originalInput, updatedPermissions }
         : { behavior: 'deny', message: 'User denied' },
     )
     return true
@@ -243,7 +247,7 @@ export class PermissionHandler {
     this.plans.delete(requestId)
     pending.resolve(
       approved
-        ? { behavior: 'allow', updatedInput: {} }
+        ? { behavior: 'allow', updatedInput: pending.originalInput }
         : { behavior: 'deny', message: feedback ?? 'Plan rejected' },
     )
     return true
