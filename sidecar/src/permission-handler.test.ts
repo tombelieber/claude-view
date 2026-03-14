@@ -337,6 +337,170 @@ describe('PermissionHandler', () => {
     vi.useRealTimers()
   })
 
+  it('resolvePermission passes updatedPermissions through when provided', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    const promise = handler.handleCanUseTool(
+      'Bash',
+      { command: 'ls' },
+      { signal, toolUseID: 'tu_perm_up' },
+      emit,
+    )
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    const perms = [{ tool: 'Bash', permission: 'allow' as const }]
+    handler.resolvePermission(requestId, true, perms as never)
+
+    const result = await promise
+    expect(result.behavior).toBe('allow')
+    if (result.behavior === 'allow') {
+      expect(result.updatedInput).toEqual({ command: 'ls' })
+      expect(result.updatedPermissions).toBe(perms)
+    }
+  })
+
+  it('duplicate resolvePermission returns false (idempotent)', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const signal = new AbortController().signal
+
+    handler.handleCanUseTool('Bash', { command: 'ls' }, { signal, toolUseID: 'tu_dup' }, emit)
+
+    const requestId = (events[0] as Record<string, string>).requestId
+    expect(handler.resolvePermission(requestId, true)).toBe(true)
+    expect(handler.resolvePermission(requestId, true)).toBe(false) // already resolved
+  })
+
+  it('abort signal produces valid deny with message', async () => {
+    const handler = new PermissionHandler()
+    const events: unknown[] = []
+    const emit = (e: unknown) => {
+      events.push(e)
+    }
+    const ac = new AbortController()
+
+    const promise = handler.handleCanUseTool(
+      'Bash',
+      { command: 'ls' },
+      { signal: ac.signal, toolUseID: 'tu_abort' },
+      emit,
+    )
+
+    ac.abort()
+    const result = await promise
+    expect(result.behavior).toBe('deny')
+    if (result.behavior === 'deny') {
+      expect(typeof result.message).toBe('string')
+      expect(result.message?.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('drainAll produces valid PermissionResult shapes for all types', async () => {
+    const handler = new PermissionHandler()
+    const emit = () => {}
+    const signal = new AbortController().signal
+
+    const permPromise = handler.handleCanUseTool(
+      'Bash',
+      { cmd: 'x' },
+      { signal, toolUseID: '1' },
+      emit,
+    )
+    const questionPromise = handler.handleCanUseTool(
+      'AskUserQuestion',
+      { questions: [{ question: 'Q', header: 'H', options: [], multiSelect: false }] },
+      { signal, toolUseID: '2' },
+      emit,
+    )
+    const planPromise = handler.handleCanUseTool(
+      'ExitPlanMode',
+      { p: 1 },
+      { signal, toolUseID: '3' },
+      emit,
+    )
+    const elicitPromise = handler.handleCanUseTool(
+      'mcp__test__elicit',
+      { prompt: 'Enter:' },
+      { signal, toolUseID: '4' },
+      emit,
+    )
+
+    handler.drainAll()
+
+    const [perm, question, plan, elicit] = await Promise.all([
+      permPromise,
+      questionPromise,
+      planPromise,
+      elicitPromise,
+    ])
+
+    // Permission: deny with message
+    expect(perm.behavior).toBe('deny')
+    if (perm.behavior === 'deny') expect(typeof perm.message).toBe('string')
+
+    // Question: allow with updatedInput
+    expect(question.behavior).toBe('allow')
+    if (question.behavior === 'allow') expect(question.updatedInput).toBeDefined()
+
+    // Plan: deny with message
+    expect(plan.behavior).toBe('deny')
+    if (plan.behavior === 'deny') expect(typeof plan.message).toBe('string')
+
+    // Elicitation: allow with updatedInput
+    expect(elicit.behavior).toBe('allow')
+    if (elicit.behavior === 'allow') expect(elicit.updatedInput).toBeDefined()
+  })
+
+  it('drainInteractive produces valid shapes', async () => {
+    const handler = new PermissionHandler()
+    const emit = () => {}
+    const signal = new AbortController().signal
+
+    const questionPromise = handler.handleCanUseTool(
+      'AskUserQuestion',
+      { questions: [{ question: 'Q', header: 'H', options: [], multiSelect: false }] },
+      { signal, toolUseID: '5' },
+      emit,
+    )
+    const planPromise = handler.handleCanUseTool(
+      'ExitPlanMode',
+      { p: 1 },
+      { signal, toolUseID: '6' },
+      emit,
+    )
+    const elicitPromise = handler.handleCanUseTool(
+      'mcp__test__elicit2',
+      { prompt: 'Name?' },
+      { signal, toolUseID: '7' },
+      emit,
+    )
+
+    handler.drainInteractive()
+
+    const [question, plan, elicit] = await Promise.all([
+      questionPromise,
+      planPromise,
+      elicitPromise,
+    ])
+
+    expect(question.behavior).toBe('allow')
+    if (question.behavior === 'allow') expect(question.updatedInput).toBeDefined()
+
+    expect(plan.behavior).toBe('deny')
+    if (plan.behavior === 'deny') expect(typeof plan.message).toBe('string')
+
+    expect(elicit.behavior).toBe('allow')
+    if (elicit.behavior === 'allow') expect(elicit.updatedInput).toBeDefined()
+  })
+
   it('does NOT route standard tools with prompt field to elicitation (heuristic boundary)', async () => {
     const handler = new PermissionHandler()
     const events: unknown[] = []
