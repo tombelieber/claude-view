@@ -118,6 +118,9 @@ mod tests {
             monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(crate::routes::plugin_ops::PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(
+                crate::routes::marketplace_refresh::MarketplaceRefreshTracker::new(),
+            ),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),

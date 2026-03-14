@@ -10,6 +10,7 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
 use crate::live::state::SessionEvent;
+use crate::routes::marketplace_refresh::MarketplaceRefreshTracker;
 use crate::routes::oauth::OAuthUsageResponse;
 use crate::routes::plugin_ops::PluginOpQueue;
 use crate::routes::plugins::CliAvailableResponse;
@@ -155,6 +156,8 @@ pub struct AppState {
     pub plugin_op_queue: Arc<PluginOpQueue>,
     /// Notify channel to wake the plugin op worker when new ops are enqueued.
     pub plugin_op_notify: Arc<tokio::sync::Notify>,
+    /// Marketplace refresh tracker for batch update operations.
+    pub marketplace_refresh: Arc<MarketplaceRefreshTracker>,
     /// Transcript path → session ID map for dedup (used by statusline handler).
     /// Prevents duplicate sessions when Claude Code restarts with a new session ID
     /// but the same transcript file path.
@@ -207,6 +210,7 @@ impl AppState {
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
@@ -255,6 +259,7 @@ impl AppState {
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
@@ -306,6 +311,7 @@ impl AppState {
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }

@@ -239,6 +239,13 @@ export type { MarketplaceInfo } from './MarketplaceInfo'
 export type { MarketplaceActionRequest } from './MarketplaceActionRequest'
 export type { UserItemInfo } from './UserItemInfo'
 
+// Marketplace refresh types
+export type { RefreshStatus } from './RefreshStatus'
+export type { RefreshOp } from './RefreshOp'
+export type { RefreshAllRequest } from './RefreshAllRequest'
+export type { RefreshAllResponse } from './RefreshAllResponse'
+export type { RefreshStatusResponse } from './RefreshStatusResponse'
+
 // IDE types (Open in IDE)
 export type { IdeInfo } from './IdeInfo'
 export type { IdeDetectResponse } from './IdeDetectResponse'
