@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AssistantBlock, UserBlock } from '../types/blocks'
+import type { AssistantBlock, SystemBlock, UserBlock } from '../types/blocks'
 import { historyToBlocks } from './history-to-blocks'
 
 // Local interface for the historical message shape (matches generated Message type)
@@ -145,5 +145,53 @@ describe('historyToBlocks', () => {
     ])
     const ids = blocks.map((b) => b.id)
     expect(new Set(ids).size).toBe(2)
+  })
+
+  it('propagates raw_json to UserBlock.rawJson', () => {
+    const raw = { type: 'user', uuid: 'u1', extra_field: 42 }
+    const blocks = historyToBlocks([
+      { role: 'user', content: 'hi', uuid: 'u1', raw_json: raw } as any,
+    ])
+    const block = blocks[0] as UserBlock
+    expect(block.rawJson).toEqual(raw)
+  })
+
+  it('propagates raw_json to AssistantBlock.rawJson', () => {
+    const raw = { type: 'assistant', uuid: 'a1', message: {} }
+    const blocks = historyToBlocks([
+      { role: 'assistant', content: 'Sure', uuid: 'a1', raw_json: raw } as any,
+    ])
+    const block = blocks[0] as AssistantBlock
+    expect(block.rawJson).toEqual(raw)
+  })
+
+  it('converts system message to SystemBlock with rawJson', () => {
+    const raw = { type: 'system', subtype: 'api_error', error: { message: 'rate limited' } }
+    const blocks = historyToBlocks([
+      {
+        role: 'system',
+        content: 'Error',
+        uuid: 's1',
+        metadata: { subtype: 'api_error' },
+        raw_json: raw,
+      } as any,
+    ])
+    expect(blocks).toHaveLength(1)
+    const block = blocks[0] as SystemBlock
+    expect(block.type).toBe('system')
+    expect(block.variant).toBe('unknown')
+    expect(block.rawJson).toEqual(raw)
+  })
+
+  it('converts progress message to SystemBlock with rawJson', () => {
+    const raw = { type: 'progress', data: { type: 'bash_progress' } }
+    const blocks = historyToBlocks([
+      { role: 'progress', content: 'Running...', uuid: 'p1', raw_json: raw } as any,
+    ])
+    expect(blocks).toHaveLength(1)
+    const block = blocks[0] as SystemBlock
+    expect(block.type).toBe('system')
+    expect(block.variant).toBe('unknown')
+    expect(block.rawJson).toEqual(raw)
   })
 })
