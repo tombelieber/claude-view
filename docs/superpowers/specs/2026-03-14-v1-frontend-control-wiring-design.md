@@ -36,26 +36,32 @@ class SessionChannel {
   send(msg: ClientMessage): void
 
   /**
-   * Request/response. Sends msg, returns Promise that resolves when a matching
-   * response arrives. Rejects on timeout (default 10s) or WS disconnect.
+   * Request/response. Attaches a unique `requestId` (crypto.randomUUID()) to the
+   * message, sends it, and returns a Promise that resolves when a response with
+   * the matching `requestId` arrives. Rejects on timeout (default 10s) or WS disconnect.
    *
-   * Deduplicates: if a request with the same responseKey is already in-flight,
-   * returns the existing Promise instead of sending a duplicate message.
+   * No deduplication — every call sends a fresh WS message and gets its own response.
+   * Concurrent queries of the same type are allowed (each has a unique requestId).
+   *
+   * Pattern: JSON-RPC `id` field (LSP, Ethereum), Discord Gateway `nonce`,
+   * Phoenix Channels `ref`. Per-request correlation is the industry standard.
    */
-  request<T>(msg: ClientMessage, responseKey: string, timeoutMs?: number): Promise<T>
+  request<T>(msg: ClientMessage, timeoutMs?: number): Promise<T>
 
   /** Called by use-session-source.ts when a response event arrives. */
-  handleResponse(responseKey: string, data: unknown): void
+  handleResponse(requestId: string, data: unknown): void
 
   /** Called on WS disconnect. Rejects all pending promises. */
   handleDisconnect(): void
 }
 ```
 
+**requestId protocol:** Every `request()` call attaches `requestId: crypto.randomUUID()` to the outgoing message. The sidecar echoes the `requestId` in the response. This requires a small sidecar change — see "Sidecar Changes" section below.
+
 Response routing in `use-session-source.ts`:
-- `query_result` → `channel.handleResponse(event.queryType, event.data)`
-- `rewind_result` → `channel.handleResponse('rewind', event.result)`
-- `mcp_set_result` → `channel.handleResponse('mcp_set', event.result)`
+- `query_result` → `channel.handleResponse(event.requestId, event.data)`
+- `rewind_result` → `channel.handleResponse(event.requestId, event.result)`
+- `mcp_set_result` → `channel.handleResponse(event.requestId, event.result)`
 
 ### Method Classification
 
@@ -201,16 +207,54 @@ On slash menu open, if commands/agents data is older than 60s, fire `actions.que
 |----------|----------|
 | WS disconnects mid-request | All pending promises reject with `ChannelDisconnected`. Components show toast. |
 | Request timeout (10s default) | Promise rejects with `QueryTimeout`. Caller decides retry vs error UI. |
-| Duplicate in-flight query (same responseKey) | Returns existing pending promise. No duplicate WS message. |
+| Concurrent queries (same type) | Each gets a unique `requestId` — no dedup, no stale data risk. |
 | Session not active | `send()` queues (existing lazy-send). `request()` rejects immediately. |
 | `set_model` while streaming | Sidecar queues it — SDK applies on next turn. No frontend guard. |
 | `interrupt` when idle | No-op at sidecar. No error. |
-| Older CLI version | Sidecar returns `{ type: 'error', fatal: false }`. Channel catches, toast shows "Feature requires Claude Code v0.19+". |
+| Older CLI version | Frontend checks `capabilities` array from `session_init`. If method not in capabilities, UI is hidden (not rendered). No string-matching error messages. See "Capability Negotiation" section. |
+| Fire-and-forget error | Sidecar `sendError()` includes method context in message (e.g., `"setModel failed: unknown model"`). Arrives as generic `{ type: 'error', fatal: false }` — displayed as toast. Caller has no direct error callback. |
 
 State consistency:
 - `set_model`: **Optimistic** update (instant UI), confirmed by next `turn_complete`
 - MCP operations: **Confirmed** — wait for `queryMcpStatus()` refresh after toggle/reconnect
 - `set_max_thinking_tokens`: **Optimistic** (setting stored locally, applied on next turn)
+
+### Capability Negotiation
+
+The sidecar adds a `capabilities` array to the `session_init` event listing all supported V1 control methods:
+
+```typescript
+// In session_init event (event-mapper.ts, case 'init'):
+capabilities: ['interrupt', 'set_model', 'set_max_thinking_tokens', 'stop_task',
+  'query_models', 'query_commands', 'query_agents', 'query_mcp_status',
+  'query_account_info', 'reconnect_mcp', 'toggle_mcp', 'set_mcp_servers', 'rewind_files']
+```
+
+Frontend checks `capabilities.includes('interrupt')` before rendering the stop button, `capabilities.includes('rewind_files')` before rendering RewindButton, etc. This replaces fragile error-message parsing with structured feature detection.
+
+**Precedent:** HTTP `Accept` headers, GraphQL introspection, WebSocket subprotocols, LSP `ServerCapabilities`. Capability negotiation is the industry standard for feature detection across versioned protocols.
+
+If `capabilities` is absent (older sidecar without this field), the frontend treats all 13 methods as unavailable — graceful degradation with zero string matching.
+
+### MCP Panel Refresh Timing
+
+After `toggleMcp()` or `reconnectMcp()` (fire-and-forget), the MCP panel must refresh status. The sidecar `await`s the SDK call before returning, so by the time the WS message handler completes, the toggle has taken effect. However, the fire-and-forget `send()` provides no completion signal to the frontend.
+
+**Solution:** The MCP panel uses a 500ms debounced refresh after any toggle/reconnect action. This gives the sidecar time to process the SDK call before the status query arrives. The debounce coalesces rapid toggles (user clicking multiple servers) into a single refresh.
+
+```typescript
+// McpPanel.tsx
+const debouncedRefresh = useDebouncedCallback(() => {
+  refresh() // calls queryMcpStatus()
+}, 500)
+
+const handleToggle = (name: string, enabled: boolean) => {
+  actions.toggleMcp(name, enabled)
+  debouncedRefresh()
+}
+```
+
+**Why not make toggle/reconnect request/response?** The sidecar WS handler doesn't send a response for these methods — it only `await`s the SDK call and catches errors. Adding responses would require sidecar changes for minimal benefit. The debounced refresh is simpler and handles the batching case (multiple toggles) naturally.
 
 ### Unified Model Catalog Interaction
 
@@ -219,6 +263,45 @@ The `query_models` WS method returns SDK model info (display names, descriptions
 - **ModelSelector** continues to use `GET /api/models` as its primary data source
 - `query_models` is used to refresh SDK display names mid-session if needed (e.g., after CLI update)
 - No replacement of the unified catalog — it has data the SDK doesn't provide
+
+## Sidecar Changes (Small — requestId echo + capabilities)
+
+Despite the V1 migration being "complete," this spec requires two small sidecar modifications:
+
+### 1. Echo requestId on query/mutation responses (~10 lines)
+
+The WS handler must read `requestId` from incoming messages and include it in responses:
+
+```typescript
+// ws-handler.ts — for each query/mutation case:
+case 'query_models':
+  try {
+    const models = await session.query.supportedModels()
+    ws.send(JSON.stringify({ type: 'query_result', queryType: 'models', data: models, requestId: msg.requestId }))
+  } catch (err) { sendError(ws, err) }
+  break
+```
+
+Same pattern for all 7 response-bearing methods. The `requestId` field is optional — if absent (older frontend), the response still works (frontend without SessionChannel ignores it).
+
+### 2. Add capabilities to session_init (~5 lines)
+
+In `event-mapper.ts`, the `case 'init':` handler adds a static `capabilities` array:
+
+```typescript
+capabilities: ['interrupt', 'set_model', 'set_max_thinking_tokens', 'stop_task',
+  'query_models', 'query_commands', 'query_agents', 'query_mcp_status',
+  'query_account_info', 'reconnect_mcp', 'toggle_mcp', 'set_mcp_servers', 'rewind_files'],
+```
+
+This is a static list (not dynamically computed from the SDK) because the sidecar WS handler is the layer that supports these methods — it always supports all of them. Future versions can conditionally omit methods if needed.
+
+### 3. Protocol types update (~3 lines)
+
+Add to `protocol.ts`:
+- `requestId?: string` on `QueryResult`, `RewindResult`, `McpSetResult`
+- `capabilities?: string[]` on `SessionInit`
+- `requestId?: string` on all `ClientMessage` types that use `request()`
 
 ## File Impact
 
@@ -244,18 +327,26 @@ The `query_models` WS method returns SDK model info (display names, descriptions
 | Task progress block component | Add cancel button with stopTask action |
 | User message block component | Add RewindButton hover overlay |
 
+### Small sidecar modifications
+| File | Change |
+|------|--------|
+| `sidecar/src/ws-handler.ts` | Echo `requestId` in query/mutation responses (~10 lines) |
+| `sidecar/src/event-mapper.ts` | Add `capabilities` array to session_init (~3 lines) |
+| `sidecar/src/protocol.ts` | Add `requestId?` to response types, `capabilities?` to SessionInit (~5 lines) |
+| `packages/shared/src/types/sidecar-protocol.ts` | Mirror protocol.ts changes (~5 lines) |
+
 ### No changes
 | File | Reason |
 |------|--------|
-| All sidecar code | V1 handlers already complete from migration |
 | All Rust server code | Not involved in WS control surface |
-| `packages/shared/src/types/sidecar-protocol.ts` | Types already added in migration |
+| `sidecar/src/sdk-session.ts` | Session lifecycle unchanged |
+| `sidecar/src/message-bridge.ts` | Transport unchanged |
 
 ## Testing Strategy
 
 | Layer | Test Type | Coverage |
 |-------|-----------|----------|
-| `SessionChannel` | Unit (Vitest) | send, request, timeout, dedup, disconnect cleanup |
+| `SessionChannel` | Unit (Vitest) | send, request with requestId correlation, timeout, concurrent queries, disconnect cleanup |
 | `use-session-channel` | Hook test (RTL) | mount/unmount cleanup, re-render on response |
 | `useWsQuery` | Hook test (RTL) | loading states, refresh, error handling |
 | `useSessionActions` (new methods) | Unit | Verify correct message shape per method |
@@ -263,4 +354,6 @@ The `query_models` WS method returns SDK model info (display names, descriptions
 | `RewindButton` | Component test | Dry-run → preview → confirm → execute flow |
 | `ThinkingBudgetControl` | Component test | Preset selection, null default |
 | `ModelSelector` (live switch) | Component test | set_model when live, resume when not |
-| Integration | E2E (sidecar infra) | Send query via WS → verify response roundtrip |
+| Capability gating | Component test | Methods hidden when not in capabilities, shown when present |
+| requestId echo | Unit (sidecar) | Verify all 7 response types include requestId from request |
+| Integration | E2E (sidecar infra) | Send query with requestId → verify requestId echoed in response |
