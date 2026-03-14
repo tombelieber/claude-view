@@ -267,7 +267,7 @@ pub fn compute_stats(entries: &[PromptEntry]) -> PromptStats {
         .into_iter()
         .map(|(name, count)| ProjectCount { name, count })
         .collect();
-    top_projects.sort_by(|a, b| b.count.cmp(&a.count));
+    top_projects.sort_by_key(|p| std::cmp::Reverse(p.count));
     top_projects.truncate(15);
 
     PromptStats {

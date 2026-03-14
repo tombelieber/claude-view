@@ -116,7 +116,7 @@ pub fn grep_files(files: &[JsonlFile], opts: &GrepOptions) -> Result<GrepRespons
     let total = total_matches.load(Ordering::Relaxed);
     let truncated = limit_reached.load(Ordering::Relaxed);
     let mut results = session_hits.into_inner().unwrap();
-    results.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    results.sort_by_key(|r| std::cmp::Reverse(r.modified_at));
 
     Ok(GrepResponse {
         pattern: opts.pattern.clone(),

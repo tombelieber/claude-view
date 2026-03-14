@@ -152,7 +152,7 @@ pub fn unified_search(
                     })
                     .collect();
 
-                sessions.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+                sessions.sort_by_key(|s| std::cmp::Reverse(s.modified_at));
                 let total_sessions = sessions.len();
                 let total_matches: usize = sessions.iter().map(|s| s.match_count).sum();
                 sessions.truncate(opts.limit);

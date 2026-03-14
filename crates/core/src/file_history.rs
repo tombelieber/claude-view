@@ -229,7 +229,7 @@ pub fn scan_file_history(
     }
 
     // Sort by version count descending (most-edited first)
-    files.sort_by(|a, b| b.versions.len().cmp(&a.versions.len()));
+    files.sort_by_key(|f| std::cmp::Reverse(f.versions.len()));
 
     FileHistoryResponse {
         session_id: session_id.to_string(),
