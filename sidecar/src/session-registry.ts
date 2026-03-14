@@ -1,6 +1,7 @@
 // sidecar/src/session-registry.ts
 import type { EventEmitter } from 'node:events'
-import type { SDKSession } from '@anthropic-ai/claude-agent-sdk'
+import type { Query } from '@anthropic-ai/claude-agent-sdk'
+import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
 import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
 import type { RingBuffer } from './ring-buffer.js'
@@ -18,7 +19,10 @@ export interface ControlSession {
   controlId: string
   sessionId: string
   model: string
-  sdkSession: SDKSession
+  query: Query
+  bridge: MessageBridge
+  abort: AbortController
+  closeReason?: string
   state: SessionState
   totalCostUsd: number
   turnCount: number
@@ -80,8 +84,10 @@ export class SessionRegistry {
 
   async closeAll(): Promise<void> {
     for (const cs of this.sessions.values()) {
+      cs.closeReason = 'shutdown'
       cs.permissions.drainAll()
-      cs.sdkSession.close()
+      cs.bridge.close()
+      cs.query.close()
     }
     this.sessions.clear()
   }
