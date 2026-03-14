@@ -33,8 +33,12 @@ export interface AssistantError {
 
 export interface StreamDelta {
   type: 'stream_delta'
-  event: unknown // BetaRawMessageStreamEvent — forward compat
-  messageId: string
+  event: unknown // Raw BetaRawMessageStreamEvent
+  messageId: string // UUID — groups deltas to their parent message
+  deltaType: string // 'content_block_start' | 'content_block_delta' | etc.
+  textDelta?: string // Pre-extracted text for rendering
+  thinkingDelta?: string // Pre-extracted thinking text
+  toolInputDelta?: string // Pre-extracted tool input JSON fragment
 }
 
 export interface ToolUseStart {
@@ -115,6 +119,7 @@ export interface TurnError {
 
 export interface SessionInit {
   type: 'session_init'
+  sessionId?: string // NEW — optional during transition; populated from SDK message session_id
   tools: string[]
   model: string
   mcpServers: { name: string; status: string }[]
@@ -382,6 +387,62 @@ export interface SetModeMsg {
   mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 }
 
+// Session control
+export interface InterruptMsg {
+  type: 'interrupt'
+}
+export interface SetModelMsg {
+  type: 'set_model'
+  model: string
+}
+export interface SetMaxThinkingTokensMsg {
+  type: 'set_max_thinking_tokens'
+  maxThinkingTokens: number | null
+}
+export interface StopTaskMsg {
+  type: 'stop_task'
+  taskId: string
+}
+
+// Info queries
+export interface QueryModelsMsg {
+  type: 'query_models'
+}
+export interface QueryCommandsMsg {
+  type: 'query_commands'
+}
+export interface QueryAgentsMsg {
+  type: 'query_agents'
+}
+export interface QueryMcpStatusMsg {
+  type: 'query_mcp_status'
+}
+export interface QueryAccountInfoMsg {
+  type: 'query_account_info'
+}
+
+// MCP management
+export interface ReconnectMcpMsg {
+  type: 'reconnect_mcp'
+  serverName: string
+}
+export interface ToggleMcpMsg {
+  type: 'toggle_mcp'
+  serverName: string
+  enabled: boolean
+}
+export interface SetMcpServersMsg {
+  type: 'set_mcp_servers'
+  servers: Record<string, unknown>
+}
+
+// File management
+export interface RewindFilesMsg {
+  type: 'rewind_files'
+  userMessageId: string
+  dryRun?: boolean
+}
+
 export type ClientMessage =
   | UserMessage
   | PermissionResponse
@@ -391,6 +452,39 @@ export type ClientMessage =
   | ResumeMsg
   | PingMsg
   | SetModeMsg
+  // Session control
+  | InterruptMsg
+  | SetModelMsg
+  | SetMaxThinkingTokensMsg
+  | StopTaskMsg
+  // Info queries
+  | QueryModelsMsg
+  | QueryCommandsMsg
+  | QueryAgentsMsg
+  | QueryMcpStatusMsg
+  | QueryAccountInfoMsg
+  // MCP management
+  | ReconnectMcpMsg
+  | ToggleMcpMsg
+  | SetMcpServersMsg
+  // File management
+  | RewindFilesMsg
+
+// ─── Direct WS Reply Types (NOT in ServerEvent union) ────────────
+
+export interface QueryResult {
+  type: 'query_result'
+  queryType: string
+  data: unknown
+}
+export interface RewindResult {
+  type: 'rewind_result'
+  result: unknown
+}
+export interface McpSetResult {
+  type: 'mcp_set_result'
+  result: unknown
+}
 
 // ─── HTTP Request/Response Types ──────────────────────────────────
 
