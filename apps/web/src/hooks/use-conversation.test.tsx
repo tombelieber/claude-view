@@ -24,6 +24,8 @@ vi.mock('./use-session-source', () => ({
     permissionMode: 'default',
     skills: [],
     agents: [],
+    channel: null,
+    capabilities: [],
   }),
 }))
 
@@ -76,6 +78,8 @@ describe('useConversation block merging', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -136,6 +140,8 @@ describe('useConversation block merging', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -208,6 +214,8 @@ describe('useConversation block merging', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -247,6 +255,8 @@ describe('useConversation block merging', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -309,6 +319,8 @@ describe('sessionInfo includes palette fields', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
@@ -332,6 +344,8 @@ describe('sessionInfo includes palette fields', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
@@ -355,6 +369,8 @@ describe('sessionInfo includes palette fields', () => {
       permissionMode: 'default',
       skills: [],
       agents: [],
+      channel: null,
+      capabilities: [],
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
