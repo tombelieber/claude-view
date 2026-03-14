@@ -7,6 +7,10 @@ interface GaugeCardProps {
   unit?: string
   detail?: string
   formatValue?: (v: number) => string
+  /** Override automatic bar color (bypasses red/amber/green threshold logic). */
+  barColor?: string
+  /** Override automatic value text color. */
+  valueColor?: string
 }
 
 function defaultFormat(v: number): string {
@@ -25,7 +29,16 @@ function gaugeTextColor(pct: number): string {
   return 'text-green-600 dark:text-green-400'
 }
 
-export function GaugeCard({ label, value, max, unit = '%', detail, formatValue }: GaugeCardProps) {
+export function GaugeCard({
+  label,
+  value,
+  max,
+  unit = '%',
+  detail,
+  formatValue,
+  barColor,
+  valueColor,
+}: GaugeCardProps) {
   const pct = max > 0 ? (value / max) * 100 : 0
   const tweenedPct = useTweenedValue(pct)
   const displayValue = (formatValue ?? defaultFormat)(value)
@@ -38,13 +51,13 @@ export function GaugeCard({ label, value, max, unit = '%', detail, formatValue }
         </p>
         {detail && <p className="text-xs text-gray-400 dark:text-gray-500">{detail}</p>}
       </div>
-      <p className={`text-2xl font-semibold mt-1 ${gaugeTextColor(pct)}`}>
+      <p className={`text-2xl font-semibold mt-1 ${valueColor ?? gaugeTextColor(pct)}`}>
         {displayValue}
         <span className="text-sm font-normal ml-0.5">{unit}</span>
       </p>
       <div className="mt-2 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-colors ${gaugeColor(pct)}`}
+          className={`h-full rounded-full transition-colors ${barColor ?? gaugeColor(pct)}`}
           style={{ width: `${Math.min(tweenedPct, 100)}%` }}
         />
       </div>
