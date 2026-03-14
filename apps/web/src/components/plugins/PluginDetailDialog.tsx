@@ -5,6 +5,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../../lib/utils'
 import type { AvailablePlugin, PluginInfo, PluginItem } from '../../types/generated'
+import { DialogContent, DialogOverlay } from '../ui/CenteredDialog'
 import { AppleToggle } from './AppleToggle'
 import { formatInstallCount, formatRelativeTime } from './format-helpers'
 import { marketplaceDotColor } from './marketplace-colors'
@@ -644,7 +645,6 @@ export function PluginDetailDialog({
   }, [open, installed, plugin])
 
   const contentClass = cn(
-    'fixed z-[51] top-1/2 left-1/2',
     'w-[90vw] max-h-[85vh] flex flex-col rounded-2xl border border-apple-sep bg-white shadow-2xl overflow-hidden',
     installed ? 'max-w-4xl' : 'max-w-lg',
   )
@@ -652,12 +652,8 @@ export function PluginDetailDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/30" />
-        <Dialog.Content
-          className={contentClass}
-          style={{ transform: 'translate(-50%, -50%)' }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <DialogOverlay className="bg-black/30" />
+        <DialogContent className={contentClass} onClick={(e) => e.stopPropagation()}>
           <DialogHeader
             plugin={plugin}
             installed={installed}
@@ -690,7 +686,7 @@ export function PluginDetailDialog({
               />
             )}
           </div>
-        </Dialog.Content>
+        </DialogContent>
       </Dialog.Portal>
     </Dialog.Root>
   )

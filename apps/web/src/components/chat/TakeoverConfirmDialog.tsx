@@ -1,5 +1,6 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { AlertTriangle } from 'lucide-react'
+import { AlertDialogContent, AlertDialogOverlay } from '../ui/CenteredDialog'
 
 interface TakeoverConfirmDialogProps {
   open: boolean
@@ -11,11 +12,8 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
   return (
     <AlertDialog.Root open={open} onOpenChange={(v) => !v && onCancel()}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 bg-black/50 dark:bg-black/70" />
-        <AlertDialog.Content
-          className="fixed z-[51] left-1/2 top-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 focus:outline-none"
-          style={{ transform: 'translate(-50%, -50%)' }}
-        >
+        <AlertDialogOverlay className="bg-black/50 dark:bg-black/70" />
+        <AlertDialogContent className="max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6">
           <AlertDialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
             Take Control?
@@ -46,7 +44,7 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
               </button>
             </AlertDialog.Action>
           </div>
-        </AlertDialog.Content>
+        </AlertDialogContent>
       </AlertDialog.Portal>
     </AlertDialog.Root>
   )

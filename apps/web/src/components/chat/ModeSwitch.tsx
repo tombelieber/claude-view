@@ -4,6 +4,7 @@ import { ChevronDown, ClipboardList, FileEdit, Shield, ShieldOff, SkipForward } 
 import { useState } from 'react'
 import { cn } from '../../lib/utils'
 import type { PermissionMode } from '../../types/control'
+import { AlertDialogContent, AlertDialogOverlay } from '../ui/CenteredDialog'
 
 interface ModeSwitchProps {
   mode: PermissionMode
@@ -151,11 +152,8 @@ export function ModeSwitch({ mode, onModeChange, disabled }: ModeSwitchProps) {
 
       <AlertDialog.Root open={confirmBypass} onOpenChange={setConfirmBypass}>
         <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/40 animate-in fade-in-0" />
-          <AlertDialog.Content
-            className="fixed left-1/2 top-1/2 z-[51] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm mx-4 animate-in fade-in-0 zoom-in-95"
-            style={{ transform: 'translate(-50%, -50%)' }}
-          >
+          <AlertDialogOverlay className="animate-in fade-in-0" />
+          <AlertDialogContent className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-6 max-w-sm mx-4 animate-in fade-in-0 zoom-in-95">
             <AlertDialog.Title className="flex items-center gap-2 mb-3">
               <ShieldOff className="w-5 h-5 text-red-500" />
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -185,7 +183,7 @@ export function ModeSwitch({ mode, onModeChange, disabled }: ModeSwitchProps) {
                 </button>
               </AlertDialog.Action>
             </div>
-          </AlertDialog.Content>
+          </AlertDialogContent>
         </AlertDialog.Portal>
       </AlertDialog.Root>
     </>
