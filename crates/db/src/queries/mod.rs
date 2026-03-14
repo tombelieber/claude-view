@@ -2,6 +2,7 @@
 // Session CRUD operations for the claude-view SQLite database.
 
 mod ai_generation;
+mod catalog;
 mod classification;
 mod dashboard;
 pub mod facets;
@@ -12,6 +13,7 @@ mod models;
 pub mod reports;
 pub(crate) mod row_types;
 pub mod search_prefilter;
+mod seed;
 pub mod sessions;
 pub mod settings;
 mod system;

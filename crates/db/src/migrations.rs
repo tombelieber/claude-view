@@ -734,6 +734,14 @@ COMMIT;"#,
     r#"ALTER TABLE sessions ADD COLUMN closed_at INTEGER;"#,
     // Migration 56: dismissed_at — set when user explicitly dismisses from recently-closed list.
     r#"ALTER TABLE sessions ADD COLUMN dismissed_at INTEGER;"#,
+    // Migration 57: model catalog columns — display metadata + context window from LiteLLM/SDK.
+    r#"BEGIN;
+ALTER TABLE models ADD COLUMN display_name TEXT;
+ALTER TABLE models ADD COLUMN description TEXT;
+ALTER TABLE models ADD COLUMN max_input_tokens INTEGER;
+ALTER TABLE models ADD COLUMN max_output_tokens INTEGER;
+ALTER TABLE models ADD COLUMN updated_at INTEGER DEFAULT 0;
+COMMIT;"#,
 ];
 
 // ============================================================================
