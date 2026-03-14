@@ -158,7 +158,7 @@ impl MarketplaceRefreshTracker {
             active: inner.batch_active
                 && inner
                     .batch_started_at
-                    .map_or(false, |s| s.elapsed() < STALENESS_TTL),
+                    .is_some_and(|s| s.elapsed() < STALENESS_TTL),
             ops: inner.ops.clone(),
         }
     }
