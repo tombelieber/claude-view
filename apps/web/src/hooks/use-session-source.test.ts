@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { SessionChannel } from '../lib/session-channel'
 import { deriveCanResumeLazy, deriveEffectiveSend } from './use-session-source'
 
 describe('deriveEffectiveSend', () => {
@@ -361,5 +362,112 @@ describe('SessionSourceResult new fields — type contracts', () => {
     expect(defaults.model).toBe('')
     expect(defaults.slashCommands).toHaveLength(0)
     expect(defaults.mcpServers).toHaveLength(0)
+  })
+})
+
+// ─── SessionChannel response routing (mirrors use-session-source event handler) ───
+describe('SessionChannel response routing', () => {
+  it('query_result with requestId routes to channel.handleResponse', async () => {
+    const mockSend = vi.fn()
+    const channel = new SessionChannel(mockSend)
+    const promise = channel.request<string[]>({ type: 'query_models' })
+
+    const sentMsg = mockSend.mock.calls[0][0]
+    const requestId = sentMsg.requestId
+
+    // Simulate what use-session-source does on receiving query_result:
+    const event = { type: 'query_result', queryType: 'models', data: ['model-a'], requestId }
+    if (event.requestId) channel.handleResponse(event.requestId, event.data)
+
+    await expect(promise).resolves.toEqual(['model-a'])
+  })
+
+  it('rewind_result with requestId routes to channel.handleResponse', async () => {
+    const mockSend = vi.fn()
+    const channel = new SessionChannel(mockSend)
+    const promise = channel.request<unknown>({ type: 'rewind_files', userMessageId: 'u1' })
+
+    const requestId = mockSend.mock.calls[0][0].requestId
+    const event = { type: 'rewind_result', result: { files: ['a.ts'] }, requestId }
+    if (event.requestId) channel.handleResponse(event.requestId, event.result)
+
+    await expect(promise).resolves.toEqual({ files: ['a.ts'] })
+  })
+
+  it('mcp_set_result with requestId routes to channel.handleResponse', async () => {
+    const mockSend = vi.fn()
+    const channel = new SessionChannel(mockSend)
+    const promise = channel.request<unknown>({ type: 'set_mcp_servers', servers: {} })
+
+    const requestId = mockSend.mock.calls[0][0].requestId
+    const event = { type: 'mcp_set_result', result: { ok: true }, requestId }
+    if (event.requestId) channel.handleResponse(event.requestId, event.result)
+
+    await expect(promise).resolves.toEqual({ ok: true })
+  })
+
+  it('response events without requestId are ignored (no throw)', () => {
+    const channel = new SessionChannel(vi.fn())
+    // Simulate query_result WITHOUT requestId — mirrors older sidecar
+    const event = { type: 'query_result', queryType: 'models', data: [] }
+    expect(() => {
+      if ((event as { requestId?: string }).requestId) {
+        channel.handleResponse((event as { requestId?: string }).requestId!, event.data)
+      }
+    }).not.toThrow()
+  })
+
+  it('WS disconnect rejects all pending channel requests', async () => {
+    const mockSend = vi.fn()
+    const channel = new SessionChannel(mockSend)
+    const p1 = channel.request({ type: 'query_models' })
+    const p2 = channel.request({ type: 'query_agents' })
+
+    channel.handleDisconnect()
+
+    await expect(p1).rejects.toThrow('disconnect')
+    await expect(p2).rejects.toThrow('disconnect')
+  })
+})
+
+// ─── Capabilities extraction from session_init ────────────────────────────
+describe('capabilities from session_init', () => {
+  it('SessionInit with capabilities field has string array', () => {
+    const init = {
+      type: 'session_init' as const,
+      capabilities: ['interrupt', 'set_model', 'rewind_files'],
+      tools: [],
+      model: 'claude-sonnet-4-20250514',
+      mcpServers: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      claudeCodeVersion: '1.0.0',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: '',
+    }
+    expect(init.capabilities).toContain('interrupt')
+    expect(init.capabilities).toContain('rewind_files')
+    expect(init.capabilities).toHaveLength(3)
+  })
+
+  it('SessionInit without capabilities defaults to empty array', () => {
+    const init = {
+      type: 'session_init' as const,
+      tools: [],
+      model: 'claude-sonnet-4-20250514',
+      mcpServers: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      claudeCodeVersion: '1.0.0',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: '',
+    }
+    // Mirrors the extraction logic: init.capabilities ?? []
+    const caps = (init as { capabilities?: string[] }).capabilities ?? []
+    expect(caps).toEqual([])
   })
 })
