@@ -326,6 +326,10 @@ export function ChatPage() {
               onPaletteModeChange={handlePaletteModeChange}
               onCommand={handlePaletteCommand}
               onAgent={(agent) => actions.sendMessage(`@${agent}`)}
+              onPaletteOpen={() => {
+                actions.queryCommands().catch(() => {})
+                actions.queryAgents().catch(() => {})
+              }}
             />
           </div>
         </div>
