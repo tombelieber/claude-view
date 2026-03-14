@@ -242,6 +242,7 @@ function mapSystem(m: AnyMsg): ServerEvent[] {
       return [
         {
           type: 'session_init',
+          sessionId: String((m as Record<string, unknown>).session_id ?? ''),
           tools: (m.tools as string[]) ?? [],
           model: (m.model as string) ?? '',
           mcpServers: (m.mcp_servers as { name: string; status: string }[]) ?? [],
@@ -252,6 +253,21 @@ function mapSystem(m: AnyMsg): ServerEvent[] {
           agents: (m.agents as string[]) ?? [],
           skills: (m.skills as string[]) ?? [],
           outputStyle: (m.output_style as string) ?? '',
+          capabilities: [
+            'interrupt',
+            'set_model',
+            'set_max_thinking_tokens',
+            'stop_task',
+            'query_models',
+            'query_commands',
+            'query_agents',
+            'query_mcp_status',
+            'query_account_info',
+            'reconnect_mcp',
+            'toggle_mcp',
+            'set_mcp_servers',
+            'rewind_files',
+          ],
         } satisfies SessionInit,
       ]
 
@@ -408,11 +424,27 @@ function mapSystem(m: AnyMsg): ServerEvent[] {
 // ─── Other top-level types ───────────────────────────────────────
 
 function mapStreamEvent(m: AnyMsg): ServerEvent[] {
+  const raw = m as Record<string, unknown>
+  const event = (raw.event ?? {}) as Record<string, unknown>
+  const deltaType = String(event.type ?? '')
+  const delta = (event.delta ?? {}) as Record<string, unknown>
+  let textDelta: string | undefined
+  let thinkingDelta: string | undefined
+  let toolInputDelta: string | undefined
+  if (deltaType === 'content_block_delta') {
+    if (delta.type === 'text_delta') textDelta = String(delta.text ?? '')
+    else if (delta.type === 'thinking_delta') thinkingDelta = String(delta.thinking ?? '')
+    else if (delta.type === 'input_json_delta') toolInputDelta = String(delta.partial_json ?? '')
+  }
   return [
     {
       type: 'stream_delta',
-      event: m.event,
-      messageId: String(m.uuid ?? ''),
+      event,
+      messageId: String(raw.uuid ?? ''),
+      deltaType,
+      textDelta,
+      thinkingDelta,
+      toolInputDelta,
     } satisfies StreamDelta,
   ]
 }

@@ -3,6 +3,7 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
 import type { ModelUsageInfo, SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { SessionChannel } from '../lib/session-channel'
 import { wsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
 
@@ -28,6 +29,8 @@ export interface SessionSourceResult {
   permissionMode: string
   skills: string[]
   agents: string[]
+  channel: SessionChannel | null
+  capabilities: string[]
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -65,6 +68,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [permissionMode, setPermissionMode] = useState('default')
   const [skills, setSkills] = useState<string[]>([])
   const [agents, setAgents] = useState<string[]>([])
+  const [capabilities, setCapabilities] = useState<string[]>([])
+  const channelRef = useRef(new SessionChannel(null))
 
   const wsRef = useRef<WebSocket | null>(null)
   const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
@@ -153,6 +158,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             permissionMode?: string
             skills?: string[]
             agents?: string[]
+            capabilities?: string[]
           }
           if (init.model) setModel(init.model)
           if (init.slashCommands) setSlashCommands(init.slashCommands)
@@ -160,6 +166,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           if (init.permissionMode) setPermissionMode(init.permissionMode)
           if (init.skills) setSkills(init.skills)
           if (init.agents) setAgents(init.agents)
+          setCapabilities(init.capabilities ?? [])
           break
         }
         case 'session_status':
@@ -188,6 +195,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
         case 'assistant_text':
         case 'tool_use_start':
+        case 'stream_delta':
           setSessionState('active')
           break
         case 'permission_request':
@@ -201,6 +209,27 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           setControlId(null)
           lastSeqRef.current = -1
           break
+        case 'query_result': {
+          const evt = raw as { requestId?: string; queryType?: string; data: unknown }
+          if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.data)
+          // Also update local state for commands/agents so palette auto-refreshes
+          if (evt.queryType === 'commands' && Array.isArray(evt.data)) {
+            setSlashCommands(evt.data as string[])
+          } else if (evt.queryType === 'agents' && Array.isArray(evt.data)) {
+            setAgents(evt.data as string[])
+          }
+          break
+        }
+        case 'rewind_result': {
+          const evt = raw as { requestId?: string; result: unknown }
+          if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.result)
+          break
+        }
+        case 'mcp_set_result': {
+          const evt = raw as { requestId?: string; result: unknown }
+          if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.result)
+          break
+        }
       }
     },
     [startHeartbeat, syncBlocks],
@@ -212,6 +241,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (wsRef.current !== ws) return
       if (unmountedRef.current) return
       clearHeartbeat()
+      channelRef.current.handleDisconnect()
 
       if ((NON_RECOVERABLE_CODES as ReadonlySet<number>).has(event.code)) {
         setSessionState('error')
@@ -427,6 +457,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     [sessionId, openWs],
   )
 
+  // Keep channel's send function in sync with the effective send
+  channelRef.current.updateSend(isLive ? send : null)
+
   const effectiveSend = deriveEffectiveSend(isLive, controlId, sessionId, send, connectAndSend)
   const canResumeLazy = deriveCanResumeLazy(controlId, sessionId, isLive)
 
@@ -447,5 +480,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     permissionMode,
     skills,
     agents,
+    channel: channelRef.current,
+    capabilities,
   }
 }
