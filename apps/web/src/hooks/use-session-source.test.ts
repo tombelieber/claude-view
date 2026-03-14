@@ -164,7 +164,7 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
 describe('Auto-connect decision based on ActiveSession state', () => {
   // Simulate the init() logic extracted for testability
   function shouldAutoConnect(state: string): boolean {
-    return state === 'initializing' || state === 'active'
+    return state === 'initializing' || state === 'active' || state === 'waiting_permission'
   }
 
   // --- Unit: initializing → auto-connect (new session with initialMessage) ---
@@ -197,9 +197,9 @@ describe('Auto-connect decision based on ActiveSession state', () => {
     expect(shouldAutoConnect('compacting')).toBe(false)
   })
 
-  // --- Unit: waiting_permission → lazy connect ---
-  it('does NOT auto-connect for waiting_permission state', () => {
-    expect(shouldAutoConnect('waiting_permission')).toBe(false)
+  // --- Unit: waiting_permission → auto-connect (user needs to see permission card) ---
+  it('auto-connects for waiting_permission state (session needs user approval)', () => {
+    expect(shouldAutoConnect('waiting_permission')).toBe(true)
   })
 })
 

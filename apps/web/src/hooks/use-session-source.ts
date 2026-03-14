@@ -302,7 +302,11 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             setControlId(active.controlId)
             // Auto-connect for sessions actively processing — user should see live output.
             // Lazy connect (wait for user's next message) for idle sessions.
-            if (active.state === 'initializing' || active.state === 'active') {
+            if (
+              active.state === 'initializing' ||
+              active.state === 'active' ||
+              active.state === 'waiting_permission'
+            ) {
               openWs(sid)
             }
           }
