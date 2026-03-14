@@ -205,6 +205,7 @@ impl From<&SessionInfo> for DerivedMetrics {
 pub struct SessionMessagesQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    pub raw: bool,
 }
 
 // ============================================================================
@@ -460,7 +461,11 @@ pub async fn get_session_messages_by_id(
 
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
-    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
+    let result = if query.raw {
+        claude_view_core::parse_session_paginated_with_raw(&path, limit, offset).await?
+    } else {
+        claude_view_core::parse_session_paginated(&path, limit, offset).await?
+    };
     Ok(Json(result))
 }
 /// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
@@ -495,57 +500,6 @@ pub async fn get_session_rich(
             .map_err(|e| ApiError::Internal(format!("Parse error: {e}")))?;
 
     Ok(Json(rich_data))
-}
-
-/// DEPRECATED: Use `GET /api/sessions/:id/parsed` instead.
-/// Kept for backward compatibility. Will be removed in v0.6.
-///
-/// The `project_dir` parameter is now ignored — path resolution is DB-based.
-#[deprecated(note = "Use get_session_parsed instead")]
-pub async fn get_session(
-    State(state): State<Arc<AppState>>,
-    Path((_project_dir, session_id)): Path<(String, String)>,
-) -> ApiResult<Json<ParsedSession>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
-
-    let session = claude_view_core::parse_session(&path).await?;
-    Ok(Json(session))
-}
-
-/// DEPRECATED: Use `GET /api/sessions/:id/messages` instead.
-/// Kept for backward compatibility. Will be removed in v0.6.
-///
-/// The `project_dir` parameter is now ignored — path resolution is DB-based.
-#[deprecated(note = "Use get_session_messages_by_id instead")]
-pub async fn get_session_messages(
-    State(state): State<Arc<AppState>>,
-    Path((_project_dir, session_id)): Path<(String, String)>,
-    Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
-
-    let limit = query.limit.unwrap_or(100);
-    let offset = query.offset.unwrap_or(0);
-    let result = claude_view_core::parse_session_paginated(&path, limit, offset).await?;
-    Ok(Json(result))
 }
 
 /// GET /api/branches - Get distinct list of branch names across all sessions.
@@ -857,7 +811,6 @@ async fn bulk_unarchive_handler(
 }
 
 /// Create the sessions routes router.
-#[allow(deprecated)] // Legacy /session/ routes kept for backward compat until v0.6
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
@@ -871,11 +824,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/hook-events", get(get_session_hook_events))
         .route("/sessions/{id}/archive", post(archive_session_handler))
         .route("/sessions/{id}/unarchive", post(unarchive_session_handler))
-        .route("/session/{project_dir}/{session_id}", get(get_session))
-        .route(
-            "/session/{project_dir}/{session_id}/messages",
-            get(get_session_messages),
-        )
         .route("/branches", get(list_branches))
 }
 
@@ -1747,41 +1695,6 @@ mod tests {
         assert!(
             json["total"].as_u64().unwrap() > 0,
             "Total should reflect the fixture message count"
-        );
-    }
-
-    // ========================================================================
-    // Legacy endpoint backward-compat regression test
-    // ========================================================================
-
-    #[tokio::test]
-    async fn test_legacy_get_session_still_works() {
-        let db = test_db().await;
-        let tmp = tempfile::tempdir().unwrap();
-        let session_file = tmp.path().join("legacy-test.jsonl");
-        std::fs::write(
-            &session_file,
-            r#"{"type":"user","message":{"content":"Hello"},"timestamp":"2026-01-01T00:00:00Z"}"#,
-        )
-        .unwrap();
-
-        let mut session = make_session("legacy-ok", "proj", 1700000000);
-        session.file_path = session_file.to_str().unwrap().to_string();
-        db.insert_session(&session, "proj", "Project")
-            .await
-            .unwrap();
-
-        let app = build_app(db);
-        // Legacy endpoint: project_dir is now ignored, path comes from DB
-        let (status, body) = do_get(app, "/api/session/proj/legacy-ok").await;
-        assert_eq!(status, StatusCode::OK);
-        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let messages = json["messages"]
-            .as_array()
-            .expect("should contain messages");
-        assert!(
-            !messages.is_empty(),
-            "Fixture should produce at least one parsed message"
         );
     }
 
