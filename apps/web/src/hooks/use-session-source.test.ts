@@ -7,44 +7,56 @@ describe('deriveEffectiveSend', () => {
 
   // --- Unit: isLive=true → direct send ---
   it('returns direct send when WS is live', () => {
-    expect(deriveEffectiveSend(true, 'ctrl-1', send, connectAndSend)).toBe(send)
+    expect(deriveEffectiveSend(true, 'ctrl-1', 'sess-1', send, connectAndSend)).toBe(send)
   })
 
   // --- Unit: not live but has controlId → connectAndSend ---
   it('returns connectAndSend when lazy-resumable (controlId set, not live)', () => {
-    expect(deriveEffectiveSend(false, 'ctrl-1', null, connectAndSend)).toBe(connectAndSend)
+    expect(deriveEffectiveSend(false, 'ctrl-1', 'sess-1', null, connectAndSend)).toBe(
+      connectAndSend,
+    )
   })
 
-  // --- Unit: not live, no controlId → null (dormant) ---
-  it('returns null when dormant (no controlId, not live)', () => {
-    expect(deriveEffectiveSend(false, null, null, connectAndSend)).toBe(null)
+  // --- Unit: not live, no controlId but has sessionId → connectAndSend (auto-resume) ---
+  it('returns connectAndSend for dormant session (sessionId only, no controlId)', () => {
+    expect(deriveEffectiveSend(false, null, 'sess-1', null, connectAndSend)).toBe(connectAndSend)
+  })
+
+  // --- Unit: not live, no controlId, no sessionId → null ---
+  it('returns null when no session at all', () => {
+    expect(deriveEffectiveSend(false, null, undefined, null, connectAndSend)).toBe(null)
   })
 
   // --- Edge: isLive=true but send is null (shouldn't happen, but defensive) ---
   it('returns null send when live but send is null', () => {
-    expect(deriveEffectiveSend(true, 'ctrl-1', null, connectAndSend)).toBe(null)
+    expect(deriveEffectiveSend(true, 'ctrl-1', 'sess-1', null, connectAndSend)).toBe(null)
   })
 })
 
 describe('deriveCanResumeLazy', () => {
   // --- Unit: controlId + not live → true ---
   it('returns true when controlId is set and not live', () => {
-    expect(deriveCanResumeLazy('abc', false)).toBe(true)
+    expect(deriveCanResumeLazy('abc', 'sess-1', false)).toBe(true)
   })
 
   // --- Unit: controlId + live → false (WS already open) ---
   it('returns false when live (WS already open)', () => {
-    expect(deriveCanResumeLazy('abc', true)).toBe(false)
+    expect(deriveCanResumeLazy('abc', 'sess-1', true)).toBe(false)
   })
 
-  // --- Unit: no controlId → false ---
-  it('returns false when no controlId', () => {
-    expect(deriveCanResumeLazy(null, false)).toBe(false)
+  // --- Unit: no controlId but sessionId → true (auto-resume capable) ---
+  it('returns true when sessionId exists but no controlId (dormant, auto-resumable)', () => {
+    expect(deriveCanResumeLazy(null, 'sess-1', false)).toBe(true)
+  })
+
+  // --- Unit: no controlId, no sessionId → false ---
+  it('returns false when no controlId and no sessionId', () => {
+    expect(deriveCanResumeLazy(null, undefined, false)).toBe(false)
   })
 
   // --- Unit: no controlId + live → false ---
-  it('returns false when no controlId and live', () => {
-    expect(deriveCanResumeLazy(null, true)).toBe(false)
+  it('returns false when live regardless of controlId', () => {
+    expect(deriveCanResumeLazy(null, 'sess-1', true)).toBe(false)
   })
 })
 
@@ -126,7 +138,7 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
     const connectAndSend = vi.fn() // Should NOT be called
 
     // Use the actual exported function to determine which send path
-    const effectiveSend = deriveEffectiveSend(true, 'ctrl-1', directSend, connectAndSend)
+    const effectiveSend = deriveEffectiveSend(true, 'ctrl-1', 'sess-1', directSend, connectAndSend)
     expect(effectiveSend).toBe(directSend) // Must select direct path
 
     const msg = { type: 'user_message', content: 'direct' }
