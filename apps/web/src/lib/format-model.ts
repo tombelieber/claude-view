@@ -60,3 +60,20 @@ export function formatModelName(modelId: string): string {
     .map((p, i) => (i === 0 ? 'Claude' : p.charAt(0).toUpperCase() + p.slice(1)))
     .join(' ')
 }
+
+/**
+ * Format max_input_tokens into a human-readable context window string.
+ * 1000000 → "1M", 200000 → "200K", null → undefined (hidden in UI).
+ */
+export function formatContextWindow(maxInputTokens: number | null): string | undefined {
+  if (maxInputTokens == null) return undefined
+  if (maxInputTokens >= 1_000_000) {
+    const m = maxInputTokens / 1_000_000
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`
+  }
+  if (maxInputTokens >= 1_000) {
+    const k = maxInputTokens / 1_000
+    return `${Number.isInteger(k) ? k : k.toFixed(0)}K`
+  }
+  return `${maxInputTokens}`
+}
