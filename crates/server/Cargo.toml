@@ -71,7 +71,6 @@ memchr = { workspace = true }
 reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
-libc = "0.2"
 crypto_box = "0.9"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
@@ -88,6 +87,10 @@ aes-gcm = "0.10.3"
 flate2 = "1.1.9"
 serde_yaml = "0.9"
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+
+# libc is Unix-only; on Windows, platform.rs uses taskkill/sysinfo instead
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

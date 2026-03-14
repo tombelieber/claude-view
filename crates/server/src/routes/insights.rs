@@ -1108,7 +1108,7 @@ fn build_category_tree(counts: &[CategoryCountRow], total: u32) -> Vec<CategoryN
                     })
                 })
                 .collect();
-            l3_children.sort_by(|a, b| b.count.cmp(&a.count));
+            l3_children.sort_by_key(|c| std::cmp::Reverse(c.count));
 
             // Calculate L2 aggregates
             let (avg_reedit, avg_dur, avg_prompts, commit_rate) =
@@ -1130,7 +1130,7 @@ fn build_category_tree(counts: &[CategoryCountRow], total: u32) -> Vec<CategoryN
         }
 
         // Sort L2 by count descending
-        l2_children.sort_by(|a, b| b.count.cmp(&a.count));
+        l2_children.sort_by_key(|c| std::cmp::Reverse(c.count));
 
         // Calculate L1 aggregates
         let (avg_reedit, avg_dur, avg_prompts, commit_rate) = aggregate_category_metrics(l1_counts);
@@ -1151,7 +1151,7 @@ fn build_category_tree(counts: &[CategoryCountRow], total: u32) -> Vec<CategoryN
     }
 
     // Sort L1 by count descending
-    result.sort_by(|a, b| b.count.cmp(&a.count));
+    result.sort_by_key(|c| std::cmp::Reverse(c.count));
     result
 }
 
