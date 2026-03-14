@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMarketplaceRefresh } from '../../hooks/use-marketplace-refresh'
 import { useMarketplaceMutations, useMarketplaces } from '../../hooks/use-marketplaces'
 import { cn } from '../../lib/utils'
+import { DialogContent, DialogOverlay } from '../ui/CenteredDialog'
 import { marketplaceDotColor } from './marketplace-colors'
 
 export function MarketplacesDialog() {
@@ -40,8 +41,8 @@ export function MarketplacesDialog() {
         </button>
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed z-[51] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+        <DialogOverlay />
+        <DialogContent className="max-w-md rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
             <Dialog.Title className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Plugin Marketplaces
@@ -205,7 +206,7 @@ export function MarketplacesDialog() {
               </button>
             </div>
           </div>
-        </Dialog.Content>
+        </DialogContent>
       </Dialog.Portal>
     </Dialog.Root>
   )
