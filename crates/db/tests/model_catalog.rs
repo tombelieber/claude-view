@@ -304,6 +304,274 @@ async fn new_model_from_litellm_gets_inserted() {
     assert_eq!(new_model.provider.as_deref(), Some("anthropic"));
 }
 
+// === sdk_supported flag: SDK is the source of truth ===
+
+#[tokio::test]
+async fn sdk_upsert_sets_sdk_supported_flag() {
+    let db = test_db().await;
+
+    // Seed creates models with sdk_supported = 0
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(
+        !opus.sdk_supported,
+        "seeded models start as NOT sdk_supported"
+    );
+
+    // SDK upsert marks them as supported
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        Some("Claude Opus 4.6".into()),
+        None,
+    )])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(
+        opus.sdk_supported,
+        "SDK upsert must set sdk_supported = true"
+    );
+}
+
+#[tokio::test]
+async fn sdk_upsert_clears_stale_sdk_supported_flags() {
+    let db = test_db().await;
+
+    // First SDK upsert: opus + sonnet are supported
+    db.upsert_sdk_models(&[
+        (
+            "claude-opus-4-6".into(),
+            "anthropic".into(),
+            "opus".into(),
+            Some("Claude Opus 4.6".into()),
+            None,
+        ),
+        (
+            "claude-sonnet-4-6".into(),
+            "anthropic".into(),
+            "sonnet".into(),
+            Some("Claude Sonnet 4.6".into()),
+            None,
+        ),
+    ])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    assert!(
+        models
+            .iter()
+            .find(|m| m.id == "claude-opus-4-6")
+            .unwrap()
+            .sdk_supported
+    );
+    assert!(
+        models
+            .iter()
+            .find(|m| m.id == "claude-sonnet-4-6")
+            .unwrap()
+            .sdk_supported
+    );
+
+    // Second SDK upsert: only sonnet is supported (opus removed from SDK)
+    db.upsert_sdk_models(&[(
+        "claude-sonnet-4-6".into(),
+        "anthropic".into(),
+        "sonnet".into(),
+        Some("Claude Sonnet 4.6".into()),
+        None,
+    )])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    assert!(
+        !models
+            .iter()
+            .find(|m| m.id == "claude-opus-4-6")
+            .unwrap()
+            .sdk_supported,
+        "opus must be cleared when SDK no longer reports it"
+    );
+    assert!(
+        models
+            .iter()
+            .find(|m| m.id == "claude-sonnet-4-6")
+            .unwrap()
+            .sdk_supported,
+        "sonnet must remain supported"
+    );
+}
+
+#[tokio::test]
+async fn litellm_upsert_does_not_affect_sdk_supported() {
+    let db = test_db().await;
+
+    // SDK marks opus as supported
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        Some("Claude Opus 4.6".into()),
+        None,
+    )])
+    .await
+    .unwrap();
+
+    // LiteLLM upsert updates context window — must NOT change sdk_supported
+    db.upsert_litellm_context(&[LiteLlmModelContext {
+        model_id: "claude-opus-4-6".into(),
+        provider: "anthropic".into(),
+        family: "opus".into(),
+        max_input_tokens: Some(1_000_000),
+        max_output_tokens: Some(64_000),
+    }])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(
+        opus.sdk_supported,
+        "LiteLLM upsert must NOT clear sdk_supported flag"
+    );
+    assert_eq!(opus.max_input_tokens, Some(1_000_000));
+}
+
+#[tokio::test]
+async fn models_not_in_sdk_have_sdk_supported_false() {
+    let db = test_db().await;
+
+    // Only upsert via LiteLLM (NOT SDK)
+    db.upsert_litellm_context(&[LiteLlmModelContext {
+        model_id: "claude-3-opus-20240229".into(),
+        provider: "anthropic".into(),
+        family: "opus".into(),
+        max_input_tokens: Some(200_000),
+        max_output_tokens: Some(4_096),
+    }])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let legacy = models
+        .iter()
+        .find(|m| m.id == "claude-3-opus-20240229")
+        .unwrap();
+    assert!(
+        !legacy.sdk_supported,
+        "models only from LiteLLM/indexer must NOT be sdk_supported"
+    );
+}
+
+// === Regression: SDK upsert with NULL display_name clears stale alias names ===
+
+#[tokio::test]
+async fn sdk_upsert_null_display_name_clears_stale_alias() {
+    let db = test_db().await;
+
+    // Simulate old behavior: SDK previously wrote alias names like "Default (recommended)"
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        Some("Default (recommended)".into()),
+        Some("Opus 4.6 with 1M context [NEW] · Most capable".into()),
+    )])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert_eq!(opus.display_name.as_deref(), Some("Default (recommended)"));
+
+    // New behavior: SDK upsert with NULL display_name must CLEAR the stale alias.
+    // Frontend falls back to formatModelName("claude-opus-4-6") → "Claude Opus 4.6".
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        None, // intentionally NULL — don't use SDK alias names
+        Some("Most capable for complex work".into()),
+    )])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(
+        opus.display_name.is_none(),
+        "SDK upsert with None must CLEAR old display_name, not preserve it via COALESCE. Got: {:?}",
+        opus.display_name
+    );
+    // Description should be updated to the new value
+    assert_eq!(
+        opus.description.as_deref(),
+        Some("Most capable for complex work")
+    );
+}
+
+#[tokio::test]
+async fn sdk_upsert_null_description_clears_stale_description() {
+    let db = test_db().await;
+
+    // Old SDK wrote a verbose description
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        Some("Old Name".into()),
+        Some("Old verbose description with SDK noise".into()),
+    )])
+    .await
+    .unwrap();
+
+    // New SDK passes None for both — must clear both
+    db.upsert_sdk_models(&[(
+        "claude-opus-4-6".into(),
+        "anthropic".into(),
+        "opus".into(),
+        None,
+        None,
+    )])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(opus.display_name.is_none(), "display_name must be cleared");
+    assert!(opus.description.is_none(), "description must be cleared");
+    // sdk_supported should still be true
+    assert!(opus.sdk_supported);
+}
+
+#[tokio::test]
+async fn litellm_upsert_does_not_set_display_name() {
+    let db = test_db().await;
+
+    // LiteLLM only sets context window — never display_name
+    db.upsert_litellm_context(&[LiteLlmModelContext {
+        model_id: "claude-opus-4-6".into(),
+        provider: "anthropic".into(),
+        family: "opus".into(),
+        max_input_tokens: Some(1_000_000),
+        max_output_tokens: Some(64_000),
+    }])
+    .await
+    .unwrap();
+
+    let models = db.get_all_models().await.unwrap();
+    let opus = models.iter().find(|m| m.id == "claude-opus-4-6").unwrap();
+    assert!(
+        opus.display_name.is_none(),
+        "LiteLLM must never set display_name — that's SDK's domain"
+    );
+}
+
 // === Integration: get_all_models returns all fields correctly ===
 
 #[tokio::test]

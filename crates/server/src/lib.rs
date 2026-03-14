@@ -271,17 +271,32 @@ pub fn create_app_full(
     crate::routes::workflows::seed_official_workflows();
 
     // Refresh pricing table from litellm on startup and every 24h.
+    // Also eagerly start the sidecar to fetch SDK model list on startup.
     {
         let pricing = state.pricing.clone();
         let db = state.db.clone();
-        let socket_path = std::path::PathBuf::from(state.sidecar.socket_path());
+        let sidecar = state.sidecar.clone();
         tokio::spawn(async move {
-            refresh_pricing(&pricing, &db, Some(socket_path.as_path())).await;
+            // Start sidecar eagerly so SDK models are available on first page load.
+            // The sidecar's model-cache.ts refreshes on startup via V1 query().
+            let socket_path = match sidecar.ensure_running().await {
+                Ok(path) => {
+                    tracing::info!("Sidecar started eagerly for SDK model fetch");
+                    Some(std::path::PathBuf::from(path))
+                }
+                Err(e) => {
+                    tracing::debug!("Sidecar eager start skipped: {e}");
+                    None
+                }
+            };
+
+            refresh_pricing(&pricing, &db, socket_path.as_deref()).await;
+
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
             interval.tick().await;
             loop {
                 interval.tick().await;
-                refresh_pricing(&pricing, &db, Some(socket_path.as_path())).await;
+                refresh_pricing(&pricing, &db, socket_path.as_deref()).await;
             }
         });
     }
@@ -351,21 +366,48 @@ async fn refresh_pricing(
         }
     }
 
-    // Best-effort: fetch SDK model display names from sidecar
+    // Best-effort: fetch SDK model list from sidecar.
+    // The sidecar's model-cache.ts fires refreshModelCache() on startup which spawns
+    // a V1 query() to get initializationResult().models. This is async and may take
+    // several seconds. Retry up to 3 times with delays to give it time to populate.
     if let Some(socket) = sidecar_socket {
-        match fetch_sdk_models_from_sidecar(socket).await {
-            Ok(sdk_models) => match db.upsert_sdk_models(&sdk_models).await {
-                Ok(n) => tracing::info!(models = n, "SDK model display names upserted"),
-                Err(e) => tracing::warn!("Failed to upsert SDK models: {e}"),
-            },
-            Err(e) => tracing::debug!("SDK model fetch skipped: {e}"),
+        let mut fetched = false;
+        for attempt in 1..=3 {
+            if attempt > 1 {
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+            match fetch_sdk_models_from_sidecar(socket).await {
+                Ok(sdk_models) if !sdk_models.is_empty() => {
+                    match db.upsert_sdk_models(&sdk_models).await {
+                        Ok(n) => {
+                            tracing::info!(models = n, attempt, "SDK models upserted");
+                            fetched = true;
+                        }
+                        Err(e) => tracing::warn!("Failed to upsert SDK models: {e}"),
+                    }
+                    break;
+                }
+                Ok(_) => {
+                    tracing::debug!(attempt, "SDK model cache empty, retrying...");
+                }
+                Err(e) => {
+                    tracing::debug!(attempt, "SDK model fetch failed: {e}");
+                    break; // socket error — no point retrying
+                }
+            }
+        }
+        if !fetched {
+            tracing::debug!(
+                "SDK model fetch: sidecar cache not populated yet, will refresh on first session"
+            );
         }
     }
 }
 
 /// Best-effort fetch of SDK model list from sidecar.
 /// Returns Vec of (id, provider, family, display_name, description).
-async fn fetch_sdk_models_from_sidecar(
+/// `pub(crate)` so control routes can re-fetch after session create/resume.
+pub(crate) async fn fetch_sdk_models_from_sidecar(
     socket_path: &std::path::Path,
 ) -> Result<Vec<(String, String, String, Option<String>, Option<String>)>, String> {
     use bytes::Bytes;
@@ -392,9 +434,10 @@ async fn fetch_sdk_models_from_sidecar(
         }
     });
 
+    // Route is mounted at /control/supported-models in the sidecar (Hono basePath)
     let req = hyper::Request::builder()
         .method("GET")
-        .uri("/supported-models")
+        .uri("/control/supported-models")
         .header("host", "localhost")
         .body(Full::new(Bytes::new()))
         .map_err(|e| format!("build request: {e}"))?;
@@ -416,6 +459,8 @@ async fn fetch_sdk_models_from_sidecar(
         .to_bytes();
 
     // Parse: { models: [{ value, displayName, description }], updatedAt }
+    // SDK returns aliases ("default", "sonnet", "haiku") not real model IDs.
+    // Resolve aliases to real model IDs using the pricing table keys.
     let json: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("parse json: {e}"))?;
 
@@ -423,21 +468,77 @@ async fn fetch_sdk_models_from_sidecar(
         .as_array()
         .ok_or_else(|| "missing 'models' array".to_string())?;
 
+    // SDK returns aliases ("default", "sonnet", "haiku") not real model IDs.
+    // Map alias → family, then resolve to the real model ID from the pricing table.
+    // This avoids hardcoding model IDs — the pricing table is the source of real IDs.
+    let pricing_models: Vec<String> = {
+        let defaults = claude_view_db::default_pricing();
+        defaults.keys().cloned().collect()
+    };
+
     let mut result = Vec::with_capacity(models.len());
     for m in models {
-        let id = m["value"]
+        let alias = m["value"]
             .as_str()
             .ok_or_else(|| "model missing 'value'".to_string())?;
 
-        // Derive provider/family BEFORE moving id
-        let (provider, family) = claude_view_core::parse_model_id(id);
+        // Map SDK alias → family name for matching.
+        // "default" doesn't match any family — infer from description which contains
+        // the real model name (e.g. "Opus 4.6 with 1M context").
+        let description = m["description"].as_str().unwrap_or("");
+        let target_family = if alias != "default" {
+            alias // "sonnet" → "sonnet", "haiku" → "haiku"
+        } else if description.to_lowercase().contains("opus") {
+            "opus"
+        } else if description.to_lowercase().contains("sonnet") {
+            "sonnet"
+        } else {
+            "opus" // safe fallback — "default" has historically been the most capable
+        };
+
+        // Find the latest real model ID from pricing table for this family.
+        // Pick the highest version by sorting candidates descending — latest model wins.
+        // e.g. "claude-sonnet-4-6" > "claude-3-7-sonnet-*" > "claude-3-5-sonnet-*"
+        let mut candidates: Vec<&String> = pricing_models
+            .iter()
+            .filter(|id| {
+                let (_, family) = claude_view_core::parse_model_id(id);
+                family == target_family
+            })
+            .collect();
+        // Reverse sort: higher version strings come first.
+        // This works because "claude-sonnet-4-6" > "claude-3-..." and
+        // "claude-haiku-4-5-20251001" > "claude-3-5-haiku-20241022" > "claude-3-haiku-..."
+        candidates.sort_unstable_by(|a, b| b.cmp(a));
+        let real_id = candidates.first().cloned().cloned();
+
+        let Some(real_id) = real_id else {
+            tracing::debug!(
+                alias,
+                "SDK model alias has no matching pricing model, skipping"
+            );
+            continue;
+        };
+
+        let (provider, family) = claude_view_core::parse_model_id(&real_id);
         let provider = provider.to_string();
         let family = family.to_string();
 
-        let display_name = m["displayName"].as_str().map(|s| s.to_string());
-        let description = m["description"].as_str().map(|s| s.to_string());
+        // Don't use SDK's displayName ("Default (recommended)", "Sonnet", "Haiku")
+        // — those are alias labels, not proper model names. Pass None so the frontend
+        // falls back to formatModelName(real_id) → "Claude Opus 4.6", "Claude Sonnet 4.6", etc.
+        //
+        // For description, extract just the capability part after the model name prefix.
+        // SDK description: "Opus 4.6 with 1M context [NEW] · Most capable for complex work"
+        // We want: "Most capable for complex work"
+        let raw_desc = m["description"].as_str().unwrap_or("");
+        let description = raw_desc
+            .split('·')
+            .next_back()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
-        result.push((id.to_string(), provider, family, display_name, description));
+        result.push((real_id, provider, family, None, description));
     }
 
     Ok(result)
