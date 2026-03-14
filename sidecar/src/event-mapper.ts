@@ -253,6 +253,21 @@ function mapSystem(m: AnyMsg): ServerEvent[] {
           agents: (m.agents as string[]) ?? [],
           skills: (m.skills as string[]) ?? [],
           outputStyle: (m.output_style as string) ?? '',
+          capabilities: [
+            'interrupt',
+            'set_model',
+            'set_max_thinking_tokens',
+            'stop_task',
+            'query_models',
+            'query_commands',
+            'query_agents',
+            'query_mcp_status',
+            'query_account_info',
+            'reconnect_mcp',
+            'toggle_mcp',
+            'set_mcp_servers',
+            'rewind_files',
+          ],
         } satisfies SessionInit,
       ]
 
