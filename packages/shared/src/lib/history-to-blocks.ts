@@ -1,4 +1,11 @@
-import type { AssistantBlock, ConversationBlock, ToolExecution, UserBlock } from '../types/blocks'
+import type {
+  AssistantBlock,
+  ConversationBlock,
+  SystemBlock,
+  ToolExecution,
+  UserBlock,
+} from '../types/blocks'
+import type { UnknownSdkEvent } from '../types/sidecar-protocol'
 
 // Local interface matching the generated Message type from Rust (apps/web/src/types/generated/Message.ts)
 // Defined locally to avoid coupling shared to the web app's generated types.
@@ -14,6 +21,9 @@ interface HistoricalMessage {
     category?: string | null
   }> | null
   timestamp?: string | null
+  metadata?: unknown
+  category?: string | null
+  raw_json?: unknown
 }
 
 let _counter = 0
@@ -38,6 +48,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           text: msg.content,
           timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : 0,
           status: 'sent',
+          rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)
         break
@@ -66,6 +77,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           segments,
           thinking: msg.thinking ?? undefined,
           streaming: false,
+          rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)
         break
@@ -75,9 +87,33 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
       // tool_calls field — skip them to avoid duplication.
       case 'tool_use':
       case 'tool_result':
-      case 'system':
-      case 'progress':
         break
+
+      case 'system': {
+        const meta = msg.metadata as Record<string, unknown> | undefined
+        const subtype = (meta?.subtype as string) ?? 'unknown'
+        const block: SystemBlock = {
+          type: 'system',
+          id: genId(msg.uuid),
+          variant: 'unknown',
+          data: { sdkType: subtype } as UnknownSdkEvent,
+          rawJson: msg.raw_json as Record<string, unknown> | undefined,
+        }
+        blocks.push(block)
+        break
+      }
+
+      case 'progress': {
+        const block: SystemBlock = {
+          type: 'system',
+          id: genId(msg.uuid),
+          variant: 'unknown',
+          data: { sdkType: 'progress' } as UnknownSdkEvent,
+          rawJson: msg.raw_json as Record<string, unknown> | undefined,
+        }
+        blocks.push(block)
+        break
+      }
     }
   }
 
