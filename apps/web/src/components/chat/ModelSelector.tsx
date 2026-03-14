@@ -2,6 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { ChevronDown, Cpu } from 'lucide-react'
 import { useState } from 'react'
 import { type ModelOption, useModelOptions } from '../../hooks/use-models'
+import { useSupportedModels } from '../../hooks/use-supported-models'
 import { cn } from '../../lib/utils'
 import { FALLBACK_MODELS } from './model-defaults'
 
@@ -25,8 +26,12 @@ function getLabel(models: ModelOption[], modelId: string): string {
  */
 export function ModelSelector({ model, onModelChange, models, disabled }: ModelSelectorProps) {
   const [open, setOpen] = useState(false)
+  const { options: sdkModels } = useSupportedModels()
   const { options: fetchedModels } = useModelOptions()
-  const options = models ?? (fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS)
+  // Priority: prop override → SDK canonical list → usage-based /api/models → hardcoded fallback
+  const options =
+    models ??
+    (sdkModels.length > 0 ? sdkModels : fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS)
   const label = getLabel(options, model)
 
   return (
