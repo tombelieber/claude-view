@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 
 export interface ConversationActions {
   retryMessage: (localId: string) => void
+  stopTask?: (taskId: string) => void
 }
 
 const ConversationActionsContext = createContext<ConversationActions | null>(null)
