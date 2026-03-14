@@ -188,6 +188,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
         case 'assistant_text':
         case 'tool_use_start':
+        case 'stream_delta':
           setSessionState('active')
           break
         case 'permission_request':
