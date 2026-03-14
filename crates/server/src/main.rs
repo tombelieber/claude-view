@@ -199,9 +199,13 @@ async fn main() -> Result<()> {
     let startup_start = Instant::now();
 
     // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
-    if std::env::consts::OS != "macos" {
+    // Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to bypass (e.g. Docker Linux containers)
+    if std::env::consts::OS != "macos"
+        && std::env::var("CLAUDE_VIEW_SKIP_PLATFORM_CHECK").as_deref() != Ok("1")
+    {
         eprintln!("\n\u{26a0}\u{fe0f}  claude-view currently supports macOS only.");
         eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
+        eprintln!("   Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to bypass (e.g. Docker).");
         eprintln!("   Follow progress: https://github.com/tombelieber/claude-view/issues\n");
         std::process::exit(1);
     }
@@ -343,7 +347,11 @@ async fn main() -> Result<()> {
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
     let port = get_port();
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let bind_addr: std::net::IpAddr = std::env::var("CLAUDE_VIEW_BIND_ADDR")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+    let addr = SocketAddr::from((bind_addr, port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
     // Step 6: Resolve the claude dir for indexing
