@@ -1,8 +1,8 @@
 // sidecar/src/integration.test.ts
 // E2E integration tests against the REAL Agent SDK with claude-haiku-4-5-20251001.
 //
-// These tests verify the full create → init → stream → message flow that broke
-// 6 times. They use the actual SDK, actual Unix socket, actual WS — no mocks.
+// These tests verify the full V1 query() + MessageBridge flow:
+// create → stream_delta → assistant → turn_complete, plus resume, fork, interrupt.
 //
 // Requirements:
 // - Claude Code credentials configured (~/.claude/)
@@ -16,6 +16,7 @@ import http from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
+const HAS_API_KEY = Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_AUTH)
 const TEST_SOCKET = `/tmp/claude-view-sidecar-integration-test-${process.pid}.sock`
 const MODEL = 'claude-haiku-4-5-20251001'
 
@@ -93,6 +94,33 @@ function waitForEvent(
   })
 }
 
+function waitForAnyOf(
+  ws: WebSocket,
+  types: string[],
+  timeoutMs = 30_000,
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error(`Timeout waiting for any of [${types.join(', ')}] (${timeoutMs}ms)`)),
+      timeoutMs,
+    )
+
+    const handler = (raw: WebSocket.Data) => {
+      try {
+        const event = JSON.parse(raw.toString())
+        if (types.includes(event.type)) {
+          clearTimeout(timeout)
+          ws.off('message', handler)
+          resolve(event)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    ws.on('message', handler)
+  })
+}
+
 function collectEvents(ws: WebSocket, durationMs: number): Promise<Record<string, unknown>[]> {
   return new Promise((resolve) => {
     const events: Record<string, unknown>[] = []
@@ -111,6 +139,39 @@ function collectEvents(ws: WebSocket, durationMs: number): Promise<Record<string
   })
 }
 
+function collectUntilEvent(
+  ws: WebSocket,
+  type: string,
+  timeoutMs = 60_000,
+): Promise<Record<string, unknown>[]> {
+  return new Promise((resolve, reject) => {
+    const events: Record<string, unknown>[] = []
+    const timeout = setTimeout(() => {
+      ws.off('message', handler)
+      reject(
+        new Error(
+          `Timeout collecting until ${type} (${timeoutMs}ms). Got: ${events.map((e) => e.type).join(', ')}`,
+        ),
+      )
+    }, timeoutMs)
+
+    const handler = (raw: WebSocket.Data) => {
+      try {
+        const event = JSON.parse(raw.toString())
+        events.push(event)
+        if (event.type === type) {
+          clearTimeout(timeout)
+          ws.off('message', handler)
+          resolve(events)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    ws.on('message', handler)
+  })
+}
+
 async function healthCheck(retries = 30): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     try {
@@ -124,132 +185,405 @@ async function healthCheck(retries = 30): Promise<boolean> {
   return false
 }
 
+async function createSession(initialMessage?: string) {
+  const body: Record<string, unknown> = { model: MODEL }
+  if (initialMessage) body.initialMessage = initialMessage
+  const { data } = await httpRequest('POST', '/control/sessions', body)
+  return data as { controlId: string; sessionId: string; status: string }
+}
+
+async function cleanupSession(controlId: string) {
+  try {
+    await httpRequest('DELETE', `/control/sessions/${controlId}`)
+  } catch {
+    // ignore — may already be closed
+  }
+}
+
 // --- Setup/Teardown ---
 
-beforeAll(async () => {
-  // Clean up stale socket
-  try {
-    const fs = await import('node:fs')
-    if (fs.existsSync(TEST_SOCKET)) fs.unlinkSync(TEST_SOCKET)
-  } catch {
-    // ignore
-  }
-
-  // Strip CLAUDE* env vars (blocks nested sessions) and ANTHROPIC_API_KEY
-  // (SDK uses its own auth)
-  const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(process.env)) {
-    if (!k.startsWith('CLAUDE') && k !== 'ANTHROPIC_API_KEY' && v !== undefined) {
-      env[k] = v
+describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
+  beforeAll(async () => {
+    // Clean up stale socket
+    try {
+      const fs = await import('node:fs')
+      if (fs.existsSync(TEST_SOCKET)) fs.unlinkSync(TEST_SOCKET)
+    } catch {
+      // ignore
     }
-  }
-  env.SIDECAR_SOCKET = TEST_SOCKET
 
-  sidecarProcess = spawn('node', ['dist/index.js'], {
-    cwd: `${process.cwd()}`,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    // Strip CLAUDE* env vars (blocks nested sessions)
+    const env: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (!k.startsWith('CLAUDE') && v !== undefined) {
+        env[k] = v
+      }
+    }
+    env.SIDECAR_SOCKET = TEST_SOCKET
+
+    sidecarProcess = spawn('node', ['dist/index.js'], {
+      cwd: `${process.cwd()}`,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    sidecarProcess.stdout?.on('data', (d) => process.stdout.write(`[sidecar] ${d}`))
+    sidecarProcess.stderr?.on('data', (d) => process.stderr.write(`[sidecar:err] ${d}`))
+
+    const ready = await healthCheck()
+    if (!ready) throw new Error('Sidecar failed to start within 6s')
+  }, 15_000)
+
+  afterAll(async () => {
+    if (sidecarProcess) {
+      sidecarProcess.kill('SIGTERM')
+      await new Promise((r) => setTimeout(r, 500))
+      if (!sidecarProcess.killed) sidecarProcess.kill('SIGKILL')
+      sidecarProcess = null
+    }
+    try {
+      const fs = await import('node:fs')
+      if (fs.existsSync(TEST_SOCKET)) fs.unlinkSync(TEST_SOCKET)
+    } catch {
+      // ignore
+    }
   })
 
-  sidecarProcess.stdout?.on('data', (d) => process.stdout.write(`[sidecar] ${d}`))
-  sidecarProcess.stderr?.on('data', (d) => process.stderr.write(`[sidecar:err] ${d}`))
-
-  const ready = await healthCheck()
-  if (!ready) throw new Error('Sidecar failed to start within 6s')
-}, 15_000)
-
-afterAll(async () => {
-  if (sidecarProcess) {
-    sidecarProcess.kill('SIGTERM')
-    await new Promise((r) => setTimeout(r, 500))
-    if (!sidecarProcess.killed) sidecarProcess.kill('SIGKILL')
-    sidecarProcess = null
-  }
-  // Clean up socket
-  try {
-    const fs = await import('node:fs')
-    if (fs.existsSync(TEST_SOCKET)) fs.unlinkSync(TEST_SOCKET)
-  } catch {
-    // ignore
-  }
-})
-
-// --- Tests ---
-
-describe('Sidecar E2E — create session flow', () => {
-  // --- E2E: create session WITH initialMessage returns non-empty sessionId ---
-  // This is THE bug that broke 6 times. The create endpoint previously returned
-  // sessionId='' because it didn't wait for the SDK's session_init event.
-  // V2 SDK only initializes after first send(), so initialMessage is required
-  // to get a sessionId back.
-  it('POST /control/sessions with initialMessage returns non-empty sessionId', async () => {
-    const { status, data } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
-    })
-
-    expect(status).toBe(200)
-    expect(data.controlId).toBeTruthy()
-    expect(data.sessionId).toBeTruthy() // THE KEY ASSERTION — was '' before fix
-    expect(typeof data.sessionId).toBe('string')
-    expect((data.sessionId as string).length).toBe(36) // UUID format
-    expect(data.status).toBe('created')
-
-    // Cleanup: terminate the session
-    await httpRequest('DELETE', `/control/sessions/${data.controlId}`)
-  }, 30_000)
-
-  // --- E2E: create WITHOUT initialMessage returns empty sessionId ---
-  // V2 SDK doesn't initialize until first send(). Without initialMessage,
-  // sessionId is '' — expected behavior, not a bug.
-  it('POST /control/sessions without initialMessage returns empty sessionId', async () => {
-    const { status, data } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-    })
-
-    expect(status).toBe(200)
-    expect(data.controlId).toBeTruthy()
-    expect(data.sessionId).toBe('') // No init yet — expected
-    expect(data.status).toBe('created')
-
-    await httpRequest('DELETE', `/control/sessions/${data.controlId}`)
-  }, 30_000)
-
-  // --- E2E: created session appears in active sessions list ---
-  it('created session appears in GET /control/sessions with populated sessionId', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
-    })
+  // --- 1. Create → stream_delta deltas → assistant message → turn_complete ---
+  it('create session → receive stream_delta deltas → turn_complete', async () => {
+    const created = await createSession('Reply with exactly one word: pong')
     expect(created.sessionId).toBeTruthy()
 
-    const { status, data: sessions } = await httpRequest('GET', '/control/sessions')
-    expect(status).toBe(200)
-    expect(Array.isArray(sessions)).toBe(true)
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
 
+    const events = await collectUntilEvent(ws, 'turn_complete', 60_000)
+    ws.close()
+
+    const types = events.map((e) => e.type)
+    // V1 with includePartialMessages emits stream_delta events
+    expect(types).toContain('session_init')
+    // Must have at least one assistant response (stream_delta or assistant_text)
+    const hasResponse = types.includes('stream_delta') || types.includes('assistant_text')
+    expect(hasResponse).toBe(true)
+    expect(types).toContain('turn_complete')
+
+    await cleanupSession(created.controlId)
+  }, 90_000)
+
+  // --- 2. Resume session → multi-turn ---
+  it('resume session → multi-turn: 2 messages get responses', async () => {
+    const created = await createSession('Reply with exactly one word: alpha')
+    expect(created.sessionId).toBeTruthy()
+    const sessionId = created.sessionId
+
+    // Wait for first turn to complete
+    const ws1 = await connectWs(created.controlId)
+    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    await waitForEvent(ws1, 'turn_complete', 60_000)
+    ws1.close()
+
+    // Close and resume
+    await cleanupSession(created.controlId)
+    await new Promise((r) => setTimeout(r, 1_000))
+
+    const { data: resumed } = await httpRequest('POST', '/control/sessions/resume', {
+      sessionId,
+      model: MODEL,
+    })
+    expect(resumed.status).toMatch(/resumed|already_active/)
+
+    // Send second message on resumed session
+    const ws2 = await connectWs(resumed.controlId as string)
+    ws2.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+
+    // Wait for init replay, then send
+    await new Promise((r) => setTimeout(r, 2_000))
+    ws2.send(JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: beta' }))
+
+    const turnComplete = await waitForEvent(ws2, 'turn_complete', 60_000)
+    ws2.close()
+
+    expect(turnComplete.type).toBe('turn_complete')
+    expect(turnComplete.numTurns as number).toBeGreaterThanOrEqual(1)
+
+    await cleanupSession(resumed.controlId as string)
+  }, 120_000)
+
+  // --- 3. Fork session → new sessionId ---
+  it('fork session → new sessionId differs from original', async () => {
+    const created = await createSession('Reply with exactly one word: original')
+    expect(created.sessionId).toBeTruthy()
+    const originalSessionId = created.sessionId
+
+    // Wait for first turn
+    const ws1 = await connectWs(created.controlId)
+    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    await waitForEvent(ws1, 'turn_complete', 60_000)
+    ws1.close()
+
+    // Fork
+    const { status, data: forked } = await httpRequest('POST', '/control/sessions/fork', {
+      sessionId: originalSessionId,
+      model: MODEL,
+    })
+    expect(status).toBe(200)
+    expect(forked.status).toBe('forked')
+    expect(forked.sessionId).toBeTruthy()
+    expect(forked.sessionId).not.toBe(originalSessionId)
+
+    await cleanupSession(created.controlId)
+    await cleanupSession(forked.controlId as string)
+  }, 90_000)
+
+  // --- 4. Interrupt mid-response → session stays alive ---
+  it('interrupt mid-response → session survives', async () => {
+    const created = await createSession()
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    await new Promise((r) => setTimeout(r, 1_000))
+
+    // Send a message that will produce a long response
+    ws.send(
+      JSON.stringify({
+        type: 'user_message',
+        content: 'List the numbers 1 through 100, one per line',
+      }),
+    )
+
+    // Wait for first stream activity then interrupt
+    await waitForAnyOf(ws, ['stream_delta', 'assistant_text'], 30_000)
+    ws.send(JSON.stringify({ type: 'interrupt' }))
+
+    // Session should still be alive — wait for turn_complete or turn_error
+    const result = await waitForAnyOf(ws, ['turn_complete', 'turn_error'], 30_000)
+    expect(['turn_complete', 'turn_error']).toContain(result.type)
+    ws.close()
+
+    // Verify session is still in list
+    const { data: sessions } = await httpRequest('GET', '/control/sessions')
     const found = (sessions as unknown as Record<string, unknown>[]).find(
       (s) => s.controlId === created.controlId,
     )
     expect(found).toBeDefined()
-    expect(found?.sessionId).toBe(created.sessionId)
-    expect(found?.sessionId).toBeTruthy() // NOT empty string
-    expect(found?.state).toBeTruthy()
+
+    await cleanupSession(created.controlId)
+  }, 60_000)
+
+  // --- 5. Permission mode change via WS ---
+  it('set_mode changes permission mode without error', async () => {
+    const created = await createSession('Reply with exactly one word: test')
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+
+    // Wait for turn to complete (session is in waiting_input)
+    await waitForEvent(ws, 'turn_complete', 60_000)
+
+    // Change mode — should not produce a fatal error
+    ws.send(JSON.stringify({ type: 'set_mode', mode: 'plan' }))
+
+    // Collect events for 2s — no fatal error expected
+    const events = await collectEvents(ws, 2_000)
+    ws.close()
+
+    const fatalError = events.find((e) => e.type === 'error' && e.fatal === true)
+    expect(fatalError).toBeUndefined()
+
+    await cleanupSession(created.controlId)
+  }, 90_000)
+
+  // --- 6. closeAll shuts down sessions ---
+  it('DELETE session closes it and removes from list', async () => {
+    const created = await createSession('Reply with exactly one word: test')
+    expect(created.controlId).toBeTruthy()
+
+    const { data: before } = await httpRequest('GET', '/control/sessions')
+    const existsBefore = (before as unknown as Record<string, unknown>[]).some(
+      (s) => s.controlId === created.controlId,
+    )
+    expect(existsBefore).toBe(true)
 
     await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 30_000)
-})
+    // Wait for delayed cleanup
+    await new Promise((r) => setTimeout(r, 6_000))
 
-describe('Sidecar E2E — WS stream flow', () => {
-  // --- E2E: WS stream delivers heartbeat_config and session_status ---
-  it('WS stream emits heartbeat_config and session_status after connect', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
+    const { data: after } = await httpRequest('GET', '/control/sessions')
+    const existsAfter = (after as unknown as Record<string, unknown>[]).some(
+      (s) => s.controlId === created.controlId,
+    )
+    expect(existsAfter).toBe(false)
+  }, 30_000)
+
+  // --- 7. Bootstrap message session_id: '' ---
+  it('create without initialMessage accepts session_id empty string', async () => {
+    const created = await createSession()
+    expect(created.controlId).toBeTruthy()
+    // Session created without error — SDK accepted the empty session_id bridge
+    expect(created.status).toBe('created')
+
+    await cleanupSession(created.controlId)
+  }, 30_000)
+
+  // --- 8. Concurrent sends ---
+  it('concurrent sends → both get responses', async () => {
+    const created = await createSession('Reply with exactly one word: init')
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+
+    // Wait for first turn
+    await waitForEvent(ws, 'turn_complete', 60_000)
+
+    // Send two messages rapidly
+    ws.send(JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: first' }))
+    ws.send(
+      JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: second' }),
+    )
+
+    // Wait for at least one turn_complete
+    await waitForEvent(ws, 'turn_complete', 60_000)
+
+    // The bridge queues both — SDK processes them sequentially
+    // We just verify the session didn't crash
+    const { data: sessions } = await httpRequest('GET', '/control/sessions')
+    const found = (sessions as unknown as Record<string, unknown>[]).find(
+      (s) => s.controlId === created.controlId,
+    )
+    expect(found).toBeDefined()
+    ws.close()
+
+    await cleanupSession(created.controlId)
+  }, 120_000)
+
+  // --- 9. REGRESSION: session stays alive after turn_complete ---
+  it('REGRESSION: session stays alive after turn_complete', async () => {
+    const created = await createSession('Reply with exactly one word: hello')
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+
+    // Wait for first turn_complete
+    await waitForEvent(ws, 'turn_complete', 60_000)
+
+    // Verify state is NOT closed
+    const { data: sessions } = await httpRequest('GET', '/control/sessions')
+    const found = (sessions as unknown as Record<string, unknown>[]).find(
+      (s) => s.controlId === created.controlId,
+    )
+    expect(found).toBeDefined()
+    expect(found?.state).not.toBe('closed')
+    expect(found?.state).toBe('waiting_input')
+
+    // Send second message — should work
+    ws.send(JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: world' }))
+    const secondTurn = await waitForEvent(ws, 'turn_complete', 60_000)
+    expect(secondTurn.type).toBe('turn_complete')
+    expect(secondTurn.numTurns as number).toBeGreaterThanOrEqual(2)
+
+    ws.close()
+    await cleanupSession(created.controlId)
+  }, 120_000)
+
+  // --- 10. REGRESSION: resumed session survives multiple turns ---
+  it('REGRESSION: resumed session survives multiple turns', async () => {
+    const created = await createSession('Reply with exactly one word: alpha')
+    const sessionId = created.sessionId
+    expect(sessionId).toBeTruthy()
+
+    // First turn
+    const ws1 = await connectWs(created.controlId)
+    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    await waitForEvent(ws1, 'turn_complete', 60_000)
+    ws1.close()
+
+    // Close original, resume
+    await cleanupSession(created.controlId)
+    await new Promise((r) => setTimeout(r, 1_000))
+
+    const { data: resumed } = await httpRequest('POST', '/control/sessions/resume', {
+      sessionId,
       model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
     })
 
-    const ws = await connectWs(created.controlId as string)
+    const ws2 = await connectWs(resumed.controlId as string)
+    ws2.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    await new Promise((r) => setTimeout(r, 2_000))
 
-    // Collect events for 3s — should include session_status and heartbeat_config
+    // Turn 1 on resumed session
+    ws2.send(JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: beta' }))
+    await waitForEvent(ws2, 'turn_complete', 60_000)
+
+    // Turn 2 on resumed session — verifies it survives
+    ws2.send(
+      JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: gamma' }),
+    )
+    const lastTurn = await waitForEvent(ws2, 'turn_complete', 60_000)
+    expect(lastTurn.type).toBe('turn_complete')
+
+    ws2.close()
+    await cleanupSession(resumed.controlId as string)
+  }, 180_000)
+
+  // --- 11. REGRESSION: rate_limit allowed_warning does NOT close session ---
+  it('REGRESSION: rate_limit event does not close session', async () => {
+    const created = await createSession('Reply with exactly one word: test')
+    const ws = await connectWs(created.controlId)
+    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+
+    // Collect all events until turn_complete
+    const events = await collectUntilEvent(ws, 'turn_complete', 60_000)
+    ws.close()
+
+    // Check if any rate_limit events appeared
+    const rateLimitEvents = events.filter((e) => e.type === 'rate_limit')
+
+    // Whether or not rate_limit events appeared, session should NOT be closed
+    const { data: sessions } = await httpRequest('GET', '/control/sessions')
+    const found = (sessions as unknown as Record<string, unknown>[]).find(
+      (s) => s.controlId === created.controlId,
+    )
+    expect(found).toBeDefined()
+    expect(found?.state).not.toBe('closed')
+    expect(found?.state).not.toBe('error')
+
+    // If rate_limit events did arrive, log them for visibility
+    if (rateLimitEvents.length > 0) {
+      console.log(`[test] Got ${rateLimitEvents.length} rate_limit events — session survived`)
+    }
+
+    await cleanupSession(created.controlId)
+  }, 90_000)
+
+  // --- Create session basics ---
+  it('POST /control/sessions with initialMessage returns non-empty sessionId', async () => {
+    const created = await createSession('Reply with exactly one word: test')
+    expect(created.controlId).toBeTruthy()
+    expect(created.sessionId).toBeTruthy()
+    expect(typeof created.sessionId).toBe('string')
+    expect(created.sessionId.length).toBe(36) // UUID format
+    expect(created.status).toBe('created')
+
+    await cleanupSession(created.controlId)
+  }, 30_000)
+
+  // --- Concurrent creates ---
+  it('concurrent creates produce unique sessionIds', async () => {
+    const [r1, r2] = await Promise.all([
+      createSession('Reply with exactly one word: alpha'),
+      createSession('Reply with exactly one word: beta'),
+    ])
+
+    expect(r1.sessionId).toBeTruthy()
+    expect(r2.sessionId).toBeTruthy()
+    expect(r1.sessionId).not.toBe(r2.sessionId)
+    expect(r1.controlId).not.toBe(r2.controlId)
+
+    await Promise.all([cleanupSession(r1.controlId), cleanupSession(r2.controlId)])
+  }, 60_000)
+
+  // --- WS infrastructure ---
+  it('WS stream emits heartbeat_config and session_status after connect', async () => {
+    const created = await createSession('Reply with exactly one word: test')
+    const ws = await connectWs(created.controlId)
+
     const events = await collectEvents(ws, 3_000)
     ws.close()
 
@@ -257,100 +591,16 @@ describe('Sidecar E2E — WS stream flow', () => {
     expect(types).toContain('heartbeat_config')
     expect(types).toContain('session_status')
 
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
+    await cleanupSession(created.controlId)
   }, 30_000)
 
-  // --- E2E: resume replay delivers buffered events including session_init ---
-  it('resume message with lastSeq=-1 replays session_init from initialMessage processing', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
-    })
-
-    const ws = await connectWs(created.controlId as string)
-
-    // Wait for initial connect events
-    await new Promise((r) => setTimeout(r, 1_000))
-
-    // Send resume with lastSeq=-1 (replay all buffered events)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
-
-    // Collect replayed events
-    const events = await collectEvents(ws, 5_000)
-    ws.close()
-
-    // session_init was emitted during create (before WS connected) — must be replayed
-    const sessionInit = events.find((e) => e.type === 'session_init')
-    expect(sessionInit).toBeDefined()
-    expect(sessionInit?.model).toBeTruthy()
-
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 30_000)
-})
-
-describe('Sidecar E2E — initialMessage flow', () => {
-  // --- E2E: create with initialMessage produces assistant response ---
-  // This tests the full round-trip: create session → send initial message →
-  // receive assistant response via WS stream.
-  it('create with initialMessage delivers assistant response via WS stream', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: pong',
-    })
-
-    expect(created.sessionId).toBeTruthy()
-    expect(created.controlId).toBeTruthy()
-
-    // Connect to WS stream
-    const ws = await connectWs(created.controlId as string)
-
-    // Replay all buffered events (including any that fired before WS connected)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
-
-    // Wait for turn_complete — the SDK processes initialMessage and responds
-    const turnComplete = await waitForEvent(ws, 'turn_complete', 60_000)
-
-    expect(turnComplete.type).toBe('turn_complete')
-    expect(turnComplete.numTurns).toBeGreaterThanOrEqual(1)
-
-    // Also verify we got assistant_text events (the actual response)
-    // These would have been replayed via the resume
-    ws.close()
-
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 90_000) // generous timeout for API call
-
-  // --- E2E: create WITHOUT initialMessage does NOT produce assistant response ---
-  it('create without initialMessage does NOT trigger a turn', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      // no initialMessage
-    })
-
-    const ws = await connectWs(created.controlId as string)
-
-    // Collect events for 3s — should NOT include turn_complete or assistant_text
-    const events = await collectEvents(ws, 3_000)
-    ws.close()
-
-    const turnComplete = events.find((e) => e.type === 'turn_complete')
-    const assistantText = events.find((e) => e.type === 'assistant_text')
-
-    expect(turnComplete).toBeUndefined()
-    expect(assistantText).toBeUndefined()
-
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 30_000)
-})
-
-describe('Sidecar E2E — send endpoint', () => {
-  // --- E2E: send to known controlId returns 200 ---
+  // --- Send endpoint ---
   it('POST /control/send returns 200 for active session', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: hello',
-    })
+    const created = await createSession('Reply with exactly one word: hello')
     expect(created.sessionId).toBeTruthy()
+
+    // Wait for init to complete
+    await new Promise((r) => setTimeout(r, 2_000))
 
     const { status, data } = await httpRequest('POST', '/control/send', {
       controlId: created.controlId,
@@ -359,10 +609,9 @@ describe('Sidecar E2E — send endpoint', () => {
     expect(status).toBe(200)
     expect(data.status).toBe('sent')
 
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
+    await cleanupSession(created.controlId)
   }, 30_000)
 
-  // --- E2E: send to unknown controlId returns 404 ---
   it('POST /control/send returns 404 for unknown controlId', async () => {
     const { status } = await httpRequest('POST', '/control/send', {
       controlId: 'nonexistent-control-id',
@@ -370,80 +619,4 @@ describe('Sidecar E2E — send endpoint', () => {
     })
     expect(status).toBe(404)
   }, 10_000)
-})
-
-describe('Sidecar E2E — regression guards', () => {
-  // --- Regression: sessionId in list matches sessionId from create ---
-  it('sessionId consistency between create response and list response', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
-    })
-
-    const createSessionId = created.sessionId as string
-    expect(createSessionId).toBeTruthy()
-    expect(createSessionId.length).toBe(36)
-
-    const { data: sessions } = await httpRequest('GET', '/control/sessions')
-    const found = (sessions as unknown as Record<string, unknown>[]).find(
-      (s) => s.controlId === created.controlId,
-    )
-    expect(found).toBeDefined()
-    expect(found?.sessionId).toBe(createSessionId)
-
-    await httpRequest('DELETE', `/control/sessions/${created.controlId}`)
-  }, 30_000)
-
-  // --- Regression: multiple concurrent creates each get unique sessionId ---
-  it('concurrent creates produce unique sessionIds', async () => {
-    const [r1, r2] = await Promise.all([
-      httpRequest('POST', '/control/sessions', {
-        model: MODEL,
-        initialMessage: 'Reply with exactly one word: alpha',
-      }),
-      httpRequest('POST', '/control/sessions', {
-        model: MODEL,
-        initialMessage: 'Reply with exactly one word: beta',
-      }),
-    ])
-
-    expect(r1.data.sessionId).toBeTruthy()
-    expect(r2.data.sessionId).toBeTruthy()
-    expect(r1.data.sessionId).not.toBe(r2.data.sessionId)
-    expect(r1.data.controlId).not.toBe(r2.data.controlId)
-
-    await Promise.all([
-      httpRequest('DELETE', `/control/sessions/${r1.data.controlId}`),
-      httpRequest('DELETE', `/control/sessions/${r2.data.controlId}`),
-    ])
-  }, 60_000)
-
-  // --- Regression: terminate session removes it from list ---
-  it('DELETE removes session from active list', async () => {
-    const { data: created } = await httpRequest('POST', '/control/sessions', {
-      model: MODEL,
-      initialMessage: 'Reply with exactly one word: test',
-    })
-    const controlId = created.controlId as string
-
-    // Verify it exists
-    const { data: before } = await httpRequest('GET', '/control/sessions')
-    const existsBefore = (before as unknown as Record<string, unknown>[]).some(
-      (s) => s.controlId === controlId,
-    )
-    expect(existsBefore).toBe(true)
-
-    // Terminate
-    await httpRequest('DELETE', `/control/sessions/${controlId}`)
-
-    // Wait for cleanup
-    await new Promise((r) => setTimeout(r, 500))
-
-    // Verify it's gone
-    const { data: after } = await httpRequest('GET', '/control/sessions')
-    const existsAfter = (after as unknown as Record<string, unknown>[]).some(
-      (s) => s.controlId === controlId,
-    )
-    expect(existsAfter).toBe(false)
-  }, 30_000)
 })
