@@ -349,7 +349,15 @@ async fn main() -> Result<()> {
     let port = get_port();
     let bind_addr: std::net::IpAddr = std::env::var("CLAUDE_VIEW_BIND_ADDR")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| {
+            s.parse()
+                .map_err(|e| {
+                    tracing::warn!(
+                        "Invalid CLAUDE_VIEW_BIND_ADDR '{s}': {e}, falling back to localhost"
+                    );
+                })
+                .ok()
+        })
         .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     let addr = SocketAddr::from((bind_addr, port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
