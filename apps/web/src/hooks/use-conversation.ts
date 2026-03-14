@@ -17,7 +17,6 @@ export function useConversation(sessionId: string | undefined) {
   const history = useHistoryBlocks(sessionId ?? null)
   const source = useSessionSource(sessionId)
   const actions = useSessionActions(source.send)
-  const canResumeLazy = source.canResumeLazy
   // NOTE: useInputState is NOT called here — each consumer (ChatPage, ConversationView,
   // SessionDetailPanel) calls deriveInputBarState() or useInputState() directly with
   // canResumeLazy from sessionInfo. This avoids a dead hook call.
@@ -28,10 +27,11 @@ export function useConversation(sessionId: string | undefined) {
   const optimisticBlocksRef = useRef<UserBlock[]>([])
   optimisticBlocksRef.current = optimisticBlocks
 
+  const isLive = source.isLive
   const sendMessage = useCallback(
     (text: string) => {
-      // Lazy WS is handled inside source.send (effectiveSend) — it queues the message
-      // and opens WS if needed, so no explicit connectIfNeeded() call required.
+      // Lazy WS / auto-resume is handled inside source.send (effectiveSend) — it queues
+      // the message and opens WS (resuming if needed), so no explicit call required.
 
       const localId = crypto.randomUUID()
       const optimistic: UserBlock = {
@@ -40,39 +40,62 @@ export function useConversation(sessionId: string | undefined) {
         localId,
         text,
         timestamp: Date.now() / 1000,
-        status: canResumeLazy ? 'sending' : 'optimistic',
+        // Live WS → 'sent' (message transmitted immediately)
+        // Lazy/auto-resume → 'sending' (WS not yet open, will transition on connect)
+        status: isLive ? 'sent' : 'sending',
       }
       setOptimisticBlocks((prev) => [...prev, optimistic])
       actions.sendMessage(text)
 
       const timer = setTimeout(() => {
         setOptimisticBlocks((prev) =>
-          prev.map((b) => (b.localId === localId ? { ...b, status: 'failed' as const } : b)),
+          prev.map((b) => {
+            if (b.localId !== localId) return b
+            // Only fail blocks still waiting for confirmation
+            if (b.status === 'optimistic' || b.status === 'sending') {
+              return { ...b, status: 'failed' as const }
+            }
+            return b // Already 'sent' or cleared — don't override
+          }),
         )
       }, OPTIMISTIC_TIMEOUT_MS)
 
       return () => clearTimeout(timer)
     },
-    [actions, canResumeLazy],
+    [actions, isLive],
   )
 
-  // Merge all block sources: history + divider + live + optimistic.
-  // Dedup optimistic blocks that appear in EITHER history or live blocks.
+  // Merge all block sources: history + optimistic (user msgs) + stream (responses).
+  // Optimistic blocks are placed BEFORE stream blocks so user messages appear
+  // before the assistant's response — not appended at the end.
   const blocks: ConversationBlock[] = useMemo(() => {
     const allRealBlocks = [...history.blocks, ...source.blocks]
 
-    // Insert divider between history and live if both non-empty
-    const merged =
-      history.blocks.length > 0 && source.blocks.length > 0
-        ? [...history.blocks, RESUMED_DIVIDER, ...source.blocks]
-        : allRealBlocks
+    // Dedup optimistic blocks confirmed by real blocks.
+    // Active blocks: by localId. Confirmed (status cleared): by text + timestamp (2s window).
+    const pendingOptimistic = optimisticBlocks.filter((ob) => {
+      if (ob.status) {
+        return !allRealBlocks.some(
+          (b) => b.type === 'user' && (b as UserBlock).localId === ob.localId,
+        )
+      }
+      return !allRealBlocks.some(
+        (b) =>
+          b.type === 'user' &&
+          (b as UserBlock).text === ob.text &&
+          Math.abs((b as UserBlock).timestamp - ob.timestamp) < 2,
+      )
+    })
 
-    // Remove optimistic blocks that have been confirmed by real blocks
-    const pendingOptimistic = optimisticBlocks.filter(
-      (ob) =>
-        !allRealBlocks.some((b) => b.type === 'user' && (b as UserBlock).localId === ob.localId),
-    )
-    return pendingOptimistic.length > 0 ? [...merged, ...pendingOptimistic] : merged
+    // Build timeline: history → [divider] → optimistic (user msgs) → stream (responses).
+    // This ensures user messages appear BEFORE the assistant's response, not after.
+    const liveSection = [...pendingOptimistic, ...source.blocks]
+
+    if (liveSection.length === 0) return history.blocks
+    if (history.blocks.length > 0) {
+      return [...history.blocks, RESUMED_DIVIDER, ...liveSection]
+    }
+    return liveSection
   }, [history.blocks, source.blocks, optimisticBlocks])
 
   // Track previous isLive to detect the lazy-connect transition
@@ -88,12 +111,15 @@ export function useConversation(sessionId: string | undefined) {
     prevIsLiveRef.current = source.isLive
   }, [source.isLive])
 
-  // Remove 'sent' blocks after 500ms (the checkmark flash)
+  // Clear 'sent' status after 500ms (the checkmark flash).
+  // Block stays in optimisticBlocks (keeps message visible) with status=undefined.
   useEffect(() => {
     const sentBlocks = optimisticBlocks.filter((ob) => ob.status === 'sent')
     if (sentBlocks.length === 0) return
     const timer = setTimeout(() => {
-      setOptimisticBlocks((prev) => prev.filter((ob) => ob.status !== 'sent'))
+      setOptimisticBlocks((prev) =>
+        prev.map((ob) => (ob.status === 'sent' ? { ...ob, status: undefined } : ob)),
+      )
     }, 500)
     return () => clearTimeout(timer)
   }, [optimisticBlocks])
