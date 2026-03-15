@@ -79,6 +79,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
   const lastSeqRef = useRef(-1)
   const unmountedRef = useRef(false)
+  // Ref mirror of controlId state — accessible in cleanup closures without stale captures.
+  const controlIdRef = useRef<string | null>(null)
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const pongReceivedRef = useRef(true)
   const reconnectAttemptRef = useRef(0)
@@ -378,8 +380,29 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       wsRef.current = null
       pendingMessagesRef.current = [] // prevent stale messages replaying to wrong session
       resumingRef.current = false
+      // NOTE: We do NOT terminate the SDK session here. React cleanup fires on
+      // in-app navigation (e.g. /chat/X → /sessions), which would kill the session
+      // and force a full re-resume when the user navigates back. Session termination
+      // on page close/refresh is handled by the beforeunload listener below.
     }
   }, [sessionId, openWs, clearHeartbeat])
+
+  // Terminate SDK session on page close/refresh (NOT on in-app navigation).
+  // Uses keepalive so the request completes even after the page unloads.
+  // Pattern: Jupyter kernel idle timeout / VS Code Remote SSH — session data
+  // (JSONL) is preserved, only the live SDK connection is closed.
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (controlIdRef.current) {
+        fetch(`/api/control/sessions/${controlIdRef.current}`, {
+          method: 'DELETE',
+          keepalive: true,
+        }).catch(() => {})
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   // --- Send function ---
   const send = useCallback((msg: Record<string, unknown>) => {
@@ -478,6 +501,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     },
     [sessionId, openWs],
   )
+
+  // Keep controlId ref in sync for cleanup closures (avoids stale closure capture)
+  controlIdRef.current = controlId
 
   // Keep channel's send function in sync with the effective send
   channelRef.current.updateSend(isLive ? send : null)

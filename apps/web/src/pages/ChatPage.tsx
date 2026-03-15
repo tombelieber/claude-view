@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
@@ -52,9 +52,20 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 export function ChatPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { sessionId } = useParams<{ sessionId?: string }>()
 
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
+  // Read initial message from router state (set during session creation).
+  // This seeds the optimistic UI so the user sees their message immediately.
+  // IMPORTANT: consumed once then cleared — React Router persists state in
+  // window.history.state, so without clearing, refresh would re-seed a duplicate.
+  const initialMessage = (location.state as { initialMessage?: string } | null)?.initialMessage
+  useEffect(() => {
+    if (initialMessage) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [initialMessage, navigate, location.pathname])
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, initialMessage)
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -111,6 +122,17 @@ export function ChatPage() {
     sessionInfo.canResumeLazy,
   )
 
+  // Permission mode — persisted globally (like model), applied at session creation/resume
+  const MODE_STORAGE_KEY = 'claude-view:last-mode'
+  const [permMode, setPermMode] = useState<PermissionMode>(() => {
+    try {
+      const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
+      return stored ?? 'default'
+    } catch {
+      return 'default'
+    }
+  })
+
   // Context gauge — live uses WS token data, history uses richData from JSONL
   const contextPercent = (() => {
     if (
@@ -130,7 +152,9 @@ export function ChatPage() {
   const handleSend = useCallback(
     (text: string) => {
       if (!sessionId) {
-        // No session yet — create one first, then navigate
+        // No session yet — create one first, then navigate.
+        // Pass initialMessage via router state so the new ChatPage instance
+        // can show it as an optimistic block immediately (WhatsApp-like UX).
         fetch('/api/control/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -143,7 +167,9 @@ export function ChatPage() {
           .then((r) => r.json())
           .then((data) => {
             if (data.sessionId) {
-              navigate(`/chat/${data.sessionId}`)
+              navigate(`/chat/${data.sessionId}`, {
+                state: { initialMessage: text },
+              })
             } else {
               toast.error('Failed to create session', {
                 description: data.error || 'No session ID returned',
@@ -157,19 +183,8 @@ export function ChatPage() {
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate, selectedModel],
+    [sessionId, actions, navigate, selectedModel, permMode],
   )
-
-  // Permission mode — persisted globally (like model), applied at session creation/resume
-  const MODE_STORAGE_KEY = 'claude-view:last-mode'
-  const [permMode, setPermMode] = useState<PermissionMode>(() => {
-    try {
-      const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
-      return stored ?? 'default'
-    } catch {
-      return 'default'
-    }
-  })
 
   const handleModeChangePermission = useCallback(
     (mode: PermissionMode) => {

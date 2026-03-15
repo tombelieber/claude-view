@@ -14,8 +14,12 @@ const RESUMED_DIVIDER: NoticeBlock = {
   data: null,
 }
 
-export function useConversation(sessionId: string | undefined) {
-  const history = useHistoryBlocks(sessionId ?? null)
+export function useConversation(sessionId: string | undefined, initialMessage?: string) {
+  // Suppress 404 errors only for brand-new sessions (initialMessage present).
+  // Genuinely missing sessions (deleted JSONL, invalid ID) still show errors.
+  const history = useHistoryBlocks(sessionId ?? null, {
+    suppressNotFound: !!initialMessage,
+  })
   const source = useSessionSource(sessionId)
   const actions = useSessionActions(source.send, source.sendIfLive, source.channel)
   // NOTE: useInputState is NOT called here — each consumer (ChatPage, ConversationView,
@@ -23,6 +27,29 @@ export function useConversation(sessionId: string | undefined) {
   // canResumeLazy from sessionInfo. This avoids a dead hook call.
 
   const [optimisticBlocks, setOptimisticBlocks] = useState<UserBlock[]>([])
+
+  // Seed optimistic block from router state (new session creation).
+  // The initial message was already sent as initialMessage in POST /api/control/sessions,
+  // so we only show it — we do NOT re-send via actions.sendMessage.
+  const seededRef = useRef(false)
+  useEffect(() => {
+    if (initialMessage && sessionId && !seededRef.current) {
+      seededRef.current = true
+      setOptimisticBlocks((prev) => {
+        // Avoid duplicate if already seeded
+        if (prev.some((b) => b.text === initialMessage)) return prev
+        const block: UserBlock = {
+          type: 'user',
+          id: `initial-${sessionId}`,
+          localId: `initial-${sessionId}`,
+          text: initialMessage,
+          timestamp: Date.now() / 1000,
+          status: 'sending',
+        }
+        return [block, ...prev]
+      })
+    }
+  }, [initialMessage, sessionId])
 
   // Ref sync pattern: keep latest optimisticBlocks accessible in callbacks without stale closure
   const optimisticBlocksRef = useRef<UserBlock[]>([])
@@ -73,8 +100,14 @@ export function useConversation(sessionId: string | undefined) {
     const allRealBlocks = [...history.blocks, ...source.blocks]
 
     // Dedup optimistic blocks confirmed by real blocks.
-    // Active blocks: by localId. Confirmed (status cleared): by text + timestamp (2s window).
+    // - Seeded blocks (from initialMessage): text-only match. These were never sent
+    //   via sendMessage(), so their localId won't match real blocks. Timestamp may
+    //   differ by seconds (seeded at mount time vs. original send time in JSONL).
+    // - Regular optimistic: by localId when status is set, text+timestamp otherwise.
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
+      if (ob.localId?.startsWith('initial-')) {
+        return !allRealBlocks.some((b) => b.type === 'user' && (b as UserBlock).text === ob.text)
+      }
       if (ob.status) {
         return !allRealBlocks.some(
           (b) => b.type === 'user' && (b as UserBlock).localId === ob.localId,
