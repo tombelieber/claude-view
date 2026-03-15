@@ -97,3 +97,4 @@ assert-json-diff = { workspace = true }
 pretty_assertions = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
+sysinfo = { workspace = true }
