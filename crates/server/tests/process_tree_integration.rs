@@ -49,7 +49,7 @@ fn minimal_classified_process(pid: u32, name: &str, tag: EcosystemTag) -> Classi
         pid,
         ppid: 1,
         name: name.to_string(),
-        command: format!("/usr/local/bin/{name}"),
+        command: format!("/usr/bin/{name}"),
         category: ProcessCategory::ClaudeEcosystem,
         ecosystem_tag: Some(tag),
         cpu_percent: 1.0,
