@@ -49,6 +49,25 @@ pub struct ClaudeCliStatus {
 }
 
 impl ClaudeCliStatus {
+    /// Known fallback paths for Claude CLI discovery.
+    ///
+    /// Last-resort fallback — only includes truly universal Unix paths.
+    /// Platform-specific locations (Homebrew, snap, etc.) are discovered
+    /// by which_via_shell / which_direct via the user's PATH.
+    /// - `.local/bin`: XDG Base Directory Spec ($HOME-relative). npm global installs,
+    ///   pip3 --user, and manual installs land here on Linux.
+    /// - `/usr/local/bin`: Standard location for locally-compiled software (FHS).
+    /// - `/usr/bin`: System binaries (FHS). Package-manager installs (apt, dnf).
+    ///
+    /// macOS-specific paths (/opt/homebrew, /Applications) are intentionally excluded.
+    /// They are discovered by which_via_shell (step 1 of the waterfall) via the
+    /// user's login shell PATH.
+    pub(crate) const KNOWN_CLI_PATHS: &[&str] = &[
+        ".local/bin/claude",     // $HOME-relative (XDG)
+        "/usr/local/bin/claude", // locally-compiled (FHS)
+        "/usr/bin/claude",       // system package (FHS)
+    ];
+
     /// Detect Claude CLI installation and status.
     ///
     /// Path resolution is cached via `OnceLock` (first call only).
@@ -155,13 +174,16 @@ impl ClaudeCliStatus {
     /// Scan known installation locations on the filesystem.
     fn scan_known_paths() -> Option<String> {
         let home = std::env::var("HOME").ok().unwrap_or_default();
-        let paths = [
-            format!("{home}/.local/bin/claude"),
-            "/opt/homebrew/bin/claude".to_string(),
-            "/usr/local/bin/claude".to_string(),
-            "/usr/bin/claude".to_string(),
-        ];
-        paths.into_iter().find(|p| std::path::Path::new(p).exists())
+        Self::KNOWN_CLI_PATHS
+            .iter()
+            .map(|p| {
+                if p.starts_with('/') {
+                    p.to_string()
+                } else {
+                    format!("{home}/{p}")
+                }
+            })
+            .find(|p| std::path::Path::new(p).exists())
     }
 
     /// Get the claude CLI version.
@@ -261,14 +283,14 @@ mod tests {
     #[test]
     fn test_cli_status_serializes_correctly() {
         let status = ClaudeCliStatus {
-            path: Some("/opt/homebrew/bin/claude".to_string()),
+            path: Some("/usr/local/bin/claude".to_string()),
             version: Some("1.0.12".to_string()),
             authenticated: true,
             subscription_type: Some("pro".to_string()),
         };
 
         let json = serde_json::to_string(&status).unwrap();
-        assert!(json.contains("\"path\":\"/opt/homebrew/bin/claude\""));
+        assert!(json.contains("\"path\":\"/usr/local/bin/claude\""));
         assert!(json.contains("\"version\":\"1.0.12\""));
         assert!(json.contains("\"authenticated\":true"));
         assert!(json.contains("\"subscriptionType\":\"pro\""));
@@ -282,6 +304,20 @@ mod tests {
         assert!(json.contains("\"version\":null"));
         assert!(json.contains("\"authenticated\":false"));
         assert!(json.contains("\"subscriptionType\":null"));
+    }
+
+    #[test]
+    fn known_cli_paths_contain_only_universal_locations() {
+        for path in ClaudeCliStatus::KNOWN_CLI_PATHS {
+            assert!(
+                !path.contains("homebrew"),
+                "KNOWN_CLI_PATHS must not contain macOS-specific paths, found: {path}"
+            );
+            assert!(
+                !path.contains("Applications"),
+                "KNOWN_CLI_PATHS must not contain macOS app bundle paths, found: {path}"
+            );
+        }
     }
 
     // --- Credentials file parsing ---
