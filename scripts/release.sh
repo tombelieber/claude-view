@@ -30,7 +30,12 @@ VERSION=$(node -p "require('./package.json').version")
 cd "$ROOT"
 
 # Bump Cargo.toml workspace version to match
-sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+node -e "
+  const fs = require('fs');
+  const cargo = fs.readFileSync('Cargo.toml', 'utf8');
+  fs.writeFileSync('Cargo.toml',
+    cargo.replace(/^version = \".*\"/m, 'version = \"${VERSION}\"'));
+"
 
 # Bump ALL workspace package.json files that have a "version" field.
 # Excludes: node_modules, .git, .tmp, .worktrees, apps/landing (separate release track).
@@ -62,7 +67,12 @@ done < <(find "$ROOT" -name package.json \
 # Bump landing page VERSION constant (stays in sync even though landing has its own release tag)
 SITE_TS="$ROOT/apps/landing/src/data/site.ts"
 if [ -f "$SITE_TS" ]; then
-  sed -i '' "s/VERSION = '.*'/VERSION = '${VERSION}'/" "$SITE_TS"
+  node -e "
+    const fs = require('fs');
+    const f = fs.readFileSync('${SITE_TS}', 'utf8');
+    fs.writeFileSync('${SITE_TS}',
+      f.replace(/VERSION = '.*'/, \"VERSION = '${VERSION}'\"));
+  "
   BUMPED_PKGS+=("$SITE_TS")
 fi
 
