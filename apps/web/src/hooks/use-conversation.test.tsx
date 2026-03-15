@@ -1021,3 +1021,172 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
     expect(userIdx).toBeLessThan(assistantIdx)
   })
 })
+
+// ─── Hook interaction: source selection switches on replayComplete ───────
+describe('source selection switches from stream-only to history+stream', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      sendIfLive: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+    })
+    mockSessionMessages.mockReturnValue({
+      data: undefined,
+      error: null,
+      hasPreviousPage: false,
+      fetchPreviousPage: vi.fn(),
+      isFetchingPreviousPage: false,
+      isFetching: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('starts with stream-only (Case 1) when replayComplete=true', () => {
+    mockSessionSource.mockReturnValue({
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: [{ type: 'user', id: 'u-1', text: 'hello', timestamp: 1000 }] as any,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+    })
+
+    // History has blocks — but should NOT appear because replay is complete
+    mockSessionMessages.mockReturnValue({
+      data: {
+        pages: [
+          {
+            messages: [
+              {
+                role: 'user',
+                content: 'old msg',
+                uuid: 'h-1',
+                timestamp: '2026-03-13T00:00:00Z',
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            hasMore: false,
+          },
+        ],
+        pageParams: [-1],
+      },
+      error: null,
+      hasPreviousPage: false,
+      fetchPreviousPage: vi.fn(),
+      isFetchingPreviousPage: false,
+      isFetching: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+    // Case 1: stream-only — history blocks are NOT included
+    expect(result.current.blocks).toHaveLength(1)
+    expect(result.current.blocks[0].id).toBe('u-1')
+  })
+
+  it('switches to history+stream (Case 2) when replayComplete becomes false', () => {
+    // Start with stream blocks and replayComplete=false (buffer exhausted)
+    mockSessionSource.mockReturnValue({
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: [{ type: 'user', id: 'u-new', text: 'new msg', timestamp: 2000 }] as any,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      replayComplete: false,
+      clearPendingMessage: vi.fn(),
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+    })
+
+    mockSessionMessages.mockReturnValue({
+      data: {
+        pages: [
+          {
+            messages: [
+              {
+                role: 'user',
+                content: 'old msg',
+                uuid: 'h-1',
+                timestamp: '2026-03-13T00:00:00Z',
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            hasMore: false,
+          },
+        ],
+        pageParams: [-1],
+      },
+      error: null,
+      hasPreviousPage: false,
+      fetchPreviousPage: vi.fn(),
+      isFetchingPreviousPage: false,
+      isFetching: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+    // Case 2: history + divider + stream — both history and new blocks appear
+    // history block + session_resumed divider + stream block = 3
+    expect(result.current.blocks.length).toBeGreaterThanOrEqual(3)
+    // First block is from history (user block derived from role:'user' message)
+    expect(result.current.blocks[0].type).toBe('user')
+    expect(result.current.blocks[1].type).toBe('notice')
+    expect(result.current.blocks[2].id).toBe('u-new')
+  })
+})

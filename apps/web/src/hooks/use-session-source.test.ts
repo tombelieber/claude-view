@@ -169,9 +169,75 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
   })
 })
 
-// ─── Auto-connect behavior ──────────────────────────────────────────────
-// init() now always calls openWs(sid) for active sessions (state filter removed).
-// Structural regression test for this is in Task 15 (Bug 1).
+// ═══════════════════════════════════════════════════════════════════════════
+// Regression tests for all 4 motivating bugs (single-stream architecture)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Bug 1: "New chat stuck forever" ────────────────────────────────────
+// Root cause: init() filtered on session state before opening WS. Sessions in
+// "waiting_input" (idle) state never auto-connected, so the user never saw
+// the first assistant response.
+// Fix: removed the state filter — init() now always calls openWs(sid) for
+// any active session, regardless of state.
+describe('Bug 1 regression — no state filter in auto-connect (structural)', () => {
+  // Read the actual source code and verify no state-based filtering exists
+  // in the init() function. This guards against re-introducing the anti-pattern.
+  it('init() calls openWs unconditionally — source has no active.state filter', async () => {
+    // Dynamic imports: vitest runs on Node but web tsconfig is browser-only
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
+    const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+
+    // Extract the init() function body
+    const initMatch = source.match(/async function init\(\)\s*\{([\s\S]*?)^\s{4}\}/m)
+    expect(initMatch).not.toBeNull()
+    const initBody = initMatch![1]
+
+    // The old code had: if (active.state === 'initializing' || active.state === 'active' ...)
+    // Verify this pattern is NOT present — openWs is called unconditionally
+    expect(initBody).not.toMatch(/active\.state\s*===/)
+    expect(initBody).not.toMatch(/shouldAutoConnect/)
+
+    // Verify openWs IS called (the fix is calling it unconditionally)
+    expect(initBody).toMatch(/openWs\(sid\)/)
+  })
+
+  it('init() has comment explaining unconditional auto-connect', async () => {
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
+    const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+
+    // The fix includes an explanatory comment so future devs understand the intent
+    expect(source).toMatch(/Always auto-connect for active sessions/)
+  })
+})
+
+// ─── Bug 2: "WS connection leak" ───────────────────────────────────────
+// Covered by ws-handler.test.ts → "One WS per session" describe block.
+// The sidecar's SessionRegistry enforces one WS per sessionId.
+
+// ─── Bug 3: "User messages appear at bottom" ───────────────────────────
+// Covered by stream-accumulator-echo.test.ts:
+//   - "echo after session_init produces UserBlock in correct position"
+//   - "multiple echoes in multi-turn appear in order"
+// The accumulator places UserBlocks sequentially, before the assistant response.
+
+// ─── Bug 4: "Duplicate content on resume" ──────────────────────────────
+// Covered by stream-accumulator-echo.test.ts:
+//   - "deduplicates on reconnect replay (same seq ignored)"
+// The accumulator deduplicates by seq number, so reconnect replay is idempotent.
 
 // ─── WS resume on first connect (event replay) ───────────────────────────
 // On first connect (lastSeq=-1), the frontend sends resume to replay buffered
