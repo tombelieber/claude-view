@@ -863,3 +863,161 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
     vi.useRealTimers()
   })
 })
+
+// ─── Echo-based flow (replaces initialMessage seeding) ────────────────
+describe('echo-based flow (replaces initialMessage seeding)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      sendIfLive: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+    })
+    mockSessionMessages.mockReturnValue({
+      data: undefined,
+      error: null,
+      hasPreviousPage: false,
+      fetchPreviousPage: vi.fn(),
+      isFetchingPreviousPage: false,
+      isFetching: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('useConversation accepts only sessionId (no initialMessage parameter)', () => {
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+    expect(result.current).toBeDefined()
+  })
+
+  it('user block appears when stream.blocks contains user_message_echo', () => {
+    mockSessionSource.mockReturnValue({
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: [
+        { type: 'user', id: 'user-0', text: 'hello', timestamp: 1000 },
+        { type: 'assistant', id: 'a-1', text: 'hi', timestamp: 1001 },
+      ] as any,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+    })
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+    const userBlocks = result.current.blocks.filter((b) => b.type === 'user')
+    expect(userBlocks).toHaveLength(1)
+  })
+})
+
+// ─── Turn ordering (replaces interleave-user-blocks coverage) ────────────────
+describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'idle',
+      controlId: null,
+      send: null,
+      sendIfLive: null,
+      isLive: false,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+    })
+    mockSessionMessages.mockReturnValue({
+      data: undefined,
+      error: null,
+      hasPreviousPage: false,
+      fetchPreviousPage: vi.fn(),
+      isFetchingPreviousPage: false,
+      isFetching: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('stream blocks already have user message before assistant (correct position)', () => {
+    mockSessionSource.mockReturnValue({
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: [
+        { type: 'user', id: 'user-0', text: 'question', timestamp: 1000 },
+        { type: 'assistant', id: 'a-1', text: 'answer', timestamp: 1001 },
+      ] as any,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+    })
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+    const userIdx = result.current.blocks.findIndex((b) => b.type === 'user')
+    const assistantIdx = result.current.blocks.findIndex((b) => b.type === 'assistant')
+    expect(userIdx).toBeLessThan(assistantIdx)
+  })
+})
