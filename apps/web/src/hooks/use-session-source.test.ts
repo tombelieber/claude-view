@@ -143,7 +143,7 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
     expect(effectiveSend).toBe(directSend) // Must select direct path
 
     const msg = { type: 'user_message', content: 'direct' }
-    effectiveSend!(msg)
+    effectiveSend?.(msg)
 
     expect(ws.sent).toHaveLength(1)
     expect(JSON.parse(ws.sent[0])).toEqual(msg)
@@ -197,7 +197,7 @@ describe('Bug 1 regression — no state filter in auto-connect (structural)', ()
     // Extract the init() function body
     const initMatch = source.match(/async function init\(\)\s*\{([\s\S]*?)^\s{4}\}/m)
     expect(initMatch).not.toBeNull()
-    const initBody = initMatch![1]
+    const initBody = initMatch?.[1]
 
     // The old code had: if (active.state === 'initializing' || active.state === 'active' ...)
     // Verify this pattern is NOT present — openWs is called unconditionally
