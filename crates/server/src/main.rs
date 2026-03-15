@@ -198,15 +198,18 @@ async fn main() -> Result<()> {
 
     let startup_start = Instant::now();
 
-    // Platform gate: macOS only for now (Linux v2.1, Windows v2.2)
-    // Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to bypass (e.g. Docker Linux containers)
+    // Platform gate: macOS is first-class. Linux is supported but less tested.
+    // WHY this gate remains after cross-platform hardening:
+    //   - macOS is the primary dev/test platform; Linux has less CI coverage
+    //   - Some features (process tree, keychain) have platform-specific codepaths
+    //   - Docker/WSL/CI users can bypass via env var
+    // Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to run on Linux (Docker, WSL, native).
     if std::env::consts::OS != "macos"
         && std::env::var("CLAUDE_VIEW_SKIP_PLATFORM_CHECK").as_deref() != Ok("1")
     {
-        eprintln!("\n\u{26a0}\u{fe0f}  claude-view currently supports macOS only.");
-        eprintln!("   Linux support is planned for v2.1, Windows for v2.2.");
-        eprintln!("   Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to bypass (e.g. Docker).");
-        eprintln!("   Follow progress: https://github.com/tombelieber/claude-view/issues\n");
+        eprintln!("\n\u{26a0}\u{fe0f}  claude-view is optimized for macOS. Linux support is available but less tested.");
+        eprintln!("   Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to run on Linux.");
+        eprintln!("   Report issues: https://github.com/tombelieber/claude-view/issues\n");
         std::process::exit(1);
     }
 
