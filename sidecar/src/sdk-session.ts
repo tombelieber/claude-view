@@ -113,6 +113,7 @@ export function createControlSession(
     nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
+    activeWs: null,
   }
 
   registry.register(cs)
@@ -182,6 +183,7 @@ export async function resumeControlSession(
     permissionMode: req.permissionMode ?? 'default',
     nextSeq: 0,
     permissions,
+    activeWs: null,
   }
 
   registry.register(cs)
@@ -237,6 +239,7 @@ export function forkControlSession(
     nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
+    activeWs: null,
   }
 
   registry.register(cs)
