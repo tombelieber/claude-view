@@ -126,6 +126,98 @@ describe('ws-handler requestId echo', () => {
     expect(resp.requestId).toBeUndefined()
   })
 
+  describe('User message echo', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let echoRegistry: any
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let echoSession: any
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let echoWs: any
+    let echoMessageHandler: (raw: Buffer) => Promise<void>
+
+    beforeEach(() => {
+      const listeners: Record<string, (...args: unknown[]) => void> = {}
+      echoWs = {
+        send: vi.fn(),
+        close: vi.fn(),
+        readyState: 1,
+        OPEN: 1,
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          listeners[event] = cb
+        }),
+      }
+
+      echoSession = {
+        activeWs: null,
+        state: 'waiting_input',
+        sessionId: 'sess-1',
+        emitter: { on: vi.fn(), removeListener: vi.fn() },
+        eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
+        permissions: {
+          resolvePermission: vi.fn(),
+          resolveQuestion: vi.fn(),
+          resolvePlan: vi.fn(),
+          resolveElicitation: vi.fn(),
+          drainInteractive: vi.fn(),
+        },
+        bridge: { push: vi.fn() },
+        query: {
+          supportedModels: vi.fn().mockResolvedValue([]),
+          supportedCommands: vi.fn().mockResolvedValue([]),
+          supportedAgents: vi.fn().mockResolvedValue([]),
+          mcpServerStatus: vi.fn().mockResolvedValue([]),
+          accountInfo: vi.fn().mockResolvedValue({}),
+          setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
+          rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
+        },
+      }
+
+      echoRegistry = {
+        get: vi.fn().mockReturnValue(echoSession),
+        emitSequenced: vi.fn(),
+      }
+
+      handleWebSocket(echoWs, 'ctrl-1', echoRegistry)
+      echoMessageHandler = listeners['message'] as (raw: Buffer) => Promise<void>
+    })
+
+    it('emits user_message_echo via emitSequenced on user_message', async () => {
+      await echoMessageHandler(
+        Buffer.from(JSON.stringify({ type: 'user_message', content: 'hello' })),
+      )
+
+      const echoCalls = echoRegistry.emitSequenced.mock.calls.filter(
+        // biome-ignore lint/suspicious/noExplicitAny: test assertion
+        (c: any[]) => c[1]?.type === 'user_message_echo',
+      )
+      expect(echoCalls).toHaveLength(1)
+      expect(echoCalls[0][1].content).toBe('hello')
+    })
+
+    it('user_message_echo timestamp is in seconds (not ms)', async () => {
+      const beforeSec = Date.now() / 1000
+      await echoMessageHandler(Buffer.from(JSON.stringify({ type: 'user_message', content: 'hi' })))
+      const afterSec = Date.now() / 1000
+
+      const echoCalls = echoRegistry.emitSequenced.mock.calls.filter(
+        // biome-ignore lint/suspicious/noExplicitAny: test assertion
+        (c: any[]) => c[1]?.type === 'user_message_echo',
+      )
+      const ts = echoCalls[0][1].timestamp
+      expect(ts).toBeGreaterThanOrEqual(beforeSec)
+      expect(ts).toBeLessThanOrEqual(afterSec)
+    })
+
+    it('still calls sendMessage (bridge.push) after echo', async () => {
+      await echoMessageHandler(
+        Buffer.from(JSON.stringify({ type: 'user_message', content: 'test' })),
+      )
+
+      // sendMessage calls bridge.push — verify session state changed to active
+      expect(echoSession.state).toBe('active')
+    })
+  })
+
   describe('One WS per session', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
     let wsRegistry: any
