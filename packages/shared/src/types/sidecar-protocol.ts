@@ -233,6 +233,12 @@ export interface UnknownSdkEvent {
   raw: unknown
 }
 
+export interface UserMessageEcho {
+  type: 'user_message_echo'
+  content: string
+  timestamp: number
+}
+
 export interface SessionClosed {
   type: 'session_closed'
   reason: string
@@ -329,6 +335,7 @@ export type ServerEvent =
   | ErrorEvent
   | PongEvent
   | UnknownSdkEvent
+  | UserMessageEcho
 
 export type SequencedEvent = ServerEvent & { seq: number }
 
