@@ -16,12 +16,13 @@ fi
 # Locate npx — version managers (nvm, volta, fnm, asdf) put it outside system PATH.
 # Claude Code hooks run with limited env, so we search common locations.
 find_npx() {
-  # 1. Already in PATH?
+  # 1. Already in PATH? (POSIX standard — works everywhere)
   command -v npx 2>/dev/null && return
-  # 2. Common version manager locations
+  # 2. Version manager locations (universal first, macOS-specific last)
   for candidate in \
     "${HOME}/.volta/bin/npx" \
     "${HOME}/.local/share/fnm/aliases/default/bin/npx" \
+    "${HOME}/.local/bin/npx" \
     "/usr/local/bin/npx" \
     "/opt/homebrew/bin/npx"; do
     [ -x "$candidate" ] && echo "$candidate" && return
