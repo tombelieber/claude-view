@@ -27,6 +27,8 @@ vi.mock('./use-session-source', () => ({
     agents: [],
     channel: null,
     capabilities: [],
+    replayComplete: true,
+    clearPendingMessage: vi.fn(),
   }),
 }))
 
@@ -82,6 +84,8 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -145,6 +149,8 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -220,6 +226,8 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -262,6 +270,8 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -327,6 +337,8 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
@@ -353,6 +365,8 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
@@ -379,6 +393,8 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
@@ -412,6 +428,8 @@ describe('initialMessage seeding from router state', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -473,6 +491,8 @@ describe('initialMessage seeding from router state', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      replayComplete: true,
+      clearPendingMessage: vi.fn(),
     })
 
     renderHook(() => useConversation('new-session-id', 'Hello world'), { wrapper: createWrapper() })
