@@ -5,7 +5,7 @@
 //! client connects and stops when the last one disconnects.
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use sysinfo::{Disks, ProcessesToUpdate, System};
@@ -181,10 +181,18 @@ pub fn collect_snapshot(
     let memory_used_bytes = sys.used_memory();
     let memory_total_bytes = sys.total_memory();
 
-    // Disk
+    // Disk — deduplicate mount points that share the same physical volume.
+    // On macOS APFS, `/` and `/System/Volumes/Data` (and others) all report
+    // the same total_space because they share one container. We deduplicate
+    // by disk name (e.g. "Macintosh HD") to avoid double-counting.
     let disks = Disks::new_with_refreshed_list();
+    let mut seen_names: HashSet<String> = HashSet::new();
     let (disk_used_bytes, disk_total_bytes) =
         disks.iter().fold((0u64, 0u64), |(used, total), d| {
+            let name = d.name().to_string_lossy().to_string();
+            if !seen_names.insert(name) {
+                return (used, total);
+            }
             (
                 used + (d.total_space() - d.available_space()),
                 total + d.total_space(),
