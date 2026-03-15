@@ -54,8 +54,9 @@ pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
         let pid_u32 = pid.as_u32();
         let start_time = process.start_time();
 
-        // sysinfo can read cwd on Linux but NOT on macOS (returns None due to
-        // security restrictions). Fall back to lsof on macOS when cwd is None.
+        // sysinfo returns None for cwd on macOS due to security restrictions
+        // (sandboxing / SIP). On Linux, sysinfo reads /proc/<pid>/cwd directly.
+        // Fall back to lsof when cwd is None (works on both macOS and Linux).
         let cwd = process
             .cwd()
             .map(|p| p.to_path_buf())
