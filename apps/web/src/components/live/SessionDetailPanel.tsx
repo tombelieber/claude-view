@@ -350,8 +350,8 @@ export function SessionDetailPanel({
   // - If rich/live-calculated cost exists, use it (matches live parser math).
   // - Fall back to DB total_cost_usd only when rich data is unavailable.
   const dbCostUsd = data.historyExtras?.sessionInfo?.totalCostUsd
-  const calculatedCostUsd =
-    data.cost.totalUsd + (data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0)
+  const subAgentCostUsd = data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0
+  const calculatedCostUsd = data.cost.totalUsd + subAgentCostUsd
   const totalCostUsd = calculatedCostUsd > 0 ? calculatedCostUsd : (dbCostUsd ?? 0)
   const totalCostLabel = hasUnavailableCost(totalCostUsd, data.cost, data.tokens.totalTokens)
     ? 'Unavailable'
@@ -622,6 +622,12 @@ export function SessionDetailPanel({
                   <span>CacheR: ${(data.cost?.cacheReadCostUsd ?? 0).toFixed(2)}</span>
                   <span>CacheW: ${(data.cost?.cacheCreationCostUsd ?? 0).toFixed(2)}</span>
                 </div>
+                {hasSubAgents && (
+                  <div className="mt-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                    + {data.subAgents?.length ?? 0} sub-agent
+                    {(data.subAgents?.length ?? 0) !== 1 ? 's' : ''}: ${subAgentCostUsd.toFixed(2)}
+                  </div>
+                )}
                 {hasCacheCreationSplit && (
                   <div className="mt-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
                     CacheW tokens: 5m {cacheCreation5mTokens.toLocaleString()} · 1h{' '}
