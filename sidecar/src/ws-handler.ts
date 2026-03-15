@@ -42,6 +42,11 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
       const msg: ClientMessage = JSON.parse(raw.toString())
       switch (msg.type) {
         case 'user_message':
+          registry.emitSequenced(session, {
+            type: 'user_message_echo',
+            content: msg.content,
+            timestamp: Date.now() / 1000,
+          })
           sendMessage(session, msg.content)
           break
 
