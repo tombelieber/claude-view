@@ -23,7 +23,10 @@ export interface HistoryBlocksResult {
   error: Error | null
 }
 
-export function useHistoryBlocks(sessionId: string | null): HistoryBlocksResult {
+export function useHistoryBlocks(
+  sessionId: string | null,
+  options?: { suppressNotFound?: boolean },
+): HistoryBlocksResult {
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const {
     data,
@@ -33,7 +36,10 @@ export function useHistoryBlocks(sessionId: string | null): HistoryBlocksResult 
     isFetchingPreviousPage,
     isFetching,
     isLoading,
-  } = useSessionMessages(sessionId, { raw: verboseMode })
+  } = useSessionMessages(sessionId, {
+    raw: verboseMode,
+    suppressNotFound: options?.suppressNotFound,
+  })
 
   const blocks = useMemo(() => {
     if (!data?.pages) return []
