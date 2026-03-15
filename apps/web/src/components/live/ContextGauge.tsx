@@ -261,21 +261,37 @@ export function ContextGauge({
 
         {/* Breakdown rows */}
         <div className="space-y-1 text-[11px]">
+          <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
+            <span>Used</span>
+            <span className="tabular-nums font-mono">
+              {formatTokens(contextWindowTokens)}{' '}
+              <span className="text-gray-400 dark:text-gray-600 font-normal">
+                ({usedPct.toFixed(1)}%)
+              </span>
+            </span>
+          </div>
+          <div className="pl-3 space-y-0.5">
+            <BreakdownRow
+              label="System (prompt + tools)"
+              tokens={systemEstimate}
+              limit={contextLimit}
+            />
+            <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
+          </div>
           <BreakdownRow
-            label="System (prompt + tools)"
-            tokens={systemEstimate}
-            limit={contextLimit}
-          />
-          <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
-          <BreakdownRow
-            label="Autocompact buffer"
+            label="Reserved (autocompact)"
             tokens={autocompactBuffer}
             limit={contextLimit}
           />
           <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
             <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100 text-[11px]">
-              <span>Free space</span>
-              <span className="tabular-nums font-mono">{formatTokens(freeSpace)}</span>
+              <span>Available</span>
+              <span className="tabular-nums font-mono">
+                {formatTokens(freeSpace)}{' '}
+                <span className="text-gray-400 dark:text-gray-600 font-normal">
+                  of {formatTokens(contextLimit)}
+                </span>
+              </span>
             </div>
           </div>
         </div>
@@ -419,21 +435,37 @@ export function ContextGauge({
               <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
                 Estimated breakdown
               </div>
+              <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
+                <span>Used</span>
+                <span className="tabular-nums font-mono">
+                  {formatTokens(contextWindowTokens)}{' '}
+                  <span className="text-gray-400 dark:text-gray-600 font-normal">
+                    ({usedPct.toFixed(1)}%)
+                  </span>
+                </span>
+              </div>
+              <div className="pl-3 space-y-0.5">
+                <BreakdownRow
+                  label="System (prompt + tools)"
+                  tokens={systemEstimate}
+                  limit={contextLimit}
+                />
+                <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
+              </div>
               <BreakdownRow
-                label="System (prompt + tools)"
-                tokens={systemEstimate}
-                limit={contextLimit}
-              />
-              <BreakdownRow label="Conversation" tokens={messagesEstimate} limit={contextLimit} />
-              <BreakdownRow
-                label="Autocompact buffer"
+                label="Reserved (autocompact)"
                 tokens={autocompactBuffer}
                 limit={contextLimit}
               />
               <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
                 <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
-                  <span>Free space</span>
-                  <span className="tabular-nums font-mono">{formatTokens(freeSpace)}</span>
+                  <span>Available</span>
+                  <span className="tabular-nums font-mono">
+                    {formatTokens(freeSpace)}{' '}
+                    <span className="text-gray-400 dark:text-gray-600 font-normal">
+                      of {formatTokens(contextLimit)}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>
