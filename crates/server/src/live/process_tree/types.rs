@@ -173,7 +173,7 @@ mod tests {
             pid: 1234,
             ppid: 0,
             name: "claude".to_string(),
-            command: "/usr/local/bin/claude".to_string(),
+            command: "/usr/bin/claude".to_string(),
             category: ProcessCategory::ClaudeEcosystem,
             ecosystem_tag: Some(EcosystemTag::Cli),
             cpu_percent: 0.0,
