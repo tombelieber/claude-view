@@ -117,6 +117,16 @@ export function createControlSession(
   }
 
   registry.register(cs)
+
+  // Echo initial message into ring buffer (seq 0)
+  if (req.initialMessage) {
+    registry.emitSequenced(cs, {
+      type: 'user_message_echo',
+      content: req.initialMessage,
+      timestamp: Date.now() / 1000,
+    })
+  }
+
   runStreamLoop(cs, registry)
 
   return cs
