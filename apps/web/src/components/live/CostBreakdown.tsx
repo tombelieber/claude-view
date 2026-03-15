@@ -93,6 +93,19 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           </>
         )}
 
+        {/* Total row */}
+        <div className="flex items-center text-sm pt-1 border-t border-gray-200 dark:border-gray-800 font-medium text-gray-900 dark:text-gray-100">
+          <span className="flex-1">
+            {subAgents && subAgents.length > 0 ? 'Subtotal (main)' : 'Total'}
+          </span>
+          <span className="w-20 text-right font-mono tabular-nums">
+            {tokens ? formatTokenCount(tokens.totalTokens) : '--'}
+          </span>
+          <span className="w-20 text-right font-mono tabular-nums">
+            {showUnavailableMainAgent ? '—' : formatCostUsd(cost.totalUsd)}
+          </span>
+        </div>
+
         {cost.cacheSavingsUsd > 0 && (
           <div
             className={`flex items-center text-sm pt-1 border-t border-gray-100 dark:border-gray-800 ${COST_CATEGORY_COLORS.savings.text}`}
