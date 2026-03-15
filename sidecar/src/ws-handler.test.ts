@@ -218,6 +218,94 @@ describe('ws-handler requestId echo', () => {
     })
   })
 
+  describe('Graceful buffer exhaustion', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let bufRegistry: any
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let bufSession: any
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let bufWs: any
+    let bufMessageHandler: (raw: Buffer) => Promise<void>
+
+    beforeEach(() => {
+      const listeners: Record<string, (...args: unknown[]) => void> = {}
+      bufWs = {
+        send: vi.fn(),
+        close: vi.fn(),
+        readyState: 1,
+        OPEN: 1,
+        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+          listeners[event] = cb
+        }),
+      }
+
+      bufSession = {
+        activeWs: null,
+        state: 'active',
+        emitter: { on: vi.fn(), removeListener: vi.fn() },
+        eventBuffer: { getAfter: vi.fn().mockReturnValue(null) },
+        permissions: {
+          resolvePermission: vi.fn(),
+          resolveQuestion: vi.fn(),
+          resolvePlan: vi.fn(),
+          resolveElicitation: vi.fn(),
+          drainInteractive: vi.fn(),
+        },
+        query: {
+          supportedModels: vi.fn().mockResolvedValue([]),
+          supportedCommands: vi.fn().mockResolvedValue([]),
+          supportedAgents: vi.fn().mockResolvedValue([]),
+          mcpServerStatus: vi.fn().mockResolvedValue([]),
+          accountInfo: vi.fn().mockResolvedValue({}),
+          setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
+          rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
+        },
+      }
+
+      bufRegistry = {
+        get: vi.fn().mockReturnValue(bufSession),
+        emitSequenced: vi.fn(),
+      }
+
+      handleWebSocket(bufWs, 'ctrl-1', bufRegistry)
+      bufMessageHandler = listeners.message as (raw: Buffer) => Promise<void>
+    })
+
+    it('sends replay_buffer_exhausted with fatal=false', async () => {
+      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
+
+      const errorSend = bufWs.send.mock.calls.find((c: string[]) => {
+        const parsed = JSON.parse(c[0])
+        return parsed.message === 'replay_buffer_exhausted'
+      })
+      expect(errorSend).toBeDefined()
+      const parsed = JSON.parse(errorSend[0])
+      expect(parsed.fatal).toBe(false)
+    })
+
+    it('does NOT close the WS after buffer exhaustion', async () => {
+      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
+
+      expect(bufWs.close).not.toHaveBeenCalled()
+    })
+
+    it('replays missed events on happy path', async () => {
+      bufSession.eventBuffer.getAfter.mockReturnValue([
+        { seq: 6, msg: { type: 'assistant_text', text: 'hello', seq: 6 } },
+        { seq: 7, msg: { type: 'assistant_text', text: 'world', seq: 7 } },
+      ])
+
+      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
+
+      // Find the two replayed events (after initial sends from handleWebSocket setup)
+      const allSends = bufWs.send.mock.calls.map((c: string[]) => JSON.parse(c[0]))
+      const replayed = allSends.filter((m: Record<string, unknown>) => m.type === 'assistant_text')
+      expect(replayed).toHaveLength(2)
+      expect(replayed[0].text).toBe('hello')
+      expect(replayed[1].text).toBe('world')
+    })
+  })
+
   describe('One WS per session', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
     let wsRegistry: any

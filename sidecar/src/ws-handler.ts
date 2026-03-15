@@ -95,9 +95,8 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           const missed = session.eventBuffer.getAfter(lastSeq, (e) => e.seq)
           if (missed === null) {
             ws.send(
-              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: true }),
+              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: false }),
             )
-            ws.close()
           } else {
             for (const event of missed) {
               if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event.msg))
