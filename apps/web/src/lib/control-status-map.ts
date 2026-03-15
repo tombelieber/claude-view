@@ -12,6 +12,9 @@ export function deriveInputBarState(
   isLive: boolean,
   canResumeLazy?: boolean,
 ): InputBarState {
+  // Connection replaced by another tab — show as completed (not an error)
+  if (sessionState === 'replaced') return 'completed'
+
   if (!isLive) {
     return canResumeLazy ? 'active' : 'dormant'
   }

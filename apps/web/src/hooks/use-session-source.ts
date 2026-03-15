@@ -35,6 +35,9 @@ export interface SessionSourceResult {
   agents: string[]
   channel: SessionChannel | null
   capabilities: string[]
+  /** False when ring buffer was exhausted — client missed events and should show a warning */
+  replayComplete: boolean
+  clearPendingMessage: (text: string) => void
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -73,6 +76,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [skills, setSkills] = useState<string[]>([])
   const [agents, setAgents] = useState<string[]>([])
   const [capabilities, setCapabilities] = useState<string[]>([])
+  const [replayComplete, setReplayComplete] = useState(true)
   const channelRef = useRef(new SessionChannel(null))
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -243,6 +247,14 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           if (evt.requestId) channelRef.current.handleResponse(evt.requestId, evt.result)
           break
         }
+        case 'error': {
+          if (raw.message === 'replay_buffer_exhausted' && raw.fatal === false) {
+            setReplayComplete(false)
+            break
+          }
+          console.error('[WS] fatal error:', raw.message)
+          break
+        }
       }
     },
     [startHeartbeat, syncBlocks],
@@ -255,6 +267,13 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (unmountedRef.current) return
       clearHeartbeat()
       channelRef.current.handleDisconnect()
+
+      // Connection replaced by a newer WS (e.g. another tab connected)
+      if (event.code === 4001) {
+        setSessionState('replaced')
+        setIsLive(false)
+        return
+      }
 
       if ((NON_RECOVERABLE_CODES as ReadonlySet<number>).has(event.code)) {
         setSessionState('error')
@@ -300,6 +319,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       ws.onopen = () => {
         if (wsRef.current !== ws) return
         setIsLive(true)
+        setReplayComplete(true)
         reconnectAttemptRef.current = 0
 
         // Always replay buffered events — critical for new sessions where
@@ -341,6 +361,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     accumulatorRef.current = new StreamAccumulator()
     lastSeqRef.current = -1
     reconnectAttemptRef.current = 0
+    setReplayComplete(true)
 
     let cancelled = false
 
@@ -353,15 +374,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           const active = sessions.find((s) => s.sessionId === sid)
           if (!cancelled && active) {
             setControlId(active.controlId)
-            // Auto-connect for sessions actively processing — user should see live output.
-            // Lazy connect (wait for user's next message) for idle sessions.
-            if (
-              active.state === 'initializing' ||
-              active.state === 'active' ||
-              active.state === 'waiting_permission'
-            ) {
-              openWs(sid)
-            }
+            // Always auto-connect for active sessions — ensures we get live events
+            // even when session is idle (waiting_input). Bug fix: previously only
+            // connected for processing states, missing events from idle sessions.
+            openWs(sid)
           }
         }
       } catch {
@@ -508,6 +524,12 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   // Keep channel's send function in sync with the effective send
   channelRef.current.updateSend(isLive ? send : null)
 
+  const clearPendingMessage = useCallback((text: string) => {
+    pendingMessagesRef.current = pendingMessagesRef.current.filter(
+      (m) => (m as { content?: string }).content !== text,
+    )
+  }, [])
+
   const effectiveSend = deriveEffectiveSend(isLive, controlId, sessionId, send, connectAndSend)
   const canResumeLazy = deriveCanResumeLazy(controlId, sessionId, isLive)
 
@@ -531,5 +553,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     agents,
     channel: channelRef.current,
     capabilities,
+    replayComplete,
+    clearPendingMessage,
   }
 }
