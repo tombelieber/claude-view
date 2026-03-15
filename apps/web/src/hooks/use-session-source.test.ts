@@ -169,52 +169,9 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
   })
 })
 
-// ─── Auto-connect vs lazy connect (active session state) ──────────────────
-// The init() function in useSessionSource checks the session state to decide
-// whether to auto-connect (open WS immediately) or lazy connect (wait for
-// user's next message). This logic is critical for new sessions with
-// initialMessage — without auto-connect, the user never sees the response.
-describe('Auto-connect decision based on ActiveSession state', () => {
-  // Simulate the init() logic extracted for testability
-  function shouldAutoConnect(state: string): boolean {
-    return state === 'initializing' || state === 'active' || state === 'waiting_permission'
-  }
-
-  // --- Unit: initializing → auto-connect (new session with initialMessage) ---
-  it('auto-connects for initializing state (new session being created)', () => {
-    expect(shouldAutoConnect('initializing')).toBe(true)
-  })
-
-  // --- Unit: active → auto-connect (session actively processing) ---
-  it('auto-connects for active state (SDK processing a message)', () => {
-    expect(shouldAutoConnect('active')).toBe(true)
-  })
-
-  // --- Unit: waiting_input → lazy connect ---
-  it('does NOT auto-connect for waiting_input state (idle session)', () => {
-    expect(shouldAutoConnect('waiting_input')).toBe(false)
-  })
-
-  // --- Unit: closed → lazy connect ---
-  it('does NOT auto-connect for closed state', () => {
-    expect(shouldAutoConnect('closed')).toBe(false)
-  })
-
-  // --- Unit: error → lazy connect ---
-  it('does NOT auto-connect for error state', () => {
-    expect(shouldAutoConnect('error')).toBe(false)
-  })
-
-  // --- Unit: compacting → lazy connect (not urgently active) ---
-  it('does NOT auto-connect for compacting state', () => {
-    expect(shouldAutoConnect('compacting')).toBe(false)
-  })
-
-  // --- Unit: waiting_permission → auto-connect (user needs to see permission card) ---
-  it('auto-connects for waiting_permission state (session needs user approval)', () => {
-    expect(shouldAutoConnect('waiting_permission')).toBe(true)
-  })
-})
+// ─── Auto-connect behavior ──────────────────────────────────────────────
+// init() now always calls openWs(sid) for active sessions (state filter removed).
+// Structural regression test for this is in Task 15 (Bug 1).
 
 // ─── WS resume on first connect (event replay) ───────────────────────────
 // On first connect (lastSeq=-1), the frontend sends resume to replay buffered
