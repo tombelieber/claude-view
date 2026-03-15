@@ -1,6 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { handleWebSocket } from './ws-handler.js'
 
+function createMockWs() {
+  const listeners: Record<string, (...args: unknown[]) => void> = {}
+  return {
+    send: vi.fn(),
+    close: vi.fn(),
+    readyState: 1,
+    OPEN: 1,
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
+      listeners[event] = cb
+    }),
+    _listeners: listeners,
+  }
+}
+
 describe('ws-handler requestId echo', () => {
   // biome-ignore lint/suspicious/noExplicitAny: test mocks
   let mockWs: any
@@ -21,6 +35,7 @@ describe('ws-handler requestId echo', () => {
     }
 
     mockSession = {
+      activeWs: null,
       state: 'active',
       emitter: { on: vi.fn(), removeListener: vi.fn() },
       eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
@@ -109,5 +124,87 @@ describe('ws-handler requestId echo', () => {
     const resp = lastSentJson()
     expect(resp.type).toBe('query_result')
     expect(resp.requestId).toBeUndefined()
+  })
+
+  describe('One WS per session', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let wsRegistry: any
+    // biome-ignore lint/suspicious/noExplicitAny: test mocks
+    let wsSession: any
+
+    beforeEach(() => {
+      wsSession = {
+        activeWs: null,
+        state: 'active',
+        emitter: { on: vi.fn(), removeListener: vi.fn() },
+        eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
+        permissions: {
+          resolvePermission: vi.fn(),
+          resolveQuestion: vi.fn(),
+          resolvePlan: vi.fn(),
+          resolveElicitation: vi.fn(),
+          drainInteractive: vi.fn(),
+        },
+        query: {
+          supportedModels: vi.fn().mockResolvedValue([]),
+          supportedCommands: vi.fn().mockResolvedValue([]),
+          supportedAgents: vi.fn().mockResolvedValue([]),
+          mcpServerStatus: vi.fn().mockResolvedValue([]),
+          accountInfo: vi.fn().mockResolvedValue({}),
+          setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
+          rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
+        },
+      }
+
+      wsRegistry = {
+        get: vi.fn().mockReturnValue(wsSession),
+        emitSequenced: vi.fn(),
+      }
+    })
+
+    it('closes old WS with code 4001 when new WS connects to same session', () => {
+      const oldWs = createMockWs()
+      const newWs = createMockWs()
+
+      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
+      expect(wsSession.activeWs).toBe(oldWs)
+
+      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
+      expect(oldWs.close).toHaveBeenCalledWith(4001, 'replaced_by_new_connection')
+      expect(wsSession.activeWs).toBe(newWs)
+    })
+
+    it('does not close when session has no previous WS', () => {
+      const ws = createMockWs()
+      handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
+      expect(ws.close).not.toHaveBeenCalled()
+      expect(wsSession.activeWs).toBe(ws)
+    })
+
+    it('clears activeWs on close only if it matches current WS', () => {
+      const ws = createMockWs()
+      handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
+      expect(wsSession.activeWs).toBe(ws)
+
+      // Trigger close handler
+      const closeHandler = ws._listeners['close']
+      closeHandler()
+
+      expect(wsSession.activeWs).toBeNull()
+    })
+
+    it('does NOT clear activeWs if a newer WS replaced it before close fires', () => {
+      const oldWs = createMockWs()
+      const newWs = createMockWs()
+
+      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
+
+      // Old WS close fires late — should NOT clear activeWs (newWs owns it now)
+      const oldCloseHandler = oldWs._listeners['close']
+      oldCloseHandler()
+
+      expect(wsSession.activeWs).toBe(newWs)
+    })
   })
 })

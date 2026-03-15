@@ -13,6 +13,12 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     return
   }
 
+  // Enforce one WS per session: close old connection before subscribing new one
+  if (session.activeWs && session.activeWs.readyState === ws.OPEN) {
+    session.activeWs.close(4001, 'replaced_by_new_connection')
+  }
+  session.activeWs = ws
+
   // Subscribe to session events
   const onMessage = (msg: unknown) => {
     if (ws.readyState === ws.OPEN) {
@@ -282,6 +288,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
 
   // Cleanup on close — drain interactive maps, keep session alive for reconnect
   ws.on('close', () => {
+    if (session.activeWs === ws) {
+      session.activeWs = null
+    }
     session.emitter.removeListener('message', onMessage)
     session.permissions.drainInteractive()
   })
