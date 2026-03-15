@@ -185,14 +185,28 @@ pub fn collect_snapshot(
     // On macOS APFS, `/` and `/System/Volumes/Data` (and others) all report
     // the same total_space because they share one container. We deduplicate
     // by disk name (e.g. "Macintosh HD") to avoid double-counting.
+    // Proven pattern: sysinfo itself filters non-browsable volumes (issue #714),
+    // but browsable duplicates (Data volume) still need name-based dedup.
     let disks = Disks::new_with_refreshed_list();
     let mut seen_names: HashSet<String> = HashSet::new();
     let (disk_used_bytes, disk_total_bytes) =
         disks.iter().fold((0u64, 0u64), |(used, total), d| {
             let name = d.name().to_string_lossy().to_string();
-            if !seen_names.insert(name) {
+            let mount = d.mount_point().display().to_string();
+            if !seen_names.insert(name.clone()) {
+                tracing::debug!(
+                    disk_name = %name,
+                    disk_mount = %mount,
+                    "disk: skipped (duplicate name)"
+                );
                 return (used, total);
             }
+            tracing::debug!(
+                disk_name = %name,
+                disk_mount = %mount,
+                disk_total_gb = d.total_space() / (1024 * 1024 * 1024),
+                "disk: counted"
+            );
             (
                 used + (d.total_space() - d.available_space()),
                 total + d.total_space(),
@@ -535,7 +549,7 @@ mod tests {
                 pid: 100,
                 ppid: 1,
                 name: "claude".to_string(),
-                command: "/usr/local/bin/claude".to_string(),
+                command: "/usr/bin/claude".to_string(),
                 category: ProcessCategory::ClaudeEcosystem,
                 ecosystem_tag: Some(EcosystemTag::Cli),
                 cpu_percent: 5.0,
