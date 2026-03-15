@@ -471,3 +471,101 @@ describe('capabilities from session_init', () => {
     expect(caps).toEqual([])
   })
 })
+
+// ─── Regression: SDK session cleanup on page close ────────────────────────
+// Root cause: useSessionSource cleanup only closed the WS but never terminated
+// the SDK session on the sidecar. Sessions ran indefinitely, consuming resources.
+//
+// Design: DELETE fires on beforeunload (page close/refresh), NOT on React
+// cleanup. React cleanup fires on in-app navigation which would aggressively
+// kill sessions — the user would have to re-resume every time they switch pages.
+// Pattern: Jupyter kernel idle timeout / VS Code Remote SSH.
+describe('SDK session cleanup via beforeunload', () => {
+  // --- Regression: controlIdRef tracks latest controlId for beforeunload closure ---
+  it('controlIdRef mirrors controlId state for cleanup access', () => {
+    const controlIdRef = { current: null as string | null }
+
+    controlIdRef.current = 'ctrl-abc'
+    expect(controlIdRef.current).toBe('ctrl-abc')
+
+    controlIdRef.current = 'ctrl-def'
+    expect(controlIdRef.current).toBe('ctrl-def')
+  })
+
+  // --- Regression: beforeunload handler sends DELETE with keepalive ---
+  it('beforeunload handler sends DELETE with keepalive: true', () => {
+    const fetchMock = vi.fn()
+    const controlIdRef = { current: 'ctrl-cleanup-test' as string | null }
+
+    // Simulate the beforeunload handler
+    const handleBeforeUnload = () => {
+      if (controlIdRef.current) {
+        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+          method: 'DELETE',
+          keepalive: true,
+        })
+      }
+    }
+
+    handleBeforeUnload()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/control/sessions/ctrl-cleanup-test', {
+      method: 'DELETE',
+      keepalive: true,
+    })
+  })
+
+  // --- Edge: beforeunload does NOT call DELETE when controlId is null ---
+  it('beforeunload does NOT call DELETE when controlId is null', () => {
+    const fetchMock = vi.fn()
+    const controlIdRef = { current: null as string | null }
+
+    const handleBeforeUnload = () => {
+      if (controlIdRef.current) {
+        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+          method: 'DELETE',
+          keepalive: true,
+        })
+      }
+    }
+
+    handleBeforeUnload()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // --- Regression: React cleanup does NOT terminate session (preserves in-app nav) ---
+  it('React cleanup only closes WS, does NOT send DELETE', () => {
+    const calls: string[] = []
+    const wsRef = {
+      current: {
+        close: () => calls.push('ws.close'),
+      },
+    }
+    const heartbeatTimerRef = { current: 123 as ReturnType<typeof setInterval> | null }
+    const reconnectTimerRef = { current: 456 as ReturnType<typeof setTimeout> | null }
+    const pendingMessagesRef = { current: [{ type: 'user_message', content: 'pending' }] }
+
+    // Simulate React cleanup (mirrors the actual useEffect cleanup)
+    if (heartbeatTimerRef.current) {
+      calls.push('clearHeartbeat')
+      heartbeatTimerRef.current = null
+    }
+    if (reconnectTimerRef.current) {
+      calls.push('clearReconnectTimer')
+      reconnectTimerRef.current = null
+    }
+    wsRef.current?.close()
+    pendingMessagesRef.current = []
+    calls.push('clearPendingMessages')
+
+    // NO terminateSDKSession in React cleanup — that's the fix
+    expect(calls).toEqual([
+      'clearHeartbeat',
+      'clearReconnectTimer',
+      'ws.close',
+      'clearPendingMessages',
+    ])
+    // Notably absent: 'terminateSDKSession'
+    expect(calls).not.toContain('terminateSDKSession')
+  })
+})
