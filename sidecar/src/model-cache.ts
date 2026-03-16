@@ -8,6 +8,7 @@
 // The query spawns a CLI subprocess, reads init data, then interrupts.
 
 import { type ModelInfo, query } from '@anthropic-ai/claude-agent-sdk'
+import { findClaudeExecutable } from './cli-path.js'
 
 interface ModelCacheState {
   models: ModelInfo[]
@@ -74,7 +75,7 @@ async function refreshModelCache(): Promise<void> {
   let q: ReturnType<typeof query> | null = null
 
   try {
-    q = query({ prompt: '' })
+    q = query({ prompt: '', options: { pathToClaudeCodeExecutable: findClaudeExecutable() } })
 
     // Timeout guards against initializationResult() hanging (e.g. CLI not found,
     // auth issues, network problems). Without this, refreshInFlight stays true
