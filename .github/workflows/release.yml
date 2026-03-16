@@ -99,7 +99,6 @@ jobs:
         run: |
           mkdir -p staging/sidecar
           cp -r sidecar/dist staging/sidecar/
-          cp sidecar/package.json staging/sidecar/
 
       - name: Package (unix)
         if: runner.os != 'Windows'
