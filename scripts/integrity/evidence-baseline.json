@@ -35,12 +35,13 @@
     "known": [
       "api_error",
       "compact_boundary",
+      "informational",
       "local_command",
       "microcompact_boundary",
       "stop_hook_summary",
       "turn_duration"
     ],
-    "zero_occurrence": ["informational"]
+    "zero_occurrence": []
   },
   "progress_data_types": {
     "known": [

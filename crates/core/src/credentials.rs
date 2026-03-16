@@ -143,6 +143,7 @@ fn read_linux_secret_service() -> Option<Vec<u8>> {
 }
 
 /// Decode hex-encoded JSON (macOS Keychain sometimes returns hex-encoded UTF-8).
+#[cfg(target_os = "macos")]
 fn decode_hex_json(raw: &str) -> Option<Vec<u8>> {
     let hex = raw
         .strip_prefix("0x")
@@ -251,6 +252,7 @@ mod tests {
         let _ = result;
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_decode_hex_json_valid_json() {
         let hex = "7b2261223a317d";
@@ -260,6 +262,7 @@ mod tests {
         assert_eq!(bytes, b"{\"a\":1}");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_decode_hex_json_with_0x_prefix() {
         let result = decode_hex_json("0x7b7d");
@@ -267,18 +270,21 @@ mod tests {
         assert_eq!(result.unwrap(), b"{}");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_decode_hex_json_rejects_odd_length() {
         let result = decode_hex_json("7b2");
         assert!(result.is_none(), "odd-length hex must be rejected");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_decode_hex_json_rejects_non_hex_chars() {
         let result = decode_hex_json("zzzz");
         assert!(result.is_none(), "non-hex characters must be rejected");
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn test_decode_hex_json_rejects_non_json() {
         let result = decode_hex_json("48656c6c6f");
