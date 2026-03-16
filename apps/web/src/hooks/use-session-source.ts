@@ -38,6 +38,7 @@ export interface SessionSourceResult {
   turnVersion: number
   streamGap: boolean
   clearPendingMessage: (text: string) => void
+  resetAccumulator: () => void
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -128,6 +129,11 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const syncBlocks = useCallback(() => {
     setLiveBlocks(accumulatorRef.current.getBlocks())
   }, [])
+
+  const resetAccumulator = useCallback(() => {
+    accumulatorRef.current.reset()
+    syncBlocks()
+  }, [syncBlocks])
 
   // --- WS message handler ---
   const handleWsMessage = useCallback(
@@ -559,5 +565,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     turnVersion,
     streamGap,
     clearPendingMessage,
+    resetAccumulator,
   }
 }
