@@ -2,7 +2,7 @@
 set -eu
 
 # claude-view installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+# Usage: curl -fsSL https://get.claudeview.ai/install.sh | sh
 #
 # Environment variables:
 #   CLAUDE_VIEW_VERSION   - Install a specific version (default: latest)

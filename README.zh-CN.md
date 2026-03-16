@@ -42,7 +42,7 @@
 **claude-view** 是一个实时仪表板，与你的 Claude Code 会话并肩运行。一个浏览器标签页，每个会话都可见，一目了然的完整上下文。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 就这样。在浏览器中打开。你的所有会话——实时的和过去的——都在一个工作区里。
@@ -167,7 +167,7 @@ claude-view 是为以下开发者设计的：
 
 | 方式 | 命令 |
 |--------|---------|
-| **Shell**（推荐） | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **Shell**（推荐） | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
 
 Shell 安装器下载预构建二进制文件（~10 MB），安装到 `~/.claude-view/bin`，并添加到 PATH。之后只需运行 `claude-view`。
