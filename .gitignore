@@ -9,8 +9,11 @@ target/
 target-codex*/
 **/*.rs.bk
 *.pdb
+*.rlib
 claude-view.db
 claude-view.db-*
+claude_view.db
+claude_view.db-*
 
 # Environment files
 .env
@@ -23,6 +26,9 @@ claude-view.db-*
 # Wrangler local state (D1, KV, R2 local dev)
 .wrangler/
 
+# Supabase CLI local state
+.supabase/
+
 # Local data directory (sandbox/dev)
 .data/
 
@@ -33,9 +39,14 @@ claude-view.db-*
 *.swp
 *.swo
 *.sw?
+*~
 
 # OS
 .DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
 Thumbs.db
 
 # npm lockfile (Bun workspaces use workspace:* which npm can't resolve)
@@ -49,6 +60,7 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+.nyc_output/
 
 # Playwright
 playwright-report/
@@ -68,6 +80,7 @@ lighthouse*.json
 tmp/
 temp/
 artifacts/integrity/
+*.tgz
 
 # Screenshots and placeholder images
 *.png
@@ -103,10 +116,14 @@ __pycache__/
 **/CLAUDE.md
 /CLAUDE.md
 
+# Lefthook local overrides (personal hooks, not committed)
+lefthook-local.yml
+
 # Internal docs
 docs/plans/
 docs/internal/
 docs/superpowers/
+.superpowers/
 .playwright-mcp/
 
 # Astro build artifacts (apps/landing)
