@@ -109,8 +109,13 @@ export function ChildProcessRow({
           className="text-gray-700 dark:text-gray-300 truncate min-w-0 flex-shrink"
           title={proc.command}
         >
-          {proc.ecosystemTag === 'sidecar' ? 'Agent SDK' : processLabel(proc.name, proc.command)}
+          {processLabel(proc.name, proc.command)}
         </span>
+        {proc.ecosystemTag === 'sidecar' && (
+          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+            Agent SDK
+          </span>
+        )}
         <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
           {proc.pid}
         </span>
