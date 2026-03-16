@@ -12,6 +12,11 @@ export default defineConfig({
   minify: false,
   sourcemap: true,
   banner: {
-    js: '// claude-view sidecar — self-contained bundle, no node_modules required',
+    js: [
+      '// claude-view sidecar — self-contained bundle, no node_modules required',
+      '// Create a CJS-compatible require for Node built-ins (ws uses require("events") etc.)',
+      'import { createRequire as __createRequire } from "node:module";',
+      'const require = __createRequire(import.meta.url);',
+    ].join('\n'),
   },
 })
