@@ -43,7 +43,12 @@ function buildQueryOptions(
     settingSources: ['user', 'project'],
     model: opts.model,
     ...(opts.permissionMode
-      ? { permissionMode: opts.permissionMode as PermissionMode | undefined }
+      ? {
+          permissionMode: opts.permissionMode as PermissionMode | undefined,
+          ...(opts.permissionMode === 'bypassPermissions'
+            ? { allowDangerouslySkipPermissions: true }
+            : {}),
+        }
       : {}),
     ...(opts.allowedTools ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
@@ -226,6 +231,7 @@ export function forkControlSession(
       {
         model: req.model ?? 'claude-sonnet-4-20250514',
         permissionMode: req.permissionMode,
+        projectPath: req.projectPath,
         resume: req.sessionId,
         forkSession: true,
       },
@@ -404,6 +410,16 @@ export async function setSessionMode(
       type: 'error',
       message:
         'Cannot change mode while agent is processing. Wait for the current turn to complete.',
+      fatal: false,
+    })
+    return { ok: false, currentMode: cs.permissionMode }
+  }
+
+  if (mode === 'bypassPermissions') {
+    registry.emitSequenced(cs, {
+      type: 'error',
+      message:
+        'bypassPermissions requires allowDangerouslySkipPermissions at session init. Resume with bypassPermissions mode instead.',
       fatal: false,
     })
     return { ok: false, currentMode: cs.permissionMode }

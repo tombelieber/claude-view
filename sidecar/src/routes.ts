@@ -58,9 +58,10 @@ export function createRoutes(registry: SessionRegistry) {
 
     try {
       const cs = await resumeControlSession(body, registry)
+      await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
-        sessionId: body.sessionId,
+        sessionId: cs.sessionId || body.sessionId,
         status: 'resumed',
       })
     } catch (err) {
