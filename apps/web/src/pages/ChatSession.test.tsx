@@ -3,9 +3,15 @@ import { describe, expect, it } from 'vitest'
 // Static source analysis — verify key={sessionId} is present in ChatPage
 describe('ChatPage key={sessionId} wiring (regression: stale state on session switch)', () => {
   it('ChatPage renders ChatSession with key prop derived from sessionId', async () => {
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
-    const source = await fs.readFile(path.resolve(process.cwd(), 'src/pages/ChatPage.tsx'), 'utf-8')
+    const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
+      path.resolve(process.cwd(), 'src/pages/ChatPage.tsx'),
+      'utf-8',
+    )
     // key={sessionId ?? 'new'} must be present
     expect(source).toMatch(/key=\{sessionId\s*\?\?\s*['"]new['"]\}/)
     // SessionSidebar must be rendered as sibling (not inside ChatSession)
@@ -16,9 +22,12 @@ describe('ChatPage key={sessionId} wiring (regression: stale state on session sw
   })
 
   it('ChatSession accepts sessionId prop (not useParams)', async () => {
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/pages/ChatSession.tsx'),
       'utf-8',
     )
