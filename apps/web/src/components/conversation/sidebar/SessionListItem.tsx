@@ -29,16 +29,48 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 function getStatusDotColor(session: Props['session']): string {
-  if (session.liveData?.agentState.group === 'autonomous') return 'bg-blue-500'
-  if (session.liveData?.agentState.group === 'needs_you') return 'bg-amber-500'
-  if (session.isActive) return 'bg-green-500'
+  if (!session.liveData) return 'bg-gray-300 dark:bg-gray-600'
+  // SDK-controlled (user chatting) → green
+  if (session.liveData.control !== null) return 'bg-green-500'
+  // Waiting for user input → amber
+  if (session.liveData.agentState.group === 'needs_you') return 'bg-amber-500'
+  // Autonomous / working → blue
+  if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
+    return 'bg-blue-500'
+  // Paused but not needs_you → green (idle)
+  if (session.liveData.status === 'paused') return 'bg-green-500'
   return 'bg-gray-300 dark:bg-gray-600'
 }
 
 function getPulseRingColor(session: Props['session']): string {
-  if (session.liveData?.agentState.group === 'autonomous') return 'border-blue-500/50'
+  if (session.liveData?.control !== null) return 'border-green-500/50'
   if (session.liveData?.agentState.group === 'needs_you') return 'border-amber-500/50'
+  if (session.liveData?.agentState.group === 'autonomous' || session.liveData?.status === 'working')
+    return 'border-blue-500/50'
   return 'border-green-500/50'
+}
+
+function getStatusBadge(session: Props['session']): { text: string; className: string } | null {
+  if (!session.liveData) return null
+  // SDK-controlled → Live
+  if (session.liveData.control !== null)
+    return {
+      text: 'Live',
+      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    }
+  // Waiting for input → Waiting
+  if (session.liveData.agentState.group === 'needs_you')
+    return {
+      text: 'Waiting',
+      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    }
+  // Autonomous / working → Running
+  if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
+    return {
+      text: 'Running',
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    }
+  return null
 }
 
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
@@ -55,6 +87,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
   const projectName = session.cwd ? projectNameFromCwd(session.cwd) : null
   const dotColor = getStatusDotColor(session)
   const showPulse = session.isActive || session.liveData != null
+  const badge = getStatusBadge(session)
 
   return (
     <div
@@ -81,7 +114,16 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{title}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-sm font-medium truncate">{title}</p>
+          {badge && (
+            <span
+              className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${badge.className}`}
+            >
+              {badge.text}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {projectName && (
             <span className="flex items-center gap-0.5 text-xs text-gray-400 dark:text-gray-500">

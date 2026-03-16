@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
@@ -52,11 +52,15 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 interface ChatSessionProps {
   sessionId: string | undefined
+  /** True when viewing a live session controlled by another process (CLI, VS Code, etc.) */
+  isSpectating?: boolean
 }
 
-export function ChatSession({ sessionId }: ChatSessionProps) {
+export function ChatSession({ sessionId, isSpectating }: ChatSessionProps) {
   const navigate = useNavigate()
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
+  const location = useLocation()
+  const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, { freshlyCreated })
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -111,6 +115,7 @@ export function ChatSession({ sessionId }: ChatSessionProps) {
     sessionInfo.sessionState,
     sessionInfo.isLive,
     sessionInfo.canResumeLazy,
+    isSpectating,
   )
 
   // Permission mode — persisted globally (like model), applied at session creation/resume
@@ -158,7 +163,7 @@ export function ChatSession({ sessionId }: ChatSessionProps) {
           .then((r) => r.json())
           .then((data) => {
             if (data.sessionId) {
-              navigate(`/chat/${data.sessionId}`)
+              navigate(`/chat/${data.sessionId}`, { state: { freshlyCreated: true } })
             } else {
               toast.error('Failed to create session', {
                 description: data.error || 'No session ID returned',
@@ -253,12 +258,17 @@ export function ChatSession({ sessionId }: ChatSessionProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {sessionInfo.isLive && (
+          {isSpectating ? (
+            <span className="flex items-center gap-1.5 text-xs text-blue-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              Watching
+            </span>
+          ) : sessionInfo.isLive ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
             </span>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
