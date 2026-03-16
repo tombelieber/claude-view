@@ -88,6 +88,15 @@ export class StreamAccumulator {
     return this.getBlocks()
   }
 
+  /** Reset all accumulated blocks for a new turn cycle.
+   *  Preserves lastProcessedSeq for reconnect dedup safety. */
+  reset(): void {
+    this.blocks = []
+    this.currentAssistant = null
+    this.initialized = false
+    this.buffer = []
+  }
+
   private handleEvent(event: SequencedEvent): void {
     switch (event.type) {
       case 'user_message_echo':
