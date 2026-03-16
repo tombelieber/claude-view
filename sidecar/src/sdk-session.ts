@@ -9,6 +9,7 @@ import {
   listSessions,
   query,
 } from '@anthropic-ai/claude-agent-sdk'
+import { findClaudeExecutable } from './cli-path.js'
 import { mapSdkMessage } from './event-mapper.js'
 import { MessageBridge } from './message-bridge.js'
 import { updateModelCacheFromSession } from './model-cache.js'
@@ -38,6 +39,7 @@ function buildQueryOptions(
   abort: AbortController,
 ): Options {
   return {
+    pathToClaudeCodeExecutable: findClaudeExecutable(),
     model: opts.model,
     ...(opts.permissionMode
       ? { permissionMode: opts.permissionMode as PermissionMode | undefined }
