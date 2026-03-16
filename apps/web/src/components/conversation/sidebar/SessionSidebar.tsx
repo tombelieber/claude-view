@@ -260,10 +260,11 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
   const handleFork = useCallback(
     async (sessionId: string) => {
       try {
+        const session = enrichedHistory.find((s) => s.sessionId === sessionId)
         const res = await fetch('/api/control/sessions/fork', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId }),
+          body: JSON.stringify({ sessionId, projectPath: session?.cwd }),
         })
         const data = await res.json()
         if (data.sessionId) {
@@ -276,7 +277,7 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
         toast.error('Failed to fork session', { duration: TOAST_DURATION.extended })
       }
     },
-    [navigate],
+    [enrichedHistory, navigate],
   )
 
   return (
