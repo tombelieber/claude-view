@@ -52,16 +52,20 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 interface ChatSessionProps {
   sessionId: string | undefined
-  /** True when viewing a live session controlled by another process (CLI, VS Code, etc.) */
-  isSpectating?: boolean
+  /** True when this session is detected as live by the Live Monitor (hooks/SSE). */
+  isLiveElsewhere?: boolean
 }
 
-export function ChatSession({ sessionId, isSpectating }: ChatSessionProps) {
+export function ChatSession({ sessionId, isLiveElsewhere }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
+  const locState = location.state as { freshlyCreated?: boolean; resumed?: boolean } | null
+  // User-initiated = created, resumed, or forked in THIS navigation.
+  // Everything else that's live elsewhere = spectating (read-only).
+  const userInitiated = !!(locState?.freshlyCreated || locState?.resumed)
+  const isSpectating = !!isLiveElsewhere && !userInitiated
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    freshlyCreated,
+    freshlyCreated: !!locState?.freshlyCreated,
     spectating: isSpectating,
   })
   const { data: richData } = useRichSessionData(sessionId || null)

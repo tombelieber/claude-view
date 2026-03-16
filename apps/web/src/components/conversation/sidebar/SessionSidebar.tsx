@@ -252,7 +252,7 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
 
   const handleResume = useCallback(
     async (sessionId: string) => {
-      navigate(`/chat/${sessionId}`)
+      navigate(`/chat/${sessionId}`, { state: { resumed: true } })
     },
     [navigate],
   )
