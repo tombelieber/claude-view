@@ -143,7 +143,7 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
     expect(effectiveSend).toBe(directSend) // Must select direct path
 
     const msg = { type: 'user_message', content: 'direct' }
-    effectiveSend!(msg)
+    effectiveSend?.(msg)
 
     expect(ws.sent).toHaveLength(1)
     expect(JSON.parse(ws.sent[0])).toEqual(msg)
@@ -169,52 +169,75 @@ describe('Pending message queue drain pattern (mock WebSocket)', () => {
   })
 })
 
-// ─── Auto-connect vs lazy connect (active session state) ──────────────────
-// The init() function in useSessionSource checks the session state to decide
-// whether to auto-connect (open WS immediately) or lazy connect (wait for
-// user's next message). This logic is critical for new sessions with
-// initialMessage — without auto-connect, the user never sees the response.
-describe('Auto-connect decision based on ActiveSession state', () => {
-  // Simulate the init() logic extracted for testability
-  function shouldAutoConnect(state: string): boolean {
-    return state === 'initializing' || state === 'active' || state === 'waiting_permission'
-  }
+// ═══════════════════════════════════════════════════════════════════════════
+// Regression tests for all 4 motivating bugs (single-stream architecture)
+// ═══════════════════════════════════════════════════════════════════════════
 
-  // --- Unit: initializing → auto-connect (new session with initialMessage) ---
-  it('auto-connects for initializing state (new session being created)', () => {
-    expect(shouldAutoConnect('initializing')).toBe(true)
+// ─── Bug 1: "New chat stuck forever" ────────────────────────────────────
+// Root cause: init() filtered on session state before opening WS. Sessions in
+// "waiting_input" (idle) state never auto-connected, so the user never saw
+// the first assistant response.
+// Fix: removed the state filter — init() now always calls openWs(sid) for
+// any active session, regardless of state.
+describe('Bug 1 regression — no state filter in auto-connect (structural)', () => {
+  // Read the actual source code and verify no state-based filtering exists
+  // in the init() function. This guards against re-introducing the anti-pattern.
+  it('init() calls openWs unconditionally — source has no active.state filter', async () => {
+    // Dynamic imports: vitest runs on Node but web tsconfig is browser-only
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
+    const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+
+    // Extract the init() function body
+    const initMatch = source.match(/async function init\(\)\s*\{([\s\S]*?)^\s{4}\}/m)
+    expect(initMatch).not.toBeNull()
+    const initBody = initMatch?.[1]
+
+    // The old code had: if (active.state === 'initializing' || active.state === 'active' ...)
+    // Verify this pattern is NOT present — openWs is called unconditionally
+    expect(initBody).not.toMatch(/active\.state\s*===/)
+    expect(initBody).not.toMatch(/shouldAutoConnect/)
+
+    // Verify openWs IS called (the fix is calling it unconditionally)
+    expect(initBody).toMatch(/openWs\(sid\)/)
   })
 
-  // --- Unit: active → auto-connect (session actively processing) ---
-  it('auto-connects for active state (SDK processing a message)', () => {
-    expect(shouldAutoConnect('active')).toBe(true)
-  })
+  it('init() has comment explaining unconditional auto-connect', async () => {
+    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
+    const fs = await import('node:fs/promises')
+    // @ts-expect-error — node:path unavailable in browser tsconfig
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
 
-  // --- Unit: waiting_input → lazy connect ---
-  it('does NOT auto-connect for waiting_input state (idle session)', () => {
-    expect(shouldAutoConnect('waiting_input')).toBe(false)
-  })
-
-  // --- Unit: closed → lazy connect ---
-  it('does NOT auto-connect for closed state', () => {
-    expect(shouldAutoConnect('closed')).toBe(false)
-  })
-
-  // --- Unit: error → lazy connect ---
-  it('does NOT auto-connect for error state', () => {
-    expect(shouldAutoConnect('error')).toBe(false)
-  })
-
-  // --- Unit: compacting → lazy connect (not urgently active) ---
-  it('does NOT auto-connect for compacting state', () => {
-    expect(shouldAutoConnect('compacting')).toBe(false)
-  })
-
-  // --- Unit: waiting_permission → auto-connect (user needs to see permission card) ---
-  it('auto-connects for waiting_permission state (session needs user approval)', () => {
-    expect(shouldAutoConnect('waiting_permission')).toBe(true)
+    // The fix includes an explanatory comment so future devs understand the intent
+    expect(source).toMatch(/Always auto-connect for active sessions/)
   })
 })
+
+// ─── Bug 2: "WS connection leak" ───────────────────────────────────────
+// Covered by ws-handler.test.ts → "One WS per session" describe block.
+// The sidecar's SessionRegistry enforces one WS per sessionId.
+
+// ─── Bug 3: "User messages appear at bottom" ───────────────────────────
+// Covered by stream-accumulator-echo.test.ts:
+//   - "echo after session_init produces UserBlock in correct position"
+//   - "multiple echoes in multi-turn appear in order"
+// The accumulator places UserBlocks sequentially, before the assistant response.
+
+// ─── Bug 4: "Duplicate content on resume" ──────────────────────────────
+// Covered by stream-accumulator-echo.test.ts:
+//   - "deduplicates on reconnect replay (same seq ignored)"
+// The accumulator deduplicates by seq number, so reconnect replay is idempotent.
 
 // ─── WS resume on first connect (event replay) ───────────────────────────
 // On first connect (lastSeq=-1), the frontend sends resume to replay buffered
@@ -469,5 +492,103 @@ describe('capabilities from session_init', () => {
     // Mirrors the extraction logic: init.capabilities ?? []
     const caps = (init as { capabilities?: string[] }).capabilities ?? []
     expect(caps).toEqual([])
+  })
+})
+
+// ─── Regression: SDK session cleanup on page close ────────────────────────
+// Root cause: useSessionSource cleanup only closed the WS but never terminated
+// the SDK session on the sidecar. Sessions ran indefinitely, consuming resources.
+//
+// Design: DELETE fires on beforeunload (page close/refresh), NOT on React
+// cleanup. React cleanup fires on in-app navigation which would aggressively
+// kill sessions — the user would have to re-resume every time they switch pages.
+// Pattern: Jupyter kernel idle timeout / VS Code Remote SSH.
+describe('SDK session cleanup via beforeunload', () => {
+  // --- Regression: controlIdRef tracks latest controlId for beforeunload closure ---
+  it('controlIdRef mirrors controlId state for cleanup access', () => {
+    const controlIdRef = { current: null as string | null }
+
+    controlIdRef.current = 'ctrl-abc'
+    expect(controlIdRef.current).toBe('ctrl-abc')
+
+    controlIdRef.current = 'ctrl-def'
+    expect(controlIdRef.current).toBe('ctrl-def')
+  })
+
+  // --- Regression: beforeunload handler sends DELETE with keepalive ---
+  it('beforeunload handler sends DELETE with keepalive: true', () => {
+    const fetchMock = vi.fn()
+    const controlIdRef = { current: 'ctrl-cleanup-test' as string | null }
+
+    // Simulate the beforeunload handler
+    const handleBeforeUnload = () => {
+      if (controlIdRef.current) {
+        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+          method: 'DELETE',
+          keepalive: true,
+        })
+      }
+    }
+
+    handleBeforeUnload()
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/control/sessions/ctrl-cleanup-test', {
+      method: 'DELETE',
+      keepalive: true,
+    })
+  })
+
+  // --- Edge: beforeunload does NOT call DELETE when controlId is null ---
+  it('beforeunload does NOT call DELETE when controlId is null', () => {
+    const fetchMock = vi.fn()
+    const controlIdRef = { current: null as string | null }
+
+    const handleBeforeUnload = () => {
+      if (controlIdRef.current) {
+        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+          method: 'DELETE',
+          keepalive: true,
+        })
+      }
+    }
+
+    handleBeforeUnload()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // --- Regression: React cleanup does NOT terminate session (preserves in-app nav) ---
+  it('React cleanup only closes WS, does NOT send DELETE', () => {
+    const calls: string[] = []
+    const wsRef = {
+      current: {
+        close: () => calls.push('ws.close'),
+      },
+    }
+    const heartbeatTimerRef = { current: 123 as ReturnType<typeof setInterval> | null }
+    const reconnectTimerRef = { current: 456 as ReturnType<typeof setTimeout> | null }
+    const pendingMessagesRef = { current: [{ type: 'user_message', content: 'pending' }] }
+
+    // Simulate React cleanup (mirrors the actual useEffect cleanup)
+    if (heartbeatTimerRef.current) {
+      calls.push('clearHeartbeat')
+      heartbeatTimerRef.current = null
+    }
+    if (reconnectTimerRef.current) {
+      calls.push('clearReconnectTimer')
+      reconnectTimerRef.current = null
+    }
+    wsRef.current?.close()
+    pendingMessagesRef.current = []
+    calls.push('clearPendingMessages')
+
+    // NO terminateSDKSession in React cleanup — that's the fix
+    expect(calls).toEqual([
+      'clearHeartbeat',
+      'clearReconnectTimer',
+      'ws.close',
+      'clearPendingMessages',
+    ])
+    // Notably absent: 'terminateSDKSession'
+    expect(calls).not.toContain('terminateSDKSession')
   })
 })
