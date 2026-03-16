@@ -1,0 +1,42 @@
+---
+title: "One Stream to Rule Them All"
+description: "v0.21.0 replaces the dual-source chat merge with a single-stream architecture and adds native Linux keychain support."
+date: 2026-03-16
+author: claude-view team
+---
+
+Live chat in claude-view had an architectural debt: two data sources (replay from disk, live from WebSocket) merged in the frontend. When a session switched, stale state from the old session could bleed into the new one. Bugs were subtle — a message appearing twice, a conversation that wouldn't update, a connection that silently went dead.
+
+v0.21.0 fixes this at the root.
+
+## Single-stream architecture
+
+The old model worked like this: the frontend fetched historical messages from the REST API and live messages from a WebSocket, then merged them by timestamp. This merge was fragile — race conditions between the two sources caused duplicate messages, ordering glitches, and stale conversations after session switches.
+
+The new model is simpler. The WebSocket is the single source of truth. When you open a session, the sidecar replays the full conversation history through the WebSocket first, followed by live messages as they arrive. The frontend receives one ordered stream and renders it. No merge logic. No deduplication. No race conditions.
+
+User messages now echo back through the WebSocket as `user_message_echo` events. Previously, user messages were injected client-side and could desync from the server's view. Now both sides agree on exactly what was said and when.
+
+A `replayComplete` flag signals when historical replay ends and live streaming begins. The frontend uses this to suppress loading indicators at the right moment. And if you open the same session in a second tab, the first connection is closed with WebSocket code 4001 (`connection_replaced`) — no more phantom duplicate connections draining resources.
+
+## Graceful buffer exhaustion
+
+The sidecar maintains a replay buffer of recent messages. When the buffer is exhausted (the session history is larger than what's kept in memory), the old behavior was to fatally disconnect the WebSocket. The user saw a blank chat with no explanation.
+
+Now the sidecar sends a `fatal=false` signal and keeps the connection open. The frontend knows it has a partial replay and can indicate this to the user rather than showing an error state.
+
+## Linux credentials
+
+claude-view reads your Claude authentication token to show subscription tier and enable authenticated features. On macOS, this reads from the system Keychain. Linux had no equivalent — the credential path simply returned `None`.
+
+v0.21.0 adds a `secret-tool` backend that reads from GNOME Keyring via the Secret Service D-Bus API. If you're running GNOME, KDE, or any desktop environment with a Secret Service provider, your credentials are now picked up automatically. The lookup has a 3-second timeout to handle headless environments (no D-Bus session) without blocking startup.
+
+The NPX path scanner was also made platform-universal — macOS-specific paths like `/opt/homebrew` are no longer tried on Linux, and universal paths are checked first on all platforms.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open a chat session and watch the single-stream replay. If you're on Linux, check that your subscription tier appears in the header — that means keychain integration is working.
