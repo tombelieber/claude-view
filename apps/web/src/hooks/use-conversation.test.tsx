@@ -900,6 +900,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
     const failedBlock = result.current.blocks.find(
       // biome-ignore lint/suspicious/noExplicitAny: test assertion
       (b: any) => b.type === 'user' && b.status === 'failed',
+      // biome-ignore lint/suspicious/noExplicitAny: test assertion
     ) as any
     expect(failedBlock).toBeDefined()
 
