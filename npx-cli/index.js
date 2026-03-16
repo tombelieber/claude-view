@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync, execSync, spawn } = require('child_process')
+const { execFileSync, spawn } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
@@ -205,15 +205,10 @@ async function main() {
   // Set STATIC_DIR so the server finds the frontend assets
   const env = { ...process.env, STATIC_DIR: distDir }
 
-  // Set SIDECAR_DIR so the server can spawn the Agent SDK sidecar
+  // Sidecar bundle is self-contained (zero-install).
+  // Just verify the entry point exists and set SIDECAR_DIR.
   const sidecarDir = path.join(binDir, 'sidecar')
-  if (fs.existsSync(sidecarDir)) {
-    // Install sidecar deps if needed (first run after download)
-    const nodeModules = path.join(sidecarDir, 'node_modules')
-    if (!fs.existsSync(nodeModules)) {
-      console.log('Installing sidecar dependencies...')
-      execSync('npm install --omit=dev', { cwd: sidecarDir, stdio: 'inherit' })
-    }
+  if (fs.existsSync(path.join(sidecarDir, 'dist', 'index.js'))) {
     env.SIDECAR_DIR = sidecarDir
   }
 
