@@ -32,6 +32,8 @@ pub enum EcosystemTag {
     /// claude-view server (ourselves).
     #[serde(rename = "self")]
     Self_,
+    /// Agent SDK sidecar (node process spawned by claude-view).
+    Sidecar,
 }
 
 /// Staleness heuristic for unparented processes.
@@ -157,6 +159,8 @@ mod tests {
         assert_eq!(json, "desktop");
         let json = serde_json::to_value(EcosystemTag::Self_).unwrap();
         assert_eq!(json, "self");
+        let json = serde_json::to_value(EcosystemTag::Sidecar).unwrap();
+        assert_eq!(json, "sidecar");
     }
 
     #[test]
