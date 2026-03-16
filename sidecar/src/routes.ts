@@ -26,8 +26,8 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<CreateSessionRequest>()
     if (!body.model) return c.json({ error: 'model is required' }, 400)
 
-    const cs = createControlSession(body, registry)
     try {
+      const cs = createControlSession(body, registry)
       await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
@@ -35,7 +35,6 @@ export function createRoutes(registry: SessionRegistry) {
         status: 'created',
       })
     } catch (err) {
-      closeSession(cs, registry)
       return c.json({ error: `Create failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
   })
@@ -74,8 +73,8 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<ForkSessionRequest>()
     if (!body.sessionId) return c.json({ error: 'sessionId is required' }, 400)
 
-    const cs = forkControlSession(body, registry)
     try {
+      const cs = forkControlSession(body, registry)
       await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
@@ -83,7 +82,6 @@ export function createRoutes(registry: SessionRegistry) {
         status: 'forked',
       })
     } catch (err) {
-      closeSession(cs, registry)
       return c.json({ error: `Fork failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
   })

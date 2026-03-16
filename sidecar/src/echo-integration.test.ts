@@ -40,7 +40,7 @@ describe('Echo wire format integration (emitSequenced + RingBuffer)', () => {
     expect(items[0].seq).toBe(0)
     expect(items[0].msg.type).toBe('user_message_echo')
     expect(items[0].msg.seq).toBe(0)
-    expect((items[0].msg as Record<string, unknown>).content).toBe('Hello from user')
+    expect((items[0].msg as unknown as { content: string }).content).toBe('Hello from user')
   })
 
   it('echo at seq 0 is retrievable via getAfter(-1)', () => {
