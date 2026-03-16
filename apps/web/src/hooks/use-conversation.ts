@@ -7,10 +7,22 @@ import { useSessionSource } from './use-session-source'
 
 const SEND_TIMEOUT_MS = 10_000
 
-export function useConversation(sessionId: string | undefined) {
+interface ConversationOptions {
+  /** True when navigating from session creation — suppresses 404 during the
+   *  race window before the JSONL file is flushed to disk. */
+  freshlyCreated?: boolean
+}
+
+export function useConversation(sessionId: string | undefined, options?: ConversationOptions) {
   // Suppress 404 for sessions still initializing (JSONL not yet flushed).
   const source = useSessionSource(sessionId)
-  const isInitializing = source.sessionState === 'initializing' || source.sessionState === 'active'
+  // Freshly-created sessions start at 'idle' before WS connects and transitions
+  // to 'initializing'/'active'. Suppress 404 during that gap so the messages
+  // query doesn't enter permanent error state before the sidecar writes the JSONL.
+  const isInitializing =
+    source.sessionState === 'initializing' ||
+    source.sessionState === 'active' ||
+    (!!options?.freshlyCreated && source.sessionState === 'idle')
   const history = useHistoryBlocks(sessionId ?? null, {
     suppressNotFound: isInitializing,
   })

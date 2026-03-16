@@ -11,7 +11,11 @@ export function deriveInputBarState(
   sessionState: string,
   isLive: boolean,
   canResumeLazy?: boolean,
+  isSpectating?: boolean,
 ): InputBarState {
+  // Spectating a live session controlled by another process — hard block all input
+  if (isSpectating) return 'controlled_elsewhere'
+
   // Connection replaced by another tab — show as completed (not an error)
   if (sessionState === 'replaced') return 'completed'
 
