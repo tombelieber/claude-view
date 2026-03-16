@@ -66,9 +66,7 @@ describe('sidecar standalone (no node_modules)', () => {
     while (Date.now() - startTime < 5000) {
       if (processExited) {
         throw new Error(
-          `Sidecar crashed on startup with exit code ${exitCode}.\n` +
-            `This likely means a bundled dependency failed to load.\n` +
-            `stderr: ${stderr}`,
+          `Sidecar crashed on startup with exit code ${exitCode}.\nThis likely means a bundled dependency failed to load.\nstderr: ${stderr}`,
         )
       }
       if (existsSync(socketPath)) break
