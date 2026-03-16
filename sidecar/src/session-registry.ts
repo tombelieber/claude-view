@@ -1,6 +1,7 @@
 // sidecar/src/session-registry.ts
 import type { EventEmitter } from 'node:events'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
+import type { WebSocket } from 'ws'
 import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
 import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
@@ -33,6 +34,7 @@ export interface ControlSession {
   nextSeq: number
   permissions: PermissionHandler
   permissionMode: string
+  activeWs: WebSocket | null
 }
 
 export class SessionRegistry {
