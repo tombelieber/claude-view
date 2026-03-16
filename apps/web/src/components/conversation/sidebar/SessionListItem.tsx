@@ -1,10 +1,11 @@
-import type { ActiveSession, AvailableSession } from '@claude-view/shared'
+import type { AvailableSession } from '@claude-view/shared'
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
 
 interface Props {
-  session: AvailableSession & { isActive?: boolean; activeInfo?: ActiveSession }
+  session: AvailableSession & { isActive?: boolean; liveData?: LiveSession | null }
   isSelected: boolean
   isKeyboardActive?: boolean
   onSelect: (sessionId: string) => void
@@ -27,6 +28,19 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+function getStatusDotColor(session: Props['session']): string {
+  if (session.liveData?.agentState.group === 'autonomous') return 'bg-blue-500'
+  if (session.liveData?.agentState.group === 'needs_you') return 'bg-amber-500'
+  if (session.isActive) return 'bg-green-500'
+  return 'bg-gray-300 dark:bg-gray-600'
+}
+
+function getPulseRingColor(session: Props['session']): string {
+  if (session.liveData?.agentState.group === 'autonomous') return 'border-blue-500/50'
+  if (session.liveData?.agentState.group === 'needs_you') return 'border-amber-500/50'
+  return 'border-green-500/50'
+}
+
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
   { session, isSelected, isKeyboardActive, onSelect, onResume, onFork, onDelete },
   ref,
@@ -39,6 +53,8 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
     session.customTitle || session.firstPrompt?.slice(0, 60) || session.sessionId.slice(0, 8)
 
   const projectName = session.cwd ? projectNameFromCwd(session.cwd) : null
+  const dotColor = getStatusDotColor(session)
+  const showPulse = session.isActive || session.liveData != null
 
   return (
     <div
@@ -53,13 +69,13 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       ].join(' ')}
       onClick={handleClick}
     >
-      {/* Status dot — green ring overlay for live sessions */}
+      {/* Status dot — color-coded by agent state */}
       <div className="mt-1 flex-shrink-0 relative">
-        <div
-          className={`w-2 h-2 rounded-full ${session.isActive ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-        />
-        {session.isActive && (
-          <div className="absolute -inset-0.5 rounded-full border border-green-500/50 animate-pulse" />
+        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+        {showPulse && (
+          <div
+            className={`absolute -inset-0.5 rounded-full border ${getPulseRingColor(session)} animate-pulse`}
+          />
         )}
       </div>
 
@@ -84,6 +100,11 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
             {formatRelativeTime(session.lastModified)}
           </span>
         </div>
+        {session.liveData?.currentActivity && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+            {session.liveData.currentActivity}
+          </p>
+        )}
       </div>
 
       {/* Context menu */}
