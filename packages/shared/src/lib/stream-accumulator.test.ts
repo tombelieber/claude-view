@@ -874,4 +874,115 @@ describe('StreamAccumulator', () => {
     // Only system block from session_init
     expect(blocks.find((b) => b.type !== 'system')).toBeUndefined()
   })
+
+  // ── Reset ──────────────────────────────────────────────────────────────
+
+  it('reset() clears all blocks but preserves lastProcessedSeq', () => {
+    const acc = makeAcc() // seq=0 (session_init)
+    acc.push(ev('assistant_text', { text: 'Hello', messageId: 'a1', parentToolUseId: null }, 1))
+    acc.push(
+      ev(
+        'turn_complete',
+        {
+          totalCostUsd: 0.01,
+          numTurns: 1,
+          durationMs: 500,
+          durationApiMs: 400,
+          usage: {},
+          modelUsage: {},
+          permissionDenials: [],
+          result: 'stop',
+          stopReason: 'end_turn',
+          fastModeState: 'off',
+        },
+        2,
+      ),
+    )
+
+    // Verify blocks exist before reset
+    expect(acc.getBlocks().length).toBeGreaterThan(0)
+
+    acc.reset()
+
+    // Blocks cleared
+    expect(acc.getBlocks()).toEqual([])
+
+    // But seq tracking preserved — duplicate events from before reset are still dropped
+    acc.push(ev('assistant_text', { text: 'Dup', messageId: 'a2', parentToolUseId: null }, 1))
+    expect(acc.getBlocks()).toEqual([]) // seq 1 <= lastProcessedSeq, dropped
+
+    // Re-initialize after reset
+    acc.push(
+      ev(
+        'session_init',
+        {
+          tools: [],
+          model: 'claude-sonnet-4-20250514',
+          mcpServers: [],
+          permissionMode: 'default',
+          slashCommands: [],
+          claudeCodeVersion: '1.0.0',
+          cwd: '/',
+          agents: [],
+          skills: [],
+          outputStyle: 'default',
+        },
+        3,
+      ),
+    )
+
+    // New events with higher seq work
+    acc.push(ev('assistant_text', { text: 'New', messageId: 'a3', parentToolUseId: null }, 4))
+    const blocks = acc.getBlocks()
+    // session_init system block + assistant block
+    const assistant = blocks.find((b) => b.type === 'assistant')
+    expect(assistant).toBeDefined()
+  })
+
+  it('reset() clears in-progress assistant block', () => {
+    const acc = makeAcc()
+    acc.push(
+      ev('assistant_text', { text: 'Streaming...', messageId: 'a1', parentToolUseId: null }, 1),
+    )
+
+    // In-progress assistant exists
+    expect(acc.getBlocks().find((b) => b.type === 'assistant')).toBeDefined()
+
+    acc.reset()
+    expect(acc.getBlocks()).toEqual([])
+  })
+
+  it('reset() allows new session_init after reset (re-initialization)', () => {
+    const acc = makeAcc() // initialized with session_init at seq 0
+    acc.push(ev('assistant_text', { text: 'Hi', messageId: 'a1', parentToolUseId: null }, 1))
+    acc.reset()
+
+    // After reset, initialized flag is cleared — events buffer until new session_init
+    acc.push(ev('assistant_text', { text: 'Buffered', messageId: 'a2', parentToolUseId: null }, 2))
+    expect(acc.getBlocks()).toEqual([]) // buffered, not yet processed
+
+    // New session_init flushes buffer
+    acc.push(
+      ev(
+        'session_init',
+        {
+          tools: [],
+          model: 'claude-sonnet-4-20250514',
+          mcpServers: [],
+          permissionMode: 'default',
+          slashCommands: [],
+          claudeCodeVersion: '1.0.0',
+          cwd: '/',
+          agents: [],
+          skills: [],
+          outputStyle: 'default',
+        },
+        3,
+      ),
+    )
+
+    const blocks = acc.getBlocks()
+    const assistant = blocks.find((b) => b.type === 'assistant')
+    expect(assistant).toBeDefined()
+  })
 })
