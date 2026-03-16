@@ -30,6 +30,7 @@ vi.mock('./use-session-source', () => ({
     turnVersion: 0,
     streamGap: false,
     clearPendingMessage: vi.fn(),
+    resetAccumulator: vi.fn(),
   }),
 }))
 
@@ -76,6 +77,7 @@ const defaultSource = {
   turnVersion: 0,
   streamGap: false,
   clearPendingMessage: vi.fn(),
+  resetAccumulator: vi.fn(),
 }
 
 const defaultMessages = {
@@ -123,6 +125,7 @@ describe('useConversation block merging', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -189,6 +192,7 @@ describe('useConversation block merging', () => {
       turnVersion: 1,
       streamGap: true,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -266,6 +270,7 @@ describe('useConversation block merging', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -311,6 +316,7 @@ describe('useConversation block merging', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -379,6 +385,7 @@ describe('sessionInfo includes palette fields', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
@@ -408,6 +415,7 @@ describe('sessionInfo includes palette fields', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
@@ -437,6 +445,7 @@ describe('sessionInfo includes palette fields', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
@@ -470,6 +479,7 @@ describe('source selection (single-stream pattern)', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -507,6 +517,7 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -570,6 +581,7 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -608,6 +620,7 @@ describe('source selection — streamGap: live but replay exhausted', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -645,6 +658,7 @@ describe('source selection — streamGap: live but replay exhausted', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: {
@@ -711,6 +725,7 @@ describe('source selection — optimistic dedup', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -749,6 +764,7 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -791,6 +807,7 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -837,6 +854,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -944,6 +962,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -991,6 +1010,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1028,6 +1048,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1068,6 +1089,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1106,6 +1128,7 @@ describe('source selection always merges history + live overlay', () => {
       turnVersion: 0,
       streamGap: false,
       clearPendingMessage: vi.fn(),
+      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1143,6 +1166,7 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     // History has blocks — new merge always includes them
@@ -1208,6 +1232,7 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      resetAccumulator: vi.fn(),
     })
 
     mockSessionMessages.mockReturnValue({
@@ -1329,5 +1354,69 @@ describe('new merge: history base + live overlay', () => {
     const { result } = renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
     expect(result.current.blocks).toHaveLength(1)
     expect(result.current.blocks[0].type).toBe('user')
+  })
+})
+
+// ─── Deferred accumulator reset (zero visual gap) ────────────────
+describe('deferred accumulator reset (zero visual gap)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+    })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('calls resetAccumulator after turnVersion increments and history stops fetching', () => {
+    const resetFn = vi.fn()
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      turnVersion: 1,
+      resetAccumulator: resetFn,
+      blocks: [{ type: 'assistant', id: 'a1', blocks: [], status: 'complete' }],
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+    } as any)
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+      isFetching: false,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
+    expect(resetFn).toHaveBeenCalled()
+  })
+
+  it('does NOT call resetAccumulator while history is still fetching', () => {
+    const resetFn = vi.fn()
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      turnVersion: 1,
+      resetAccumulator: resetFn,
+    })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+      isFetching: true,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
+    expect(resetFn).not.toHaveBeenCalled()
+  })
+
+  it('does NOT call resetAccumulator if history fetch errors (error guard)', () => {
+    const resetFn = vi.fn()
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      turnVersion: 1,
+      resetAccumulator: resetFn,
+    })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+      isFetching: false,
+      error: new Error('network'),
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
+    expect(resetFn).not.toHaveBeenCalled()
   })
 })
