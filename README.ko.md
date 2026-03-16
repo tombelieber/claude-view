@@ -42,7 +42,7 @@ Cmd-Tab으로 15개의 터미널 창을 오가며 어떤 세션이 무슨 작업
 **claude-view**는 Claude Code 세션과 함께 작동하는 실시간 대시보드입니다. 브라우저 탭 하나로 모든 세션이 보이고, 전체 컨텍스트를 한눈에 파악할 수 있습니다.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 그게 전부입니다. 브라우저에서 열립니다. 모든 세션 — 라이브와 과거 — 하나의 워크스페이스에서.
@@ -167,7 +167,7 @@ claude-view는 다음과 같은 개발자를 위해 설계되었습니다:
 
 | 방법 | 명령 |
 |--------|---------|
-| **Shell** (권장) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **Shell** (권장) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
 
 Shell 설치 스크립트는 사전 빌드된 바이너리(~10 MB)를 다운로드하고 `~/.claude-view/bin`에 설치하며 PATH에 추가합니다. 이후에는 `claude-view`만 실행하면 됩니다.
