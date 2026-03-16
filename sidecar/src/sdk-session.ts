@@ -40,13 +40,14 @@ function buildQueryOptions(
 ): Options {
   return {
     pathToClaudeCodeExecutable: findClaudeExecutable(),
+    settingSources: ['user', 'project'],
     model: opts.model,
     ...(opts.permissionMode
       ? { permissionMode: opts.permissionMode as PermissionMode | undefined }
       : {}),
     ...(opts.allowedTools ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
-    ...(opts.projectPath ? { cwd: opts.projectPath } : {}),
+    cwd: opts.projectPath || process.cwd(),
     ...(opts.resume ? { resume: opts.resume } : {}),
     ...(opts.forkSession ? { forkSession: true } : {}),
     includePartialMessages: true,

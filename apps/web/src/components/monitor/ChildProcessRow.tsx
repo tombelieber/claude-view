@@ -109,7 +109,7 @@ export function ChildProcessRow({
           className="text-gray-700 dark:text-gray-300 truncate min-w-0 flex-shrink"
           title={proc.command}
         >
-          {processLabel(proc.name, proc.command)}
+          {proc.ecosystemTag === 'sidecar' ? 'Agent SDK' : processLabel(proc.name, proc.command)}
         </span>
         <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
           {proc.pid}
