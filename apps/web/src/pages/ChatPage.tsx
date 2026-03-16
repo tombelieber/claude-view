@@ -53,7 +53,6 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 export function ChatPage() {
   const navigate = useNavigate()
   const { sessionId } = useParams<{ sessionId?: string }>()
-
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
@@ -111,6 +110,17 @@ export function ChatPage() {
     sessionInfo.canResumeLazy,
   )
 
+  // Permission mode — persisted globally (like model), applied at session creation/resume
+  const MODE_STORAGE_KEY = 'claude-view:last-mode'
+  const [permMode, setPermMode] = useState<PermissionMode>(() => {
+    try {
+      const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
+      return stored ?? 'default'
+    } catch {
+      return 'default'
+    }
+  })
+
   // Context gauge — live uses WS token data, history uses richData from JSONL
   const contextPercent = (() => {
     if (
@@ -130,7 +140,9 @@ export function ChatPage() {
   const handleSend = useCallback(
     (text: string) => {
       if (!sessionId) {
-        // No session yet — create one first, then navigate
+        // No session yet — create one first, then navigate.
+        // initialMessage is echoed back via user_message_echo in the stream,
+        // so the user sees their message as soon as the WS connects.
         fetch('/api/control/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -157,19 +169,8 @@ export function ChatPage() {
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate, selectedModel],
+    [sessionId, actions, navigate, selectedModel, permMode],
   )
-
-  // Permission mode — persisted globally (like model), applied at session creation/resume
-  const MODE_STORAGE_KEY = 'claude-view:last-mode'
-  const [permMode, setPermMode] = useState<PermissionMode>(() => {
-    try {
-      const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
-      return stored ?? 'default'
-    } catch {
-      return 'default'
-    }
-  })
 
   const handleModeChangePermission = useCallback(
     (mode: PermissionMode) => {

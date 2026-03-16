@@ -6,6 +6,7 @@ import type {
   SystemBlock,
   ToolExecution,
   TurnBoundaryBlock,
+  UserBlock,
 } from '../types/blocks'
 import type {
   AskQuestion,
@@ -38,6 +39,7 @@ import type {
   TurnComplete,
   TurnError,
   UnknownSdkEvent,
+  UserMessageEcho,
 } from '../types/sidecar-protocol'
 
 let _idCounter = 0
@@ -55,6 +57,13 @@ export class StreamAccumulator {
   push(event: SequencedEvent): void {
     // Dedup: drop events already processed (reconnect replay)
     if (event.seq <= this.lastProcessedSeq) return
+
+    // user_message_echo bypasses init gate — render immediately
+    if (event.type === 'user_message_echo') {
+      this.lastProcessedSeq = event.seq
+      this.handleEvent(event)
+      return
+    }
 
     // Buffer events before session_init
     if (!this.initialized && event.type !== 'session_init') {
@@ -81,6 +90,9 @@ export class StreamAccumulator {
 
   private handleEvent(event: SequencedEvent): void {
     switch (event.type) {
+      case 'user_message_echo':
+        this.handleUserMessageEcho(event as UserMessageEcho & { seq: number })
+        break
       case 'session_init':
         this.handleSessionInit(event as SessionInit & { seq: number })
         break
@@ -197,6 +209,17 @@ export class StreamAccumulator {
         // Unknown events silently ignored for forward compatibility
         break
     }
+  }
+
+  private handleUserMessageEcho(event: UserMessageEcho & { seq: number }): void {
+    this.finalizeCurrentAssistant()
+    const block: UserBlock = {
+      type: 'user',
+      id: `user-${event.seq}`,
+      text: event.content,
+      timestamp: event.timestamp,
+    }
+    this.blocks.push(block)
   }
 
   private handleSessionInit(event: SessionInit & { seq: number }): void {

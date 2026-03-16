@@ -13,6 +13,12 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     return
   }
 
+  // Enforce one WS per session: close old connection before subscribing new one
+  if (session.activeWs && session.activeWs.readyState === ws.OPEN) {
+    session.activeWs.close(4001, 'replaced_by_new_connection')
+  }
+  session.activeWs = ws
+
   // Subscribe to session events
   const onMessage = (msg: unknown) => {
     if (ws.readyState === ws.OPEN) {
@@ -36,6 +42,11 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
       const msg: ClientMessage = JSON.parse(raw.toString())
       switch (msg.type) {
         case 'user_message':
+          registry.emitSequenced(session, {
+            type: 'user_message_echo',
+            content: msg.content,
+            timestamp: Date.now() / 1000,
+          })
           sendMessage(session, msg.content)
           break
 
@@ -84,9 +95,8 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           const missed = session.eventBuffer.getAfter(lastSeq, (e) => e.seq)
           if (missed === null) {
             ws.send(
-              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: true }),
+              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: false }),
             )
-            ws.close()
           } else {
             for (const event of missed) {
               if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event.msg))
@@ -282,6 +292,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
 
   // Cleanup on close — drain interactive maps, keep session alive for reconnect
   ws.on('close', () => {
+    if (session.activeWs === ws) {
+      session.activeWs = null
+    }
     session.emitter.removeListener('message', onMessage)
     session.permissions.drainInteractive()
   })
