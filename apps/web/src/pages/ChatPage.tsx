@@ -7,14 +7,20 @@ export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
 
-  // Spectating = session is live but NOT controlled by our SDK (running in CLI/VS Code/etc.)
-  const liveMatch = liveSessions.sessions.find((s) => s.id === sessionId)
-  const isSpectating = !!liveMatch && liveMatch.control === null
+  // A session is spectating if it's live AND the user did NOT explicitly
+  // initiate it (create/resume/fork set location.state). Clicking a session
+  // in the sidebar = spectating. This avoids relying on the server's `control`
+  // field which can be stale from previous WS connections.
+  const isLiveElsewhere = liveSessions.sessions.some((s) => s.id === sessionId)
 
   return (
     <div className="flex h-full overflow-hidden">
       <SessionSidebar liveSessions={liveSessions.sessions} />
-      <ChatSession key={sessionId ?? 'new'} sessionId={sessionId} isSpectating={isSpectating} />
+      <ChatSession
+        key={sessionId ?? 'new'}
+        sessionId={sessionId}
+        isLiveElsewhere={isLiveElsewhere}
+      />
     </div>
   )
 }
