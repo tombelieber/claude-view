@@ -113,9 +113,20 @@ export function createControlSession(
     nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
+    activeWs: null,
   }
 
   registry.register(cs)
+
+  // Echo initial message into ring buffer (seq 0)
+  if (req.initialMessage) {
+    registry.emitSequenced(cs, {
+      type: 'user_message_echo',
+      content: req.initialMessage,
+      timestamp: Date.now() / 1000,
+    })
+  }
+
   runStreamLoop(cs, registry)
 
   return cs
@@ -182,6 +193,7 @@ export async function resumeControlSession(
     permissionMode: req.permissionMode ?? 'default',
     nextSeq: 0,
     permissions,
+    activeWs: null,
   }
 
   registry.register(cs)
@@ -237,6 +249,7 @@ export function forkControlSession(
     nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
+    activeWs: null,
   }
 
   registry.register(cs)
