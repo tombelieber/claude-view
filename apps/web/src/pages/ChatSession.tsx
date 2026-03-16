@@ -60,7 +60,10 @@ export function ChatSession({ sessionId, isSpectating }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, { freshlyCreated })
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
+    freshlyCreated,
+    spectating: isSpectating,
+  })
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
