@@ -50,16 +50,16 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
 
-  // SDK-controlled sessions: those with a control binding
-  const sdkControlledSessions = useMemo(
-    () => liveSessions.filter((s) => s.control !== null),
+  // Active sessions: all live sessions that are working, paused, or SDK-controlled
+  const activeSessions = useMemo(
+    () =>
+      liveSessions.filter(
+        (s) => s.status === 'working' || s.status === 'paused' || s.control !== null,
+      ),
     [liveSessions],
   )
 
-  const activeSessionIds = useMemo(
-    () => new Set(sdkControlledSessions.map((s) => s.id)),
-    [sdkControlledSessions],
-  )
+  const activeSessionIds = useMemo(() => new Set(activeSessions.map((s) => s.id)), [activeSessions])
 
   // Fetch history sessions on mount
   useEffect(() => {
@@ -99,9 +99,9 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
     return historySessions.map((s) => ({
       ...s,
       isActive: activeSessionIds.has(s.sessionId),
-      liveData: sdkControlledSessions.find((a) => a.id === s.sessionId) ?? null,
+      liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
     }))
-  }, [historySessions, activeSessionIds, sdkControlledSessions])
+  }, [historySessions, activeSessionIds, activeSessions])
 
   // Separate active-pinned from rest
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)
@@ -268,7 +268,7 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
         const data = await res.json()
         if (data.sessionId) {
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.sessionId}`)
+          navigate(`/chat/${data.sessionId}`, { state: { freshlyCreated: true } })
         } else {
           toast.error('Fork failed', { duration: TOAST_DURATION.extended })
         }

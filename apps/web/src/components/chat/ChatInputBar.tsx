@@ -51,7 +51,7 @@ const STATE_CONFIG: Record<InputBarState, StateConfig> = {
   },
   completed: { placeholder: 'Session ended', disabled: true, muted: true },
   controlled_elsewhere: {
-    placeholder: 'Controlled in another tab',
+    placeholder: 'This session is running in another process',
     disabled: true,
     muted: true,
   },
