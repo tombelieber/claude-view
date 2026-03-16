@@ -71,7 +71,9 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // On turn_complete: turnVersion increments → invalidateQueries refetches → accumulator resets.
   const blocks: ConversationBlock[] = useMemo(() => {
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
-      return !source.blocks.some((b) => b.type === 'user' && (b as UserBlock).text === ob.text)
+      const matchesText = (b: ConversationBlock) =>
+        b.type === 'user' && (b as UserBlock).text === ob.text
+      return !source.blocks.some(matchesText) && !history.blocks.some(matchesText)
     })
 
     // Live overlay: stream blocks. Between turns this is empty.
