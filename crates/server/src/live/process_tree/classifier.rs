@@ -77,7 +77,9 @@ pub(super) fn classify_process_list(
             Some(EcosystemTag::Ide)
         } else if cmd.contains("Claude.app/Contents") {
             Some(EcosystemTag::Desktop)
-        } else if cmd.contains("claude-view") || proc.pid == own_pid {
+        } else if (cmd.contains("claude-view") && !cmd.contains("sidecar/dist/index.js"))
+            || proc.pid == own_pid
+        {
             Some(EcosystemTag::Self_)
         } else if name == "claude" {
             Some(EcosystemTag::Cli)
@@ -145,13 +147,19 @@ pub(super) fn classify_process_list(
                     );
                     let (desc_count, desc_cpu, desc_mem) = aggregate_descendants(&descendants);
 
+                    let child_tag = if raw.command.contains("sidecar/dist/index.js") {
+                        Some(EcosystemTag::Sidecar)
+                    } else {
+                        None
+                    };
+
                     let cp = ClassifiedProcess {
                         pid: raw.pid,
                         ppid: raw.ppid,
                         name: raw.name.clone(),
                         command: truncate_command(&raw.command),
                         category: ProcessCategory::ChildProcess,
-                        ecosystem_tag: None,
+                        ecosystem_tag: child_tag,
                         cpu_percent: raw.cpu_percent,
                         memory_bytes: raw.memory_bytes,
                         uptime_secs,
@@ -777,5 +785,66 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(snap.ecosystem[0].descendants[0].pid, 101);
+    }
+
+    #[test]
+    fn sidecar_child_gets_sidecar_tag() {
+        let own_pid = 5000u32;
+        let processes = vec![
+            make_raw(
+                own_pid,
+                1,
+                "claude-view",
+                "/usr/local/bin/claude-view serve",
+                0.5,
+                50_000_000,
+                1_700_000_000,
+            ),
+            make_raw(
+                5001,
+                own_pid,
+                "node",
+                "node /home/user/.cache/claude-view/bin/sidecar/dist/index.js",
+                0.0,
+                188_000_000,
+                1_700_000_001,
+            ),
+        ];
+        let snap = classify_process_list(&processes, own_pid);
+        // Sidecar stays as a child (descendant) of Self_, not promoted to ecosystem
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert!(matches!(
+            snap.ecosystem[0].ecosystem_tag,
+            Some(EcosystemTag::Self_)
+        ));
+        assert_eq!(snap.ecosystem[0].descendants.len(), 1);
+        let sidecar = &snap.ecosystem[0].descendants[0];
+        assert_eq!(sidecar.pid, 5001);
+        assert!(
+            matches!(sidecar.ecosystem_tag, Some(EcosystemTag::Sidecar)),
+            "sidecar child must get Sidecar tag, got: {:?}",
+            sidecar.ecosystem_tag
+        );
+    }
+
+    #[test]
+    fn sidecar_command_not_matched_as_self() {
+        // sidecar/dist/index.js contains "claude-view" in the path —
+        // must NOT be classified as Self_ ecosystem process.
+        let processes = vec![make_raw(
+            5001,
+            5000,
+            "node",
+            "node /home/user/.cache/claude-view/bin/sidecar/dist/index.js",
+            0.0,
+            188_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        // Must NOT appear as ecosystem (not Self_, not anything)
+        assert!(
+            snap.ecosystem.is_empty(),
+            "sidecar must not be classified as ecosystem process"
+        );
     }
 }

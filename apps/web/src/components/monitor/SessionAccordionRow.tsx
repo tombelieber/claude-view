@@ -33,6 +33,8 @@ function ecosystemLabel(tag: EcosystemTag | null | undefined): string {
       return 'Desktop'
     case 'self':
       return 'Server'
+    case 'sidecar':
+      return 'Agent SDK'
     default:
       return ''
   }
