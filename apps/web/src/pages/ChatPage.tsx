@@ -1,16 +1,38 @@
+import { useQuery } from '@tanstack/react-query'
 import { useOutletContext, useParams } from 'react-router-dom'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { ChatSession } from './ChatSession'
 
+/** Fetch sessionIds actively managed by the sidecar (not external CLI/VS Code). */
+async function fetchSidecarSessionIds(): Promise<Set<string>> {
+  const res = await fetch('/api/control/sessions')
+  if (!res.ok) return new Set()
+  const data: { sessionId: string }[] = await res.json()
+  return new Set(data.map((s) => s.sessionId))
+}
+
 export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
 
+  // Sidecar-managed sessions: created/resumed through Claude View chat.
+  // Refreshes when liveSessions change (session created/closed).
+  const { data: sidecarIds } = useQuery({
+    queryKey: ['sidecar-session-ids', liveSessions.sessions.length],
+    queryFn: fetchSidecarSessionIds,
+    staleTime: 5_000,
+  })
+
+  // Watching = session is live (detected by hooks/SSE) but NOT managed by our sidecar.
+  const isLiveElsewhere = liveSessions.sessions.some((s) => s.id === sessionId)
+  const isSidecarManaged = sidecarIds?.has(sessionId ?? '') ?? false
+  const isWatching = isLiveElsewhere && !isSidecarManaged
+
   return (
     <div className="flex h-full overflow-hidden">
       <SessionSidebar liveSessions={liveSessions.sessions} />
-      <ChatSession key={sessionId ?? 'new'} sessionId={sessionId} />
+      <ChatSession key={sessionId ?? 'new'} sessionId={sessionId} isWatching={isWatching} />
     </div>
   )
 }
