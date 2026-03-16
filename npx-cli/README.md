@@ -21,7 +21,7 @@ Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP s
 <div align="center">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 **One command. Every session visible. Real-time.**
@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/instal
 
 | Method | Command |
 |--------|---------|
-| **Shell** (recommended) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **Shell** (recommended) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
 
 ---

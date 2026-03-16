@@ -42,7 +42,7 @@ Você faz Cmd-Tab entre 15 janelas de terminal tentando lembrar qual sessão est
 **claude-view** é um painel em tempo real que funciona ao lado das suas sessões do Claude Code. Uma aba do navegador, cada sessão visível, contexto completo de relance.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 É isso. Abre no seu navegador. Todas as suas sessões — ao vivo e passadas — em um workspace.
@@ -167,7 +167,7 @@ O claude-view é projetado para o desenvolvedor que:
 
 | Método | Comando |
 |--------|---------|
-| **Shell** (recomendado) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **Shell** (recomendado) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
 
 O instalador shell baixa um binário pré-compilado (~10 MB), instala em `~/.claude-view/bin` e adiciona ao PATH. Depois é só executar `claude-view`.

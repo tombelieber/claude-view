@@ -37,7 +37,7 @@ Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP s
 <div align="center">
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh | sh
+curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 **One command. Every session visible. Real-time.**
@@ -285,7 +285,7 @@ When you're already running 10+ Claude Code sessions eating RAM and CPU, the las
 
 | Method | Command |
 |--------|---------|
-| **Shell** (recommended) | `curl -fsSL https://raw.githubusercontent.com/tombelieber/claude-view/main/install.sh \| sh` |
+| **Shell** (recommended) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
 
 The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claude-view/bin`, and adds it to your PATH. Then just run `claude-view`.
@@ -383,6 +383,7 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | `packages/plugin/` | `@claude-view/plugin` | Claude Code plugin (tools + skills) |
 | `crates/` | — | Rust backend (Axum) |
 | `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
+| `infra/install-worker/` | — | Cloudflare Worker — install script proxy with download tracking |
 
 ### Dev Commands
 
