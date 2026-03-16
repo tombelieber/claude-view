@@ -35,9 +35,10 @@ export interface SessionSourceResult {
   agents: string[]
   channel: SessionChannel | null
   capabilities: string[]
-  /** False when ring buffer was exhausted — client missed events and should show a warning */
-  replayComplete: boolean
+  turnVersion: number
+  streamGap: boolean
   clearPendingMessage: (text: string) => void
+  resetAccumulator: () => void
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -76,7 +77,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [skills, setSkills] = useState<string[]>([])
   const [agents, setAgents] = useState<string[]>([])
   const [capabilities, setCapabilities] = useState<string[]>([])
-  const [replayComplete, setReplayComplete] = useState(true)
+  const [turnVersion, setTurnVersion] = useState(0)
+  const [streamGap, setStreamGap] = useState(false)
   const channelRef = useRef(new SessionChannel(null))
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -127,6 +129,11 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const syncBlocks = useCallback(() => {
     setLiveBlocks(accumulatorRef.current.getBlocks())
   }, [])
+
+  const resetAccumulator = useCallback(() => {
+    accumulatorRef.current.reset()
+    syncBlocks()
+  }, [syncBlocks])
 
   // --- WS message handler ---
   const handleWsMessage = useCallback(
@@ -187,6 +194,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         case 'turn_complete':
         case 'turn_error': {
           setSessionState('waiting_input')
+          setTurnVersion((v) => v + 1)
           const mu = raw.modelUsage as Record<string, ModelUsageInfo> | undefined
           if (mu) {
             let sumInput = 0
@@ -249,7 +257,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
         case 'error': {
           if (raw.message === 'replay_buffer_exhausted' && raw.fatal === false) {
-            setReplayComplete(false)
+            setStreamGap(true)
             break
           }
           console.error('[WS] fatal error:', raw.message)
@@ -319,7 +327,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       ws.onopen = () => {
         if (wsRef.current !== ws) return
         setIsLive(true)
-        setReplayComplete(true)
         reconnectAttemptRef.current = 0
 
         // Always replay buffered events — critical for new sessions where
@@ -361,7 +368,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     accumulatorRef.current = new StreamAccumulator()
     lastSeqRef.current = -1
     reconnectAttemptRef.current = 0
-    setReplayComplete(true)
+    setTurnVersion(0)
+    setStreamGap(false)
 
     let cancelled = false
 
@@ -471,6 +479,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
               if (unmountedRef.current) return
               setControlId(data.controlId)
               setSessionState('initializing')
+              // biome-ignore lint/style/noNonNullAssertion: sessionId checked at call site
               openWs(sessionId!)
             })
             .catch(() => {
@@ -553,7 +562,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     agents,
     channel: channelRef.current,
     capabilities,
-    replayComplete,
+    turnVersion,
+    streamGap,
     clearPendingMessage,
+    resetAccumulator,
   }
 }

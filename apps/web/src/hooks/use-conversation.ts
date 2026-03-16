@@ -1,17 +1,11 @@
-import type { ConversationBlock, NoticeBlock, UserBlock } from '@claude-view/shared/types/blocks'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import type { ConversationBlock, UserBlock } from '@claude-view/shared/types/blocks'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
 
 const SEND_TIMEOUT_MS = 10_000
-
-const RESUMED_DIVIDER: NoticeBlock = {
-  type: 'notice',
-  id: 'session-resumed-divider',
-  variant: 'session_resumed',
-  data: null,
-}
 
 export function useConversation(sessionId: string | undefined) {
   // Suppress 404 for sessions still initializing (JSONL not yet flushed).
@@ -55,31 +49,48 @@ export function useConversation(sessionId: string | undefined) {
     [actions],
   )
 
-  // Source selection: stream OR history, never merged.
-  // replayComplete=true → stream has everything (ring buffer replay succeeded)
-  // replayComplete=false → stream only has future events (ring buffer exhausted)
+  // History base + live overlay merge.
+  // History = completed turns (from JSONL). Live = in-progress turn (from WS stream).
+  // On turn_complete: turnVersion increments → invalidateQueries refetches → accumulator resets.
   const blocks: ConversationBlock[] = useMemo(() => {
-    // Optimistic user blocks (thin: just text, replaced when echo arrives)
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
       return !source.blocks.some((b) => b.type === 'user' && (b as UserBlock).text === ob.text)
     })
 
-    // Case 1: Replay succeeded and stream has blocks → stream is sole source
-    if (source.replayComplete && source.blocks.length > 0) {
-      return [...source.blocks, ...pendingOptimistic]
-    }
+    // Live overlay: stream blocks. Between turns this is empty.
+    // During a turn this has the in-progress response.
+    const liveOverlay = source.blocks
 
-    // Case 2: Live but replay exhausted → history base + future stream events
-    if (source.isLive && !source.replayComplete) {
-      if (source.blocks.length === 0) {
-        return [...history.blocks, ...pendingOptimistic]
-      }
-      return [...history.blocks, RESUMED_DIVIDER, ...source.blocks, ...pendingOptimistic]
-    }
+    return [...history.blocks, ...liveOverlay, ...pendingOptimistic]
+  }, [history.blocks, source.blocks, optimisticBlocks])
 
-    // Case 3: Cold session or stream still empty → history + optimistic
-    return [...history.blocks, ...pendingOptimistic]
-  }, [history.blocks, source.blocks, source.isLive, source.replayComplete, optimisticBlocks])
+  const queryClient = useQueryClient()
+
+  // Destructure for stable useEffect dependencies
+  const { turnVersion, resetAccumulator } = source
+
+  // On turn completion: invalidate history query (preserves cached pages + scroll),
+  // then reset accumulator after history settles. Zero visual gap.
+  const prevTurnVersionRef = useRef(0)
+  useEffect(() => {
+    if (turnVersion <= prevTurnVersionRef.current) return
+
+    // Invalidate — triggers background refetch of active pages, no cache wipe
+    queryClient.invalidateQueries({
+      queryKey: ['session-messages', sessionId],
+      refetchType: 'active',
+    })
+  }, [turnVersion, sessionId, queryClient])
+
+  // Deferred accumulator reset: wait for history refetch to complete
+  useEffect(() => {
+    if (turnVersion <= prevTurnVersionRef.current) return
+    if (history.isFetching) return // Still fetching — keep accumulator visible
+    if (history.error) return // Fetch failed — DON'T reset, keep accumulator as fallback
+
+    resetAccumulator()
+    prevTurnVersionRef.current = turnVersion
+  }, [turnVersion, history.isFetching, history.error, resetAccumulator])
 
   const retryMessage = useCallback(
     (localId: string) => {
@@ -128,7 +139,8 @@ export function useConversation(sessionId: string | undefined) {
       skills: source.skills,
       agents: source.agents,
       capabilities: source.capabilities,
-      replayComplete: source.replayComplete,
+      turnVersion: source.turnVersion,
+      streamGap: source.streamGap,
     },
   }
 }
