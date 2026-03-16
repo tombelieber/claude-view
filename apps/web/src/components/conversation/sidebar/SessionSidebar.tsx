@@ -1,4 +1,5 @@
-import type { ActiveSession, AvailableSession } from '@claude-view/shared'
+import type { AvailableSession } from '@claude-view/shared'
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -6,7 +7,11 @@ import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
 import { SessionListItem } from './SessionListItem'
 
-type EnrichedSession = AvailableSession & { isActive?: boolean; activeInfo?: ActiveSession }
+type EnrichedSession = AvailableSession & { isActive?: boolean; liveData?: LiveSession | null }
+
+interface SessionSidebarProps {
+  liveSessions: LiveSession[]
+}
 
 function groupByTime(sessions: AvailableSession[], now: number) {
   const today = new Date(now * 1000)
@@ -34,57 +39,69 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar() {
+export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
   const VISIBLE_BATCH = 30
 
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([])
   const [historySessions, setHistorySessions] = useState<AvailableSession[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
 
-  // Fetch active and available sessions
+  // SDK-controlled sessions: those with a control binding
+  const sdkControlledSessions = useMemo(
+    () => liveSessions.filter((s) => s.control !== null),
+    [liveSessions],
+  )
+
+  const activeSessionIds = useMemo(
+    () => new Set(sdkControlledSessions.map((s) => s.id)),
+    [sdkControlledSessions],
+  )
+
+  // Fetch history sessions on mount
   useEffect(() => {
     let cancelled = false
-    async function fetchSessions() {
+    async function fetchHistory() {
       try {
-        const [activeRes, historyRes] = await Promise.all([
-          fetch('/api/control/sessions'),
-          fetch('/api/control/available-sessions'),
-        ])
+        const res = await fetch('/api/control/available-sessions')
         if (cancelled) return
-        if (activeRes.ok) setActiveSessions(await activeRes.json())
-        if (historyRes.ok) setHistorySessions(await historyRes.json())
+        if (res.ok) setHistorySessions(await res.json())
       } catch {
         // Network error — silently fail, show empty state
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    fetchSessions()
-    const interval = setInterval(fetchSessions, 10_000) // poll every 10s
+    fetchHistory()
     return () => {
       cancelled = true
-      clearInterval(interval)
     }
   }, [])
 
-  const activeSessionIds = useMemo(
-    () => new Set(activeSessions.map((s) => s.sessionId)),
-    [activeSessions],
-  )
+  // Refetch history when liveSessions count changes (session created/closed)
+  const prevLiveCount = useRef(liveSessions.length)
+  useEffect(() => {
+    if (prevLiveCount.current === liveSessions.length) return
+    prevLiveCount.current = liveSessions.length
+    fetch('/api/control/available-sessions')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setHistorySessions(data)
+      })
+      .catch(() => {})
+  }, [liveSessions.length])
 
   // Merge: mark history sessions that are also active
   const enrichedHistory = useMemo(() => {
     return historySessions.map((s) => ({
       ...s,
       isActive: activeSessionIds.has(s.sessionId),
-      activeInfo: activeSessions.find((a) => a.sessionId === s.sessionId),
+      liveData: sdkControlledSessions.find((a) => a.id === s.sessionId) ?? null,
     }))
-  }, [historySessions, activeSessionIds, activeSessions])
+  }, [historySessions, activeSessionIds, sdkControlledSessions])
 
   // Separate active-pinned from rest
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)

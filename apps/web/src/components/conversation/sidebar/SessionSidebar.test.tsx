@@ -70,3 +70,37 @@ describe('Sidebar progressive rendering invariants', () => {
     expect(sliced[29].id).toBe('s-29')
   })
 })
+
+describe('event-driven sidebar (regression: 10s polling removed)', () => {
+  it('SessionSidebar accepts liveSessions prop (new interface)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/components/conversation/sidebar/SessionSidebar.tsx'),
+      'utf-8',
+    )
+    expect(source).toMatch(/liveSessions:\s*LiveSession\[\]/)
+    expect(source).toMatch(/interface\s+SessionSidebarProps/)
+  })
+
+  it('no setInterval polling in component (regression: was 10s poll)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/components/conversation/sidebar/SessionSidebar.tsx'),
+      'utf-8',
+    )
+    expect(source).not.toMatch(/setInterval/)
+  })
+
+  it('sdkControlledSessions filters by control !== null', () => {
+    const live = [
+      { id: 's1', control: { id: 'c1' }, agentState: { group: 'autonomous' } },
+      { id: 's2', control: null, agentState: { group: 'autonomous' } },
+      { id: 's3', control: { id: 'c3' }, agentState: { group: 'needs_you' } },
+    ]
+    const sdkControlled = live.filter((s) => s.control !== null)
+    expect(sdkControlled).toHaveLength(2)
+    expect(sdkControlled.map((s) => s.id)).toEqual(['s1', 's3'])
+  })
+})
