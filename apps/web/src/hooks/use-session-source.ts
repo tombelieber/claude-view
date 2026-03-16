@@ -473,6 +473,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
               if (unmountedRef.current) return
               setControlId(data.controlId)
               setSessionState('initializing')
+              // biome-ignore lint/style/noNonNullAssertion: sessionId checked at call site
               openWs(sessionId!)
             })
             .catch(() => {
