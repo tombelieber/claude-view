@@ -47,6 +47,7 @@ describe('findClaudeExecutable', () => {
       delete process.env.CLAUDE_VIEW_CLI_PATH
       expect(() => findClaudeExecutable()).toThrow('Claude Code CLI not found')
     } finally {
+      // biome-ignore lint/style/noNonNullAssertion: PATH is always defined, saved before mutation
       process.env.PATH = originalPath!
       if (originalCli !== undefined) process.env.CLAUDE_VIEW_CLI_PATH = originalCli
     }
