@@ -107,6 +107,7 @@ describe('bundle integrity', () => {
       'node:async_hooks',
       'node:perf_hooks',
       'node:process',
+      'node:module',
       'bufferutil',
       'utf-8-validate',
     ])
