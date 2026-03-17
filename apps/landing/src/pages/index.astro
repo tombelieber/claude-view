@@ -51,14 +51,20 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
       </a>
     </div>
 
-    <div class="install-strip" role="button" tabindex="0" id="install-copy">
-      <span class="dollar">$</span>
-      <span class="cmd">npx claude-view</span>
-      <span class="copy-hint">copy</span>
+    <div class="install-strip-wrapper">
+      <div class="install-tabs" role="tablist">
+        <button class="install-tab active" role="tab" aria-selected="true" data-tab="shell">Shell</button>
+        <button class="install-tab" role="tab" aria-selected="false" data-tab="npx">npx</button>
+      </div>
+      <div class="install-strip" role="button" tabindex="0" id="install-copy" data-command="curl -fsSL https://get.claudeview.ai/install.sh | sh">
+        <span class="dollar">$</span>
+        <span class="cmd" id="install-cmd-text">curl -fsSL https://get.claudeview.ai/install.sh | sh</span>
+        <span class="copy-hint">copy</span>
+      </div>
     </div>
 
     <p class="plugin-link">
-      Ships as a
+      Also ships as a
       <a href="/docs/guides/plugin/">Claude Code plugin</a>
       — {MCP_TOOL_COUNT} tools, {PLUGIN_SKILL_COUNT} skills, auto-start hook.
     </p>
@@ -220,15 +226,19 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
     <p class="install-subtitle">No account needed. Just run one command.</p>
     <div class="install-commands">
       <div class="install-cmd primary-install">
-        <span class="install-label">Plugin (recommended)</span>
+        <span class="install-label">Shell (recommended)</span>
+        <code>curl -fsSL https://get.claudeview.ai/install.sh | sh</code>
+      </div>
+      <div class="install-cmd secondary-install">
+        <span class="install-label">Plugin</span>
         <code>claude plugin add {PLUGIN_PACKAGE}</code>
       </div>
       <div class="install-cmd secondary-install">
-        <span class="install-label">Standalone</span>
+        <span class="install-label">npx</span>
         <code>npx claude-view</code>
       </div>
     </div>
-    <p class="install-note">Requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
+    <p class="install-note">No dependencies for shell install. npx requires Node.js {PLATFORM.nodeMin}+. Works on {PLATFORM.current}. Linux coming in {PLATFORM.linuxVersion}.</p>
   </section>
 
   <!-- Pricing Preview -->
@@ -263,12 +273,33 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
     observer.observe(el);
   });
 
-  // Install strip copy
+  // Install strip — tabbed commands with copy
+  const INSTALL_COMMANDS: Record<string, string> = {
+    shell: 'curl -fsSL https://get.claudeview.ai/install.sh | sh',
+    npx: 'npx claude-view',
+  };
+
   const strip = document.getElementById('install-copy');
+  const cmdText = document.getElementById('install-cmd-text');
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.install-tab');
+
+  // Tab switching
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const key = tab.dataset.tab ?? 'shell';
+      tabs.forEach((t) => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      if (cmdText) cmdText.textContent = INSTALL_COMMANDS[key] ?? '';
+      if (strip) strip.dataset.command = INSTALL_COMMANDS[key] ?? '';
+    });
+  });
+
+  // Copy on click
   if (strip) {
     strip.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText('npx claude-view');
+        await navigator.clipboard.writeText(strip.dataset.command ?? '');
         const hint = strip.querySelector('.copy-hint');
         if (hint) {
           hint.textContent = 'copied!';
@@ -390,11 +421,40 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
   .btn-ghost svg { fill: currentColor; }
 
   /* Install strip */
+  .install-strip-wrapper {
+    max-width: 560px;
+    margin: 36px auto 0;
+  }
+  .install-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: -1px;
+    padding-left: 12px;
+  }
+  .install-tab {
+    padding: 6px 16px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .install-tab:hover {
+    color: var(--color-text-secondary);
+  }
+  .install-tab.active {
+    color: var(--color-text);
+    background: rgba(255,255,255,0.55);
+    border-color: var(--color-border);
+  }
   .install-strip {
     position: relative;
     z-index: 1;
-    max-width: 390px;
-    margin: 36px auto 0;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -414,12 +474,13 @@ import { GITHUB_REPO, GITHUB_URL, MCP_TOOL_COUNT, PLUGIN_SKILL_COUNT, PLUGIN_PAC
     background: rgba(255,255,255,0.8);
   }
   .dollar { color: var(--color-text-tertiary); }
-  .cmd { color: var(--color-text); }
+  .cmd { color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .copy-hint {
     font-family: var(--font-body);
     font-size: 11px;
     color: var(--color-text-tertiary);
     margin-left: auto;
+    flex-shrink: 0;
     transition: color 0.15s;
   }
   .install-strip:hover .copy-hint { color: var(--accent); }
