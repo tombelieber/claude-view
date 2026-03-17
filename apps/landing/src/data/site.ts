@@ -14,7 +14,7 @@ export const GITHUB_REPO = 'tombelieber/claude-view'
 export const GITHUB_URL = `https://github.com/${GITHUB_REPO}`
 
 /** Must match the version in root package.json and Cargo.toml workspace. */
-export const VERSION = '0.21.0'
+export const VERSION = '0.22.0'
 
 /** Set to null to disable Twitter card meta tag. Update when handle is verified. */
 export const TWITTER_HANDLE: string | null = null
