@@ -11,11 +11,14 @@ interface ConversationOptions {
   /** True when navigating from session creation — suppresses 404 during the
    *  race window before the JSONL file is flushed to disk. */
   freshlyCreated?: boolean
+  /** Skip WS connection (watching mode). History still loads via REST. */
+  skipWs?: boolean
 }
 
 export function useConversation(sessionId: string | undefined, options?: ConversationOptions) {
-  // Suppress 404 for sessions still initializing (JSONL not yet flushed).
-  const source = useSessionSource(sessionId)
+  // 'skipWs' allows watching mode: skip WS connection (no bind_control)
+  // while still loading history with the real sessionId.
+  const source = useSessionSource(options?.skipWs ? undefined : sessionId)
   // Freshly-created sessions start at 'idle' before WS connects and transitions
   // to 'initializing'/'active'. Suppress 404 during that gap so the messages
   // query doesn't enter permanent error state before the sidecar writes the JSONL.
