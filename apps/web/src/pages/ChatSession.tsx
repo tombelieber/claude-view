@@ -52,13 +52,19 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 interface ChatSessionProps {
   sessionId: string | undefined
+  /** True when session is live elsewhere (CLI/VS Code) but NOT sidecar-managed. */
+  isWatching?: boolean
 }
 
-export function ChatSession({ sessionId }: ChatSessionProps) {
+export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, { freshlyCreated })
+  // When watching, skip WS to prevent auto-resume/bind_control. History loads via REST.
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
+    freshlyCreated,
+    skipWs: isWatching,
+  })
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -255,12 +261,17 @@ export function ChatSession({ sessionId }: ChatSessionProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {sessionInfo.isLive && (
+          {isWatching ? (
+            <span className="flex items-center gap-1.5 text-xs text-blue-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              Watching
+            </span>
+          ) : sessionInfo.isLive ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
             </span>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
@@ -354,26 +365,42 @@ export function ChatSession({ sessionId }: ChatSessionProps) {
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          <ChatInputBar
-            onSend={handleSend}
-            onStop={actions.interrupt}
-            state={inputBarState}
-            mode={permMode}
-            onModeChange={handleModeChangePermission}
-            contextPercent={contextPercent}
-            model={selectedModel}
-            onModelChange={handleModelChange}
-            capabilities={capabilities}
-            modelOptions={modelOptions}
-            onModelSwitch={handleModelSwitch}
-            onPaletteModeChange={handlePaletteModeChange}
-            onCommand={handlePaletteCommand}
-            onAgent={(agent) => actions.sendMessage(`@${agent}`)}
-            onPaletteOpen={() => {
-              actions.queryCommands().catch(() => {})
-              actions.queryAgents().catch(() => {})
-            }}
-          />
+          {isWatching ? (
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-4 py-3">
+              <span className="text-sm text-gray-400 dark:text-gray-500">
+                This session is running in another process
+              </span>
+              <button
+                type="button"
+                disabled
+                title="Switch control to Claude View — coming soon"
+                className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              >
+                Switch to here
+              </button>
+            </div>
+          ) : (
+            <ChatInputBar
+              onSend={handleSend}
+              onStop={actions.interrupt}
+              state={inputBarState}
+              mode={permMode}
+              onModeChange={handleModeChangePermission}
+              contextPercent={contextPercent}
+              model={selectedModel}
+              onModelChange={handleModelChange}
+              capabilities={capabilities}
+              modelOptions={modelOptions}
+              onModelSwitch={handleModelSwitch}
+              onPaletteModeChange={handlePaletteModeChange}
+              onCommand={handlePaletteCommand}
+              onAgent={(agent) => actions.sendMessage(`@${agent}`)}
+              onPaletteOpen={() => {
+                actions.queryCommands().catch(() => {})
+                actions.queryAgents().catch(() => {})
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
