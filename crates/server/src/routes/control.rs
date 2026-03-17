@@ -277,6 +277,64 @@ async fn proxy_resume(
     Ok(control_id)
 }
 
+/// What to do with a session that's in the live_sessions map.
+///
+/// Extracted from ws_connect so the gate logic is unit-testable.
+/// Design rule: **only return `Block` for states the Agent SDK fundamentally
+/// cannot handle.** Process liveness is NOT such a state — the SDK creates
+/// a new CLI process from session history, so dead-PID sessions resume fine.
+#[derive(Debug)]
+pub(crate) enum LiveSessionAction {
+    /// Session not tracked by the live monitor → proceed to SDK resume.
+    ResumeNew,
+    /// Session tracked but process is dead → proceed to SDK resume (new process).
+    ResumeDeadProcess,
+    /// Session has an active PID but no control binding → proceed to SDK resume.
+    ResumeAlive,
+    /// Session is already controlled → reuse the existing binding.
+    ReuseExisting {
+        control_id: String,
+        cancel: tokio_util::sync::CancellationToken,
+    },
+}
+
+impl PartialEq for LiveSessionAction {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ResumeNew, Self::ResumeNew)
+            | (Self::ResumeDeadProcess, Self::ResumeDeadProcess)
+            | (Self::ResumeAlive, Self::ResumeAlive) => true,
+            (
+                Self::ReuseExisting { control_id: a, .. },
+                Self::ReuseExisting { control_id: b, .. },
+            ) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Decide what action to take for a live session connect request.
+///
+/// Pure function (no side effects) so it can be unit-tested directly.
+pub(crate) fn classify_live_session(
+    session: Option<&crate::live::state::LiveSession>,
+) -> LiveSessionAction {
+    match session {
+        None => LiveSessionAction::ResumeNew,
+        Some(s) if s.pid.is_none() || !crate::live::process::is_pid_alive(s.pid.unwrap_or(0)) => {
+            LiveSessionAction::ResumeDeadProcess
+        }
+        Some(s) if s.control.is_some() => {
+            let ctl = s.control.as_ref().unwrap();
+            LiveSessionAction::ReuseExisting {
+                control_id: ctl.control_id.clone(),
+                cancel: ctl.cancel.clone(),
+            }
+        }
+        _ => LiveSessionAction::ResumeAlive,
+    }
+}
+
 /// GET /api/control/connect?sessionId=xxx — merged resume + WS endpoint.
 ///
 /// Performs resume BEFORE the WS upgrade. If resume fails, returns HTTP error
@@ -308,31 +366,23 @@ async fn ws_connect(
     //
     // History sessions are NOT in live_sessions — they are finished sessions with
     // no running Claude process. We must allow resume for both live AND history
-    // sessions. The guard below only applies when the session IS tracked by the
-    // live monitor (i.e. it was started in this server process).
+    // sessions. The gate logic is in classify_live_session() — unit-tested
+    // to prevent regressions like the dead-PID 410 bug.
     if let Some(ref live_manager) = state.live_manager {
-        let sessions = state.live_sessions.read().await;
-        let session = sessions.get(&query.session_id);
-        match session {
-            None => {
-                // Session not in live monitor — it's a history session.
-                // Fall through to resume: the Agent SDK can re-attach to any past session.
+        let action = {
+            let sessions = state.live_sessions.read().await;
+            classify_live_session(sessions.get(&query.session_id))
+        }; // sessions guard dropped here
+
+        match action {
+            LiveSessionAction::ResumeNew | LiveSessionAction::ResumeAlive => {}
+            LiveSessionAction::ResumeDeadProcess => {
+                tracing::info!(
+                    session_id = %query.session_id,
+                    "Live session with dead PID — proceeding to SDK resume"
+                );
             }
-            Some(s)
-                if s.pid.is_none() || !crate::live::process::is_pid_alive(s.pid.unwrap_or(0)) =>
-            {
-                // Live session whose process is dead — reject with GONE.
-                return (
-                    axum::http::StatusCode::GONE,
-                    format!("Session {} process is no longer alive", query.session_id),
-                )
-                    .into_response();
-            }
-            Some(s) if s.control.is_some() => {
-                // Already controlled — reuse existing binding (idempotent reconnect)
-                let control_id = s.control.as_ref().unwrap().control_id.clone();
-                let cancel = s.control.as_ref().unwrap().cancel.clone();
-                drop(sessions);
+            LiveSessionAction::ReuseExisting { control_id, cancel } => {
                 let socket_path = match state.sidecar.ensure_running().await {
                     Ok(p) => p,
                     Err(e) => {
@@ -347,10 +397,8 @@ async fn ws_connect(
                     handle_ws_relay_with_close_codes(socket, control_id, socket_path, state, cancel)
                 });
             }
-            _ => {} // Session exists, PID alive, no control — proceed to resume
         }
-        drop(sessions);
-        let _ = live_manager; // suppress unused warning after drop
+        let _ = live_manager; // suppress unused warning
     }
 
     // 3. Resume session via sidecar (reject with HTTP 502 on failure)
@@ -910,5 +958,73 @@ mod tests {
             status == StatusCode::UPGRADE_REQUIRED || status == StatusCode::BAD_GATEWAY,
             "Expected 426 (WS upgrade) or 502 (no sidecar), got {status} — history session was blocked unexpectedly"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // classify_live_session — unit tests for the extracted gate logic.
+    //
+    // These prevent the dead-PID 410 regression: the function is pure (no IO),
+    // so every branch is tested cheaply without spawning sidecar/live_manager.
+    // -----------------------------------------------------------------------
+
+    use super::{classify_live_session, LiveSessionAction};
+    use crate::live::state::{test_live_session, ControlBinding};
+
+    #[test]
+    fn classify_none_returns_resume_new() {
+        assert_eq!(classify_live_session(None), LiveSessionAction::ResumeNew);
+    }
+
+    /// Regression: dead-PID sessions MUST proceed to resume, never block.
+    /// This was the root cause of the sidecar WS failures — the server returned
+    /// 410 GONE for any live-tracked session whose process had exited, even
+    /// though the Agent SDK can resume by spawning a fresh CLI process.
+    #[test]
+    fn classify_dead_pid_returns_resume_not_block() {
+        let mut session = test_live_session("dead-pid-session");
+        // PID 999999 is almost certainly not alive
+        session.pid = Some(999_999);
+        let action = classify_live_session(Some(&session));
+        assert_eq!(
+            action,
+            LiveSessionAction::ResumeDeadProcess,
+            "Dead-PID session must resume, not block — SDK creates a new CLI process"
+        );
+    }
+
+    #[test]
+    fn classify_no_pid_returns_resume_dead() {
+        let mut session = test_live_session("no-pid-session");
+        session.pid = None;
+        let action = classify_live_session(Some(&session));
+        assert_eq!(action, LiveSessionAction::ResumeDeadProcess);
+    }
+
+    #[test]
+    fn classify_alive_pid_no_control_returns_resume_alive() {
+        let mut session = test_live_session("alive-session");
+        // Use our own PID — guaranteed alive
+        session.pid = Some(std::process::id());
+        session.control = None;
+        let action = classify_live_session(Some(&session));
+        assert_eq!(action, LiveSessionAction::ResumeAlive);
+    }
+
+    #[test]
+    fn classify_already_controlled_returns_reuse() {
+        let mut session = test_live_session("controlled-session");
+        session.pid = Some(std::process::id());
+        session.control = Some(ControlBinding {
+            control_id: "ctl-123".to_string(),
+            bound_at: 0,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        });
+        let action = classify_live_session(Some(&session));
+        match action {
+            LiveSessionAction::ReuseExisting { control_id, .. } => {
+                assert_eq!(control_id, "ctl-123");
+            }
+            other => panic!("Expected ReuseExisting, got {other:?}"),
+        }
     }
 }
