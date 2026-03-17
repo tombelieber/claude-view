@@ -366,18 +366,20 @@ export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
           {isWatching ? (
-            <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-4 py-3">
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-4 py-4">
               <span className="text-sm text-gray-400 dark:text-gray-500">
                 This session is running in another process
               </span>
-              <button
-                type="button"
-                disabled
-                title="Switch control to Claude View — coming soon"
-                className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-              >
-                Switch to here
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                >
+                  Switch to here
+                </button>
+                <span className="text-[10px] text-gray-300 dark:text-gray-600">Coming soon</span>
+              </div>
             </div>
           ) : (
             <ChatInputBar

@@ -5,7 +5,11 @@ import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
 
 interface Props {
-  session: AvailableSession & { isActive?: boolean; liveData?: LiveSession | null }
+  session: AvailableSession & {
+    isActive?: boolean
+    liveData?: LiveSession | null
+    isSidecarManaged?: boolean
+  }
   isSelected: boolean
   isKeyboardActive?: boolean
   onSelect: (sessionId: string) => void
@@ -30,16 +34,10 @@ function formatRelativeTime(timestamp: number): string {
 
 function getStatusDotColor(session: Props['session']): string {
   if (!session.liveData) return 'bg-gray-300 dark:bg-gray-600'
-  // SDK-controlled (user chatting) → green
-  if (session.liveData.control !== null) return 'bg-green-500'
-  // Waiting for user input → amber
-  if (session.liveData.agentState.group === 'needs_you') return 'bg-amber-500'
-  // Autonomous / working → blue
-  if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
-    return 'bg-blue-500'
-  // Paused but not needs_you → green (idle)
-  if (session.liveData.status === 'paused') return 'bg-green-500'
-  return 'bg-gray-300 dark:bg-gray-600'
+  // Sidecar-managed → green
+  if (session.isSidecarManaged) return 'bg-green-500'
+  // External live → blue
+  return 'bg-blue-500'
 }
 
 function getPulseRingColor(session: Props['session']): string {
@@ -52,22 +50,22 @@ function getPulseRingColor(session: Props['session']): string {
 
 function getStatusBadge(session: Props['session']): { text: string; className: string } | null {
   if (!session.liveData) return null
-  // SDK-controlled → Live
-  if (session.liveData.control !== null)
+  // Sidecar-managed → Live (green)
+  if (session.isSidecarManaged)
     return {
       text: 'Live',
       className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
     }
-  // Waiting for input → Waiting
+  // External session waiting for input → Watching
   if (session.liveData.agentState.group === 'needs_you')
     return {
-      text: 'Waiting',
-      className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      text: 'Watching',
+      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     }
-  // Autonomous / working → Running
+  // External session autonomous / working → Watching
   if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
     return {
-      text: 'Running',
+      text: 'Watching',
       className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     }
   return null
