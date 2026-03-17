@@ -11,23 +11,39 @@ import { DEFAULT_PORT, PLATFORM } from '../../../data/site';
   "name": "Install claude-view",
   "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
   "totalTime": "PT15S",
-  "tool": [{"@type": "HowToTool", "name": `Node.js (v${PLATFORM.nodeMin} or later)`}],
+  "tool": [{"@type": "HowToTool", "name": "Terminal (macOS or Linux)"}],
   "step": [
-    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
-    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: curl -fsSL https://get.claudeview.ai/install.sh | sh"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The installer downloads the pre-built binary (~10MB) automatically. No Rust toolchain or compilation required."},
     {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": `claude-view starts a local server and opens your browser to http://localhost:${DEFAULT_PORT}. You'll see all active Claude Code sessions automatically detected.`}
   ]
 })} />
 
-## Quick install
+## Quick install (recommended)
+
+```bash
+curl -fsSL https://get.claudeview.ai/install.sh | sh
+```
+
+That's it. Downloads a native binary (~10 MB) to `~/.claude-view/bin` and adds it to your PATH. No Node.js needed.
+
+Then run:
+
+```bash
+claude-view
+```
+
+## npx (alternative)
+
+If you prefer npm, you can also run:
 
 ```bash
 npx claude-view
 ```
 
-That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+`npx` downloads the pre-built binary and starts the server. Requires Node.js {PLATFORM.nodeMin}+.
 
-## Claude Code plugin (recommended)
+## Claude Code plugin
 
 If you use Claude Code, install the plugin for the best experience — it auto-starts the server, adds 8 MCP tools, and 3 skills:
 
@@ -54,10 +70,11 @@ After installing, every Claude Code session automatically starts the dashboard. 
 
 ## What happens on first run
 
-1. `npx` downloads the pre-built `claude-view` binary for your platform
-2. The binary starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
-3. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
-4. claude-view scans for active Claude Code processes automatically
+1. The installer downloads the pre-built `claude-view` binary for your platform (~10 MB)
+2. Installs to `~/.claude-view/bin` and adds it to your PATH
+3. Run `claude-view` — it starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
+4. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
+5. claude-view scans for active Claude Code processes automatically
 
 ## Configuration
 
