@@ -7,10 +7,16 @@ import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
 import { SessionListItem } from './SessionListItem'
 
-type EnrichedSession = AvailableSession & { isActive?: boolean; liveData?: LiveSession | null }
+type EnrichedSession = AvailableSession & {
+  isActive?: boolean
+  liveData?: LiveSession | null
+  isSidecarManaged?: boolean
+}
 
 interface SessionSidebarProps {
   liveSessions: LiveSession[]
+  /** Session IDs actively managed by the sidecar (from /control/sessions). */
+  sidecarSessionIds?: Set<string>
 }
 
 function groupByTime(sessions: AvailableSession[], now: number) {
@@ -39,7 +45,7 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
+export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
@@ -100,6 +106,7 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
       ...s,
       isActive: activeSessionIds.has(s.sessionId),
       liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
+      isSidecarManaged: sidecarSessionIds?.has(s.sessionId) ?? false,
     }))
   }, [historySessions, activeSessionIds, activeSessions])
 

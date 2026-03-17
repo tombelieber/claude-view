@@ -25,13 +25,15 @@ export function ChatPage() {
   })
 
   // Watching = session is live (detected by hooks/SSE) but NOT managed by our sidecar.
+  // When sidecarIds is still loading (undefined), default to NOT watching to avoid
+  // blocking WS connections for the user's own sessions.
   const isLiveElsewhere = liveSessions.sessions.some((s) => s.id === sessionId)
-  const isSidecarManaged = sidecarIds?.has(sessionId ?? '') ?? false
+  const isSidecarManaged = sidecarIds == null || sidecarIds.has(sessionId ?? '')
   const isWatching = isLiveElsewhere && !isSidecarManaged
 
   return (
     <div className="flex h-full overflow-hidden">
-      <SessionSidebar liveSessions={liveSessions.sessions} />
+      <SessionSidebar liveSessions={liveSessions.sessions} sidecarSessionIds={sidecarIds} />
       <ChatSession key={sessionId ?? 'new'} sessionId={sessionId} isWatching={isWatching} />
     </div>
   )
