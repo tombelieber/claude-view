@@ -366,11 +366,19 @@ export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
           {isWatching && (
-            <div className="flex items-center justify-center gap-2 pb-2">
-              <span className="text-xs text-gray-400 dark:text-gray-500">
-                This session is running in another process
-              </span>
-              <span className="text-[10px] text-gray-300 dark:text-gray-600">Coming soon</span>
+            <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 text-blue-500 dark:text-blue-400 text-base">&#x1f441;</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                    Watching a live session
+                  </p>
+                  <p className="text-xs text-blue-600/70 dark:text-blue-400/60 mt-0.5">
+                    This session is running in another process. Take over and resume from Claude
+                    View is coming soon.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
           <ChatInputBar
