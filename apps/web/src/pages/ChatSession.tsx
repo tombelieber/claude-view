@@ -132,14 +132,17 @@ export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
     }
   })
 
-  // Context gauge — live uses WS token data, history uses richData from JSONL
+  // Context gauge — unified calculation using getContextLimit for consistent denominator.
+  // Live WS provides totalInputTokens (numerator) and contextWindowSize (hint for limit).
+  // History richData provides contextWindowTokens (numerator from JSONL).
   const contextPercent = (() => {
-    if (
-      (sessionInfo.isLive || sessionInfo.canResumeLazy) &&
-      sessionInfo.contextWindowSize > 0 &&
-      sessionInfo.totalInputTokens > 0
-    ) {
-      return Math.round((sessionInfo.totalInputTokens / sessionInfo.contextWindowSize) * 100)
+    if ((sessionInfo.isLive || sessionInfo.canResumeLazy) && sessionInfo.totalInputTokens > 0) {
+      const limit = getContextLimit(
+        null,
+        sessionInfo.totalInputTokens,
+        sessionInfo.contextWindowSize || null,
+      )
+      return Math.round((sessionInfo.totalInputTokens / limit) * 100)
     }
     if (richData && richData.contextWindowTokens > 0) {
       const limit = getContextLimit(null, richData.contextWindowTokens)
