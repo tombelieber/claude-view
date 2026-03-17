@@ -6,7 +6,7 @@
 const faqs = [
   {
     question: 'Is claude-view free?',
-    answer: 'Yes — the Free plan is free forever. Just run <code>npx claude-view</code>. No signup, no API key, no config. Pro and Max plans (coming soon) add cloud relay, mobile app, and agent orchestration.',
+    answer: 'Yes — the Free plan is free forever. Just run <code>curl -fsSL https://get.claudeview.ai/install.sh | sh</code> or <code>npx claude-view</code>. No signup, no API key, no config. Pro and Max plans (coming soon) add cloud relay, mobile app, and agent orchestration.',
   },
   {
     question: 'Does it send data to the cloud?',
@@ -14,11 +14,11 @@ const faqs = [
   },
   {
     question: 'Do I need to configure anything?',
-    answer: 'No. Run <code>npx claude-view</code> and it works immediately — zero env files, zero accounts, zero database setup. Cloud features like sharing auto-enable when configured, but are completely optional.',
+    answer: 'No. Run <code>curl -fsSL https://get.claudeview.ai/install.sh | sh</code> and it works immediately — zero env files, zero accounts, zero database setup. Or use <code>npx claude-view</code> if you prefer npm. Cloud features like sharing auto-enable when configured, but are completely optional.',
   },
   {
     question: "What's the difference between plugin and npx?",
-    answer: 'The <strong>Claude Code plugin</strong> (<code>claude plugin add @claude-view/plugin</code>) auto-starts claude-view when Claude Code launches, plus adds MCP tools and skills. <strong>npx</strong> (<code>npx claude-view</code>) runs standalone — great for trying it out. Both use the same dashboard.',
+    answer: 'Three ways to install: <strong>Shell</strong> (<code>curl -fsSL https://get.claudeview.ai/install.sh | sh</code>) downloads a native binary — fastest, no Node.js needed. <strong>Claude Code plugin</strong> (<code>claude plugin add @claude-view/plugin</code>) auto-starts claude-view when Claude Code launches, plus adds MCP tools and skills. <strong>npx</strong> (<code>npx claude-view</code>) runs standalone via npm. All use the same dashboard.',
   },
   {
     question: 'Does it work with Cursor or Windsurf?',

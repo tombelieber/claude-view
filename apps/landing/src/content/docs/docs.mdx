@@ -10,7 +10,7 @@ import { Steps } from '@astrojs/starlight/components';
 **Zero config. One command.**
 
 <Steps>
-1. **Install** — run `npx claude-view` in any terminal
+1. **Install** — run `curl -fsSL https://get.claudeview.ai/install.sh | sh` in any terminal
 2. **Open** — your browser opens automatically at `http://localhost:47892`
 3. **Monitor** — all active Claude Code sessions appear automatically
 </Steps>
@@ -25,8 +25,8 @@ import { Steps } from '@astrojs/starlight/components';
 ## Requirements
 
 - macOS (Apple Silicon or Intel) — Linux support in v2.1
-- Node.js 18 or later (for `npx`)
 - Claude Code installed and running
+- Node.js 18+ only needed if using `npx claude-view` (shell install has no dependencies)
 
 ## Next steps
 
