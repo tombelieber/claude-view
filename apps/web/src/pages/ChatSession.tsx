@@ -52,22 +52,13 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 interface ChatSessionProps {
   sessionId: string | undefined
-  /** True when this session is detected as live by the Live Monitor (hooks/SSE). */
-  isLiveElsewhere?: boolean
 }
 
-export function ChatSession({ sessionId, isLiveElsewhere }: ChatSessionProps) {
+export function ChatSession({ sessionId }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const locState = location.state as { freshlyCreated?: boolean; resumed?: boolean } | null
-  // User-initiated = created, resumed, or forked in THIS navigation.
-  // Everything else that's live elsewhere = spectating (read-only).
-  const userInitiated = !!(locState?.freshlyCreated || locState?.resumed)
-  const isSpectating = !!isLiveElsewhere && !userInitiated
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    freshlyCreated: !!locState?.freshlyCreated,
-    spectating: isSpectating,
-  })
+  const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
+  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, { freshlyCreated })
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -122,7 +113,6 @@ export function ChatSession({ sessionId, isLiveElsewhere }: ChatSessionProps) {
     sessionInfo.sessionState,
     sessionInfo.isLive,
     sessionInfo.canResumeLazy,
-    isSpectating,
   )
 
   // Permission mode — persisted globally (like model), applied at session creation/resume
@@ -265,17 +255,12 @@ export function ChatSession({ sessionId, isLiveElsewhere }: ChatSessionProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {isSpectating ? (
-            <span className="flex items-center gap-1.5 text-xs text-blue-500">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              Watching
-            </span>
-          ) : sessionInfo.isLive ? (
+          {sessionInfo.isLive && (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
             </span>
-          ) : null}
+          )}
         </div>
         <div className="flex items-center gap-2">
           {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
