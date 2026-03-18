@@ -111,6 +111,7 @@ __pycache__/
 
 # Claude Code local config (skills, plans, worktrees)
 .claude/
+.claude
 
 # Auto-generated claude-mem files
 **/CLAUDE.md
@@ -119,10 +120,13 @@ __pycache__/
 # Lefthook local overrides (personal hooks, not committed)
 lefthook-local.yml
 
-# Internal docs
+# Internal docs (both dirs and symlinks from private/link.sh)
 docs/plans/
+docs/plans
 docs/internal/
+docs/internal
 docs/superpowers/
+docs/superpowers
 .superpowers/
 .playwright-mcp/
 
