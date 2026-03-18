@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useSearch } from '../hooks/use-search'
+import { useTrackEvent } from '../hooks/use-track-event'
 import { cn } from '../lib/utils'
 import { useAppStore } from '../store/app-store'
 import { cleanPreviewText } from '../utils/get-session-title'
@@ -78,6 +79,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const { recentSearches, addRecentSearch } = useAppStore()
+  const trackEvent = useTrackEvent()
 
   // Live search results from unified backend (Tantivy + grep fallback handled server-side)
   const {
@@ -290,6 +292,10 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const handleSelect = useCallback(
     (searchQuery: string) => {
       addRecentSearch(searchQuery)
+      trackEvent('search_used', {
+        query_length: searchQuery.length,
+        result_count: searchResults?.sessions.length ?? 0,
+      })
       onClose()
       // Build search URL, inheriting active sidebar project/branch filters as scope
       const searchUrl = new URLSearchParams()
@@ -302,7 +308,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
       if (branch) searchUrl.set('branch', branch)
       navigate(`/search?${searchUrl}`)
     },
-    [addRecentSearch, onClose, navigate, location.search],
+    [addRecentSearch, onClose, navigate, location.search, trackEvent, searchResults],
   )
 
   const handleSelectSearchResult = useCallback(
