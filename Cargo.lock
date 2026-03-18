@@ -563,6 +563,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "ts-rs",
+ "uuid",
 ]
 
 [[package]]
