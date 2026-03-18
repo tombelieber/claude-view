@@ -29,6 +29,7 @@ codegen = []
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 pretty_assertions = { workspace = true }
+serial_test = "3"
 
 [[bin]]
 name = "evidence-audit"
