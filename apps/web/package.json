@@ -18,6 +18,7 @@
   "dependencies": {
     "@claude-view/design-tokens": "workspace:*",
     "@claude-view/shared": "workspace:*",
+    "@posthog/react": "^1.8.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -39,6 +40,7 @@
     "jsqr": "^1.4.0",
     "lucide-react": "^0.562.0",
     "mermaid": "^10",
+    "posthog-js": "^1.362.0",
     "qrcode.react": "^4.2.0",
     "react": "19.2.0",
     "react-day-picker": "^9.13.0",

@@ -13,7 +13,9 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "posthog-js": ["./node_modules/posthog-js"],
+      "posthog-js/*": ["./node_modules/posthog-js/*"]
     }
   },
   "include": ["src"],
