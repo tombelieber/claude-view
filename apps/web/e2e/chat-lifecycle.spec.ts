@@ -69,8 +69,8 @@ test.describe('Chat Lifecycle', () => {
     const assistantText = await page.locator('[data-testid="message-thread"]').innerText()
     expect(assistantText).not.toContain('hello e2e testhello e2e test')
 
-    // No stuck loading spinner
-    const spinner = page.locator('.animate-spin')
+    // No stuck loading spinner in the chat thread (scoped to avoid sidebar spinners)
+    const spinner = page.locator('[data-testid="message-thread"]').locator('.animate-spin')
     await expect(spinner).toBeHidden({ timeout: 5_000 })
   })
 
