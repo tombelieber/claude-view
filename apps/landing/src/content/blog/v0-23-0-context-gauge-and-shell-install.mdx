@@ -1,0 +1,45 @@
+---
+title: "Your Context Gauge Was Lying to You"
+description: "v0.23.0 fixes inflated context usage percentages in live sessions and adds a zero-dependency shell installer."
+date: 2026-03-19
+author: claude-view team
+---
+
+If you've been watching a live Claude Code session in Claude View and noticed the context gauge climbing suspiciously fast — 84% when you'd barely started — it wasn't your imagination. It was a bug. v0.23.0 fixes it.
+
+## The wrong number
+
+The context gauge shows how full Claude's context window is. It's the single most important signal for long-running sessions: hit 100% and the model starts compacting your conversation, losing earlier context.
+
+The bug: for live sessions, we were reading `modelUsage` from the SDK's `turn_complete` event and summing token counts across all models. This number looked right but measured the wrong thing. It was session-cumulative (total tokens used across all turns) rather than current fill (tokens in the context window right now).
+
+The result was dramatic. A session 10 turns in might show 84% full, when the actual context window was only 12% utilized. Users seeing this would preemptively start new sessions or worry about context loss — both unnecessary.
+
+## The fix: trust the source
+
+Claude Code already knows exactly how full its context window is. Every few seconds, it writes a statusline JSON with the precise context window size, current usage, and pre-computed percentage. This data is authoritative — Claude Code computes it from the same state that drives its own compaction decisions.
+
+The fix replaces the WS-derived calculation with a 4-tier priority chain:
+
+1. **statuslineUsedPct** — Claude Code's own pre-computed percentage (most accurate)
+2. **Live Monitor fill** — context window tokens from the statusline + authoritative denominator
+3. **History fill** — JSONL accumulator data (correct semantics, used for non-live sessions)
+4. **Nothing** — if we don't have authoritative data, we show a dash instead of a guess
+
+The principle: never show a wrong number. A missing number is honest. A wrong number erodes trust.
+
+## Shell install
+
+Not everyone has Node.js installed. Not everyone wants to run `npx`. v0.23.0 adds a shell installer:
+
+```bash
+curl -fsSL https://get.claudeview.ai | sh
+```
+
+It detects your platform (macOS ARM or Intel), downloads the pre-built binary from the latest GitHub release, and places it in a sensible location on your PATH. No runtime dependencies. No package manager. One command, working binary.
+
+The `npx claude-view@latest` path still works and remains the easiest way to stay up-to-date. The shell installer is for environments where Node.js isn't available or where you want a standalone binary.
+
+## 49 new tests
+
+This release also adds comprehensive test coverage for the chat lifecycle — the code path that handles live sessions, watching mode, SDK hooks, and message reconciliation. Seven features that shipped with zero tests now have unit tests, hook tests, component tests, and regression tests. The regression tests specifically guard the three bugs we've fixed in recent releases, ensuring they never come back.
