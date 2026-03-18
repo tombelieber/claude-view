@@ -12,9 +12,19 @@ const placeholder: ConfigResponse = {
   auth: supabase !== null,
   sharing: false,
   version: '',
+  telemetry: 'disabled',
+  posthogKey: null,
+  anonymousId: null,
 }
 
-const fallback: ConfigResponse = { auth: false, sharing: false, version: '' }
+const fallback: ConfigResponse = {
+  auth: false,
+  sharing: false,
+  version: '',
+  telemetry: 'disabled',
+  posthogKey: null,
+  anonymousId: null,
+}
 
 export function useConfig(): ConfigResponse {
   const { data } = useQuery<ConfigResponse>({
