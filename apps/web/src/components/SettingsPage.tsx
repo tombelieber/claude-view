@@ -19,11 +19,13 @@ import {
 import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useConfig } from '../hooks/use-config'
 import { type ExportFormat, useExport } from '../hooks/use-export'
 import { useGitSync } from '../hooks/use-git-sync'
 import { useRevokeShare, useShares } from '../hooks/use-share'
 import { formatRelativeTime, useStatus } from '../hooks/use-status'
 import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '../hooks/use-system'
+import { useTelemetry } from '../hooks/use-telemetry'
 import { formatNumber } from '../lib/format-utils'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
@@ -32,6 +34,7 @@ import { AccountSection } from './AccountSection'
 import { PairingQrCode } from './PairingQrCode'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
+import { TelemetrySection } from './TelemetrySection'
 
 declare const __APP_VERSION__: string
 const APP_VERSION = __APP_VERSION__
@@ -460,6 +463,9 @@ export function SettingsPage() {
     await exportSessions(exportFormat)
   }
 
+  const config = useConfig()
+  const { enableTelemetry, disableTelemetry } = useTelemetry()
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-6">
@@ -702,6 +708,16 @@ export function SettingsPage() {
           {/* SHARED LINKS */}
           <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
             <SharedLinksSection />
+          </SettingsSection>
+
+          {/* TELEMETRY */}
+          <SettingsSection icon={<Info className="w-4 h-4" />} title="Privacy">
+            <TelemetrySection
+              telemetryStatus={config.telemetry}
+              hasPosHogKey={config.posthogKey !== null}
+              onEnable={enableTelemetry}
+              onDisable={disableTelemetry}
+            />
           </SettingsSection>
 
           {/* ABOUT */}
