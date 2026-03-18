@@ -276,7 +276,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
         const data = await res.json()
         if (data.sessionId) {
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.sessionId}`, { state: { freshlyCreated: true } })
+          navigate(`/chat/${data.sessionId}`)
         } else {
           toast.error('Fork failed', { duration: TOAST_DURATION.extended })
         }

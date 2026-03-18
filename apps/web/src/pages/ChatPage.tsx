@@ -4,24 +4,22 @@ import { SessionSidebar } from '../components/conversation/sidebar/SessionSideba
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { ChatSession } from './ChatSession'
 
-/** Fetch sessionIds actively managed by the sidecar (not external CLI/VS Code). */
-async function fetchSidecarSessionIds(): Promise<Set<string>> {
-  const res = await fetch('/api/control/sessions')
-  if (!res.ok) return new Set()
-  const data: { sessionId: string }[] = await res.json()
-  return new Set(data.map((s) => s.sessionId))
-}
-
 export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
 
   // Sidecar-managed sessions: created/resumed through Claude View chat.
-  // Refreshes when liveSessions change (session created/closed).
+  // Polls every 5s so the sidebar picks up newly-created sessions without
+  // depending on liveSessions count changes.
   const { data: sidecarIds } = useQuery({
-    queryKey: ['sidecar-session-ids', liveSessions.sessions.length],
-    queryFn: fetchSidecarSessionIds,
-    staleTime: 5_000,
+    queryKey: ['sidecar-sessions'],
+    queryFn: async () => {
+      const res = await fetch('/api/control/sessions')
+      if (!res.ok) return new Set<string>()
+      const sessions: { sessionId: string }[] = await res.json()
+      return new Set(sessions.map((s) => s.sessionId))
+    },
+    refetchInterval: 5_000,
   })
 
   // Watching = session is live (detected by hooks/SSE) but NOT managed by our sidecar.
