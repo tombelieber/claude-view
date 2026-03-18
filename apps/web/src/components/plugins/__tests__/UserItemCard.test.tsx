@@ -51,12 +51,13 @@ test('uses smaller font for long names (>24 chars)', () => {
   expect(nameEl.className).toMatch(/text-\[12px\]/)
 })
 
-test('card has faded opacity when unused', () => {
+test('card has full opacity for all items (no muting)', () => {
   const { container } = render(
     <UserItemCard
       item={{ ...item, totalInvocations: BigInt(0), sessionCount: BigInt(0), lastUsedAt: null }}
     />,
   )
   const button = container.querySelector('button')
-  expect(button?.className).toMatch(/opacity-50/)
+  // Component no longer mutes unused cards — all cards are full opacity
+  expect(button?.className).not.toMatch(/opacity-50/)
 })
