@@ -915,52 +915,6 @@ npx claude-view@latest
 ```
 
 
---- blog/v0-21-0-single-stream-chat.mdx ---
-
----
-title: "One Stream to Rule Them All"
-description: "v0.21.0 replaces the dual-source chat merge with a single-stream architecture and adds native Linux keychain support."
-date: 2026-03-16
-author: claude-view team
----
-
-Live chat in claude-view had an architectural debt: two data sources (replay from disk, live from WebSocket) merged in the frontend. When a session switched, stale state from the old session could bleed into the new one. Bugs were subtle — a message appearing twice, a conversation that wouldn't update, a connection that silently went dead.
-
-v0.21.0 fixes this at the root.
-
-## Single-stream architecture
-
-The old model worked like this: the frontend fetched historical messages from the REST API and live messages from a WebSocket, then merged them by timestamp. This merge was fragile — race conditions between the two sources caused duplicate messages, ordering glitches, and stale conversations after session switches.
-
-The new model is simpler. The WebSocket is the single source of truth. When you open a session, the sidecar replays the full conversation history through the WebSocket first, followed by live messages as they arrive. The frontend receives one ordered stream and renders it. No merge logic. No deduplication. No race conditions.
-
-User messages now echo back through the WebSocket as `user_message_echo` events. Previously, user messages were injected client-side and could desync from the server's view. Now both sides agree on exactly what was said and when.
-
-A `replayComplete` flag signals when historical replay ends and live streaming begins. The frontend uses this to suppress loading indicators at the right moment. And if you open the same session in a second tab, the first connection is closed with WebSocket code 4001 (`connection_replaced`) — no more phantom duplicate connections draining resources.
-
-## Graceful buffer exhaustion
-
-The sidecar maintains a replay buffer of recent messages. When the buffer is exhausted (the session history is larger than what's kept in memory), the old behavior was to fatally disconnect the WebSocket. The user saw a blank chat with no explanation.
-
-Now the sidecar sends a `fatal=false` signal and keeps the connection open. The frontend knows it has a partial replay and can indicate this to the user rather than showing an error state.
-
-## Linux credentials
-
-claude-view reads your Claude authentication token to show subscription tier and enable authenticated features. On macOS, this reads from the system Keychain. Linux had no equivalent — the credential path simply returned `None`.
-
-v0.21.0 adds a `secret-tool` backend that reads from GNOME Keyring via the Secret Service D-Bus API. If you're running GNOME, KDE, or any desktop environment with a Secret Service provider, your credentials are now picked up automatically. The lookup has a 3-second timeout to handle headless environments (no D-Bus session) without blocking startup.
-
-The NPX path scanner was also made platform-universal — macOS-specific paths like `/opt/homebrew` are no longer tried on Linux, and universal paths are checked first on all platforms.
-
-## Update now
-
-```bash
-npx claude-view@latest
-```
-
-Open a chat session and watch the single-stream replay. If you're on Linux, check that your subscription tier appears in the header — that means keychain integration is working.
-
-
 --- blog/v0-2-0-security-and-ui-redesign.mdx ---
 
 ---
@@ -1005,6 +959,52 @@ npx claude-view@latest
 ```
 
 Security isn't a feature you market. It's a foundation you build on.
+
+
+--- blog/v0-21-0-single-stream-chat.mdx ---
+
+---
+title: "One Stream to Rule Them All"
+description: "v0.21.0 replaces the dual-source chat merge with a single-stream architecture and adds native Linux keychain support."
+date: 2026-03-16
+author: claude-view team
+---
+
+Live chat in claude-view had an architectural debt: two data sources (replay from disk, live from WebSocket) merged in the frontend. When a session switched, stale state from the old session could bleed into the new one. Bugs were subtle — a message appearing twice, a conversation that wouldn't update, a connection that silently went dead.
+
+v0.21.0 fixes this at the root.
+
+## Single-stream architecture
+
+The old model worked like this: the frontend fetched historical messages from the REST API and live messages from a WebSocket, then merged them by timestamp. This merge was fragile — race conditions between the two sources caused duplicate messages, ordering glitches, and stale conversations after session switches.
+
+The new model is simpler. The WebSocket is the single source of truth. When you open a session, the sidecar replays the full conversation history through the WebSocket first, followed by live messages as they arrive. The frontend receives one ordered stream and renders it. No merge logic. No deduplication. No race conditions.
+
+User messages now echo back through the WebSocket as `user_message_echo` events. Previously, user messages were injected client-side and could desync from the server's view. Now both sides agree on exactly what was said and when.
+
+A `replayComplete` flag signals when historical replay ends and live streaming begins. The frontend uses this to suppress loading indicators at the right moment. And if you open the same session in a second tab, the first connection is closed with WebSocket code 4001 (`connection_replaced`) — no more phantom duplicate connections draining resources.
+
+## Graceful buffer exhaustion
+
+The sidecar maintains a replay buffer of recent messages. When the buffer is exhausted (the session history is larger than what's kept in memory), the old behavior was to fatally disconnect the WebSocket. The user saw a blank chat with no explanation.
+
+Now the sidecar sends a `fatal=false` signal and keeps the connection open. The frontend knows it has a partial replay and can indicate this to the user rather than showing an error state.
+
+## Linux credentials
+
+claude-view reads your Claude authentication token to show subscription tier and enable authenticated features. On macOS, this reads from the system Keychain. Linux had no equivalent — the credential path simply returned `None`.
+
+v0.21.0 adds a `secret-tool` backend that reads from GNOME Keyring via the Secret Service D-Bus API. If you're running GNOME, KDE, or any desktop environment with a Secret Service provider, your credentials are now picked up automatically. The lookup has a 3-second timeout to handle headless environments (no D-Bus session) without blocking startup.
+
+The NPX path scanner was also made platform-universal — macOS-specific paths like `/opt/homebrew` are no longer tried on Linux, and universal paths are checked first on all platforms.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open a chat session and watch the single-stream replay. If you're on Linux, check that your subscription tier appears in the header — that means keychain integration is working.
 
 
 --- blog/v0-3-0-git-integration.mdx ---
@@ -1342,6 +1342,55 @@ claude plugin add @claude-view/plugin
 ```
 
 Ask your agent "what did I work on this week?" and get a real answer backed by real data.
+
+
+--- blog/v0-23-0-context-gauge-and-shell-install.mdx ---
+
+---
+title: "Your Context Gauge Was Lying to You"
+description: "v0.23.0 fixes inflated context usage percentages in live sessions and adds a zero-dependency shell installer."
+date: 2026-03-19
+author: claude-view team
+---
+
+If you've been watching a live Claude Code session in Claude View and noticed the context gauge climbing suspiciously fast — 84% when you'd barely started — it wasn't your imagination. It was a bug. v0.23.0 fixes it.
+
+## The wrong number
+
+The context gauge shows how full Claude's context window is. It's the single most important signal for long-running sessions: hit 100% and the model starts compacting your conversation, losing earlier context.
+
+The bug: for live sessions, we were reading `modelUsage` from the SDK's `turn_complete` event and summing token counts across all models. This number looked right but measured the wrong thing. It was session-cumulative (total tokens used across all turns) rather than current fill (tokens in the context window right now).
+
+The result was dramatic. A session 10 turns in might show 84% full, when the actual context window was only 12% utilized. Users seeing this would preemptively start new sessions or worry about context loss — both unnecessary.
+
+## The fix: trust the source
+
+Claude Code already knows exactly how full its context window is. Every few seconds, it writes a statusline JSON with the precise context window size, current usage, and pre-computed percentage. This data is authoritative — Claude Code computes it from the same state that drives its own compaction decisions.
+
+The fix replaces the WS-derived calculation with a 4-tier priority chain:
+
+1. **statuslineUsedPct** — Claude Code's own pre-computed percentage (most accurate)
+2. **Live Monitor fill** — context window tokens from the statusline + authoritative denominator
+3. **History fill** — JSONL accumulator data (correct semantics, used for non-live sessions)
+4. **Nothing** — if we don't have authoritative data, we show a dash instead of a guess
+
+The principle: never show a wrong number. A missing number is honest. A wrong number erodes trust.
+
+## Shell install
+
+Not everyone has Node.js installed. Not everyone wants to run `npx`. v0.23.0 adds a shell installer:
+
+```bash
+curl -fsSL https://get.claudeview.ai | sh
+```
+
+It detects your platform (macOS ARM or Intel), downloads the pre-built binary from the latest GitHub release, and places it in a sensible location on your PATH. No runtime dependencies. No package manager. One command, working binary.
+
+The `npx claude-view@latest` path still works and remains the easiest way to stay up-to-date. The shell installer is for environments where Node.js isn't available or where you want a standalone binary.
+
+## 49 new tests
+
+This release also adds comprehensive test coverage for the chat lifecycle — the code path that handles live sessions, watching mode, SDK hooks, and message reconciliation. Seven features that shipped with zero tests now have unit tests, hook tests, component tests, and regression tests. The regression tests specifically guard the three bugs we've fixed in recent releases, ensuring they never come back.
 
 
 --- blog/v0-9-0-activity-and-sharing.mdx ---
@@ -1854,38 +1903,6 @@ npx claude-view@latest
 ```
 
 
---- changelog/v0.21.0.md ---
-
----
-title: v0.21.0 — Single-Stream Chat & Linux Support
-date: 2026-03-16
-version: v0.21.0
----
-
-## New features
-
-**Single-Stream Chat Architecture** — replaced the dual-source merge model with a single-stream source selection pattern. User messages now echo back through the WebSocket, giving one source of truth for the full conversation. Auto-connect on page load, replay-complete signaling, and graceful buffer exhaustion make live sessions rock-solid.
-
-**Linux Keychain Credentials** — added a `secret-tool` backend for reading Claude credentials from GNOME Keyring / Secret Service on Linux. Path scanning is now platform-universal.
-
-**Session Integrity** — one WebSocket per session enforced (second connection closes the first with code 4001). No more stale state from duplicate connections.
-
-**Token & Cost Attribution** — token/cost totals and sub-agent cost breakdowns are now visible in the session UI. Context window breakdown shows Used total and Available capacity.
-
-## Improvements
-
-- Install tracking worker at `get.claudeview.ai` for download analytics
-- Cross-platform release script (replaced BSD-only `sed -i`)
-- Sidecar rebuilds correctly in preview, start, and dist:test scripts
-- Removed macOS-specific `/opt/homebrew` from NPX path scan
-
-## Getting started
-
-```bash
-npx claude-view@latest
-```
-
-
 --- changelog/v0.2.0.md ---
 
 ---
@@ -2012,6 +2029,69 @@ version: v0.2.4
 
 ```bash
 npx claude-view
+```
+
+
+--- changelog/v0.21.0.md ---
+
+---
+title: v0.21.0 — Single-Stream Chat & Linux Support
+date: 2026-03-16
+version: v0.21.0
+---
+
+## New features
+
+**Single-Stream Chat Architecture** — replaced the dual-source merge model with a single-stream source selection pattern. User messages now echo back through the WebSocket, giving one source of truth for the full conversation. Auto-connect on page load, replay-complete signaling, and graceful buffer exhaustion make live sessions rock-solid.
+
+**Linux Keychain Credentials** — added a `secret-tool` backend for reading Claude credentials from GNOME Keyring / Secret Service on Linux. Path scanning is now platform-universal.
+
+**Session Integrity** — one WebSocket per session enforced (second connection closes the first with code 4001). No more stale state from duplicate connections.
+
+**Token & Cost Attribution** — token/cost totals and sub-agent cost breakdowns are now visible in the session UI. Context window breakdown shows Used total and Available capacity.
+
+## Improvements
+
+- Install tracking worker at `get.claudeview.ai` for download analytics
+- Cross-platform release script (replaced BSD-only `sed -i`)
+- Sidecar rebuilds correctly in preview, start, and dist:test scripts
+- Removed macOS-specific `/opt/homebrew` from NPX path scan
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.23.0.md ---
+
+---
+title: v0.23.0 — Accurate Context Gauge & Shell Install
+date: 2026-03-19
+version: v0.23.0
+---
+
+## New features
+
+**Shell Install** — install Claude View with a single command: `curl -fsSL https://get.claudeview.ai | sh`. Auto-detects your platform, fetches the latest binary, and adds it to PATH. No Node.js required.
+
+## Fixes
+
+**Context Gauge Accuracy** — fixed live sessions showing inflated context usage percentages (e.g. 84% when actual fill was 12%). The gauge now uses Claude Code's own statusline data as the authoritative source, with a 4-tier priority fallback chain.
+
+## Improvements
+
+- 49 new tests covering all chat lifecycle features: SDK hooks, watching mode, sidebar badges, race condition prevention, optimistic message dedup, and context gauge accuracy
+- 3 regression tests guarding previously-fixed bugs
+- Fixed 11 pre-existing test failures across multiple components
+
+## Getting started
+
+```bash
+curl -fsSL https://get.claudeview.ai | sh
+# or
+npx claude-view@latest
 ```
 
 
@@ -2381,7 +2461,7 @@ import { Steps } from '@astrojs/starlight/components';
 **Zero config. One command.**
 
 <Steps>
-1. **Install** — run `npx claude-view` in any terminal
+1. **Install** — run `curl -fsSL https://get.claudeview.ai/install.sh | sh` in any terminal
 2. **Open** — your browser opens automatically at `http://localhost:47892`
 3. **Monitor** — all active Claude Code sessions appear automatically
 </Steps>
@@ -2396,8 +2476,8 @@ import { Steps } from '@astrojs/starlight/components';
 ## Requirements
 
 - macOS (Apple Silicon or Intel) — Linux support in v2.1
-- Node.js 18 or later (for `npx`)
 - Claude Code installed and running
+- Node.js 18+ only needed if using `npx claude-view` (shell install has no dependencies)
 
 ## Next steps
 
@@ -2856,23 +2936,39 @@ import { DEFAULT_PORT, PLATFORM } from '../../../data/site';
   "name": "Install claude-view",
   "description": "Install and start claude-view to monitor your Claude Code sessions. Zero config -- one command, 15-second setup.",
   "totalTime": "PT15S",
-  "tool": [{"@type": "HowToTool", "name": `Node.js (v${PLATFORM.nodeMin} or later)`}],
+  "tool": [{"@type": "HowToTool", "name": "Terminal (macOS or Linux)"}],
   "step": [
-    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: npx claude-view"},
-    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The npx command downloads the pre-built binary (~15MB) automatically. No Rust toolchain or compilation required."},
+    {"@type": "HowToStep", "position": 1, "name": "Run the install command", "text": "Open your terminal and run: curl -fsSL https://get.claudeview.ai/install.sh | sh"},
+    {"@type": "HowToStep", "position": 2, "name": "Wait for download", "text": "The installer downloads the pre-built binary (~10MB) automatically. No Rust toolchain or compilation required."},
     {"@type": "HowToStep", "position": 3, "name": "Open the dashboard", "text": `claude-view starts a local server and opens your browser to http://localhost:${DEFAULT_PORT}. You'll see all active Claude Code sessions automatically detected.`}
   ]
 })} />
 
-## Quick install
+## Quick install (recommended)
+
+```bash
+curl -fsSL https://get.claudeview.ai/install.sh | sh
+```
+
+That's it. Downloads a native binary (~10 MB) to `~/.claude-view/bin` and adds it to your PATH. No Node.js needed.
+
+Then run:
+
+```bash
+claude-view
+```
+
+## npx (alternative)
+
+If you prefer npm, you can also run:
 
 ```bash
 npx claude-view
 ```
 
-That's it. `npx` downloads the pre-built binary (~15MB) and starts the server. No Rust toolchain required.
+`npx` downloads the pre-built binary and starts the server. Requires Node.js {PLATFORM.nodeMin}+.
 
-## Claude Code plugin (recommended)
+## Claude Code plugin
 
 If you use Claude Code, install the plugin for the best experience — it auto-starts the server, adds 8 MCP tools, and 3 skills:
 
@@ -2899,10 +2995,11 @@ After installing, every Claude Code session automatically starts the dashboard. 
 
 ## What happens on first run
 
-1. `npx` downloads the pre-built `claude-view` binary for your platform
-2. The binary starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
-3. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
-4. claude-view scans for active Claude Code processes automatically
+1. The installer downloads the pre-built `claude-view` binary for your platform (~10 MB)
+2. Installs to `~/.claude-view/bin` and adds it to your PATH
+3. Run `claude-view` — it starts a local HTTP server on port <code>{DEFAULT_PORT}</code>
+4. Your default browser opens <code>http://localhost:{DEFAULT_PORT}</code>
+5. claude-view scans for active Claude Code processes automatically
 
 ## Configuration
 
