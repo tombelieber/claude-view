@@ -1420,3 +1420,242 @@ describe('deferred accumulator reset (zero visual gap)', () => {
     expect(resetFn).not.toHaveBeenCalled()
   })
 })
+
+// ─── freshlyCreated suppression ────────────────
+describe('freshlyCreated suppression', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({ ...defaultSource })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('passes suppressNotFound = true when freshlyCreated + idle', () => {
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      sessionState: 'idle',
+    })
+
+    renderHook(() => useConversation('sess-1', { freshlyCreated: true }), {
+      wrapper: createWrapper(),
+    })
+
+    // useSessionMessages is called by useHistoryBlocks internally.
+    // The suppressNotFound option is derived from isInitializing which should be true
+    // when freshlyCreated + idle.
+    expect(mockSessionMessages).toHaveBeenCalledWith(
+      'sess-1',
+      expect.objectContaining({ suppressNotFound: true }),
+    )
+  })
+
+  it('passes suppressNotFound = false when NOT freshlyCreated + idle', () => {
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      sessionState: 'idle',
+    })
+
+    renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Without freshlyCreated, idle state should NOT suppress 404
+    expect(mockSessionMessages).toHaveBeenCalledWith(
+      'sess-1',
+      expect.objectContaining({ suppressNotFound: false }),
+    )
+  })
+
+  it('passes suppressNotFound = true when initializing (regardless of freshlyCreated)', () => {
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      sessionState: 'initializing',
+    })
+
+    renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // isInitializing is true when sessionState is 'initializing', regardless of freshlyCreated
+    expect(mockSessionMessages).toHaveBeenCalledWith(
+      'sess-1',
+      expect.objectContaining({ suppressNotFound: true }),
+    )
+  })
+
+  it('passes suppressNotFound = true when active (regardless of freshlyCreated)', () => {
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      sessionState: 'active',
+    })
+
+    renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    expect(mockSessionMessages).toHaveBeenCalledWith(
+      'sess-1',
+      expect.objectContaining({ suppressNotFound: true }),
+    )
+  })
+})
+
+// ─── skipWs (watching mode) ────────────────
+describe('skipWs (watching mode)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({ ...defaultSource })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('passes undefined to useSessionSource when skipWs = true', () => {
+    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+      wrapper: createWrapper(),
+    })
+
+    // skipWs: true → useSessionSource(undefined) — no WS connection
+    expect(mockSessionSource).toHaveBeenCalledWith(undefined)
+  })
+
+  it('passes sessionId to useSessionSource when skipWs = false', () => {
+    renderHook(() => useConversation('sess-1', { skipWs: false }), {
+      wrapper: createWrapper(),
+    })
+
+    expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
+  })
+
+  it('passes sessionId to useSessionSource when skipWs is undefined', () => {
+    renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
+  })
+
+  it('still loads history via REST even when skipWs = true', () => {
+    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+      wrapper: createWrapper(),
+    })
+
+    // useSessionMessages should still receive the real sessionId for REST history
+    expect(mockSessionMessages).toHaveBeenCalledWith('sess-1', expect.any(Object))
+  })
+})
+
+// ─── Optimistic reconciliation (dual-source dedup) ────────────────
+describe('optimistic reconciliation (dual-source dedup)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({ ...defaultSource })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('filters optimistic block when text matches source.blocks', () => {
+    // Source already has the echo
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: [{ type: 'user', id: 'user-0', text: 'my message', timestamp: 1 }] as any,
+      sessionState: 'active',
+      isLive: true,
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+    })
+
+    const { result } = renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    // Send a message matching what's already in source.blocks
+    act(() => {
+      result.current.actions.sendMessage('my message')
+    })
+
+    // Optimistic should be deduped — only 1 user block (from source)
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    expect(userBlocks).toHaveLength(1)
+  })
+
+  it('filters optimistic block when text matches history.blocks', () => {
+    // History has the confirmed message
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+      data: {
+        pages: [
+          {
+            messages: [
+              {
+                role: 'user',
+                content: 'confirmed msg',
+                uuid: 'h1',
+                timestamp: '2026-03-17T00:00:00Z',
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            hasMore: false,
+          },
+        ],
+        pageParams: [-1],
+      },
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    // Source has no matching block
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      blocks: [],
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+    })
+
+    const { result } = renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      result.current.actions.sendMessage('confirmed msg')
+    })
+
+    // Optimistic deduped against history — should only have the history user block
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    expect(userBlocks).toHaveLength(1)
+  })
+
+  it('keeps optimistic block when no match in either source or history', () => {
+    // No matching message in source or history
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      blocks: [],
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+    })
+
+    const { result } = renderHook(() => useConversation('sess-1'), {
+      wrapper: createWrapper(),
+    })
+
+    act(() => {
+      result.current.actions.sendMessage('unconfirmed msg')
+    })
+
+    // Optimistic should remain visible
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    expect(userBlocks).toHaveLength(1)
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    expect((userBlocks[0] as any).text).toBe('unconfirmed msg')
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    expect((userBlocks[0] as any).status).toBe('sending')
+  })
+})

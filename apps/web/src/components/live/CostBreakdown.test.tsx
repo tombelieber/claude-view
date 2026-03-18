@@ -21,7 +21,8 @@ describe('CostBreakdown', () => {
       totalCostSource: 'computed_priced_tokens_full',
     }
     render(<CostBreakdown cost={cost} subAgents={[]} />)
-    expect(screen.getByText('$2.34')).toBeInTheDocument()
+    // $2.34 appears in both Total Cost header and subtotal row — use getAllByText
+    expect(screen.getAllByText('$2.34').length).toBeGreaterThan(0)
   })
 
   it('renders sub-agent costs when present', () => {

@@ -50,13 +50,22 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
   )
 }
 
+/** Authoritative context data from Live Monitor SSE (statusline source). */
+interface LiveContextData {
+  contextWindowTokens: number
+  statuslineContextWindowSize: number | null
+  statuslineUsedPct: number | null
+}
+
 interface ChatSessionProps {
   sessionId: string | undefined
   /** True when session is live elsewhere (CLI/VS Code) but NOT sidecar-managed. */
   isWatching?: boolean
+  /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
+  liveContextData?: LiveContextData
 }
 
-export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
+export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
@@ -132,17 +141,24 @@ export function ChatSession({ sessionId, isWatching }: ChatSessionProps) {
     }
   })
 
-  // Context gauge — unified calculation using getContextLimit for consistent denominator.
-  // Live WS provides totalInputTokens (numerator) and contextWindowSize (hint for limit).
-  // History richData provides contextWindowTokens (numerator from JSONL).
+  // Context gauge — priority chain (most authoritative first, never show wrong data):
+  //  1. statuslineUsedPct: pre-computed by Claude Code — correct numerator AND denominator
+  //  2. Live Monitor contextWindowTokens + statuslineContextWindowSize: correct per-turn fill
+  //  3. richData contextWindowTokens: JSONL accumulator (history), correct semantics
+  //  4. undefined: show "--" — refuse to guess
+  // NOTE: WS totalInputTokens is intentionally NOT used here — it sums across all models
+  // in modelUsage and may be session-cumulative, producing inflated percentages (84% vs 12%).
   const contextPercent = (() => {
-    if ((sessionInfo.isLive || sessionInfo.canResumeLazy) && sessionInfo.totalInputTokens > 0) {
+    if (liveContextData?.statuslineUsedPct != null) {
+      return Math.round(liveContextData.statuslineUsedPct)
+    }
+    if (liveContextData && liveContextData.contextWindowTokens > 0) {
       const limit = getContextLimit(
         null,
-        sessionInfo.totalInputTokens,
-        sessionInfo.contextWindowSize || null,
+        liveContextData.contextWindowTokens,
+        liveContextData.statuslineContextWindowSize,
       )
-      return Math.round((sessionInfo.totalInputTokens / limit) * 100)
+      return Math.round((liveContextData.contextWindowTokens / limit) * 100)
     }
     if (richData && richData.contextWindowTokens > 0) {
       const limit = getContextLimit(null, richData.contextWindowTokens)

@@ -210,8 +210,8 @@ describe('ClaudeSessionsPanel', () => {
       />,
     )
 
-    // Still renders with the session name (resource data provides cpu/mem)
-    expect(screen.getByText('project-s1')).toBeInTheDocument()
+    // Sessions with null PID are filtered out — shows empty state
+    expect(screen.getByText('No active Claude sessions')).toBeInTheDocument()
   })
 
   it('rollup header CPU bar exists', () => {
@@ -437,12 +437,10 @@ describe('ClaudeSessionsPanel', () => {
   })
 
   it('kill process callback invoked via fetch', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ killed: true, pid: 101, error: null }),
-      })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ killed: true, pid: 101, error: null }),
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     const resources = [makeResource('s1', 100)]

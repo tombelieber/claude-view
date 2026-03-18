@@ -31,10 +31,26 @@ export function ChatPage() {
   const isSidecarManaged = sidecarIds == null || sidecarIds.has(sessionId ?? '')
   const isWatching = isLiveElsewhere && !isSidecarManaged
 
+  // Pass authoritative context gauge data from Live Monitor SSE.
+  // Statusline values are ground truth — computed by Claude Code itself.
+  const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
+  const liveContextData = liveSession
+    ? {
+        contextWindowTokens: liveSession.contextWindowTokens,
+        statuslineContextWindowSize: liveSession.statuslineContextWindowSize ?? null,
+        statuslineUsedPct: liveSession.statuslineUsedPct ?? null,
+      }
+    : undefined
+
   return (
     <div className="flex h-full overflow-hidden">
       <SessionSidebar liveSessions={liveSessions.sessions} sidecarSessionIds={sidecarIds} />
-      <ChatSession key={sessionId ?? 'new'} sessionId={sessionId} isWatching={isWatching} />
+      <ChatSession
+        key={sessionId ?? 'new'}
+        sessionId={sessionId}
+        isWatching={isWatching}
+        liveContextData={liveContextData}
+      />
     </div>
   )
 }
