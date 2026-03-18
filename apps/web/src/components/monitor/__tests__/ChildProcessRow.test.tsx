@@ -48,7 +48,7 @@ describe('ChildProcessRow', () => {
     )
     expect(screen.getByText('cargo build')).toBeInTheDocument()
     expect(screen.getByText('5.2%')).toBeInTheDocument() // 52/10 cores = 5.2% of system
-    expect(screen.getByText('340 MB')).toBeInTheDocument()
+    expect(screen.getByText('324 MB')).toBeInTheDocument() // binary: 340_000_000 / 1024^2
     expect(screen.getByText('2m')).toBeInTheDocument()
   })
 
@@ -123,7 +123,7 @@ describe('ChildProcessRow', () => {
     expect(killBtn).toBeDisabled()
   })
 
-  it('disables kill confirmation when isPending', () => {
+  it('shows killing indicator when isPending', () => {
     const proc = makeProcess({ pid: 1234 })
     render(
       <ChildProcessRow
@@ -133,9 +133,8 @@ describe('ChildProcessRow', () => {
         pendingPids={new Set([1234])}
       />,
     )
-    fireEvent.click(screen.getByTitle('Terminate process'))
-    const yesBtn = screen.getByText('Yes')
-    expect(yesBtn).toBeDisabled()
+    // When isPending, the component shows "Killing <pid>..." instead of the kill button
+    expect(screen.getByText(/Killing 1234/)).toBeInTheDocument()
   })
 
   it('shows chevron and child count when descendants exist', () => {

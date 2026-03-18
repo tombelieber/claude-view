@@ -472,4 +472,57 @@ describe('setSessionMode', () => {
 
     expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('default')
   })
+
+  it('blocks bypassPermissions with error event', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'waiting_input',
+      permissionMode: 'default',
+    })
+    registry.register(cs)
+
+    const messages: unknown[] = []
+    cs.emitter.on('message', (msg) => messages.push(msg))
+
+    const result = await setSessionMode(cs, 'bypassPermissions', registry)
+
+    // Should NOT have called setPermissionMode on the query
+    expect(mockQuery.setPermissionMode).not.toHaveBeenCalled()
+
+    // Should have emitted a non-fatal error explaining bypassPermissions requires init
+    expect(messages).toHaveLength(1)
+    const errorMsg = messages[0] as { type: string; fatal: boolean; message: string }
+    expect(errorMsg.type).toBe('error')
+    expect(errorMsg.fatal).toBe(false)
+    expect(errorMsg.message).toContain('bypassPermissions')
+    expect(errorMsg.message).toContain('allowDangerouslySkipPermissions')
+
+    // Should return failure with original mode unchanged
+    expect(result).toEqual({ ok: false, currentMode: 'default' })
+    expect(cs.permissionMode).toBe('default')
+  })
+
+  it('allows other non-bypassPermissions modes through', async () => {
+    const registry = new SessionRegistry()
+    const mockQuery = makeMockQuery()
+    const cs = makeStubCs({
+      query: mockQuery,
+      sessionId: 'sess-1',
+      state: 'waiting_input',
+      permissionMode: 'default',
+    })
+    registry.register(cs)
+
+    const modes = ['plan', 'auto', 'default', 'acceptEdits', 'dontAsk'] as const
+    for (const mode of modes) {
+      mockQuery.setPermissionMode.mockClear()
+      const result = await setSessionMode(cs, mode, registry)
+      expect(mockQuery.setPermissionMode).toHaveBeenCalledWith(mode)
+      expect(result.ok).toBe(true)
+      expect(result.currentMode).toBe(mode)
+    }
+  })
 })

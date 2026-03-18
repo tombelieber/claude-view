@@ -85,6 +85,8 @@ vi.mock('../../hooks/use-plugin-mutations', () => ({
     execute: vi.fn(),
     isPending: false,
     pendingName: null,
+    isPluginPending: (_name: string) => false,
+    ops: [],
   }),
 }))
 
@@ -115,18 +117,16 @@ test('renders page header with title and item count', () => {
   expect(screen.getByText(/4 items/)).toBeInTheDocument()
 })
 
-test('renders Skills section with user skill', () => {
+test('renders Skills tab with count in toolbar', () => {
   renderPage(PluginsPage)
-  // "Skills" appears in the toolbar tab AND as a section header
-  expect(screen.getAllByText('Skills').length).toBeGreaterThan(0)
-  expect(screen.getByText('prove-it')).toBeInTheDocument()
+  // Default kind is 'plugin' — Skills section not shown, but Skills tab exists in toolbar
+  expect(screen.getByText('Skills (1)')).toBeInTheDocument()
 })
 
-test('renders Commands section with user command', () => {
+test('renders Commands tab with count in toolbar', () => {
   renderPage(PluginsPage)
-  // "Commands" appears in the toolbar tab AND as a section header
-  expect(screen.getAllByText('Commands').length).toBeGreaterThan(0)
-  expect(screen.getByText('wtf')).toBeInTheDocument()
+  // Default kind is 'plugin' — Commands section not shown, but Commands tab exists in toolbar
+  expect(screen.getByText('Commands (1)')).toBeInTheDocument()
 })
 
 test('renders Installed Plugins section', () => {
