@@ -6,7 +6,6 @@ import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
 import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
 import type { RingBuffer } from './ring-buffer.js'
-import type { StreamAccumulator } from './stream-accumulator.js'
 
 export type SessionState =
   | 'initializing'
@@ -36,7 +35,6 @@ export interface ControlSession {
   permissions: PermissionHandler
   permissionMode: string
   activeWs: WebSocket | null
-  accumulator: StreamAccumulator
 }
 
 export class SessionRegistry {
@@ -80,13 +78,11 @@ export class SessionRegistry {
     return this.sessions.size
   }
 
-  emitSequenced(cs: ControlSession, event: ServerEvent): SequencedEvent {
+  emitSequenced(cs: ControlSession, event: ServerEvent): void {
     const seq = cs.nextSeq++
     const sequenced: SequencedEvent = { ...event, seq }
     cs.eventBuffer.push({ seq, msg: sequenced })
     cs.emitter.emit('message', sequenced)
-    cs.accumulator.push(sequenced)
-    return sequenced
   }
 
   async closeAll(): Promise<void> {

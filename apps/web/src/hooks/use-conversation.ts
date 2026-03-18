@@ -1,7 +1,6 @@
 import type { ConversationBlock, UserBlock } from '@claude-view/shared/types/blocks'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { appendPendingText } from './append-pending-text'
 import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
@@ -9,6 +8,9 @@ import { useSessionSource } from './use-session-source'
 const SEND_TIMEOUT_MS = 10_000
 
 interface ConversationOptions {
+  /** True when navigating from session creation — suppresses 404 during the
+   *  race window before the JSONL file is flushed to disk. */
+  freshlyCreated?: boolean
   /** Skip WS connection (watching mode). History still loads via REST. */
   skipWs?: boolean
 }
@@ -17,13 +19,15 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // 'skipWs' allows watching mode: skip WS connection (no bind_control)
   // while still loading history with the real sessionId.
   const source = useSessionSource(options?.skipWs ? undefined : sessionId)
-
-  // Gate history fetching: only fetch when NOT live (binary source switch).
-  // When live, blocks come from committedBlocks via sidecar WS.
+  // Freshly-created sessions start at 'idle' before WS connects and transitions
+  // to 'initializing'/'active'. Suppress 404 during that gap so the messages
+  // query doesn't enter permanent error state before the sidecar writes the JSONL.
+  const isInitializing =
+    source.sessionState === 'initializing' ||
+    source.sessionState === 'active' ||
+    (!!options?.freshlyCreated && source.sessionState === 'idle')
   const history = useHistoryBlocks(sessionId ?? null, {
-    enabled: !source.isLive && !!sessionId,
-    retry: 3,
-    retryDelay: 1000,
+    suppressNotFound: isInitializing,
   })
   const actions = useSessionActions(source.send, source.sendIfLive, source.channel)
 
@@ -60,50 +64,50 @@ export function useConversation(sessionId: string | undefined, options?: Convers
     [actions],
   )
 
-  const queryClient = useQueryClient()
-
-  // FLAG-B backward compat: if isLive but no blocks_snapshot arrives within 3s,
-  // fall back to JSONL history (sidecar hasn't been upgraded to send snapshots yet).
-  const [snapshotTimeout, setSnapshotTimeout] = useState(false)
-
-  useEffect(() => {
-    if (!source.isLive) {
-      setSnapshotTimeout(false)
-      return
-    }
-    const t = setTimeout(() => {
-      if (source.committedBlocks.length === 0) setSnapshotTimeout(true)
-    }, 3000)
-    return () => clearTimeout(t)
-  }, [source.isLive, source.committedBlocks.length])
-
-  // Binary source switch: live (sidecar WS) vs history (JSONL).
-  // When live and snapshot received, use committed blocks + pending text.
-  // When not live (or snapshot timeout), use JSONL history.
+  // History base + live overlay merge.
+  // History = completed turns (from JSONL). Live = in-progress turn (from WS stream).
+  // On turn_complete: turnVersion increments → invalidateQueries refetches → accumulator resets.
   const blocks: ConversationBlock[] = useMemo(() => {
-    const base = source.isLive && !snapshotTimeout ? source.committedBlocks : history.blocks
-    const withPending = appendPendingText(base, source.pendingText)
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
       const matchesText = (b: ConversationBlock) =>
         b.type === 'user' && (b as UserBlock).text === ob.text
-      return !withPending.some(matchesText)
+      return !source.blocks.some(matchesText) && !history.blocks.some(matchesText)
     })
-    return [...withPending, ...pendingOptimistic]
-  }, [
-    source.isLive,
-    snapshotTimeout,
-    source.committedBlocks,
-    source.pendingText,
-    history.blocks,
-    optimisticBlocks,
-  ])
 
-  // isLive->false transition: invalidate JSONL cache so history refetches
+    // Live overlay: stream blocks. Between turns this is empty.
+    // During a turn this has the in-progress response.
+    const liveOverlay = source.blocks
+
+    return [...history.blocks, ...liveOverlay, ...pendingOptimistic]
+  }, [history.blocks, source.blocks, optimisticBlocks])
+
+  const queryClient = useQueryClient()
+
+  // Destructure for stable useEffect dependencies
+  const { turnVersion, resetAccumulator } = source
+
+  // On turn completion: invalidate history query (preserves cached pages + scroll),
+  // then reset accumulator after history settles. Zero visual gap.
+  const prevTurnVersionRef = useRef(0)
   useEffect(() => {
-    if (!source.isLive && sessionId) {
-      queryClient.invalidateQueries({ queryKey: ['session-messages', sessionId] })
-    }
-  }, [source.isLive, sessionId, queryClient])
+    if (turnVersion <= prevTurnVersionRef.current) return
+
+    // Invalidate — triggers background refetch of active pages, no cache wipe
+    queryClient.invalidateQueries({
+      queryKey: ['session-messages', sessionId],
+      refetchType: 'active',
+    })
+  }, [turnVersion, sessionId, queryClient])
+
+  // Deferred accumulator reset: wait for history refetch to complete
+  useEffect(() => {
+    if (turnVersion <= prevTurnVersionRef.current) return
+    if (history.isFetching) return // Still fetching — keep accumulator visible
+    if (history.error) return // Fetch failed — DON'T reset, keep accumulator as fallback
+
+    resetAccumulator()
+    prevTurnVersionRef.current = turnVersion
+  }, [turnVersion, history.isFetching, history.error, resetAccumulator])
 
   const retryMessage = useCallback(
     (localId: string) => {
@@ -152,6 +156,8 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       skills: source.skills,
       agents: source.agents,
       capabilities: source.capabilities,
+      turnVersion: source.turnVersion,
+      streamGap: source.streamGap,
     },
   }
 }
