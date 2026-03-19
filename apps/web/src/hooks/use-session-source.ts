@@ -11,8 +11,19 @@ const INITIAL_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 30_000
 const MAX_RECONNECT_ATTEMPTS = 10
 
+/** Internal state: committed blocks from sidecar + pending streaming text */
+export interface MessageState {
+  committed: ConversationBlock[]
+  pendingText: string
+}
+
 export interface SessionSourceResult {
+  /** Committed blocks from sidecar snapshots/updates (backward compat alias for committedBlocks) */
   blocks: ConversationBlock[]
+  /** Committed blocks from sidecar snapshots/updates */
+  committedBlocks: ConversationBlock[]
+  /** Pending streaming text not yet committed to a block */
+  pendingText: string
   sessionState: string
   controlId: string | null
   /** Send that may trigger session resume (for user_message only). */
@@ -35,10 +46,7 @@ export interface SessionSourceResult {
   agents: string[]
   channel: SessionChannel | null
   capabilities: string[]
-  turnVersion: number
-  streamGap: boolean
   clearPendingMessage: (text: string) => void
-  resetAccumulator: () => void
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -64,7 +72,7 @@ export function deriveCanResumeLazy(
 }
 
 export function useSessionSource(sessionId: string | undefined): SessionSourceResult {
-  const [liveBlocks, setLiveBlocks] = useState<ConversationBlock[]>([])
+  const [msgState, setMsgState] = useState<MessageState>({ committed: [], pendingText: '' })
   const [sessionState, setSessionState] = useState<string>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
@@ -77,8 +85,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [skills, setSkills] = useState<string[]>([])
   const [agents, setAgents] = useState<string[]>([])
   const [capabilities, setCapabilities] = useState<string[]>([])
-  const [turnVersion, setTurnVersion] = useState(0)
-  const [streamGap, setStreamGap] = useState(false)
   const channelRef = useRef(new SessionChannel(null))
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -125,16 +131,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     [clearHeartbeat],
   )
 
-  // --- Update live blocks from accumulator ---
-  const syncBlocks = useCallback(() => {
-    setLiveBlocks(accumulatorRef.current.getBlocks())
-  }, [])
-
-  const resetAccumulator = useCallback(() => {
-    accumulatorRef.current.reset()
-    syncBlocks()
-  }, [syncBlocks])
-
   // --- WS message handler ---
   const handleWsMessage = useCallback(
     (ws: WebSocket, event: MessageEvent) => {
@@ -161,8 +157,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         lastSeqRef.current = seq
       }
 
+      // Push to accumulator for seq dedup tracking (still needed for replay)
       accumulatorRef.current.push(raw as unknown as SequencedEvent)
-      syncBlocks()
 
       // Track session state from events
       switch (raw.type) {
@@ -191,10 +187,30 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             setSessionState('compacting')
           }
           break
+        case 'blocks_snapshot': {
+          // Full block snapshot from sidecar — replaces all committed blocks
+          const blocks = raw.blocks as ConversationBlock[]
+          setMsgState({ committed: blocks, pendingText: '' })
+          if (typeof raw.lastSeq === 'number') {
+            lastSeqRef.current = raw.lastSeq as number
+          }
+          break
+        }
+        case 'blocks_update': {
+          // Incremental block update — replaces committed blocks, clears pending
+          const blocks = raw.blocks as ConversationBlock[]
+          setMsgState({ committed: blocks, pendingText: '' })
+          break
+        }
         case 'turn_complete':
         case 'turn_error': {
           setSessionState('waiting_input')
-          setTurnVersion((v) => v + 1)
+          // If blocks payload is present, update committed blocks atomically
+          if (raw.blocks) {
+            const blocks = raw.blocks as ConversationBlock[]
+            setMsgState({ committed: blocks, pendingText: '' })
+          }
+          // Keep existing cost/usage updates
           const mu = raw.modelUsage as Record<string, ModelUsageInfo> | undefined
           if (mu) {
             let sumInput = 0
@@ -213,9 +229,17 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
         case 'assistant_text':
         case 'tool_use_start':
-        case 'stream_delta':
           setSessionState('active')
           break
+        case 'stream_delta': {
+          setSessionState('active')
+          // Append textDelta to pending text
+          if (raw.textDelta) {
+            const delta = raw.textDelta as string
+            setMsgState((prev) => ({ ...prev, pendingText: prev.pendingText + delta }))
+          }
+          break
+        }
         case 'permission_request':
           setSessionState('waiting_permission')
           break
@@ -257,7 +281,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
         case 'error': {
           if (raw.message === 'replay_buffer_exhausted' && raw.fatal === false) {
-            setStreamGap(true)
+            // No longer setting streamGap — binary source switch handles this
             break
           }
           console.error('[WS] fatal error:', raw.message)
@@ -265,7 +289,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         }
       }
     },
-    [startHeartbeat, syncBlocks],
+    [startHeartbeat],
   )
 
   // --- WS close handler ---
@@ -356,7 +380,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   // --- Check active sessions on sessionId change ---
   useEffect(() => {
     if (!sessionId) {
-      setLiveBlocks([])
+      setMsgState({ committed: [], pendingText: '' })
       setSessionState('idle')
       setControlId(null)
       setIsLive(false)
@@ -368,8 +392,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     accumulatorRef.current = new StreamAccumulator()
     lastSeqRef.current = -1
     reconnectAttemptRef.current = 0
-    setTurnVersion(0)
-    setStreamGap(false)
+    setMsgState({ committed: [], pendingText: '' })
 
     let cancelled = false
 
@@ -543,7 +566,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const canResumeLazy = deriveCanResumeLazy(controlId, sessionId, isLive)
 
   return {
-    blocks: liveBlocks, // Only live/accumulator blocks — history comes from useHistoryBlocks
+    blocks: msgState.committed, // Backward compat alias
+    committedBlocks: msgState.committed,
+    pendingText: msgState.pendingText,
     sessionState,
     controlId,
     send: effectiveSend,
@@ -562,9 +587,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     agents,
     channel: channelRef.current,
     capabilities,
-    turnVersion,
-    streamGap,
     clearPendingMessage,
-    resetAccumulator,
   }
 }
