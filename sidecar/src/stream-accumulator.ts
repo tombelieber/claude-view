@@ -23,6 +23,7 @@ import type {
   SequencedEvent,
   SessionClosed,
   SessionInit,
+  StreamDelta,
   TaskNotification,
   TaskProgressEvent,
   TaskStarted,
@@ -143,6 +144,7 @@ export type SystemBlock = {
     | 'task_notification'
     | 'files_saved'
     | 'command_output'
+    | 'stream_delta'
     | 'unknown'
   data:
     | SessionInit
@@ -154,6 +156,7 @@ export type SystemBlock = {
     | TaskNotification
     | FilesSaved
     | CommandOutput
+    | StreamDelta
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
 }
@@ -325,9 +328,11 @@ export class StreamAccumulator {
       case 'command_output':
         this.pushSystem('command_output', event as CommandOutput)
         break
-      // stream_delta is filtered out in emitSequenced — never reaches accumulator.
-      // Frontend gets stream_delta via WS for live rendering; blocks only need final text
-      // from assistant_text. Removing this handler prevents doubled text.
+      case 'stream_delta':
+        // Only structural events (content_block_start/stop, message_stop) reach here.
+        // content_block_delta is filtered in emitSequenced to prevent doubled text.
+        this.handleStreamDelta(event as StreamDelta & { seq: number })
+        break
       case 'unknown_sdk_event':
         this.pushSystem('unknown', event as UnknownSdkEvent)
         break
@@ -471,9 +476,39 @@ export class StreamAccumulator {
     this.blocks.push(boundary)
   }
 
-  // handleStreamDelta removed — stream_delta events are filtered out in
-  // SessionRegistry.emitSequenced() and never reach the accumulator.
-  // See doubled-text-regression.test.ts for the root cause explanation.
+  /** Handle structural stream events (content_block_start/stop, message_stop).
+   *  content_block_delta is filtered in emitSequenced — never reaches here. */
+  private handleStreamDelta(event: StreamDelta & { seq: number }): void {
+    switch (event.deltaType) {
+      case 'content_block_start': {
+        const assistant = this.ensureAssistant(event.messageId)
+        assistant.segments.push({ kind: 'text', text: '', parentToolUseId: null })
+        break
+      }
+      case 'content_block_delta': {
+        // Dead code — filtered in emitSequenced. Kept for safety/forward compat.
+        if (event.textDelta) {
+          const assistant = this.ensureAssistant(event.messageId)
+          const lastSeg = assistant.segments.at(-1)
+          if (lastSeg?.kind === 'text') {
+            lastSeg.text += event.textDelta
+          }
+        } else if (event.thinkingDelta) {
+          const assistant = this.ensureAssistant(event.messageId)
+          assistant.thinking = (assistant.thinking ?? '') + event.thinkingDelta
+        }
+        break
+      }
+      case 'message_stop': {
+        this.finalizeCurrentAssistant()
+        break
+      }
+      default: {
+        this.pushSystem('stream_delta', event)
+        break
+      }
+    }
+  }
 
   private ensureAssistant(messageId: string): AssistantBlock {
     if (!this.currentAssistant) {
