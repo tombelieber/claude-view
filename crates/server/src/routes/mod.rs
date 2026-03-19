@@ -41,6 +41,7 @@ pub mod statusline;
 pub mod sync;
 pub mod system;
 pub mod teams;
+pub mod telemetry;
 pub mod terminal;
 pub mod trends;
 pub mod turns;
@@ -158,6 +159,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", workflows::router())
         .nest("/api", monitor::router())
         .nest("/api", processes::router())
+        .nest("/api", telemetry::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         .with_state(state)
