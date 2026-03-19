@@ -124,10 +124,10 @@ export function useConversation(sessionId: string | undefined, options?: Convers
 
   const fork = useCallback(async () => {
     if (!sessionId) return null
-    const res = await fetch('/api/control/sessions/fork', {
+    const res = await fetch(`/api/sessions/${sessionId}/fork`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({}),
     })
     return res.json()
   }, [sessionId])

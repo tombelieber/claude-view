@@ -72,7 +72,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     let cancelled = false
     async function fetchHistory() {
       try {
-        const res = await fetch('/api/control/available-sessions')
+        const res = await fetch('/api/sessions')
         if (cancelled) return
         if (res.ok) setHistorySessions(await res.json())
       } catch {
@@ -92,7 +92,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   useEffect(() => {
     if (prevLiveCount.current === liveSessions.length) return
     prevLiveCount.current = liveSessions.length
-    fetch('/api/control/available-sessions')
+    fetch('/api/sessions')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setHistorySessions(data)
@@ -268,10 +268,10 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     async (sessionId: string) => {
       try {
         const session = enrichedHistory.find((s) => s.sessionId === sessionId)
-        const res = await fetch('/api/control/sessions/fork', {
+        const res = await fetch(`/api/sessions/${sessionId}/fork`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, projectPath: session?.cwd }),
+          body: JSON.stringify({ projectPath: session?.cwd }),
         })
         const data = await res.json()
         if (data.sessionId) {

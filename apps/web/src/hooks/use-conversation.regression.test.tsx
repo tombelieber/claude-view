@@ -402,7 +402,7 @@ describe('RC-002: page refresh on active session shows all messages', () => {
 })
 
 // ─── RC-003 (new): New SDK session appears in sidebar ─────────────────
-// After POST /api/control/sessions, queryClient.invalidateQueries is called
+// After POST /api/sessions, queryClient.invalidateQueries is called
 // with { queryKey: ['sidecar-sessions'] }. This test verifies the ChatSession
 // handleSend path, which requires Step 9b changes.
 describe('RC-003: new SDK session appears in sidebar', () => {
