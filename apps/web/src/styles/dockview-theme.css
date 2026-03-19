@@ -25,8 +25,8 @@
   --dv-inactivegroup-visiblepanel-tab-color: #24292f;
   --dv-inactivegroup-hiddenpanel-tab-color: #656d76;
 
-  /* Active tab underline — green accent (design-tokens status.active) */
-  --dv-active-tab-border-bottom-color: #22c55e;
+  /* Active tab underline — blue accent (VSCode convention) */
+  --dv-active-tab-border-bottom-color: #3B82F6;
 
   /* Panel body */
   --dv-group-view-background-color: #ffffff;
@@ -65,8 +65,8 @@
   --dv-inactivegroup-visiblepanel-tab-color: #C9D1D9;
   --dv-inactivegroup-hiddenpanel-tab-color: #8B949E;
 
-  /* Active tab underline — green accent (same in both modes) */
-  --dv-active-tab-border-bottom-color: #22c55e;
+  /* Active tab underline — blue accent (VSCode convention, same in both modes) */
+  --dv-active-tab-border-bottom-color: #3B82F6;
 
   /* Panel body — GitHub dark bg */
   --dv-group-view-background-color: #0D1117;
