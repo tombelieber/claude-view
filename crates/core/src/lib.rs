@@ -34,6 +34,7 @@ pub mod session_index;
 pub mod subagent;
 pub mod tail;
 pub mod task_files;
+pub mod telemetry_config;
 pub mod time_range_contract;
 pub mod types;
 pub mod work_type;
