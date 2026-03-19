@@ -277,63 +277,8 @@ async fn proxy_resume(
     Ok(control_id)
 }
 
-/// What to do with a session that's in the live_sessions map.
-///
-/// Extracted from ws_connect so the gate logic is unit-testable.
-/// Design rule: **only return `Block` for states the Agent SDK fundamentally
-/// cannot handle.** Process liveness is NOT such a state — the SDK creates
-/// a new CLI process from session history, so dead-PID sessions resume fine.
-#[derive(Debug)]
-pub(crate) enum LiveSessionAction {
-    /// Session not tracked by the live monitor → proceed to SDK resume.
-    ResumeNew,
-    /// Session tracked but process is dead → proceed to SDK resume (new process).
-    ResumeDeadProcess,
-    /// Session has an active PID but no control binding → proceed to SDK resume.
-    ResumeAlive,
-    /// Session is already controlled → reuse the existing binding.
-    ReuseExisting {
-        control_id: String,
-        cancel: tokio_util::sync::CancellationToken,
-    },
-}
-
-impl PartialEq for LiveSessionAction {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::ResumeNew, Self::ResumeNew)
-            | (Self::ResumeDeadProcess, Self::ResumeDeadProcess)
-            | (Self::ResumeAlive, Self::ResumeAlive) => true,
-            (
-                Self::ReuseExisting { control_id: a, .. },
-                Self::ReuseExisting { control_id: b, .. },
-            ) => a == b,
-            _ => false,
-        }
-    }
-}
-
-/// Decide what action to take for a live session connect request.
-///
-/// Pure function (no side effects) so it can be unit-tested directly.
-pub(crate) fn classify_live_session(
-    session: Option<&crate::live::state::LiveSession>,
-) -> LiveSessionAction {
-    match session {
-        None => LiveSessionAction::ResumeNew,
-        Some(s) if s.pid.is_none() || !crate::live::process::is_pid_alive(s.pid.unwrap_or(0)) => {
-            LiveSessionAction::ResumeDeadProcess
-        }
-        Some(s) if s.control.is_some() => {
-            let ctl = s.control.as_ref().unwrap();
-            LiveSessionAction::ReuseExisting {
-                control_id: ctl.control_id.clone(),
-                cancel: ctl.cancel.clone(),
-            }
-        }
-        _ => LiveSessionAction::ResumeAlive,
-    }
-}
+// Re-export from live::state — canonical definitions live there.
+use crate::live::state::{classify_live_session, LiveSessionAction};
 
 /// GET /api/control/connect?sessionId=xxx — merged resume + WS endpoint.
 ///
@@ -967,7 +912,7 @@ mod tests {
     // so every branch is tested cheaply without spawning sidecar/live_manager.
     // -----------------------------------------------------------------------
 
-    use super::{classify_live_session, LiveSessionAction};
+    use crate::live::state::{classify_live_session, LiveSessionAction};
     use crate::live::state::{test_live_session, ControlBinding};
 
     #[test]
