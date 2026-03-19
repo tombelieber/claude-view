@@ -18,10 +18,14 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // while still loading history with the real sessionId.
   const source = useSessionSource(options?.skipWs ? undefined : sessionId)
 
-  // Gate history fetching: only fetch when NOT live (binary source switch).
-  // When live, blocks come from committedBlocks via sidecar WS.
+  // Gate history fetching with initComplete — prevents 404 error banner on new sessions.
+  // Before init() resolves, the JSONL may not exist yet. After init(), either:
+  // - Session is live → blocks come from committedBlocks via sidecar WS (enabled=false)
+  // - Session is history-only → JSONL exists, safe to fetch (enabled=true)
+  const isInitializing = source.sessionState === 'initializing'
   const history = useHistoryBlocks(sessionId ?? null, {
-    enabled: !source.isLive && !!sessionId,
+    enabled: source.initComplete && !source.isLive && !!sessionId,
+    suppressNotFound: isInitializing,
     retry: 3,
     retryDelay: 1000,
   })

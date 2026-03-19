@@ -46,6 +46,8 @@ export interface SessionSourceResult {
   channel: SessionChannel | null
   capabilities: string[]
   clearPendingMessage: (text: string) => void
+  /** True after init() has resolved (active-session check complete). Gates history fetching. */
+  initComplete: boolean
 }
 
 /** Exported for testing — determines which send function to use based on connection state. */
@@ -75,6 +77,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const [sessionState, setSessionState] = useState<string>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
+  const [initComplete, setInitComplete] = useState(false)
   const [totalInputTokens, setTotalInputTokens] = useState(0)
   const [contextWindowSize, setContextWindowSize] = useState(0)
   const [model, setModel] = useState('')
@@ -379,6 +382,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       setSessionState('idle')
       setControlId(null)
       setIsLive(false)
+      setInitComplete(false)
       return
     }
 
@@ -399,6 +403,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           const active = sessions.find((s) => s.sessionId === sid)
           if (!cancelled && active) {
             setControlId(active.controlId)
+            // Signal that session IS initializing — gates suppressNotFound in useConversation
+            setSessionState('initializing')
             // Always auto-connect for active sessions — ensures we get live events
             // even when session is idle (waiting_input). Bug fix: previously only
             // connected for processing states, missing events from idle sessions.
@@ -408,6 +414,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       } catch {
         // Active check failed — session is history-only
       }
+      if (!cancelled) setInitComplete(true)
     }
 
     init()
@@ -415,6 +422,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     return () => {
       cancelled = true
       unmountedRef.current = true
+      setInitComplete(false)
       clearHeartbeat()
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
       wsRef.current?.close()
@@ -582,5 +590,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     channel: channelRef.current,
     capabilities,
     clearPendingMessage,
+    initComplete,
   }
 }
