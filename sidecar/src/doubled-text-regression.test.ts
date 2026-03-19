@@ -7,8 +7,7 @@
 
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
-import type { SequencedEvent, ServerEvent } from './protocol.js'
-import { RingBuffer } from './ring-buffer.js'
+import type { ServerEvent } from './protocol.js'
 import type { ControlSession } from './session-registry.js'
 import { SessionRegistry } from './session-registry.js'
 import { StreamAccumulator } from './stream-accumulator.js'
@@ -39,8 +38,6 @@ function buildRealSession(controlId: string, sessionId: string): ControlSession 
     modelUsage: {},
     startedAt: Date.now(),
     emitter: new EventEmitter(),
-    eventBuffer: new RingBuffer<{ seq: number; msg: SequencedEvent }>(1000),
-    nextSeq: 0,
     permissions: {
       resolvePermission: vi.fn(),
       resolveQuestion: vi.fn(),

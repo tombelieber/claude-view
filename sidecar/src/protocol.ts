@@ -346,7 +346,7 @@ export type ServerEvent =
   | UnknownSdkEvent
   | UserMessageEcho
   // Blocks (server-driven message store)
-  | { type: 'blocks_snapshot'; blocks: unknown[]; lastSeq: number }
+  | { type: 'blocks_snapshot'; blocks: unknown[] }
   | { type: 'blocks_update'; blocks: unknown[] }
 
 export type SequencedEvent = ServerEvent & { seq: number }
@@ -382,11 +382,6 @@ export interface ElicitationResponse {
   type: 'elicitation_response'
   requestId: string
   response: string
-}
-
-export interface ResumeMsg {
-  type: 'resume'
-  lastSeq: number
 }
 
 export interface PingMsg {
@@ -467,7 +462,6 @@ export type ClientMessage =
   | QuestionResponse
   | PlanResponseMsg
   | ElicitationResponse
-  | ResumeMsg
   | PingMsg
   | SetModeMsg
   // Session control

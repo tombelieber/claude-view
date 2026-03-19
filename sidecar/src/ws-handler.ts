@@ -1,7 +1,7 @@
 // sidecar/src/ws-handler.ts
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ResumeMsg, SequencedEvent } from './protocol.js'
+import type { ClientMessage, ServerEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
@@ -30,7 +30,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   // Subscribe to session events — relay with blocks when applicable
   const onMessage = (rawMsg: unknown) => {
     if (ws.readyState !== ws.OPEN) return
-    const msg = rawMsg as SequencedEvent
+    const msg = rawMsg as ServerEvent
     if (msg.type === 'turn_complete' || msg.type === 'turn_error') {
       ws.send(JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
     } else {
@@ -53,22 +53,22 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   }
   session.emitter.on('message', onMessage)
 
-  // Send current state
-  registry.emitSequenced(session, {
-    type: 'session_status',
-    status: session.state === 'compacting' ? 'compacting' : null,
-  })
+  // Send current session status
+  ws.send(
+    JSON.stringify({
+      type: 'session_status',
+      status: session.state === 'compacting' ? 'compacting' : null,
+    }),
+  )
 
-  // Heartbeat config (no seq)
+  // Heartbeat config
   ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
 
   // Blocks snapshot — sent after heartbeat_config for initial state
-  const lastSnapshotSeq = session.nextSeq - 1
   ws.send(
     JSON.stringify({
       type: 'blocks_snapshot',
       blocks: session.accumulator.getBlocks(),
-      lastSeq: lastSnapshotSeq,
     }),
   )
 
@@ -125,22 +125,6 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
             )
           }
           break
-
-        case 'resume': {
-          const clientLastSeq = (msg as ResumeMsg).lastSeq
-          const replayFrom = Math.max(clientLastSeq, lastSnapshotSeq)
-          const missed = session.eventBuffer.getAfter(replayFrom, (e) => e.seq)
-          if (missed === null) {
-            ws.send(
-              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: false }),
-            )
-          } else {
-            for (const event of missed) {
-              if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event.msg))
-            }
-          }
-          break
-        }
 
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))

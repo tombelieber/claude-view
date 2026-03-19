@@ -53,9 +53,6 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     startedAt: Date.now(),
     emitter: new EventEmitter(),
     // biome-ignore lint/suspicious/noExplicitAny: stub
-    eventBuffer: { push: vi.fn() } as any,
-    nextSeq: 0,
-    // biome-ignore lint/suspicious/noExplicitAny: stub
     permissions: { drainAll: vi.fn() } as any,
     permissionMode: 'default',
     activeWs: null,
