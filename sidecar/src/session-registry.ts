@@ -4,7 +4,7 @@ import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
-import type { ActiveSession, ServerEvent } from './protocol.js'
+import type { ActiveSession, ServerEvent, SessionInit } from './protocol.js'
 import type { StreamAccumulator } from './stream-accumulator.js'
 
 export type SessionState =
@@ -32,7 +32,8 @@ export interface ControlSession {
   emitter: EventEmitter
   permissions: PermissionHandler
   permissionMode: string
-  activeWs: WebSocket | null
+  wsClients: Set<WebSocket>
+  lastSessionInit: SessionInit | null
   accumulator: StreamAccumulator
 }
 
@@ -78,6 +79,10 @@ export class SessionRegistry {
   }
 
   emitSequenced(cs: ControlSession, event: ServerEvent): void {
+    // Cache session_init for late-joining WS clients
+    if (event.type === 'session_init') {
+      cs.lastSessionInit = event as SessionInit
+    }
     cs.emitter.emit('message', event)
     // Filter text-carrying deltas from accumulator (prevents doubled text with assistant_text).
     // Keep structural events (content_block_start/stop) so accumulator builds block skeletons

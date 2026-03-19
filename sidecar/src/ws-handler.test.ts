@@ -35,7 +35,8 @@ describe('ws-handler requestId echo', () => {
     }
 
     mockSession = {
-      activeWs: null,
+      wsClients: new Set(),
+      lastSessionInit: null,
       state: 'active',
       emitter: { on: vi.fn(), removeListener: vi.fn() },
       permissions: {
@@ -153,7 +154,8 @@ describe('ws-handler requestId echo', () => {
       }
 
       echoSession = {
-        activeWs: null,
+        wsClients: new Set(),
+        lastSessionInit: null,
         state: 'waiting_input',
         sessionId: 'sess-1',
         emitter: { on: vi.fn(), removeListener: vi.fn() },
@@ -228,7 +230,7 @@ describe('ws-handler requestId echo', () => {
     })
   })
 
-  describe('One WS per session', () => {
+  describe('Multi-client wsClients Set', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
     let wsRegistry: any
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
@@ -236,7 +238,8 @@ describe('ws-handler requestId echo', () => {
 
     beforeEach(() => {
       wsSession = {
-        activeWs: null,
+        wsClients: new Set(),
+        lastSessionInit: null,
         state: 'active',
         emitter: { on: vi.fn(), removeListener: vi.fn() },
         permissions: {
@@ -269,49 +272,49 @@ describe('ws-handler requestId echo', () => {
       }
     })
 
-    it('closes old WS with code 4001 when new WS connects to same session', () => {
-      const oldWs = createMockWs()
-      const newWs = createMockWs()
-
-      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
-      expect(wsSession.activeWs).toBe(oldWs)
-
-      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
-      expect(oldWs.close).toHaveBeenCalledWith(4001, 'replaced_by_new_connection')
-      expect(wsSession.activeWs).toBe(newWs)
-    })
-
-    it('does not close when session has no previous WS', () => {
+    it('adds WS to wsClients on connect', () => {
       const ws = createMockWs()
       handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
-      expect(ws.close).not.toHaveBeenCalled()
-      expect(wsSession.activeWs).toBe(ws)
+      expect(wsSession.wsClients.has(ws)).toBe(true)
+      expect(wsSession.wsClients.size).toBe(1)
     })
 
-    it('clears activeWs on close only if it matches current WS', () => {
+    it('allows multiple WS connections to the same session', () => {
+      const ws1 = createMockWs()
+      const ws2 = createMockWs()
+
+      handleWebSocket(ws1 as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws2 as never, 'ctrl-1', wsRegistry)
+
+      expect(wsSession.wsClients.size).toBe(2)
+      expect(wsSession.wsClients.has(ws1)).toBe(true)
+      expect(wsSession.wsClients.has(ws2)).toBe(true)
+    })
+
+    it('removes WS from wsClients on close', () => {
       const ws = createMockWs()
       handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
-      expect(wsSession.activeWs).toBe(ws)
+      expect(wsSession.wsClients.size).toBe(1)
 
-      // Trigger close handler
       const closeHandler = ws._listeners['close']
       closeHandler()
 
-      expect(wsSession.activeWs).toBeNull()
+      expect(wsSession.wsClients.size).toBe(0)
     })
 
-    it('does NOT clear activeWs if a newer WS replaced it before close fires', () => {
-      const oldWs = createMockWs()
-      const newWs = createMockWs()
+    it('closing one WS does not affect others in the set', () => {
+      const ws1 = createMockWs()
+      const ws2 = createMockWs()
 
-      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
-      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws1 as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws2 as never, 'ctrl-1', wsRegistry)
+      expect(wsSession.wsClients.size).toBe(2)
 
-      // Old WS close fires late — should NOT clear activeWs (newWs owns it now)
-      const oldCloseHandler = oldWs._listeners['close']
-      oldCloseHandler()
+      const closeHandler = ws1._listeners['close']
+      closeHandler()
 
-      expect(wsSession.activeWs).toBe(newWs)
+      expect(wsSession.wsClients.size).toBe(1)
+      expect(wsSession.wsClients.has(ws2)).toBe(true)
     })
   })
 })

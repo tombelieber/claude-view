@@ -47,7 +47,8 @@ function buildRealSession(controlId: string, sessionId: string): ControlSession 
       drainAll: vi.fn(),
     } as unknown as ControlSession['permissions'],
     permissionMode: 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 }

@@ -70,7 +70,8 @@ function buildRealSession(controlId: string, sessionId: string): ControlSession 
       drainAll: vi.fn(),
     } as unknown as ControlSession['permissions'],
     permissionMode: 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 }
@@ -259,10 +260,10 @@ describe('IT-04: WS reconnect replays full accumulator state', () => {
   })
 })
 
-// ── IT-05: Multi-client — second WS replaces first ────────────────────────
+// ── IT-05: Multi-client — both WS connections coexist ──────────────────────
 
-describe('IT-05: Multi-client — second WS replaces first with 4001', () => {
-  it('closes first WS with 4001 and delivers blocks_snapshot to second', () => {
+describe('IT-05: Multi-client — both WS connections coexist in wsClients Set', () => {
+  it('both WS clients get blocks_snapshot and coexist', () => {
     const registry = new SessionRegistry()
     const cs = buildRealSession('ctrl-test', 'sess-5')
     registry.register(cs)
@@ -275,19 +276,24 @@ describe('IT-05: Multi-client — second WS replaces first with 4001', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mock
     handleWebSocket(ws1 as any, 'ctrl-test', registry)
 
-    // Second WS — should replace first
+    // Second WS — both should coexist
     const ws2 = createMockWs()
     // biome-ignore lint/suspicious/noExplicitAny: test mock
     handleWebSocket(ws2 as any, 'ctrl-test', registry)
 
-    // First WS was closed with 4001
-    expect(ws1.close).toHaveBeenCalledWith(4001, 'replaced_by_new_connection')
+    // First WS was NOT closed (multi-client)
+    expect(ws1.close).not.toHaveBeenCalled()
+    expect(cs.wsClients.size).toBe(2)
 
-    // Second WS got blocks_snapshot
+    // Both got blocks_snapshot
+    const messages1 = getAllSentMessages(ws1)
+    const snapshot1 = messages1.find((m) => m.type === 'blocks_snapshot')
+    expect(snapshot1).toBeDefined()
+
     const messages2 = getAllSentMessages(ws2)
-    const snapshot = messages2.find((m) => m.type === 'blocks_snapshot')
-    expect(snapshot).toBeDefined()
-    expect((snapshot?.blocks as unknown[]).length).toBeGreaterThan(0)
+    const snapshot2 = messages2.find((m) => m.type === 'blocks_snapshot')
+    expect(snapshot2).toBeDefined()
+    expect((snapshot2?.blocks as unknown[]).length).toBeGreaterThan(0)
   })
 })
 
