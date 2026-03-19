@@ -85,7 +85,13 @@ export class SessionRegistry {
     const sequenced: SequencedEvent = { ...event, seq }
     cs.eventBuffer.push({ seq, msg: sequenced })
     cs.emitter.emit('message', sequenced)
-    if (event.type !== 'stream_delta') cs.accumulator.push(sequenced)
+    // Filter text-carrying deltas from accumulator (prevents doubled text with assistant_text).
+    // Keep structural events (content_block_start/stop) so accumulator builds block skeletons
+    // that blocks_snapshot can deliver — the frontend needs the skeleton to attach pendingText.
+    const isTextDelta =
+      event.type === 'stream_delta' &&
+      (event as { deltaType?: string }).deltaType === 'content_block_delta'
+    if (!isTextDelta) cs.accumulator.push(sequenced)
     return sequenced
   }
 

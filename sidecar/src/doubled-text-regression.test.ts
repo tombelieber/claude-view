@@ -137,4 +137,55 @@ describe('Doubled text regression: stream_delta + assistant_text must NOT double
     expect(fullText).toBe('1+1=2')
     expect(fullText).not.toBe('1+1=21+1=2')
   })
+
+  it('content_block_start creates assistant block skeleton (needed for blocks_snapshot)', () => {
+    const registry = new SessionRegistry()
+    const cs = buildRealSession('ctrl-skel', 'sess-skel')
+    registry.register(cs)
+
+    // session_init
+    registry.emitSequenced(cs, {
+      type: 'session_init',
+      tools: ['Read'],
+      model: 'claude-sonnet-4-20250514',
+      mcpServers: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      claudeCodeVersion: '1.0.0',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: 'text',
+    } satisfies ServerEvent)
+
+    // content_block_start (structural — must NOT be filtered)
+    registry.emitSequenced(cs, {
+      type: 'stream_delta',
+      event: {},
+      messageId: 'msg-skel-1',
+      deltaType: 'content_block_start',
+    } satisfies ServerEvent)
+
+    // After content_block_start, accumulator should have an assistant block skeleton
+    const blocks = cs.accumulator.getBlocks()
+    const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
+    expect(assistantBlocks.length).toBe(1)
+
+    // content_block_delta (text — MUST be filtered, no text in accumulator)
+    registry.emitSequenced(cs, {
+      type: 'stream_delta',
+      event: {},
+      messageId: 'msg-skel-1',
+      deltaType: 'content_block_delta',
+      textDelta: 'hello',
+    } satisfies ServerEvent)
+
+    // After content_block_delta, accumulator text should still be empty (delta was filtered)
+    const blocksAfterDelta = cs.accumulator.getBlocks()
+    const assistant = blocksAfterDelta.filter((b) => b.type === 'assistant').at(-1) as {
+      segments: { kind: string; text?: string }[]
+    }
+    const textSeg = assistant.segments.find((s) => s.kind === 'text') as { text: string }
+    expect(textSeg.text).toBe('') // Empty — delta was filtered
+  })
 })
