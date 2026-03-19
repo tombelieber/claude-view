@@ -1,19 +1,15 @@
 import { expect, test } from '@playwright/test'
 
 test.describe('Workflow Editor', () => {
-  test('new workflow editor loads with empty canvas', async ({ page }) => {
+  test('new workflow editor loads with chat and canvas', async ({ page }) => {
     await page.goto('/workflows/new')
-    // Editor page should render
-    await expect(
-      page.locator('text=Workflow Editor').or(page.locator('[data-testid="workflow-editor"]')),
-    ).toBeVisible({ timeout: 10000 })
+    // Editor renders: empty canvas message + textarea for chat
+    await expect(page.locator('text=No workflow yet')).toBeVisible({ timeout: 15000 })
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 })
   })
 
-  test('editor page has chat rail and canvas areas', async ({ page }) => {
+  test('editor page has send button', async ({ page }) => {
     await page.goto('/workflows/new')
-    // Chat area should be present
-    await expect(
-      page.locator('[data-testid="chat-rail"]').or(page.locator('textarea')),
-    ).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('button:has-text("Send")')).toBeVisible({ timeout: 15000 })
   })
 })

@@ -8,52 +8,66 @@
   "inputs": [
     {
       "name": "plan_file",
-      "type": "file_path",
+      "type": "file",
       "description": "Path to the polished implementation plan MD file"
     }
   ],
   "defaults": {
-    "model": "claude-opus-4-6"
+    "model": "claude-opus-4-6",
+    "permissionMode": "default",
+    "settingSources": ["user", "project"],
+    "effort": "max",
+    "maxBudgetUsd": 50.0,
+    "maxTurns": 500
   },
   "nodes": [
     {
-      "id": "stage-0",
-      "type": "agent",
-      "position": { "x": 250, "y": 0 },
+      "id": "input-0",
+      "type": "workflowInput",
+      "position": { "x": 0, "y": 0 },
+      "data": { "label": "plan_file" }
+    },
+    {
+      "id": "stage-implement",
+      "type": "workflowStage",
+      "position": { "x": 300, "y": 0 },
       "data": {
-        "label": "Implement",
+        "label": "Implement Plan",
+        "prompt": "Implement the plan at {{plan_file}} using subagent-driven development.",
+        "model": "opus",
+        "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent"],
         "skills": ["/feature-dev:feature-dev", "/subagent-driven-development"],
-        "model": "claude-opus-4-6",
-        "parallel": true,
-        "agents": 4,
+        "maxTurns": 300
+      }
+    },
+    {
+      "id": "stage-ship",
+      "type": "workflowStage",
+      "position": { "x": 600, "y": 0 },
+      "data": {
+        "label": "Ship as PR",
+        "prompt": "Run /shippable on the completed implementation. If verdict is not SHIP IT, fix issues.",
+        "model": "opus",
+        "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
+        "skills": ["/shippable", "/commit-push-pr"],
+        "maxTurns": 100,
         "gate": {
-          "condition": "all tasks complete and committed",
-          "retry": false
+          "type": "regex",
+          "pattern": "SHIP IT",
+          "maxRetries": 3
         }
       }
     },
     {
-      "id": "stage-1",
-      "type": "agent",
-      "position": { "x": 250, "y": 200 },
-      "data": {
-        "label": "Ship",
-        "skills": ["/shippable"],
-        "model": "claude-opus-4-6",
-        "parallel": false,
-        "agents": 1,
-        "gate": {
-          "condition": "verdict = SHIP IT",
-          "retry": true
-        }
-      }
+      "id": "done-0",
+      "type": "workflowDone",
+      "position": { "x": 900, "y": 0 },
+      "data": { "label": "Done" }
     }
   ],
   "edges": [
-    {
-      "id": "e-stage-0-stage-1",
-      "source": "stage-0",
-      "target": "stage-1"
-    }
+    { "id": "e-input-impl", "source": "input-0", "target": "stage-implement" },
+    { "id": "e-impl-ship", "source": "stage-implement", "target": "stage-ship" },
+    { "id": "e-ship-done", "source": "stage-ship", "target": "done-0" }
   ]
 }

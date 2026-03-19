@@ -8,30 +8,54 @@
   "inputs": [
     {
       "name": "plan_file",
-      "type": "file_path",
+      "type": "file",
       "description": "Path to the implementation plan MD file"
     }
   ],
   "defaults": {
-    "model": "claude-opus-4-6"
+    "model": "claude-opus-4-6",
+    "permissionMode": "default",
+    "settingSources": ["user", "project"],
+    "effort": "max",
+    "maxBudgetUsd": 20.0,
+    "maxTurns": 200
   },
   "nodes": [
     {
-      "id": "stage-0",
-      "type": "agent",
-      "position": { "x": 250, "y": 0 },
+      "id": "input-0",
+      "type": "workflowInput",
+      "position": { "x": 0, "y": 0 },
+      "data": { "label": "plan_file" }
+    },
+    {
+      "id": "stage-audit",
+      "type": "workflowStage",
+      "position": { "x": 300, "y": 0 },
       "data": {
-        "label": "Audit",
+        "label": "Audit Plan",
+        "prompt": "Run /prove-it on the plan at {{plan_file}}. If verdict is not PASS, fix issues and re-audit.",
+        "model": "opus",
+        "tools": ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
         "skills": ["/auditing-plans", "/prove-it"],
-        "model": "claude-opus-4-6",
-        "parallel": false,
-        "agents": 1,
+        "maxTurns": 100,
         "gate": {
-          "condition": "/prove-it verdict = Pass",
-          "retry": true
+          "type": "json_field",
+          "field": "verdict",
+          "operator": "equals",
+          "value": "PASS",
+          "maxRetries": 3
         }
       }
+    },
+    {
+      "id": "done-0",
+      "type": "workflowDone",
+      "position": { "x": 600, "y": 0 },
+      "data": { "label": "Done" }
     }
   ],
-  "edges": []
+  "edges": [
+    { "id": "e-input-audit", "source": "input-0", "target": "stage-audit" },
+    { "id": "e-audit-done", "source": "stage-audit", "target": "done-0" }
+  ]
 }

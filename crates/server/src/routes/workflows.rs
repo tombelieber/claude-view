@@ -256,34 +256,75 @@ fn convert_legacy_to_definition(id: &str, legacy: &LegacyWorkflow) -> WorkflowDe
         .and_then(|s| s.model.clone())
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
+    // Add input nodes for each workflow input
+    for (i, input) in legacy.inputs.iter().enumerate() {
+        nodes.push(serde_json::json!({
+            "id": format!("input-{i}"),
+            "type": "workflowInput",
+            "position": { "x": 0, "y": (i as u32) * 100 },
+            "data": { "label": input.name }
+        }));
+    }
+
+    // Add stage nodes with correct React Flow node type
     for (i, stage) in legacy.stages.iter().enumerate() {
         let node_id = format!("stage-{i}");
-        let node = serde_json::json!({
-            "id": node_id,
-            "type": "agent",
-            "position": { "x": 250, "y": (i as u32) * 200 },
-            "data": {
-                "label": stage.name,
-                "skills": stage.skills,
-                "model": stage.model.as_deref().unwrap_or(&model),
-                "parallel": stage.parallel,
-                "agents": stage.agents,
-                "gate": stage.gate.as_ref().map(|g| serde_json::json!({
-                    "condition": g.condition,
-                    "retry": g.retry,
-                })),
-            }
+        let gate = stage.gate.as_ref().map(|g| {
+            serde_json::json!({
+                "type": "regex",
+                "pattern": g.condition.replace(" == ", ""),
+                "maxRetries": if g.retry { 3 } else { 0 }
+            })
         });
-        nodes.push(node);
+        let mut data = serde_json::json!({
+            "label": stage.name,
+            "prompt": format!("Run stage: {}", stage.name),
+            "skills": stage.skills,
+            "model": stage.model.as_deref().unwrap_or(&model),
+        });
+        if let Some(g) = gate {
+            data.as_object_mut().unwrap().insert("gate".to_string(), g);
+        }
+        nodes.push(serde_json::json!({
+            "id": node_id,
+            "type": "workflowStage",
+            "position": { "x": ((i + 1) as u32) * 300, "y": 0 },
+            "data": data
+        }));
 
-        if i > 0 {
-            let edge = serde_json::json!({
+        // Edge from previous stage (or from first input)
+        if i == 0 && !legacy.inputs.is_empty() {
+            edges.push(serde_json::json!({
+                "id": format!("e-input-0-stage-0"),
+                "source": "input-0",
+                "target": node_id,
+            }));
+        } else if i > 0 {
+            edges.push(serde_json::json!({
                 "id": format!("e-stage-{}-stage-{}", i - 1, i),
                 "source": format!("stage-{}", i - 1),
                 "target": node_id,
-            });
-            edges.push(edge);
+            }));
         }
+    }
+
+    // Add done node
+    let done_x = ((legacy.stages.len() + 1) as u32) * 300;
+    nodes.push(serde_json::json!({
+        "id": "done-0",
+        "type": "workflowDone",
+        "position": { "x": done_x, "y": 0 },
+        "data": { "label": "Done" }
+    }));
+
+    // Edge from last stage to done
+    if !legacy.stages.is_empty() {
+        let last = format!("stage-{}", legacy.stages.len() - 1);
+        edges.push(serde_json::json!({
+            "id": format!("e-{last}-done"),
+            "source": last,
+            "target": "done-0",
+        }));
     }
 
     WorkflowDefinition {

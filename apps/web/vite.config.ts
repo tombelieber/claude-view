@@ -21,6 +21,7 @@ export default defineConfig({
         : path.resolve(__dirname, './src/enterprise-stubs'),
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['react', 'react-dom', '@tanstack/react-query', 'react-router-dom'],
   },
   server: {
     port: 5173,
