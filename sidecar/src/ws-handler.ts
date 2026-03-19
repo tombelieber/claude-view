@@ -5,6 +5,9 @@ import type { ClientMessage, ResumeMsg, SequencedEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
+// Content events that trigger blocks_update on relay — module scope to avoid per-connection recreation.
+const CONTENT_EVENTS = new Set(['assistant_text', 'tool_use_start', 'assistant_thinking'])
+
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
   const session = registry.get(controlId)
   if (!session) {
@@ -18,9 +21,6 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     session.activeWs.close(4001, 'replaced_by_new_connection')
   }
   session.activeWs = ws
-
-  // Content events that trigger blocks_update on relay
-  const CONTENT_EVENTS = new Set(['assistant_text', 'tool_use_start', 'assistant_thinking'])
 
   // Subscribe to session events — relay with blocks when applicable
   const onMessage = (rawMsg: unknown) => {

@@ -592,3 +592,148 @@ describe('SDK session cleanup via beforeunload', () => {
     expect(calls).not.toContain('terminateSDKSession')
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HT-07..HT-12: WS message handling — committedBlocks/pendingText state
+// Tests the message-to-state mapping that handleWsMessage implements.
+// Uses a minimal state machine mirroring the switch cases in use-session-source.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('WS message handling — committedBlocks/pendingText state (HT-07..HT-12)', () => {
+  /** Minimal state machine mirroring handleWsMessage's switch cases for blocks/pending. */
+  interface MsgState {
+    committed: unknown[]
+    pendingText: string
+  }
+
+  function applyMessage(state: MsgState, raw: Record<string, unknown>): MsgState {
+    switch (raw.type) {
+      case 'blocks_snapshot': {
+        const blocks = raw.blocks as unknown[]
+        return { committed: blocks, pendingText: '' }
+      }
+      case 'blocks_update': {
+        const blocks = raw.blocks as unknown[]
+        return { committed: blocks, pendingText: '' }
+      }
+      case 'turn_complete':
+      case 'turn_error': {
+        if (raw.blocks) {
+          const blocks = raw.blocks as unknown[]
+          return { committed: blocks, pendingText: '' }
+        }
+        return state
+      }
+      case 'stream_delta': {
+        if (raw.textDelta) {
+          return { ...state, pendingText: state.pendingText + (raw.textDelta as string) }
+        }
+        return state
+      }
+      default:
+        return state
+    }
+  }
+
+  const emptyState: MsgState = { committed: [], pendingText: '' }
+
+  const mockBlock = (id: string) => ({ type: 'assistant', id, segments: [] })
+
+  // --- HT-07: blocks_snapshot sets committedBlocks ---
+  it('HT-07: blocks_snapshot sets committedBlocks and clears pendingText', () => {
+    const blocks = [mockBlock('a1'), mockBlock('a2'), mockBlock('a3')]
+    const result = applyMessage(emptyState, { type: 'blocks_snapshot', blocks, lastSeq: 5 })
+    expect(result.committed).toHaveLength(3)
+    expect(result.pendingText).toBe('')
+  })
+
+  // --- HT-08: blocks_update clears pendingText ---
+  it('HT-08: blocks_update clears pendingText and updates committedBlocks', () => {
+    // Start with some pending text from stream_delta
+    const withPending = applyMessage(emptyState, { type: 'stream_delta', textDelta: 'abc' })
+    expect(withPending.pendingText).toBe('abc')
+
+    // blocks_update arrives — clears pending and sets committed
+    const blocks = [mockBlock('a1'), mockBlock('a2')]
+    const result = applyMessage(withPending, { type: 'blocks_update', blocks })
+    expect(result.pendingText).toBe('')
+    expect(result.committed).toHaveLength(2)
+  })
+
+  // --- HT-09: turn_complete WITH blocks updates committedBlocks atomically ---
+  it('HT-09: turn_complete with blocks updates committedBlocks atomically', () => {
+    const blocks = [
+      mockBlock('a1'),
+      mockBlock('a2'),
+      mockBlock('a3'),
+      mockBlock('a4'),
+      mockBlock('a5'),
+    ]
+    const result = applyMessage(emptyState, {
+      type: 'turn_complete',
+      blocks,
+      totalCostUsd: 0.01,
+      numTurns: 1,
+      durationMs: 5000,
+      usage: {},
+      modelUsage: {},
+      stopReason: 'end_turn',
+    })
+    expect(result.committed).toHaveLength(5)
+    expect(result.pendingText).toBe('')
+  })
+
+  // --- HT-10: turn_complete WITHOUT blocks — committedBlocks unchanged (backward compat) ---
+  it('HT-10: turn_complete without blocks field leaves committedBlocks unchanged', () => {
+    // First, set some committed blocks via blocks_snapshot
+    const initialBlocks = [mockBlock('a1'), mockBlock('a2'), mockBlock('a3')]
+    const withBlocks = applyMessage(emptyState, {
+      type: 'blocks_snapshot',
+      blocks: initialBlocks,
+      lastSeq: 3,
+    })
+    expect(withBlocks.committed).toHaveLength(3)
+
+    // turn_complete WITHOUT blocks field — backward compat path
+    const result = applyMessage(withBlocks, {
+      type: 'turn_complete',
+      totalCostUsd: 0.01,
+      numTurns: 1,
+      // No blocks field
+    })
+    expect(result.committed).toHaveLength(3) // Unchanged
+  })
+
+  // --- HT-11: turn_error with blocks updates committedBlocks ---
+  it('HT-11: turn_error with blocks updates committedBlocks', () => {
+    const blocks = [mockBlock('a1'), mockBlock('a2')]
+    const result = applyMessage(emptyState, {
+      type: 'turn_error',
+      blocks,
+      error: { subtype: 'error_during_execution', messages: ['oops'] },
+    })
+    expect(result.committed).toHaveLength(2)
+    expect(result.pendingText).toBe('')
+  })
+
+  // --- HT-12: stream_delta appends textDelta to pendingText only ---
+  it('HT-12: stream_delta appends textDelta to pendingText, committedBlocks unchanged', () => {
+    // Set initial committed blocks
+    const initialBlocks = [mockBlock('a1')]
+    const withBlocks = applyMessage(emptyState, {
+      type: 'blocks_snapshot',
+      blocks: initialBlocks,
+      lastSeq: 1,
+    })
+
+    // First delta
+    const after1 = applyMessage(withBlocks, { type: 'stream_delta', textDelta: 'hello' })
+    expect(after1.pendingText).toBe('hello')
+    expect(after1.committed).toHaveLength(1) // Unchanged
+
+    // Second delta appends
+    const after2 = applyMessage(after1, { type: 'stream_delta', textDelta: ' world' })
+    expect(after2.pendingText).toBe('hello world')
+    expect(after2.committed).toHaveLength(1) // Still unchanged
+  })
+})
