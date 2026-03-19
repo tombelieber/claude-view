@@ -127,6 +127,15 @@ docs/internal/
 docs/internal
 docs/superpowers/
 docs/superpowers
+docs/testing/
+docs/testing
+docs/architecture/
+docs/architecture
+docs/uiux-notes.md
+docs/claude-rules-reference.md
+docs/README_7TYPE_UI.md
+docs/QUICKSTART_7TYPE_UI.md
+docs/STYLE_GUIDE_7TYPE_UI.md
 .superpowers/
 .playwright-mcp/
 
