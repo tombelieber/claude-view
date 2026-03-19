@@ -23,9 +23,16 @@ export interface HistoryBlocksResult {
   error: Error | null
 }
 
+export interface UseHistoryBlocksOptions {
+  suppressNotFound?: boolean
+  enabled?: boolean
+  retry?: number | ((failureCount: number, error: Error) => boolean)
+  retryDelay?: number
+}
+
 export function useHistoryBlocks(
   sessionId: string | null,
-  options?: { suppressNotFound?: boolean },
+  options?: UseHistoryBlocksOptions,
 ): HistoryBlocksResult {
   const verboseMode = useMonitorStore((s) => s.verboseMode)
   const {
@@ -39,6 +46,9 @@ export function useHistoryBlocks(
   } = useSessionMessages(sessionId, {
     raw: verboseMode,
     suppressNotFound: options?.suppressNotFound,
+    enabled: options?.enabled,
+    retry: options?.retry,
+    retryDelay: options?.retryDelay,
   })
 
   const blocks = useMemo(() => {

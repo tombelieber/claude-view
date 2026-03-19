@@ -108,7 +108,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
       liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
       isSidecarManaged: sidecarSessionIds?.has(s.sessionId) ?? false,
     }))
-  }, [historySessions, activeSessionIds, activeSessions])
+  }, [historySessions, activeSessionIds, activeSessions, sidecarSessionIds])
 
   // Separate active-pinned from rest
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)
@@ -276,7 +276,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
         const data = await res.json()
         if (data.sessionId) {
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.sessionId}`, { state: { freshlyCreated: true } })
+          navigate(`/chat/${data.sessionId}`)
         } else {
           toast.error('Fork failed', { duration: TOAST_DURATION.extended })
         }

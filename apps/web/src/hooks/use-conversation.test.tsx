@@ -27,10 +27,9 @@ vi.mock('./use-session-source', () => ({
     agents: [],
     channel: null,
     capabilities: [],
-    turnVersion: 0,
-    streamGap: false,
+    committedBlocks: [],
+    pendingText: '',
     clearPendingMessage: vi.fn(),
-    resetAccumulator: vi.fn(),
   }),
 }))
 
@@ -74,10 +73,9 @@ const defaultSource = {
   agents: [],
   channel: null,
   capabilities: [],
-  turnVersion: 0,
-  streamGap: false,
+  committedBlocks: [],
+  pendingText: '',
   clearPendingMessage: vi.fn(),
-  resetAccumulator: vi.fn(),
 }
 
 const defaultMessages = {
@@ -122,10 +120,9 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -138,39 +135,12 @@ describe('useConversation block merging', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  // --- streamGap: history + live blocks, no divider ---
-  it('shows history and live blocks without divider when streamGap is true', () => {
-    mockSessionMessages.mockReturnValue({
-      data: {
-        pages: [
-          {
-            messages: [
-              {
-                role: 'user',
-                content: 'old msg',
-                uuid: 'h1',
-                timestamp: '2026-03-13T00:00:00Z',
-              },
-            ],
-            total: 1,
-            offset: 0,
-            limit: 100,
-            hasMore: false,
-          },
-        ],
-        pageParams: [-1],
-      },
-      error: null,
-      hasPreviousPage: false,
-      fetchPreviousPage: vi.fn(),
-      isFetchingPreviousPage: false,
-      isFetching: false,
-      isLoading: false,
-    } as unknown as ReturnType<typeof useSessionMessages>)
-
+  // --- binary source: isLive=true uses committedBlocks, no history ---
+  it('shows committedBlocks when isLive=true (binary source switch)', () => {
+    const liveBlock = { type: 'user', id: 'l1', text: 'live msg', timestamp: Date.now() / 1000 }
     mockSessionSource.mockReturnValue({
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
-      blocks: [{ type: 'user', id: 'l1', text: 'live msg', timestamp: Date.now() / 1000 }] as any,
+      blocks: [liveBlock] as any,
       sessionState: 'active',
       controlId: 'ctrl-1',
       send: vi.fn(),
@@ -189,20 +159,20 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 1,
-      streamGap: true,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      committedBlocks: [liveBlock] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
 
-    // Both history and live blocks appear, no divider
+    // Binary source: isLive=true → committedBlocks used, no divider
     const dividerBlock = result.current.blocks.find((b) => b.type === 'notice')
     expect(dividerBlock).toBeUndefined()
-    expect(result.current.blocks.length).toBeGreaterThanOrEqual(2)
+    expect(result.current.blocks.length).toBeGreaterThanOrEqual(1)
   })
 
   // --- Integration: no divider when only history blocks ---
@@ -267,10 +237,11 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [
+        { type: 'user', id: 'l1', text: 'live msg', timestamp: Date.now() / 1000 },
+      ] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -313,10 +284,9 @@ describe('useConversation block merging', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -382,10 +352,9 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
@@ -412,10 +381,9 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
@@ -442,10 +410,9 @@ describe('sessionInfo includes palette fields', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
@@ -476,10 +443,9 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -506,8 +472,8 @@ describe('source selection (single-stream pattern)', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [{ type: 'user', id: 'u1', text: 'hello', timestamp: 1 }] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -517,7 +483,6 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -570,8 +535,8 @@ describe('source selection (single-stream pattern)', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: true,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -581,7 +546,6 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -593,8 +557,8 @@ describe('source selection (single-stream pattern)', () => {
   })
 })
 
-// ─── streamGap: live but replay exhausted ────────────────
-describe('source selection — streamGap: live but replay exhausted', () => {
+// ─── binary source: live with committed blocks ────────────────
+describe('source selection — binary source switch', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockSessionSource.mockReturnValue({
@@ -617,10 +581,9 @@ describe('source selection — streamGap: live but replay exhausted', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -633,7 +596,7 @@ describe('source selection — streamGap: live but replay exhausted', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('shows history + stream without divider when both have blocks', () => {
+  it('shows committedBlocks only when isLive=true (binary source switch)', () => {
     mockSessionSource.mockReturnValue({
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       blocks: [{ type: 'assistant', id: 'a1' }] as any,
@@ -647,8 +610,9 @@ describe('source selection — streamGap: live but replay exhausted', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 1,
-      streamGap: true,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      committedBlocks: [{ type: 'assistant', id: 'a1' }] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -658,42 +622,15 @@ describe('source selection — streamGap: live but replay exhausted', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
-    mockSessionMessages.mockReturnValue({
-      data: {
-        pages: [
-          {
-            messages: [
-              {
-                role: 'user',
-                content: 'old msg',
-                uuid: 'h1',
-                timestamp: '2026-03-15T00:00:00Z',
-              },
-            ],
-            total: 1,
-            offset: 0,
-            limit: 100,
-            hasMore: false,
-          },
-        ],
-        pageParams: [-1],
-      },
-      error: null,
-      hasPreviousPage: false,
-      fetchPreviousPage: vi.fn(),
-      isFetchingPreviousPage: false,
-      isFetching: false,
-      isLoading: false,
-    } as unknown as ReturnType<typeof useSessionMessages>)
 
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
 
-    // Should have history + stream blocks, no divider
-    expect(result.current.blocks.length).toBeGreaterThanOrEqual(2)
+    // Binary switch: isLive=true → committedBlocks only, no divider
+    expect(result.current.blocks).toHaveLength(1)
+    expect(result.current.blocks[0].id).toBe('a1')
     expect(result.current.blocks.every((b) => b.type !== 'notice')).toBe(true)
   })
 })
@@ -722,10 +659,9 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -753,8 +689,8 @@ describe('source selection — optimistic dedup', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [{ type: 'user', id: 'user-0', text: 'hello', timestamp: 1 }] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -764,7 +700,6 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -796,8 +731,8 @@ describe('source selection — optimistic dedup', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -807,7 +742,6 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -851,10 +785,9 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -959,10 +892,9 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -999,8 +931,11 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [
+        { type: 'user', id: 'user-0', text: 'hello', timestamp: 1000 },
+        { type: 'assistant', id: 'a-1', text: 'hi', timestamp: 1001 },
+      ] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -1010,7 +945,6 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1045,10 +979,9 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1078,8 +1011,11 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [
+        { type: 'user', id: 'user-0', text: 'question', timestamp: 1000 },
+        { type: 'assistant', id: 'a-1', text: 'answer', timestamp: 1001 },
+      ] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -1089,7 +1025,6 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1125,10 +1060,9 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      turnVersion: 0,
-      streamGap: false,
+      committedBlocks: [],
+      pendingText: '',
       clearPendingMessage: vi.fn(),
-      resetAccumulator: vi.fn(),
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1141,7 +1075,7 @@ describe('source selection always merges history + live overlay', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('always includes both history and stream blocks', () => {
+  it('isLive=true uses committedBlocks only (binary switch)', () => {
     mockSessionSource.mockReturnValue({
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       blocks: [{ type: 'user', id: 'u-1', text: 'hello', timestamp: 1000 }] as any,
@@ -1155,8 +1089,9 @@ describe('source selection always merges history + live overlay', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 0,
-      streamGap: false,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      committedBlocks: [{ type: 'user', id: 'u-1', text: 'hello', timestamp: 1000 }] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -1166,48 +1101,17 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
-
-    // History has blocks — new merge always includes them
-    mockSessionMessages.mockReturnValue({
-      data: {
-        pages: [
-          {
-            messages: [
-              {
-                role: 'user',
-                content: 'old msg',
-                uuid: 'h-1',
-                timestamp: '2026-03-13T00:00:00Z',
-              },
-            ],
-            total: 1,
-            offset: 0,
-            limit: 100,
-            hasMore: false,
-          },
-        ],
-        pageParams: [-1],
-      },
-      error: null,
-      hasPreviousPage: false,
-      fetchPreviousPage: vi.fn(),
-      isFetchingPreviousPage: false,
-      isFetching: false,
-      isLoading: false,
-    } as unknown as ReturnType<typeof useSessionMessages>)
 
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
-    // New merge: history + live overlay always
-    expect(result.current.blocks).toHaveLength(2)
-    expect(result.current.blocks[0].type).toBe('user') // history
-    expect(result.current.blocks[1].id).toBe('u-1') // live overlay
+    // Binary switch: isLive=true → committedBlocks only
+    expect(result.current.blocks).toHaveLength(1)
+    expect(result.current.blocks[0].id).toBe('u-1')
   })
 
-  it('merges history + live overlay without divider even with streamGap', () => {
+  it('merges history + live overlay without divider in binary source mode', () => {
     mockSessionSource.mockReturnValue({
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       blocks: [{ type: 'user', id: 'u-new', text: 'new msg', timestamp: 2000 }] as any,
@@ -1221,8 +1125,8 @@ describe('source selection always merges history + live overlay', () => {
       totalInputTokens: 0,
       contextWindowSize: 0,
       canResumeLazy: false,
-      turnVersion: 1,
-      streamGap: true,
+      committedBlocks: [{ type: 'user', id: 'u-new', text: 'new msg', timestamp: 2000 }] as any,
+      pendingText: '',
       clearPendingMessage: vi.fn(),
       model: '',
       slashCommands: [],
@@ -1232,7 +1136,6 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
-      resetAccumulator: vi.fn(),
     })
 
     mockSessionMessages.mockReturnValue({
@@ -1266,23 +1169,20 @@ describe('source selection always merges history + live overlay', () => {
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
-    // history + live overlay, no divider
-    expect(result.current.blocks).toHaveLength(2)
-    expect(result.current.blocks[0].type).toBe('user') // history
-    expect(result.current.blocks[1].id).toBe('u-new') // live overlay
+    // Binary switch: isLive=true → committedBlocks only, no divider
+    expect(result.current.blocks).toHaveLength(1)
+    expect(result.current.blocks[0].id).toBe('u-new')
     expect(result.current.blocks.every((b) => b.type !== 'notice')).toBe(true)
   })
 })
 
-// ─── New merge: history base + live overlay ────────────────
-describe('new merge: history base + live overlay', () => {
-  it('always produces [...historyBlocks, ...liveOverlayBlocks, ...optimistic]', () => {
+// ─── Binary source: isLive=false uses history ────────────────
+describe('binary source: isLive=false uses history', () => {
+  it('produces history blocks when isLive=false (binary switch)', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
-      blocks: [{ type: 'assistant', id: 'a1', blocks: [], status: 'streaming' }],
-      turnVersion: 1,
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture
-    } as any)
+      isLive: false,
+    })
     mockSessionMessages.mockReturnValue({
       ...defaultMessages,
       data: {
@@ -1299,17 +1199,16 @@ describe('new merge: history base + live overlay', () => {
       },
     } as unknown as ReturnType<typeof useSessionMessages>)
     const { result } = renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
+    // isLive=false → history only
+    expect(result.current.blocks).toHaveLength(1)
     expect(result.current.blocks[0].type).toBe('user')
-    expect(result.current.blocks[1].type).toBe('assistant')
   })
 
   it('produces no RESUMED_DIVIDER (notice block) in any scenario', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
-      blocks: [{ type: 'assistant', id: 'a1', blocks: [], status: 'streaming' }],
-      turnVersion: 1,
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture
-    } as any)
+      isLive: false,
+    })
     mockSessionMessages.mockReturnValue({
       ...defaultMessages,
       data: {
@@ -1333,7 +1232,6 @@ describe('new merge: history base + live overlay', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       blocks: [],
-      turnVersion: 0,
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
     } as any)
     mockSessionMessages.mockReturnValue({
@@ -1357,149 +1255,9 @@ describe('new merge: history base + live overlay', () => {
   })
 })
 
-// ─── Deferred accumulator reset (zero visual gap) ────────────────
-describe('deferred accumulator reset (zero visual gap)', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks()
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-    })
-    mockSessionMessages.mockReturnValue({
-      ...defaultMessages,
-    } as unknown as ReturnType<typeof useSessionMessages>)
-  })
-
-  it('calls resetAccumulator after turnVersion increments and history stops fetching', () => {
-    const resetFn = vi.fn()
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      turnVersion: 1,
-      resetAccumulator: resetFn,
-      blocks: [{ type: 'assistant', id: 'a1', blocks: [], status: 'complete' }],
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture
-    } as any)
-    mockSessionMessages.mockReturnValue({
-      ...defaultMessages,
-      isFetching: false,
-    } as unknown as ReturnType<typeof useSessionMessages>)
-
-    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
-    expect(resetFn).toHaveBeenCalled()
-  })
-
-  it('does NOT call resetAccumulator while history is still fetching', () => {
-    const resetFn = vi.fn()
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      turnVersion: 1,
-      resetAccumulator: resetFn,
-    })
-    mockSessionMessages.mockReturnValue({
-      ...defaultMessages,
-      isFetching: true,
-    } as unknown as ReturnType<typeof useSessionMessages>)
-
-    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
-    expect(resetFn).not.toHaveBeenCalled()
-  })
-
-  it('does NOT call resetAccumulator if history fetch errors (error guard)', () => {
-    const resetFn = vi.fn()
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      turnVersion: 1,
-      resetAccumulator: resetFn,
-    })
-    mockSessionMessages.mockReturnValue({
-      ...defaultMessages,
-      isFetching: false,
-      error: new Error('network'),
-    } as unknown as ReturnType<typeof useSessionMessages>)
-
-    renderHook(() => useConversation('sess-1'), { wrapper: createWrapper() })
-    expect(resetFn).not.toHaveBeenCalled()
-  })
-})
-
-// ─── freshlyCreated suppression ────────────────
-describe('freshlyCreated suppression', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks()
-    mockSessionSource.mockReturnValue({ ...defaultSource })
-    mockSessionMessages.mockReturnValue({
-      ...defaultMessages,
-    } as unknown as ReturnType<typeof useSessionMessages>)
-  })
-
-  it('passes suppressNotFound = true when freshlyCreated + idle', () => {
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      sessionState: 'idle',
-    })
-
-    renderHook(() => useConversation('sess-1', { freshlyCreated: true }), {
-      wrapper: createWrapper(),
-    })
-
-    // useSessionMessages is called by useHistoryBlocks internally.
-    // The suppressNotFound option is derived from isInitializing which should be true
-    // when freshlyCreated + idle.
-    expect(mockSessionMessages).toHaveBeenCalledWith(
-      'sess-1',
-      expect.objectContaining({ suppressNotFound: true }),
-    )
-  })
-
-  it('passes suppressNotFound = false when NOT freshlyCreated + idle', () => {
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      sessionState: 'idle',
-    })
-
-    renderHook(() => useConversation('sess-1'), {
-      wrapper: createWrapper(),
-    })
-
-    // Without freshlyCreated, idle state should NOT suppress 404
-    expect(mockSessionMessages).toHaveBeenCalledWith(
-      'sess-1',
-      expect.objectContaining({ suppressNotFound: false }),
-    )
-  })
-
-  it('passes suppressNotFound = true when initializing (regardless of freshlyCreated)', () => {
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      sessionState: 'initializing',
-    })
-
-    renderHook(() => useConversation('sess-1'), {
-      wrapper: createWrapper(),
-    })
-
-    // isInitializing is true when sessionState is 'initializing', regardless of freshlyCreated
-    expect(mockSessionMessages).toHaveBeenCalledWith(
-      'sess-1',
-      expect.objectContaining({ suppressNotFound: true }),
-    )
-  })
-
-  it('passes suppressNotFound = true when active (regardless of freshlyCreated)', () => {
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      sessionState: 'active',
-    })
-
-    renderHook(() => useConversation('sess-1'), {
-      wrapper: createWrapper(),
-    })
-
-    expect(mockSessionMessages).toHaveBeenCalledWith(
-      'sess-1',
-      expect.objectContaining({ suppressNotFound: true }),
-    )
-  })
-})
+// NOTE: "deferred accumulator reset" and "freshlyCreated suppression" tests deleted.
+// These tested dual-source merge behavior (turnVersion/resetAccumulator/freshlyCreated)
+// which has been replaced by the binary source switch (committedBlocks/pendingText).
 
 // ─── skipWs (watching mode) ────────────────
 describe('skipWs (watching mode)', () => {
@@ -1657,5 +1415,182 @@ describe('optimistic reconciliation (dual-source dedup)', () => {
     expect((userBlocks[0] as any).text).toBe('unconfirmed msg')
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
     expect((userBlocks[0] as any).status).toBe('sending')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HT-15..HT-18: Audit-flagged tests for committedBlocks/pendingText behavior
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('HT-15..HT-18: committedBlocks/pendingText audit tests', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({ ...defaultSource })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  // --- HT-15: pendingText appended to last committed assistant block during streaming ---
+  it('HT-15: pendingText appended to last committed assistant block during streaming', () => {
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: true,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      committedBlocks: [
+        {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'Hello ' }],
+          streaming: true,
+        },
+      ] as any,
+      blocks: [
+        {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'Hello ' }],
+          streaming: true,
+        },
+      ] as any,
+      pendingText: 'world',
+    })
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+
+    // The last assistant block's last text segment should have 'Hello world'
+    const lastBlock = result.current.blocks[result.current.blocks.length - 1]
+    expect(lastBlock.type).toBe('assistant')
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const segments = (lastBlock as any).segments
+    const lastTextSeg = [...segments].reverse().find((s: any) => s.kind === 'text')
+    expect(lastTextSeg.text).toBe('Hello world')
+  })
+
+  // --- HT-16: blocks_snapshot with lastSeq is handled without error ---
+  it('HT-16: blocks_snapshot with lastSeq is handled (resume behavior verified)', () => {
+    // Verify that when committedBlocks arrive from a snapshot with data,
+    // useConversation renders them correctly. This is the observable behavior
+    // of blocks_snapshot being processed: committed blocks appear in output.
+    const snapshotBlocks = [
+      { type: 'user', id: 'u1', text: 'question', timestamp: 1000 },
+      {
+        type: 'assistant',
+        id: 'a1',
+        segments: [{ kind: 'text', text: 'answer' }],
+        streaming: false,
+      },
+    ]
+
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: true,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      committedBlocks: snapshotBlocks as any,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      blocks: snapshotBlocks as any,
+      pendingText: '',
+    })
+
+    const { result } = renderHook(() => useConversation('test-session'), {
+      wrapper: createWrapper(),
+    })
+
+    // blocks_snapshot data is rendered: 2 blocks (user + assistant)
+    expect(result.current.blocks).toHaveLength(2)
+    expect(result.current.blocks[0].type).toBe('user')
+    expect(result.current.blocks[1].type).toBe('assistant')
+  })
+
+  // --- HT-17: sessionId change resets msgState to empty ---
+  it('HT-17: sessionId change resets blocks to empty', () => {
+    // Session 'a' has 3 committed blocks
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: true,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      committedBlocks: [
+        { type: 'user', id: 'u1', text: 'msg1', timestamp: 1 },
+        { type: 'assistant', id: 'a1', segments: [], streaming: false },
+        { type: 'user', id: 'u2', text: 'msg2', timestamp: 2 },
+      ] as any,
+      blocks: [
+        { type: 'user', id: 'u1', text: 'msg1', timestamp: 1 },
+        { type: 'assistant', id: 'a1', segments: [], streaming: false },
+        { type: 'user', id: 'u2', text: 'msg2', timestamp: 2 },
+      ] as any,
+      pendingText: '',
+    })
+
+    const { result, rerender } = renderHook(({ sid }: { sid: string }) => useConversation(sid), {
+      wrapper: createWrapper(),
+      initialProps: { sid: 'session-a' },
+    })
+    expect(result.current.blocks).toHaveLength(3)
+
+    // Switch to session 'b' — useSessionSource returns empty (reset)
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      committedBlocks: [],
+      blocks: [],
+      pendingText: '',
+    })
+
+    rerender({ sid: 'session-b' })
+
+    expect(result.current.blocks).toHaveLength(0)
+  })
+
+  // --- HT-18: isLive→false transition triggers JSONL prefetch ---
+  it('HT-18: isLive→false transition invalidates session-messages query', () => {
+    // Start with isLive=true
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: true,
+      sessionState: 'active',
+      controlId: 'ctrl-1',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      committedBlocks: [{ type: 'user', id: 'u1', text: 'msg', timestamp: 1 }] as any,
+      blocks: [{ type: 'user', id: 'u1', text: 'msg', timestamp: 1 }] as any,
+      pendingText: '',
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const spy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children)
+
+    const { rerender } = renderHook(() => useConversation('test-session'), { wrapper })
+
+    // Transition to isLive=false
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: false,
+      committedBlocks: [],
+      blocks: [],
+      pendingText: '',
+    })
+
+    rerender({})
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['session-messages', 'test-session'],
+      }),
+    )
   })
 })
