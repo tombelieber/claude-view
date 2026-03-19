@@ -16,6 +16,7 @@ import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
+import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
 import { deriveInputBarState } from '../lib/control-status-map'
 import { getContextLimit } from '../lib/model-context-windows'
@@ -70,9 +71,13 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
   const navigate = useNavigate()
   const location = useLocation()
   const trackEvent = useTrackEvent()
+  const { recordSessionView } = useTelemetryPrompt()
 
   useEffect(() => {
-    if (sessionId) trackEvent('session_opened')
+    if (sessionId) {
+      trackEvent('session_opened')
+      recordSessionView()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
   const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated

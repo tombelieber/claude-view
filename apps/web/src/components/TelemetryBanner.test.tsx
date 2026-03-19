@@ -3,15 +3,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { TelemetryBanner } from './TelemetryBanner'
 
 describe('TelemetryBanner', () => {
-  it('renders when status is undecided', () => {
+  it('renders compelling copy', () => {
     render(<TelemetryBanner onEnable={vi.fn()} onDisable={vi.fn()} />)
-    expect(screen.getByText(/help improve claude-view/i)).toBeInTheDocument()
+    expect(screen.getByText(/help shape claude-view/i)).toBeInTheDocument()
+    expect(screen.getByText(/2,000\+/i)).toBeInTheDocument()
   })
 
-  it('calls onEnable when Enable clicked', () => {
+  it('calls onEnable when Enable analytics clicked', () => {
     const onEnable = vi.fn()
     render(<TelemetryBanner onEnable={onEnable} onDisable={vi.fn()} />)
-    fireEvent.click(screen.getByText(/enable/i))
+    fireEvent.click(screen.getByText(/enable analytics/i))
     expect(onEnable).toHaveBeenCalledOnce()
   })
 
@@ -32,5 +33,11 @@ describe('TelemetryBanner', () => {
     const link = screen.getByText(/learn more/i)
     expect(link).toBeInTheDocument()
     expect(link.closest('a')).toHaveAttribute('href', expect.stringContaining('telemetry'))
+  })
+
+  it('shows privacy assurances', () => {
+    render(<TelemetryBanner onEnable={vi.fn()} onDisable={vi.fn()} />)
+    expect(screen.getByText(/no session content/i)).toBeInTheDocument()
+    expect(screen.getByText(/toggle off anytime/i)).toBeInTheDocument()
   })
 })
