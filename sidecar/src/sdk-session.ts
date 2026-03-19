@@ -23,6 +23,7 @@ import type {
 } from './protocol.js'
 import { RingBuffer } from './ring-buffer.js'
 import type { ControlSession, SessionRegistry } from './session-registry.js'
+import { StreamAccumulator } from './stream-accumulator.js'
 
 function buildQueryOptions(
   opts: {
@@ -122,6 +123,7 @@ export function createControlSession(
     permissions,
     permissionMode: req.permissionMode ?? 'default',
     activeWs: null,
+    accumulator: new StreamAccumulator(),
   }
 
   registry.register(cs)
@@ -202,6 +204,7 @@ export async function resumeControlSession(
     nextSeq: 0,
     permissions,
     activeWs: null,
+    accumulator: new StreamAccumulator(),
   }
 
   registry.register(cs)
@@ -259,6 +262,7 @@ export function forkControlSession(
     permissions,
     permissionMode: req.permissionMode ?? 'default',
     activeWs: null,
+    accumulator: new StreamAccumulator(),
   }
 
   registry.register(cs)
