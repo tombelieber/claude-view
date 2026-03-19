@@ -108,7 +108,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
       liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
       isSidecarManaged: sidecarSessionIds?.has(s.sessionId) ?? false,
     }))
-  }, [historySessions, activeSessionIds, activeSessions])
+  }, [historySessions, activeSessionIds, activeSessions, sidecarSessionIds])
 
   // Separate active-pinned from rest
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)

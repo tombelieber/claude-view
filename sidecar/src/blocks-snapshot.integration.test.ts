@@ -139,9 +139,9 @@ describe('IT-01: Full pipeline — blocks_snapshot on WS connect', () => {
     const messages = getAllSentMessages(ws)
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
-    expect(snapshot!.lastSeq).toBeTypeOf('number')
+    expect(snapshot?.lastSeq).toBeTypeOf('number')
 
-    const blocks = snapshot!.blocks as { type: string }[]
+    const blocks = snapshot?.blocks as { type: string }[]
     // Should have: system(session_init) + system(session_status) + assistant(streaming)
     const systemBlocks = blocks.filter((b) => b.type === 'system')
     const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
@@ -152,7 +152,7 @@ describe('IT-01: Full pipeline — blocks_snapshot on WS connect', () => {
     const assistant = assistantBlocks[0] as { segments: { kind: string; text?: string }[] }
     const textSeg = assistant.segments.find((s) => s.kind === 'text')
     expect(textSeg).toBeDefined()
-    expect(textSeg!.text).toBe('Hello world')
+    expect(textSeg?.text).toBe('Hello world')
   })
 })
 
@@ -184,7 +184,7 @@ describe('IT-02: Pipeline — content event triggers blocks_update on connected 
     expect(messages[0].type).toBe('assistant_text')
     const blocksUpdate = messages.find((m) => m.type === 'blocks_update')
     expect(blocksUpdate).toBeDefined()
-    expect((blocksUpdate!.blocks as unknown[]).length).toBeGreaterThan(0)
+    expect((blocksUpdate?.blocks as unknown[]).length).toBeGreaterThan(0)
   })
 })
 
@@ -211,8 +211,8 @@ describe('IT-03: turn_complete has embedded blocks, no separate blocks_update', 
     const messages = getAllSentMessages(ws)
     const turnComplete = messages.find((m) => m.type === 'turn_complete')
     expect(turnComplete).toBeDefined()
-    expect(turnComplete!.blocks).toBeDefined()
-    expect((turnComplete!.blocks as unknown[]).length).toBeGreaterThan(0)
+    expect(turnComplete?.blocks).toBeDefined()
+    expect((turnComplete?.blocks as unknown[]).length).toBeGreaterThan(0)
 
     // No separate blocks_update
     const blocksUpdate = messages.find((m) => m.type === 'blocks_update')
@@ -254,7 +254,7 @@ describe('IT-04: WS reconnect replays full accumulator state', () => {
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
 
-    const blocks = snapshot!.blocks as { type: string }[]
+    const blocks = snapshot?.blocks as { type: string }[]
     // Should have: system blocks + 3 assistant blocks (finalized) + 3 turn_boundary blocks
     const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
     const boundaryBlocks = blocks.filter((b) => b.type === 'turn_boundary')
@@ -291,7 +291,7 @@ describe('IT-05: Multi-client — second WS replaces first with 4001', () => {
     const messages2 = getAllSentMessages(ws2)
     const snapshot = messages2.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
-    expect((snapshot!.blocks as unknown[]).length).toBeGreaterThan(0)
+    expect((snapshot?.blocks as unknown[]).length).toBeGreaterThan(0)
   })
 })
 
@@ -341,10 +341,10 @@ describe('IT-06: Accumulator + RingBuffer capture every emitted event', () => {
     const textSeg = assistant.segments.find((s) => s.kind === 'text')
     const toolSeg = assistant.segments.find((s) => s.kind === 'tool')
     expect(textSeg).toBeDefined()
-    expect(textSeg!.kind === 'text' && textSeg!.text).toBe('chunk1chunk2chunk3')
+    expect(textSeg?.kind === 'text' && textSeg?.text).toBe('chunk1chunk2chunk3')
     expect(toolSeg).toBeDefined()
-    if (toolSeg!.kind !== 'tool') throw new Error('expected tool')
-    expect(toolSeg!.execution.toolName).toBe('Read')
+    if (toolSeg?.kind !== 'tool') throw new Error('expected tool')
+    expect(toolSeg?.execution.toolName).toBe('Read')
   })
 })
 
@@ -371,7 +371,7 @@ describe('IT-07: Resume after blocks_snapshot delivers no duplicates', () => {
     expect(snapshot).toBeDefined()
     // 3 user events (seq 0-2) + 1 session_status from handleWebSocket (seq 3)
     // lastSnapshotSeq = nextSeq - 1 = 3
-    const lastSnapshotSeq = snapshot!.lastSeq as number
+    const lastSnapshotSeq = snapshot?.lastSeq as number
     expect(lastSnapshotSeq).toBeGreaterThanOrEqual(2)
 
     // Clear sends, then simulate client sending resume with lastSeq=-1
@@ -432,11 +432,11 @@ describe('IT-08: Resume after disconnect — new snapshot covers everything', ()
     // 5 user events (seq 0-4) + session_status from ws1 connect (seq 5)
     // + 2 more events while disconnected (seq 6, 7)
     // + session_status from ws2 connect (seq 8) → lastSnapshotSeq = 8
-    const lastSnapshotSeq = snapshot!.lastSeq as number
+    const lastSnapshotSeq = snapshot?.lastSeq as number
     expect(lastSnapshotSeq).toBeGreaterThanOrEqual(7)
 
     // Blocks include all text
-    const blocks = snapshot!.blocks as {
+    const blocks = snapshot?.blocks as {
       type: string
       segments?: { kind: string; text?: string }[]
     }[]
