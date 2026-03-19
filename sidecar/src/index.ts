@@ -1,5 +1,4 @@
 // sidecar/src/index.ts
-import fs from 'node:fs'
 import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
@@ -11,7 +10,7 @@ import { runWorkflow } from './workflow-runner.js'
 import type { WorkflowEvent } from './workflow-runner.js'
 import { handleWebSocket } from './ws-handler.js'
 
-const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
+const SIDECAR_PORT = Number(process.env.SIDECAR_PORT ?? '3001')
 
 const registry = new SessionRegistry()
 const app = new Hono()
@@ -20,7 +19,7 @@ app.route(
   '/health',
   healthRouter(() => registry.activeCount),
 )
-app.route('/control', createRoutes(registry))
+app.route('/api', createRoutes(registry))
 app.get('/', (c) => c.json({ status: 'ok' }))
 
 // Workflow runner — POST /workflows/run (preserved from existing sidecar)
@@ -42,51 +41,42 @@ app.post('/workflows/run', async (c) => {
   })
 })
 
-// Clean up stale socket
-if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
-
 const server = createAdaptorServer(app)
-server.listen(SOCKET_PATH, () => {
-  console.log(`[sidecar] Listening on ${SOCKET_PATH}`)
-  console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+server.listen(SIDECAR_PORT, () => {
+  console.log(`[sidecar] Listening on :${SIDECAR_PORT}`)
+  console.log(`[sidecar] PID: ${process.pid}`)
   // Populate supported models cache (fire-and-forget, refreshes hourly)
   startModelCacheRefresh()
 })
 
-// WS upgrade
+// WS upgrade — /ws/chat/:sessionId
 const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (request, socket, head) => {
-  const match = request.url?.match(/\/control\/sessions\/([^/]+)\/stream/)
+  const match = request.url?.match(/\/ws\/chat\/([^/?]+)/)
   if (!match?.[1]) {
     socket.destroy()
     return
   }
 
-  const controlId = match[1]
+  const sessionId = match[1]
+  const cs = registry.getBySessionId(sessionId)
+  if (!cs) {
+    socket.destroy()
+    return
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
-    handleWebSocket(ws, controlId, registry)
+    handleWebSocket(ws, cs.controlId, registry)
   })
 })
 
-// Parent process check
-const parentCheck = setInterval(() => {
-  try {
-    process.kill(process.ppid!, 0)
-  } catch {
-    console.log('[sidecar] Parent exited, shutting down')
-    void shutdown()
-  }
-}, 2000)
-
 async function shutdown() {
-  clearInterval(parentCheck)
   await registry.closeAll()
   server.close()
-  if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
   process.exit(0)
 }
 
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-export { app, registry, server, SOCKET_PATH, runWorkflow }
+export { app, registry, server, SIDECAR_PORT, runWorkflow }
