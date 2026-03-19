@@ -37,7 +37,6 @@ describe('ws-handler requestId echo', () => {
     mockSession = {
       activeWs: null,
       state: 'active',
-      nextSeq: 0,
       emitter: { on: vi.fn(), removeListener: vi.fn() },
       eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
       permissions: {
@@ -55,12 +54,6 @@ describe('ws-handler requestId echo', () => {
         accountInfo: vi.fn().mockResolvedValue({ plan: 'pro' }),
         setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
         rewindFiles: vi.fn().mockResolvedValue({ files: ['a.ts'] }),
-      },
-      accumulator: {
-        getBlocks: vi.fn().mockReturnValue([]),
-        push: vi.fn(),
-        finalize: vi.fn(),
-        reset: vi.fn(),
       },
     }
 
@@ -158,7 +151,6 @@ describe('ws-handler requestId echo', () => {
         activeWs: null,
         state: 'waiting_input',
         sessionId: 'sess-1',
-        nextSeq: 0,
         emitter: { on: vi.fn(), removeListener: vi.fn() },
         eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
         permissions: {
@@ -177,12 +169,6 @@ describe('ws-handler requestId echo', () => {
           accountInfo: vi.fn().mockResolvedValue({}),
           setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
           rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
-        },
-        accumulator: {
-          getBlocks: vi.fn().mockReturnValue([]),
-          push: vi.fn(),
-          finalize: vi.fn(),
-          reset: vi.fn(),
         },
       }
 
@@ -256,7 +242,6 @@ describe('ws-handler requestId echo', () => {
       bufSession = {
         activeWs: null,
         state: 'active',
-        nextSeq: 0,
         emitter: { on: vi.fn(), removeListener: vi.fn() },
         eventBuffer: { getAfter: vi.fn().mockReturnValue(null) },
         permissions: {
@@ -274,12 +259,6 @@ describe('ws-handler requestId echo', () => {
           accountInfo: vi.fn().mockResolvedValue({}),
           setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
           rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
-        },
-        accumulator: {
-          getBlocks: vi.fn().mockReturnValue([]),
-          push: vi.fn(),
-          finalize: vi.fn(),
-          reset: vi.fn(),
         },
       }
 
@@ -337,7 +316,6 @@ describe('ws-handler requestId echo', () => {
       wsSession = {
         activeWs: null,
         state: 'active',
-        nextSeq: 0,
         emitter: { on: vi.fn(), removeListener: vi.fn() },
         eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
         permissions: {
@@ -355,12 +333,6 @@ describe('ws-handler requestId echo', () => {
           accountInfo: vi.fn().mockResolvedValue({}),
           setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
           rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
-        },
-        accumulator: {
-          getBlocks: vi.fn().mockReturnValue([]),
-          push: vi.fn(),
-          finalize: vi.fn(),
-          reset: vi.fn(),
         },
       }
 

@@ -9,7 +9,6 @@ import { MessageBridge } from './message-bridge.js'
 import { closeSession, sendMessage, setSessionMode, waitForSessionInit } from './sdk-session.js'
 import { SessionRegistry } from './session-registry.js'
 import type { ControlSession } from './session-registry.js'
-import { StreamAccumulator } from './stream-accumulator.js'
 
 type MockQuery = Query & { unblock: () => void }
 
@@ -75,7 +74,6 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     permissions: { drainAll: vi.fn() } as any,
     permissionMode: 'default',
     activeWs: null,
-    accumulator: new StreamAccumulator(),
     ...overrides,
   }
 }
