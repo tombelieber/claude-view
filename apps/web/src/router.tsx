@@ -14,6 +14,7 @@ import { LiveMonitorPage } from './pages/LiveMonitorPage'
 // Lazy-loaded: ChatPage pulls in react-markdown + block renderers (heavy deps)
 const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })))
 import { WorkflowDetailPage } from '@enterprise/pages/WorkflowDetailPage'
+import { WorkflowEditorPage } from '@enterprise/pages/WorkflowEditorPage'
 import { WorkflowsPage } from '@enterprise/pages/WorkflowsPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
@@ -86,6 +87,8 @@ export const router = createBrowserRouter([
       { path: 'prompts', element: <PromptsPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },
+      { path: 'workflows/new', element: <WorkflowEditorPage /> },
+      { path: 'workflows/:id/edit', element: <WorkflowEditorPage /> },
       { path: 'workflows/:id', element: <WorkflowDetailPage /> },
       { path: 'plugins', element: <PluginsPage /> },
       { path: 'monitor', element: <SystemMonitorPage /> },
