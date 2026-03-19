@@ -819,4 +819,66 @@ mod tests {
         assert_eq!(json["session"]["id"], "abc-123");
         assert_eq!(json["session"]["closedAt"], 1_700_000_000);
     }
+
+    // -----------------------------------------------------------------------
+    // classify_live_session — unit tests for the gate logic.
+    //
+    // These prevent the dead-PID 410 regression: the function is pure (no IO),
+    // so every branch is tested cheaply without spawning sidecar/live_manager.
+    // -----------------------------------------------------------------------
+
+    use super::{classify_live_session, LiveSessionAction};
+
+    #[test]
+    fn classify_none_returns_resume_new() {
+        assert_eq!(classify_live_session(None), LiveSessionAction::ResumeNew);
+    }
+
+    /// Regression: dead-PID sessions MUST proceed to resume, never block.
+    #[test]
+    fn classify_dead_pid_returns_resume_not_block() {
+        let mut session = test_live_session("dead-pid-session");
+        session.pid = Some(999_999);
+        let action = classify_live_session(Some(&session));
+        assert_eq!(
+            action,
+            LiveSessionAction::ResumeDeadProcess,
+            "Dead-PID session must resume, not block — SDK creates a new CLI process"
+        );
+    }
+
+    #[test]
+    fn classify_no_pid_returns_resume_dead() {
+        let mut session = test_live_session("no-pid-session");
+        session.pid = None;
+        let action = classify_live_session(Some(&session));
+        assert_eq!(action, LiveSessionAction::ResumeDeadProcess);
+    }
+
+    #[test]
+    fn classify_alive_pid_no_control_returns_resume_alive() {
+        let mut session = test_live_session("alive-session");
+        session.pid = Some(std::process::id());
+        session.control = None;
+        let action = classify_live_session(Some(&session));
+        assert_eq!(action, LiveSessionAction::ResumeAlive);
+    }
+
+    #[test]
+    fn classify_already_controlled_returns_reuse() {
+        let mut session = test_live_session("controlled-session");
+        session.pid = Some(std::process::id());
+        session.control = Some(ControlBinding {
+            control_id: "ctl-123".to_string(),
+            bound_at: 0,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        });
+        let action = classify_live_session(Some(&session));
+        match action {
+            LiveSessionAction::ReuseExisting { control_id, .. } => {
+                assert_eq!(control_id, "ctl-123");
+            }
+            other => panic!("Expected ReuseExisting, got {other:?}"),
+        }
+    }
 }
