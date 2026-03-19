@@ -1,5 +1,6 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog'
 import { AlertTriangle } from 'lucide-react'
+import { useCallback, useRef } from 'react'
 import { AlertDialogContent, AlertDialogOverlay } from '../ui/CenteredDialog'
 
 interface TakeoverConfirmDialogProps {
@@ -9,6 +10,15 @@ interface TakeoverConfirmDialogProps {
 }
 
 export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverConfirmDialogProps) {
+  const checkboxRef = useRef<HTMLInputElement>(null)
+
+  const handleConfirm = useCallback(() => {
+    if (checkboxRef.current?.checked) {
+      localStorage.setItem('claude-view:takeover-no-remind', 'true')
+    }
+    onConfirm()
+  }, [onConfirm])
+
   return (
     <AlertDialog.Root open={open} onOpenChange={(v) => !v && onCancel()}>
       <AlertDialog.Portal>
@@ -25,6 +35,17 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
             session&apos;s work will continue unaffected.
           </AlertDialog.Description>
 
+          <label className="mt-4 flex items-center gap-2 cursor-pointer select-none">
+            <input
+              ref={checkboxRef}
+              type="checkbox"
+              className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-amber-600 focus:ring-amber-500"
+            />
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Don&apos;t remind me again
+            </span>
+          </label>
+
           <div className="mt-6 flex justify-end gap-3">
             <AlertDialog.Cancel asChild>
               <button
@@ -37,7 +58,7 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
             <AlertDialog.Action asChild>
               <button
                 type="button"
-                onClick={onConfirm}
+                onClick={handleConfirm}
                 className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700"
               >
                 Take Control
