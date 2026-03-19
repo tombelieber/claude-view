@@ -32,6 +32,7 @@ vi.mock('./use-session-source', () => ({
     committedBlocks: [],
     pendingText: '',
     clearPendingMessage: vi.fn(),
+    initComplete: false,
   }),
 }))
 
@@ -76,6 +77,7 @@ const defaultSource = {
   committedBlocks: [],
   pendingText: '',
   clearPendingMessage: vi.fn(),
+  initComplete: false,
 }
 
 const defaultMessages = {
