@@ -23,14 +23,22 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: `cd ${path.resolve(webDir, '../..')} && cargo run -p claude-view-server`,
-    env: {
-      STATIC_DIR: path.resolve(webDir, 'dist'),
-      CARGO_TARGET_DIR: path.resolve(webDir, '../../target-playwright'),
+  webServer: [
+    {
+      command: `cd ${path.resolve(webDir, '../..')} && cargo run -p claude-view-server`,
+      env: {
+        STATIC_DIR: path.resolve(webDir, 'dist'),
+        CARGO_TARGET_DIR: path.resolve(webDir, '../../target-playwright'),
+      },
+      url: 'http://localhost:47892/api/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 300000,
     },
-    url: 'http://localhost:47892/api/health',
-    reuseExistingServer: !process.env.CI,
-    timeout: 300000,
-  },
+    {
+      command: 'cd ../../sidecar && bun run src/index.ts',
+      url: 'http://localhost:3001/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30000,
+    },
+  ],
 })
