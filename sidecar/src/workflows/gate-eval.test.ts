@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import * as nodeFs from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { evaluateGate } from './gate-evaluator.js'
 
-// Module-level fs mock for ESM compatibility
-vi.mock('node:fs', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:fs')>()),
-  existsSync: vi.fn(() => false),
-}))
-const { existsSync } = await import('node:fs')
-const { evaluateGate } = await import('./gate-evaluator.js')
+// Spy on existsSync — works in both bun test and vitest
+const existsSyncSpy = vi.spyOn(nodeFs, 'existsSync')
+
+afterEach(() => {
+  existsSyncSpy.mockReset()
+})
 
 describe('evaluateGate', () => {
   // json_field type
@@ -98,11 +99,11 @@ describe('evaluateGate', () => {
 
   // file_exists type
   it('file_exists -- pass (mocked)', () => {
-    vi.mocked(existsSync).mockReturnValueOnce(true)
+    existsSyncSpy.mockReturnValueOnce(true)
     expect(evaluateGate({ type: 'file_exists', path: '/tmp/out.md', maxRetries: 1 }, '')).toBe(true)
   })
   it('file_exists -- fail (mocked)', () => {
-    vi.mocked(existsSync).mockReturnValueOnce(false)
+    existsSyncSpy.mockReturnValueOnce(false)
     expect(evaluateGate({ type: 'file_exists', path: '/tmp/nope.md', maxRetries: 1 }, '')).toBe(
       false,
     )

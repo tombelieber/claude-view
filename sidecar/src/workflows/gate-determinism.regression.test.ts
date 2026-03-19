@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import * as nodeFs from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { evaluateGate } from './gate-evaluator.js'
 
-vi.mock('node:fs', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:fs')>()),
-  existsSync: vi.fn(() => true),
-}))
+// Spy on existsSync — works in both bun test and vitest
+const existsSyncSpy = vi.spyOn(nodeFs, 'existsSync')
 
-const { evaluateGate } = await import('./gate-evaluator.js')
+afterEach(() => {
+  existsSyncSpy.mockReset()
+})
 
 describe('gate evaluator determinism', () => {
   it('same input produces same result over 1000 iterations (json_field)', () => {
