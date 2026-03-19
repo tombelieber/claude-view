@@ -148,3 +148,146 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     expect(capturedOptions!.settingSources).toEqual(['user', 'project'])
   })
 })
+
+describe('workflow engine fields (via createControlSession)', () => {
+  let registry: SessionRegistry
+
+  beforeEach(() => {
+    registry = new SessionRegistry()
+    capturedOptions = undefined
+  })
+
+  it('forwards effort when provided', () => {
+    createControlSession({ model: 'claude-haiku-4-5-20251001', effort: 'high' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).effort).toBe('high')
+  })
+
+  it('forwards maxBudgetUsd when provided', () => {
+    createControlSession({ model: 'claude-haiku-4-5-20251001', maxBudgetUsd: 5.0 }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).maxBudgetUsd).toBe(5.0)
+  })
+
+  it('forwards maxTurns when provided', () => {
+    createControlSession({ model: 'claude-haiku-4-5-20251001', maxTurns: 10 }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).maxTurns).toBe(10)
+  })
+
+  it('forwards systemPrompt string when provided', () => {
+    createControlSession(
+      { model: 'claude-haiku-4-5-20251001', systemPrompt: 'You are a code reviewer.' },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).systemPrompt).toBe('You are a code reviewer.')
+  })
+
+  it('forwards systemPrompt preset with append', () => {
+    const preset = {
+      type: 'preset' as const,
+      preset: 'claude_code' as const,
+      append: 'Be concise.',
+    }
+    createControlSession({ model: 'claude-haiku-4-5-20251001', systemPrompt: preset }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).systemPrompt).toEqual(preset)
+  })
+
+  it('forwards outputFormat when provided', () => {
+    const format = {
+      type: 'json_schema' as const,
+      schema: { type: 'object', properties: { result: { type: 'string' } } },
+    }
+    createControlSession({ model: 'claude-haiku-4-5-20251001', outputFormat: format }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).outputFormat).toEqual(format)
+  })
+
+  it('forwards plugins when provided', () => {
+    const plugins = [{ type: 'local' as const, path: '/path/to/plugin' }]
+    createControlSession({ model: 'claude-haiku-4-5-20251001', plugins }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).plugins).toEqual(plugins)
+  })
+
+  it('forwards hooks when provided', () => {
+    const hooks = { PreToolUse: [{ matcher: '.*', command: 'echo ok' }] }
+    createControlSession({ model: 'claude-haiku-4-5-20251001', hooks }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).hooks).toEqual(hooks)
+  })
+
+  it('forwards agents record when provided', () => {
+    const agents = { reviewer: { model: 'claude-haiku-4-5-20251001', permissionMode: 'auto' } }
+    createControlSession({ model: 'claude-haiku-4-5-20251001', agents }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    expect((capturedOptions as any).agents).toEqual(agents)
+  })
+
+  it('omits undefined fields (no effort/maxBudgetUsd/maxTurns/etc in options)', () => {
+    createControlSession({ model: 'claude-haiku-4-5-20251001' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    const opts = capturedOptions as any
+    expect(opts.effort).toBeUndefined()
+    expect(opts.maxBudgetUsd).toBeUndefined()
+    expect(opts.maxTurns).toBeUndefined()
+    expect(opts.systemPrompt).toBeUndefined()
+    expect(opts.outputFormat).toBeUndefined()
+    expect(opts.plugins).toBeUndefined()
+    expect(opts.hooks).toBeUndefined()
+    expect(opts.agents).toBeUndefined()
+  })
+
+  it('snapshot of all forwarded fields', () => {
+    createControlSession(
+      {
+        model: 'claude-haiku-4-5-20251001',
+        effort: 'max',
+        maxBudgetUsd: 10,
+        maxTurns: 25,
+        systemPrompt: 'Be helpful.',
+        outputFormat: { type: 'json_schema', schema: { type: 'object' } },
+        plugins: [{ type: 'local', path: '/p' }],
+        hooks: { PostToolUse: [] },
+        agents: { a: { model: 'claude-haiku-4-5-20251001' } },
+      },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    // biome-ignore lint/suspicious/noExplicitAny: testing SDK passthrough fields
+    const opts = capturedOptions as any
+    expect(opts).toMatchObject({
+      effort: 'max',
+      maxBudgetUsd: 10,
+      maxTurns: 25,
+      systemPrompt: 'Be helpful.',
+      outputFormat: { type: 'json_schema', schema: { type: 'object' } },
+      plugins: [{ type: 'local', path: '/p' }],
+      hooks: { PostToolUse: [] },
+      agents: { a: { model: 'claude-haiku-4-5-20251001' } },
+    })
+  })
+})

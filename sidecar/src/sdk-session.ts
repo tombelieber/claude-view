@@ -33,6 +33,14 @@ function buildQueryOptions(
     projectPath?: string
     resume?: string
     forkSession?: boolean
+    effort?: 'low' | 'medium' | 'high' | 'max'
+    maxBudgetUsd?: number
+    maxTurns?: number
+    systemPrompt?: string | { type: 'preset'; preset: 'claude_code'; append?: string }
+    outputFormat?: { type: 'json_schema'; schema: Record<string, unknown> }
+    plugins?: Array<{ type: 'local'; path: string }>
+    hooks?: Record<string, unknown>
+    agents?: Record<string, unknown>
   },
   permissions: PermissionHandler,
   emitFn: (event: ServerEvent) => void,
@@ -55,6 +63,14 @@ function buildQueryOptions(
     cwd: opts.projectPath || process.cwd(),
     ...(opts.resume ? { resume: opts.resume } : {}),
     ...(opts.forkSession ? { forkSession: true } : {}),
+    ...(opts.effort ? { effort: opts.effort } : {}),
+    ...(opts.maxBudgetUsd != null ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
+    ...(opts.maxTurns != null ? { maxTurns: opts.maxTurns } : {}),
+    ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+    ...(opts.outputFormat ? { outputFormat: opts.outputFormat } : {}),
+    ...(opts.plugins ? { plugins: opts.plugins } : {}),
+    ...(opts.hooks ? { hooks: opts.hooks } : {}),
+    ...(opts.agents ? { agents: opts.agents } : {}),
     includePartialMessages: true,
     abortController: abort,
     canUseTool: async (toolName, input, toolOpts) => {
@@ -97,6 +113,14 @@ export function createControlSession(
         allowedTools: req.allowedTools,
         disallowedTools: req.disallowedTools,
         projectPath: req.projectPath,
+        effort: req.effort,
+        maxBudgetUsd: req.maxBudgetUsd,
+        maxTurns: req.maxTurns,
+        systemPrompt: req.systemPrompt,
+        outputFormat: req.outputFormat,
+        plugins: req.plugins,
+        hooks: req.hooks,
+        agents: req.agents,
       },
       permissions,
       emit,
@@ -177,6 +201,14 @@ export async function resumeControlSession(
         permissionMode: req.permissionMode,
         projectPath: req.projectPath,
         resume: req.sessionId,
+        effort: req.effort,
+        maxBudgetUsd: req.maxBudgetUsd,
+        maxTurns: req.maxTurns,
+        systemPrompt: req.systemPrompt,
+        outputFormat: req.outputFormat,
+        plugins: req.plugins,
+        hooks: req.hooks,
+        agents: req.agents,
       },
       permissions,
       emit,
@@ -234,6 +266,14 @@ export function forkControlSession(
         projectPath: req.projectPath,
         resume: req.sessionId,
         forkSession: true,
+        effort: req.effort,
+        maxBudgetUsd: req.maxBudgetUsd,
+        maxTurns: req.maxTurns,
+        systemPrompt: req.systemPrompt,
+        outputFormat: req.outputFormat,
+        plugins: req.plugins,
+        hooks: req.hooks,
+        agents: req.agents,
       },
       permissions,
       emit,

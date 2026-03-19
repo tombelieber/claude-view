@@ -513,6 +513,14 @@ export interface CreateSessionRequest {
   disallowedTools?: string[]
   projectPath?: string
   initialMessage?: string
+  effort?: 'low' | 'medium' | 'high' | 'max'
+  maxBudgetUsd?: number
+  maxTurns?: number
+  systemPrompt?: string | { type: 'preset'; preset: 'claude_code'; append?: string }
+  outputFormat?: { type: 'json_schema'; schema: Record<string, unknown> }
+  plugins?: Array<{ type: 'local'; path: string }>
+  hooks?: Record<string, unknown>
+  agents?: Record<string, unknown>
 }
 
 export interface ResumeSessionRequest {
@@ -520,6 +528,14 @@ export interface ResumeSessionRequest {
   model?: string
   permissionMode?: string
   projectPath?: string
+  effort?: 'low' | 'medium' | 'high' | 'max'
+  maxBudgetUsd?: number
+  maxTurns?: number
+  systemPrompt?: string | { type: 'preset'; preset: 'claude_code'; append?: string }
+  outputFormat?: { type: 'json_schema'; schema: Record<string, unknown> }
+  plugins?: Array<{ type: 'local'; path: string }>
+  hooks?: Record<string, unknown>
+  agents?: Record<string, unknown>
 }
 
 export interface ForkSessionRequest {
@@ -527,6 +543,14 @@ export interface ForkSessionRequest {
   model?: string
   permissionMode?: string
   projectPath?: string
+  effort?: 'low' | 'medium' | 'high' | 'max'
+  maxBudgetUsd?: number
+  maxTurns?: number
+  systemPrompt?: string | { type: 'preset'; preset: 'claude_code'; append?: string }
+  outputFormat?: { type: 'json_schema'; schema: Record<string, unknown> }
+  plugins?: Array<{ type: 'local'; path: string }>
+  hooks?: Record<string, unknown>
+  agents?: Record<string, unknown>
 }
 
 export interface PromptRequest {
