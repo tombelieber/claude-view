@@ -15,7 +15,7 @@ const sidecarRoot = resolve(fileURLToPath(import.meta.url), '../..')
 describe('sidecar standalone (no node_modules)', () => {
   let tempDir: string
   let sidecarProcess: ChildProcess | null = null
-  const socketPath = `/tmp/claude-view-sidecar-standalone-test-${process.pid}.sock`
+  const testPort = 3098
   let processExited = false
   let exitCode: number | null = null
 
@@ -37,14 +37,13 @@ describe('sidecar standalone (no node_modules)', () => {
     }
     sidecarProcess = null
     if (tempDir) rmSync(tempDir, { recursive: true, force: true })
-    rmSync(socketPath, { force: true })
   })
 
   it('starts and responds to health check without node_modules', async () => {
     sidecarProcess = spawn('node', [join(tempDir, 'dist', 'index.js')], {
       env: {
         ...process.env,
-        SIDECAR_SOCKET: socketPath,
+        SIDECAR_PORT: String(testPort),
         CLAUDECODE: undefined,
         ANTHROPIC_API_KEY: undefined,
       },
@@ -61,7 +60,7 @@ describe('sidecar standalone (no node_modules)', () => {
       stderr += chunk.toString()
     })
 
-    // Wait for socket file to appear (max 5s)
+    // Wait for the sidecar to be ready (max 5s)
     const startTime = Date.now()
     while (Date.now() - startTime < 5000) {
       if (processExited) {
@@ -69,11 +68,28 @@ describe('sidecar standalone (no node_modules)', () => {
           `Sidecar crashed on startup with exit code ${exitCode}.\nThis likely means a bundled dependency failed to load.\nstderr: ${stderr}`,
         )
       }
-      if (existsSync(socketPath)) break
-      await new Promise((r) => setTimeout(r, 100))
+      // Check if the port is open by attempting a health check
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const req = request(
+            { host: '127.0.0.1', port: testPort, path: '/health', method: 'GET' },
+            (res) => {
+              if (res.statusCode === 200) resolve()
+              else reject(new Error(`Non-200: ${res.statusCode}`))
+            },
+          )
+          req.on('error', reject)
+          req.setTimeout(500, () => {
+            req.destroy()
+            reject(new Error('Timeout'))
+          })
+          req.end()
+        })
+        break // port is open — proceed to full check
+      } catch {
+        await new Promise((r) => setTimeout(r, 100))
+      }
     }
-
-    expect(existsSync(socketPath), 'Socket file was not created within 5s').toBe(true)
 
     // Health check with retries
     let lastError: Error | null = null
@@ -81,15 +97,18 @@ describe('sidecar standalone (no node_modules)', () => {
       try {
         const response = await new Promise<{ statusCode: number; body: string }>(
           (resolve, reject) => {
-            const req = request({ socketPath, path: '/health', method: 'GET' }, (res) => {
-              let body = ''
-              res.on('data', (chunk) => {
-                body += chunk
-              })
-              res.on('end', () => {
-                resolve({ statusCode: res.statusCode ?? 0, body })
-              })
-            })
+            const req = request(
+              { host: '127.0.0.1', port: testPort, path: '/health', method: 'GET' },
+              (res) => {
+                let body = ''
+                res.on('data', (chunk) => {
+                  body += chunk
+                })
+                res.on('end', () => {
+                  resolve({ statusCode: res.statusCode ?? 0, body })
+                })
+              },
+            )
             req.on('error', reject)
             req.setTimeout(2000, () => {
               req.destroy()
