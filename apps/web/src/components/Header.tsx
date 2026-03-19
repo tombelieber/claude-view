@@ -2,6 +2,7 @@ import { ChevronRight, HelpCircle, Home, Monitor, Moon, Search, Settings, Sun } 
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
 import { useTheme } from '../hooks/use-theme'
+import { useTrackEvent } from '../hooks/use-track-event'
 import { useAppStore } from '../store/app-store'
 import { AuthPill } from './AuthPill'
 import { HealthIndicator } from './HealthIndicator'
@@ -29,6 +30,14 @@ export function Header({
   const [searchParams] = useSearchParams()
   const { openCommandPalette } = useAppStore()
   const { theme, cycleTheme } = useTheme()
+  const trackEvent = useTrackEvent()
+  const THEME_CYCLE = ['light', 'dark', 'system'] as const
+  const handleCycleTheme = () => {
+    const idx = THEME_CYCLE.indexOf(theme)
+    const nextTheme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length]
+    cycleTheme()
+    trackEvent('theme_toggled', { to: nextTheme })
+  }
   const ThemeIcon = THEME_ICONS[theme]
 
   // Build breadcrumbs based on current route
@@ -150,7 +159,7 @@ export function Header({
         />
 
         <button
-          onClick={cycleTheme}
+          onClick={handleCycleTheme}
           aria-label={`Theme: ${THEME_LABELS[theme]}. Click to cycle.`}
           title={`Theme: ${THEME_LABELS[theme]}`}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"

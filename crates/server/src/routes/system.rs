@@ -367,6 +367,13 @@ pub async fn trigger_reindex(
     // Signal the indexing state to trigger a re-index
     state.indexing.trigger_reindex();
 
+    if let Some(ref client) = state.telemetry {
+        client.track(
+            "reindex_triggered",
+            serde_json::json!({ "trigger": "manual" }),
+        );
+    }
+
     Ok(Json(ActionResponse {
         status: "started".to_string(),
         message: Some("Full re-index started".to_string()),
@@ -443,6 +450,13 @@ pub async fn clear_cache(
         .unwrap_or(0);
 
     let cleared_bytes = size_before.saturating_sub(size_after);
+
+    if let Some(ref client) = state.telemetry {
+        client.track(
+            "reindex_triggered",
+            serde_json::json!({ "trigger": "clear_cache" }),
+        );
+    }
 
     Ok(Json(ClearCacheResponse {
         status: "success".to_string(),

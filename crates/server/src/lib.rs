@@ -24,6 +24,7 @@ pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
 pub mod teams;
+pub mod telemetry;
 pub mod terminal_state;
 pub mod time_range;
 
@@ -83,6 +84,60 @@ use claude_view_db::{Database, ModelPricing};
 /// - Request tracing
 pub fn create_app(db: Database) -> Router {
     create_app_with_static(db, None)
+}
+
+/// Test-only: creates an app with a custom telemetry config path.
+///
+/// Allows integration tests to redirect telemetry config reads/writes to a
+/// temporary directory instead of `~/.claude-view/telemetry.json`.
+pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathBuf) -> Router {
+    use std::collections::HashMap;
+    let state = Arc::new(state::AppState {
+        start_time: std::time::Instant::now(),
+        db,
+        indexing: Arc::new(IndexingState::new()),
+        git_sync: Arc::new(GitSyncState::new()),
+        registry: Arc::new(std::sync::RwLock::new(None)),
+        jobs: Arc::new(jobs::JobRunner::new()),
+        classify: Arc::new(classify_state::ClassifyState::new()),
+        facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
+        pricing: Arc::new(std::sync::RwLock::new({
+            let mut p = claude_view_db::default_pricing();
+            claude_view_core::pricing::fill_tiering_gaps(&mut p);
+            p
+        })),
+        live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        live_tx: tokio::sync::broadcast::channel(256).0,
+        rules_dir: dirs::home_dir()
+            .expect("home dir exists")
+            .join(".claude")
+            .join("rules"),
+        terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
+        live_manager: None,
+        search_index: Arc::new(std::sync::RwLock::new(None)),
+        shutdown: tokio::sync::watch::channel(false).1,
+        hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        sidecar: Arc::new(sidecar::SidecarManager::new()),
+        jwks: None,
+        share: None,
+        auth_identity: tokio::sync::OnceCell::new(),
+        oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        plugin_cli_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
+        teams: Arc::new(crate::teams::TeamsStore::empty()),
+        prompt_index: Arc::new(std::sync::RwLock::new(None)),
+        prompt_stats: Arc::new(std::sync::RwLock::new(None)),
+        prompt_templates: Arc::new(std::sync::RwLock::new(None)),
+        available_ides: Vec::new(),
+        monitor_tx: tokio::sync::broadcast::channel(64).0,
+        monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
+        plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+        marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
+        transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        telemetry: None,
+        telemetry_config_path,
+    });
+    api_routes(state)
 }
 
 /// Create the Axum application with optional static file serving.
@@ -155,6 +210,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        telemetry: None,
+        telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
     api_routes(state)
 }
@@ -178,6 +235,7 @@ pub fn create_app_full(
     prompt_index: PromptIndexHolder,
     prompt_stats: PromptStatsHolder,
     prompt_templates: PromptTemplatesHolder,
+    telemetry: Option<telemetry::TelemetryClient>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
@@ -254,6 +312,8 @@ pub fn create_app_full(
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session,
+        telemetry,
+        telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).

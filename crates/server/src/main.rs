@@ -329,7 +329,34 @@ async fn main() -> Result<()> {
     let prompt_stats_holder: PromptStatsHolder = Arc::new(RwLock::new(None));
     let prompt_templates_holder: PromptTemplatesHolder = Arc::new(RwLock::new(None));
 
-    // Step 4c: Build the Axum app with indexing state, registry holder, and search index
+    // Step 4c: Initialize PostHog telemetry client (compile-time key only)
+    let telemetry = match option_env!("POSTHOG_API_KEY") {
+        Some(key) if !key.is_empty() => {
+            let config_path = claude_view_core::telemetry_config::telemetry_config_path();
+            let _ = claude_view_core::telemetry_config::create_telemetry_config_if_missing(
+                &config_path,
+            );
+            let config = claude_view_core::telemetry_config::read_telemetry_config(&config_path);
+            let status = claude_view_core::telemetry_config::resolve_telemetry_status(
+                Some(key),
+                &config_path,
+            );
+            let client =
+                claude_view_server::telemetry::TelemetryClient::new(key, &config.anonymous_id);
+            if status == claude_view_core::telemetry_config::TelemetryStatus::Enabled {
+                client.set_enabled(true);
+            }
+            Some(client)
+        }
+        _ => None,
+    };
+    // Clone for the background indexing task and server_started event.
+    // All clones share the same Arc<AtomicBool> enabled flag, so set_enabled
+    // on any copy is immediately visible to all others.
+    let telemetry_for_indexer = telemetry.clone();
+    let telemetry_for_server_started = telemetry.clone();
+
+    // Step 4d: Build the Axum app with indexing state, registry holder, and search index
     let static_dir = get_static_dir();
     let sidecar = Arc::new(claude_view_server::SidecarManager::new());
     let sidecar_for_shutdown = sidecar.clone();
@@ -346,6 +373,7 @@ async fn main() -> Result<()> {
         prompt_index_holder.clone(),
         prompt_stats_holder.clone(),
         prompt_templates_holder.clone(),
+        telemetry,
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)
@@ -365,6 +393,17 @@ async fn main() -> Result<()> {
     let addr = SocketAddr::from((bind_addr, port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
+    // Fire server_started telemetry event (fire-and-forget, non-blocking)
+    if let Some(ref client) = telemetry_for_server_started {
+        client.track(
+            "server_started",
+            serde_json::json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "platform": std::env::consts::OS,
+            }),
+        );
+    }
+
     // Step 6: Resolve the claude dir for indexing
     let claude_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?
@@ -378,6 +417,7 @@ async fn main() -> Result<()> {
     let idx_prompt_index = prompt_index_holder.clone();
     let idx_prompt_stats = prompt_stats_holder.clone();
     let idx_prompt_templates = prompt_templates_holder.clone();
+    let idx_telemetry = telemetry_for_indexer;
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -494,6 +534,50 @@ async fn main() -> Result<()> {
                     .await
                 {
                     tracing::warn!(error = %e, "Failed to persist index metadata");
+                }
+
+                // Fire telemetry events for first_index_completed and sessions_milestone
+                if let Some(ref client) = idx_telemetry {
+                    let telemetry_config_path =
+                        claude_view_core::telemetry_config::telemetry_config_path();
+                    let mut config = claude_view_core::telemetry_config::read_telemetry_config(
+                        &telemetry_config_path,
+                    );
+
+                    // first_index_completed — fires exactly once per install
+                    if !config.first_index_completed {
+                        config.first_index_completed = true;
+                        let _ = claude_view_core::telemetry_config::write_telemetry_config(
+                            &telemetry_config_path,
+                            &config,
+                        );
+                        client.track(
+                            "first_index_completed",
+                            serde_json::json!({
+                                "session_count": sessions,
+                                "version": env!("CARGO_PKG_VERSION"),
+                            }),
+                        );
+                    }
+
+                    // sessions_milestone — fires each time a new milestone is crossed
+                    if let Some(milestone) = claude_view_core::telemetry_config::check_milestone(
+                        sessions as u64,
+                        config.last_milestone.unwrap_or(0),
+                    ) {
+                        client.track(
+                            "sessions_milestone",
+                            serde_json::json!({
+                                "milestone": milestone,
+                                "session_count": sessions,
+                            }),
+                        );
+                        config.last_milestone = Some(milestone);
+                        let _ = claude_view_core::telemetry_config::write_telemetry_config(
+                            &telemetry_config_path,
+                            &config,
+                        );
+                    }
                 }
 
                 // 4. Post-scan cleanup

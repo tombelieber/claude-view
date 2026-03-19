@@ -9,12 +9,15 @@ import { Header } from './components/Header'
 import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
+import { TelemetryBanner } from './components/TelemetryBanner'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSessions } from './components/live/use-live-sessions'
+import { useConfig } from './hooks/use-config'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
 import { usePatternAlert } from './hooks/use-pattern-alert'
 import { useProjectSummaries } from './hooks/use-projects'
+import { useTelemetry } from './hooks/use-telemetry'
 import { useTheme } from './hooks/use-theme'
 import { useAppStore } from './store/app-store'
 import { useLiveCommandStore } from './store/live-command-context'
@@ -29,6 +32,8 @@ export default function App() {
     toggleSidebar,
   } = useAppStore()
   useTheme() // Apply dark class to <html>
+  const config = useConfig()
+  const { enableTelemetry, disableTelemetry } = useTelemetry()
   const indexingProgress = useIndexingProgress()
   const liveSessions = useLiveSessions()
   const {
@@ -98,6 +103,9 @@ export default function App() {
           onSoundPreview={previewSound}
           audioUnlocked={audioUnlocked}
         />
+        {config.telemetry === 'undecided' && (
+          <TelemetryBanner onEnable={enableTelemetry} onDisable={disableTelemetry} />
+        )}
         <AuthBanner />
         <ColdStartOverlay progress={indexingProgress} />
 
