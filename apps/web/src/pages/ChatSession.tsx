@@ -185,7 +185,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
         // initialMessage is echoed back via user_message_echo in the stream,
         // so the user sees their message as soon as the WS connects.
         trackEvent('chat_started')
-        fetch('/api/control/sessions', {
+        fetch('/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
