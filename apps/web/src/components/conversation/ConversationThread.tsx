@@ -25,7 +25,7 @@ export function ConversationThread({ blocks, renderers, compact }: Props) {
   let lastDay: string | null = null
 
   return (
-    <div className={compact ? 'space-y-1' : 'space-y-3'}>
+    <div data-testid="message-thread" className={compact ? 'space-y-1' : 'space-y-3'}>
       {blocks.map((block) => {
         const Renderer = renderers[block.type]
         if (!Renderer) return null

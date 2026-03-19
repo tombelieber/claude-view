@@ -28,7 +28,7 @@ export function ChatUserBlock({ block }: UserBlockProps) {
   const convActions = useConversationActions()
 
   return (
-    <div className="flex justify-end">
+    <div data-testid="user-message" className="flex justify-end">
       <div className="max-w-[80%]">
         <div className="px-3.5 py-2.5 rounded-2xl rounded-br-md bg-blue-500 dark:bg-blue-600 text-white">
           <p className="text-sm whitespace-pre-wrap break-words">{block.text}</p>

@@ -9,7 +9,7 @@ interface AssistantBlockProps {
 
 export function ChatAssistantBlock({ block }: AssistantBlockProps) {
   return (
-    <div className="space-y-2">
+    <div data-testid="assistant-message" className="space-y-2">
       {block.segments.map((seg, i) => {
         if (seg.kind === 'text') {
           return (
