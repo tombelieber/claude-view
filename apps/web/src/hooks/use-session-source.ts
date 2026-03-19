@@ -2,6 +2,8 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
 import type { ModelUsageInfo } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
 import { SessionChannel } from '../lib/session-channel'
 import { wsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
@@ -255,6 +257,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         case 'mode_rejected':
           // Revert to the sidecar's actual mode
           setPermissionMode(raw.mode as string)
+          toast.error('Mode change rejected', {
+            description: (raw.reason as string) ?? (raw.requestedMode as string) ?? undefined,
+          })
           break
         case 'query_result': {
           const evt = raw as { requestId?: string; queryType?: string; data: unknown }
@@ -296,6 +301,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (wsRef.current !== ws) return
       if (unmountedRef.current) return
       clearHeartbeat()
+      clearRespondedCache()
       channelRef.current.handleDisconnect()
 
       // Connection replaced by a newer WS (e.g. another tab connected)
