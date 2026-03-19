@@ -85,7 +85,7 @@ export class SessionRegistry {
     const sequenced: SequencedEvent = { ...event, seq }
     cs.eventBuffer.push({ seq, msg: sequenced })
     cs.emitter.emit('message', sequenced)
-    cs.accumulator.push(sequenced)
+    if (event.type !== 'stream_delta') cs.accumulator.push(sequenced)
     return sequenced
   }
 
