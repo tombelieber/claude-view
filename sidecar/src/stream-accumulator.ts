@@ -20,7 +20,7 @@ import type {
   PlanApproval,
   PromptSuggestion,
   RateLimit,
-  SequencedEvent,
+  ServerEvent,
   SessionClosed,
   SessionInit,
   StreamDelta,
@@ -179,17 +179,15 @@ function genId(): string {
 export class StreamAccumulator {
   private blocks: ConversationBlock[] = []
   private currentAssistant: AssistantBlock | null = null
-  private lastProcessedSeq = -1
+  private pushCounter = 0
   private initialized = false
-  private buffer: SequencedEvent[] = []
+  private buffer: ServerEvent[] = []
 
-  push(event: SequencedEvent): void {
-    // Dedup: drop events already processed (reconnect replay)
-    if (event.seq <= this.lastProcessedSeq) return
+  push(event: ServerEvent): void {
+    this.pushCounter++
 
     // user_message_echo bypasses init gate — render immediately
     if (event.type === 'user_message_echo') {
-      this.lastProcessedSeq = event.seq
       this.handleEvent(event)
       return
     }
@@ -200,7 +198,6 @@ export class StreamAccumulator {
       return
     }
 
-    this.lastProcessedSeq = event.seq
     this.handleEvent(event)
   }
 
@@ -226,68 +223,56 @@ export class StreamAccumulator {
     this.buffer = []
   }
 
-  private handleEvent(event: SequencedEvent): void {
+  private handleEvent(event: ServerEvent): void {
     switch (event.type) {
       case 'user_message_echo':
-        this.handleUserMessageEcho(event as UserMessageEcho & { seq: number })
+        this.handleUserMessageEcho(event as UserMessageEcho)
         break
       case 'session_init':
-        this.handleSessionInit(event as SessionInit & { seq: number })
+        this.handleSessionInit(event as SessionInit)
         break
       case 'assistant_text':
-        this.handleAssistantText(event as AssistantText & { seq: number })
+        this.handleAssistantText(event as AssistantText)
         break
       case 'assistant_thinking':
-        this.handleAssistantThinking(event as AssistantThinking & { seq: number })
+        this.handleAssistantThinking(event as AssistantThinking)
         break
       case 'assistant_error':
-        this.handleAssistantError(event as AssistantError & { seq: number })
+        this.handleAssistantError(event as AssistantError)
         break
       case 'tool_use_start':
-        this.handleToolUseStart(event as ToolUseStart & { seq: number })
+        this.handleToolUseStart(event as ToolUseStart)
         break
       case 'tool_use_result':
-        this.handleToolUseResult(event as ToolUseResult & { seq: number })
+        this.handleToolUseResult(event as ToolUseResult)
         break
       case 'tool_progress':
-        this.handleToolProgress(event as ToolProgress & { seq: number })
+        this.handleToolProgress(event as ToolProgress)
         break
       case 'tool_summary':
-        this.handleToolSummary(event as ToolSummary & { seq: number })
+        this.handleToolSummary(event as ToolSummary)
         break
       case 'turn_complete':
-        this.handleTurnComplete(event as TurnComplete & { seq: number })
+        this.handleTurnComplete(event as TurnComplete)
         break
       case 'turn_error':
-        this.handleTurnError(event as TurnError & { seq: number })
+        this.handleTurnError(event as TurnError)
         break
       case 'permission_request':
         this.pushInteraction(
           'permission',
-          (event as PermissionRequest & { seq: number }).requestId,
+          (event as PermissionRequest).requestId,
           event as PermissionRequest,
         )
         break
       case 'ask_question':
-        this.pushInteraction(
-          'question',
-          (event as AskQuestion & { seq: number }).requestId,
-          event as AskQuestion,
-        )
+        this.pushInteraction('question', (event as AskQuestion).requestId, event as AskQuestion)
         break
       case 'plan_approval':
-        this.pushInteraction(
-          'plan',
-          (event as PlanApproval & { seq: number }).requestId,
-          event as PlanApproval,
-        )
+        this.pushInteraction('plan', (event as PlanApproval).requestId, event as PlanApproval)
         break
       case 'elicitation':
-        this.pushInteraction(
-          'elicitation',
-          (event as Elicitation & { seq: number }).requestId,
-          event as Elicitation,
-        )
+        this.pushInteraction('elicitation', (event as Elicitation).requestId, event as Elicitation)
         break
       case 'rate_limit':
         this.pushNotice('rate_limit', event as RateLimit)
@@ -331,7 +316,7 @@ export class StreamAccumulator {
       case 'stream_delta':
         // Only structural events (content_block_start/stop, message_stop) reach here.
         // content_block_delta is filtered in emitSequenced to prevent doubled text.
-        this.handleStreamDelta(event as StreamDelta & { seq: number })
+        this.handleStreamDelta(event as StreamDelta)
         break
       case 'unknown_sdk_event':
         this.pushSystem('unknown', event as UnknownSdkEvent)
@@ -351,29 +336,28 @@ export class StreamAccumulator {
     }
   }
 
-  private handleUserMessageEcho(event: UserMessageEcho & { seq: number }): void {
+  private handleUserMessageEcho(event: UserMessageEcho): void {
     this.finalizeCurrentAssistant()
     const block: UserBlock = {
       type: 'user',
-      id: `user-${event.seq}`,
+      id: `user-${this.pushCounter}`,
       text: event.content,
       timestamp: event.timestamp,
     }
     this.blocks.push(block)
   }
 
-  private handleSessionInit(event: SessionInit & { seq: number }): void {
+  private handleSessionInit(event: SessionInit): void {
     this.initialized = true
     this.pushSystem('session_init', event)
     // Flush buffered events
     const buffered = this.buffer.splice(0)
     for (const e of buffered) {
-      this.lastProcessedSeq = e.seq
       this.handleEvent(e)
     }
   }
 
-  private handleAssistantText(event: AssistantText & { seq: number }): void {
+  private handleAssistantText(event: AssistantText): void {
     const assistant = this.ensureAssistant(event.messageId)
     const lastSeg = assistant.segments.at(-1)
     if (lastSeg?.kind === 'text' && lastSeg.parentToolUseId === event.parentToolUseId) {
@@ -387,17 +371,17 @@ export class StreamAccumulator {
     }
   }
 
-  private handleAssistantThinking(event: AssistantThinking & { seq: number }): void {
+  private handleAssistantThinking(event: AssistantThinking): void {
     const assistant = this.ensureAssistant(event.messageId)
     assistant.thinking = (assistant.thinking ?? '') + event.thinking
   }
 
-  private handleAssistantError(event: AssistantError & { seq: number }): void {
+  private handleAssistantError(event: AssistantError): void {
     this.finalizeCurrentAssistant()
     this.pushNotice('assistant_error', event)
   }
 
-  private handleToolUseStart(event: ToolUseStart & { seq: number }): void {
+  private handleToolUseStart(event: ToolUseStart): void {
     const assistant = this.ensureAssistant(event.messageId)
     const execution: ToolExecution = {
       toolName: event.toolName,
@@ -409,7 +393,7 @@ export class StreamAccumulator {
     assistant.segments.push({ kind: 'tool', execution })
   }
 
-  private handleToolUseResult(event: ToolUseResult & { seq: number }): void {
+  private handleToolUseResult(event: ToolUseResult): void {
     const execution = this.findToolExecution(event.toolUseId)
     if (execution) {
       execution.result = { output: event.output, isError: event.isError, isReplay: event.isReplay }
@@ -417,14 +401,14 @@ export class StreamAccumulator {
     }
   }
 
-  private handleToolProgress(event: ToolProgress & { seq: number }): void {
+  private handleToolProgress(event: ToolProgress): void {
     const execution = this.findToolExecution(event.toolUseId)
     if (execution) {
       execution.progress = { elapsedSeconds: event.elapsedSeconds }
     }
   }
 
-  private handleToolSummary(event: ToolSummary & { seq: number }): void {
+  private handleToolSummary(event: ToolSummary): void {
     for (const toolUseId of event.precedingToolUseIds) {
       const execution = this.findToolExecution(toolUseId)
       if (execution) {
@@ -433,7 +417,7 @@ export class StreamAccumulator {
     }
   }
 
-  private handleTurnComplete(event: TurnComplete & { seq: number }): void {
+  private handleTurnComplete(event: TurnComplete): void {
     this.finalizeCurrentAssistant()
     const boundary: TurnBoundaryBlock = {
       type: 'turn_boundary',
@@ -454,7 +438,7 @@ export class StreamAccumulator {
     this.blocks.push(boundary)
   }
 
-  private handleTurnError(event: TurnError & { seq: number }): void {
+  private handleTurnError(event: TurnError): void {
     this.finalizeCurrentAssistant()
     const boundary: TurnBoundaryBlock = {
       type: 'turn_boundary',
@@ -478,7 +462,7 @@ export class StreamAccumulator {
 
   /** Handle structural stream events (content_block_start/stop, message_stop).
    *  content_block_delta is filtered in emitSequenced — never reaches here. */
-  private handleStreamDelta(event: StreamDelta & { seq: number }): void {
+  private handleStreamDelta(event: StreamDelta): void {
     switch (event.deltaType) {
       case 'content_block_start': {
         const assistant = this.ensureAssistant(event.messageId)

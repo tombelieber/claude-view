@@ -106,9 +106,7 @@ function createMockSession(overrides?: Record<string, unknown>) {
   return {
     activeWs: null,
     state: 'active',
-    nextSeq: 5,
     emitter: { on: vi.fn(), removeListener: vi.fn() },
-    eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
     permissions: {
       resolvePermission: vi.fn(),
       resolveQuestion: vi.fn(),
@@ -156,7 +154,6 @@ describe('UT-02: blocks_snapshot sent on connect', () => {
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
     expect(snapshot!.blocks).toEqual([])
-    expect(snapshot!.lastSeq).toBeTypeOf('number')
   })
 })
 

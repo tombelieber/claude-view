@@ -21,7 +21,6 @@ import type {
   ResumeSessionRequest,
   ServerEvent,
 } from './protocol.js'
-import { RingBuffer } from './ring-buffer.js'
 import type { ControlSession, SessionRegistry } from './session-registry.js'
 import { StreamAccumulator } from './stream-accumulator.js'
 
@@ -118,8 +117,6 @@ export function createControlSession(
     modelUsage: {},
     startedAt: Date.now(),
     emitter,
-    eventBuffer: new RingBuffer(200),
-    nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
     activeWs: null,
@@ -128,7 +125,7 @@ export function createControlSession(
 
   registry.register(cs)
 
-  // Echo initial message into ring buffer (seq 0)
+  // Echo initial message into accumulator
   if (req.initialMessage) {
     registry.emitSequenced(cs, {
       type: 'user_message_echo',
@@ -199,10 +196,8 @@ export async function resumeControlSession(
     modelUsage: {},
     startedAt: Date.now(),
     emitter,
-    eventBuffer: new RingBuffer(200),
-    permissionMode: req.permissionMode ?? 'default',
-    nextSeq: 0,
     permissions,
+    permissionMode: req.permissionMode ?? 'default',
     activeWs: null,
     accumulator: new StreamAccumulator(),
   }
@@ -257,8 +252,6 @@ export function forkControlSession(
     modelUsage: {},
     startedAt: Date.now(),
     emitter,
-    eventBuffer: new RingBuffer(200),
-    nextSeq: 0,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
     activeWs: null,
