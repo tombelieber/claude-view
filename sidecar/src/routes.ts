@@ -39,29 +39,31 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Resume existing session
-  app.post('/sessions/resume', async (c) => {
-    const body = await c.req.json<ResumeSessionRequest>()
-    if (!body.sessionId?.match(/^[0-9a-f-]{36}$/)) {
+  // Resume existing session (path param)
+  app.post('/sessions/:id/resume', async (c) => {
+    const sessionId = c.req.param('id')
+    if (!sessionId?.match(/^[0-9a-f-]{36}$/)) {
       return c.json({ error: 'Invalid session ID format' }, 400)
     }
 
     // Check if already resumed
-    if (registry.hasSessionId(body.sessionId)) {
-      const existing = registry.getBySessionId(body.sessionId)!
+    if (registry.hasSessionId(sessionId)) {
+      const existing = registry.getBySessionId(sessionId)!
       return c.json({
         controlId: existing.controlId,
-        sessionId: body.sessionId,
+        sessionId,
         status: 'already_active',
       })
     }
 
+    const body = await c.req.json<Omit<ResumeSessionRequest, 'sessionId'>>().catch(() => ({}))
+
     try {
-      const cs = await resumeControlSession(body, registry)
+      const cs = await resumeControlSession({ sessionId, ...body }, registry)
       await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
-        sessionId: cs.sessionId || body.sessionId,
+        sessionId: cs.sessionId || sessionId,
         status: 'resumed',
       })
     } catch (err) {
@@ -69,13 +71,15 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Fork existing session — creates a new session branching from an existing one
-  app.post('/sessions/fork', async (c) => {
-    const body = await c.req.json<ForkSessionRequest>()
-    if (!body.sessionId) return c.json({ error: 'sessionId is required' }, 400)
+  // Fork existing session (path param)
+  app.post('/sessions/:id/fork', async (c) => {
+    const sessionId = c.req.param('id')
+    if (!sessionId) return c.json({ error: 'sessionId is required' }, 400)
+
+    const body = await c.req.json<Omit<ForkSessionRequest, 'sessionId'>>().catch(() => ({}))
 
     try {
-      const cs = forkControlSession(body, registry)
+      const cs = forkControlSession({ sessionId, ...body }, registry)
       await waitForSessionInit(cs, 15_000)
       return c.json({
         controlId: cs.controlId,
@@ -87,34 +91,19 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Send message — synchronous bridge.push, fire-and-forget by design.
-  // Returns immediately after queuing; the SDK processes the message and emits
-  // response events (assistant_text, tool_use_start, turn_complete, etc.) over
-  // the WS stream.
-  app.post('/send', async (c) => {
-    const body = await c.req.json<{ controlId: string; message: string }>()
-    const cs = registry.get(body.controlId)
+  // Send message to session (path param)
+  app.post('/sessions/:id/send', async (c) => {
+    const sessionId = c.req.param('id')
+    const cs = registry.getBySessionId(sessionId)
     if (!cs) return c.json({ error: 'Session not found' }, 404)
 
+    const body = await c.req.json<{ message: string }>()
     sendMessage(cs, body.message)
     return c.json({ status: 'sent' })
   })
 
-  // List active control sessions
-  app.get('/sessions', (c) => c.json(registry.list()))
-
-  // List available Claude Code sessions
-  app.get('/available-sessions', async (c) => {
-    try {
-      const sessions = await listAvailableSessions()
-      return c.json(sessions)
-    } catch (err) {
-      return c.json({ error: `List failed: ${err instanceof Error ? err.message : err}` }, 500)
-    }
-  })
-
-  // One-shot prompt (no session lifecycle)
-  app.post('/prompt', async (c) => {
+  // One-shot prompt for session (path param)
+  app.post('/sessions/:id/prompt', async (c) => {
     const body = await c.req.json<PromptRequest>()
     if (!body.message || !body.model)
       return c.json({ error: 'message and model are required' }, 400)
@@ -144,16 +133,43 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Terminate session
-  app.delete('/sessions/:controlId', async (c) => {
-    const controlId = c.req.param('controlId')
-    const cs = registry.get(controlId)
+  // Session status
+  app.get('/sessions/:id/status', (c) => {
+    const sessionId = c.req.param('id')
+    const cs = registry.getBySessionId(sessionId)
+    if (!cs) return c.json({ error: 'Session not found' }, 404)
+    return c.json({
+      sessionId: cs.sessionId,
+      state: cs.state,
+      model: cs.model,
+      permissionMode: cs.permissionMode,
+      turnCount: cs.turnCount,
+      totalCostUsd: cs.totalCostUsd,
+      startedAt: cs.startedAt,
+    })
+  })
+
+  // List active control sessions + available sessions merged
+  app.get('/sessions', async (c) => {
+    const active = registry.list()
+    try {
+      const available = await listAvailableSessions()
+      return c.json({ active, available })
+    } catch {
+      return c.json({ active, available: [] })
+    }
+  })
+
+  // Terminate session (by sessionId)
+  app.delete('/sessions/:id', (c) => {
+    const sessionId = c.req.param('id')
+    const cs = registry.getBySessionId(sessionId)
     if (cs) closeSession(cs, registry)
     return c.json({ status: 'terminated' })
   })
 
   // Supported models (cached from SDK, refreshed on every session create/resume)
-  app.get('/supported-models', (c) => c.json(getCacheState()))
+  app.get('/sessions/models', (c) => c.json(getCacheState()))
 
   return app
 }
