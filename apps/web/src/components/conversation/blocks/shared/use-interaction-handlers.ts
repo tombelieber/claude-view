@@ -19,10 +19,13 @@ type LocalResponse =
  */
 const respondedCache = new Map<string, LocalResponse>()
 
-/** @internal — test-only cache reset */
-export function _clearRespondedCacheForTesting(): void {
+/** Clear the responded cache. Called on WS disconnect and in tests. */
+export function clearRespondedCache(): void {
   respondedCache.clear()
 }
+
+/** @deprecated Use clearRespondedCache() instead */
+export const _clearRespondedCacheForTesting = clearRespondedCache
 
 export function useInteractionHandlers(requestId: string) {
   const ctx = useConversationActions()
