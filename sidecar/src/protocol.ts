@@ -345,6 +345,9 @@ export type ServerEvent =
   | PongEvent
   | UnknownSdkEvent
   | UserMessageEcho
+  // Blocks (server-driven message store)
+  | { type: 'blocks_snapshot'; blocks: unknown[]; lastSeq: number }
+  | { type: 'blocks_update'; blocks: unknown[] }
 
 export type SequencedEvent = ServerEvent & { seq: number }
 
