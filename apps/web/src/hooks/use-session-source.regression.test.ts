@@ -37,15 +37,13 @@ describe('Root cause 2 regression: replayComplete removed from lifecycle', () =>
     expect(source).not.toMatch(/RESUMED_DIVIDER/)
   })
 
-  it('turnVersion + streamGap exist as replacements', async () => {
+  it('MessageState with committedBlocks + pendingText replaces turnVersion/streamGap', async () => {
     const source = await readSource('src/hooks/use-session-source.ts')
-    expect(source).toMatch(/turnVersion:\s*number/)
-    expect(source).toMatch(/streamGap:\s*boolean/)
-  })
-
-  it('streamGap only set by explicit replay_buffer_exhausted', async () => {
-    const source = await readSource('src/hooks/use-session-source.ts')
-    expect(source).toMatch(/replay_buffer_exhausted[\s\S]*?setStreamGap\(true\)/)
+    expect(source).toMatch(/committedBlocks:\s*ConversationBlock\[\]/)
+    expect(source).toMatch(/pendingText:\s*string/)
+    // turnVersion and streamGap are removed — binary source switch replaces them
+    expect(source).not.toMatch(/turnVersion:\s*number/)
+    expect(source).not.toMatch(/streamGap:\s*boolean/)
   })
 })
 
