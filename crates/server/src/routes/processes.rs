@@ -133,15 +133,19 @@ async fn cleanup_processes(
 
         for target in &targets {
             match validate_pid_in_system(&sys, target.pid, target.start_time, own_pid) {
-                Ok(()) => match crate::platform::terminate_process(target.pid) {
-                    Ok(()) => killed.push(target.pid),
-                    Err(e) => {
+                Ok(()) => {
+                    let signal = libc::SIGTERM;
+                    let result = unsafe { libc::kill(target.pid as i32, signal) };
+                    if result == 0 {
+                        killed.push(target.pid);
+                    } else {
+                        let errno = std::io::Error::last_os_error();
                         failed.push(KillFailure {
                             pid: target.pid,
-                            reason: format!("Terminate failed: {e}"),
+                            reason: format!("SIGTERM failed: {errno}"),
                         });
                     }
-                },
+                }
                 Err(reason) => {
                     failed.push(KillFailure {
                         pid: target.pid,
@@ -180,12 +184,16 @@ fn validate_and_kill(pid: u32, start_time: i64, force: bool) -> Result<(), Strin
 
     validate_pid_in_system(&sys, pid, start_time, own_pid)?;
 
-    match crate::platform::kill_process(pid, force) {
-        Ok(()) => Ok(()),
-        Err(e) => Err(format!(
-            "{} failed: {e}",
+    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
+    let result = unsafe { libc::kill(pid as i32, signal) };
+    if result == 0 {
+        Ok(())
+    } else {
+        let errno = std::io::Error::last_os_error();
+        Err(format!(
+            "{} failed: {errno}",
             if force { "SIGKILL" } else { "SIGTERM" }
-        )),
+        ))
     }
 }
 

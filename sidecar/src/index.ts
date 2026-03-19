@@ -11,9 +11,7 @@ import { runWorkflow } from './workflow-runner.js'
 import type { WorkflowEvent } from './workflow-runner.js'
 import { handleWebSocket } from './ws-handler.js'
 
-const SIDECAR_ADDR = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
-// TCP mode if address matches host:port pattern (used on Windows)
-const tcpMatch = SIDECAR_ADDR.match(/^(.+):(\d+)$/)
+const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
 
 const registry = new SessionRegistry()
 const app = new Hono()
@@ -44,27 +42,16 @@ app.post('/workflows/run', async (c) => {
   })
 })
 
-const server = createAdaptorServer(app)
+// Clean up stale socket
+if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
 
-if (tcpMatch) {
-  // TCP mode (Windows): listen on host:port
-  const [, host, port] = tcpMatch
-  server.listen(Number.parseInt(port), host, () => {
-    console.log(`[sidecar] Listening on TCP ${SIDECAR_ADDR}`)
-    console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
-    // Populate supported models cache (fire-and-forget, refreshes hourly)
-    startModelCacheRefresh()
-  })
-} else {
-  // Unix socket mode (macOS/Linux)
-  if (fs.existsSync(SIDECAR_ADDR)) fs.unlinkSync(SIDECAR_ADDR)
-  server.listen(SIDECAR_ADDR, () => {
-    console.log(`[sidecar] Listening on ${SIDECAR_ADDR}`)
-    console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
-    // Populate supported models cache (fire-and-forget, refreshes hourly)
-    startModelCacheRefresh()
-  })
-}
+const server = createAdaptorServer(app)
+server.listen(SOCKET_PATH, () => {
+  console.log(`[sidecar] Listening on ${SOCKET_PATH}`)
+  console.log(`[sidecar] PID: ${process.pid}, Parent PID: ${process.ppid}`)
+  // Populate supported models cache (fire-and-forget, refreshes hourly)
+  startModelCacheRefresh()
+})
 
 // WS upgrade
 const wss = new WebSocketServer({ noServer: true })
@@ -95,11 +82,11 @@ async function shutdown() {
   clearInterval(parentCheck)
   await registry.closeAll()
   server.close()
-  if (!tcpMatch && fs.existsSync(SIDECAR_ADDR)) fs.unlinkSync(SIDECAR_ADDR)
+  if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
   process.exit(0)
 }
 
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-export { app, registry, server, SIDECAR_ADDR, runWorkflow }
+export { app, registry, server, SOCKET_PATH, runWorkflow }

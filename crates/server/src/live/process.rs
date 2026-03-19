@@ -183,10 +183,15 @@ pub fn has_running_process(
 
 /// Check if a process with the given PID is still alive.
 ///
-/// Checks process existence without sending a signal.
+/// Uses `kill(pid, 0)` which checks process existence without sending a signal.
 /// Returns `false` for PIDs <= 1 (kernel/init) to guard against reparented processes.
 pub fn is_pid_alive(pid: u32) -> bool {
-    crate::platform::is_pid_alive(pid)
+    if pid <= 1 {
+        return false;
+    }
+    // SAFETY: kill with signal 0 does not send a signal, only checks existence.
+    // Returns 0 if process exists and we have permission, -1 with ESRCH if not.
+    unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
 #[cfg(test)]

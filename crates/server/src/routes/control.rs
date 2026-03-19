@@ -18,6 +18,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::client::conn::http1;
 use hyper_util::rt::TokioIo;
 use serde::{Deserialize, Serialize};
+use tokio::net::UnixStream;
 
 use crate::{error::ApiError, state::AppState};
 
@@ -162,13 +163,11 @@ async fn proxy_to_sidecar(
         ApiError::Internal(format!("Sidecar unavailable: {e}"))
     })?;
 
-    // Connect to sidecar (Unix socket on Unix, TCP on Windows)
-    let stream = crate::platform::connect_sidecar(&socket_path)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to connect to sidecar: {e}");
-            ApiError::Internal(format!("Sidecar connection failed: {e}"))
-        })?;
+    // Connect to sidecar Unix socket
+    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
+        tracing::error!("Failed to connect to sidecar socket: {e}");
+        ApiError::Internal(format!("Sidecar connection failed: {e}"))
+    })?;
     let io = TokioIo::new(stream);
 
     let (mut sender, conn) = http1::handshake(io).await.map_err(|e| {
@@ -424,10 +423,10 @@ async fn handle_ws_relay_with_close_codes(
 ) {
     let _ = state; // kept for future use (e.g. metrics), suppress unused warning
     let sidecar_path = format!("/control/sessions/{control_id}/stream");
-    let sidecar_stream = match crate::platform::connect_sidecar(&socket_path).await {
+    let unix_stream = match UnixStream::connect(&socket_path).await {
         Ok(s) => s,
         Err(e) => {
-            tracing::error!("Sidecar connect failed: {e}");
+            tracing::error!("Sidecar Unix socket connect failed: {e}");
             let (mut sink, _) = frontend_ws.split();
             let _ = sink
                 .send(Message::Close(Some(CloseFrame {
@@ -440,7 +439,7 @@ async fn handle_ws_relay_with_close_codes(
     };
 
     let ws_url = format!("ws://localhost{sidecar_path}");
-    let (sidecar_ws, _) = match tokio_tungstenite::client_async(ws_url, sidecar_stream).await {
+    let (sidecar_ws, _) = match tokio_tungstenite::client_async(ws_url, unix_stream).await {
         Ok(pair) => pair,
         Err(e) => {
             tracing::error!("Sidecar WS handshake failed: {e}");

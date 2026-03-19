@@ -32,8 +32,7 @@ pub enum SidecarError {
 /// The sidecar is lazy-started on first `ensure_running()` call.
 pub struct SidecarManager {
     child: Mutex<Option<Child>>,
-    /// On Unix: Unix socket path. On Windows: TCP address (e.g. "127.0.0.1:PORT").
-    sidecar_addr: String,
+    socket_path: String,
 }
 
 impl Default for SidecarManager {
@@ -44,15 +43,16 @@ impl Default for SidecarManager {
 
 impl SidecarManager {
     pub fn new() -> Self {
+        let pid = std::process::id();
         Self {
             child: Mutex::new(None),
-            sidecar_addr: crate::platform::sidecar_address(),
+            socket_path: format!("/tmp/claude-view-sidecar-{pid}.sock"),
         }
     }
 
-    /// Get the sidecar address (socket path on Unix, TCP address on Windows).
+    /// Get the Unix socket path for this sidecar instance.
     pub fn socket_path(&self) -> &str {
-        &self.sidecar_addr
+        &self.socket_path
     }
 
     /// Start sidecar if not already running. Returns the socket path.
@@ -69,11 +69,11 @@ impl SidecarManager {
 
             if let Some(ref mut child) = *guard {
                 match child.try_wait() {
-                    Ok(None) if self.is_addr_ready() => {
-                        return Ok(self.sidecar_addr.clone()); // running + ready
+                    Ok(None) if std::path::Path::new(&self.socket_path).exists() => {
+                        return Ok(self.socket_path.clone()); // running + socket ready
                     }
                     Ok(None) => {
-                        // Child alive but not yet ready — concurrent caller
+                        // Child alive but socket not yet created — concurrent caller
                         // arrived while first caller is still in health check loop.
                         // Just wait for readiness, don't re-spawn.
                         "wait"
@@ -115,8 +115,8 @@ impl SidecarManager {
                 return Err(SidecarError::NodeNotFound);
             }
 
-            // Clean up stale socket/address
-            crate::platform::cleanup_sidecar_address(&self.sidecar_addr);
+            // Clean up stale socket
+            let _ = std::fs::remove_file(&self.socket_path);
 
             // CLAUDE.md HARD RULE: Strip ALL `CLAUDE*` env vars when spawning
             // child processes. Use env_clear() then re-add safe vars only.
@@ -127,7 +127,7 @@ impl SidecarManager {
                 .arg(&entry_point)
                 .env_clear()
                 .envs(filtered_env)
-                .env("SIDECAR_SOCKET", &self.sidecar_addr)
+                .env("SIDECAR_SOCKET", &self.socket_path)
                 .stdin(Stdio::null())
                 // inherit → logs flow to server process stdout/stderr without pipe buffering.
                 // piped+unread would fill the 64KB pipe buffer and deadlock the sidecar.
@@ -138,7 +138,7 @@ impl SidecarManager {
 
             tracing::info!(
                 pid = child.id(),
-                socket = %self.sidecar_addr,
+                socket = %self.socket_path,
                 "Spawned sidecar process"
             );
 
@@ -155,24 +155,10 @@ impl SidecarManager {
             sleep(Duration::from_millis(100)).await;
             if self.health_check().await.is_ok() {
                 tracing::info!(attempts = attempt + 1, "Sidecar ready");
-                return Ok(self.sidecar_addr.clone());
+                return Ok(self.socket_path.clone());
             }
         }
         Err(SidecarError::HealthCheckTimeout)
-    }
-
-    /// Check if the sidecar address is ready to accept connections.
-    /// On Unix, checks if the socket file exists. On Windows (TCP mode), returns true
-    /// since TCP addresses don't have a file to check — readiness is confirmed by health check.
-    fn is_addr_ready(&self) -> bool {
-        if self.sidecar_addr.contains(':') {
-            // TCP mode (Windows): no file to check, assume ready if child is alive.
-            // Actual readiness is confirmed by the health check in wait_for_ready().
-            true
-        } else {
-            // Unix socket mode: check if the socket file exists
-            std::path::Path::new(&self.sidecar_addr).exists()
-        }
     }
 
     /// Kill the sidecar child process and wait for it to exit.
@@ -194,8 +180,8 @@ impl SidecarManager {
         }
         *guard = None;
 
-        // Cleanup socket/address
-        crate::platform::cleanup_sidecar_address(&self.sidecar_addr);
+        // Cleanup socket file
+        let _ = std::fs::remove_file(&self.socket_path);
     }
 
     /// Check if the sidecar is currently running.
@@ -220,7 +206,7 @@ impl SidecarManager {
         use hyper::client::conn::http1;
         use hyper_util::rt::TokioIo;
 
-        let stream = crate::platform::connect_sidecar(&self.sidecar_addr)
+        let stream = tokio::net::UnixStream::connect(&self.socket_path)
             .await
             .map_err(|e| SidecarError::RequestError(format!("Unix socket connect: {e}")))?;
 
@@ -298,7 +284,7 @@ impl SidecarManager {
         let body_str = serde_json::to_string(&body)
             .map_err(|e| SidecarError::RequestError(format!("Serialize: {e}")))?;
 
-        let stream = crate::platform::connect_sidecar(&self.sidecar_addr)
+        let stream = tokio::net::UnixStream::connect(&self.socket_path)
             .await
             .map_err(|e| SidecarError::RequestError(format!("Connect: {e}")))?;
 
@@ -395,21 +381,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_creates_sidecar_address() {
+    fn test_new_creates_socket_path_with_pid() {
         let mgr = SidecarManager::new();
-        let addr = mgr.socket_path();
-        #[cfg(unix)]
-        {
-            let pid = std::process::id();
-            assert_eq!(addr, format!("/tmp/claude-view-sidecar-{pid}.sock"));
-        }
-        #[cfg(windows)]
-        {
-            assert!(
-                addr.starts_with("127.0.0.1:"),
-                "Windows sidecar address should be TCP: {addr}"
-            );
-        }
+        let pid = std::process::id();
+        assert_eq!(
+            mgr.socket_path(),
+            format!("/tmp/claude-view-sidecar-{pid}.sock")
+        );
     }
 
     #[test]
