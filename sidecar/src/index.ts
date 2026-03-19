@@ -7,8 +7,6 @@ import { healthRouter } from './health.js'
 import { startModelCacheRefresh } from './model-cache.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
-import { runWorkflow } from './workflow-runner.js'
-import type { WorkflowEvent } from './workflow-runner.js'
 import { handleWebSocket } from './ws-handler.js'
 
 const SOCKET_PATH = process.env.SIDECAR_SOCKET ?? `/tmp/claude-view-sidecar-${process.ppid}.sock`
@@ -22,25 +20,6 @@ app.route(
 )
 app.route('/control', createRoutes(registry))
 app.get('/', (c) => c.json({ status: 'ok' }))
-
-// Workflow runner — POST /workflows/run (preserved from existing sidecar)
-app.post('/workflows/run', async (c) => {
-  const body = await c.req.json<{ workflowId: string; inputs?: Record<string, string> }>()
-  if (!body.workflowId) {
-    return c.json({ error: 'Missing workflowId' }, 400)
-  }
-
-  const events: WorkflowEvent[] = []
-  await runWorkflow(body.workflowId, body.inputs ?? {}, (event) => {
-    events.push(event)
-  })
-
-  const lastEvent = events[events.length - 1]
-  return c.json({
-    status: lastEvent?.type === 'workflow_complete' ? 'complete' : 'failed',
-    events,
-  })
-})
 
 // Clean up stale socket
 if (fs.existsSync(SOCKET_PATH)) fs.unlinkSync(SOCKET_PATH)
@@ -89,4 +68,4 @@ async function shutdown() {
 process.on('SIGTERM', () => void shutdown())
 process.on('SIGINT', () => void shutdown())
 
-export { app, registry, server, SOCKET_PATH, runWorkflow }
+export { app, registry, server, SOCKET_PATH }

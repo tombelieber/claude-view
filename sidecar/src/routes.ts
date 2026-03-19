@@ -155,5 +155,26 @@ export function createRoutes(registry: SessionRegistry) {
   // Supported models (cached from SDK, refreshed on every session create/resume)
   app.get('/supported-models', (c) => c.json(getCacheState()))
 
+  // Workflow runner — dispatches a workflow definition to the coordinator
+  app.post('/workflows/run', async (c) => {
+    try {
+      const { runWorkflow } = await import('./workflows/workflow-runner.js')
+      const { workflowSchema } = await import('./workflows/workflow-schema.js')
+      const body = await c.req.json<{ workflow?: unknown; inputs?: Record<string, string> }>()
+
+      const parsed = workflowSchema.parse(body.workflow ?? body)
+      const result = await runWorkflow(parsed, body.inputs ?? {}, registry)
+      return c.json(result)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'ZodError') {
+        return c.json({ error: 'Invalid workflow definition', details: err.message }, 400)
+      }
+      return c.json(
+        { error: `Workflow run failed: ${err instanceof Error ? err.message : err}` },
+        500,
+      )
+    }
+  })
+
   return app
 }

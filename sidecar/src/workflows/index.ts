@@ -1,0 +1,11 @@
+// sidecar/src/workflows/index.ts — barrel exports for workflow module
+export { workflowSchema, type WorkflowDefinition } from './workflow-schema.js'
+export { evaluateGate } from './gate-evaluator.js'
+export { extractLastJsonBlock } from './json-extractor.js'
+export { extractAgentOutput } from './extract-agent-output.js'
+export { buildAgentDefinitions } from './build-agents.js'
+export { buildCoordinatorPrompt } from './coordinator-prompt.js'
+export { topologicalSort } from './dag-sort.js'
+export { interpolatePrompt } from './interpolate.js'
+export { getNestedField } from './get-nested-field.js'
+export { runWorkflow, createGateHook } from './workflow-runner.js'
