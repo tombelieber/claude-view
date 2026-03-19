@@ -24,6 +24,7 @@ pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
 pub mod teams;
+pub mod telemetry;
 pub mod terminal_state;
 pub mod time_range;
 
@@ -155,6 +156,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        telemetry: None,
+        telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
     api_routes(state)
 }
@@ -254,6 +257,8 @@ pub fn create_app_full(
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session,
+        telemetry: None,
+        telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).
