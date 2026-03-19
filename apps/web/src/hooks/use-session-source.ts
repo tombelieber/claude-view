@@ -1,7 +1,6 @@
-import { StreamAccumulator } from '@claude-view/shared/lib'
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
-import type { ModelUsageInfo, SequencedEvent } from '@claude-view/shared/types/sidecar-protocol'
+import type { ModelUsageInfo } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SessionChannel } from '../lib/session-channel'
 import { wsUrl } from '../lib/ws-url'
@@ -88,7 +87,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const channelRef = useRef(new SessionChannel(null))
 
   const wsRef = useRef<WebSocket | null>(null)
-  const accumulatorRef = useRef<StreamAccumulator>(new StreamAccumulator())
   const lastSeqRef = useRef(-1)
   const unmountedRef = useRef(false)
   // Ref mirror of controlId state — accessible in cleanup closures without stale captures.
@@ -156,9 +154,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (seq > lastSeqRef.current) {
         lastSeqRef.current = seq
       }
-
-      // Push to accumulator for seq dedup tracking (still needed for replay)
-      accumulatorRef.current.push(raw as unknown as SequencedEvent)
 
       // Track session state from events
       switch (raw.type) {
@@ -389,7 +384,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
     const sid = sessionId
     unmountedRef.current = false
-    accumulatorRef.current = new StreamAccumulator()
     lastSeqRef.current = -1
     reconnectAttemptRef.current = 0
     setMsgState({ committed: [], pendingText: '' })
