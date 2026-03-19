@@ -162,6 +162,10 @@ pub struct AppState {
     /// Prevents duplicate sessions when Claude Code restarts with a new session ID
     /// but the same transcript file path.
     pub transcript_to_session: TranscriptMap,
+    /// PostHog telemetry client. `None` when no PostHog API key is compiled in.
+    pub telemetry: Option<crate::telemetry::TelemetryClient>,
+    /// Path to the telemetry config file (allows tests to use temp dirs).
+    pub telemetry_config_path: std::path::PathBuf,
 }
 
 impl AppState {
@@ -212,6 +216,8 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
     }
 
@@ -261,6 +267,8 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
     }
 
@@ -313,6 +321,8 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
     }
 

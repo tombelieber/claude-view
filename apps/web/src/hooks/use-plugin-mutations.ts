@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../lib/notify'
 import type { PluginActionRequest, PluginOp } from '../types/generated'
+import { useTrackEvent } from './use-track-event'
 
 async function enqueueOp(req: PluginActionRequest): Promise<PluginOp> {
   const res = await fetch('/api/plugins/ops', {
@@ -31,6 +32,7 @@ function capitalize(s: string): string {
 
 export function usePluginMutations() {
   const queryClient = useQueryClient()
+  const trackEvent = useTrackEvent()
   // Track which op IDs we've already toasted so we don't repeat
   const toastedRef = useRef<Set<string>>(new Set())
 
@@ -54,6 +56,9 @@ export function usePluginMutations() {
         toastedRef.current.add(op.id)
         const verb = op.action === 'disable' ? 'Disabled' : `${capitalize(op.action)}ed`
         toast.success(`${verb} ${op.name}`, { duration: TOAST_DURATION.micro })
+        if (op.action === 'install') {
+          trackEvent('plugin_installed', { plugin_name: op.name })
+        }
         queryClient.invalidateQueries({ queryKey: ['plugins'] })
       } else if (op.status === 'failed') {
         toastedRef.current.add(op.id)
@@ -62,7 +67,7 @@ export function usePluginMutations() {
         })
       }
     }
-  }, [ops, queryClient])
+  }, [ops, queryClient, trackEvent])
 
   const execute = useCallback(
     async (req: PluginActionRequest) => {

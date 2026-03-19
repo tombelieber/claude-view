@@ -28,6 +28,7 @@ import {
   sessionTotalCost,
 } from '../components/live/use-live-sessions'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
+import { useTrackEvent } from '../hooks/use-track-event'
 import { useLiveCommandStore } from '../store/live-command-context'
 import { useMonitorStore } from '../store/monitor-store'
 
@@ -48,6 +49,10 @@ export function LiveMonitorPage() {
     liveSessions: UseLiveSessionsResult
     indexingProgress?: IndexingProgress
   }>()
+  const trackEvent = useTrackEvent()
+  useEffect(() => {
+    trackEvent('live_monitor_viewed')
+  }, [])
   const {
     sessions,
     summary: serverSummary,

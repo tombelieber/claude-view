@@ -18,6 +18,7 @@ ts-rs = { workspace = true }
 async-trait = "0.1"
 memchr = { workspace = true }
 similar = { workspace = true }
+uuid = { workspace = true }
 
 [features]
 # Gate ts-rs file generation behind this feature so `cargo test` alone
@@ -28,6 +29,7 @@ codegen = []
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 pretty_assertions = { workspace = true }
+serial_test = "3"
 
 [[bin]]
 name = "evidence-audit"
