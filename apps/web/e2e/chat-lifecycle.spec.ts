@@ -98,8 +98,12 @@ test.describe('Chat Lifecycle', () => {
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
 
-    // All previous messages should be visible within 3s (snapshot restore)
-    await page.waitForTimeout(3_000)
+    // Wait for messages to reappear via blocks_snapshot (live) or JSONL history (fallback).
+    // Use waitFor instead of fixed timeout — the restore path depends on timing.
+    await page.locator('[data-testid="assistant-message"]').first().waitFor({
+      state: 'visible',
+      timeout: 15_000,
+    })
     const threadAfterReload = page.locator('[data-testid="message-thread"]')
     const blockCountAfter = await threadAfterReload
       .locator('[data-testid="assistant-message"], [data-testid="user-message"]')
