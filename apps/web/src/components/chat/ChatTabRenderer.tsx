@@ -10,10 +10,7 @@ export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHea
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (status === 'active') {
-      // TODO: Show confirmation dialog before closing active session
-      return
-    }
+    // TODO: Show confirmation dialog before closing active session
     api.close()
   }
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
 import { SessionChannel } from '../lib/session-channel'
-import { wsUrl } from '../lib/ws-url'
+import { sidecarWsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
 
 const INITIAL_BACKOFF_MS = 1000
@@ -349,7 +349,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
       const params = new URLSearchParams({ sessionId: sid })
       if (model) params.set('model', model)
-      const ws = new WebSocket(wsUrl(`/ws/chat/${sid}?${params.toString()}`))
+      const ws = new WebSocket(sidecarWsUrl(`/ws/chat/${sid}?${params.toString()}`))
       wsRef.current = ws
 
       ws.onopen = () => {
