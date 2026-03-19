@@ -1,9 +1,12 @@
 import type { DockviewApi } from 'dockview-react'
 import { useCallback, useState } from 'react'
 import { ChatDockLayout } from '../components/chat/ChatDockLayout'
+import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
 
 export function ChatPageV2() {
   const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
+
+  useChatKeyboardShortcuts(dockApi)
 
   const handleDockReady = useCallback((api: DockviewApi) => {
     setDockApi(api)
