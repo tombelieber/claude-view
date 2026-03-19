@@ -2,7 +2,7 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
-import { wsUrl } from '../lib/ws-url'
+import { sidecarWsUrl } from '../lib/ws-url'
 
 export type ChatSessionStatus = 'active' | 'idle' | 'watching' | 'error' | 'ended'
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
@@ -132,7 +132,7 @@ export function useSidecarConnection(
         wsRef.current = null
       }
 
-      const ws = new WebSocket(wsUrl(`/ws/chat/${sid}`))
+      const ws = new WebSocket(sidecarWsUrl(`/ws/chat/${sid}`))
       wsRef.current = ws
 
       ws.onopen = () => {

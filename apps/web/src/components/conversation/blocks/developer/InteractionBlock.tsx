@@ -16,8 +16,15 @@ interface InteractionBlockProps {
 }
 
 export function DevInteractionBlock({ block }: InteractionBlockProps) {
-  const { localResponse, respondPermission, answerQuestion, approvePlan, submitElicitation } =
-    useInteractionHandlers(block.requestId)
+  const {
+    localResponse,
+    isPending,
+    respondPermission,
+    alwaysAllow,
+    answerQuestion,
+    approvePlan,
+    submitElicitation,
+  } = useInteractionHandlers(block.requestId)
 
   const responded = block.resolved || localResponse !== null
 
@@ -28,7 +35,9 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
         <PermissionCard
           permission={block.data as PermissionRequest}
           onRespond={responded ? undefined : respondPermission}
+          onAlwaysAllow={responded ? undefined : alwaysAllow}
           resolved={responded ? { allowed } : undefined}
+          isPending={isPending}
         />
       )
     }
