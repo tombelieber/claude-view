@@ -1326,6 +1326,9 @@ describe('skipWs (watching mode)', () => {
 
     // useSessionMessages should still receive the real sessionId for REST history
     expect(mockSessionMessages).toHaveBeenCalledWith('sess-1', expect.any(Object))
+    // skipWs bypasses initComplete gate — history must be enabled immediately
+    const lastCall = mockSessionMessages.mock.calls[mockSessionMessages.mock.calls.length - 1]
+    expect(lastCall[1]).toHaveProperty('enabled', true)
   })
 })
 
