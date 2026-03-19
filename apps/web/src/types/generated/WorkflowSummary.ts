@@ -7,7 +7,7 @@ export type WorkflowSummary = {
   category: string
   author: string
   version: string
-  stageCount: number
+  nodeCount: number
   /**
    * "official" | "user"
    */

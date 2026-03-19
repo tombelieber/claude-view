@@ -1,0 +1,37 @@
+{
+  "id": "plan-polisher",
+  "name": "Plan Polisher",
+  "description": "Audits a plan until it scores 100/100 on prove-it",
+  "author": "official",
+  "category": "Development",
+  "version": "1.0.0",
+  "inputs": [
+    {
+      "name": "plan_file",
+      "type": "file_path",
+      "description": "Path to the implementation plan MD file"
+    }
+  ],
+  "defaults": {
+    "model": "claude-opus-4-6"
+  },
+  "nodes": [
+    {
+      "id": "stage-0",
+      "type": "agent",
+      "position": { "x": 250, "y": 0 },
+      "data": {
+        "label": "Audit",
+        "skills": ["/auditing-plans", "/prove-it"],
+        "model": "claude-opus-4-6",
+        "parallel": false,
+        "agents": 1,
+        "gate": {
+          "condition": "/prove-it verdict = Pass",
+          "retry": true
+        }
+      }
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,59 @@
+{
+  "id": "plan-executor",
+  "name": "Plan Executor",
+  "description": "Implements a polished plan and ships it as a PR",
+  "author": "official",
+  "category": "Development",
+  "version": "1.0.0",
+  "inputs": [
+    {
+      "name": "plan_file",
+      "type": "file_path",
+      "description": "Path to the polished implementation plan MD file"
+    }
+  ],
+  "defaults": {
+    "model": "claude-opus-4-6"
+  },
+  "nodes": [
+    {
+      "id": "stage-0",
+      "type": "agent",
+      "position": { "x": 250, "y": 0 },
+      "data": {
+        "label": "Implement",
+        "skills": ["/feature-dev:feature-dev", "/subagent-driven-development"],
+        "model": "claude-opus-4-6",
+        "parallel": true,
+        "agents": 4,
+        "gate": {
+          "condition": "all tasks complete and committed",
+          "retry": false
+        }
+      }
+    },
+    {
+      "id": "stage-1",
+      "type": "agent",
+      "position": { "x": 250, "y": 200 },
+      "data": {
+        "label": "Ship",
+        "skills": ["/shippable"],
+        "model": "claude-opus-4-6",
+        "parallel": false,
+        "agents": 1,
+        "gate": {
+          "condition": "verdict = SHIP IT",
+          "retry": true
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-stage-0-stage-1",
+      "source": "stage-0",
+      "target": "stage-1"
+    }
+  ]
+}
