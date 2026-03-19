@@ -72,6 +72,7 @@ memchr = "2"
 sysinfo = "0.33"
 similar = "2"
 ts-rs = { version = "11", features = ["serde-compat", "serde-json-impl"] }
+uuid = { version = "1", features = ["v4"] }
 
 # Testing
 tempfile = "3"

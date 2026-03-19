@@ -16,6 +16,7 @@ import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
+import { useTrackEvent } from '../hooks/use-track-event'
 import { deriveInputBarState } from '../lib/control-status-map'
 import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
@@ -68,6 +69,12 @@ interface ChatSessionProps {
 export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSessionProps) {
   const navigate = useNavigate()
   const location = useLocation()
+  const trackEvent = useTrackEvent()
+
+  useEffect(() => {
+    if (sessionId) trackEvent('session_opened')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
   const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
   // When watching, skip WS to prevent auto-resume/bind_control. History loads via REST.
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
@@ -173,6 +180,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
         // No session yet — create one first, then navigate.
         // initialMessage is echoed back via user_message_echo in the stream,
         // so the user sees their message as soon as the WS connects.
+        trackEvent('chat_started')
         fetch('/api/control/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -199,7 +207,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate, selectedModel, permMode],
+    [sessionId, actions, navigate, selectedModel, permMode, trackEvent],
   )
 
   const handleModeChangePermission = useCallback(

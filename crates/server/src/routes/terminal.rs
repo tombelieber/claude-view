@@ -1214,6 +1214,8 @@ mod tests {
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         });
 
         // Register the session in the live sessions map
@@ -1448,6 +1450,8 @@ mod tests {
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         });
 
         let (addr, server_handle) = start_test_server(state).await;
