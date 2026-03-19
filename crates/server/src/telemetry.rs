@@ -7,12 +7,19 @@
 
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
+/// PostHog telemetry client.
+///
+/// Cheaply cloneable: all fields are reference-counted or `Clone`.
+/// The `enabled` flag is shared across clones via `Arc<AtomicBool>`, so
+/// a `set_enabled(true)` on any clone is immediately visible to all copies.
+#[derive(Clone)]
 pub struct TelemetryClient {
     http: reqwest::Client,
     pub(crate) api_key: String,
     pub(crate) anonymous_id: String,
-    enabled: AtomicBool,
+    enabled: Arc<AtomicBool>,
 }
 
 impl TelemetryClient {
@@ -21,7 +28,7 @@ impl TelemetryClient {
             http: reqwest::Client::new(),
             api_key: api_key.to_string(),
             anonymous_id: anonymous_id.to_string(),
-            enabled: AtomicBool::new(false),
+            enabled: Arc::new(AtomicBool::new(false)),
         }
     }
 

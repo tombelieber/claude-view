@@ -235,6 +235,7 @@ pub fn create_app_full(
     prompt_index: PromptIndexHolder,
     prompt_stats: PromptStatsHolder,
     prompt_templates: PromptTemplatesHolder,
+    telemetry: Option<telemetry::TelemetryClient>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let mut initial_pricing = claude_view_db::default_pricing();
@@ -311,7 +312,7 @@ pub fn create_app_full(
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session,
-        telemetry: None,
+        telemetry,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
 
