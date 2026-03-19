@@ -21,11 +21,8 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     return
   }
 
-  // Enforce one WS per session: close old connection before subscribing new one
-  if (session.activeWs && session.activeWs.readyState === ws.OPEN) {
-    session.activeWs.close(4001, 'replaced_by_new_connection')
-  }
-  session.activeWs = ws
+  // Add this WS to the multi-client set
+  session.wsClients.add(ws)
 
   // Subscribe to session events — relay with blocks when applicable
   const onMessage = (rawMsg: unknown) => {
@@ -53,7 +50,12 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   }
   session.emitter.on('message', onMessage)
 
-  // Send current session status
+  // 1. Re-send cached session_init if available (V2 multi-tab behavior)
+  if (session.lastSessionInit) {
+    ws.send(JSON.stringify(session.lastSessionInit))
+  }
+
+  // 2. Send session_status
   ws.send(
     JSON.stringify({
       type: 'session_status',
@@ -61,10 +63,10 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     }),
   )
 
-  // Heartbeat config
+  // 3. Heartbeat config
   ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
 
-  // Blocks snapshot — sent after heartbeat_config for initial state
+  // 4. Blocks snapshot
   ws.send(
     JSON.stringify({
       type: 'blocks_snapshot',
@@ -311,11 +313,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     }
   })
 
-  // Cleanup on close — drain interactive maps, keep session alive for reconnect
+  // Cleanup on close — remove from set, drain interactive maps
   ws.on('close', () => {
-    if (session.activeWs === ws) {
-      session.activeWs = null
-    }
+    session.wsClients.delete(ws)
     session.emitter.removeListener('message', onMessage)
     session.permissions.drainInteractive()
   })

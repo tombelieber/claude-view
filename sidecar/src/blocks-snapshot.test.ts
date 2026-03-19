@@ -104,7 +104,8 @@ function createMockWs() {
 
 function createMockSession(overrides?: Record<string, unknown>) {
   return {
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     state: 'active',
     emitter: { on: vi.fn(), removeListener: vi.fn() },
     permissions: {
