@@ -1,3 +1,4 @@
+import { usePostHog } from '@posthog/react'
 import * as Dialog from '@radix-ui/react-dialog'
 import type { AuthSession, AuthUser } from '@supabase/supabase-js'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
@@ -44,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [signInOpen, setSignInOpen] = useState(false)
   const onSignInSuccessRef = useRef<(() => void) | undefined>(undefined)
+  const posthog = usePostHog()
 
   useEffect(() => {
     if (!supabase) {
@@ -69,10 +71,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(mapUser(session.user, session))
         setSignInOpen(false)
+        // Merge identity into PostHog on sign-in so anonymous events are linked
+        if (event === 'SIGNED_IN') {
+          posthog?.identify(session.user.id, {
+            email: session.user.email,
+          })
+        }
         // Fire the pending onSuccess callback (e.g. retry share after sign-in)
         onSignInSuccessRef.current?.()
         onSignInSuccessRef.current = undefined
