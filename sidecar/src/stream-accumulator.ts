@@ -23,7 +23,6 @@ import type {
   SequencedEvent,
   SessionClosed,
   SessionInit,
-  StreamDelta,
   TaskNotification,
   TaskProgressEvent,
   TaskStarted,
@@ -144,7 +143,6 @@ export type SystemBlock = {
     | 'task_notification'
     | 'files_saved'
     | 'command_output'
-    | 'stream_delta'
     | 'unknown'
   data:
     | SessionInit
@@ -156,7 +154,6 @@ export type SystemBlock = {
     | TaskNotification
     | FilesSaved
     | CommandOutput
-    | StreamDelta
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
 }
