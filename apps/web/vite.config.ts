@@ -20,6 +20,16 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      // Sidecar TCP :3001 — must come before /api catch-all
+      '/ws/chat': {
+        target: 'ws://localhost:3001',
+        ws: true,
+        rewriteWsOrigin: true,
+      },
+      '/api/sessions': {
+        target: 'http://localhost:3001',
+      },
+      // Main server :47892
       '/api/live/sessions': {
         target: 'http://localhost:47892',
         ws: true,
