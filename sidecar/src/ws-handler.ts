@@ -6,7 +6,12 @@ import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
 // Content events that trigger blocks_update on relay — module scope to avoid per-connection recreation.
-const CONTENT_EVENTS = new Set(['assistant_text', 'tool_use_start', 'assistant_thinking'])
+const CONTENT_EVENTS = new Set([
+  'assistant_text',
+  'tool_use_start',
+  'assistant_thinking',
+  'user_message_echo',
+])
 
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
   const session = registry.get(controlId)
@@ -30,7 +35,13 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
       ws.send(JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
     } else {
       ws.send(JSON.stringify(msg))
-      if (CONTENT_EVENTS.has(msg.type)) {
+      // Send blocks_update when accumulator state changes structurally:
+      // - CONTENT_EVENTS: assistant_text, tool_use_start, assistant_thinking, user_message_echo
+      // - content_block_start: creates the assistant block skeleton (needed for pendingText)
+      const isBlockStart =
+        msg.type === 'stream_delta' &&
+        (msg as { deltaType?: string }).deltaType === 'content_block_start'
+      if (CONTENT_EVENTS.has(msg.type) || isBlockStart) {
         ws.send(
           JSON.stringify({
             type: 'blocks_update',
