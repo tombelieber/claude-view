@@ -10,8 +10,7 @@ import { SessionRegistry } from './session-registry.js'
 // --- Mocks ---
 
 // Track what buildQueryOptions received (captured via createControlSession/forkControlSession mocks)
-let capturedForkRequest: Record<string, unknown> | undefined
-let capturedResumeRequest: Record<string, unknown> | undefined
+let _capturedForkRequest: Record<string, unknown> | undefined
 
 const mockWaitForSessionInit = vi.fn()
 
@@ -19,7 +18,7 @@ vi.mock('./sdk-session.js', () => ({
   createControlSession: vi.fn(),
   resumeControlSession: vi.fn(),
   forkControlSession: vi.fn((req: Record<string, unknown>) => {
-    capturedForkRequest = req
+    _capturedForkRequest = req
     const cs = makeStubCs({ controlId: 'fork-ctrl', sessionId: '' })
     return cs
   }),
@@ -67,8 +66,7 @@ describe('routes', () => {
 
   beforeEach(() => {
     registry = new SessionRegistry()
-    capturedForkRequest = undefined
-    capturedResumeRequest = undefined
+    _capturedForkRequest = undefined
     vi.clearAllMocks()
   })
 
