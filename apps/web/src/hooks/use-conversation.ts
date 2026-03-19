@@ -24,7 +24,7 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // - Session is history-only → JSONL exists, safe to fetch (enabled=true)
   const isInitializing = source.sessionState === 'initializing'
   const history = useHistoryBlocks(sessionId ?? null, {
-    enabled: source.initComplete && !source.isLive && !!sessionId,
+    enabled: (options?.skipWs || source.initComplete) && !source.isLive && !!sessionId,
     suppressNotFound: isInitializing,
     retry: 3,
     retryDelay: 1000,
