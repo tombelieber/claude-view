@@ -4,8 +4,7 @@ import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
-import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
-import type { RingBuffer } from './ring-buffer.js'
+import type { ActiveSession, ServerEvent } from './protocol.js'
 import type { StreamAccumulator } from './stream-accumulator.js'
 
 export type SessionState =
@@ -31,8 +30,6 @@ export interface ControlSession {
   modelUsage: Record<string, unknown>
   startedAt: number
   emitter: EventEmitter
-  eventBuffer: RingBuffer<{ seq: number; msg: SequencedEvent }>
-  nextSeq: number
   permissions: PermissionHandler
   permissionMode: string
   activeWs: WebSocket | null
@@ -80,19 +77,15 @@ export class SessionRegistry {
     return this.sessions.size
   }
 
-  emitSequenced(cs: ControlSession, event: ServerEvent): SequencedEvent {
-    const seq = cs.nextSeq++
-    const sequenced: SequencedEvent = { ...event, seq }
-    cs.eventBuffer.push({ seq, msg: sequenced })
-    cs.emitter.emit('message', sequenced)
+  emitSequenced(cs: ControlSession, event: ServerEvent): void {
+    cs.emitter.emit('message', event)
     // Filter text-carrying deltas from accumulator (prevents doubled text with assistant_text).
     // Keep structural events (content_block_start/stop) so accumulator builds block skeletons
     // that blocks_snapshot can deliver — the frontend needs the skeleton to attach pendingText.
     const isTextDelta =
       event.type === 'stream_delta' &&
       (event as { deltaType?: string }).deltaType === 'content_block_delta'
-    if (!isTextDelta) cs.accumulator.push(sequenced)
-    return sequenced
+    if (!isTextDelta) cs.accumulator.push(event)
   }
 
   async closeAll(): Promise<void> {

@@ -242,7 +242,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     expect(created.sessionId).toBeTruthy()
 
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     const events = await collectUntilEvent(ws, 'turn_complete', 60_000)
     ws.close()
@@ -266,7 +266,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // Wait for first turn to complete
     const ws1 = await connectWs(sessionId)
-    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
     await waitForEvent(ws1, 'turn_complete', 60_000)
     ws1.close()
 
@@ -282,7 +282,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // Send second message on resumed session
     const ws2 = await connectWs(resumed.sessionId as string)
-    ws2.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     // Wait for init replay, then send
     await new Promise((r) => setTimeout(r, 2_000))
@@ -305,7 +305,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // Wait for first turn
     const ws1 = await connectWs(originalSessionId)
-    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
     await waitForEvent(ws1, 'turn_complete', 60_000)
     ws1.close()
 
@@ -327,7 +327,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   it('interrupt mid-response → session survives', async () => {
     const created = await createSession()
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
     await new Promise((r) => setTimeout(r, 1_000))
 
     // Send a message that will produce a long response
@@ -361,7 +361,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   it('set_mode changes permission mode without error', async () => {
     const created = await createSession('Reply with exactly one word: test')
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     // Wait for turn to complete (session is in waiting_input)
     await waitForEvent(ws, 'turn_complete', 60_000)
@@ -415,7 +415,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   it('concurrent sends → both get responses', async () => {
     const created = await createSession('Reply with exactly one word: init')
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     // Wait for first turn
     await waitForEvent(ws, 'turn_complete', 60_000)
@@ -445,7 +445,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   it('REGRESSION: session stays alive after turn_complete', async () => {
     const created = await createSession('Reply with exactly one word: hello')
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     // Wait for first turn_complete
     await waitForEvent(ws, 'turn_complete', 60_000)
@@ -477,7 +477,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // First turn
     const ws1 = await connectWs(sessionId)
-    ws1.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
     await waitForEvent(ws1, 'turn_complete', 60_000)
     ws1.close()
 
@@ -490,7 +490,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     })
 
     const ws2 = await connectWs(resumed.sessionId as string)
-    ws2.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
     await new Promise((r) => setTimeout(r, 2_000))
 
     // Turn 1 on resumed session
@@ -512,7 +512,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   it('REGRESSION: rate_limit event does not close session', async () => {
     const created = await createSession('Reply with exactly one word: test')
     const ws = await connectWs(created.sessionId)
-    ws.send(JSON.stringify({ type: 'resume', lastSeq: -1 }))
+    // WS connected — blocks_snapshot delivered on connect, no resume needed
 
     // Collect all events until turn_complete
     const events = await collectUntilEvent(ws, 'turn_complete', 60_000)
