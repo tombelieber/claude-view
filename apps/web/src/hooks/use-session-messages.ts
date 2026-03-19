@@ -27,15 +27,10 @@ export async function fetchMessages(
   return response.json()
 }
 
-export interface UseSessionMessagesOptions {
-  raw?: boolean
-  suppressNotFound?: boolean
-  enabled?: boolean
-  retry?: number | ((failureCount: number, error: Error) => boolean)
-  retryDelay?: number
-}
-
-export function useSessionMessages(sessionId: string | null, options?: UseSessionMessagesOptions) {
+export function useSessionMessages(
+  sessionId: string | null,
+  options?: { raw?: boolean; suppressNotFound?: boolean },
+) {
   const raw = options?.raw ?? false
   const suppressNotFound = options?.suppressNotFound ?? false
   return useInfiniteQuery({
@@ -60,9 +55,8 @@ export function useSessionMessages(sessionId: string | null, options?: UseSessio
       const prevOffset = Math.max(0, firstPage.offset - PAGE_SIZE)
       return prevOffset
     },
-    enabled: options?.enabled ?? !!sessionId,
+    enabled: !!sessionId,
     staleTime: 30_000,
-    retry: options?.retry ?? ((_, error) => !isNotFoundError(error)),
-    ...(options?.retryDelay !== undefined ? { retryDelay: options.retryDelay } : {}),
+    retry: (_, error) => !isNotFoundError(error),
   })
 }

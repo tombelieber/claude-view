@@ -2,8 +2,6 @@
 // Mirror of sidecar/src/protocol.ts — canonical event types for the WS protocol.
 // When adding new events, update BOTH this file and sidecar/src/protocol.ts.
 
-import type { ConversationBlock } from './blocks'
-
 // ─── Server → Client Events ───────────────────────────────────────
 
 export interface AssistantText {
@@ -338,9 +336,6 @@ export type ServerEvent =
   | PongEvent
   | UnknownSdkEvent
   | UserMessageEcho
-  // Blocks (server-driven message store)
-  | { type: 'blocks_snapshot'; blocks: ConversationBlock[]; lastSeq: number }
-  | { type: 'blocks_update'; blocks: ConversationBlock[] }
 
 export type SequencedEvent = ServerEvent & { seq: number }
 
