@@ -343,7 +343,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
       const params = new URLSearchParams({ sessionId: sid })
       if (model) params.set('model', model)
-      const ws = new WebSocket(wsUrl(`/api/control/connect?${params.toString()}`))
+      const ws = new WebSocket(wsUrl(`/ws/chat/${sid}?${params.toString()}`))
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -397,7 +397,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     async function init() {
       // Check if session is active
       try {
-        const res = await fetch('/api/control/sessions')
+        const res = await fetch('/api/sessions')
         if (!cancelled && res.ok) {
           const sessions: ActiveSession[] = await res.json()
           const active = sessions.find((s) => s.sessionId === sid)
@@ -443,7 +443,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetch(`/api/control/sessions/${controlIdRef.current}`, {
+        fetch(`/api/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         }).catch(() => {})
@@ -491,10 +491,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             /* noop */
           }
           resumingRef.current = true
-          fetch('/api/control/sessions/resume', {
+          fetch(`/api/sessions/${sessionId}/resume`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, permissionMode }),
+            body: JSON.stringify({ permissionMode }),
           })
             .then((res) => {
               if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
@@ -534,10 +534,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (!sessionId) return
 
       try {
-        const res = await fetch('/api/control/sessions/resume', {
+        const res = await fetch(`/api/sessions/${sessionId}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, permissionMode, model }),
+          body: JSON.stringify({ permissionMode, model }),
         })
         if (res.ok) {
           const data = await res.json()

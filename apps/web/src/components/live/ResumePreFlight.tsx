@@ -53,7 +53,7 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
     queryFn: async (): Promise<CostEstimate> => {
       const body: Record<string, string> = { session_id: sessionId }
       if (model) body.model = model
-      const res = await fetch('/api/control/estimate', {
+      const res = await fetch('/api/estimate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
