@@ -1,0 +1,38 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "description": "Simplest workflow — verifies infra works",
+  "author": "smoke-test",
+  "version": "1.0.0",
+  "category": "Test",
+  "inputs": [],
+  "defaults": {
+    "model": "claude-haiku-4-5-20251001",
+    "permissionMode": "bypassPermissions",
+    "settingSources": ["user", "project"],
+    "maxTurns": 10,
+    "maxBudgetUsd": 0.50
+  },
+  "nodes": [
+    {
+      "id": "stage-hello",
+      "type": "workflowStage",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "label": "Say Hello",
+        "prompt": "Say 'Hello from workflow!' and nothing else. Do not use any tools.",
+        "model": "haiku",
+        "maxTurns": 3
+      }
+    },
+    {
+      "id": "done-0",
+      "type": "workflowDone",
+      "position": { "x": 300, "y": 0 },
+      "data": { "label": "Done" }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "stage-hello", "target": "done-0" }
+  ]
+}
