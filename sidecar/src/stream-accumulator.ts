@@ -328,9 +328,9 @@ export class StreamAccumulator {
       case 'command_output':
         this.pushSystem('command_output', event as CommandOutput)
         break
-      case 'stream_delta':
-        this.handleStreamDelta(event as StreamDelta & { seq: number })
-        break
+      // stream_delta is filtered out in emitSequenced — never reaches accumulator.
+      // Frontend gets stream_delta via WS for live rendering; blocks only need final text
+      // from assistant_text. Removing this handler prevents doubled text.
       case 'unknown_sdk_event':
         this.pushSystem('unknown', event as UnknownSdkEvent)
         break
@@ -474,40 +474,9 @@ export class StreamAccumulator {
     this.blocks.push(boundary)
   }
 
-  private handleStreamDelta(event: StreamDelta & { seq: number }): void {
-    switch (event.deltaType) {
-      case 'content_block_start': {
-        const assistant = this.ensureAssistant(event.messageId)
-        assistant.segments.push({ kind: 'text', text: '', parentToolUseId: null })
-        break
-      }
-      case 'content_block_delta': {
-        if (event.textDelta) {
-          const assistant = this.ensureAssistant(event.messageId)
-          const lastSeg = assistant.segments.at(-1)
-          if (lastSeg?.kind === 'text') {
-            lastSeg.text += event.textDelta
-          } else {
-            assistant.segments.push({ kind: 'text', text: event.textDelta, parentToolUseId: null })
-          }
-        } else if (event.thinkingDelta) {
-          const assistant = this.ensureAssistant(event.messageId)
-          assistant.thinking = (assistant.thinking ?? '') + event.thinkingDelta
-        } else {
-          this.pushSystem('stream_delta', event)
-        }
-        break
-      }
-      case 'message_stop': {
-        this.finalizeCurrentAssistant()
-        break
-      }
-      default: {
-        this.pushSystem('stream_delta', event)
-        break
-      }
-    }
-  }
+  // handleStreamDelta removed — stream_delta events are filtered out in
+  // SessionRegistry.emitSequenced() and never reach the accumulator.
+  // See doubled-text-regression.test.ts for the root cause explanation.
 
   private ensureAssistant(messageId: string): AssistantBlock {
     if (!this.currentAssistant) {
