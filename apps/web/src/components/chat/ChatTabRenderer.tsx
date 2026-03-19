@@ -1,9 +1,10 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { ChatTabContextMenu } from './ChatTabContextMenu'
 import { type ChatSessionStatus, SessionStatusDot } from './SessionStatusDot'
 
-export function ChatTabRenderer({ api, params }: IDockviewPanelHeaderProps) {
+export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
   const status = (params.status as ChatSessionStatus) ?? 'idle'
   const hasPermissionPending = (params.permissionPending as boolean) ?? false
 
@@ -16,7 +17,10 @@ export function ChatTabRenderer({ api, params }: IDockviewPanelHeaderProps) {
     api.close()
   }
 
-  return (
+  // Find this panel in the dockview API for context menu operations
+  const panel = containerApi.panels.find((p) => p.id === api.id)
+
+  const tabContent = (
     <div className="group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer">
       <SessionStatusDot status={status} permissionPending={hasPermissionPending} />
       <span className="truncate max-w-[120px]">{api.title}</span>
@@ -34,4 +38,14 @@ export function ChatTabRenderer({ api, params }: IDockviewPanelHeaderProps) {
       </button>
     </div>
   )
+
+  if (panel) {
+    return (
+      <ChatTabContextMenu panel={panel} api={containerApi}>
+        {tabContent}
+      </ChatTabContextMenu>
+    )
+  }
+
+  return tabContent
 }
