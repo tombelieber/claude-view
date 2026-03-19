@@ -30,6 +30,7 @@ vi.mock('./use-session-source', () => ({
     committedBlocks: [],
     pendingText: '',
     clearPendingMessage: vi.fn(),
+    initComplete: false,
   }),
 }))
 
@@ -76,6 +77,7 @@ const defaultSource = {
   committedBlocks: [],
   pendingText: '',
   clearPendingMessage: vi.fn(),
+  initComplete: false,
 }
 
 const defaultMessages = {
@@ -123,6 +125,7 @@ describe('useConversation block merging', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -163,6 +166,7 @@ describe('useConversation block merging', () => {
       committedBlocks: [liveBlock] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -242,6 +246,7 @@ describe('useConversation block merging', () => {
       ] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -287,6 +292,7 @@ describe('useConversation block merging', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
 
     // Simulate: the message appears in history (confirmed by server)
@@ -355,6 +361,7 @@ describe('sessionInfo includes palette fields', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.model).toBe('claude-opus-4-6')
@@ -384,6 +391,7 @@ describe('sessionInfo includes palette fields', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.slashCommands).toEqual(['commit', 'test'])
@@ -413,6 +421,7 @@ describe('sessionInfo includes palette fields', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     const { result } = renderHook(() => useConversation('test-id'), { wrapper: createWrapper() })
     expect(result.current.sessionInfo.mcpServers).toEqual([{ name: 'gh', status: 'connected' }])
@@ -446,6 +455,7 @@ describe('source selection (single-stream pattern)', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -483,6 +493,7 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -546,6 +557,7 @@ describe('source selection (single-stream pattern)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -584,6 +596,7 @@ describe('source selection — binary source switch', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -622,6 +635,7 @@ describe('source selection — binary source switch', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -662,6 +676,7 @@ describe('source selection — optimistic dedup', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -700,6 +715,7 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -742,6 +758,7 @@ describe('source selection — optimistic dedup', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -788,6 +805,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -895,6 +913,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -945,6 +964,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -982,6 +1002,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1025,6 +1046,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1063,6 +1085,7 @@ describe('source selection always merges history + live overlay', () => {
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
+      initComplete: false,
     })
     mockSessionMessages.mockReturnValue({
       data: undefined,
@@ -1101,6 +1124,7 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     const { result } = renderHook(() => useConversation('test-session'), {
@@ -1136,6 +1160,7 @@ describe('source selection always merges history + live overlay', () => {
       agents: [],
       channel: null,
       capabilities: [],
+      initComplete: false,
     })
 
     mockSessionMessages.mockReturnValue({
