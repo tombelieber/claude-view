@@ -34,14 +34,6 @@ export default defineConfig({
         target: 'http://localhost:47892',
         ws: true,
       },
-      '/api/control/sessions': {
-        target: 'http://localhost:47892',
-        ws: true,
-      },
-      '/api/control/connect': {
-        target: 'http://localhost:47892',
-        ws: true,
-      },
       '/api': 'http://localhost:47892',
     },
   },
