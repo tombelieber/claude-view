@@ -43,10 +43,9 @@ impl Default for SidecarManager {
 
 impl SidecarManager {
     pub fn new() -> Self {
-        let pid = std::process::id();
         Self {
             child: Mutex::new(None),
-            socket_path: format!("/tmp/claude-view-sidecar-{pid}.sock"),
+            socket_path: crate::platform::sidecar_address(),
         }
     }
 
@@ -116,7 +115,7 @@ impl SidecarManager {
             }
 
             // Clean up stale socket
-            let _ = std::fs::remove_file(&self.socket_path);
+            crate::platform::cleanup_sidecar_address(&self.socket_path);
 
             // CLAUDE.md HARD RULE: Strip ALL `CLAUDE*` env vars when spawning
             // child processes. Use env_clear() then re-add safe vars only.
@@ -181,7 +180,7 @@ impl SidecarManager {
         *guard = None;
 
         // Cleanup socket file
-        let _ = std::fs::remove_file(&self.socket_path);
+        crate::platform::cleanup_sidecar_address(&self.socket_path);
     }
 
     /// Check if the sidecar is currently running.
@@ -206,7 +205,7 @@ impl SidecarManager {
         use hyper::client::conn::http1;
         use hyper_util::rt::TokioIo;
 
-        let stream = tokio::net::UnixStream::connect(&self.socket_path)
+        let stream = crate::platform::connect_sidecar(&self.socket_path)
             .await
             .map_err(|e| SidecarError::RequestError(format!("Unix socket connect: {e}")))?;
 
@@ -284,7 +283,7 @@ impl SidecarManager {
         let body_str = serde_json::to_string(&body)
             .map_err(|e| SidecarError::RequestError(format!("Serialize: {e}")))?;
 
-        let stream = tokio::net::UnixStream::connect(&self.socket_path)
+        let stream = crate::platform::connect_sidecar(&self.socket_path)
             .await
             .map_err(|e| SidecarError::RequestError(format!("Connect: {e}")))?;
 

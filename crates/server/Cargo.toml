@@ -87,6 +87,9 @@ aes-gcm = "0.10.3"
 flate2 = "1.1.9"
 serde_yaml = "0.9"
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+
+# libc is Unix-only (platform.rs uses kill/signals)
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
