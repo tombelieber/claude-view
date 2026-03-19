@@ -22,16 +22,10 @@ async function sendMessage(page: import('@playwright/test').Page, text: string) 
 
 /** Wait for at least one assistant text segment to appear in the thread. */
 async function waitForAssistantText(page: import('@playwright/test').Page, timeoutMs = 30_000) {
-  // Assistant blocks render markdown inside the conversation thread area.
-  // The thread container lives under .max-w-3xl and each assistant turn
-  // contains rendered prose. We wait for any non-empty text in that region
-  // that is NOT the user's own bubble (user bubbles are bg-blue-500).
-  await page
-    .locator('.max-w-3xl .space-y-3 >> div >> .prose, .max-w-3xl .space-y-1 >> div >> .prose')
-    .or(page.locator('.max-w-3xl').getByRole('article'))
-    .or(page.locator('.max-w-3xl p').first())
-    .first()
-    .waitFor({ state: 'visible', timeout: timeoutMs })
+  await page.locator('[data-testid="assistant-message"]').first().waitFor({
+    state: 'visible',
+    timeout: timeoutMs,
+  })
 }
 
 test.describe('Chat Lifecycle', () => {
@@ -67,12 +61,12 @@ test.describe('Chat Lifecycle', () => {
     // Critical assertion: text REMAINS after turn completes (no vanish bug).
     // Wait 2s then re-check that assistant content is still in the DOM.
     await page.waitForTimeout(2_000)
-    const threadText = await page.locator('.max-w-3xl').innerText()
+    const threadText = await page.locator('[data-testid="message-thread"]').innerText()
     expect(threadText.toLowerCase()).toContain('hello')
 
     // Regression: doubled text (Bug #1). The assistant's response should NOT
     // contain the same text repeated back-to-back.
-    const assistantText = await page.locator('.max-w-3xl').innerText()
+    const assistantText = await page.locator('[data-testid="message-thread"]').innerText()
     expect(assistantText).not.toContain('hello e2e testhello e2e test')
 
     // No stuck loading spinner
@@ -94,8 +88,10 @@ test.describe('Chat Lifecycle', () => {
     await expect(cursor).toBeHidden({ timeout: 60_000 })
 
     // Capture message count before reload
-    const threadContainer = page.locator('.max-w-3xl .space-y-3, .max-w-3xl .space-y-1').first()
-    const blockCountBefore = await threadContainer.locator('> div').count()
+    const threadContainer = page.locator('[data-testid="message-thread"]')
+    const blockCountBefore = await threadContainer
+      .locator('[data-testid="assistant-message"], [data-testid="user-message"]')
+      .count()
     expect(blockCountBefore).toBeGreaterThan(0)
 
     // Reload the page
@@ -104,16 +100,18 @@ test.describe('Chat Lifecycle', () => {
 
     // All previous messages should be visible within 3s (snapshot restore)
     await page.waitForTimeout(3_000)
-    const threadAfterReload = page.locator('.max-w-3xl .space-y-3, .max-w-3xl .space-y-1').first()
-    const blockCountAfter = await threadAfterReload.locator('> div').count()
+    const threadAfterReload = page.locator('[data-testid="message-thread"]')
+    const blockCountAfter = await threadAfterReload
+      .locator('[data-testid="assistant-message"], [data-testid="user-message"]')
+      .count()
     expect(blockCountAfter).toBeGreaterThanOrEqual(blockCountBefore)
 
     // Content still present
-    const pageText = await page.locator('.max-w-3xl').innerText()
+    const pageText = await page.locator('[data-testid="message-thread"]').innerText()
     expect(pageText.toLowerCase()).toContain('reconnect')
 
     // No duplicate messages: each user bubble text should appear exactly once
-    const userBubbles = page.locator('.bg-blue-500.rounded-2xl p, .bg-blue-600.rounded-2xl p')
+    const userBubbles = page.locator('[data-testid="user-message"]')
     const userTexts = await userBubbles.allInnerTexts()
     const uniqueTexts = new Set(userTexts)
     expect(uniqueTexts.size).toBe(userTexts.length)
@@ -147,7 +145,7 @@ test.describe('Chat Lifecycle', () => {
 
     // Messages should be visible via history loading
     await page.waitForTimeout(3_000)
-    const threadText = await page.locator('.max-w-3xl').innerText()
+    const threadText = await page.locator('[data-testid="message-thread"]').innerText()
     expect(threadText.toLowerCase()).toContain('history')
 
     // No 404 error state — check that the empty state placeholder is NOT shown
