@@ -3,11 +3,12 @@ import { expect, test } from '@playwright/test'
 /**
  * Chat lifecycle E2E tests.
  *
- * These require a running sidecar with an API key, so they are gated behind
- * the PLAYWRIGHT_CHAT_E2E env var. In CI they will be skipped automatically.
+ * These require a running sidecar with an API key.
+ * The beforeAll hook verifies the sidecar is reachable and fails loudly if not.
  *
  * Run locally:
- *   PLAYWRIGHT_CHAT_E2E=1 npx playwright test chat-lifecycle
+ *   bun dev   # start the full stack (server + sidecar)
+ *   npx playwright test chat-lifecycle
  */
 
 const CHAT_INPUT = '[data-testid="chat-input"]'
@@ -34,9 +35,18 @@ async function waitForAssistantText(page: import('@playwright/test').Page, timeo
 }
 
 test.describe('Chat Lifecycle', () => {
-  test('send message, streaming renders, no vanish after turn completes', async ({ page }) => {
-    test.skip(!process.env.PLAYWRIGHT_CHAT_E2E, 'requires running sidecar + API key')
+  test.beforeAll(async ({ request }) => {
+    // Verify sidecar is available — fail loudly if not
+    const res = await request.get('/api/control/sessions').catch(() => null)
+    if (!res || !res.ok()) {
+      throw new Error(
+        'Sidecar not available. Start the full stack with `bun dev` before running chat E2E tests.\n' +
+          'These tests require a running sidecar + ANTHROPIC_API_KEY.',
+      )
+    }
+  })
 
+  test('send message, streaming renders, no vanish after turn completes', async ({ page }) => {
     await page.goto('/chat')
     await page.waitForSelector(CHAT_INPUT, { timeout: 10_000 })
 
@@ -60,14 +70,17 @@ test.describe('Chat Lifecycle', () => {
     const threadText = await page.locator('.max-w-3xl').innerText()
     expect(threadText.toLowerCase()).toContain('hello')
 
+    // Regression: doubled text (Bug #1). The assistant's response should NOT
+    // contain the same text repeated back-to-back.
+    const assistantText = await page.locator('.max-w-3xl').innerText()
+    expect(assistantText).not.toContain('hello e2e testhello e2e test')
+
     // No stuck loading spinner
     const spinner = page.locator('.animate-spin')
     await expect(spinner).toBeHidden({ timeout: 5_000 })
   })
 
   test('page refresh reconnects and shows all messages from snapshot', async ({ page }) => {
-    test.skip(!process.env.PLAYWRIGHT_CHAT_E2E, 'requires running sidecar + API key')
-
     await page.goto('/chat')
     await page.waitForSelector(CHAT_INPUT, { timeout: 10_000 })
 
@@ -107,8 +120,6 @@ test.describe('Chat Lifecycle', () => {
   })
 
   test('live to history transition shows messages via JSONL', async ({ page }) => {
-    test.skip(!process.env.PLAYWRIGHT_CHAT_E2E, 'requires running sidecar + API key')
-
     // Start a session and send a message
     await page.goto('/chat')
     await page.waitForSelector(CHAT_INPUT, { timeout: 10_000 })
@@ -142,11 +153,14 @@ test.describe('Chat Lifecycle', () => {
     // No 404 error state — check that the empty state placeholder is NOT shown
     const emptyState = page.getByText('Start a conversation')
     await expect(emptyState).toBeHidden({ timeout: 5_000 })
+
+    // Regression: "Failed to load messages" error banner (Bug #2).
+    // Should NOT show any error state during the init->history transition.
+    const errorBanner = page.getByText('Failed to load')
+    await expect(errorBanner).toBeHidden({ timeout: 5_000 })
   })
 
   test('new session appears in sidebar active section', async ({ page }) => {
-    test.skip(!process.env.PLAYWRIGHT_CHAT_E2E, 'requires running sidecar + API key')
-
     await page.goto('/chat')
     await page.waitForSelector(CHAT_INPUT, { timeout: 10_000 })
 
