@@ -199,33 +199,25 @@ describe('LG-02: suppressNotFound preserved when session is initializing', () =>
   })
 })
 
-// ── LG-03: sessionState='initializing' set in init() for active sessions ──
-// Bug: init() finds an active session and calls openWs() but leaves sessionState='idle'.
-// This means isInitializing is always false, so suppressNotFound never activates.
-// Fix: setSessionState('initializing') BEFORE openWs() in init().
-// NOTE: This tests the SessionSourceResult interface — initComplete must be present.
-describe('LG-03: SessionSourceResult includes initComplete field', () => {
+// ── LG-03: skipWs bypasses initComplete gate ──
+// Watching mode (skipWs=true) calls useSessionSource(undefined) which never runs init(),
+// so initComplete stays false. History must still load via the skipWs bypass.
+describe('LG-03: skipWs bypasses initComplete gate', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    mockSessionSource.mockReturnValue({ ...defaultSource })
+    // skipWs path: useSessionSource(undefined) → initComplete stays false
+    mockSessionSource.mockReturnValue({ ...defaultSource, initComplete: false })
     mockSessionMessages.mockReturnValue({
       ...defaultMessages,
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('source exposes initComplete in its return value', () => {
-    mockSessionSource.mockReturnValue({
-      ...defaultSource,
-      initComplete: false,
-    })
-
-    renderHook(() => useConversation('test-session'), {
+  it('history query is enabled even when initComplete=false if skipWs=true', () => {
+    renderHook(() => useConversation('test-session', { skipWs: true }), {
       wrapper: createWrapper(),
     })
 
-    // The hook uses source.initComplete — verify it's wired through sessionInfo
-    // (initComplete is consumed internally by useConversation, not exposed directly,
-    // but the mock proves useSessionSource returns it)
-    expect(mockSessionSource.mock.results[0].value).toHaveProperty('initComplete', false)
+    const lastCall = mockSessionMessages.mock.calls[mockSessionMessages.mock.calls.length - 1]
+    expect(lastCall[1]).toHaveProperty('enabled', true)
   })
 })
