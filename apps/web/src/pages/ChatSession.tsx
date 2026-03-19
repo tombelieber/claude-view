@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
@@ -68,17 +69,15 @@ interface ChatSessionProps {
 
 export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSessionProps) {
   const navigate = useNavigate()
-  const location = useLocation()
+  const queryClient = useQueryClient()
   const trackEvent = useTrackEvent()
 
   useEffect(() => {
     if (sessionId) trackEvent('session_opened')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  const freshlyCreated = !!(location.state as { freshlyCreated?: boolean } | null)?.freshlyCreated
   // When watching, skip WS to prevent auto-resume/bind_control. History loads via REST.
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    freshlyCreated,
     skipWs: isWatching,
   })
   const { data: richData } = useRichSessionData(sessionId || null)
@@ -193,7 +192,8 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
           .then((r) => r.json())
           .then((data) => {
             if (data.sessionId) {
-              navigate(`/chat/${data.sessionId}`, { state: { freshlyCreated: true } })
+              navigate(`/chat/${data.sessionId}`)
+              queryClient.invalidateQueries({ queryKey: ['sidecar-sessions'] })
             } else {
               toast.error('Failed to create session', {
                 description: data.error || 'No session ID returned',
@@ -207,7 +207,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate, selectedModel, permMode, trackEvent],
+    [sessionId, actions, navigate, selectedModel, permMode, queryClient, trackEvent],
   )
 
   const handleModeChangePermission = useCallback(

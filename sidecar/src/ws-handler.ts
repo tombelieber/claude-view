@@ -1,9 +1,12 @@
 // sidecar/src/ws-handler.ts
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ResumeMsg } from './protocol.js'
+import type { ClientMessage, ResumeMsg, SequencedEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
+
+// Content events that trigger blocks_update on relay — module scope to avoid per-connection recreation.
+const CONTENT_EVENTS = new Set(['assistant_text', 'tool_use_start', 'assistant_thinking'])
 
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
   const session = registry.get(controlId)
@@ -19,10 +22,22 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   }
   session.activeWs = ws
 
-  // Subscribe to session events
-  const onMessage = (msg: unknown) => {
-    if (ws.readyState === ws.OPEN) {
+  // Subscribe to session events — relay with blocks when applicable
+  const onMessage = (rawMsg: unknown) => {
+    if (ws.readyState !== ws.OPEN) return
+    const msg = rawMsg as SequencedEvent
+    if (msg.type === 'turn_complete' || msg.type === 'turn_error') {
+      ws.send(JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
+    } else {
       ws.send(JSON.stringify(msg))
+      if (CONTENT_EVENTS.has(msg.type)) {
+        ws.send(
+          JSON.stringify({
+            type: 'blocks_update',
+            blocks: session.accumulator.getBlocks(),
+          }),
+        )
+      }
     }
   }
   session.emitter.on('message', onMessage)
@@ -35,6 +50,16 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
 
   // Heartbeat config (no seq)
   ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
+
+  // Blocks snapshot — sent after heartbeat_config for initial state
+  const lastSnapshotSeq = session.nextSeq - 1
+  ws.send(
+    JSON.stringify({
+      type: 'blocks_snapshot',
+      blocks: session.accumulator.getBlocks(),
+      lastSeq: lastSnapshotSeq,
+    }),
+  )
 
   // Handle incoming messages
   ws.on('message', async (raw) => {
@@ -91,8 +116,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           break
 
         case 'resume': {
-          const lastSeq = (msg as ResumeMsg).lastSeq
-          const missed = session.eventBuffer.getAfter(lastSeq, (e) => e.seq)
+          const clientLastSeq = (msg as ResumeMsg).lastSeq
+          const replayFrom = Math.max(clientLastSeq, lastSnapshotSeq)
+          const missed = session.eventBuffer.getAfter(replayFrom, (e) => e.seq)
           if (missed === null) {
             ws.send(
               JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: false }),
