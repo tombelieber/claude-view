@@ -119,7 +119,8 @@ export function createControlSession(
     emitter,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 
@@ -198,7 +199,8 @@ export async function resumeControlSession(
     emitter,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 
@@ -254,7 +256,8 @@ export function forkControlSession(
     emitter,
     permissions,
     permissionMode: req.permissionMode ?? 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 

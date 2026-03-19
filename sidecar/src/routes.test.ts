@@ -47,7 +47,8 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     // biome-ignore lint/suspicious/noExplicitAny: stub
     permissions: { drainAll: vi.fn() } as any,
     permissionMode: 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     ...overrides,
   }
 }
