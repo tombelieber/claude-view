@@ -26,6 +26,7 @@ import { useRevokeShare, useShares } from '../hooks/use-share'
 import { formatRelativeTime, useStatus } from '../hooks/use-status'
 import { formatDuration, formatRelativeTimestamp, useReset, useSystem } from '../hooks/use-system'
 import { useTelemetry } from '../hooks/use-telemetry'
+import { useTrackEvent } from '../hooks/use-track-event'
 import { formatNumber } from '../lib/format-utils'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
@@ -425,6 +426,7 @@ export function SettingsPage() {
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [_searchParams, _setSearchParams] = useSearchParams()
+  const trackEvent = useTrackEvent()
 
   const handleIntervalChange = useCallback(
     async (value: string) => {
@@ -441,6 +443,7 @@ export function SettingsPage() {
         })
         if (!res.ok) throw new Error('Failed to save')
         setIntervalSaveStatus('success')
+        trackEvent('settings_changed', { changed_fields: ['git_sync_interval'] })
         queryClient.invalidateQueries({ queryKey: ['status'] })
         setTimeout(() => setIntervalSaveStatus('idle'), 2000)
       } catch {
@@ -450,7 +453,7 @@ export function SettingsPage() {
         setIsSavingInterval(false)
       }
     },
-    [queryClient],
+    [queryClient, trackEvent],
   )
 
   const handleSync = async () => {
