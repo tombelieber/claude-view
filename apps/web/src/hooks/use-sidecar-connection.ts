@@ -1,5 +1,7 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
 import { wsUrl } from '../lib/ws-url'
 
 export type ChatSessionStatus = 'active' | 'idle' | 'watching' | 'error' | 'ended'
@@ -88,6 +90,13 @@ export function useSidecarConnection(
         setPermissionMode(raw.mode as PermissionMode)
         break
       }
+      case 'mode_rejected': {
+        setPermissionMode(raw.mode as PermissionMode)
+        toast.error('Mode change rejected', {
+          description: (raw.reason as string) ?? (raw.requestedMode as string) ?? undefined,
+        })
+        break
+      }
       case 'turn_complete':
       case 'turn_error': {
         if (raw.blocks) {
@@ -141,6 +150,7 @@ export function useSidecarConnection(
         if (wsRef.current !== ws) return
         if (unmountedRef.current) return
         setIsLive(false)
+        clearRespondedCache()
 
         // Non-recoverable close
         if (event.code === 1000 || event.code === 4004) {
