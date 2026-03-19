@@ -32,7 +32,7 @@
     },
     "apps/mobile": {
       "name": "@claude-view/mobile",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
@@ -76,7 +76,7 @@
     },
     "apps/share": {
       "name": "@claude-view/share",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@claude-view/shared": "workspace:*",
         "@sentry/react": "^10.40.0",
@@ -98,10 +98,11 @@
     },
     "apps/web": {
       "name": "@claude-view/web",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
+        "@posthog/react": "^1.8.2",
         "@radix-ui/react-alert-dialog": "^1.1.15",
         "@radix-ui/react-context-menu": "^2.2.16",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -123,6 +124,7 @@
         "jsqr": "^1.4.0",
         "lucide-react": "^0.562.0",
         "mermaid": "^10",
+        "posthog-js": "^1.362.0",
         "qrcode.react": "^4.2.0",
         "react": "19.2.0",
         "react-day-picker": "^9.13.0",
@@ -161,11 +163,11 @@
     },
     "packages/design-tokens": {
       "name": "@claude-view/design-tokens",
-      "version": "0.14.0",
+      "version": "0.23.0",
     },
     "packages/mcp": {
       "name": "@claude-view/mcp",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "zod": "^3.24",
@@ -177,7 +179,7 @@
     },
     "packages/plugin": {
       "name": "@claude-view/plugin",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "zod": "^3.24",
@@ -188,7 +190,7 @@
     },
     "packages/shared": {
       "name": "@claude-view/shared",
-      "version": "0.14.0",
+      "version": "0.23.0",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@noble/hashes": "^2.0.1",
@@ -776,6 +778,8 @@
     "@poppinss/exception": ["@poppinss/exception@1.2.3", "", {}, "sha512-dCED+QRChTVatE9ibtoaxc+WkdzOSjYTKi/+uacHWIsfodVfpsueo3+DKpgU5Px8qXjgmXkSvhXvSCz3fnP9lw=="],
 
     "@posthog/core": ["@posthog/core@1.23.1", "", { "dependencies": { "cross-spawn": "^7.0.6" } }, "sha512-GViD5mOv/mcbZcyzz3z9CS0R79JzxVaqEz4sP5Dsea178M/j3ZWe6gaHDZB9yuyGfcmIMQ/8K14yv+7QrK4sQQ=="],
+
+    "@posthog/react": ["@posthog/react@1.8.2", "", { "peerDependencies": { "@types/react": ">=16.8.0", "posthog-js": ">=1.257.2", "react": ">=16.8.0" }, "optionalPeers": ["@types/react"] }, "sha512-KzUuXIcAR8fAjU7IeDq+XfEcUTNvzgEGB381WRrFUUsu7jFTcKZZ6crx/ukHRCzTnoEuy5EJDkL7b7sJecPlCg=="],
 
     "@posthog/types": ["@posthog/types@1.356.1", "", {}, "sha512-miIUjs4LiBDMOxKkC87HEJLIih0pNGMAjxx+mW4X7jLpN41n0PLMW7swRE6uuxcMV0z3H6MllRSCYmsokkyfuQ=="],
 
@@ -3399,6 +3403,8 @@
 
     "@claude-view/web/lucide-react": ["lucide-react@0.562.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-82hOAu7y0dbVuFfmO4bYF1XEwYk/mEbM5E+b1jgci/udUBEE/R7LF5Ip0CCEmXe8AybRM8L+04eP+LGZeDvkiw=="],
 
+    "@claude-view/web/posthog-js": ["posthog-js@1.362.0", "", { "dependencies": { "@opentelemetry/api": "^1.9.0", "@opentelemetry/api-logs": "^0.208.0", "@opentelemetry/exporter-logs-otlp-http": "^0.208.0", "@opentelemetry/resources": "^2.2.0", "@opentelemetry/sdk-logs": "^0.208.0", "@posthog/core": "1.24.0", "@posthog/types": "1.362.0", "core-js": "^3.38.1", "dompurify": "^3.3.2", "fflate": "^0.4.8", "preact": "^10.28.2", "query-selector-shadow-dom": "^1.0.1", "web-vitals": "^5.1.0" } }, "sha512-qPHkAk9G19xVDAQLoQ1FOLNE9BBq+FDePhkOevbdUQcFJVNHVc+j7E/ndQ+olGnDuiSMdgAb5c6yGk7PD9Z0ug=="],
+
     "@claude-view/web/react-markdown": ["react-markdown@9.1.0", "", { "dependencies": { "@types/hast": "^3.0.0", "@types/mdast": "^4.0.0", "devlop": "^1.0.0", "hast-util-to-jsx-runtime": "^2.0.0", "html-url-attributes": "^3.0.0", "mdast-util-to-hast": "^13.0.0", "remark-parse": "^11.0.0", "remark-rehype": "^11.0.0", "unified": "^11.0.0", "unist-util-visit": "^5.0.0", "vfile": "^6.0.0" }, "peerDependencies": { "@types/react": ">=18", "react": ">=18" } }, "sha512-xaijuJB0kzGiUdG7nc2MOMDUDBWPyGAjZtUrow9XxUeua8IqeP+VlIfAZ3bphpcLTnSZXz6z9jcVC/TCwbfgdw=="],
 
     "@cspotcode/source-map-support/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
@@ -3904,6 +3910,12 @@
     "@claude-view/shared/vitest/tinyrainbow": ["tinyrainbow@1.2.0", "", {}, "sha512-weEDEq7Z5eTHPDh4xjX789+fHfF+P8boiFB+0vbWzpbnbsEr/GRaohi/uMKxg8RZMXnl1ItAi/IUHWMsjDV7kQ=="],
 
     "@claude-view/shared/vitest/vite": ["vite@5.4.21", "", { "dependencies": { "esbuild": "^0.21.3", "postcss": "^8.4.43", "rollup": "^4.20.0" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^18.0.0 || >=20.0.0", "less": "*", "lightningcss": "^1.21.0", "sass": "*", "sass-embedded": "*", "stylus": "*", "sugarss": "*", "terser": "^5.4.0" }, "optionalPeers": ["@types/node", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser"], "bin": { "vite": "bin/vite.js" } }, "sha512-o5a9xKjbtuhY6Bi5S3+HvbRERmouabWbyUcpXXUA1u+GNUKoROi9byOJ8M0nHbHYHkYICiMlqxkg1KkYmm25Sw=="],
+
+    "@claude-view/web/posthog-js/@posthog/core": ["@posthog/core@1.24.0", "", { "dependencies": { "cross-spawn": "^7.0.6" } }, "sha512-Wkp9mgNfgdf6+G4C1VMKakm2RXKQFf4bb5/CPQRAjpqv9l6BY36zZrD1+X5Y2XIAzZqbMKRxsDu3V1r6uKu7/A=="],
+
+    "@claude-view/web/posthog-js/@posthog/types": ["@posthog/types@1.362.0", "", {}, "sha512-15wOI5uulkfzpkSQKVN4atZecAla2Hxr8IBIB8islqDvqY+42vbR+tMeDKMman9+FUoAqMzE0OnB8VIbM1QY0w=="],
+
+    "@claude-view/web/posthog-js/dompurify": ["dompurify@3.3.3", "", { "optionalDependencies": { "@types/trusted-types": "^2.0.7" } }, "sha512-Oj6pzI2+RqBfFG+qOaOLbFXLQ90ARpcGG6UePL82bJLtdsa6CYJD7nmiU8MW9nQNOtCHV3lZ/Bzq1X0QYbBZCA=="],
 
     "@expo/cli/accepts/mime-types": ["mime-types@2.1.35", "", { "dependencies": { "mime-db": "1.52.0" } }, "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw=="],
 

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './hooks/use-auth'
+import { PostHogTelemetryProvider } from './providers/PostHogTelemetryProvider'
 import { router } from './router'
 import './index.css'
 
@@ -28,14 +29,16 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster
-          position="bottom-right"
-          richColors
-          toastOptions={{
-            style: { fontFamily: 'var(--font-sans)' },
-          }}
-        />
+        <PostHogTelemetryProvider>
+          <RouterProvider router={router} />
+          <Toaster
+            position="bottom-right"
+            richColors
+            toastOptions={{
+              style: { fontFamily: 'var(--font-sans)' },
+            }}
+          />
+        </PostHogTelemetryProvider>
       </QueryClientProvider>
     </AuthProvider>
   </StrictMode>,
