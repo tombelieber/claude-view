@@ -261,8 +261,8 @@ async fn proxy_resume(
     let db = state.db.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        if let Ok(socket_path) = sidecar.ensure_running().await {
-            match crate::fetch_sdk_models_from_sidecar(std::path::Path::new(&socket_path)).await {
+        if let Ok(base_url) = sidecar.ensure_running().await {
+            match crate::fetch_sdk_models_from_sidecar(&base_url).await {
                 Ok(sdk_models) => match db.upsert_sdk_models(&sdk_models).await {
                     Ok(n) => {
                         tracing::debug!(models = n, "SDK models refreshed after session resume")
