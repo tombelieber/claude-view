@@ -1,6 +1,7 @@
 import type { PermissionRequest } from '@claude-view/shared/types/sidecar-protocol'
 import { ShieldAlert } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { cn } from '../../../../lib/utils'
 import { InteractiveCardShell } from '../../../chat/cards/InteractiveCardShell'
 
@@ -29,6 +30,7 @@ function getToolDisplay(
 export interface PermissionCardProps {
   permission: PermissionRequest
   onRespond?: (requestId: string, allowed: boolean) => void
+  onAlwaysAllow?: (requestId: string, allowed: boolean, updatedPermissions: unknown[]) => void
   resolved?: { allowed: boolean }
   isPending?: boolean
 }
@@ -36,6 +38,7 @@ export interface PermissionCardProps {
 export function PermissionCard({
   permission,
   onRespond,
+  onAlwaysAllow,
   resolved,
   isPending,
 }: PermissionCardProps) {
@@ -44,6 +47,8 @@ export function PermissionCard({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const onRespondRef = useRef(onRespond)
   onRespondRef.current = onRespond
+  const toolNameRef = useRef(permission.toolName)
+  toolNameRef.current = permission.toolName
 
   const requestId = permission.requestId
   const timeoutMs = permission.timeoutMs
@@ -58,6 +63,9 @@ export function PermissionCard({
       setCountdown((prev) => {
         if (prev <= 1) {
           onRespondRef.current?.(requestId, false)
+          toast.error(`Permission for ${toolNameRef.current} auto-denied`, {
+            description: 'Timed out waiting for response',
+          })
           return 0
         }
         return prev - 1
@@ -79,6 +87,13 @@ export function PermissionCard({
     onRespond?.(requestId, false)
   }, [onRespond, requestId])
 
+  const handleAlwaysAllow = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current)
+    if (permission.suggestions && onAlwaysAllow) {
+      onAlwaysAllow(requestId, true, permission.suggestions)
+    }
+  }, [onAlwaysAllow, requestId, permission.suggestions])
+
   const toolDisplay = getToolDisplay(permission.toolName, permission.toolInput)
 
   const resolvedState = resolved
@@ -86,6 +101,8 @@ export function PermissionCard({
       ? { label: 'Allowed', variant: 'success' as const }
       : { label: 'Denied', variant: 'denied' as const }
     : undefined
+
+  const hasSuggestions = permission.suggestions && permission.suggestions.length > 0
 
   return (
     <InteractiveCardShell
@@ -104,6 +121,16 @@ export function PermissionCard({
             >
               Deny
             </button>
+            {hasSuggestions && onAlwaysAllow && (
+              <button
+                type="button"
+                onClick={handleAlwaysAllow}
+                disabled={isPending}
+                className="px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-wait"
+              >
+                Always Allow
+              </button>
+            )}
             <button
               type="button"
               onClick={handleAllow}
