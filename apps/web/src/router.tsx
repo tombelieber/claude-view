@@ -13,13 +13,13 @@ import { LiveMonitorPage } from './pages/LiveMonitorPage'
 
 // Lazy-loaded: ChatPage pulls in react-markdown + block renderers (heavy deps)
 const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })))
+import { WorkflowDetailPage } from '@enterprise/pages/WorkflowDetailPage'
+import { WorkflowsPage } from '@enterprise/pages/WorkflowsPage'
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SystemMonitorPage } from './pages/SystemMonitorPage'
 import { TeamsPage } from './pages/TeamsPage'
-import { WorkflowDetailPage } from './pages/WorkflowDetailPage'
-import { WorkflowsPage } from './pages/WorkflowsPage'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
 function OldSessionRedirect() {

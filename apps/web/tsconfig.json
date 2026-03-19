@@ -13,11 +13,12 @@
     "noUncheckedSideEffectImports": true,
     "baseUrl": ".",
     "paths": {
+      "@enterprise/*": ["../../private/enterprise/web/*", "./src/enterprise-stubs/*"],
       "@/*": ["./src/*"],
       "posthog-js": ["./node_modules/posthog-js"],
       "posthog-js/*": ["./node_modules/posthog-js/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "../../private/enterprise/web"],
   "exclude": ["src/server"]
 }

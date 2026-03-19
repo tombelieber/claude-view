@@ -1,10 +1,13 @@
-import { readFileSync } from 'fs'
-import path from 'path'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 const rootPkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'))
+
+const enterprisePath = path.resolve(__dirname, '../../private/enterprise/web')
+const hasEnterprise = existsSync(enterprisePath)
 
 export default defineConfig({
   define: {
@@ -13,6 +16,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
+      '@enterprise': hasEnterprise
+        ? enterprisePath
+        : path.resolve(__dirname, './src/enterprise-stubs'),
       '@': path.resolve(__dirname, './src'),
     },
   },
