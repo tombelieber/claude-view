@@ -833,15 +833,41 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
     expect(last.text).toBe('hello')
   })
 
-  it('marks block as failed after 10s if no echo arrives', () => {
+  it('marks block as failed after 20s if no echo arrives (live session)', () => {
     vi.useFakeTimers()
+    // Session must be live for timer to start immediately
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'active',
+      controlId: null,
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      committedBlocks: [],
+      pendingText: '',
+      clearPendingMessage: vi.fn(),
+      initComplete: true,
+    })
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
     act(() => {
       result.current.actions.sendMessage('timeout test')
     })
-    // Advance 10 seconds
+    // Advance 20 seconds
     act(() => {
       vi.advanceTimersByTime(20_000)
     })
@@ -855,6 +881,32 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
 
   it('retryMessage clears failed block and re-sends', () => {
     vi.useFakeTimers()
+    // Session must be live for timer to start immediately
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'active',
+      controlId: null,
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+      canResumeLazy: false,
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      committedBlocks: [],
+      pendingText: '',
+      clearPendingMessage: vi.fn(),
+      initComplete: true,
+    })
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
