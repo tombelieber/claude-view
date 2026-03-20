@@ -1,11 +1,11 @@
-import type { AvailableSession } from '@claude-view/shared'
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
+import type { SessionInfo } from '../../../types/generated/SessionInfo'
 
 interface Props {
-  session: AvailableSession & {
+  session: SessionInfo & {
     isActive?: boolean
     liveData?: LiveSession | null
     isSidecarManaged?: boolean
@@ -77,12 +77,11 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
 ) {
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const handleClick = useCallback(() => onSelect(session.sessionId), [onSelect, session.sessionId])
+  const handleClick = useCallback(() => onSelect(session.id), [onSelect, session.id])
 
-  const title =
-    session.customTitle || session.firstPrompt?.slice(0, 60) || session.sessionId.slice(0, 8)
+  const title = session.slug || session.preview?.slice(0, 60) || session.id.slice(0, 8)
 
-  const projectName = session.cwd ? projectNameFromCwd(session.cwd) : null
+  const projectName = session.projectPath ? projectNameFromCwd(session.projectPath) : null
   const dotColor = getStatusDotColor(session)
   const showPulse = session.isActive || session.liveData != null
   const badge = getStatusBadge(session)
@@ -137,7 +136,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
           )}
           <span className="flex items-center gap-0.5 text-xs text-gray-400 dark:text-gray-500">
             <Clock size={10} />
-            {formatRelativeTime(session.lastModified)}
+            {formatRelativeTime(session.modifiedAt)}
           </span>
         </div>
         {session.liveData?.currentActivity && (
@@ -169,7 +168,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
             {onResume && (
               <DropdownMenu.Item
                 className="px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none"
-                onSelect={() => onResume(session.sessionId)}
+                onSelect={() => onResume(session.id)}
               >
                 Resume
               </DropdownMenu.Item>
@@ -177,7 +176,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
             {onFork && (
               <DropdownMenu.Item
                 className="px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none"
-                onSelect={() => onFork(session.sessionId)}
+                onSelect={() => onFork(session.id)}
               >
                 Fork
               </DropdownMenu.Item>
@@ -187,7 +186,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
                 <DropdownMenu.Separator className="my-1 border-t border-gray-200 dark:border-gray-700" />
                 <DropdownMenu.Item
                   className="px-3 py-1.5 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 outline-none"
-                  onSelect={() => onDelete(session.sessionId)}
+                  onSelect={() => onDelete(session.id)}
                 >
                   Delete
                 </DropdownMenu.Item>

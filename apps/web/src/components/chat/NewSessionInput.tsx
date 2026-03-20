@@ -7,7 +7,7 @@ export function NewSessionInput({
   const handleSend = useCallback(
     async (message: string) => {
       try {
-        const res = await fetch('/api/sessions', {
+        const res = await fetch('/api/sidecar/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ initialMessage: message }),

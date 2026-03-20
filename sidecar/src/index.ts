@@ -19,7 +19,7 @@ app.route(
   '/health',
   healthRouter(() => registry.activeCount),
 )
-app.route('/api', createRoutes(registry))
+app.route('/api/sidecar', createRoutes(registry))
 app.get('/', (c) => c.json({ status: 'ok' }))
 
 // Workflow runner — POST /workflows/run (preserved from existing sidecar)
