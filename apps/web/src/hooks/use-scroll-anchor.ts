@@ -7,17 +7,21 @@ interface UseScrollAnchorOptions {
   isFetchingOlder?: boolean
   /** Total block count — used to detect new content at bottom */
   blockCount: number
+  /** ID of the last block — detects content shift even when count is stable (watching mode refetch) */
+  lastBlockId?: string
 }
 
 export function useScrollAnchor({
   onReachTop,
   isFetchingOlder,
   blockCount,
+  lastBlockId,
 }: UseScrollAnchorOptions) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const prevBlockCountRef = useRef(0)
+  const prevLastBlockIdRef = useRef<string | undefined>(undefined)
   const isNearBottomRef = useRef(true)
   const prevScrollHeightRef = useRef(0)
   const wasFetchingRef = useRef(false)
@@ -35,7 +39,7 @@ export function useScrollAnchor({
     isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100
   }, [])
 
-  // Auto-scroll to bottom on initial load + session navigation reset.
+  // Auto-scroll to bottom on initial load, new messages, or content shift (refetch).
   // Uses useLayoutEffect (not useEffect) to prevent visible flash before scroll.
   // The prevBlockCountRef reset is inside the effect (not in the render body) to avoid
   // double-firing under React Strict Mode, which re-renders components in development.
@@ -45,22 +49,33 @@ export function useScrollAnchor({
     // 50 msgs would skip the initial auto-scroll (50 > 0 but prevBlockCountRef = 100).
     if (blockCount === 0) {
       prevBlockCountRef.current = 0
+      prevLastBlockIdRef.current = undefined
       return
     }
 
-    if (blockCount > 0 && prevBlockCountRef.current === 0) {
+    const isInitialLoad = blockCount > 0 && prevBlockCountRef.current === 0
+    const hasNewBlocks = blockCount > prevBlockCountRef.current
+    // Detect content shift: same count but different last block (watching mode refetch
+    // slides the tail window — e.g. blocks 400-500 become 410-510, count stays 100)
+    const hasContentShift =
+      lastBlockId !== undefined &&
+      lastBlockId !== prevLastBlockIdRef.current &&
+      prevLastBlockIdRef.current !== undefined
+
+    if (isInitialLoad) {
       // Initial load — scroll to bottom
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'instant' })
       })
-    } else if (blockCount > prevBlockCountRef.current && isNearBottomRef.current) {
-      // New messages added while near bottom — follow
+    } else if ((hasNewBlocks || hasContentShift) && isNearBottomRef.current) {
+      // New messages or content shift while near bottom — follow
       requestAnimationFrame(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
       })
     }
     prevBlockCountRef.current = blockCount
-  }, [blockCount])
+    prevLastBlockIdRef.current = lastBlockId
+  }, [blockCount, lastBlockId])
 
   // Scroll position preservation for upward pagination.
   // Both save and restore happen in useLayoutEffect — this guarantees the scrollHeight

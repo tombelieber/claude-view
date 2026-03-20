@@ -92,6 +92,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
     onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
     isFetchingOlder: history.isFetchingOlder,
     blockCount: blocks.length,
+    lastBlockId: blocks.length > 0 ? blocks[blocks.length - 1].id : undefined,
   })
 
   // Model selection persisted in localStorage (used at session creation)
