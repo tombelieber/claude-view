@@ -298,6 +298,9 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
         cs.state = 'closed'
       } else {
         cs.state = 'error'
+        console.warn(
+          `[stream-loop] ${cs.sessionId.slice(0, 8)} error: ${err instanceof Error ? err.message : String(err)}`,
+        )
         registry.emitSequenced(cs, {
           type: 'error',
           message: err instanceof Error ? err.message : String(err),

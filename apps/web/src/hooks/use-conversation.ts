@@ -68,41 +68,24 @@ export function useConversation(sessionId: string | undefined, options?: Convers
 
   const queryClient = useQueryClient()
 
-  // FLAG-B backward compat: if isLive but no blocks_snapshot arrives within 3s,
-  // fall back to JSONL history (sidecar hasn't been upgraded to send snapshots yet).
-  const [snapshotTimeout, setSnapshotTimeout] = useState(false)
-
-  useEffect(() => {
-    if (!source.isLive) {
-      setSnapshotTimeout(false)
-      return
-    }
-    const t = setTimeout(() => {
-      if (source.committedBlocks.length === 0) setSnapshotTimeout(true)
-    }, 3000)
-    return () => clearTimeout(t)
-  }, [source.isLive, source.committedBlocks.length])
-
-  // Binary source switch: live (sidecar WS) vs history (JSONL).
-  // When live and snapshot received, use committed blocks + pending text.
-  // When not live (or snapshot timeout), use JSONL history.
+  // Source switch: use live committedBlocks when the sidecar has content,
+  // otherwise use JSONL history. pendingText only applies to live blocks
+  // (never appended to history — that causes "response appends to last message" bug).
+  //
+  // No timeout fallback — the switch is purely content-based:
+  //   committedBlocks.length > 0 → sidecar has caught up, use it
+  //   committedBlocks.length === 0 → sidecar hasn't caught up, use history
   const blocks: ConversationBlock[] = useMemo(() => {
-    const base = source.isLive && !snapshotTimeout ? source.committedBlocks : history.blocks
-    const withPending = appendPendingText(base, source.pendingText)
+    const hasLiveBlocks = source.isLive && source.committedBlocks.length > 0
+    const base = hasLiveBlocks ? source.committedBlocks : history.blocks
+    const withPending = hasLiveBlocks ? appendPendingText(base, source.pendingText) : base
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
       const matchesText = (b: ConversationBlock) =>
         b.type === 'user' && (b as UserBlock).text === ob.text
       return !withPending.some(matchesText)
     })
     return [...withPending, ...pendingOptimistic]
-  }, [
-    source.isLive,
-    snapshotTimeout,
-    source.committedBlocks,
-    source.pendingText,
-    history.blocks,
-    optimisticBlocks,
-  ])
+  }, [source.isLive, source.committedBlocks, source.pendingText, history.blocks, optimisticBlocks])
 
   // isLive->false transition: invalidate JSONL cache so history refetches
   useEffect(() => {
