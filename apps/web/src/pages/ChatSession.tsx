@@ -21,7 +21,7 @@ import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import { deriveInputBarState } from '../lib/control-status-map'
+import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
 import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
 
@@ -64,8 +64,7 @@ interface LiveContextData {
 
 interface ChatSessionProps {
   sessionId: string | undefined
-  /** True when session is live elsewhere (CLI/VS Code) but NOT sidecar-managed. */
-  isWatching?: boolean
+  liveStatus: LiveStatus
   /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
   liveContextData?: LiveContextData
   /** Called when a new session is created from a blank panel (dockview transition). */
@@ -74,7 +73,7 @@ interface ChatSessionProps {
 
 export function ChatSession({
   sessionId,
-  isWatching,
+  liveStatus,
   liveContextData,
   onSessionCreated,
 }: ChatSessionProps) {
@@ -90,15 +89,16 @@ export function ChatSession({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  // Derive effective watching state: isWatching is the INITIAL hint from panel params,
-  // but if the sidecar WS connects (isLive=true), we own it — no longer watching.
-  // This handles: HISTORY→OWN (resume via typing) and WATCHING→OWN (take over).
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    skipWs: isWatching,
+    liveStatus,
   })
-  const effectiveWatching = !!isWatching && !sessionInfo.isLive
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState)
+  const inputBarState = modeToInputBar(panelMode)
   // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
-  const terminal = useLiveSessionMessages(sessionId ?? '', effectiveWatching && !!sessionId)
+  const terminal = useLiveSessionMessages(
+    sessionId ?? '',
+    panelMode.mode === 'watching' && !!sessionId,
+  )
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -150,11 +150,6 @@ export function ChatSession({
   }, [])
 
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
-  const inputBarState = deriveInputBarState(
-    sessionInfo.sessionState,
-    sessionInfo.isLive,
-    sessionInfo.canResumeLazy,
-  )
 
   // Permission mode — persisted globally (like model), applied at session creation/resume
   const MODE_STORAGE_KEY = 'claude-view:last-mode'
@@ -323,7 +318,7 @@ export function ChatSession({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {effectiveWatching ? (
+          {panelMode.mode === 'watching' ? (
             <span className="flex items-center gap-1.5 text-xs text-blue-500">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
@@ -343,7 +338,7 @@ export function ChatSession({
                 setThinkingBudget(tokens)
                 actions.setMaxThinkingTokens(tokens)
               }}
-              disabled={!sessionInfo.isLive}
+              disabled={panelMode.mode !== 'own'}
             />
           )}
           {sessionInfo.capabilities?.includes('query_mcp_status') && (
@@ -371,7 +366,7 @@ export function ChatSession({
       )}
 
       {/* Thread — watching mode uses RichPane (terminal WS streaming), owned uses ConversationThread */}
-      {effectiveWatching && sessionId ? (
+      {panelMode.mode === 'watching' && sessionId ? (
         <div className="flex-1 overflow-hidden">
           <RichPane
             messages={terminal.messages}
@@ -438,7 +433,7 @@ export function ChatSession({
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {effectiveWatching && (
+          {panelMode.mode === 'watching' && (
             <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 text-blue-500 dark:text-blue-400 text-base">&#x1f441;</span>
@@ -457,7 +452,7 @@ export function ChatSession({
           <ChatInputBar
             onSend={handleSend}
             onStop={actions.interrupt}
-            state={effectiveWatching ? 'controlled_elsewhere' : inputBarState}
+            state={inputBarState}
             mode={permMode}
             onModeChange={handleModeChangePermission}
             contextPercent={contextPercent}

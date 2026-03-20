@@ -8,21 +8,21 @@ vi.mock('react-router-dom', () => ({
 
 // Mock ChatSession — ChatPanel is just a thin wrapper
 vi.mock('../../../pages/ChatSession', () => ({
-  ChatSession: ({ sessionId, isWatching }: { sessionId?: string; isWatching?: boolean }) => (
+  ChatSession: ({ sessionId, liveStatus }: { sessionId?: string; liveStatus?: string }) => (
     <div
       data-testid="chat-session"
       data-session-id={sessionId ?? ''}
-      data-watching={isWatching ? 'true' : 'false'}
+      data-live-status={liveStatus ?? 'inactive'}
     />
   ),
 }))
 
 import { ChatPanel } from '../ChatPanel'
 
-function renderPanel(overrides?: { sessionId?: string; isWatching?: boolean }) {
+function renderPanel(overrides?: { sessionId?: string; liveStatus?: string }) {
   const params = {
     sessionId: overrides?.sessionId ?? 'sess-123',
-    isWatching: overrides?.isWatching ?? false,
+    liveStatus: overrides?.liveStatus ?? 'inactive',
   }
   const props = {
     params,
@@ -40,15 +40,15 @@ describe('ChatPanel', () => {
     expect(el.getAttribute('data-session-id')).toBe('abc-123')
   })
 
-  it('passes isWatching to ChatSession', () => {
-    renderPanel({ isWatching: true })
+  it('passes liveStatus to ChatSession', () => {
+    renderPanel({ liveStatus: 'cc_owned' })
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-watching')).toBe('true')
+    expect(el.getAttribute('data-live-status')).toBe('cc_owned')
   })
 
-  it('passes isWatching=false by default', () => {
+  it('passes liveStatus=inactive by default', () => {
     renderPanel()
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-watching')).toBe('false')
+    expect(el.getAttribute('data-live-status')).toBe('inactive')
   })
 })
