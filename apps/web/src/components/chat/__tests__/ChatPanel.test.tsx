@@ -1,6 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+// Mock react-router-dom
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+}))
+
 // Mock ChatSession — ChatPanel is just a thin wrapper
 vi.mock('../../../pages/ChatSession', () => ({
   ChatSession: ({ sessionId, isWatching }: { sessionId?: string; isWatching?: boolean }) => (

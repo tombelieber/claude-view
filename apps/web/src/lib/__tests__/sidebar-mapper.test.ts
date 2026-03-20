@@ -211,64 +211,38 @@ describe('toSidebarItems', () => {
     expect(result[2].isSidecarManaged).toBe(true)
   })
 
-  it('uses localSidecarIds to mark sessions as sidecar-managed when SSE control is null', () => {
+  it('SSE control field marks sidecar-managed sessions (systematic path)', () => {
+    // After sidecar→Rust server bind-control notification, SSE has control set
     const history = [makeSessionInfo('aaa'), makeSessionInfo('bbb')]
     const live = [
-      makeLiveSession('aaa', { status: 'paused' }),
+      makeLiveSession('aaa', {
+        status: 'paused',
+        control: { controlId: 'ctrl-1', boundAt: 100 },
+      }),
       makeLiveSession('bbb', { status: 'working' }),
     ]
-    // aaa is known locally as sidecar-managed (we created it), but SSE control is null
-    const localSidecarIds = new Set(['aaa'])
-    const result = toSidebarItems(history, live, localSidecarIds)
+    const result = toSidebarItems(history, live)
 
-    // aaa: live + localSidecarIds → sidecar-managed, NOT watching
+    // aaa: live + control → sidecar-managed, NOT watching
     expect(result[0].isActive).toBe(true)
     expect(result[0].isSidecarManaged).toBe(true)
     expect(result[0].isWatching).toBe(false)
 
-    // bbb: live + no control + not in localSidecarIds → watching
+    // bbb: live + no control → watching
     expect(result[1].isActive).toBe(true)
     expect(result[1].isSidecarManaged).toBe(false)
     expect(result[1].isWatching).toBe(true)
   })
 
-  it('SSE control takes precedence over localSidecarIds (both agree = sidecar-managed)', () => {
-    const history = [makeSessionInfo('xxx')]
+  it('live-only session with control is sidecar-managed (not yet indexed)', () => {
+    const history: SessionInfo[] = []
     const live = [
-      makeLiveSession('xxx', {
+      makeLiveSession('new-sidecar', {
         status: 'working',
-        control: { controlId: 'c1', boundAt: 1 },
+        control: { controlId: 'ctrl-2', boundAt: 200 },
       }),
     ]
-    // Both SSE and local agree — sidecar-managed
-    const localSidecarIds = new Set(['xxx'])
-    const result = toSidebarItems(history, live, localSidecarIds)
-
-    expect(result[0].isSidecarManaged).toBe(true)
-    expect(result[0].isWatching).toBe(false)
-  })
-
-  // --- One-shot seed scenario: page reload with existing sidecar sessions ---
-
-  it('localSidecarIds from seed marks live session as sidecar-managed (page reload case)', () => {
-    // Simulates: page reloads, one-shot fetch returns session 46178058,
-    // SSE has it as paused with control=null (Rust server gap)
-    const history = [makeSessionInfo('46178058')]
-    const live = [makeLiveSession('46178058', { status: 'paused' })]
-    const seeded = new Set(['46178058'])
-    const result = toSidebarItems(history, live, seeded)
-
-    expect(result[0].isActive).toBe(true)
-    expect(result[0].isSidecarManaged).toBe(true)
-    expect(result[0].isWatching).toBe(false)
-  })
-
-  it('localSidecarIds marks live-only session (not in history) as sidecar-managed', () => {
-    // Session exists in sidecar + SSE but not yet indexed
-    const history: SessionInfo[] = []
-    const live = [makeLiveSession('new-sidecar', { status: 'working' })]
-    const seeded = new Set(['new-sidecar'])
-    const result = toSidebarItems(history, live, seeded)
+    const result = toSidebarItems(history, live)
 
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('new-sidecar')
@@ -293,10 +267,9 @@ describe('toSidebarItems', () => {
   it('is a pure function — same inputs produce structurally equal outputs', () => {
     const history = [makeSessionInfo('p1')]
     const live = [makeLiveSession('p1', { status: 'working' })]
-    const local = new Set(['p1'])
 
-    const r1 = toSidebarItems(history, live, local)
-    const r2 = toSidebarItems(history, live, local)
+    const r1 = toSidebarItems(history, live)
+    const r2 = toSidebarItems(history, live)
 
     expect(r1[0].isActive).toBe(r2[0].isActive)
     expect(r1[0].isWatching).toBe(r2[0].isWatching)

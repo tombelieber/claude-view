@@ -3,10 +3,12 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
+import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
 
 interface Props {
   session: SessionInfo & {
     isActive?: boolean
+    isWatching?: boolean
     liveData?: LiveSession | null
     isSidecarManaged?: boolean
   }
@@ -14,8 +16,11 @@ interface Props {
   isKeyboardActive?: boolean
   onSelect: (sessionId: string) => void
   onResume?: (sessionId: string) => void
+  onTakeOver?: (sessionId: string) => void
   onFork?: (sessionId: string) => void
-  onDelete?: (sessionId: string) => void
+  onShutDown?: (sessionId: string) => void
+  onOpenInMonitor?: (sessionId: string) => void
+  onArchive?: (sessionId: string) => void
 }
 
 function projectNameFromCwd(cwd: string): string {
@@ -32,58 +37,36 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-// Aligned with Live Monitor StatusDot: needs_you → amber, autonomous → green
-function getStatusDotColor(session: Props['session']): string {
-  if (!session.liveData) return 'bg-gray-300 dark:bg-gray-600'
-  const group = session.liveData.agentState?.group
-  if (group === 'needs_you') return 'bg-amber-500'
-  return 'bg-green-500'
-}
-
-function getStatusBadge(session: Props['session']): { text: string; className: string } | null {
-  if (!session.liveData) return null
-  const group = session.liveData.agentState?.group
-  const isNeedsYou = group === 'needs_you'
-
-  if (session.isSidecarManaged) {
-    // Sidecar-managed: "Live" badge, color matches agent state
-    return isNeedsYou
-      ? {
-          text: 'Live',
-          className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-        }
-      : {
-          text: 'Live',
-          className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-        }
-  }
-  // Watching: external session, color matches agent state
-  return isNeedsYou
-    ? {
-        text: 'Watching',
-        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      }
-    : {
-        text: 'Watching',
-        className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      }
-}
+const menuItemClass =
+  'px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none'
+const dangerItemClass =
+  'px-3 py-1.5 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 outline-none'
 
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
-  { session, isSelected, isKeyboardActive, onSelect, onResume, onFork, onDelete },
+  {
+    session,
+    isSelected,
+    isKeyboardActive,
+    onSelect,
+    onResume,
+    onTakeOver,
+    onFork,
+    onShutDown,
+    onOpenInMonitor,
+    onArchive,
+  },
   ref,
 ) {
   const [menuOpen, setMenuOpen] = useState(false)
-
   const handleClick = useCallback(() => onSelect(session.id), [onSelect, session.id])
 
   const title = session.slug || session.preview?.slice(0, 60) || session.id.slice(0, 8)
-
   const projectName = session.projectPath ? projectNameFromCwd(session.projectPath) : null
   const dotColor = getStatusDotColor(session)
   const isAutonomous = session.liveData?.agentState?.group === 'autonomous'
   const showPulse = isAutonomous && session.liveData != null
   const badge = getStatusBadge(session)
+  const actions = deriveDropdownActions(session)
 
   return (
     <div
@@ -166,32 +149,44 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
             className="z-50 min-w-32 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm"
             sideOffset={4}
           >
-            {onResume && (
-              <DropdownMenu.Item
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none"
-                onSelect={() => onResume(session.id)}
-              >
+            {actions.resume && onResume && (
+              <DropdownMenu.Item className={menuItemClass} onSelect={() => onResume(session.id)}>
                 Resume
               </DropdownMenu.Item>
             )}
-            {onFork && (
-              <DropdownMenu.Item
-                className="px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 outline-none"
-                onSelect={() => onFork(session.id)}
-              >
+            {actions.takeOver && onTakeOver && (
+              <DropdownMenu.Item className={menuItemClass} onSelect={() => onTakeOver(session.id)}>
+                Take Over
+              </DropdownMenu.Item>
+            )}
+            {actions.fork && onFork && (
+              <DropdownMenu.Item className={menuItemClass} onSelect={() => onFork(session.id)}>
                 Fork
               </DropdownMenu.Item>
             )}
-            {onDelete && (
-              <>
-                <DropdownMenu.Separator className="my-1 border-t border-gray-200 dark:border-gray-700" />
-                <DropdownMenu.Item
-                  className="px-3 py-1.5 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 outline-none"
-                  onSelect={() => onDelete(session.id)}
-                >
-                  Delete
-                </DropdownMenu.Item>
-              </>
+            {actions.openInMonitor && onOpenInMonitor && (
+              <DropdownMenu.Item
+                className={menuItemClass}
+                onSelect={() => onOpenInMonitor(session.id)}
+              >
+                Open in Monitor
+              </DropdownMenu.Item>
+            )}
+            {(actions.shutDown || actions.archive) && (
+              <DropdownMenu.Separator className="my-1 border-t border-gray-200 dark:border-gray-700" />
+            )}
+            {actions.shutDown && onShutDown && (
+              <DropdownMenu.Item
+                className={dangerItemClass}
+                onSelect={() => onShutDown(session.id)}
+              >
+                Shut Down
+              </DropdownMenu.Item>
+            )}
+            {actions.archive && onArchive && (
+              <DropdownMenu.Item className={dangerItemClass} onSelect={() => onArchive(session.id)}>
+                Archive
+              </DropdownMenu.Item>
             )}
           </DropdownMenu.Content>
         </DropdownMenu.Portal>

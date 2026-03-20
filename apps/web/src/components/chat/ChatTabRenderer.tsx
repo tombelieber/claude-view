@@ -2,24 +2,59 @@ import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { ChatTabContextMenu } from './ChatTabContextMenu'
-import { type ChatSessionStatus, SessionStatusDot } from './SessionStatusDot'
+
+/**
+ * Dot color aligned with sidebar SessionListItem.getStatusDotColor:
+ * - needs_you → amber (matches Live Monitor)
+ * - autonomous / other active → green
+ * - no live data → gray
+ */
+function getTabDotColor(agentStateGroup: string | null, hasLiveData: boolean): string {
+  if (!hasLiveData) return 'bg-gray-300 dark:bg-gray-600'
+  if (agentStateGroup === 'needs_you') return 'bg-amber-500'
+  return 'bg-green-500'
+}
 
 export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
-  const status = (params.status as ChatSessionStatus) ?? 'idle'
-  const hasPermissionPending = (params.permissionPending as boolean) ?? false
+  const agentStateGroup = (params.agentStateGroup as string | null) ?? null
+  const hasLiveData = (params.hasLiveData as boolean) ?? false
+
+  const dotColor = getTabDotColor(agentStateGroup, hasLiveData)
+  const isAutonomous = agentStateGroup === 'autonomous'
+  const showPulse = isAutonomous && hasLiveData
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
-    // TODO: Show confirmation dialog before closing active session
     api.close()
+  }
+
+  const handleMiddleClick = (e: React.MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault()
+      e.stopPropagation()
+      api.close()
+    }
   }
 
   // Find this panel in the dockview API for context menu operations
   const panel = containerApi.panels.find((p) => p.id === api.id)
 
   const tabContent = (
-    <div className="group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer">
-      <SessionStatusDot status={status} permissionPending={hasPermissionPending} />
+    <div
+      className="group flex items-center gap-1.5 px-3 h-full text-xs cursor-pointer"
+      onMouseDown={handleMiddleClick}
+    >
+      {/* Status dot — aligned with sidebar SessionListItem colors */}
+      <div className="flex-shrink-0 relative inline-flex">
+        {showPulse && (
+          <span
+            className={`absolute inline-flex w-2 h-2 rounded-full opacity-60 motion-safe:animate-live-ring ${dotColor}`}
+          />
+        )}
+        <span
+          className={`relative inline-flex w-2 h-2 rounded-full ${dotColor} ${showPulse ? 'motion-safe:animate-live-breathe' : ''}`}
+        />
+      </div>
       <span className="truncate max-w-[120px]">{api.title}</span>
       <button
         type="button"
