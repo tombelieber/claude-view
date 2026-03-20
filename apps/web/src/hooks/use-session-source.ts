@@ -241,6 +241,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           break
         }
         case 'permission_request':
+        case 'ask_question':
+        case 'plan_approval':
+        case 'elicitation':
           setSessionState('waiting_permission')
           break
         case 'session_closed':
@@ -482,6 +485,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (!ws && sessionId) {
         if (controlId) {
           // Have controlId — just open WS
+          setSessionState('initializing')
           openWs(sessionId)
         } else if (!resumingRef.current) {
           // Dormant session — auto-resume, then connect.
@@ -533,6 +537,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const reconnect = useCallback(() => {
     if (!sessionId) return
     reconnectAttemptRef.current = 0
+    setSessionState('initializing')
     openWs(sessionId)
   }, [sessionId, openWs])
 
