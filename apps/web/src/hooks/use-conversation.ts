@@ -133,7 +133,6 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       isLive: source.isLive,
       sessionState: source.sessionState,
       controlId: source.controlId,
-      canResumeLazy: source.canResumeLazy, // TODO(task-5): remove after ConversationView + SessionDetailPanel migrate to FSM
       totalInputTokens: source.totalInputTokens,
       contextWindowSize: source.contextWindowSize,
       model: source.model,
