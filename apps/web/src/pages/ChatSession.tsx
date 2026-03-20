@@ -10,8 +10,10 @@ import { ConversationThread } from '../components/conversation/ConversationThrea
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 
+import { RichPane } from '../components/live/RichPane'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
+import { useLiveSessionMessages } from '../hooks/use-live-session-messages'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
@@ -66,9 +68,16 @@ interface ChatSessionProps {
   isWatching?: boolean
   /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
   liveContextData?: LiveContextData
+  /** Called when a new session is created from a blank panel (dockview transition). */
+  onSessionCreated?: (sessionId: string) => void
 }
 
-export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSessionProps) {
+export function ChatSession({
+  sessionId,
+  isWatching,
+  liveContextData,
+  onSessionCreated,
+}: ChatSessionProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const trackEvent = useTrackEvent()
@@ -81,10 +90,12 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  // When watching, skip WS to prevent auto-resume/bind_control. History loads via REST.
+  // When watching, skip sidecar WS to prevent auto-resume/bind_control.
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
     skipWs: isWatching,
   })
+  // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
+  const terminal = useLiveSessionMessages(sessionId ?? '', !!isWatching && !!sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -182,7 +193,7 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
   const handleSend = useCallback(
     (text: string) => {
       if (!sessionId) {
-        // No session yet — create one first, then navigate.
+        // No session yet — create one first, then transition the panel.
         // initialMessage is echoed back via user_message_echo in the stream,
         // so the user sees their message as soon as the WS connects.
         trackEvent('chat_started')
@@ -198,8 +209,14 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
           .then((r) => r.json())
           .then((data) => {
             if (data.sessionId) {
-              navigate(`/chat/${data.sessionId}`)
-              queryClient.invalidateQueries({ queryKey: ['sidecar-sessions'] })
+              queryClient.invalidateQueries({ queryKey: ['chat-sidebar-sessions'] })
+              // If we have a dockview callback (blank panel), transition in place.
+              // Otherwise fall back to navigation.
+              if (onSessionCreated) {
+                onSessionCreated(data.sessionId)
+              } else {
+                navigate(`/chat/${data.sessionId}`)
+              }
             } else {
               toast.error('Failed to create session', {
                 description: data.error || 'No session ID returned',
@@ -213,7 +230,16 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
       }
       actions.sendMessage(text)
     },
-    [sessionId, actions, navigate, selectedModel, permMode, queryClient, trackEvent],
+    [
+      sessionId,
+      actions,
+      navigate,
+      selectedModel,
+      permMode,
+      queryClient,
+      trackEvent,
+      onSessionCreated,
+    ],
   )
 
   const handleModeChangePermission = useCallback(
@@ -341,59 +367,70 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
         </div>
       )}
 
-      {/* Thread */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        {/* Top sentinel for infinite scroll */}
-        <div ref={topSentinelRef} className="h-1" />
-        {history.isFetchingOlder && (
-          <div className="flex justify-center py-3">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-          </div>
-        )}
-        {history.error && (
-          <div className="flex justify-center py-3 text-sm text-red-500">
-            Failed to load messages.{' '}
-            <button type="button" onClick={history.fetchOlderMessages} className="underline">
-              Retry
-            </button>
-          </div>
-        )}
-        {blocks.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-            <div className="text-center">
-              <p className="text-lg font-medium mb-2">Start a conversation</p>
-              <p className="text-sm mb-4">Send a message to begin.</p>
-              {!sessionId && (
-                <div className="flex justify-center">
-                  <ModelSelector
-                    model={selectedModel}
-                    onModelChange={handleModelChange}
-                    isLive={sessionInfo.isLive}
-                    onSetModel={actions.setModel}
-                  />
-                </div>
-              )}
+      {/* Thread — watching mode uses RichPane (terminal WS streaming), owned uses ConversationThread */}
+      {isWatching && sessionId ? (
+        <div className="flex-1 overflow-hidden">
+          <RichPane
+            messages={terminal.messages}
+            isVisible={true}
+            verboseMode={displayMode === 'developer'}
+            bufferDone={terminal.bufferDone}
+          />
+        </div>
+      ) : (
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          {/* Top sentinel for infinite scroll */}
+          <div ref={topSentinelRef} className="h-1" />
+          {history.isFetchingOlder && (
+            <div className="flex justify-center py-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
             </div>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto px-4 py-6">
-            <ConversationActionsProvider
-              actions={{
-                retryMessage: actions.retryMessage,
-                stopTask: actions.stopTask,
-                respondPermission: actions.respondPermission,
-                answerQuestion: actions.answerQuestion,
-                approvePlan: actions.approvePlan,
-                submitElicitation: actions.submitElicitation,
-              }}
-            >
-              <ConversationThread blocks={blocks} renderers={registry} />
-            </ConversationActionsProvider>
-          </div>
-        )}
-        {/* Bottom anchor for auto-scroll */}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          {history.error && (
+            <div className="flex justify-center py-3 text-sm text-red-500">
+              Failed to load messages.{' '}
+              <button type="button" onClick={history.fetchOlderMessages} className="underline">
+                Retry
+              </button>
+            </div>
+          )}
+          {blocks.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+              <div className="text-center">
+                <p className="text-lg font-medium mb-2">Start a conversation</p>
+                <p className="text-sm mb-4">Send a message to begin.</p>
+                {!sessionId && (
+                  <div className="flex justify-center">
+                    <ModelSelector
+                      model={selectedModel}
+                      onModelChange={handleModelChange}
+                      isLive={sessionInfo.isLive}
+                      onSetModel={actions.setModel}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto px-4 py-6">
+              <ConversationActionsProvider
+                actions={{
+                  retryMessage: actions.retryMessage,
+                  stopTask: actions.stopTask,
+                  respondPermission: actions.respondPermission,
+                  answerQuestion: actions.answerQuestion,
+                  approvePlan: actions.approvePlan,
+                  submitElicitation: actions.submitElicitation,
+                }}
+              >
+                <ConversationThread blocks={blocks} renderers={registry} />
+              </ConversationActionsProvider>
+            </div>
+          )}
+          {/* Bottom anchor for auto-scroll */}
+          <div ref={bottomRef} />
+        </div>
+      )}
 
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">

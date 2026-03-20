@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
 import { useOutletContext, useParams } from 'react-router-dom'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
@@ -8,30 +7,13 @@ export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>()
   const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
 
-  // Sidecar-managed sessions: created/resumed through Claude View chat.
-  // Polls every 5s so the sidebar picks up newly-created sessions without
-  // depending on liveSessions count changes.
-  const { data: sidecarIds } = useQuery({
-    queryKey: ['sidecar-sessions'],
-    queryFn: async () => {
-      const res = await fetch('/api/sidecar/sessions')
-      if (!res.ok) return new Set<string>()
-      const sessions: { sessionId: string }[] = await res.json()
-      return new Set(sessions.map((s) => s.sessionId))
-    },
-    refetchInterval: 5_000,
-  })
-
-  // Watching = session is live (detected by hooks/SSE) but NOT managed by our sidecar.
-  // When sidecarIds is still loading (undefined), default to NOT watching to avoid
-  // blocking WS connections for the user's own sessions.
-  const isLiveElsewhere = liveSessions.sessions.some((s) => s.id === sessionId)
-  const isSidecarManaged = sidecarIds == null || sidecarIds.has(sessionId ?? '')
-  const isWatching = isLiveElsewhere && !isSidecarManaged
+  // Derive isWatching from SSE LiveSession.control field — no polling needed.
+  // Live elsewhere + no sidecar control binding = watching (read-only).
+  const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
+  const isWatching = liveSession != null && liveSession.control == null
 
   // Pass authoritative context gauge data from Live Monitor SSE.
   // Statusline values are ground truth — computed by Claude Code itself.
-  const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
   const liveContextData = liveSession
     ? {
         contextWindowTokens: liveSession.contextWindowTokens,
@@ -42,7 +24,7 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <SessionSidebar liveSessions={liveSessions.sessions} sidecarSessionIds={sidecarIds} />
+      <SessionSidebar liveSessions={liveSessions.sessions} />
       <ChatSession
         key={sessionId ?? 'new'}
         sessionId={sessionId}
