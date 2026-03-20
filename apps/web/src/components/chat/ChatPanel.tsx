@@ -1,11 +1,12 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { LiveStatus } from '../../lib/derive-panel-mode'
 import { ChatSession } from '../../pages/ChatSession'
 
 interface ChatPanelParams {
   sessionId: string
-  isWatching?: boolean
+  liveStatus?: LiveStatus
 }
 
 /**
@@ -15,7 +16,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, isWatching } = params
+  const { sessionId, liveStatus } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -46,7 +47,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     <div ref={containerRef} className="flex flex-col h-full overflow-hidden">
       <ChatSession
         sessionId={sessionId || undefined}
-        isWatching={isWatching}
+        liveStatus={liveStatus ?? 'inactive'}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}
       />
     </div>

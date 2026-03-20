@@ -193,8 +193,8 @@ describe('RC-002: optimistic message duplication', () => {
 // sidecarSessionIds (managed by sidecar), the user owns it. Watching mode must
 // NOT be applied — the user should have full input capability.
 // The watching derivation happens in ChatPage.tsx (not in useConversation), but
-// we test the hook's behavior with skipWs to verify: a sidecar-managed session
-// should NOT receive skipWs=true from the calling component.
+// we test the hook's behavior with liveStatus to verify: a sidecar-managed session
+// should NOT receive liveStatus='cc_owned' from the calling component.
 describe('RC-003: watching mode does not block own sessions', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -204,9 +204,9 @@ describe('RC-003: watching mode does not block own sessions', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('sidecar-managed session (skipWs=false) connects via WS normally', () => {
+  it('sidecar-managed session (liveStatus=inactive) connects via WS normally', () => {
     // Simulate: session is in both liveSessions and sidecarIds → NOT watching
-    // ChatPage passes skipWs=false (or omits it)
+    // ChatPage passes liveStatus='inactive' (or omits it)
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       sessionState: 'active',
@@ -216,7 +216,7 @@ describe('RC-003: watching mode does not block own sessions', () => {
       controlId: 'ctrl-1',
     })
 
-    renderHook(() => useConversation('my-session', { skipWs: false }), {
+    renderHook(() => useConversation('my-session', { liveStatus: 'inactive' }), {
       wrapper: createWrapper(),
     })
 
@@ -224,9 +224,9 @@ describe('RC-003: watching mode does not block own sessions', () => {
     expect(mockSessionSource).toHaveBeenCalledWith('my-session')
   })
 
-  it('watching session (skipWs=true) does NOT connect via WS', () => {
+  it('watching session (liveStatus=cc_owned) does NOT connect via WS', () => {
     // Simulate: session in liveSessions but NOT in sidecarIds → watching
-    renderHook(() => useConversation('external-session', { skipWs: true }), {
+    renderHook(() => useConversation('external-session', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
@@ -265,9 +265,12 @@ describe('RC-003: watching mode does not block own sessions', () => {
       },
     } as unknown as ReturnType<typeof useSessionMessages>)
 
-    const { result } = renderHook(() => useConversation('external-session', { skipWs: true }), {
-      wrapper: createWrapper(),
-    })
+    const { result } = renderHook(
+      () => useConversation('external-session', { liveStatus: 'cc_owned' }),
+      {
+        wrapper: createWrapper(),
+      },
+    )
 
     // History should be loaded even in watching mode
     expect(result.current.blocks.length).toBe(2)

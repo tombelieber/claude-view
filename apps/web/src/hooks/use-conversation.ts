@@ -10,15 +10,16 @@ import { useSessionSource } from './use-session-source'
 // Timeout must exceed the resume window to avoid false "Failed" during normal resume flow.
 const SEND_TIMEOUT_MS = 20_000
 
+import type { LiveStatus } from '../lib/derive-panel-mode'
+
 interface ConversationOptions {
-  /** Skip WS connection (watching mode). History still loads via REST. */
-  skipWs?: boolean
+  liveStatus?: LiveStatus
 }
 
 export function useConversation(sessionId: string | undefined, options?: ConversationOptions) {
-  // 'skipWs' allows watching mode: skip WS connection (no bind_control)
+  // cc_owned = watching mode: skip WS connection (no bind_control)
   // while still loading history with the real sessionId.
-  const source = useSessionSource(options?.skipWs ? undefined : sessionId)
+  const source = useSessionSource(options?.liveStatus === 'cc_owned' ? undefined : sessionId)
 
   // Gate history fetching with initComplete — prevents 404 error banner on new sessions.
   // Before init() resolves, the JSONL may not exist yet. After init(), either:
@@ -26,7 +27,8 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // - Session is history-only → JSONL exists, safe to fetch (enabled=true)
   const isInitializing = source.sessionState === 'initializing'
   const history = useHistoryBlocks(sessionId ?? null, {
-    enabled: (options?.skipWs || source.initComplete) && !source.isLive && !!sessionId,
+    enabled:
+      (options?.liveStatus === 'cc_owned' || source.initComplete) && !source.isLive && !!sessionId,
     suppressNotFound: isInitializing,
     retry: 3,
     retryDelay: 1000,
@@ -131,7 +133,7 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       isLive: source.isLive,
       sessionState: source.sessionState,
       controlId: source.controlId,
-      canResumeLazy: source.canResumeLazy,
+      canResumeLazy: source.canResumeLazy, // TODO(task-5): remove after ConversationView + SessionDetailPanel migrate to FSM
       totalInputTokens: source.totalInputTokens,
       contextWindowSize: source.contextWindowSize,
       model: source.model,

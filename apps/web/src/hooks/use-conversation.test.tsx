@@ -1284,8 +1284,8 @@ describe('binary source: isLive=false uses history', () => {
 // These tested dual-source merge behavior (turnVersion/resetAccumulator/freshlyCreated)
 // which has been replaced by the binary source switch (committedBlocks/pendingText).
 
-// ─── skipWs (watching mode) ────────────────
-describe('skipWs (watching mode)', () => {
+// ─── liveStatus (watching mode) ────────────────
+describe('liveStatus (watching mode)', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockSessionSource.mockReturnValue({ ...defaultSource })
@@ -1294,24 +1294,24 @@ describe('skipWs (watching mode)', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('passes undefined to useSessionSource when skipWs = true', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+  it('passes undefined to useSessionSource when liveStatus = cc_owned', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
-    // skipWs: true → useSessionSource(undefined) — no WS connection
+    // liveStatus: cc_owned → useSessionSource(undefined) — no WS connection
     expect(mockSessionSource).toHaveBeenCalledWith(undefined)
   })
 
-  it('passes sessionId to useSessionSource when skipWs = false', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: false }), {
+  it('passes sessionId to useSessionSource when liveStatus = inactive', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'inactive' }), {
       wrapper: createWrapper(),
     })
 
     expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
   })
 
-  it('passes sessionId to useSessionSource when skipWs is undefined', () => {
+  it('passes sessionId to useSessionSource when liveStatus is undefined', () => {
     renderHook(() => useConversation('sess-1'), {
       wrapper: createWrapper(),
     })
@@ -1319,14 +1319,14 @@ describe('skipWs (watching mode)', () => {
     expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
   })
 
-  it('still loads history via REST even when skipWs = true', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+  it('still loads history via REST even when liveStatus = cc_owned', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
     // useSessionMessages should still receive the real sessionId for REST history
     expect(mockSessionMessages).toHaveBeenCalledWith('sess-1', expect.any(Object))
-    // skipWs bypasses initComplete gate — history must be enabled immediately
+    // liveStatus=cc_owned bypasses initComplete gate — history must be enabled immediately
     const lastCall = mockSessionMessages.mock.calls[mockSessionMessages.mock.calls.length - 1]
     expect(lastCall[1]).toHaveProperty('enabled', true)
   })

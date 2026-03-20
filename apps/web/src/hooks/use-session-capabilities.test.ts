@@ -8,7 +8,7 @@ describe('useSessionCapabilities', () => {
       isLive: true,
       sessionState: 'waiting_input',
       controlId: 'abc',
-      canResumeLazy: false,
+
       totalInputTokens: 5000,
       contextWindowSize: 200000,
       model: 'claude-sonnet-4-6',
@@ -30,7 +30,7 @@ describe('useSessionCapabilities', () => {
       isLive: false,
       sessionState: 'idle',
       controlId: null,
-      canResumeLazy: false,
+
       totalInputTokens: 0,
       contextWindowSize: 0,
       model: '',
@@ -51,7 +51,7 @@ describe('useSessionCapabilities', () => {
       isLive: true,
       sessionState: 'waiting_input',
       controlId: 'abc',
-      canResumeLazy: false,
+
       totalInputTokens: 0,
       contextWindowSize: 0,
       model: '',
