@@ -405,8 +405,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       try {
         const res = await fetch('/api/sidecar/sessions')
         if (!cancelled && res.ok) {
-          const sessions: ActiveSession[] = await res.json()
-          const active = sessions.find((s) => s.sessionId === sid)
+          const data: { active: ActiveSession[] } = await res.json()
+          const active = data.active.find((s) => s.sessionId === sid)
           if (!cancelled && active) {
             setControlId(active.controlId)
             // Signal that session IS initializing — gates suppressNotFound in useConversation
@@ -485,6 +485,8 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           openWs(sessionId)
         } else if (!resumingRef.current) {
           // Dormant session — auto-resume, then connect.
+          // Set visual state so input bar shows "connecting" instead of idle.
+          setSessionState('initializing')
           // Include persisted permission mode so the session starts with the correct mode.
           // Check session-specific key first, then global last-used mode.
           let permissionMode: string | undefined

@@ -21,14 +21,14 @@ import type { SessionRegistry } from './session-registry.js'
 export function createRoutes(registry: SessionRegistry) {
   const app = new Hono()
 
-  // Create new session
+  // Create new session (cold start — MCP servers connect on demand)
   app.post('/sessions', async (c) => {
     const body = await c.req.json<CreateSessionRequest>()
     if (!body.model) return c.json({ error: 'model is required' }, 400)
 
     try {
       const cs = createControlSession(body, registry)
-      await waitForSessionInit(cs, 15_000)
+      await waitForSessionInit(cs, 60_000)
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
