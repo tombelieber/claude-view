@@ -314,7 +314,17 @@ export function ChatSession({
   )
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div
+      className="flex-1 flex flex-col overflow-hidden"
+      data-panel-mode={panelMode.mode}
+      data-panel-substate={
+        'subState' in panelMode
+          ? panelMode.subState
+          : 'reason' in panelMode
+            ? panelMode.reason
+            : undefined
+      }
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
