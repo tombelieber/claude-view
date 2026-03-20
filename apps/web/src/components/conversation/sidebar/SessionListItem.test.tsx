@@ -1,120 +1,132 @@
 import { describe, expect, it } from 'vitest'
+import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
 
-/**
- * We test the pure helper functions (getStatusBadge, getStatusDotColor)
- * by re-implementing the same logic inline — the source functions are
- * not exported, so we import the component module and extract them via
- * a test-only re-export workaround. Instead, we directly test the logic
- * by calling the functions with the same signatures.
- */
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
 
-// Inline copies of the pure functions under test (they are not exported from the module).
-// These mirror SessionListItem.tsx:35-72 exactly.
-
-type SessionLike = {
-  liveData?: {
-    agentState: { group: 'needs_you' | 'autonomous' }
-    status: 'working' | 'paused' | 'done'
-    control: unknown
-    currentActivity?: string
-  } | null
-  isSidecarManaged?: boolean
-}
-
-function getStatusDotColor(session: SessionLike): string {
-  if (!session.liveData) return 'bg-gray-300 dark:bg-gray-600'
-  if (session.isSidecarManaged) return 'bg-green-500'
-  return 'bg-blue-500'
-}
-
-function getStatusBadge(session: SessionLike): { text: string; className: string } | null {
-  if (!session.liveData) return null
-  if (session.isSidecarManaged)
-    return {
-      text: 'Live',
-      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    }
-  if (session.liveData.agentState.group === 'needs_you')
-    return {
-      text: 'Watching',
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    }
-  if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
-    return {
-      text: 'Watching',
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    }
-  return null
-}
-
-const baseLiveData = {
+const liveAutonomous = {
   agentState: { group: 'autonomous' as const },
   status: 'working' as const,
   control: null,
 }
 
-describe('getStatusBadge', () => {
-  it('returns "Live" (green) when isSidecarManaged is true', () => {
-    const badge = getStatusBadge({
-      liveData: baseLiveData,
-      isSidecarManaged: true,
-    })
-    expect(badge).not.toBeNull()
-    expect(badge!.text).toBe('Live')
-    expect(badge!.className).toContain('green')
+const liveNeedsYou = {
+  agentState: { group: 'needs_you' as const },
+  status: 'paused' as const,
+  control: null,
+}
+
+const liveSidecarManaged = {
+  ...liveAutonomous,
+  control: { controlId: 'c1', boundAt: 100 },
+}
+
+// ---------------------------------------------------------------------------
+// getStatusDotColor — aligned with Live Monitor StatusDot
+// ---------------------------------------------------------------------------
+
+describe('getStatusDotColor', () => {
+  it('amber for needs_you', () => {
+    expect(getStatusDotColor({ liveData: liveNeedsYou })).toBe('bg-amber-500')
   })
 
-  it('returns "Watching" (blue) when NOT isSidecarManaged + needs_you status', () => {
-    const badge = getStatusBadge({
-      liveData: {
-        ...baseLiveData,
-        agentState: { group: 'needs_you' },
-      },
-      isSidecarManaged: false,
-    })
-    expect(badge).not.toBeNull()
-    expect(badge!.text).toBe('Watching')
-    expect(badge!.className).toContain('blue')
+  it('green for autonomous', () => {
+    expect(getStatusDotColor({ liveData: liveAutonomous })).toBe('bg-green-500')
   })
 
-  it('returns "Watching" (blue) when NOT isSidecarManaged + autonomous status', () => {
-    const badge = getStatusBadge({
-      liveData: {
-        ...baseLiveData,
-        agentState: { group: 'autonomous' },
-      },
-      isSidecarManaged: false,
-    })
-    expect(badge).not.toBeNull()
-    expect(badge!.text).toBe('Watching')
-    expect(badge!.className).toContain('blue')
+  it('green for sidecar-managed autonomous', () => {
+    expect(getStatusDotColor({ liveData: liveSidecarManaged, isSidecarManaged: true })).toBe(
+      'bg-green-500',
+    )
   })
 
-  it('returns null when no liveData', () => {
-    const badge = getStatusBadge({})
-    expect(badge).toBeNull()
+  it('gray when no live data', () => {
+    expect(getStatusDotColor({})).toBe('bg-gray-300 dark:bg-gray-600')
   })
 })
 
-describe('getStatusDotColor', () => {
-  it('returns green when isSidecarManaged', () => {
-    const color = getStatusDotColor({
-      liveData: baseLiveData,
-      isSidecarManaged: true,
-    })
-    expect(color).toBe('bg-green-500')
+// ---------------------------------------------------------------------------
+// getStatusBadge — Live/Watching with color matching agent state
+// ---------------------------------------------------------------------------
+
+describe('getStatusBadge', () => {
+  it('"Live" amber when sidecar-managed + needs_you', () => {
+    const badge = getStatusBadge({ liveData: liveNeedsYou, isSidecarManaged: true })
+    expect(badge?.text).toBe('Live')
+    expect(badge?.className).toContain('amber')
   })
 
-  it('returns blue when external live (not sidecar managed)', () => {
-    const color = getStatusDotColor({
-      liveData: baseLiveData,
+  it('"Live" green when sidecar-managed + autonomous', () => {
+    const badge = getStatusBadge({ liveData: liveSidecarManaged, isSidecarManaged: true })
+    expect(badge?.text).toBe('Live')
+    expect(badge?.className).toContain('green')
+  })
+
+  it('"Watching" amber when external + needs_you', () => {
+    const badge = getStatusBadge({ liveData: liveNeedsYou, isSidecarManaged: false })
+    expect(badge?.text).toBe('Watching')
+    expect(badge?.className).toContain('amber')
+  })
+
+  it('"Watching" green when external + autonomous', () => {
+    const badge = getStatusBadge({ liveData: liveAutonomous, isSidecarManaged: false })
+    expect(badge?.text).toBe('Watching')
+    expect(badge?.className).toContain('green')
+  })
+
+  it('null when no live data', () => {
+    expect(getStatusBadge({})).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// deriveDropdownActions — button visibility per session mode
+// ---------------------------------------------------------------------------
+
+describe('deriveDropdownActions', () => {
+  it('HISTORY session: Resume + Fork + Archive', () => {
+    const actions = deriveDropdownActions({
+      isActive: false,
+      isWatching: false,
       isSidecarManaged: false,
+      liveData: null,
     })
-    expect(color).toBe('bg-blue-500')
+    expect(actions.resume).toBe(true)
+    expect(actions.fork).toBe(true)
+    expect(actions.archive).toBe(true)
+    expect(actions.takeOver).toBe(false)
+    expect(actions.shutDown).toBe(false)
+    expect(actions.openInMonitor).toBe(false)
   })
 
-  it('returns gray when no liveData', () => {
-    const color = getStatusDotColor({})
-    expect(color).toBe('bg-gray-300 dark:bg-gray-600')
+  it('WATCHING session: Take Over + Fork + Open in Monitor', () => {
+    const actions = deriveDropdownActions({
+      isActive: true,
+      isWatching: true,
+      isSidecarManaged: false,
+      liveData: liveAutonomous,
+    })
+    expect(actions.takeOver).toBe(true)
+    expect(actions.fork).toBe(true)
+    expect(actions.openInMonitor).toBe(true)
+    expect(actions.resume).toBe(false)
+    expect(actions.shutDown).toBe(false)
+    expect(actions.archive).toBe(false)
+  })
+
+  it('OWN session: Fork + Shut Down + Open in Monitor', () => {
+    const actions = deriveDropdownActions({
+      isActive: true,
+      isWatching: false,
+      isSidecarManaged: true,
+      liveData: liveSidecarManaged,
+    })
+    expect(actions.fork).toBe(true)
+    expect(actions.shutDown).toBe(true)
+    expect(actions.openInMonitor).toBe(true)
+    expect(actions.resume).toBe(false)
+    expect(actions.takeOver).toBe(false)
+    expect(actions.archive).toBe(false)
   })
 })

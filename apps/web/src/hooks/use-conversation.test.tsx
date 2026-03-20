@@ -843,7 +843,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
     })
     // Advance 10 seconds
     act(() => {
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(20_000)
     })
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
     const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
@@ -862,7 +862,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       result.current.actions.sendMessage('retry test')
     })
     act(() => {
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(20_000)
     })
     // Find the failed block's localId
     // biome-ignore lint/suspicious/noExplicitAny: test assertion

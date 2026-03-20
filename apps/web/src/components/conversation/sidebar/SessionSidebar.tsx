@@ -13,10 +13,6 @@ const SIDEBAR_PAGE_SIZE = 30
 
 interface SessionSidebarProps {
   liveSessions: LiveSession[]
-  /** Sessions created/resumed by this chat page (event-driven, covers SSE control gap). */
-  localSidecarIds?: Set<string>
-  /** Called when a session is created/resumed through the sidebar (fork, resume). */
-  onSessionCreated?: (sessionId: string) => void
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -45,11 +41,7 @@ function groupByTime(sessions: SessionInfo[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({
-  liveSessions,
-  localSidecarIds,
-  onSessionCreated,
-}: SessionSidebarProps) {
+export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
@@ -81,10 +73,10 @@ export function SessionSidebar({
     [historyData],
   )
 
-  // Merge history + live data via pure mapper (no polling, uses SSE control + local knowledge)
+  // Merge history + live data via pure mapper (no polling, uses SSE control field)
   const enrichedHistory = useMemo(
-    () => toSidebarItems(historySessions, liveSessions, localSidecarIds),
-    [historySessions, liveSessions, localSidecarIds],
+    () => toSidebarItems(historySessions, liveSessions),
+    [historySessions, liveSessions],
   )
 
   // Separate active-pinned from rest
@@ -230,6 +222,56 @@ export function SessionSidebar({
     [navigate],
   )
 
+  const handleTakeOver = useCallback(
+    async (sessionId: string) => {
+      try {
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const data = await res.json()
+        if (data.controlId) {
+          toast.success('Session taken over', { duration: TOAST_DURATION.micro })
+          navigate(`/chat/${sessionId}`)
+        } else {
+          toast.error('Take over failed', {
+            description: data.error,
+            duration: TOAST_DURATION.extended,
+          })
+        }
+      } catch {
+        toast.error('Failed to take over session', { duration: TOAST_DURATION.extended })
+      }
+    },
+    [navigate],
+  )
+
+  const handleShutDown = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/sidecar/sessions/${sessionId}`, { method: 'DELETE' })
+      toast.success('Session shut down', { duration: TOAST_DURATION.micro })
+    } catch {
+      toast.error('Failed to shut down session', { duration: TOAST_DURATION.extended })
+    }
+  }, [])
+
+  const handleOpenInMonitor = useCallback(
+    (sessionId: string) => {
+      navigate(`/monitor?session=${sessionId}`)
+    },
+    [navigate],
+  )
+
+  const handleArchive = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/sessions/${sessionId}/archive`, { method: 'POST' })
+      toast.success('Session archived', { duration: TOAST_DURATION.micro })
+    } catch {
+      toast.error('Failed to archive session', { duration: TOAST_DURATION.extended })
+    }
+  }, [])
+
   const handleFork = useCallback(
     async (sessionId: string) => {
       try {
@@ -241,7 +283,6 @@ export function SessionSidebar({
         })
         const data = await res.json()
         if (data.sessionId) {
-          onSessionCreated?.(data.sessionId)
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
           navigate(`/chat/${data.sessionId}`)
         } else {
@@ -309,7 +350,11 @@ export function SessionSidebar({
                       isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
+                      onTakeOver={handleTakeOver}
                       onFork={handleFork}
+                      onShutDown={handleShutDown}
+                      onOpenInMonitor={handleOpenInMonitor}
+                      onArchive={handleArchive}
                     />
                   )
                 })}
@@ -337,7 +382,11 @@ export function SessionSidebar({
                       isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
+                      onTakeOver={handleTakeOver}
                       onFork={handleFork}
+                      onShutDown={handleShutDown}
+                      onOpenInMonitor={handleOpenInMonitor}
+                      onArchive={handleArchive}
                     />
                   )
                 })}
