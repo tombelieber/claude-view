@@ -31,6 +31,19 @@ vi.mock('../../../hooks/use-sidecar-connection', () => ({
     mockUseSidecarConnection(sessionId, opts),
 }))
 
+vi.mock('../../../hooks/use-history-blocks', () => ({
+  useHistoryBlocks: () => ({
+    blocks: [],
+    hasOlderMessages: false,
+    fetchOlderMessages: () => {},
+    isFetching: false,
+    isFetchingOlder: false,
+    isLoading: false,
+    totalMessages: 0,
+    error: null,
+  }),
+}))
+
 vi.mock('../../conversation/ConversationThread', () => ({
   ConversationThread: ({ blocks }: { blocks: unknown[] }) => (
     <div data-testid="conversation-thread">{blocks.length} blocks</div>

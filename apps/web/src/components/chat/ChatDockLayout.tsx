@@ -1,4 +1,9 @@
-import { type DockviewApi, DockviewReact, type DockviewReadyEvent } from 'dockview-react'
+import {
+  type DockviewApi,
+  DockviewReact,
+  type DockviewReadyEvent,
+  type IWatermarkPanelProps,
+} from 'dockview-react'
 import { useCallback, useRef } from 'react'
 import { ChatPanel } from './ChatPanel'
 import { ChatTabRenderer } from './ChatTabRenderer'
@@ -11,6 +16,18 @@ const chatTabComponents = { chat: ChatTabRenderer }
 
 interface ChatDockLayoutProps {
   onReady?: (api: DockviewApi) => void
+}
+
+function ChatWatermark(_props: IWatermarkPanelProps) {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="w-full max-w-2xl px-4">
+        <p className="text-center text-sm text-gray-400 dark:text-[#8B949E] mb-4">
+          Select a session from the sidebar, or start a new conversation.
+        </p>
+      </div>
+    </div>
+  )
 }
 
 export function ChatDockLayout({ onReady }: ChatDockLayoutProps) {
@@ -31,6 +48,7 @@ export function ChatDockLayout({ onReady }: ChatDockLayoutProps) {
       tabComponents={chatTabComponents}
       defaultTabComponent={ChatTabRenderer}
       onReady={handleReady}
+      watermarkComponent={ChatWatermark}
       rightHeaderActionsComponent={TabBarActions}
     />
   )
