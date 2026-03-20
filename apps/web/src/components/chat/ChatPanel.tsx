@@ -1,5 +1,6 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useState } from 'react'
+import { useHistoryBlocks } from '../../hooks/use-history-blocks'
 import { useSidecarConnection } from '../../hooks/use-sidecar-connection'
 import type { PermissionMode } from '../../types/control'
 import { ConversationThread } from '../conversation/ConversationThread'
@@ -36,8 +37,16 @@ export function ChatPanel({ params }: IDockviewPanelProps<ChatPanelParams>) {
   const { sessionId, isWatching } = params
   const [displayMode, setDisplayMode] = useState<DisplayMode>('chat')
 
+  // Live connection to sidecar (skipped for watching-only sessions)
   const connection = useSidecarConnection(sessionId, { skip: isWatching })
-  const blocks = connection.committedBlocks
+
+  // History blocks from Rust server REST API (for ended/non-live sessions)
+  const history = useHistoryBlocks(sessionId || null, {
+    enabled: !connection.isLive && !!sessionId,
+  })
+
+  // Single source of truth: live blocks if connected, else history
+  const blocks = connection.isLive ? connection.committedBlocks : history.blocks
 
   const handleSend = (message: string) => {
     connection.send({ type: 'user_message', text: message })
@@ -58,7 +67,13 @@ export function ChatPanel({ params }: IDockviewPanelProps<ChatPanelParams>) {
         onPermissionModeChange={handleModeChange}
       />
       <div className="flex-1 overflow-y-auto">
-        <ConversationThread blocks={blocks} renderers={placeholderRenderers} />
+        {history.isLoading && !connection.isLive ? (
+          <div className="flex items-center justify-center h-32 text-sm text-gray-400">
+            Loading conversation...
+          </div>
+        ) : (
+          <ConversationThread blocks={blocks} renderers={placeholderRenderers} />
+        )}
       </div>
       <ChatStatusBar
         model={connection.model}
