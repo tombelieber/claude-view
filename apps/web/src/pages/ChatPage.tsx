@@ -14,7 +14,7 @@ export function ChatPage() {
   const { data: sidecarIds } = useQuery({
     queryKey: ['sidecar-sessions'],
     queryFn: async () => {
-      const res = await fetch('/api/sessions')
+      const res = await fetch('/api/sidecar/sessions')
       if (!res.ok) return new Set<string>()
       const sessions: { sessionId: string }[] = await res.json()
       return new Set(sessions.map((s) => s.sessionId))

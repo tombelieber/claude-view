@@ -254,9 +254,12 @@ impl SidecarManager {
         recovered
     }
 
-    /// Call sidecar POST /api/sessions/:id/resume for a single session.
+    /// Call sidecar POST /api/sidecar/sessions/:id/resume for a single session.
     async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
-        let url = format!("{}/api/sessions/{}/resume", self.base_url, session_id);
+        let url = format!(
+            "{}/api/sidecar/sessions/{}/resume",
+            self.base_url, session_id
+        );
         let body = serde_json::json!({
             "model": "claude-sonnet-4-20250514",
         });

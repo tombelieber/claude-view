@@ -318,7 +318,7 @@ describe('WS resume message always sent on connect', () => {
 })
 
 // ─── Create session response contract ─────────────────────────────────────
-// The API response from POST /api/sessions must include a non-empty
+// The API response from POST /api/sidecar/sessions must include a non-empty
 // sessionId for the frontend to navigate. These tests verify the contract.
 describe('Create session response handling', () => {
   // --- Regression: empty sessionId must NOT trigger navigation ---
@@ -523,7 +523,7 @@ describe('SDK session cleanup via beforeunload', () => {
     // Simulate the beforeunload handler
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetchMock(`/api/sessions/${controlIdRef.current}`, {
+        fetchMock(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         })
@@ -532,7 +532,7 @@ describe('SDK session cleanup via beforeunload', () => {
 
     handleBeforeUnload()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/sessions/ctrl-cleanup-test', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/sidecar/sessions/ctrl-cleanup-test', {
       method: 'DELETE',
       keepalive: true,
     })
@@ -545,7 +545,7 @@ describe('SDK session cleanup via beforeunload', () => {
 
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetchMock(`/api/sessions/${controlIdRef.current}`, {
+        fetchMock(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         })

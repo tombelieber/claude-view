@@ -403,7 +403,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     async function init() {
       // Check if session is active
       try {
-        const res = await fetch('/api/sessions')
+        const res = await fetch('/api/sidecar/sessions')
         if (!cancelled && res.ok) {
           const sessions: ActiveSession[] = await res.json()
           const active = sessions.find((s) => s.sessionId === sid)
@@ -449,7 +449,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetch(`/api/sessions/${controlIdRef.current}`, {
+        fetch(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         }).catch(() => {})
@@ -497,7 +497,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             /* noop */
           }
           resumingRef.current = true
-          fetch(`/api/sessions/${sessionId}/resume`, {
+          fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ permissionMode }),
@@ -540,7 +540,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (!sessionId) return
 
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/resume`, {
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ permissionMode, model }),

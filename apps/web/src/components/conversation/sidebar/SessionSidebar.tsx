@@ -1,13 +1,13 @@
-import type { AvailableSession } from '@claude-view/shared'
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
+import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
 
-type EnrichedSession = AvailableSession & {
+type EnrichedSession = SessionInfo & {
   isActive?: boolean
   liveData?: LiveSession | null
   isSidecarManaged?: boolean
@@ -19,7 +19,7 @@ interface SessionSidebarProps {
   sidecarSessionIds?: Set<string>
 }
 
-function groupByTime(sessions: AvailableSession[], now: number) {
+function groupByTime(sessions: SessionInfo[], now: number) {
   const today = new Date(now * 1000)
   today.setHours(0, 0, 0, 0)
   const yesterday = new Date(today)
@@ -27,7 +27,7 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   const lastWeek = new Date(today)
   lastWeek.setDate(lastWeek.getDate() - 7)
 
-  const groups: { label: string; sessions: AvailableSession[] }[] = [
+  const groups: { label: string; sessions: SessionInfo[] }[] = [
     { label: 'Today', sessions: [] },
     { label: 'Yesterday', sessions: [] },
     { label: 'Last 7 days', sessions: [] },
@@ -35,7 +35,7 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   ]
 
   for (const s of sessions) {
-    const ts = new Date(s.lastModified * 1000)
+    const ts = new Date(s.modifiedAt * 1000)
     if (ts >= today) groups[0].sessions.push(s)
     else if (ts >= yesterday) groups[1].sessions.push(s)
     else if (ts >= lastWeek) groups[2].sessions.push(s)
@@ -51,7 +51,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
 
   const VISIBLE_BATCH = 30
 
-  const [historySessions, setHistorySessions] = useState<AvailableSession[]>([])
+  const [historySessions, setHistorySessions] = useState<SessionInfo[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
@@ -74,7 +74,10 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
       try {
         const res = await fetch('/api/sessions')
         if (cancelled) return
-        if (res.ok) setHistorySessions(await res.json())
+        if (res.ok) {
+          const data = await res.json()
+          setHistorySessions(data.sessions ?? [])
+        }
       } catch {
         // Network error — silently fail, show empty state
       } finally {
@@ -95,7 +98,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     fetch('/api/sessions')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data) setHistorySessions(data)
+        if (data) setHistorySessions(data.sessions ?? [])
       })
       .catch(() => {})
   }, [liveSessions.length])
@@ -104,9 +107,9 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   const enrichedHistory = useMemo(() => {
     return historySessions.map((s) => ({
       ...s,
-      isActive: activeSessionIds.has(s.sessionId),
-      liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
-      isSidecarManaged: sidecarSessionIds?.has(s.sessionId) ?? false,
+      isActive: activeSessionIds.has(s.id),
+      liveData: activeSessions.find((a) => a.id === s.id) ?? null,
+      isSidecarManaged: sidecarSessionIds?.has(s.id) ?? false,
     }))
   }, [historySessions, activeSessionIds, activeSessions, sidecarSessionIds])
 
@@ -119,7 +122,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     if (!searchQuery.trim()) return restSessions
     const q = searchQuery.toLowerCase()
     return restSessions.filter(
-      (s) => s.customTitle?.toLowerCase().includes(q) || s.firstPrompt?.toLowerCase().includes(q),
+      (s) => s.slug?.toLowerCase().includes(q) || s.preview?.toLowerCase().includes(q),
     )
   }, [restSessions, searchQuery])
 
@@ -163,7 +166,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     const list: EnrichedSession[] = [...pinnedSessions]
     for (const group of visibleTimeGroups) {
       for (const s of group.sessions) {
-        const enriched = enrichedHistory.find((e) => e.sessionId === s.sessionId)
+        const enriched = enrichedHistory.find((e) => e.id === s.id)
         if (enriched) list.push(enriched)
       }
     }
@@ -212,8 +215,8 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           const next = Math.min(prev + 1, flatSessions.length - 1)
           const session = flatSessions[next]
           if (session) {
-            debouncedNavigate(session.sessionId)
-            itemRefs.current.get(session.sessionId)?.scrollIntoView({ block: 'nearest' })
+            debouncedNavigate(session.id)
+            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
           }
           // Near the bottom — proactively load more sessions
           if (next >= flatSessions.length - 3 && hasMore) {
@@ -228,8 +231,8 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           const next = prev - 1
           const session = flatSessions[next]
           if (session) {
-            debouncedNavigate(session.sessionId)
-            itemRefs.current.get(session.sessionId)?.scrollIntoView({ block: 'nearest' })
+            debouncedNavigate(session.id)
+            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
           }
           return next
         })
@@ -249,7 +252,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   const handleSelect = useCallback(
     (id: string) => {
       // Update nav index to match clicked item
-      const idx = flatSessions.findIndex((s) => s.sessionId === id)
+      const idx = flatSessions.findIndex((s) => s.id === id)
       setActiveNavIndex(idx)
       navigate(`/chat/${id}`)
     },
@@ -267,16 +270,16 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   const handleFork = useCallback(
     async (sessionId: string) => {
       try {
-        const session = enrichedHistory.find((s) => s.sessionId === sessionId)
-        const res = await fetch(`/api/sessions/${sessionId}/fork`, {
+        const session = enrichedHistory.find((s) => s.id === sessionId)
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/fork`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectPath: session?.cwd }),
+          body: JSON.stringify({ projectPath: session?.projectPath }),
         })
         const data = await res.json()
-        if (data.sessionId) {
+        if (data.id) {
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.sessionId}`)
+          navigate(`/chat/${data.id}`)
         } else {
           toast.error('Fork failed', { duration: TOAST_DURATION.extended })
         }
@@ -332,13 +335,13 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
                   Active
                 </p>
                 {pinnedSessions.map((s) => {
-                  const idx = flatSessions.findIndex((f) => f.sessionId === s.sessionId)
+                  const idx = flatSessions.findIndex((f) => f.id === s.id)
                   return (
                     <SessionListItem
-                      key={s.sessionId}
-                      ref={(el) => setItemRef(s.sessionId, el)}
+                      key={s.id}
+                      ref={(el) => setItemRef(s.id, el)}
                       session={s}
-                      isSelected={s.sessionId === currentSessionId}
+                      isSelected={s.id === currentSessionId}
                       isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
@@ -356,17 +359,17 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
                   {group.label}
                 </p>
                 {group.sessions.map((s) => {
-                  const enriched = enrichedHistory.find((e) => e.sessionId === s.sessionId) ?? {
+                  const enriched = enrichedHistory.find((e) => e.id === s.id) ?? {
                     ...s,
                     isActive: false,
                   }
-                  const idx = flatSessions.findIndex((f) => f.sessionId === s.sessionId)
+                  const idx = flatSessions.findIndex((f) => f.id === s.id)
                   return (
                     <SessionListItem
-                      key={s.sessionId}
-                      ref={(el) => setItemRef(s.sessionId, el)}
+                      key={s.id}
+                      ref={(el) => setItemRef(s.id, el)}
                       session={enriched}
-                      isSelected={s.sessionId === currentSessionId}
+                      isSelected={s.id === currentSessionId}
                       isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
