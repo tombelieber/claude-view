@@ -33,7 +33,7 @@ import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionCapabilities } from '../../hooks/use-session-capabilities'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { deriveInputBarState } from '../../lib/control-status-map'
+import { type LiveStatus, derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { getContextLimit } from '../../lib/model-context-windows'
@@ -182,6 +182,14 @@ export function SessionDetailPanel({
     actions: convActions,
     sessionInfo: convInfo,
   } = useConversation(data.id)
+
+  // FSM: derive panel mode for this detail panel
+  const detailLiveStatus: LiveStatus = !convInfo.isLive
+    ? 'inactive'
+    : convInfo.controlId
+      ? 'cc_agent_sdk_owned'
+      : 'cc_owned'
+  const detailPanelMode = derivePanelMode(data.id, detailLiveStatus, convInfo.sessionState)
 
   // Command palette capabilities
   const sdpCapabilities = useSessionCapabilities(convInfo)
@@ -815,14 +823,10 @@ export function SessionDetailPanel({
                 onRespond={convActions.respondPermission}
               />
             )}
-            {(convInfo.isLive || convInfo.canResumeLazy) && (
+            {detailPanelMode.mode !== 'blank' && detailPanelMode.mode !== 'watching' && (
               <ChatInputBar
                 onSend={convActions.sendMessage}
-                state={deriveInputBarState(
-                  convInfo.sessionState,
-                  convInfo.isLive,
-                  convInfo.canResumeLazy,
-                )}
+                state={modeToInputBar(detailPanelMode)}
                 contextPercent={
                   data.contextWindowTokens > 0
                     ? Math.min(

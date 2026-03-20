@@ -35,7 +35,7 @@ import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { deriveInputBarState } from '../lib/control-status-map'
+import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -408,10 +408,19 @@ export function ConversationView() {
     )
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
+  // FSM: derive panel mode from live status + session state
+  const liveStatus: LiveStatus = !isLive
+    ? 'inactive'
+    : convInfo.controlId
+      ? 'cc_agent_sdk_owned'
+      : 'cc_owned'
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionState)
+  const inputBarState = modeToInputBar(panelMode)
+
   // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL
   const contextPercent = useMemo(() => {
     if (
-      (isLive || convInfo.canResumeLazy) &&
+      (panelMode.mode === 'own' || panelMode.mode === 'history') &&
       convInfo.contextWindowSize > 0 &&
       convInfo.totalInputTokens > 0
     ) {
@@ -428,8 +437,6 @@ export function ConversationView() {
     return undefined
   }, [isLive, convInfo, panelData])
 
-  // Derived UI state from new hook
-  const inputBarState = deriveInputBarState(sessionState, isLive, convInfo.canResumeLazy)
   const connectionHealth = deriveConnectionHealth(sessionState)
 
   // ----- Early returns -----
