@@ -731,3 +731,89 @@ describe('WS message handling — committedBlocks/pendingText state (HT-07..HT-1
     expect(after2.committed).toHaveLength(1) // Still unchanged
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Task 2: openWs consistency + interactive card events
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('openWs consistency — setSessionState before every openWs call (Task 2)', () => {
+  it('connectAndSend sets initializing before openWs', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    // Extract connectAndSend body (the controlId branch)
+    const connectAndSendMatch = source.match(
+      /const connectAndSend[\s\S]*?if \(controlId\)\s*\{([\s\S]*?)\}/m,
+    )
+    expect(connectAndSendMatch).not.toBeNull()
+    const body = connectAndSendMatch?.[1] ?? ''
+    // setSessionState('initializing') must appear before openWs
+    const initIdx = body.indexOf("setSessionState('initializing')")
+    const openIdx = body.indexOf('openWs(')
+    expect(initIdx).toBeGreaterThanOrEqual(0)
+    expect(openIdx).toBeGreaterThan(initIdx)
+  })
+
+  it('reconnect callback sets initializing before openWs', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    const reconnectMatch = source.match(
+      /const reconnect = useCallback\(\(\) => \{([\s\S]*?)\}, \[/m,
+    )
+    expect(reconnectMatch).not.toBeNull()
+    const body = reconnectMatch?.[1] ?? ''
+    const initIdx = body.indexOf("setSessionState('initializing')")
+    const openIdx = body.indexOf('openWs(')
+    expect(initIdx).toBeGreaterThanOrEqual(0)
+    expect(openIdx).toBeGreaterThan(initIdx)
+  })
+
+  it('handleWsClose reconnect uses reconnecting (not initializing)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    // The auto-reconnect in handleWsClose should use 'reconnecting'
+    expect(source).toMatch(/setSessionState\('reconnecting'[\s\S]*?openWs\(sid\)/)
+  })
+})
+
+describe('interactive card events → waiting_permission (Task 2)', () => {
+  it('handleWsMessage covers all 4 interactive card types', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    for (const cardType of ['permission_request', 'ask_question', 'plan_approval', 'elicitation']) {
+      expect(source).toMatch(new RegExp(`case '${cardType}'`))
+    }
+  })
+
+  it('all interactive cards are grouped before setSessionState waiting_permission', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    const block = source.match(
+      /case 'permission_request':[\s\S]*?setSessionState\('waiting_permission'\)/m,
+    )
+    expect(block).not.toBeNull()
+    const matched = block?.[0] ?? ''
+    expect(matched).toContain("case 'ask_question'")
+    expect(matched).toContain("case 'plan_approval'")
+    expect(matched).toContain("case 'elicitation'")
+  })
+})
