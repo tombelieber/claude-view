@@ -34,9 +34,9 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   // Called when ChatSession creates a new session from the blank "New Chat" panel.
   // Transitions this panel from blank to the real session.
   const onSessionCreated = useCallback(
-    (newSessionId: string, slug?: string) => {
+    (newSessionId: string) => {
       api.updateParameters({ sessionId: newSessionId })
-      api.setTitle(slug || newSessionId.slice(0, 8))
+      api.setTitle(newSessionId.slice(0, 8))
       navigate(`/chat/${newSessionId}`)
     },
     [api, navigate],

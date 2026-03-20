@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 const readSource = async (relPath: string) => {
-  // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
   const fs = await import('node:fs/promises')
-  // @ts-expect-error — node:path unavailable in browser tsconfig
   const path = await import('node:path')
-  // @ts-expect-error — process.cwd() unavailable in browser tsconfig
   return fs.readFile(path.resolve(process.cwd(), relPath), 'utf-8')
 }
 

@@ -13,6 +13,8 @@ const SIDEBAR_PAGE_SIZE = 30
 
 interface SessionSidebarProps {
   liveSessions: LiveSession[]
+  /** Called when user clicks "New Chat" — opens a blank tab directly in the dock. */
+  onNewChat?: () => void
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -41,7 +43,7 @@ function groupByTime(sessions: SessionInfo[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
+export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
@@ -213,7 +215,13 @@ export function SessionSidebar({ liveSessions }: SessionSidebarProps) {
     },
     [navigate, flatSessions],
   )
-  const handleNewChat = useCallback(() => navigate('/chat'), [navigate])
+  const handleNewChat = useCallback(() => {
+    if (onNewChat) {
+      onNewChat()
+    } else {
+      navigate('/chat')
+    }
+  }, [onNewChat, navigate])
 
   const handleResume = useCallback(
     async (sessionId: string) => {
