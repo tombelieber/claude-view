@@ -21,6 +21,22 @@ if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
   echo ""
 fi
 
+# ─── Pre-release Storybook build check ──────────────────────────
+# Verifies all stories compile and render without errors.
+# Catches broken component stories before release. Skip with SKIP_STORYBOOK=1.
+if [ "${SKIP_STORYBOOK:-0}" != "1" ]; then
+  echo "Building Storybook (story compilation check)..."
+  if ! (cd "$ROOT/apps/web" && bunx storybook build -o /tmp/storybook-release-check --quiet 2>&1); then
+    echo ""
+    echo "ERROR: Storybook build failed — broken stories block release."
+    echo "Run 'bun run storybook' to debug. Skip with SKIP_STORYBOOK=1."
+    exit 1
+  fi
+  rm -rf /tmp/storybook-release-check
+  echo "Storybook build OK"
+  echo ""
+fi
+
 cd "$ROOT/npx-cli"
 
 # Bump version in npx-cli/package.json (no git tag from npm)
