@@ -15,6 +15,7 @@
     "deploy:share": "turbo build --filter=@claude-view/share && cd apps/share && bunx wrangler pages deploy dist --project-name=claude-view-share-viewer --branch=main --commit-dirty=true",
     "deploy:share:dev": "cd apps/share && bunx vite build --mode dev && bunx wrangler pages deploy dist --project-name=claude-view-share-viewer-dev --branch=main --commit-dirty=true",
     "release:landing": "./scripts/release-landing.sh",
+    "storybook": "cd apps/web && bun run storybook",
     "dev:all": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
