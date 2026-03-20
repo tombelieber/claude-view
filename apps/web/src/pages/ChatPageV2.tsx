@@ -46,10 +46,13 @@ function makeSessionPanelArgs(
     title: deriveTabTitle(sid, cachedSessions, live),
     params: {
       sessionId: sid,
-      isWatching: liveSession != null && liveSession.control == null,
+      liveStatus:
+        liveSession == null
+          ? 'inactive'
+          : liveSession.control != null
+            ? 'cc_agent_sdk_owned'
+            : 'cc_owned',
       agentStateGroup: liveSession?.agentState?.group ?? null,
-      hasLiveData: liveSession != null,
-      isSidecarManaged: liveSession?.control != null,
     },
   }
 }
@@ -150,7 +153,7 @@ export function ChatPageV2() {
     openSession(sessionId)
   }, [sessionId, openSession])
 
-  // Sync live data (dot color, title, isWatching) into existing tab params when SSE ticks.
+  // Sync live data (dot color, title, liveStatus) into existing tab params when SSE ticks.
   // This corrects any stale values from layout-restore time (SSE hadn't delivered data yet).
   useEffect(() => {
     const api = dockApiRef.current
@@ -162,10 +165,9 @@ export function ChatPageV2() {
       if (!sid) continue
       const live = liveSessions.sessions.find((s) => s.id === sid)
       panel.api.updateParameters({
-        isWatching: live != null && live.control == null,
+        liveStatus:
+          live == null ? 'inactive' : live.control != null ? 'cc_agent_sdk_owned' : 'cc_owned',
         agentStateGroup: live?.agentState?.group ?? null,
-        hasLiveData: live != null,
-        isSidecarManaged: live?.control != null,
       })
       const title = deriveTabTitle(sid, cached, liveSessions.sessions)
       if (title !== sid.slice(0, 8) && panel.title === sid.slice(0, 8)) {

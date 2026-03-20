@@ -1,52 +1,40 @@
 import { describe, expect, it } from 'vitest'
+import type { LiveStatus } from '../lib/derive-panel-mode'
 import { getContextLimit } from '../lib/model-context-windows'
 
 /**
- * Tests for the `isWatching` derivation in ChatPage.
+ * Tests for the `liveStatus` derivation in ChatPage.
  *
  * From ChatPage.tsx:
- *   const isLiveElsewhere = liveSessions.sessions.some(s => s.id === sessionId)
- *   const isSidecarManaged = sidecarIds == null || sidecarIds.has(sessionId ?? '')
- *   const isWatching = isLiveElsewhere && !isSidecarManaged
+ *   const liveStatus: LiveStatus = liveSession == null ? 'inactive'
+ *     : liveSession.control != null ? 'cc_agent_sdk_owned'
+ *     : 'cc_owned'
  *
  * We test this as a pure logic function to avoid mocking router/outlet/query.
  */
 
-function deriveIsWatching(
-  sessionId: string | undefined,
-  liveSessionIds: string[],
-  sidecarIds: Set<string> | undefined,
-): boolean {
-  const isLiveElsewhere = liveSessionIds.includes(sessionId ?? '')
-  const isSidecarManaged = sidecarIds == null || sidecarIds.has(sessionId ?? '')
-  return isLiveElsewhere && !isSidecarManaged
+function deriveLiveStatus(
+  liveSession: { id: string; control: string | null } | undefined,
+): LiveStatus {
+  if (liveSession == null) return 'inactive'
+  return liveSession.control != null ? 'cc_agent_sdk_owned' : 'cc_owned'
 }
 
-describe('isWatching derivation', () => {
-  it('isWatching = true when session in liveSessions AND NOT in sidecarIds', () => {
-    const result = deriveIsWatching(
-      'session-abc',
-      ['session-abc', 'session-def'],
-      new Set(['session-def']),
-    )
-    expect(result).toBe(true)
+describe('liveStatus derivation', () => {
+  it('cc_owned when session is live AND control is null (CLI/VS Code)', () => {
+    expect(deriveLiveStatus({ id: 's1', control: null })).toBe('cc_owned')
   })
 
-  it('isWatching = false when session in liveSessions AND in sidecarIds', () => {
-    const result = deriveIsWatching('session-abc', ['session-abc'], new Set(['session-abc']))
-    expect(result).toBe(false)
+  it('cc_agent_sdk_owned when session is live AND control is non-null (sidecar)', () => {
+    expect(deriveLiveStatus({ id: 's1', control: 'ctrl-123' })).toBe('cc_agent_sdk_owned')
   })
 
-  it('isWatching = false when session NOT in liveSessions', () => {
-    const result = deriveIsWatching('session-abc', ['session-def'], new Set([]))
-    expect(result).toBe(false)
+  it('inactive when no liveSession found', () => {
+    expect(deriveLiveStatus(undefined)).toBe('inactive')
   })
 
-  it('isWatching = false when sidecarIds is still loading (undefined)', () => {
-    // When sidecarIds is undefined (query loading), isSidecarManaged defaults to true
-    // to avoid blocking WS connections for the user's own sessions.
-    const result = deriveIsWatching('session-abc', ['session-abc'], undefined)
-    expect(result).toBe(false)
+  it('inactive when liveSession is null', () => {
+    expect(deriveLiveStatus(null as any)).toBe('inactive')
   })
 })
 
