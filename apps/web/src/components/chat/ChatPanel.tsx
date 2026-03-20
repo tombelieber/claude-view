@@ -15,5 +15,9 @@ interface ChatPanelParams {
 export function ChatPanel({ params }: IDockviewPanelProps<ChatPanelParams>) {
   const { sessionId, isWatching } = params
 
-  return <ChatSession sessionId={sessionId || undefined} isWatching={isWatching} />
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <ChatSession sessionId={sessionId || undefined} isWatching={isWatching} />
+    </div>
+  )
 }

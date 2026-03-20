@@ -52,10 +52,7 @@ test.describe('Chat V2 Dockview', () => {
     const sidebar = page.locator('nav[aria-label="Chat history"]')
     await expect(sidebar).toBeVisible({ timeout: 10000 })
 
-    // Wait for loading to finish (either shows sessions or "No sessions yet")
-    await page.waitForTimeout(3000)
-
-    // The sidebar should either show time-grouped sessions OR the empty state
+    // Wait for sessions to load — either time groups or empty state must appear
     const emptyState = sidebar.locator('text=No sessions yet')
     const timeGroupHeader = sidebar
       .locator('text=Today')
@@ -63,13 +60,8 @@ test.describe('Chat V2 Dockview', () => {
       .or(sidebar.locator('text=Last 7 days'))
       .or(sidebar.locator('text=Older'))
 
-    // One of these must be visible
-    const hasEmptyState = await emptyState.isVisible().catch(() => false)
-    const hasTimeGroups = await timeGroupHeader
-      .first()
-      .isVisible()
-      .catch(() => false)
-    expect(hasEmptyState || hasTimeGroups).toBeTruthy()
+    // Wait for either to appear (loading 1700+ sessions may take a few seconds)
+    await expect(emptyState.or(timeGroupHeader.first())).toBeVisible({ timeout: 15000 })
 
     await page.screenshot({ path: 'e2e/screenshots/chat-v2-sidebar-sessions.png' })
   })
