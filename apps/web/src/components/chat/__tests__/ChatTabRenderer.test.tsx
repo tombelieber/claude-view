@@ -30,7 +30,7 @@ function renderTab(
       api={mockApi(apiOverrides) as any}
       // biome-ignore lint/suspicious/noExplicitAny: mock dockview API in test
       containerApi={mockContainerApi() as any}
-      params={{ agentStateGroup: null, hasLiveData: false, ...params }}
+      params={{ agentStateGroup: null, liveStatus: 'inactive', ...params }}
       tabLocation="header"
     />,
   )
@@ -40,7 +40,7 @@ describe('ChatTabRenderer', () => {
   it('shows green dot for autonomous live session (aligned with sidebar)', () => {
     const { container } = renderTab(undefined, {
       agentStateGroup: 'autonomous',
-      hasLiveData: true,
+      liveStatus: 'cc_owned',
     })
     const dot = container.querySelector('span.bg-green-500')
     expect(dot).not.toBeNull()
@@ -49,7 +49,7 @@ describe('ChatTabRenderer', () => {
   it('shows amber dot for needs_you live session (aligned with sidebar)', () => {
     const { container } = renderTab(undefined, {
       agentStateGroup: 'needs_you',
-      hasLiveData: true,
+      liveStatus: 'cc_owned',
     })
     const dot = container.querySelector('span.bg-amber-500')
     expect(dot).not.toBeNull()
@@ -58,7 +58,7 @@ describe('ChatTabRenderer', () => {
   it('shows gray dot when no live data', () => {
     const { container } = renderTab(undefined, {
       agentStateGroup: null,
-      hasLiveData: false,
+      liveStatus: 'inactive',
     })
     const dot = container.querySelector('[class*="bg-gray-"]')
     expect(dot).not.toBeNull()

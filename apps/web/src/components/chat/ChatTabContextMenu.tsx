@@ -36,7 +36,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
       id: `chat-${sessionId}-split-r-${Date.now()}`,
       component: 'chat',
       title: panel.title ?? sessionId.slice(0, 8),
-      params: { sessionId, isWatching: true },
+      params: { sessionId, liveStatus: 'cc_owned' },
       position: { referencePanel: panel.id, direction: 'right' },
     })
   }
@@ -47,7 +47,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
       id: `chat-${sessionId}-split-d-${Date.now()}`,
       component: 'chat',
       title: panel.title ?? sessionId.slice(0, 8),
-      params: { sessionId, isWatching: true },
+      params: { sessionId, liveStatus: 'cc_owned' },
       position: { referencePanel: panel.id, direction: 'below' },
     })
   }
