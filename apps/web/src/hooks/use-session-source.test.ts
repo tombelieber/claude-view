@@ -184,12 +184,9 @@ describe('Bug 1 regression — no state filter in auto-connect (structural)', ()
   // in the init() function. This guards against re-introducing the anti-pattern.
   it('init() calls openWs unconditionally — source has no active.state filter', async () => {
     // Dynamic imports: vitest runs on Node but web tsconfig is browser-only
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
       'utf-8',
     )
@@ -209,12 +206,9 @@ describe('Bug 1 regression — no state filter in auto-connect (structural)', ()
   })
 
   it('init() has comment explaining unconditional auto-connect', async () => {
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
       'utf-8',
     )
@@ -564,8 +558,8 @@ describe('SDK session cleanup via beforeunload', () => {
         close: () => calls.push('ws.close'),
       },
     }
-    const heartbeatTimerRef = { current: 123 as ReturnType<typeof setInterval> | null }
-    const reconnectTimerRef = { current: 456 as ReturnType<typeof setTimeout> | null }
+    const heartbeatTimerRef = { current: 123 as unknown as ReturnType<typeof setInterval> | null }
+    const reconnectTimerRef = { current: 456 as unknown as ReturnType<typeof setTimeout> | null }
     const pendingMessagesRef = { current: [{ type: 'user_message', content: 'pending' }] }
 
     // Simulate React cleanup (mirrors the actual useEffect cleanup)

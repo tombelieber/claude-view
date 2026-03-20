@@ -73,12 +73,9 @@ describe('Sidebar progressive rendering invariants', () => {
 
 describe('event-driven sidebar (regression: 10s polling removed)', () => {
   it('SessionSidebar accepts liveSessions prop (new interface)', async () => {
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/components/conversation/sidebar/SessionSidebar.tsx'),
       'utf-8',
     )
@@ -87,12 +84,9 @@ describe('event-driven sidebar (regression: 10s polling removed)', () => {
   })
 
   it('no setInterval polling in component (regression: was 10s poll)', async () => {
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/components/conversation/sidebar/SessionSidebar.tsx'),
       'utf-8',
     )
