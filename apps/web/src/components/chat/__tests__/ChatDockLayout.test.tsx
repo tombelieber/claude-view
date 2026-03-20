@@ -65,7 +65,7 @@ import { ChatDockLayout } from '../ChatDockLayout'
 describe('ChatDockLayout', () => {
   it('adds panel when session is activated from sidebar', () => {
     const onReady = vi.fn()
-    render(<ChatDockLayout onReady={onReady} />)
+    render(<ChatDockLayout initialLayout={null} onReady={onReady} />)
 
     // Simulate dockview ready
     const mockApi = new MockDockApi()
@@ -76,20 +76,20 @@ describe('ChatDockLayout', () => {
   })
 
   it('removes panel when session tab is closed', () => {
-    render(<ChatDockLayout />)
+    render(<ChatDockLayout initialLayout={null} />)
     // Dockview handles panel close internally via tab close button.
     // We just verify the DockviewReact is rendered.
     expect(capturedComponents).toHaveProperty('chat')
   })
 
   it('split right creates second group with same session type', () => {
-    render(<ChatDockLayout />)
+    render(<ChatDockLayout initialLayout={null} />)
     // TabBarActions is wired as rightHeaderActionsComponent
     expect(capturedRightHeaderActions).toBeDefined()
   })
 
   it('restores layout from localStorage if saved', () => {
-    render(<ChatDockLayout />)
+    render(<ChatDockLayout initialLayout={null} />)
 
     // Verify the components and tab components are registered
     expect(capturedComponents).toHaveProperty('chat')
