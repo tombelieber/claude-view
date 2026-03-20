@@ -470,7 +470,7 @@ async fn refresh_pricing(
 pub(crate) async fn fetch_sdk_models_from_sidecar(
     base_url: &str,
 ) -> Result<Vec<(String, String, String, Option<String>, Option<String>)>, String> {
-    let url = format!("{}/api/sessions/models", base_url);
+    let url = format!("{}/api/sidecar/sessions/models", base_url);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))

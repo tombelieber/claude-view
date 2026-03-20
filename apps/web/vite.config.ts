@@ -26,7 +26,7 @@ export default defineConfig({
         ws: true,
         rewriteWsOrigin: true,
       },
-      '/api/sessions': {
+      '/api/sidecar': {
         target: 'http://localhost:3001',
       },
       // Main server :47892

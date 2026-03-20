@@ -189,13 +189,13 @@ async function healthCheck(retries = 30): Promise<boolean> {
 async function createSession(initialMessage?: string) {
   const body: Record<string, unknown> = { model: MODEL }
   if (initialMessage) body.initialMessage = initialMessage
-  const { data } = await httpRequest('POST', '/api/sessions', body)
+  const { data } = await httpRequest('POST', '/api/sidecar/sessions', body)
   return data as { sessionId: string; status: string }
 }
 
 async function cleanupSession(sessionId: string) {
   try {
-    await httpRequest('DELETE', `/api/sessions/${sessionId}`)
+    await httpRequest('DELETE', `/api/sidecar/sessions/${sessionId}`)
   } catch {
     // ignore — may already be closed
   }
@@ -274,7 +274,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     await cleanupSession(sessionId)
     await new Promise((r) => setTimeout(r, 1_000))
 
-    const { data: resumed } = await httpRequest('POST', '/api/sessions/:id/resume', {
+    const { data: resumed } = await httpRequest('POST', '/api/sidecar/sessions/:id/resume', {
       sessionId,
       model: MODEL,
     })
@@ -310,7 +310,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     ws1.close()
 
     // Fork
-    const { status, data: forked } = await httpRequest('POST', '/api/sessions/fork', {
+    const { status, data: forked } = await httpRequest('POST', '/api/sidecar/sessions/fork', {
       sessionId: originalSessionId,
       model: MODEL,
     })
@@ -348,7 +348,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     ws.close()
 
     // Verify session is still in list
-    const { data: sessions } = await httpRequest('GET', '/api/sessions')
+    const { data: sessions } = await httpRequest('GET', '/api/sidecar/sessions')
     const found = (sessions as unknown as Record<string, unknown>[]).find(
       (s) => s.sessionId === created.sessionId,
     )
@@ -384,17 +384,17 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     const created = await createSession('Reply with exactly one word: test')
     expect(created.sessionId).toBeTruthy()
 
-    const { data: before } = await httpRequest('GET', '/api/sessions')
+    const { data: before } = await httpRequest('GET', '/api/sidecar/sessions')
     const existsBefore = (before as unknown as Record<string, unknown>[]).some(
       (s) => s.sessionId === created.sessionId,
     )
     expect(existsBefore).toBe(true)
 
-    await httpRequest('DELETE', `/api/sessions/${created.sessionId}`)
+    await httpRequest('DELETE', `/api/sidecar/sessions/${created.sessionId}`)
     // Wait for delayed cleanup
     await new Promise((r) => setTimeout(r, 6_000))
 
-    const { data: after } = await httpRequest('GET', '/api/sessions')
+    const { data: after } = await httpRequest('GET', '/api/sidecar/sessions')
     const existsAfter = (after as unknown as Record<string, unknown>[]).some(
       (s) => s.sessionId === created.sessionId,
     )
@@ -431,7 +431,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // The bridge queues both — SDK processes them sequentially
     // We just verify the session didn't crash
-    const { data: sessions } = await httpRequest('GET', '/api/sessions')
+    const { data: sessions } = await httpRequest('GET', '/api/sidecar/sessions')
     const found = (sessions as unknown as Record<string, unknown>[]).find(
       (s) => s.sessionId === created.sessionId,
     )
@@ -451,7 +451,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     await waitForEvent(ws, 'turn_complete', 60_000)
 
     // Verify state is NOT closed
-    const { data: sessions } = await httpRequest('GET', '/api/sessions')
+    const { data: sessions } = await httpRequest('GET', '/api/sidecar/sessions')
     const found = (sessions as unknown as Record<string, unknown>[]).find(
       (s) => s.sessionId === created.sessionId,
     )
@@ -485,9 +485,13 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     await cleanupSession(sessionId)
     await new Promise((r) => setTimeout(r, 1_000))
 
-    const { data: resumed } = await httpRequest('POST', `/api/sessions/${sessionId}/resume`, {
-      model: MODEL,
-    })
+    const { data: resumed } = await httpRequest(
+      'POST',
+      `/api/sidecar/sessions/${sessionId}/resume`,
+      {
+        model: MODEL,
+      },
+    )
 
     const ws2 = await connectWs(resumed.sessionId as string)
     // WS connected — blocks_snapshot delivered on connect, no resume needed
@@ -522,7 +526,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     const rateLimitEvents = events.filter((e) => e.type === 'rate_limit')
 
     // Whether or not rate_limit events appeared, session should NOT be closed
-    const { data: sessions } = await httpRequest('GET', '/api/sessions')
+    const { data: sessions } = await httpRequest('GET', '/api/sidecar/sessions')
     const found = (sessions as unknown as Record<string, unknown>[]).find(
       (s) => s.sessionId === created.sessionId,
     )
@@ -539,7 +543,7 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   }, 90_000)
 
   // --- Create session basics ---
-  it('POST /api/sessions with initialMessage returns non-empty sessionId', async () => {
+  it('POST /api/sidecar/sessions with initialMessage returns non-empty sessionId', async () => {
     const created = await createSession('Reply with exactly one word: test')
     expect(created.sessionId).toBeTruthy()
     expect(typeof created.sessionId).toBe('string')
@@ -579,26 +583,34 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
   }, 30_000)
 
   // --- Send endpoint ---
-  it('POST /api/sessions/:id/send returns 200 for active session', async () => {
+  it('POST /api/sidecar/sessions/:id/send returns 200 for active session', async () => {
     const created = await createSession('Reply with exactly one word: hello')
     expect(created.sessionId).toBeTruthy()
 
     // Wait for init to complete
     await new Promise((r) => setTimeout(r, 2_000))
 
-    const { status, data } = await httpRequest('POST', `/api/sessions/${created.sessionId}/send`, {
-      message: 'Reply with exactly one word: ping',
-    })
+    const { status, data } = await httpRequest(
+      'POST',
+      `/api/sidecar/sessions/${created.sessionId}/send`,
+      {
+        message: 'Reply with exactly one word: ping',
+      },
+    )
     expect(status).toBe(200)
     expect(data.status).toBe('sent')
 
     await cleanupSession(created.sessionId)
   }, 30_000)
 
-  it('POST /api/sessions/:id/send returns 404 for unknown sessionId', async () => {
-    const { status } = await httpRequest('POST', '/api/sessions/nonexistent-session-id/send', {
-      message: 'hello',
-    })
+  it('POST /api/sidecar/sessions/:id/send returns 404 for unknown sessionId', async () => {
+    const { status } = await httpRequest(
+      'POST',
+      '/api/sidecar/sessions/nonexistent-session-id/send',
+      {
+        message: 'hello',
+      },
+    )
     expect(status).toBe(404)
   }, 10_000)
 })

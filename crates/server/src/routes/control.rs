@@ -3,11 +3,11 @@
 //!
 //! All interactive control is now handled directly by the sidecar on TCP :3001.
 //! The frontend connects to sidecar endpoints via Vite proxy:
-//!   - POST /api/sessions         → create session
-//!   - POST /api/sessions/:id/resume → resume session
-//!   - POST /api/sessions/:id/fork   → fork session
-//!   - DELETE /api/sessions/:id       → terminate session
-//!   - GET  /api/sessions             → list sessions
+//!   - POST /api/sidecar/sessions         → create session
+//!   - POST /api/sidecar/sessions/:id/resume → resume session
+//!   - POST /api/sidecar/sessions/:id/fork   → fork session
+//!   - DELETE /api/sidecar/sessions/:id       → terminate session
+//!   - GET  /api/sidecar/sessions             → list sessions
 //!   - WS   /ws/chat/:sessionId       → stream events
 //!   - POST /api/estimate             → cost estimate (Rust server)
 

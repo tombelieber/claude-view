@@ -12,9 +12,26 @@ vi.mock('../../components/chat/ChatDockLayout', () => ({
   },
 }))
 
+// Mock react-query
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: undefined }),
+}))
+
+// Mock SessionSidebar (heavy component with many deps)
+vi.mock('../../components/conversation/sidebar/SessionSidebar', () => ({
+  SessionSidebar: () => <nav data-testid="session-sidebar" aria-label="Chat history" />,
+}))
+
+// Mock keyboard shortcuts hook
+vi.mock('../../hooks/use-chat-keyboard-shortcuts', () => ({
+  useChatKeyboardShortcuts: () => {},
+}))
+
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
+  useOutletContext: () => ({ liveSessions: { sessions: [] } }),
+  useNavigate: () => () => {},
 }))
 
 import { ChatPageV2 } from '../ChatPageV2'

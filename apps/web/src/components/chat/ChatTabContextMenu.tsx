@@ -63,7 +63,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
 
   const handleEndSession = () => {
     if (sessionId) {
-      fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' }).catch((err) => {
+      fetch(`/api/sidecar/sessions/${sessionId}`, { method: 'DELETE' }).catch((err) => {
         toast.error('Failed to end session', { description: String(err) })
       })
       panel.api.close()

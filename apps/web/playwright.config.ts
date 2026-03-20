@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'html',
   timeout: 180000,
   use: {
-    baseURL: 'http://localhost:47892',
+    baseURL: process.env.PW_BASE_URL ?? 'http://localhost:5173',
     trace: 'on-first-retry',
     actionTimeout: 15000,
   },
