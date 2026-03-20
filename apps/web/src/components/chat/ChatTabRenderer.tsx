@@ -1,5 +1,6 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
+import type { LiveStatus } from '../../lib/derive-panel-mode'
 import { cn } from '../../lib/utils'
 import { ChatTabContextMenu } from './ChatTabContextMenu'
 
@@ -7,21 +8,21 @@ import { ChatTabContextMenu } from './ChatTabContextMenu'
  * Dot color aligned with sidebar SessionListItem.getStatusDotColor:
  * - needs_you → amber (matches Live Monitor)
  * - autonomous / other active → green
- * - no live data → gray
+ * - inactive → gray
  */
-function getTabDotColor(agentStateGroup: string | null, hasLiveData: boolean): string {
-  if (!hasLiveData) return 'bg-gray-300 dark:bg-gray-600'
+function getTabDotColor(agentStateGroup: string | null, liveStatus: LiveStatus): string {
+  if (liveStatus === 'inactive') return 'bg-gray-300 dark:bg-gray-600'
   if (agentStateGroup === 'needs_you') return 'bg-amber-500'
   return 'bg-green-500'
 }
 
 export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
   const agentStateGroup = (params.agentStateGroup as string | null) ?? null
-  const hasLiveData = (params.hasLiveData as boolean) ?? false
+  const liveStatus = (params.liveStatus as LiveStatus) ?? 'inactive'
 
-  const dotColor = getTabDotColor(agentStateGroup, hasLiveData)
+  const dotColor = getTabDotColor(agentStateGroup, liveStatus)
   const isAutonomous = agentStateGroup === 'autonomous'
-  const showPulse = isAutonomous && hasLiveData
+  const showPulse = isAutonomous && liveStatus !== 'inactive'
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
