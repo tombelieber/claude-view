@@ -39,6 +39,27 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   const optimisticBlocksRef = useRef<UserBlock[]>([])
   optimisticBlocksRef.current = optimisticBlocks
 
+  // Deferred timer refs: messages sent while dormant (isLive=false) defer their
+  // fail timer until the WS connection opens (isLive transitions to true).
+  const pendingTimersRef = useRef<Map<string, number>>(new Map())
+  const activeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const isLiveRef = useRef(source.isLive)
+  isLiveRef.current = source.isLive
+
+  const startFailTimer = useCallback((localId: string) => {
+    const timer = setTimeout(() => {
+      setOptimisticBlocks((prev) =>
+        prev.map((b) => {
+          if (b.localId !== localId) return b
+          if (b.status === 'sending') return { ...b, status: 'failed' as const }
+          return b
+        }),
+      )
+      activeTimersRef.current.delete(localId)
+    }, SEND_TIMEOUT_MS)
+    activeTimersRef.current.set(localId, timer)
+  }, [])
+
   const sendMessage = useCallback(
     (text: string) => {
       const localId = crypto.randomUUID()
@@ -53,20 +74,34 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       setOptimisticBlocks((prev) => [...prev, optimistic])
       actions.sendMessage(text)
 
-      const timer = setTimeout(() => {
-        setOptimisticBlocks((prev) =>
-          prev.map((b) => {
-            if (b.localId !== localId) return b
-            if (b.status === 'sending') return { ...b, status: 'failed' as const }
-            return b
-          }),
-        )
-      }, SEND_TIMEOUT_MS)
-
-      return () => clearTimeout(timer)
+      if (isLiveRef.current) {
+        // WS already open — start timer immediately
+        startFailTimer(localId)
+      } else {
+        // WS not yet open — defer timer until connection establishes
+        pendingTimersRef.current.set(localId, Date.now())
+      }
     },
-    [actions],
+    [actions, startFailTimer],
   )
+
+  // Fire deferred timers when WS opens (isLive transitions false → true)
+  useEffect(() => {
+    if (!source.isLive || pendingTimersRef.current.size === 0) return
+    for (const [localId] of pendingTimersRef.current) {
+      startFailTimer(localId)
+    }
+    pendingTimersRef.current.clear()
+  }, [source.isLive, startFailTimer])
+
+  // Cleanup active timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of activeTimersRef.current.values()) {
+        clearTimeout(timer)
+      }
+    }
+  }, [])
 
   const queryClient = useQueryClient()
 
