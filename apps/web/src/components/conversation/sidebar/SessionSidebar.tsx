@@ -1,4 +1,5 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -6,6 +7,8 @@ import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
+
+const SIDEBAR_PAGE_SIZE = 30
 
 type EnrichedSession = SessionInfo & {
   isActive?: boolean
@@ -49,12 +52,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
-  const VISIBLE_BATCH = 30
-
-  const [historySessions, setHistorySessions] = useState<SessionInfo[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
 
   // Active sessions: all live sessions that are working, paused, or SDK-controlled
   const activeSessions = useMemo(
@@ -67,41 +65,31 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
 
   const activeSessionIds = useMemo(() => new Set(activeSessions.map((s) => s.id)), [activeSessions])
 
-  // Fetch history sessions on mount
-  useEffect(() => {
-    let cancelled = false
-    async function fetchHistory() {
-      try {
-        const res = await fetch('/api/sessions')
-        if (cancelled) return
-        if (res.ok) {
-          const data = await res.json()
-          setHistorySessions(data.sessions ?? [])
-        }
-      } catch {
-        // Network error — silently fail, show empty state
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    fetchHistory()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  // Server-side paginated fetch — loads pages on demand as user scrolls
+  const {
+    data: historyData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ['chat-sidebar-sessions'],
+    queryFn: async ({ pageParam }) => {
+      const res = await fetch(`/api/sessions?limit=${SIDEBAR_PAGE_SIZE}&offset=${pageParam}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json() as Promise<{ sessions: SessionInfo[]; total: number; hasMore: boolean }>
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      if (!lastPage.hasMore) return undefined
+      return lastPageParam + SIDEBAR_PAGE_SIZE
+    },
+  })
 
-  // Refetch history when liveSessions count changes (session created/closed)
-  const prevLiveCount = useRef(liveSessions.length)
-  useEffect(() => {
-    if (prevLiveCount.current === liveSessions.length) return
-    prevLiveCount.current = liveSessions.length
-    fetch('/api/sessions')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setHistorySessions(data.sessions ?? [])
-      })
-      .catch(() => {})
-  }, [liveSessions.length])
+  const historySessions = useMemo(
+    () => historyData?.pages.flatMap((p) => p.sessions) ?? [],
+    [historyData],
+  )
 
   // Merge: mark history sessions that are also active
   const enrichedHistory = useMemo(() => {
@@ -126,40 +114,29 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     )
   }, [restSessions, searchQuery])
 
-  // Reset visibleCount when search query changes.
-  // searchQuery is intentionally listed as the dependency to trigger on change,
-  // even though it is not read inside the effect body.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers the reset
-  useEffect(() => {
-    setVisibleCount(VISIBLE_BATCH)
-  }, [searchQuery])
-
   const now = Math.floor(Date.now() / 1000)
-  const hasMore = visibleCount < filteredRest.length
-  const visibleTimeGroups = useMemo(
-    () => groupByTime(filteredRest.slice(0, visibleCount), now),
-    [filteredRest, visibleCount, now],
-  )
+  const visibleTimeGroups = useMemo(() => groupByTime(filteredRest, now), [filteredRest, now])
 
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
+  // Progressive load: fetch next page from server when sentinel enters viewport
   useEffect(() => {
     const sentinel = loadMoreRef.current
     const container = scrollContainerRef.current
-    if (!sentinel || !container || !hasMore) return
+    if (!sentinel || !container || !hasNextPage) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisibleCount((prev) => prev + VISIBLE_BATCH)
+        if (entry.isIntersecting && !isFetchingNextPage) {
+          fetchNextPage()
         }
       },
       { root: container, threshold: 0.1 },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasMore])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   // Flatten all visible sessions into a single ordered list for keyboard nav
   const flatSessions = useMemo(() => {
@@ -218,9 +195,9 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
             debouncedNavigate(session.id)
             itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
           }
-          // Near the bottom — proactively load more sessions
-          if (next >= flatSessions.length - 3 && hasMore) {
-            setVisibleCount((v) => v + VISIBLE_BATCH)
+          // Near the bottom — proactively load more from server
+          if (next >= flatSessions.length - 3 && hasNextPage && !isFetchingNextPage) {
+            fetchNextPage()
           }
           return next
         })
@@ -241,7 +218,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [flatSessions, debouncedNavigate, hasMore])
+  }, [flatSessions, debouncedNavigate, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   // Callback to register item refs
   const setItemRef = useCallback((sessionId: string, el: HTMLDivElement | null) => {
@@ -277,9 +254,9 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           body: JSON.stringify({ projectPath: session?.projectPath }),
         })
         const data = await res.json()
-        if (data.id) {
+        if (data.sessionId) {
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.id}`)
+          navigate(`/chat/${data.sessionId}`)
         } else {
           toast.error('Fork failed', { duration: TOAST_DURATION.extended })
         }
@@ -380,8 +357,8 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
               </div>
             ))}
 
-            {/* Load-more sentinel */}
-            {hasMore && (
+            {/* Load-more sentinel — triggers fetchNextPage from server */}
+            {hasNextPage && (
               <div ref={loadMoreRef} className="flex justify-center py-3">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-400" />
               </div>
