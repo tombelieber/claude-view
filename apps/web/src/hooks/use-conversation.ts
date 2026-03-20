@@ -6,7 +6,9 @@ import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
 
-const SEND_TIMEOUT_MS = 10_000
+// Dormant sessions auto-resume via connectAndSend → POST resume → waitForSessionInit (up to 15s).
+// Timeout must exceed the resume window to avoid false "Failed" during normal resume flow.
+const SEND_TIMEOUT_MS = 20_000
 
 interface ConversationOptions {
   /** Skip WS connection (watching mode). History still loads via REST. */

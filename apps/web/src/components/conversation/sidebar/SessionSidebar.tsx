@@ -5,21 +5,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
+import { type SidebarSession, toSidebarItems } from '../../../lib/sidebar-mapper'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
 
 const SIDEBAR_PAGE_SIZE = 30
 
-type EnrichedSession = SessionInfo & {
-  isActive?: boolean
-  liveData?: LiveSession | null
-  isSidecarManaged?: boolean
-}
-
 interface SessionSidebarProps {
   liveSessions: LiveSession[]
-  /** Session IDs actively managed by the sidecar (from /control/sessions). */
-  sidecarSessionIds?: Set<string>
+  /** Sessions created/resumed by this chat page (event-driven, covers SSE control gap). */
+  localSidecarIds?: Set<string>
+  /** Called when a session is created/resumed through the sidebar (fork, resume). */
+  onSessionCreated?: (sessionId: string) => void
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -48,22 +45,15 @@ function groupByTime(sessions: SessionInfo[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSidebarProps) {
+export function SessionSidebar({
+  liveSessions,
+  localSidecarIds,
+  onSessionCreated,
+}: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
   const [searchQuery, setSearchQuery] = useState('')
-
-  // Active sessions: all live sessions that are working, paused, or SDK-controlled
-  const activeSessions = useMemo(
-    () =>
-      liveSessions.filter(
-        (s) => s.status === 'working' || s.status === 'paused' || s.control !== null,
-      ),
-    [liveSessions],
-  )
-
-  const activeSessionIds = useMemo(() => new Set(activeSessions.map((s) => s.id)), [activeSessions])
 
   // Server-side paginated fetch — loads pages on demand as user scrolls
   const {
@@ -91,15 +81,11 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     [historyData],
   )
 
-  // Merge: mark history sessions that are also active
-  const enrichedHistory = useMemo(() => {
-    return historySessions.map((s) => ({
-      ...s,
-      isActive: activeSessionIds.has(s.id),
-      liveData: activeSessions.find((a) => a.id === s.id) ?? null,
-      isSidecarManaged: sidecarSessionIds?.has(s.id) ?? false,
-    }))
-  }, [historySessions, activeSessionIds, activeSessions, sidecarSessionIds])
+  // Merge history + live data via pure mapper (no polling, uses SSE control + local knowledge)
+  const enrichedHistory = useMemo(
+    () => toSidebarItems(historySessions, liveSessions, localSidecarIds),
+    [historySessions, liveSessions, localSidecarIds],
+  )
 
   // Separate active-pinned from rest
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)
@@ -140,7 +126,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
 
   // Flatten all visible sessions into a single ordered list for keyboard nav
   const flatSessions = useMemo(() => {
-    const list: EnrichedSession[] = [...pinnedSessions]
+    const list: SidebarSession[] = [...pinnedSessions]
     for (const group of visibleTimeGroups) {
       for (const s of group.sessions) {
         const enriched = enrichedHistory.find((e) => e.id === s.id)
@@ -255,6 +241,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
         })
         const data = await res.json()
         if (data.sessionId) {
+          onSessionCreated?.(data.sessionId)
           toast.success('Session forked', { duration: TOAST_DURATION.micro })
           navigate(`/chat/${data.sessionId}`)
         } else {
