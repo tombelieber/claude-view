@@ -32,43 +32,41 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+// Aligned with Live Monitor StatusDot: needs_you → amber, autonomous → green
 function getStatusDotColor(session: Props['session']): string {
   if (!session.liveData) return 'bg-gray-300 dark:bg-gray-600'
-  // Sidecar-managed → green
-  if (session.isSidecarManaged) return 'bg-green-500'
-  // External live → blue
-  return 'bg-blue-500'
-}
-
-function getPulseRingColor(session: Props['session']): string {
-  if (session.liveData?.control !== null) return 'border-green-500/50'
-  if (session.liveData?.agentState.group === 'needs_you') return 'border-amber-500/50'
-  if (session.liveData?.agentState.group === 'autonomous' || session.liveData?.status === 'working')
-    return 'border-blue-500/50'
-  return 'border-green-500/50'
+  const group = session.liveData.agentState?.group
+  if (group === 'needs_you') return 'bg-amber-500'
+  return 'bg-green-500'
 }
 
 function getStatusBadge(session: Props['session']): { text: string; className: string } | null {
   if (!session.liveData) return null
-  // Sidecar-managed → Live (green)
-  if (session.isSidecarManaged)
-    return {
-      text: 'Live',
-      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    }
-  // External session waiting for input → Watching
-  if (session.liveData.agentState.group === 'needs_you')
-    return {
-      text: 'Watching',
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    }
-  // External session autonomous / working → Watching
-  if (session.liveData.agentState.group === 'autonomous' || session.liveData.status === 'working')
-    return {
-      text: 'Watching',
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    }
-  return null
+  const group = session.liveData.agentState?.group
+  const isNeedsYou = group === 'needs_you'
+
+  if (session.isSidecarManaged) {
+    // Sidecar-managed: "Live" badge, color matches agent state
+    return isNeedsYou
+      ? {
+          text: 'Live',
+          className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+        }
+      : {
+          text: 'Live',
+          className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+        }
+  }
+  // Watching: external session, color matches agent state
+  return isNeedsYou
+    ? {
+        text: 'Watching',
+        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      }
+    : {
+        text: 'Watching',
+        className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      }
 }
 
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
@@ -83,7 +81,8 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
 
   const projectName = session.projectPath ? projectNameFromCwd(session.projectPath) : null
   const dotColor = getStatusDotColor(session)
-  const showPulse = session.isActive || session.liveData != null
+  const isAutonomous = session.liveData?.agentState?.group === 'autonomous'
+  const showPulse = isAutonomous && session.liveData != null
   const badge = getStatusBadge(session)
 
   return (
@@ -99,14 +98,16 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       ].join(' ')}
       onClick={handleClick}
     >
-      {/* Status dot — color-coded by agent state */}
-      <div className="mt-1 flex-shrink-0 relative">
-        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+      {/* Status dot — aligned with Live Monitor StatusDot colors */}
+      <div className="mt-1 flex-shrink-0 relative inline-flex">
         {showPulse && (
-          <div
-            className={`absolute -inset-0.5 rounded-full border ${getPulseRingColor(session)} animate-pulse`}
+          <span
+            className={`absolute inline-flex w-2 h-2 rounded-full opacity-60 motion-safe:animate-live-ring ${dotColor}`}
           />
         )}
+        <span
+          className={`relative inline-flex w-2 h-2 rounded-full ${dotColor} ${showPulse ? 'motion-safe:animate-live-breathe' : ''}`}
+        />
       </div>
 
       {/* Content */}
