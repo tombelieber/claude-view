@@ -1,4 +1,9 @@
 // sidecar/src/index.ts
+// CLAUDECODE=1 blocks nested SDK sessions (anti-recursion guard in Claude Code).
+// The sidecar spawns SDK child processes that must NOT inherit this flag.
+// Must be deleted before any query() call — do it at startup.
+process.env.CLAUDECODE = undefined
+
 import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
