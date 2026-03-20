@@ -126,8 +126,16 @@ function SessionTabRenderer({
   const status = params.status as LiveSession['status'] | undefined
   const statusColor = status ? statusToColor(status) : '#6b7280'
 
+  const handleMiddleClick = (e: React.MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault()
+      e.stopPropagation()
+      api.close()
+    }
+  }
+
   return (
-    <div className="flex items-center gap-1.5 px-3 h-full text-xs">
+    <div className="flex items-center gap-1.5 px-3 h-full text-xs" onMouseDown={handleMiddleClick}>
       <div
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
         style={{ backgroundColor: statusColor }}

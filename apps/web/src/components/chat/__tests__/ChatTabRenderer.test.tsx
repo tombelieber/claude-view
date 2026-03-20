@@ -30,17 +30,37 @@ function renderTab(
       api={mockApi(apiOverrides) as any}
       // biome-ignore lint/suspicious/noExplicitAny: mock dockview API in test
       containerApi={mockContainerApi() as any}
-      params={{ status: 'idle', permissionPending: false, ...params }}
+      params={{ agentStateGroup: null, hasLiveData: false, ...params }}
       tabLocation="header"
     />,
   )
 }
 
 describe('ChatTabRenderer', () => {
-  it('renders status dot matching session status', () => {
-    const { container } = renderTab(undefined, { status: 'active' })
-    // SessionStatusDot for active status has bg-green-500
+  it('shows green dot for autonomous live session (aligned with sidebar)', () => {
+    const { container } = renderTab(undefined, {
+      agentStateGroup: 'autonomous',
+      hasLiveData: true,
+    })
     const dot = container.querySelector('span.bg-green-500')
+    expect(dot).not.toBeNull()
+  })
+
+  it('shows amber dot for needs_you live session (aligned with sidebar)', () => {
+    const { container } = renderTab(undefined, {
+      agentStateGroup: 'needs_you',
+      hasLiveData: true,
+    })
+    const dot = container.querySelector('span.bg-amber-500')
+    expect(dot).not.toBeNull()
+  })
+
+  it('shows gray dot when no live data', () => {
+    const { container } = renderTab(undefined, {
+      agentStateGroup: null,
+      hasLiveData: false,
+    })
+    const dot = container.querySelector('[class*="bg-gray-"]')
     expect(dot).not.toBeNull()
   })
 

@@ -1,5 +1,6 @@
 // sidecar/src/routes.ts
 import { Hono } from 'hono'
+import { notifyBindControl, notifyUnbindControl } from './control-binding.js'
 import { getCacheState } from './model-cache.js'
 import type {
   CreateSessionRequest,
@@ -29,6 +30,7 @@ export function createRoutes(registry: SessionRegistry) {
     try {
       const cs = createControlSession(body, registry)
       await waitForSessionInit(cs, 60_000)
+      notifyBindControl(cs.sessionId, cs.controlId)
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
@@ -61,6 +63,7 @@ export function createRoutes(registry: SessionRegistry) {
     try {
       const cs = await resumeControlSession({ sessionId, ...body }, registry)
       await waitForSessionInit(cs, 15_000)
+      notifyBindControl(cs.sessionId || sessionId, cs.controlId)
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId || sessionId,
@@ -81,6 +84,7 @@ export function createRoutes(registry: SessionRegistry) {
     try {
       const cs = forkControlSession({ sessionId, ...body }, registry)
       await waitForSessionInit(cs, 15_000)
+      notifyBindControl(cs.sessionId, cs.controlId)
       return c.json({
         controlId: cs.controlId,
         sessionId: cs.sessionId,
@@ -164,7 +168,10 @@ export function createRoutes(registry: SessionRegistry) {
   app.delete('/sessions/:id', (c) => {
     const sessionId = c.req.param('id')
     const cs = registry.getBySessionId(sessionId)
-    if (cs) closeSession(cs, registry)
+    if (cs) {
+      notifyUnbindControl(cs.sessionId, cs.controlId)
+      closeSession(cs, registry)
+    }
     return c.json({ status: 'terminated' })
   })
 

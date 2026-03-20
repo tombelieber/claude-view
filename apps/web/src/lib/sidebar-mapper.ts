@@ -10,18 +10,14 @@ export type SidebarSession = SessionInfo & {
 
 /**
  * Pure mapper: merges history sessions with live session data.
- * Replaces the 3-source frontend cross-referencing (history REST + SSE + sidecar poll).
  *
- * Sidecar-managed detection uses two sources (OR logic):
- *   1. SSE LiveSession.control field (Rust server knows about the binding)
- *   2. localSidecarIds (chat page knows which sessions it created/resumed)
- * Source 2 covers the gap where sidecar owns a session but the Rust server
- * hasn't linked the control binding in the LiveSession yet.
+ * Sidecar-managed detection uses SSE LiveSession.control field — set by the
+ * Rust server when the sidecar calls POST /api/live/sessions/:id/bind-control.
+ * No frontend workarounds (localSidecarIds, polling) needed.
  */
 export function toSidebarItems(
   history: SessionInfo[],
   liveSessions: LiveSession[],
-  localSidecarIds?: Set<string>,
 ): SidebarSession[] {
   const liveMap = new Map(liveSessions.map((s) => [s.id, s]))
   const historyIds = new Set(history.map((h) => h.id))
@@ -32,7 +28,7 @@ export function toSidebarItems(
     const isLiveActive =
       live != null &&
       (live.status === 'working' || live.status === 'paused' || live.control != null)
-    const isSidecarManaged = live?.control != null || (localSidecarIds?.has(h.id) ?? false)
+    const isSidecarManaged = live?.control != null
 
     return {
       ...h,
@@ -46,12 +42,11 @@ export function toSidebarItems(
   // Append active live sessions not yet in history (newly created, not yet indexed)
   for (const live of liveSessions) {
     if (historyIds.has(live.id)) continue
-    const isSidecarManaged = live.control != null || (localSidecarIds?.has(live.id) ?? false)
+    const isSidecarManaged = live.control != null
     const isLiveActive = live.status === 'working' || live.status === 'paused' || isSidecarManaged
     if (!isLiveActive) continue
 
     result.push({
-      // Synthesise minimal SessionInfo from LiveSession fields
       id: live.id,
       project: live.project,
       projectPath: live.projectPath,
@@ -63,7 +58,6 @@ export function toSidebarItems(
       lastMessage: live.lastUserMessage,
       slug: live.slug,
       gitBranch: live.gitBranch,
-      // Zero-value defaults for fields the sidebar doesn't render
       filesTouched: [],
       skillsUsed: [],
       toolCounts: { read: 0, edit: 0, write: 0, bash: 0, glob: 0, grep: 0, other: 0 },
@@ -94,7 +88,6 @@ export function toSidebarItems(
       parseVersion: 0,
       correctionCount: 0,
       sameFileEditCount: 0,
-      // Enrichment
       isActive: true,
       isWatching: !isSidecarManaged,
       isSidecarManaged,
