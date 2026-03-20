@@ -90,12 +90,15 @@ export function ChatSession({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  // When watching, skip sidecar WS to prevent auto-resume/bind_control.
+  // Derive effective watching state: isWatching is the INITIAL hint from panel params,
+  // but if the sidecar WS connects (isLive=true), we own it — no longer watching.
+  // This handles: HISTORY→OWN (resume via typing) and WATCHING→OWN (take over).
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
     skipWs: isWatching,
   })
+  const effectiveWatching = !!isWatching && !sessionInfo.isLive
   // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
-  const terminal = useLiveSessionMessages(sessionId ?? '', !!isWatching && !!sessionId)
+  const terminal = useLiveSessionMessages(sessionId ?? '', effectiveWatching && !!sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -320,7 +323,7 @@ export function ChatSession({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {isWatching ? (
+          {effectiveWatching ? (
             <span className="flex items-center gap-1.5 text-xs text-blue-500">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
@@ -368,7 +371,7 @@ export function ChatSession({
       )}
 
       {/* Thread — watching mode uses RichPane (terminal WS streaming), owned uses ConversationThread */}
-      {isWatching && sessionId ? (
+      {effectiveWatching && sessionId ? (
         <div className="flex-1 overflow-hidden">
           <RichPane
             messages={terminal.messages}
@@ -435,7 +438,7 @@ export function ChatSession({
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {isWatching && (
+          {effectiveWatching && (
             <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 text-blue-500 dark:text-blue-400 text-base">&#x1f441;</span>
@@ -454,7 +457,7 @@ export function ChatSession({
           <ChatInputBar
             onSend={handleSend}
             onStop={actions.interrupt}
-            state={isWatching ? 'controlled_elsewhere' : inputBarState}
+            state={effectiveWatching ? 'controlled_elsewhere' : inputBarState}
             mode={permMode}
             onModeChange={handleModeChangePermission}
             contextPercent={contextPercent}
