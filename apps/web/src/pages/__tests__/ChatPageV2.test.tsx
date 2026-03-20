@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -10,11 +11,6 @@ vi.mock('../../components/chat/ChatDockLayout', () => ({
     capturedOnReady = onReady
     return <div data-testid="chat-dock-layout" />
   },
-}))
-
-// Mock react-query
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: undefined }),
 }))
 
 // Mock SessionSidebar (heavy component with many deps)
