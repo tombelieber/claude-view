@@ -6,7 +6,7 @@ import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDock
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
-import { deriveLiveStatus } from '../lib/derive-panel-mode'
+import { deriveLiveStatus } from '../lib/live-status'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
 /** Derive tab title using the same logic as the sidebar's SessionListItem. */
