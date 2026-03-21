@@ -1,6 +1,8 @@
 // Pure helper functions for SessionListItem — extracted for testability.
 // Aligned with Live Monitor StatusDot colors: needs_you → amber, autonomous → green.
 
+import type { LiveStatus } from '../../../lib/derive-panel-mode'
+
 interface SessionLike {
   liveData?: {
     agentState?: { group: string }
@@ -8,8 +10,7 @@ interface SessionLike {
     control?: unknown
   } | null
   isActive?: boolean
-  isWatching?: boolean
-  isSidecarManaged?: boolean
+  liveStatus?: LiveStatus
 }
 
 // --- Status dot color ---
@@ -28,24 +29,14 @@ export function getStatusBadge(session: SessionLike): { text: string; className:
   const group = session.liveData.agentState?.group
   const isNeedsYou = group === 'needs_you'
 
-  if (session.isSidecarManaged) {
-    return isNeedsYou
-      ? {
-          text: 'Live',
-          className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-        }
-      : {
-          text: 'Live',
-          className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-        }
-  }
+  const label = session.liveStatus === 'cc_agent_sdk_owned' ? 'Live' : 'Watching'
   return isNeedsYou
     ? {
-        text: 'Watching',
+        text: label,
         className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
       }
     : {
-        text: 'Watching',
+        text: label,
         className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
       }
 }
@@ -62,17 +53,15 @@ export interface DropdownActions {
 }
 
 export function deriveDropdownActions(session: SessionLike): DropdownActions {
-  const isHistory = !session.isActive && !session.isWatching
-  const isWatching = !!session.isWatching
-  const isOwn = !!session.isSidecarManaged
-  const isLive = session.liveData != null
+  const ls = session.liveStatus ?? 'inactive'
+  const isHistory = ls === 'inactive'
 
   return {
     resume: isHistory,
-    takeOver: isWatching,
+    takeOver: ls === 'cc_owned',
     fork: true,
-    shutDown: isOwn,
-    openInMonitor: isLive,
+    shutDown: ls === 'cc_agent_sdk_owned',
+    openInMonitor: ls !== 'inactive',
     archive: isHistory,
   }
 }
