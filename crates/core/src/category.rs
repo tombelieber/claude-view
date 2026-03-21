@@ -1,5 +1,38 @@
 // crates/core/src/category.rs
 
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+/// Action category — 8 values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum ActionCategory {
+    Skill,
+    Mcp,
+    Builtin,
+    Agent,
+    Hook,
+    System,
+    Snapshot,
+    Queue,
+}
+
+impl ActionCategory {
+    pub fn from_str_category(s: &str) -> Self {
+        match s {
+            "skill" => Self::Skill,
+            "mcp" => Self::Mcp,
+            "agent" => Self::Agent,
+            "hook" => Self::Hook,
+            "system" => Self::System,
+            "snapshot" => Self::Snapshot,
+            "queue" => Self::Queue,
+            _ => Self::Builtin,
+        }
+    }
+}
+
 /// Categorize a tool call by its name.
 ///
 /// Maps tool names to categories:
