@@ -63,7 +63,10 @@ export function useChatKeyboardShortcuts(api: DockviewApi | null) {
               id: `chat-${sessionId}-split-r-${Date.now()}`,
               component: 'chat',
               title: active.title ?? sessionId.slice(0, 8),
-              params: { sessionId, liveStatus: 'cc_owned' },
+              params: {
+                sessionId,
+                liveStatus: (active.params as { liveStatus?: string })?.liveStatus ?? 'inactive',
+              },
               position: { referencePanel: active.id, direction: 'right' },
             })
           }
@@ -82,7 +85,10 @@ export function useChatKeyboardShortcuts(api: DockviewApi | null) {
               id: `chat-${sessionId}-split-d-${Date.now()}`,
               component: 'chat',
               title: active.title ?? sessionId.slice(0, 8),
-              params: { sessionId, liveStatus: 'cc_owned' },
+              params: {
+                sessionId,
+                liveStatus: (active.params as { liveStatus?: string })?.liveStatus ?? 'inactive',
+              },
               position: { referencePanel: active.id, direction: 'below' },
             })
           }
