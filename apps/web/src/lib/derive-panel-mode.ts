@@ -1,9 +1,23 @@
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import type { InputBarState } from '../components/chat/ChatInputBar'
+import type { ConnectionHealth } from '../types/control'
 
 export type LiveStatus = 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive'
 export type OwnSubState = 'active' | 'streaming' | 'waiting_permission' | 'compacting'
 export type ConnectingReason = 'initial' | 'reconnecting'
 export type ErrorReason = 'fatal' | 'replaced'
+
+export type SessionState =
+  | 'idle'
+  | 'initializing'
+  | 'reconnecting'
+  | 'waiting_input'
+  | 'active'
+  | 'waiting_permission'
+  | 'compacting'
+  | 'closed'
+  | 'error'
+  | 'replaced'
 
 export type PanelMode =
   | { mode: 'blank' }
@@ -13,10 +27,17 @@ export type PanelMode =
   | { mode: 'own'; subState: OwnSubState }
   | { mode: 'error'; reason: ErrorReason }
 
+export function deriveLiveStatus(live: LiveSession | null | undefined): LiveStatus {
+  if (live == null) return 'inactive'
+  const isActive = live.status === 'working' || live.status === 'paused' || live.control != null
+  if (!isActive) return 'inactive'
+  return live.control != null ? 'cc_agent_sdk_owned' : 'cc_owned'
+}
+
 export function derivePanelMode(
   sessionId: string | undefined,
   liveStatus: LiveStatus,
-  sessionState: string,
+  sessionState: SessionState,
 ): PanelMode {
   if (!sessionId) return { mode: 'blank' }
 
@@ -73,4 +94,10 @@ export function modeToInputBar(mode: PanelMode): InputBarState {
     default:
       return (mode as { mode: never }).mode satisfies never
   }
+}
+
+export function modeToConnectionHealth(mode: PanelMode): ConnectionHealth {
+  if (mode.mode === 'connecting' && mode.reason === 'reconnecting') return 'degraded'
+  if (mode.mode === 'error') return 'lost'
+  return 'ok'
 }

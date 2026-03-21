@@ -1,5 +1,60 @@
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import { describe, expect, it } from 'vitest'
-import { derivePanelMode, modeToInputBar } from './derive-panel-mode'
+import {
+  deriveLiveStatus,
+  derivePanelMode,
+  modeToConnectionHealth,
+  modeToInputBar,
+} from './derive-panel-mode'
+import type { LiveStatus, SessionState } from './derive-panel-mode'
+
+/** Test helper: creates a minimal LiveSession stub with only the fields deriveLiveStatus reads */
+function stubLive(partial: {
+  status: LiveSession['status']
+  control: { controlId: string } | null
+}): LiveSession {
+  return partial as unknown as LiveSession
+}
+
+describe('deriveLiveStatus', () => {
+  it('returns inactive for null', () => {
+    expect(deriveLiveStatus(null)).toBe('inactive')
+  })
+
+  it('returns inactive for undefined', () => {
+    expect(deriveLiveStatus(undefined)).toBe('inactive')
+  })
+
+  it('returns inactive for done session without control', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'done', control: null }))).toBe('inactive')
+  })
+
+  it('returns cc_agent_sdk_owned for done + stale control (control!=null passes isActive)', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'done', control: { controlId: 'c1' } }))).toBe(
+      'cc_agent_sdk_owned',
+    )
+  })
+
+  it('returns cc_owned for working session without control', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'working', control: null }))).toBe('cc_owned')
+  })
+
+  it('returns cc_owned for paused session without control', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'paused', control: null }))).toBe('cc_owned')
+  })
+
+  it('returns cc_agent_sdk_owned for working session with control', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'working', control: { controlId: 'c1' } }))).toBe(
+      'cc_agent_sdk_owned',
+    )
+  })
+
+  it('returns cc_agent_sdk_owned for paused session with control', () => {
+    expect(deriveLiveStatus(stubLive({ status: 'paused', control: { controlId: 'c1' } }))).toBe(
+      'cc_agent_sdk_owned',
+    )
+  })
+})
 
 describe('derivePanelMode', () => {
   it('returns blank when no sessionId', () => {
@@ -81,10 +136,6 @@ describe('derivePanelMode', () => {
 
   it('returns history for closed', () => {
     expect(derivePanelMode('s1', 'inactive', 'closed')).toEqual({ mode: 'history' })
-  })
-
-  it('returns history for unknown sessionState', () => {
-    expect(derivePanelMode('s1', 'inactive', 'something_unknown')).toEqual({ mode: 'history' })
   })
 
   // --- liveStatus does not override sessionState for SDK states ---
@@ -180,148 +231,60 @@ describe('modeToInputBar', () => {
   })
 })
 
-// Inline copy of the OLD function (snapshot for comparison)
-function oldDeriveInputBarState(
-  sessionState: string,
-  isLive: boolean,
-  canResumeLazy?: boolean,
-): string {
-  if (sessionState === 'replaced') return 'completed'
-  if (!isLive) return canResumeLazy ? 'active' : 'dormant'
-  switch (sessionState) {
-    case 'waiting_input':
-      return 'active'
-    case 'active':
-      return 'streaming'
-    case 'waiting_permission':
-      return 'waiting_permission'
-    case 'compacting':
-      return 'streaming'
-    case 'initializing':
-    case 'connecting':
-      return 'connecting'
-    case 'reconnecting':
-      return 'reconnecting'
-    case 'closed':
-    case 'completed':
-    case 'error':
-    case 'fatal':
-    case 'failed':
-      return 'completed'
-    default:
-      return 'dormant'
-  }
-}
-
-describe('behavioral preservation: modeToInputBar(derivePanelMode()) ≡ oldDeriveInputBarState()', () => {
-  const realStates = [
-    'waiting_input',
-    'active',
-    'waiting_permission',
-    'compacting',
-    'initializing',
-    'reconnecting',
-    'error',
-    'replaced',
-    'closed',
-    'idle',
-  ]
-
-  describe('when isLive=true (active session, canResumeLazy=true)', () => {
-    for (const state of realStates) {
-      it(`sessionState='${state}' produces same InputBarState`, () => {
-        // Skip states that can't be isLive=true (closed, idle always have isLive=false)
-        if (['closed', 'idle'].includes(state)) return
-
-        const oldResult = oldDeriveInputBarState(state, true, true)
-        const panelMode = derivePanelMode('s1', 'cc_agent_sdk_owned', state)
-        const newResult = modeToInputBar(panelMode)
-        expect(newResult).toBe(oldResult)
-      })
-    }
-  })
-
-  describe('when isLive=false, canResumeLazy=true (dormant resumable)', () => {
-    for (const state of ['idle', 'closed']) {
-      it(`sessionState='${state}' produces same InputBarState`, () => {
-        const oldResult = oldDeriveInputBarState(state, false, true)
-        const panelMode = derivePanelMode('s1', 'inactive', state)
-        const newResult = modeToInputBar(panelMode)
-        expect(newResult).toBe(oldResult) // both return 'active'
-      })
-    }
-  })
-
-  // INTENTIONAL behavioral change documented
-  describe('INTENTIONAL change: canResumeLazy=false no longer produces dormant', () => {
-    it('OLD: idle + !isLive + !canResumeLazy → dormant', () => {
-      expect(oldDeriveInputBarState('idle', false, false)).toBe('dormant')
-    })
-    it('NEW: idle + inactive → HISTORY → active (auto-resumable)', () => {
-      const panelMode = derivePanelMode('s1', 'inactive', 'idle')
-      expect(modeToInputBar(panelMode)).toBe('active')
-    })
-  })
-
-  // replaced handled identically regardless of isLive
-  it('replaced state handled identically regardless of isLive', () => {
-    expect(oldDeriveInputBarState('replaced', true, true)).toBe('completed')
-    expect(oldDeriveInputBarState('replaced', false, true)).toBe('completed')
-    expect(modeToInputBar(derivePanelMode('s1', 'inactive', 'replaced'))).toBe('completed')
-    expect(modeToInputBar(derivePanelMode('s1', 'cc_agent_sdk_owned', 'replaced'))).toBe(
-      'completed',
-    )
-  })
-})
-
 describe('integration: derivePanelMode → modeToInputBar pipeline', () => {
-  const scenarios = [
+  const scenarios: {
+    desc: string
+    sessionId: string | undefined
+    liveStatus: LiveStatus
+    sessionState: SessionState
+    expectCanSend: boolean
+  }[] = [
     {
       desc: 'no session',
-      sessionId: undefined as string | undefined,
-      liveStatus: 'inactive' as const,
+      sessionId: undefined,
+      liveStatus: 'inactive',
       sessionState: 'idle',
       expectCanSend: false,
     },
     {
       desc: 'history session',
       sessionId: 's1',
-      liveStatus: 'inactive' as const,
+      liveStatus: 'inactive',
       sessionState: 'idle',
       expectCanSend: true,
     },
     {
       desc: 'watching session',
       sessionId: 's1',
-      liveStatus: 'cc_owned' as const,
+      liveStatus: 'cc_owned',
       sessionState: 'idle',
       expectCanSend: false,
     },
     {
       desc: 'active own session',
       sessionId: 's1',
-      liveStatus: 'cc_agent_sdk_owned' as const,
+      liveStatus: 'cc_agent_sdk_owned',
       sessionState: 'waiting_input',
       expectCanSend: true,
     },
     {
       desc: 'streaming session',
       sessionId: 's1',
-      liveStatus: 'cc_agent_sdk_owned' as const,
+      liveStatus: 'cc_agent_sdk_owned',
       sessionState: 'active',
       expectCanSend: false,
     },
     {
       desc: 'connecting session',
       sessionId: 's1',
-      liveStatus: 'inactive' as const,
+      liveStatus: 'inactive',
       sessionState: 'initializing',
       expectCanSend: false,
     },
     {
       desc: 'error session',
       sessionId: 's1',
-      liveStatus: 'inactive' as const,
+      liveStatus: 'inactive',
       sessionState: 'error',
       expectCanSend: false,
     },
@@ -428,5 +391,29 @@ describe('state transitions (spec compliance)', () => {
   it('WATCHING → HISTORY when SSE shows session ended', () => {
     expect(derivePanelMode('s1', 'cc_owned', 'idle')).toEqual({ mode: 'watching' })
     expect(derivePanelMode('s1', 'inactive', 'idle')).toEqual({ mode: 'history' })
+  })
+})
+
+describe('modeToConnectionHealth', () => {
+  it('ok for blank', () => {
+    expect(modeToConnectionHealth({ mode: 'blank' })).toBe('ok')
+  })
+  it('ok for history', () => {
+    expect(modeToConnectionHealth({ mode: 'history' })).toBe('ok')
+  })
+  it('ok for own(active)', () => {
+    expect(modeToConnectionHealth({ mode: 'own', subState: 'active' })).toBe('ok')
+  })
+  it('degraded for connecting(reconnecting)', () => {
+    expect(modeToConnectionHealth({ mode: 'connecting', reason: 'reconnecting' })).toBe('degraded')
+  })
+  it('ok for connecting(initial)', () => {
+    expect(modeToConnectionHealth({ mode: 'connecting', reason: 'initial' })).toBe('ok')
+  })
+  it('lost for error(fatal)', () => {
+    expect(modeToConnectionHealth({ mode: 'error', reason: 'fatal' })).toBe('lost')
+  })
+  it('lost for error(replaced)', () => {
+    expect(modeToConnectionHealth({ mode: 'error', reason: 'replaced' })).toBe('lost')
   })
 })
