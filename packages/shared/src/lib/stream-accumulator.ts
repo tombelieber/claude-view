@@ -3,6 +3,7 @@ import type {
   ConversationBlock,
   InteractionBlock,
   NoticeBlock,
+  ProgressBlock,
   SystemBlock,
   ToolExecution,
   TurnBoundaryBlock,
@@ -189,6 +190,17 @@ export class StreamAccumulator {
         break
       case 'task_progress':
         this.pushSystem('task_progress', event as TaskProgressEvent)
+        this.pushProgress(
+          'agent',
+          'agent',
+          {
+            type: 'agent',
+            prompt: (event as TaskProgressEvent).description,
+            agentId: (event as TaskProgressEvent).taskId,
+            message: (event as TaskProgressEvent).summary ?? undefined,
+          },
+          (event as TaskProgressEvent).toolUseId,
+        )
         break
       case 'task_notification':
         this.pushSystem('task_notification', event as TaskNotification)
@@ -213,6 +225,12 @@ export class StreamAccumulator {
         break
       case 'pong':
         // Infrastructure event — ignored, no block created
+        break
+      case 'blocks_snapshot':
+        // Block format delivery — will be consumed post-migration
+        break
+      case 'blocks_update':
+        // Incremental block updates — will be consumed post-migration
         break
       default:
         // Unknown events silently ignored for forward compatibility
@@ -290,6 +308,23 @@ export class StreamAccumulator {
     const execution = this.findToolExecution(event.toolUseId)
     if (execution) {
       execution.progress = { elapsedSeconds: event.elapsedSeconds }
+    }
+    // Emit a ProgressBlock for bash tool progress
+    if (event.elapsedSeconds !== undefined || event.taskId !== undefined) {
+      this.pushProgress(
+        'bash',
+        'builtin',
+        {
+          type: 'bash',
+          output: '',
+          fullOutput: '',
+          elapsedTimeSeconds: event.elapsedSeconds ?? 0,
+          totalLines: 0,
+          totalBytes: BigInt(0),
+          taskId: event.taskId ?? null,
+        },
+        event.toolUseId,
+      )
     }
   }
 
@@ -440,6 +475,24 @@ export class StreamAccumulator {
       id: genId(),
       variant,
       data,
+    }
+    this.blocks.push(block)
+  }
+
+  private pushProgress(
+    variant: ProgressBlock['variant'],
+    category: ProgressBlock['category'],
+    data: ProgressBlock['data'],
+    parentToolUseId?: string,
+  ): void {
+    const block: ProgressBlock = {
+      type: 'progress',
+      id: genId(),
+      variant,
+      category,
+      data,
+      ts: Date.now() / 1000,
+      parentToolUseId,
     }
     this.blocks.push(block)
   }
