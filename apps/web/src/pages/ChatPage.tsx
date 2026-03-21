@@ -1,7 +1,7 @@
 import { useOutletContext, useParams } from 'react-router-dom'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
-import type { LiveStatus } from '../lib/derive-panel-mode'
+import { deriveLiveStatus } from '../lib/derive-panel-mode'
 import { ChatSession } from './ChatSession'
 
 export function ChatPage() {
@@ -10,12 +10,7 @@ export function ChatPage() {
 
   // Derive liveStatus from SSE LiveSession.control field — no polling needed.
   const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
-  const liveStatus: LiveStatus =
-    liveSession == null
-      ? 'inactive'
-      : liveSession.control != null
-        ? 'cc_agent_sdk_owned'
-        : 'cc_owned'
+  const liveStatus = deriveLiveStatus(liveSession)
 
   // Pass authoritative context gauge data from Live Monitor SSE.
   // Statusline values are ground truth — computed by Claude Code itself.
