@@ -1,30 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
+import { TakeoverDialog } from '../components/chat/TakeoverDialog'
 import { ThinkingBudgetControl } from '../components/chat/ThinkingBudgetControl'
 import { ConversationThread } from '../components/conversation/ConversationThread'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
+import { useChatPanel } from '../hooks/use-chat-panel'
+import { useCommandExecutor } from '../hooks/use-command-executor'
 import { useContextPercent } from '../hooks/use-context-percent'
 import type { LiveContextData } from '../hooks/use-context-percent'
-import { useConversation } from '../hooks/use-conversation'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
-import { useSendHandler } from '../hooks/use-send-handler'
-import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
+import type { LiveStatus } from '../lib/live-status'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
 const MODEL_STORAGE_KEY = 'claude-view:last-model'
+const MODE_STORAGE_KEY = 'claude-view:last-mode'
 
 // NOTE: Display mode (chat/developer) is NOT the same as permission mode (default/plan/auto/etc.)
 // Display mode: which block renderers to use — client-side only, always toggleable
@@ -78,17 +78,35 @@ export function ChatSession({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    liveStatus,
-  })
-  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState)
-  const inputBarState = modeToInputBar(panelMode)
+
+  // FSM: single hook replaces useConversation + useSendHandler + useSessionCapabilities
+  const { store, dispatch, pendingCmdsRef, blocks, inputBar, viewMode } = useChatPanel(sessionId)
+  const { channel } = useCommandExecutor(store, dispatch, pendingCmdsRef)
+
+  // Dispatch LIVE_STATUS_CHANGED when liveStatus prop changes
+  useEffect(() => {
+    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus })
+  }, [liveStatus, dispatch])
+
+  // Notify dockview when FSM creates a new session (blank panel → create flow)
+  const notifiedSessionRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!onSessionCreated) return
+    const panelSessionId = 'sessionId' in store.panel ? store.panel.sessionId : undefined
+    if (
+      panelSessionId &&
+      panelSessionId !== sessionId &&
+      panelSessionId !== notifiedSessionRef.current
+    ) {
+      notifiedSessionRef.current = panelSessionId
+      onSessionCreated(panelSessionId)
+    }
+  }, [store.panel, sessionId, onSessionCreated])
+
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
   const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
-    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
-    isFetchingOlder: history.isFetchingOlder,
     blockCount: blocks.length,
     lastBlockId: blocks.length > 0 ? blocks[blocks.length - 1].id : undefined,
   })
@@ -136,7 +154,6 @@ export function ChatSession({
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
 
   // Permission mode — persisted globally (like model), applied at session creation/resume
-  const MODE_STORAGE_KEY = 'claude-view:last-mode'
   const [permMode, setPermMode] = useState<PermissionMode>(() => {
     try {
       const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
@@ -148,13 +165,13 @@ export function ChatSession({
 
   const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
 
-  const handleSend = useSendHandler({
-    sessionId,
-    selectedModel,
-    permMode,
-    onSessionCreated,
-    sendMessage: actions.sendMessage,
-  })
+  // Send via FSM dispatch
+  const handleSend = useCallback(
+    (text: string) => {
+      dispatch({ type: 'SEND_MESSAGE', text, localId: crypto.randomUUID() })
+    },
+    [dispatch],
+  )
 
   const handleModeChangePermission = useCallback(
     (mode: PermissionMode) => {
@@ -164,16 +181,12 @@ export function ChatSession({
       } catch {
         /* noop */
       }
-      // Push to sidecar if live (sendIfLive no-ops if dormant).
-      // bypassPermissions will fail mid-session via setPermissionMode but the
-      // sidecar falls back to close+re-resume internally.
-      actions.setPermissionMode(mode)
+      dispatch({ type: 'SET_PERMISSION_MODE', mode })
     },
-    [actions],
+    [dispatch],
   )
 
   // --- Command palette ---
-  const capabilities = useSessionCapabilities(sessionInfo)
   const { options: modelOptions } = useModelOptions()
 
   // History session: auto-select the session's primary model if SDK-supported,
@@ -184,72 +197,20 @@ export function ChatSession({
     if (resolved) setSelectedModel(resolved)
   }, [sessionId, sessionDetail?.primaryModel, modelOptions])
 
-  const handleModelSwitch = useCallback(
-    (newModel: string) => {
-      toast('Switch model?', {
-        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
-        action: {
-          label: 'Switch',
-          onClick: () => {
-            actions.resume(capabilities.permissionMode, newModel).catch(() => {
-              toast.error('Failed to switch model', {
-                description: 'Session may need manual resume.',
-              })
-            })
-          },
-        },
-      })
-    },
-    [actions, capabilities.permissionMode, sessionInfo.totalInputTokens],
-  )
-
-  const handlePaletteModeChange = useCallback(
-    (newMode: PermissionMode) => {
-      toast('Change permissions?', {
-        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
-        action: {
-          label: 'Change',
-          onClick: () => {
-            actions.resume(newMode, capabilities.model).catch(() => {
-              toast.error('Failed to change permissions', {
-                description: 'Session may need manual resume.',
-              })
-            })
-          },
-        },
-      })
-    },
-    [actions, capabilities.model, sessionInfo.totalInputTokens],
-  )
-
-  const handlePaletteCommand = useCallback(
-    (command: string) => {
-      actions.sendMessage(`/${command}`)
-    },
-    [actions],
-  )
+  // Takeover dialog state
+  const [showTakeover, setShowTakeover] = useState(false)
 
   return (
-    <div
-      className="flex-1 flex flex-col overflow-hidden"
-      data-panel-mode={panelMode.mode}
-      data-panel-substate={
-        'subState' in panelMode
-          ? panelMode.subState
-          : 'reason' in panelMode
-            ? panelMode.reason
-            : undefined
-      }
-    >
+    <div className="flex-1 flex flex-col overflow-hidden" data-panel-mode={viewMode}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {panelMode.mode === 'watching' ? (
+          {viewMode === 'watching' ? (
             <span className="flex items-center gap-1.5 text-xs text-blue-500">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
             </span>
-          ) : panelMode.mode === 'own' || panelMode.mode === 'connecting' ? (
+          ) : viewMode === 'active' || viewMode === 'connecting' ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
@@ -257,17 +218,17 @@ export function ChatSession({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
+          {store.meta?.capabilities?.includes('set_max_thinking_tokens') && (
             <ThinkingBudgetControl
               value={thinkingBudget}
               onChange={(tokens) => {
                 setThinkingBudget(tokens)
-                actions.setMaxThinkingTokens(tokens)
+                channel?.send({ type: 'set_max_thinking_tokens', tokens })
               }}
-              disabled={panelMode.mode !== 'own'}
+              disabled={viewMode !== 'active'}
             />
           )}
-          {sessionInfo.capabilities?.includes('query_mcp_status') && (
+          {store.meta?.capabilities?.includes('query_mcp_status') && (
             <button
               type="button"
               onClick={() => setMcpPanelOpen((o) => !o)}
@@ -281,12 +242,12 @@ export function ChatSession({
       </div>
 
       {/* MCP Panel (collapsible) */}
-      {mcpPanelOpen && sessionInfo.capabilities?.includes('query_mcp_status') && (
+      {mcpPanelOpen && store.meta?.capabilities?.includes('query_mcp_status') && (
         <div className="border-b border-gray-200 dark:border-gray-800">
           <McpPanel
-            queryMcpStatus={() => actions.queryMcpStatus()}
-            toggleMcp={(name, enabled) => actions.toggleMcp(name, enabled)}
-            reconnectMcp={(name) => actions.reconnectMcp(name)}
+            queryMcpStatus={() => channel?.request({ type: 'query_mcp_status' })}
+            toggleMcp={(name, enabled) => channel?.send({ type: 'mcp_set', name, enabled })}
+            reconnectMcp={(name) => channel?.send({ type: 'mcp_reconnect', name })}
           />
         </div>
       )}
@@ -296,19 +257,6 @@ export function ChatSession({
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         {/* Top sentinel for infinite scroll */}
         <div ref={topSentinelRef} className="h-1" />
-        {history.isFetchingOlder && (
-          <div className="flex justify-center py-3">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-          </div>
-        )}
-        {history.error && (
-          <div className="flex justify-center py-3 text-sm text-red-500">
-            Failed to load messages.{' '}
-            <button type="button" onClick={history.fetchOlderMessages} className="underline">
-              Retry
-            </button>
-          </div>
-        )}
         {blocks.length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
             <div className="text-center">
@@ -319,8 +267,7 @@ export function ChatSession({
                   <ModelSelector
                     model={selectedModel}
                     onModelChange={handleModelChange}
-                    isLive={panelMode.mode === 'own'}
-                    onSetModel={actions.setModel}
+                    isLive={viewMode === 'active'}
                   />
                 </div>
               )}
@@ -330,12 +277,23 @@ export function ChatSession({
           <div className="max-w-3xl mx-auto px-4 py-6">
             <ConversationActionsProvider
               actions={{
-                retryMessage: actions.retryMessage,
-                stopTask: actions.stopTask,
-                respondPermission: actions.respondPermission,
-                answerQuestion: actions.answerQuestion,
-                approvePlan: actions.approvePlan,
-                submitElicitation: actions.submitElicitation,
+                retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                stopTask: (taskId) => {
+                  channel?.send({ type: 'stop_task', taskId })
+                },
+                respondPermission: (rid, allowed, perms) =>
+                  dispatch({
+                    type: 'RESPOND_PERMISSION',
+                    requestId: rid,
+                    allowed,
+                    updatedPermissions: perms,
+                  }),
+                answerQuestion: (rid, answers) =>
+                  dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                approvePlan: (rid, approved, feedback) =>
+                  dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                submitElicitation: (rid, response) =>
+                  dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
               }}
             >
               <ConversationThread blocks={blocks} renderers={registry} />
@@ -349,35 +307,68 @@ export function ChatSession({
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {panelMode.mode === 'watching' && (
+          {viewMode === 'watching' && (
             <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
               <p className="text-xs text-blue-600/80 dark:text-blue-400/70">
-                This session is running in Claude Code CLI. Send a message to take over.
+                This session is running in Claude Code CLI.
               </p>
+              <button
+                type="button"
+                onClick={() => setShowTakeover(true)}
+                className="mt-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                Take Over
+              </button>
             </div>
           )}
           <ChatInputBar
             onSend={handleSend}
-            onStop={actions.interrupt}
-            state={inputBarState}
+            onStop={() => dispatch({ type: 'INTERRUPT' })}
+            state={inputBar}
             mode={permMode}
             onModeChange={handleModeChangePermission}
             contextPercent={contextPercent}
             model={selectedModel}
             onModelChange={handleModelChange}
-            capabilities={capabilities}
+            capabilities={
+              store.meta
+                ? {
+                    model: store.meta.model,
+                    permissionMode: store.meta.permissionMode as PermissionMode,
+                    slashCommands: store.meta.slashCommands,
+                    mcpServers: store.meta.mcpServers,
+                    skills: store.meta.skills,
+                    agents: store.meta.agents,
+                  }
+                : undefined
+            }
             modelOptions={modelOptions}
-            onModelSwitch={handleModelSwitch}
-            onPaletteModeChange={handlePaletteModeChange}
-            onCommand={handlePaletteCommand}
-            onAgent={(agent) => actions.sendMessage(`@${agent}`)}
+            onModelSwitch={(newModel) => dispatch({ type: 'RESUME_WITH_OPTIONS', model: newModel })}
+            onPaletteModeChange={(newMode) =>
+              dispatch({ type: 'RESUME_WITH_OPTIONS', permissionMode: newMode })
+            }
+            onCommand={(command) =>
+              dispatch({ type: 'SEND_MESSAGE', text: `/${command}`, localId: crypto.randomUUID() })
+            }
+            onAgent={(agent) =>
+              dispatch({ type: 'SEND_MESSAGE', text: `@${agent}`, localId: crypto.randomUUID() })
+            }
             onPaletteOpen={() => {
-              actions.queryCommands().catch(() => {})
-              actions.queryAgents().catch(() => {})
+              channel?.send({ type: 'query_commands' })
+              channel?.send({ type: 'query_agents' })
             }}
           />
         </div>
       </div>
+
+      <TakeoverDialog
+        open={showTakeover}
+        onConfirm={() => {
+          setShowTakeover(false)
+          dispatch({ type: 'TAKEOVER_CLI' })
+        }}
+        onCancel={() => setShowTakeover(false)}
+      />
     </div>
   )
 }

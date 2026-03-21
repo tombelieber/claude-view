@@ -1,8 +1,10 @@
-import type { LiveSession } from '@claude-view/shared/types/generated'
 import type { InputBarState } from '../components/chat/ChatInputBar'
 import type { ConnectionHealth } from '../types/control'
+import type { LiveStatus } from './live-status'
 
-export type LiveStatus = 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive'
+// Re-export from canonical location for backwards compatibility
+export { deriveLiveStatus, type LiveStatus } from './live-status'
+
 export type OwnSubState = 'active' | 'streaming' | 'waiting_permission' | 'compacting'
 export type ConnectingReason = 'initial' | 'reconnecting'
 export type ErrorReason = 'fatal' | 'replaced'
@@ -26,13 +28,6 @@ export type PanelMode =
   | { mode: 'connecting'; reason: ConnectingReason }
   | { mode: 'own'; subState: OwnSubState }
   | { mode: 'error'; reason: ErrorReason }
-
-export function deriveLiveStatus(live: LiveSession | null | undefined): LiveStatus {
-  if (live == null) return 'inactive'
-  const isActive = live.status === 'working' || live.status === 'paused' || live.control != null
-  if (!isActive) return 'inactive'
-  return live.control != null ? 'cc_agent_sdk_owned' : 'cc_owned'
-}
 
 export function derivePanelMode(
   sessionId: string | undefined,

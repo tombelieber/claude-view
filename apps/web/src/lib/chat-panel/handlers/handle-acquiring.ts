@@ -1,0 +1,135 @@
+import { acquiringTransition } from '../modules/acquiring'
+import { outboxTransition } from '../modules/outbox'
+import type { ChatPanelStore, Command, PanelState, RawEvent, TransitionResult } from '../types'
+
+export function handleAcquiring(store: ChatPanelStore, event: RawEvent): TransitionResult {
+  const p = store.panel
+  if (p.phase !== 'acquiring') return [store, []]
+
+  // SSE race rejection: ignore live status during acquire
+  if (event.type === 'LIVE_STATUS_CHANGED') return [store, []]
+
+  // E-B2: Map WS events at coordinator level
+  if (event.type === 'WS_OPEN' && p.step.step === 'ws_connecting') {
+    const panel: PanelState = {
+      ...p,
+      step: { step: 'ws_initializing', controlId: p.step.controlId },
+    }
+    return [
+      { ...store, panel },
+      [
+        {
+          cmd: 'START_TIMER',
+          id: 'init-timeout',
+          delayMs: 10_000,
+          event: { type: 'INIT_TIMEOUT' },
+        },
+      ],
+    ]
+  }
+
+  if (event.type === 'WS_CLOSE' && p.step.step === 'ws_connecting') {
+    // Non-recoverable WS close during connecting → action_failed
+    return exitAcquiring(store, p, {
+      stay: false,
+      exit: 'action_failed',
+      error: `WebSocket closed (code: ${event.code})`,
+    })
+  }
+
+  // BLOCKS_SNAPSHOT during acquiring: update display blocks but stay
+  if (event.type === 'BLOCKS_SNAPSHOT') {
+    return [{ ...store, panel: { ...p, historyBlocks: event.blocks } }, []]
+  }
+
+  // Delegate to acquiring leaf
+  if (
+    event.type === 'ACQUIRE_OK' ||
+    event.type === 'ACQUIRE_FAILED' ||
+    event.type === 'SESSION_INIT' ||
+    event.type === 'INIT_TIMEOUT'
+  ) {
+    const leafEvent = event.type === 'SESSION_INIT' ? { type: 'SESSION_INIT' as const } : event
+
+    const result = acquiringTransition(p.step, leafEvent)
+    if (result.stay) {
+      let panel: PanelState = { ...p, step: result.state }
+      const cmds: Command[] = []
+
+      // ACQUIRE_OK → open WS + update sessionId if create/fork returned one
+      if (event.type === 'ACQUIRE_OK' && result.state.step === 'ws_connecting') {
+        cmds.push({ cmd: 'OPEN_SIDECAR_WS', sessionId: p.sessionId })
+        if (event.sessionId) {
+          panel = { ...panel, sessionId: event.sessionId, targetSessionId: event.sessionId }
+        }
+      }
+
+      return [{ ...store, panel }, cmds]
+    }
+
+    return exitAcquiring(store, p, result)
+  }
+
+  return [store, []]
+}
+
+function exitAcquiring(
+  store: ChatPanelStore,
+  p: Extract<PanelState, { phase: 'acquiring' }>,
+  result: { stay: false; exit: string; controlId?: string; sessionId?: string; error?: string },
+): TransitionResult {
+  if (result.exit === 'active') {
+    const sessionId = result.sessionId ?? p.sessionId
+    const controlId = result.controlId ?? ''
+    const panel: PanelState = {
+      phase: 'sdk_owned',
+      sessionId,
+      controlId,
+      blocks: p.historyBlocks,
+      pendingText: '',
+      ephemeral: p.action === 'create',
+      turn: { turn: 'idle' },
+      conn: { health: 'ok' },
+    }
+
+    const cmds: Command[] = [{ cmd: 'CANCEL_TIMER', id: 'init-timeout' }]
+
+    // Drain outbox: send all queued messages
+    let outbox = store.outbox
+    for (const msg of outbox.messages) {
+      if (msg.status === 'queued') {
+        cmds.push({ cmd: 'WS_SEND', message: { type: 'user_message', text: msg.text } })
+        outbox = outboxTransition(outbox, { type: 'MARK_SENT', localId: msg.localId })
+      }
+    }
+
+    return [{ panel, outbox, meta: store.meta }, cmds]
+  }
+
+  const error = result.error ?? 'Unknown error'
+
+  if (result.exit === 'action_failed') {
+    const panel: PanelState = {
+      phase: 'recovering',
+      sessionId: p.sessionId,
+      blocks: p.historyBlocks,
+      recovering: { kind: 'action_failed', error },
+    }
+    return [{ ...store, panel }, [{ cmd: 'TOAST', message: error, variant: 'error' }]]
+  }
+
+  if (result.exit === 'ws_fatal') {
+    const panel: PanelState = {
+      phase: 'recovering',
+      sessionId: p.sessionId,
+      blocks: p.historyBlocks,
+      recovering: { kind: 'ws_fatal', error },
+    }
+    return [
+      { ...store, panel },
+      [{ cmd: 'CLOSE_SIDECAR_WS' }, { cmd: 'TOAST', message: error, variant: 'error' }],
+    ]
+  }
+
+  return [store, []]
+}

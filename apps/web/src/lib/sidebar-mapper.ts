@@ -1,7 +1,7 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import type { SessionInfo } from '../types/generated/SessionInfo'
-import { deriveLiveStatus } from './derive-panel-mode'
-import type { LiveStatus } from './derive-panel-mode'
+import { deriveLiveStatus } from './live-status'
+import type { LiveStatus } from './live-status'
 
 export type SidebarSession = SessionInfo & {
   isActive: boolean
