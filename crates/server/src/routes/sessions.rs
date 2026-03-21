@@ -206,6 +206,19 @@ pub struct SessionMessagesQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub raw: bool,
+    /// "block" → return ConversationBlock[], otherwise legacy Message[]
+    pub format: Option<String>,
+}
+
+/// Paginated response for `?format=block`
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedBlocks {
+    pub blocks: Vec<claude_view_core::ConversationBlock>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
 }
 
 // ============================================================================
@@ -447,7 +460,7 @@ pub async fn get_session_messages_by_id(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
+) -> ApiResult<Json<serde_json::Value>> {
     let file_path = state
         .db
         .get_session_file_path(&session_id)
@@ -459,14 +472,42 @@ pub async fn get_session_messages_by_id(
         return Err(ApiError::SessionNotFound(session_id));
     }
 
-    let limit = query.limit.unwrap_or(100);
-    let offset = query.offset.unwrap_or(0);
-    let result = if query.raw {
-        claude_view_core::parse_session_paginated_with_raw(&path, limit, offset).await?
+    if query.format.as_deref() == Some("block") {
+        // Block format — use BlockAccumulator
+        let content = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Read error: {e}")))?;
+
+        let all_blocks = claude_view_core::block_accumulator::parse_session_as_blocks(&content);
+        let total = all_blocks.len();
+        let offset = query.offset.unwrap_or(0);
+        let limit = query.limit.unwrap_or(100);
+        let end = std::cmp::min(offset + limit, total);
+        let blocks: Vec<_> = if offset < total {
+            all_blocks.into_iter().skip(offset).take(limit).collect()
+        } else {
+            vec![]
+        };
+
+        let result = PaginatedBlocks {
+            blocks,
+            total,
+            offset,
+            limit,
+            has_more: end < total,
+        };
+        Ok(Json(serde_json::to_value(result).unwrap()))
     } else {
-        claude_view_core::parse_session_paginated(&path, limit, offset).await?
-    };
-    Ok(Json(result))
+        // Legacy format — existing behavior
+        let limit = query.limit.unwrap_or(100);
+        let offset = query.offset.unwrap_or(0);
+        let result = if query.raw {
+            claude_view_core::parse_session_paginated_with_raw(&path, limit, offset).await?
+        } else {
+            claude_view_core::parse_session_paginated(&path, limit, offset).await?
+        };
+        Ok(Json(serde_json::to_value(result).unwrap()))
+    }
 }
 /// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
 /// rich session data (tokens, cost, cache status, sub-agents, progress items, etc.).
@@ -2041,5 +2082,69 @@ mod tests {
         assert_eq!(hook_events[1]["eventName"], "PreToolUse");
         assert_eq!(hook_events[1]["toolName"], "Read");
         assert_eq!(hook_events[1]["label"], "Reading file");
+    }
+
+    // ========================================================================
+    // GET /api/sessions/:id/messages?format=block tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_format_block_returns_paginated_blocks() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("block-test.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello"}]},"timestamp":"2026-03-21T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":100,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-21T01:00:01.000Z"}
+"#,
+        )
+        .unwrap();
+
+        let mut session = make_session("block-test", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/block-test/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(
+            json.get("blocks").is_some(),
+            "Response should have 'blocks' key"
+        );
+        let blocks = json["blocks"].as_array().unwrap();
+        assert!(!blocks.is_empty(), "blocks should not be empty");
+        assert!(
+            blocks[0].get("type").is_some(),
+            "Block should have 'type' discriminator"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_format_block_empty_session() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("block-empty.jsonl");
+        std::fs::write(&session_file, "").unwrap();
+
+        let mut session = make_session("block-empty", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/block-empty/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+        assert!(blocks.is_empty());
+        assert_eq!(json["total"], 0);
+        assert_eq!(json["hasMore"], false);
     }
 }
