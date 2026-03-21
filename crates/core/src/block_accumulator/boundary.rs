@@ -21,6 +21,12 @@ pub struct TurnBoundaryAccumulator {
     num_turns: u32,
 }
 
+impl Default for TurnBoundaryAccumulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TurnBoundaryAccumulator {
     pub fn new() -> Self {
         Self {
