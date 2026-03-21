@@ -7,6 +7,7 @@ import type {
   ConversationBlock,
   InteractionBlock,
   NoticeBlock,
+  ProgressBlock,
   SystemBlock,
   ToolExecution,
   TurnBoundaryBlock,
@@ -761,20 +762,148 @@ export const interactionBlocks = {
   } satisfies InteractionBlock,
 }
 
+// ── Progress Blocks ────────────────────────────────────────────────────────
+
+export const progressBlocks = {
+  bash: {
+    type: 'progress',
+    id: 'pb_001',
+    variant: 'bash',
+    category: 'builtin',
+    data: {
+      type: 'bash',
+      output: 'Compiling claude-view-core v0.23.0\n   Compiling claude-view-server v0.23.0',
+      fullOutput:
+        'Compiling claude-view-core v0.23.0\n   Compiling claude-view-server v0.23.0\n    Finished in 12.3s',
+      elapsedTimeSeconds: 12.3,
+      totalLines: 3,
+      totalBytes: 128n,
+    },
+    ts: FIVE_MIN_AGO,
+    parentToolUseId: 'tu_bash_001',
+  } satisfies ProgressBlock,
+
+  agent: {
+    type: 'progress',
+    id: 'pb_002',
+    variant: 'agent',
+    category: 'agent',
+    data: {
+      type: 'agent',
+      prompt: 'Research authentication best practices for Axum middleware',
+      agentId: 'agent_research_001',
+    },
+    ts: FIVE_MIN_AGO + 10,
+  } satisfies ProgressBlock,
+
+  hook: {
+    type: 'progress',
+    id: 'pb_003',
+    variant: 'hook',
+    category: 'hook',
+    data: {
+      type: 'hook',
+      hookEvent: 'PreToolUse',
+      hookName: 'live-monitor',
+      command: '/Users/dev/.claude/hooks/pre-tool.sh',
+      statusMessage: 'Validating tool use…',
+    },
+    ts: FIVE_MIN_AGO + 20,
+  } satisfies ProgressBlock,
+
+  mcp: {
+    type: 'progress',
+    id: 'pb_004',
+    variant: 'mcp',
+    category: 'mcp',
+    data: {
+      type: 'mcp',
+      status: 'running',
+      serverName: 'postgres',
+      toolName: 'query',
+    },
+    ts: FIVE_MIN_AGO + 30,
+  } satisfies ProgressBlock,
+
+  taskQueue: {
+    type: 'progress',
+    id: 'pb_005',
+    variant: 'task_queue',
+    category: 'agent',
+    data: {
+      type: 'task_queue',
+      taskDescription: 'Waiting for file lock on package cache',
+      taskType: 'local_bash',
+    },
+    ts: FIVE_MIN_AGO + 40,
+  } satisfies ProgressBlock,
+
+  search: {
+    type: 'progress',
+    id: 'pb_006',
+    variant: 'search',
+    category: 'builtin',
+    data: { type: 'search', resultCount: 14, query: 'JWT middleware Axum' },
+    ts: FIVE_MIN_AGO + 50,
+  } satisfies ProgressBlock,
+
+  query: {
+    type: 'progress',
+    id: 'pb_007',
+    variant: 'query',
+    category: 'builtin',
+    data: { type: 'query', query: 'SELECT * FROM sessions LIMIT 10' },
+    ts: FIVE_MIN_AGO + 60,
+  } satisfies ProgressBlock,
+}
+
 // ── Full Conversation ───────────────────────────────────────────────────────
 
 export const fullConversation: ConversationBlock[] = [
+  // Turn 1: basic Q&A
   userBlocks.normal,
   assistantBlocks.textOnly,
-  assistantBlocks.withTools,
   turnBoundaryBlocks.success,
+
+  // Turn 2: tool usage + progress
   userBlocks.sent,
-  assistantBlocks.markdown,
+  assistantBlocks.withTools,
+  progressBlocks.bash,
+  progressBlocks.hook,
   turnBoundaryBlocks.cheap,
+
+  // Notices
   noticeBlocks.sessionResumed,
+  noticeBlocks.contextCompacted,
+  noticeBlocks.rateLimitWarning,
+
+  // Turn 3: long prompt + thinking + markdown
   userBlocks.long,
   assistantBlocks.withThinking,
+  assistantBlocks.markdown,
+  turnBoundaryBlocks.success,
+
+  // Interaction blocks (all variants)
   interactionBlocks.permissionPending,
+  interactionBlocks.questionPending,
+  interactionBlocks.planPending,
+  interactionBlocks.elicitationPending,
+
+  // System blocks
+  systemBlocks.taskStarted,
+  systemBlocks.taskProgress,
+  systemBlocks.taskCompleted,
+
+  // Progress blocks (all 7 variants)
+  progressBlocks.bash,
+  progressBlocks.agent,
+  progressBlocks.hook,
+  progressBlocks.mcp,
+  progressBlocks.taskQueue,
+  progressBlocks.search,
+  progressBlocks.query,
+
+  // Active state
   assistantBlocks.withRunningTool,
 ]
 
