@@ -165,7 +165,6 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       fork,
     },
     sessionInfo: {
-      isLive: source.isLive,
       sessionState: source.sessionState,
       controlId: source.controlId,
       totalInputTokens: source.totalInputTokens,
