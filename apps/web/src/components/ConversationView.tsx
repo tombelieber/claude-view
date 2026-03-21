@@ -35,7 +35,7 @@ import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
+import { type SessionState, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -123,7 +123,7 @@ export function ConversationView() {
     isFetchingOlder: history.isFetchingOlder,
     blockCount: blocks.length,
   })
-  const { isLive, sessionState } = convInfo
+  const { liveStatus: convLiveStatus, sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
   const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
@@ -187,7 +187,7 @@ export function ConversationView() {
   // Push persisted mode once session goes live (triggered by user sending a message)
   const lastSentModeRef = useRef<PermissionMode | null>(null)
   useEffect(() => {
-    if (!isLive) return
+    if (convLiveStatus === 'inactive') return
     // Skip sending 'default' on initial connect — SDK already defaults to it
     if (lastSentModeRef.current === null && chatMode === 'default') {
       lastSentModeRef.current = chatMode
@@ -197,7 +197,7 @@ export function ConversationView() {
       lastSentModeRef.current = chatMode
       actions.setPermissionMode(chatMode)
     }
-  }, [isLive, chatMode, actions])
+  }, [convLiveStatus, chatMode, actions])
 
   // Model selection for resume (persisted in localStorage)
   const [resumeModel, setResumeModel] = useState<string>(() => {
@@ -409,12 +409,7 @@ export function ConversationView() {
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // FSM: derive panel mode from live status + session state
-  const liveStatus: LiveStatus = !isLive
-    ? 'inactive'
-    : convInfo.controlId
-      ? 'cc_agent_sdk_owned'
-      : 'cc_owned'
-  const panelMode = derivePanelMode(sessionId, liveStatus, sessionState)
+  const panelMode = derivePanelMode(sessionId, convLiveStatus, sessionState as SessionState)
   const inputBarState = modeToInputBar(panelMode)
 
   // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL
@@ -435,7 +430,7 @@ export function ConversationView() {
       return Math.round((panelData.contextWindowTokens / limit) * 100)
     }
     return undefined
-  }, [isLive, convInfo, panelData])
+  }, [panelMode.mode, convInfo, panelData])
 
   const connectionHealth = deriveConnectionHealth(sessionState)
 
@@ -468,7 +463,7 @@ export function ConversationView() {
     )
   }
 
-  if (!blocks.length && !isLive && !sessionDetail) {
+  if (!blocks.length && convLiveStatus === 'inactive' && !sessionDetail) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
