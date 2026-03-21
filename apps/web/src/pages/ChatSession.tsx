@@ -302,12 +302,21 @@ export function ChatSession({
           RichPane (terminal streaming) available via developer display mode toggle. */}
       {displayMode === 'developer' && panelMode.mode === 'watching' && sessionId ? (
         <div className="flex-1 overflow-hidden">
-          <RichPane
-            messages={terminal.messages}
-            isVisible={true}
-            verboseMode={true}
-            bufferDone={terminal.bufferDone}
-          />
+          {!terminal.bufferDone && terminal.messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+                <span className="text-sm">Loading terminal stream...</span>
+              </div>
+            </div>
+          ) : (
+            <RichPane
+              messages={terminal.messages}
+              isVisible={true}
+              verboseMode={true}
+              bufferDone={terminal.bufferDone}
+            />
+          )}
         </div>
       ) : (
         <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
