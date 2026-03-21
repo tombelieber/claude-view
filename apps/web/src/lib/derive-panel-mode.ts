@@ -72,7 +72,7 @@ export function modeToInputBar(mode: PanelMode): InputBarState {
     case 'history':
       return 'active'
     case 'watching':
-      return 'controlled_elsewhere'
+      return 'active'
     case 'connecting':
       return mode.reason === 'reconnecting' ? 'reconnecting' : 'connecting'
     case 'own': {

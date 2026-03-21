@@ -192,8 +192,8 @@ describe('modeToInputBar', () => {
     expect(modeToInputBar({ mode: 'history' })).toBe('active')
   })
 
-  it('watching → controlled_elsewhere', () => {
-    expect(modeToInputBar({ mode: 'watching' })).toBe('controlled_elsewhere')
+  it('watching → active (user can resume by sending a message)', () => {
+    expect(modeToInputBar({ mode: 'watching' })).toBe('active')
   })
 
   it('connecting(initial) → connecting', () => {
