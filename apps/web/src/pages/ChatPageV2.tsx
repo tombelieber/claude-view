@@ -79,6 +79,17 @@ export function ChatPageV2() {
   const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
   const dockApiRef = useRef<DockviewApi | null>(null)
 
+  // Refs for values needed synchronously in callbacks (avoids stale closures).
+  // IMPORTANT: These MUST be declared before handleDockReady, which reads them.
+  // If dockview fires onReady synchronously during mount, refs would be undefined
+  // if declared after the callback.
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
+  const liveSessionsRef = useRef(liveSessions.sessions)
+  liveSessionsRef.current = liveSessions.sessions
+  const queryClientRef = useRef(queryClient)
+  queryClientRef.current = queryClient
+
   useChatKeyboardShortcuts(dockApi)
 
   const handleDockReady = useCallback((api: DockviewApi) => {
@@ -109,14 +120,6 @@ export function ChatPageV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- all mutable values via refs; identity must be stable for dockview
   }, [])
 
-  // Refs for values needed synchronously in callbacks (avoids stale closures)
-  const sessionIdRef = useRef(sessionId)
-  sessionIdRef.current = sessionId
-  const liveSessionsRef = useRef(liveSessions.sessions)
-  liveSessionsRef.current = liveSessions.sessions
-  const queryClientRef = useRef(queryClient)
-  queryClientRef.current = queryClient
-
   const openSession = useCallback(
     (sid: string, title?: string) => {
       const api = dockApiRef.current
@@ -139,8 +142,10 @@ export function ChatPageV2() {
   const openNewChat = useCallback(() => {
     const api = dockApiRef.current
     if (!api) return
-    api.addPanel(makeNewChatPanelArgs())
-    const added = api.panels[api.panels.length - 1]
+    const args = makeNewChatPanelArgs()
+    api.addPanel(args)
+    // Look up by ID — dockview doesn't guarantee insertion order in api.panels
+    const added = api.panels.find((p) => p.id === args.id)
     if (added && !added.api.isActive) added.api.setActive()
   }, [])
 

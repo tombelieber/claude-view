@@ -1,6 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
@@ -12,17 +10,19 @@ import { developerRegistry } from '../components/conversation/blocks/developer/r
 
 import { RichPane } from '../components/live/RichPane'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
+import { useContextPercent } from '../hooks/use-context-percent'
+import type { LiveContextData } from '../hooks/use-context-percent'
 import { useConversation } from '../hooks/use-conversation'
 import { useLiveSessionMessages } from '../hooks/use-live-session-messages'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
+import { useSendHandler } from '../hooks/use-send-handler'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
 import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
-import { getContextLimit } from '../lib/model-context-windows'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
@@ -55,13 +55,6 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
   )
 }
 
-/** Authoritative context data from Live Monitor SSE (statusline source). */
-interface LiveContextData {
-  contextWindowTokens: number
-  statuslineContextWindowSize: number | null
-  statuslineUsedPct: number | null
-}
-
 interface ChatSessionProps {
   sessionId: string | undefined
   liveStatus: LiveStatus
@@ -77,8 +70,6 @@ export function ChatSession({
   liveContextData,
   onSessionCreated,
 }: ChatSessionProps) {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const trackEvent = useTrackEvent()
   const { recordSessionView } = useTelemetryPrompt()
 
@@ -162,83 +153,15 @@ export function ChatSession({
     }
   })
 
-  // Context gauge — priority chain (most authoritative first, never show wrong data):
-  //  1. statuslineUsedPct: pre-computed by Claude Code — correct numerator AND denominator
-  //  2. Live Monitor contextWindowTokens + statuslineContextWindowSize: correct per-turn fill
-  //  3. richData contextWindowTokens: JSONL accumulator (history), correct semantics
-  //  4. undefined: show "--" — refuse to guess
-  // NOTE: WS totalInputTokens is intentionally NOT used here — it sums across all models
-  // in modelUsage and may be session-cumulative, producing inflated percentages (84% vs 12%).
-  const contextPercent = (() => {
-    if (liveContextData?.statuslineUsedPct != null) {
-      return Math.round(liveContextData.statuslineUsedPct)
-    }
-    if (liveContextData && liveContextData.contextWindowTokens > 0) {
-      const limit = getContextLimit(
-        null,
-        liveContextData.contextWindowTokens,
-        liveContextData.statuslineContextWindowSize,
-      )
-      return Math.round((liveContextData.contextWindowTokens / limit) * 100)
-    }
-    if (richData && richData.contextWindowTokens > 0) {
-      const limit = getContextLimit(null, richData.contextWindowTokens)
-      return Math.round((richData.contextWindowTokens / limit) * 100)
-    }
-    return undefined
-  })()
+  const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
 
-  const handleSend = useCallback(
-    (text: string) => {
-      if (!sessionId) {
-        // No session yet — create one first, then transition the panel.
-        // initialMessage is echoed back via user_message_echo in the stream,
-        // so the user sees their message as soon as the WS connects.
-        trackEvent('chat_started')
-        fetch('/api/sidecar/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: selectedModel,
-            initialMessage: text,
-            permissionMode: permMode,
-          }),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.sessionId) {
-              queryClient.invalidateQueries({ queryKey: ['chat-sidebar-sessions'] })
-              // If we have a dockview callback (blank panel), transition in place.
-              // Otherwise fall back to navigation.
-              if (onSessionCreated) {
-                onSessionCreated(data.sessionId)
-              } else {
-                navigate(`/chat/${data.sessionId}`)
-              }
-            } else {
-              toast.error('Failed to create session', {
-                description: data.error || 'No session ID returned',
-              })
-            }
-          })
-          .catch(() => {
-            toast.error('Failed to create session')
-          })
-        return
-      }
-      actions.sendMessage(text)
-    },
-    [
-      sessionId,
-      actions,
-      navigate,
-      selectedModel,
-      permMode,
-      queryClient,
-      trackEvent,
-      onSessionCreated,
-    ],
-  )
+  const handleSend = useSendHandler({
+    sessionId,
+    selectedModel,
+    permMode,
+    onSessionCreated,
+    sendMessage: actions.sendMessage,
+  })
 
   const handleModeChangePermission = useCallback(
     (mode: PermissionMode) => {
