@@ -1,21 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { metaTransition } from './meta'
-
-type MetaEvent =
-  | {
-      type: 'SESSION_INIT'
-      model: string
-      permissionMode: string
-      slashCommands: string[]
-      mcpServers: { name: string; status: string }[]
-      skills: string[]
-      agents: string[]
-      capabilities: string[]
-    }
-  | { type: 'SERVER_MODE_CONFIRMED'; mode: string }
-  | { type: 'COMMANDS_UPDATED'; commands: string[] }
-  | { type: 'AGENTS_UPDATED'; agents: string[] }
-  | { type: 'TURN_USAGE'; totalInputTokens: number; contextWindowSize: number }
+import { type MetaEvent, metaTransition } from './meta'
 
 const initEvent: MetaEvent = {
   type: 'SESSION_INIT',

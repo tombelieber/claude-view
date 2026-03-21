@@ -1,17 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnHealth } from '../types'
-import { connTransition } from './conn-health'
-
-type ConnEvent =
-  | { type: 'WS_CLOSE'; recoverable: boolean }
-  | { type: 'WS_OPEN' }
-  | { type: 'RECONNECT_ATTEMPT' }
-  | { type: 'SESSION_CLOSED' }
-
-type ConnResult =
-  | { stay: true; state: ConnHealth }
-  | { stay: false; exit: 'ws_fatal'; error: string }
-  | { stay: false; exit: 'replaced' }
+import { type ConnEvent, type ConnResult, connTransition } from './conn-health'
 
 const ok: ConnHealth = { health: 'ok' }
 const recon1: ConnHealth = { health: 'reconnecting', attempt: 1 }
