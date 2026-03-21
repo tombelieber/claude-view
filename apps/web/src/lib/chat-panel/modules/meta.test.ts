@@ -47,8 +47,9 @@ describe('metaTransition', () => {
   it('SERVER_MODE_CONFIRMED updates permissionMode', () => {
     const meta = metaTransition(null, initEvent)
     const result = metaTransition(meta, { type: 'SERVER_MODE_CONFIRMED', mode: 'plan' })
-    expect(result.permissionMode).toBe('plan')
-    expect(result.model).toBe('opus-4') // unchanged
+    expect(result).not.toBeNull()
+    expect(result?.permissionMode).toBe('plan')
+    expect(result?.model).toBe('opus-4') // unchanged
   })
 
   it('COMMANDS_UPDATED replaces slashCommands', () => {
@@ -57,13 +58,15 @@ describe('metaTransition', () => {
       type: 'COMMANDS_UPDATED',
       commands: ['/commit', '/review'],
     })
-    expect(result.slashCommands).toEqual(['/commit', '/review'])
+    expect(result).not.toBeNull()
+    expect(result?.slashCommands).toEqual(['/commit', '/review'])
   })
 
   it('AGENTS_UPDATED replaces agents', () => {
     const meta = metaTransition(null, initEvent)
     const result = metaTransition(meta, { type: 'AGENTS_UPDATED', agents: ['explore', 'code'] })
-    expect(result.agents).toEqual(['explore', 'code'])
+    expect(result).not.toBeNull()
+    expect(result?.agents).toEqual(['explore', 'code'])
   })
 
   it('TURN_USAGE updates token counts', () => {
@@ -73,8 +76,9 @@ describe('metaTransition', () => {
       totalInputTokens: 5000,
       contextWindowSize: 200000,
     })
-    expect(result.totalInputTokens).toBe(5000)
-    expect(result.contextWindowSize).toBe(200000)
+    expect(result).not.toBeNull()
+    expect(result?.totalInputTokens).toBe(5000)
+    expect(result?.contextWindowSize).toBe(200000)
   })
 
   it('event on null meta (non-INIT) returns null', () => {
