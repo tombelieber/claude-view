@@ -1,6 +1,6 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
-import type { LiveStatus } from '../../lib/derive-panel-mode'
+import type { LiveStatus } from '../../lib/live-status'
 import { cn } from '../../lib/utils'
 import { ChatTabContextMenu } from './ChatTabContextMenu'
 

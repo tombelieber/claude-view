@@ -1,7 +1,7 @@
 // Pure helper functions for SessionListItem — extracted for testability.
 // Aligned with Live Monitor StatusDot colors: needs_you → amber, autonomous → green.
 
-import type { LiveStatus } from '../../../lib/derive-panel-mode'
+import type { LiveStatus } from '../../../lib/live-status'
 
 interface SessionLike {
   liveData?: {

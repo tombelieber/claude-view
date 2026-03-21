@@ -1,7 +1,7 @@
 import { useOutletContext, useParams } from 'react-router-dom'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
-import { deriveLiveStatus } from '../lib/derive-panel-mode'
+import { deriveLiveStatus } from '../lib/live-status'
 import { ChatSession } from './ChatSession'
 
 export function ChatPage() {

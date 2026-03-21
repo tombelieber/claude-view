@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LiveStatus } from '../lib/derive-panel-mode'
+import type { LiveStatus } from '../lib/live-status'
 import { getContextLimit } from '../lib/model-context-windows'
 
 /**
