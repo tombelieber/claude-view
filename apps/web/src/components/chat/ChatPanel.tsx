@@ -1,7 +1,7 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { LiveStatus } from '../../lib/derive-panel-mode'
+import type { LiveStatus } from '../../lib/live-status'
 import { ChatSession } from '../../pages/ChatSession'
 
 interface ChatPanelParams {
