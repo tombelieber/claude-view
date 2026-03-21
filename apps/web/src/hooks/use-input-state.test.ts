@@ -63,12 +63,12 @@ describe('computeInputState (FSM)', () => {
     expect(state.placeholder).toBe('')
   })
 
-  it('watching returns disabled with controlled-elsewhere reason', () => {
+  it('watching returns enabled — user can resume by sending a message', () => {
     const state = computeInputState({ mode: 'watching' })
-    expect(state.canSend).toBe(false)
-    expect(state.disabled).toBe(true)
-    expect(state.disabledReason).toBe('Session controlled elsewhere')
-    expect(state.placeholder).toBe('')
+    expect(state.canSend).toBe(true)
+    expect(state.disabled).toBe(false)
+    expect(state.disabledReason).toBe('')
+    expect(state.placeholder).toBe('Send a message to take over...')
   })
 
   it('connecting/reconnecting returns disabled with reconnecting reason', () => {
