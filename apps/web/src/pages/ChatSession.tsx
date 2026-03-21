@@ -22,7 +22,12 @@ import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
+import {
+  type LiveStatus,
+  type SessionState,
+  derivePanelMode,
+  modeToInputBar,
+} from '../lib/derive-panel-mode'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
@@ -83,7 +88,7 @@ export function ChatSession({
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
     liveStatus,
   })
-  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState)
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState as SessionState)
   const inputBarState = modeToInputBar(panelMode)
   // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
   const terminal = useLiveSessionMessages(
@@ -256,7 +261,7 @@ export function ChatSession({
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
             </span>
-          ) : sessionInfo.isLive ? (
+          ) : panelMode.mode === 'own' || panelMode.mode === 'connecting' ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
@@ -335,7 +340,7 @@ export function ChatSession({
                     <ModelSelector
                       model={selectedModel}
                       onModelChange={handleModelChange}
-                      isLive={sessionInfo.isLive}
+                      isLive={panelMode.mode === 'own'}
                       onSetModel={actions.setModel}
                     />
                   </div>
