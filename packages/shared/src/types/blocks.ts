@@ -72,6 +72,9 @@ export type ToolExecution = {
   progress?: { elapsedSeconds: number }
   summary?: string
   status: 'running' | 'complete' | 'error'
+  category?: ActionCategory
+  liveOutput?: string
+  duration?: number
 }
 
 // ── InteractionBlock ────────────────────────────────────────────────────────
