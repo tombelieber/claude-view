@@ -44,6 +44,7 @@ export const toolExecutions = {
     toolInput: { command: 'cargo test --workspace' },
     toolUseId: 'tu_bash_001',
     status: 'running',
+    category: 'builtin',
     progress: { elapsedSeconds: 3.2 },
   } satisfies ToolExecution,
 
@@ -52,6 +53,8 @@ export const toolExecutions = {
     toolInput: { command: 'ls -la src/' },
     toolUseId: 'tu_bash_002',
     status: 'complete',
+    category: 'builtin',
+    duration: 1240,
     result: {
       output:
         'total 48\ndrwxr-xr-x  12 user staff  384 Mar 21 10:00 .\n-rw-r--r--   1 user staff 1234 Mar 21 09:55 main.rs\n-rw-r--r--   1 user staff  890 Mar 21 09:50 lib.rs',
@@ -65,6 +68,8 @@ export const toolExecutions = {
     toolInput: { command: 'rm -rf /nonexistent' },
     toolUseId: 'tu_bash_003',
     status: 'error',
+    category: 'builtin',
+    duration: 85,
     result: {
       output: 'rm: /nonexistent: No such file or directory',
       isError: true,
@@ -77,6 +82,8 @@ export const toolExecutions = {
     toolInput: { file_path: '/Users/dev/project/src/main.rs' },
     toolUseId: 'tu_read_001',
     status: 'complete',
+    category: 'builtin',
+    duration: 42,
     result: {
       output: 'fn main() {\n    println!("Hello, world!");\n}',
       isError: false,
@@ -93,6 +100,8 @@ export const toolExecutions = {
     },
     toolUseId: 'tu_edit_001',
     status: 'complete',
+    category: 'builtin',
+    duration: 310,
     result: {
       output: 'Successfully edited file',
       isError: false,
@@ -105,7 +114,65 @@ export const toolExecutions = {
     toolInput: { pattern: 'TODO|FIXME|HACK', path: 'src/' },
     toolUseId: 'tu_grep_001',
     status: 'running',
+    category: 'builtin',
     progress: { elapsedSeconds: 1.5 },
+  } satisfies ToolExecution,
+
+  /** Edit with diff-like output — ContentRenderer should color +/- lines */
+  editWithDiff: {
+    toolName: 'Edit',
+    toolInput: {
+      file_path: 'src/auth/middleware.rs',
+      old_string: 'fn validate(&self)',
+      new_string: 'fn validate(&mut self)',
+    },
+    toolUseId: 'tu_edit_diff_001',
+    status: 'complete',
+    category: 'builtin',
+    duration: 150,
+    result: {
+      output:
+        'diff --git a/src/auth/middleware.rs b/src/auth/middleware.rs\n--- a/src/auth/middleware.rs\n+++ b/src/auth/middleware.rs\n@@ -42,7 +42,7 @@\n-    fn validate(&self) -> Result<Token> {\n+    fn validate(&mut self) -> Result<Token> {\n         self.cache.check()?;',
+      isError: false,
+      isReplay: false,
+    },
+  } satisfies ToolExecution,
+
+  /** MCP tool — showcases category badge for non-builtin */
+  mcpQuery: {
+    toolName: 'mcp__postgres__query',
+    toolInput: {
+      query: "SELECT count(*) FROM sessions WHERE created_at > now() - interval '1 day'",
+    },
+    toolUseId: 'tu_mcp_001',
+    status: 'complete',
+    category: 'mcp',
+    duration: 890,
+    result: {
+      output: '{"count": 1463}',
+      isError: false,
+      isReplay: false,
+    },
+  } satisfies ToolExecution,
+
+  /** Agent/Task tool — showcases agent category */
+  agentTask: {
+    toolName: 'Task',
+    toolInput: {
+      description: 'Research auth patterns',
+      prompt: 'Find all auth middleware implementations...',
+    },
+    toolUseId: 'tu_agent_001',
+    status: 'complete',
+    category: 'agent',
+    duration: 45200,
+    summary: 'Found 3 middleware patterns across the codebase',
+    result: {
+      output:
+        'Analyzed 12 files, identified 3 distinct auth patterns:\n1. JWT bearer token validation\n2. Session cookie authentication\n3. API key header check',
+      isError: false,
+      isReplay: false,
+    },
   } satisfies ToolExecution,
 }
 
@@ -300,6 +367,22 @@ impl TokenValidator {
     ],
     streaming: false,
     timestamp: FIVE_MIN_AGO + 60,
+  } satisfies AssistantBlock,
+
+  /** Showcases ALL ToolCard variants: diff output, JSON output, MCP, agent, category badges, durations */
+  withAllToolVariants: {
+    type: 'assistant',
+    id: 'ab_008',
+    segments: [
+      { kind: 'text', text: 'Here are all ToolCard variants — diff, JSON, MCP, and agent tools:' },
+      { kind: 'tool', execution: toolExecutions.editWithDiff },
+      { kind: 'tool', execution: toolExecutions.mcpQuery },
+      { kind: 'tool', execution: toolExecutions.agentTask },
+      { kind: 'tool', execution: toolExecutions.bashRunning },
+      { kind: 'tool', execution: toolExecutions.grepRunning },
+    ],
+    streaming: false,
+    timestamp: FIVE_MIN_AGO + 90,
   } satisfies AssistantBlock,
 }
 

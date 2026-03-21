@@ -42,7 +42,7 @@ const allBlocks: ConversationBlock[] = [
   userBlocks.failed,
   userBlocks.long,
 
-  // ── AssistantBlock (7 variants) ──
+  // ── AssistantBlock (8 variants) ──
   assistantBlocks.textOnly,
   assistantBlocks.streaming,
   assistantBlocks.withThinking,
@@ -50,6 +50,7 @@ const allBlocks: ConversationBlock[] = [
   assistantBlocks.withRunningTool,
   assistantBlocks.withToolError,
   assistantBlocks.markdown,
+  assistantBlocks.withAllToolVariants,
 
   // ── InteractionBlock (5 variants) ──
   interactionBlocks.permissionPending,
@@ -159,11 +160,13 @@ function BlockGallery({
   renderers,
   compact,
   title,
+  filterBar,
 }: {
   blocks: ConversationBlock[]
   renderers: BlockRenderers
   compact?: boolean
   title?: string
+  filterBar?: boolean
 }) {
   const groups: { type: string; blocks: ConversationBlock[] }[] = []
   let current: { type: string; blocks: ConversationBlock[] } | null = null
@@ -194,7 +197,12 @@ function BlockGallery({
           <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3 border-b border-gray-200 dark:border-gray-700 pb-1">
             {group.type} ({group.blocks.length})
           </h2>
-          <ConversationThread blocks={group.blocks} renderers={renderers} compact={compact} />
+          <ConversationThread
+            blocks={group.blocks}
+            renderers={renderers}
+            compact={compact}
+            filterBar={filterBar}
+          />
         </section>
       ))}
     </div>
@@ -218,9 +226,14 @@ export const Chat: Story = {
   args: { blocks: allBlocks, renderers: chatRegistry, title: 'Chat Mode' },
 }
 
-/** 2. Developer Rich — ALL rich detail cards (merged from RichPane). */
+/** 2. Developer Rich — ALL rich detail cards with CategoryFilterBar. */
 export const DeveloperRich: Story = {
-  args: { blocks: allBlocks, renderers: developerRegistry, title: 'Developer — Rich' },
+  args: {
+    blocks: allBlocks,
+    renderers: developerRegistry,
+    title: 'Developer — Rich',
+    filterBar: true,
+  },
 }
 
 /** 2b. Developer Rich + rawJson — extra detail panels visible. */
@@ -229,6 +242,7 @@ export const DeveloperRichWithRawJson: Story = {
     blocks: [...allBlocks, ...devEnrichedBlocks],
     renderers: developerRegistry,
     title: 'Developer — Rich + rawJson',
+    filterBar: true,
   },
 }
 
