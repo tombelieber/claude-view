@@ -114,12 +114,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start' }],
           streaming: true,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: 'partial',
@@ -145,12 +145,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start' }],
           streaming: true,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: 'partial',
@@ -172,12 +172,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start complete response' }],
           streaming: false,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: '',
