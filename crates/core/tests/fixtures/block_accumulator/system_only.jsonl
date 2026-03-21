@@ -1,0 +1,4 @@
+{"type":"ai-title","sessionId":"sess-100","aiTitle":"System Only Session"}
+{"type":"last-prompt","sessionId":"sess-100","lastPrompt":"hello world"}
+{"type":"queue-operation","sessionId":"sess-100","operation":"enqueue","taskId":"task-1"}
+{"type":"file-history-snapshot","sessionId":"sess-100","files":["/src/main.rs","/src/lib.rs"],"timestamp":"2026-03-21T06:00:00.000Z"}
