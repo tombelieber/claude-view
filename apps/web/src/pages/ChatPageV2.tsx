@@ -6,6 +6,7 @@ import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDock
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
+import { deriveLiveStatus } from '../lib/derive-panel-mode'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
 /** Derive tab title using the same logic as the sidebar's SessionListItem. */
@@ -46,12 +47,7 @@ function makeSessionPanelArgs(
     title: deriveTabTitle(sid, cachedSessions, live),
     params: {
       sessionId: sid,
-      liveStatus:
-        liveSession == null
-          ? 'inactive'
-          : liveSession.control != null
-            ? 'cc_agent_sdk_owned'
-            : 'cc_owned',
+      liveStatus: deriveLiveStatus(liveSession),
       agentStateGroup: liveSession?.agentState?.group ?? null,
     },
   }
@@ -170,8 +166,7 @@ export function ChatPageV2() {
       if (!sid) continue
       const live = liveSessions.sessions.find((s) => s.id === sid)
       panel.api.updateParameters({
-        liveStatus:
-          live == null ? 'inactive' : live.control != null ? 'cc_agent_sdk_owned' : 'cc_owned',
+        liveStatus: deriveLiveStatus(live),
         agentStateGroup: live?.agentState?.group ?? null,
       })
       const title = deriveTabTitle(sid, cached, liveSessions.sessions)

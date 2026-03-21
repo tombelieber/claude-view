@@ -1,10 +1,11 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import type { SessionInfo } from '../types/generated/SessionInfo'
+import { deriveLiveStatus } from './derive-panel-mode'
+import type { LiveStatus } from './derive-panel-mode'
 
 export type SidebarSession = SessionInfo & {
   isActive: boolean
-  isWatching: boolean
-  isSidecarManaged: boolean
+  liveStatus: LiveStatus
   liveData: LiveSession | null
 }
 
@@ -25,16 +26,11 @@ export function toSidebarItems(
   // Enrich history sessions with live data
   const result: SidebarSession[] = history.map((h) => {
     const live = liveMap.get(h.id) ?? null
-    const isLiveActive =
-      live != null &&
-      (live.status === 'working' || live.status === 'paused' || live.control != null)
-    const isSidecarManaged = live?.control != null
-
+    const ls = deriveLiveStatus(live)
     return {
       ...h,
-      isActive: isLiveActive,
-      isWatching: isLiveActive && !isSidecarManaged,
-      isSidecarManaged,
+      isActive: ls !== 'inactive',
+      liveStatus: ls,
       liveData: live,
     }
   })
@@ -42,9 +38,8 @@ export function toSidebarItems(
   // Append active live sessions not yet in history (newly created, not yet indexed)
   for (const live of liveSessions) {
     if (historyIds.has(live.id)) continue
-    const isSidecarManaged = live.control != null
-    const isLiveActive = live.status === 'working' || live.status === 'paused' || isSidecarManaged
-    if (!isLiveActive) continue
+    const ls = deriveLiveStatus(live)
+    if (ls === 'inactive') continue
 
     result.push({
       id: live.id,
@@ -89,8 +84,7 @@ export function toSidebarItems(
       correctionCount: 0,
       sameFileEditCount: 0,
       isActive: true,
-      isWatching: !isSidecarManaged,
-      isSidecarManaged,
+      liveStatus: ls,
       liveData: live,
     } as SidebarSession)
   }
