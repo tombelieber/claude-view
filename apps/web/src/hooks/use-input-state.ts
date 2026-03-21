@@ -22,10 +22,10 @@ export function computeInputState(mode: PanelMode): InputState {
       }
     case 'watching':
       return {
-        canSend: false,
-        disabled: true,
-        disabledReason: 'Session controlled elsewhere',
-        placeholder: '',
+        canSend: true,
+        disabled: false,
+        disabledReason: '',
+        placeholder: 'Send a message to take over...',
       }
     case 'connecting':
       return {

@@ -295,4 +295,74 @@ test.describe('Chat V2 Full Lifecycle', () => {
     const input = page.locator(CHAT_INPUT)
     await expect(input).toBeVisible({ timeout: 5_000 })
   })
+
+  // ─── Scenario 5: Watching mode shows chat UI, not RichPane ──────────────
+
+  test('S5: cc_owned session shows ConversationThread with enabled input (not RichPane)', async ({
+    page,
+  }) => {
+    // Step 1: Create a session, complete a turn, then release SDK control
+    // so it becomes cc_owned (watching mode)
+    const sessionId = await startNewChatSession(
+      page,
+      'Say exactly: "watching-ui-test" and nothing else.',
+    )
+
+    // Verify own mode initially
+    const panelModeLocator = page.locator('[data-panel-mode]').first()
+    await expect(panelModeLocator).toHaveAttribute('data-panel-mode', 'own', { timeout: 5_000 })
+
+    // Release SDK control → watching mode
+    await page.request.delete(`/api/sidecar/sessions/${sessionId}`)
+
+    // Wait for mode transition
+    let reachedWatching = false
+    for (let i = 0; i < 30; i++) {
+      const mode = await panelModeLocator.getAttribute('data-panel-mode').catch(() => null)
+      if (mode === 'watching') {
+        reachedWatching = true
+        break
+      }
+      await page.waitForTimeout(500)
+    }
+
+    if (!reachedWatching) {
+      // Session may have been re-acquired. Skip gracefully.
+      test.skip(true, 'Session did not stay in watching mode long enough')
+      return
+    }
+
+    // Step 2: In watching mode, ConversationThread should be visible (NOT RichPane).
+    // RichPane has no data-testid="message-thread" — ConversationThread does.
+    const thread = page.locator(THREAD)
+    await expect(thread).toBeVisible({ timeout: 5_000 })
+
+    // The original messages should be readable
+    const threadText = await thread.innerText()
+    expect(threadText.toLowerCase()).toContain('watching-ui-test')
+
+    // Step 3: Input bar should be ENABLED (not disabled/muted)
+    const input = page.locator(CHAT_INPUT)
+    await expect(input).toBeVisible({ timeout: 5_000 })
+    await expect(input).not.toBeDisabled({ timeout: 3_000 })
+
+    // Placeholder should indicate user can take over
+    const placeholder = await input.getAttribute('placeholder')
+    expect(placeholder).toBeTruthy()
+
+    // Step 4: If still in watching mode, the banner should be visible.
+    // The session may re-acquire control quickly, so check conditionally.
+    const currentMode = await panelModeLocator.getAttribute('data-panel-mode').catch(() => null)
+    if (currentMode === 'watching') {
+      const watchingBanner = page.getByText('running in Claude Code CLI', { exact: false })
+      await expect(watchingBanner).toBeVisible({ timeout: 3_000 })
+    }
+
+    // Step 5: User can type in the input regardless of mode (watching or own — both allow input)
+    await input.fill('test message')
+    const inputValue = await input.inputValue()
+    expect(inputValue).toBe('test message')
+    // Clear without sending
+    await input.fill('')
+  })
 })
