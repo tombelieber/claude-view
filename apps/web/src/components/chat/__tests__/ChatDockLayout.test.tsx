@@ -31,6 +31,7 @@ class MockDockApi {
   onDidAddPanel = vi.fn()
   onDidRemovePanel = vi.fn()
   onDidLayoutChange = vi.fn()
+  onDidActivePanelChange = vi.fn()
 }
 
 vi.mock('dockview-react', () => ({

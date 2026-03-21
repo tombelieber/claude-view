@@ -6,8 +6,10 @@ export function TabBarActions({ containerApi, activePanel }: IDockviewHeaderActi
   const splitActive = (direction: 'right' | 'below') => {
     if (!activePanel) return
     containerApi.addPanel({
-      id: `chat-${Date.now()}`,
+      id: `chat-new-${Date.now()}`,
       component: 'chat',
+      title: 'New Chat',
+      params: { sessionId: '' },
       position: { referencePanel: activePanel, direction },
     })
   }

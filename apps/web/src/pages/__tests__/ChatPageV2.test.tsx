@@ -1,5 +1,7 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 // --- Mock dockview ---
@@ -7,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 let capturedOnReady: ((api: unknown) => void) | undefined
 
 vi.mock('../../components/chat/ChatDockLayout', () => ({
+  readSavedChatLayout: () => null,
   ChatDockLayout: ({ onReady }: { onReady?: (api: unknown) => void }) => {
     capturedOnReady = onReady
     return <div data-testid="chat-dock-layout" />
@@ -32,14 +35,19 @@ vi.mock('react-router-dom', () => ({
 
 import { ChatPageV2 } from '../ChatPageV2'
 
+function renderWithProviders(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(createElement(QueryClientProvider, { client }, ui))
+}
+
 describe('ChatPageV2', () => {
   it('renders ChatDockLayout when sidecar is connected', () => {
-    render(<ChatPageV2 />)
+    renderWithProviders(<ChatPageV2 />)
     expect(screen.getByTestId('chat-dock-layout')).toBeDefined()
   })
 
   it('routes /chat/:sessionId opens correct panel', () => {
-    render(<ChatPageV2 />)
+    renderWithProviders(<ChatPageV2 />)
 
     // Simulate dockview ready with a mock API
     const mockApi = {
@@ -48,15 +56,12 @@ describe('ChatPageV2', () => {
     }
     capturedOnReady?.(mockApi)
 
-    // The openSession function would be called by sidebar or URL param handler.
-    // At minimum, the dock layout is ready to receive panels.
     expect(screen.getByTestId('chat-dock-layout')).toBeDefined()
   })
 
-  it('fetches session list from GET /api/sessions on mount', () => {
-    // ChatPageV2 renders the dock layout container.
-    // Session list fetching is deferred to Phase 3 sidebar integration.
-    const { container } = render(<ChatPageV2 />)
-    expect(container.querySelector('[data-testid="chat-dock-layout"]')).not.toBeNull()
+  it('renders sidebar alongside dock layout', () => {
+    renderWithProviders(<ChatPageV2 />)
+    expect(screen.getByTestId('session-sidebar')).toBeDefined()
+    expect(screen.getByTestId('chat-dock-layout')).toBeDefined()
   })
 })

@@ -35,7 +35,7 @@ interface StateConfig {
 }
 
 const STATE_CONFIG: Record<InputBarState, StateConfig> = {
-  dormant: { placeholder: 'Resume this session...', disabled: false, muted: true },
+  dormant: { placeholder: 'Send a message...', disabled: false, muted: true },
   connecting: { placeholder: 'Connecting...', disabled: true, muted: true },
   reconnecting: { placeholder: 'Reconnecting...', disabled: true, muted: true },
   active: {
@@ -188,7 +188,7 @@ export function ChatInputBar({
 
       requestAnimationFrame(autoGrow)
     },
-    [autoGrow],
+    [autoGrow, slashOpen, onPaletteOpen],
   )
 
   // ---- Keyboard: Enter=send, Shift+Enter=newline, Escape=stop ----
