@@ -36,9 +36,9 @@ describe('getStatusDotColor', () => {
   })
 
   it('green for sidecar-managed autonomous', () => {
-    expect(getStatusDotColor({ liveData: liveSidecarManaged, isSidecarManaged: true })).toBe(
-      'bg-green-500',
-    )
+    expect(
+      getStatusDotColor({ liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' }),
+    ).toBe('bg-green-500')
   })
 
   it('gray when no live data', () => {
@@ -51,26 +51,26 @@ describe('getStatusDotColor', () => {
 // ---------------------------------------------------------------------------
 
 describe('getStatusBadge', () => {
-  it('"Live" amber when sidecar-managed + needs_you', () => {
-    const badge = getStatusBadge({ liveData: liveNeedsYou, isSidecarManaged: true })
+  it('"Live" amber when cc_agent_sdk_owned + needs_you', () => {
+    const badge = getStatusBadge({ liveData: liveNeedsYou, liveStatus: 'cc_agent_sdk_owned' })
     expect(badge?.text).toBe('Live')
     expect(badge?.className).toContain('amber')
   })
 
-  it('"Live" green when sidecar-managed + autonomous', () => {
-    const badge = getStatusBadge({ liveData: liveSidecarManaged, isSidecarManaged: true })
+  it('"Live" green when cc_agent_sdk_owned + autonomous', () => {
+    const badge = getStatusBadge({ liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' })
     expect(badge?.text).toBe('Live')
     expect(badge?.className).toContain('green')
   })
 
-  it('"Watching" amber when external + needs_you', () => {
-    const badge = getStatusBadge({ liveData: liveNeedsYou, isSidecarManaged: false })
+  it('"Watching" amber when cc_owned + needs_you', () => {
+    const badge = getStatusBadge({ liveData: liveNeedsYou, liveStatus: 'cc_owned' })
     expect(badge?.text).toBe('Watching')
     expect(badge?.className).toContain('amber')
   })
 
-  it('"Watching" green when external + autonomous', () => {
-    const badge = getStatusBadge({ liveData: liveAutonomous, isSidecarManaged: false })
+  it('"Watching" green when cc_owned + autonomous', () => {
+    const badge = getStatusBadge({ liveData: liveAutonomous, liveStatus: 'cc_owned' })
     expect(badge?.text).toBe('Watching')
     expect(badge?.className).toContain('green')
   })
@@ -87,9 +87,7 @@ describe('getStatusBadge', () => {
 describe('deriveDropdownActions', () => {
   it('HISTORY session: Resume + Fork + Archive', () => {
     const actions = deriveDropdownActions({
-      isActive: false,
-      isWatching: false,
-      isSidecarManaged: false,
+      liveStatus: 'inactive',
       liveData: null,
     })
     expect(actions.resume).toBe(true)
@@ -102,9 +100,7 @@ describe('deriveDropdownActions', () => {
 
   it('WATCHING session: Take Over + Fork + Open in Monitor', () => {
     const actions = deriveDropdownActions({
-      isActive: true,
-      isWatching: true,
-      isSidecarManaged: false,
+      liveStatus: 'cc_owned',
       liveData: liveAutonomous,
     })
     expect(actions.takeOver).toBe(true)
@@ -117,9 +113,7 @@ describe('deriveDropdownActions', () => {
 
   it('OWN session: Fork + Shut Down + Open in Monitor', () => {
     const actions = deriveDropdownActions({
-      isActive: true,
-      isWatching: false,
-      isSidecarManaged: true,
+      liveStatus: 'cc_agent_sdk_owned',
       liveData: liveSidecarManaged,
     })
     expect(actions.fork).toBe(true)
