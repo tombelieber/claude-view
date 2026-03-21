@@ -8,12 +8,10 @@ import { ConversationThread } from '../components/conversation/ConversationThrea
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 
-import { RichPane } from '../components/live/RichPane'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useContextPercent } from '../hooks/use-context-percent'
 import type { LiveContextData } from '../hooks/use-context-percent'
 import { useConversation } from '../hooks/use-conversation'
-import { useLiveSessionMessages } from '../hooks/use-live-session-messages'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useScrollAnchor } from '../hooks/use-scroll-anchor'
@@ -85,11 +83,6 @@ export function ChatSession({
   })
   const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState)
   const inputBarState = modeToInputBar(panelMode)
-  // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
-  const terminal = useLiveSessionMessages(
-    sessionId ?? '',
-    panelMode.mode === 'watching' && !!sessionId,
-  )
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
 
@@ -298,80 +291,60 @@ export function ChatSession({
         </div>
       )}
 
-      {/* Thread — always show ConversationThread so user can read history and resume.
-          RichPane (terminal streaming) available via developer display mode toggle. */}
-      {displayMode === 'developer' && panelMode.mode === 'watching' && sessionId ? (
-        <div className="flex-1 overflow-hidden">
-          {!terminal.bufferDone && terminal.messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-              <div className="flex items-center gap-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-                <span className="text-sm">Loading terminal stream...</span>
-              </div>
+      {/* Thread — all modes (chat, developer, watching) use ConversationThread.
+          Developer mode uses developerRegistry for richer block rendering. */}
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+        {/* Top sentinel for infinite scroll */}
+        <div ref={topSentinelRef} className="h-1" />
+        {history.isFetchingOlder && (
+          <div className="flex justify-center py-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
+          </div>
+        )}
+        {history.error && (
+          <div className="flex justify-center py-3 text-sm text-red-500">
+            Failed to load messages.{' '}
+            <button type="button" onClick={history.fetchOlderMessages} className="underline">
+              Retry
+            </button>
+          </div>
+        )}
+        {blocks.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+            <div className="text-center">
+              <p className="text-lg font-medium mb-2">Start a conversation</p>
+              <p className="text-sm mb-4">Send a message to begin.</p>
+              {!sessionId && (
+                <div className="flex justify-center">
+                  <ModelSelector
+                    model={selectedModel}
+                    onModelChange={handleModelChange}
+                    isLive={panelMode.mode === 'own'}
+                    onSetModel={actions.setModel}
+                  />
+                </div>
+              )}
             </div>
-          ) : (
-            <RichPane
-              messages={terminal.messages}
-              isVisible={true}
-              verboseMode={true}
-              bufferDone={terminal.bufferDone}
-            />
-          )}
-        </div>
-      ) : (
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          {/* Top sentinel for infinite scroll */}
-          <div ref={topSentinelRef} className="h-1" />
-          {history.isFetchingOlder && (
-            <div className="flex justify-center py-3">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-            </div>
-          )}
-          {history.error && (
-            <div className="flex justify-center py-3 text-sm text-red-500">
-              Failed to load messages.{' '}
-              <button type="button" onClick={history.fetchOlderMessages} className="underline">
-                Retry
-              </button>
-            </div>
-          )}
-          {blocks.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-              <div className="text-center">
-                <p className="text-lg font-medium mb-2">Start a conversation</p>
-                <p className="text-sm mb-4">Send a message to begin.</p>
-                {!sessionId && (
-                  <div className="flex justify-center">
-                    <ModelSelector
-                      model={selectedModel}
-                      onModelChange={handleModelChange}
-                      isLive={panelMode.mode === 'own'}
-                      onSetModel={actions.setModel}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto px-4 py-6">
-              <ConversationActionsProvider
-                actions={{
-                  retryMessage: actions.retryMessage,
-                  stopTask: actions.stopTask,
-                  respondPermission: actions.respondPermission,
-                  answerQuestion: actions.answerQuestion,
-                  approvePlan: actions.approvePlan,
-                  submitElicitation: actions.submitElicitation,
-                }}
-              >
-                <ConversationThread blocks={blocks} renderers={registry} />
-              </ConversationActionsProvider>
-            </div>
-          )}
-          {/* Bottom anchor for auto-scroll */}
-          <div ref={bottomRef} />
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="max-w-3xl mx-auto px-4 py-6">
+            <ConversationActionsProvider
+              actions={{
+                retryMessage: actions.retryMessage,
+                stopTask: actions.stopTask,
+                respondPermission: actions.respondPermission,
+                answerQuestion: actions.answerQuestion,
+                approvePlan: actions.approvePlan,
+                submitElicitation: actions.submitElicitation,
+              }}
+            >
+              <ConversationThread blocks={blocks} renderers={registry} />
+            </ConversationActionsProvider>
+          </div>
+        )}
+        {/* Bottom anchor for auto-scroll */}
+        <div ref={bottomRef} />
+      </div>
 
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
