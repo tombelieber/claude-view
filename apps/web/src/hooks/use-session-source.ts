@@ -4,6 +4,7 @@ import type { ModelUsageInfo } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
+import type { SessionState } from '../lib/derive-panel-mode'
 import { SessionChannel } from '../lib/session-channel'
 import { sidecarWsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
@@ -25,7 +26,7 @@ export interface SessionSourceResult {
   committedBlocks: ConversationBlock[]
   /** Pending streaming text not yet committed to a block */
   pendingText: string
-  sessionState: string
+  sessionState: SessionState
   controlId: string | null
   /** Send that may trigger session resume (for user_message only). */
   send: ((msg: Record<string, unknown>) => void) | null
@@ -37,8 +38,6 @@ export interface SessionSourceResult {
   resume: (permissionMode?: string, model?: string) => Promise<void>
   totalInputTokens: number
   contextWindowSize: number
-  /** True if session is known-active but WS not yet opened */
-  canResumeLazy: boolean
   model: string
   slashCommands: string[]
   mcpServers: { name: string; status: string }[]
@@ -65,18 +64,9 @@ export function deriveEffectiveSend(
   return null // No session at all
 }
 
-/** Exported for testing — true when session exists but WS not yet opened. */
-export function deriveCanResumeLazy(
-  controlId: string | null,
-  sessionId: string | undefined,
-  isLive: boolean,
-): boolean {
-  return !isLive && !!(controlId || sessionId)
-}
-
 export function useSessionSource(sessionId: string | undefined): SessionSourceResult {
   const [msgState, setMsgState] = useState<MessageState>({ committed: [], pendingText: '' })
-  const [sessionState, setSessionState] = useState<string>('idle')
+  const [sessionState, setSessionState] = useState<SessionState>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
   const [initComplete, setInitComplete] = useState(false)
@@ -327,7 +317,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         return
       }
 
-      setSessionState('reconnecting' as string)
+      setSessionState('reconnecting')
       reconnectAttemptRef.current++
       const backoff = Math.min(
         INITIAL_BACKOFF_MS * 2 ** (reconnectAttemptRef.current - 1),
@@ -578,7 +568,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   }, [])
 
   const effectiveSend = deriveEffectiveSend(isLive, controlId, sessionId, send, connectAndSend)
-  const canResumeLazy = deriveCanResumeLazy(controlId, sessionId, isLive)
 
   return {
     blocks: msgState.committed, // Backward compat alias
@@ -593,7 +582,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     resume,
     totalInputTokens,
     contextWindowSize,
-    canResumeLazy,
     model,
     slashCommands,
     mcpServers,
