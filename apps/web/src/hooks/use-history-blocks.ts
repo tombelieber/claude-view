@@ -2,7 +2,8 @@ import { historyToBlocks } from '@claude-view/shared/lib'
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useMemo } from 'react'
 import { useMonitorStore } from '../store/monitor-store'
-import { useSessionMessages } from './use-session-messages'
+import type { PaginatedMessages } from '../types/generated'
+import { type PaginatedBlocks, useSessionMessages } from './use-session-messages'
 
 export interface HistoryBlocksResult {
   /** Conversation blocks from all loaded pages, ordered chronologically */
@@ -45,6 +46,7 @@ export function useHistoryBlocks(
     isLoading,
   } = useSessionMessages(sessionId, {
     raw: verboseMode,
+    format: 'block',
     suppressNotFound: options?.suppressNotFound,
     enabled: options?.enabled,
     retry: options?.retry,
@@ -56,8 +58,16 @@ export function useHistoryBlocks(
     // TanStack Query prepends pages via fetchPreviousPage — pages[0] is always the oldest.
     // Pages are already in chronological order (ascending offset). Sort is a safety net.
     const sortedPages = [...data.pages].sort((a, b) => a.offset - b.offset)
-    const allMessages = sortedPages.flatMap((page) => page.messages)
-    // Message (generated) is structurally compatible with HistoricalMessage — same field names.
+
+    // Check if pages are in block format (new) or message format (legacy fallback)
+    const firstPage = sortedPages[0]
+    if (firstPage && 'blocks' in firstPage && Array.isArray(firstPage.blocks)) {
+      // Block format — use directly, no transform needed
+      return sortedPages.flatMap((page) => (page as PaginatedBlocks).blocks)
+    }
+
+    // Legacy fallback — transform messages to blocks
+    const allMessages = sortedPages.flatMap((page) => (page as PaginatedMessages).messages)
     try {
       return historyToBlocks(allMessages)
     } catch (e) {
