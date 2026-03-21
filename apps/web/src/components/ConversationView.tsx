@@ -35,7 +35,7 @@ import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { type SessionState, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
+import { derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -409,7 +409,7 @@ export function ConversationView() {
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // FSM: derive panel mode from live status + session state
-  const panelMode = derivePanelMode(sessionId, convLiveStatus, sessionState as SessionState)
+  const panelMode = derivePanelMode(sessionId, convLiveStatus, sessionState)
   const inputBarState = modeToInputBar(panelMode)
 
   // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL

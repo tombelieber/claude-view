@@ -33,7 +33,7 @@ import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionCapabilities } from '../../hooks/use-session-capabilities'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { type SessionState, derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
+import { derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { getContextLimit } from '../../lib/model-context-windows'
@@ -184,11 +184,7 @@ export function SessionDetailPanel({
   } = useConversation(data.id)
 
   // FSM: derive panel mode for this detail panel
-  const detailPanelMode = derivePanelMode(
-    data.id,
-    convInfo.liveStatus,
-    convInfo.sessionState as SessionState,
-  )
+  const detailPanelMode = derivePanelMode(data.id, convInfo.liveStatus, convInfo.sessionState)
 
   // Command palette capabilities
   const sdpCapabilities = useSessionCapabilities(convInfo)

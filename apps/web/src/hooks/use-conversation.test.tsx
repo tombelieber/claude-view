@@ -18,7 +18,7 @@ vi.mock('./use-session-source', () => ({
     resume: vi.fn(),
     totalInputTokens: 0,
     contextWindowSize: 0,
-    canResumeLazy: false,
+
     model: '',
     slashCommands: [],
     mcpServers: [],
@@ -49,6 +49,7 @@ vi.mock('./use-session-messages', () => ({
 
 import { useSessionMessages } from './use-session-messages'
 // Import mocks for dynamic control
+import type { SessionSourceResult } from './use-session-source'
 import { useSessionSource } from './use-session-source'
 
 const mockSessionSource = vi.mocked(useSessionSource)
@@ -65,7 +66,7 @@ const defaultSource = {
   resume: vi.fn(),
   totalInputTokens: 0,
   contextWindowSize: 0,
-  canResumeLazy: false,
+
   model: '',
   slashCommands: [],
   mcpServers: [],
@@ -78,7 +79,7 @@ const defaultSource = {
   pendingText: '',
   clearPendingMessage: vi.fn(),
   initComplete: false,
-}
+} satisfies SessionSourceResult
 
 const defaultMessages = {
   data: undefined,
@@ -113,7 +114,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -153,7 +154,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 100,
       contextWindowSize: 200000,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -232,7 +233,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 100,
       contextWindowSize: 200000,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -280,7 +281,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: true,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -349,7 +350,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: 'claude-opus-4-6',
       slashCommands: [],
       mcpServers: [],
@@ -379,7 +380,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: ['commit', 'test'],
       mcpServers: [],
@@ -409,7 +410,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [{ name: 'gh', status: 'connected' }],
@@ -443,7 +444,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -481,7 +482,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'u1', text: 'hello', timestamp: 1 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -545,7 +546,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: true,
+
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -584,7 +585,7 @@ describe('source selection — binary source switch', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -622,7 +623,7 @@ describe('source selection — binary source switch', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       committedBlocks: [{ type: 'assistant', id: 'a1' }] as any,
       pendingText: '',
@@ -664,7 +665,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -703,7 +704,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'user-0', text: 'hello', timestamp: 1 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -746,7 +747,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -793,7 +794,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -847,7 +848,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -893,7 +894,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -953,7 +954,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -1001,7 +1002,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [
         { type: 'user', id: 'user-0', text: 'hello', timestamp: 1000 },
         { type: 'assistant', id: 'a-1', text: 'hi', timestamp: 1001 },
@@ -1042,7 +1043,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -1083,7 +1084,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [
         { type: 'user', id: 'user-0', text: 'question', timestamp: 1000 },
         { type: 'assistant', id: 'a-1', text: 'answer', timestamp: 1001 },
@@ -1125,7 +1126,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -1163,7 +1164,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       committedBlocks: [{ type: 'user', id: 'u-1', text: 'hello', timestamp: 1000 }] as any,
       pendingText: '',
@@ -1200,7 +1201,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'u-new', text: 'new msg', timestamp: 2000 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),

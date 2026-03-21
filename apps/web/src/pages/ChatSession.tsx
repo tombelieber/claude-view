@@ -22,12 +22,7 @@ import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import {
-  type LiveStatus,
-  type SessionState,
-  derivePanelMode,
-  modeToInputBar,
-} from '../lib/derive-panel-mode'
+import { type LiveStatus, derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
@@ -88,7 +83,7 @@ export function ChatSession({
   const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
     liveStatus,
   })
-  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState as SessionState)
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionInfo.sessionState)
   const inputBarState = modeToInputBar(panelMode)
   // Terminal WS for watching mode — streams RichMessage[] from Rust server's JSONL parser
   const terminal = useLiveSessionMessages(
