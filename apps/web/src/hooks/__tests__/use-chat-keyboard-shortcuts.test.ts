@@ -87,7 +87,7 @@ describe('useChatKeyboardShortcuts', () => {
 
     expect(api.addPanel).toHaveBeenCalledTimes(1)
     const call = api.addPanel.mock.calls[0][0]
-    expect(call.params.liveStatus).toBe('cc_owned')
+    expect(call.params.liveStatus).toBe('inactive')
     expect(call.position.direction).toBe('right')
   })
 

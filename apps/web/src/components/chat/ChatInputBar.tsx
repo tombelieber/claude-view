@@ -260,7 +260,7 @@ export function ChatInputBar({
   const paletteSections = useMemo(() => {
     if (!capabilities || !modelOptions) return null
     return buildPaletteSections(capabilities, modelOptions, paletteCallbacks, {
-      isLive: state !== 'dormant' && state !== 'completed',
+      sessionActive: state !== 'dormant' && state !== 'completed',
       isStreaming,
     })
   }, [capabilities, modelOptions, paletteCallbacks, state, isStreaming])
