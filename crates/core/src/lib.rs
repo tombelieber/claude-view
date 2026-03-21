@@ -1,6 +1,7 @@
 // crates/core/src/lib.rs
 pub mod accumulator;
 pub mod analytics_scope_contract;
+pub mod block_accumulator;
 pub mod block_types;
 pub mod branch_filter;
 pub mod category;
