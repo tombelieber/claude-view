@@ -48,9 +48,11 @@ export function createRoutes(registry: SessionRegistry) {
       return c.json({ error: 'Invalid session ID format' }, 400)
     }
 
-    // Check if already resumed
+    // Check if already resumed — still notify Rust server in case
+    // a prior bind was lost (startup race, server restart, etc.)
     if (registry.hasSessionId(sessionId)) {
       const existing = registry.getBySessionId(sessionId)!
+      notifyBindControl(sessionId, existing.controlId)
       return c.json({
         controlId: existing.controlId,
         sessionId,
