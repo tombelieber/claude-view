@@ -2,6 +2,10 @@
 // ConversationBlock view models — hand-written by design (no Rust equivalent).
 // Combine data from multiple ServerEvent types into semantic blocks for rendering.
 
+import type { ActionCategory } from './generated/ActionCategory'
+import type { ProgressData } from './generated/ProgressData'
+import type { ProgressVariant } from './generated/ProgressVariant'
+
 import type {
   AskQuestion,
   AssistantError,
@@ -27,6 +31,8 @@ import type {
   TaskStarted,
   UnknownSdkEvent,
 } from './sidecar-protocol'
+
+export type { ActionCategory } from './generated/ActionCategory'
 
 // ── UserBlock ───────────────────────────────────────────────────────────────
 
@@ -147,6 +153,12 @@ export type SystemBlock = {
     | 'files_saved'
     | 'command_output'
     | 'stream_delta'
+    | 'local_command'
+    | 'queue_operation'
+    | 'file_history_snapshot'
+    | 'ai_title'
+    | 'last_prompt'
+    | 'informational'
     | 'unknown'
   data:
     | SessionInit
@@ -163,6 +175,18 @@ export type SystemBlock = {
   rawJson?: Record<string, unknown> | null
 }
 
+// ── ProgressBlock ──────────────────────────────────────────────────────────
+
+export type ProgressBlock = {
+  type: 'progress'
+  id: string
+  variant: ProgressVariant
+  category: ActionCategory
+  data: ProgressData
+  ts: number
+  parentToolUseId?: string
+}
+
 // ── ConversationBlock union ─────────────────────────────────────────────────
 
 export type ConversationBlock =
@@ -172,3 +196,10 @@ export type ConversationBlock =
   | TurnBoundaryBlock
   | NoticeBlock
   | SystemBlock
+  | ProgressBlock
+
+// ── Type guards ────────────────────────────────────────────────────────────
+
+export function isProgressBlock(block: ConversationBlock): block is ProgressBlock {
+  return block.type === 'progress'
+}
