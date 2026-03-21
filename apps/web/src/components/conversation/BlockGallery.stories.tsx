@@ -14,6 +14,7 @@ import {
   turnBoundaryBlocks,
   userBlocks,
 } from '../../stories/fixtures'
+import { devSystemBlocks } from '../../stories/fixtures-developer'
 import { ConversationThread } from './ConversationThread'
 import { chatRegistry } from './blocks/chat/registry'
 import { developerRegistry } from './blocks/developer/registry'
@@ -69,11 +70,25 @@ const allBlocks: ConversationBlock[] = [
   noticeBlocks.promptSuggestion,
   noticeBlocks.sessionResumed,
 
-  // ── SystemBlock (4 variants) ──
+  // ── SystemBlock (all variants) ──
   systemBlocks.taskStarted,
   systemBlocks.taskProgress,
   systemBlocks.taskCompleted,
   systemBlocks.taskFailed,
+  devSystemBlocks.sessionInit,
+  devSystemBlocks.sessionStatus,
+  devSystemBlocks.elicitationComplete,
+  devSystemBlocks.hookEvent,
+  devSystemBlocks.hookEventError,
+  devSystemBlocks.filesSaved,
+  devSystemBlocks.commandOutput,
+  devSystemBlocks.unknown,
+  devSystemBlocks.localCommand,
+  devSystemBlocks.queueOperation,
+  devSystemBlocks.fileHistorySnapshot,
+  devSystemBlocks.aiTitle,
+  devSystemBlocks.lastPrompt,
+  devSystemBlocks.informational,
 
   // ── ProgressBlock (7 variants) ──
   progressBlocks.bash,

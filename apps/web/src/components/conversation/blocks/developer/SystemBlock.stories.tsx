@@ -81,6 +81,30 @@ export const Unknown: Story = {
   args: { block: devSystemBlocks.unknown },
 }
 
+export const LocalCommand: Story = {
+  args: { block: devSystemBlocks.localCommand },
+}
+
+export const QueueOperation: Story = {
+  args: { block: devSystemBlocks.queueOperation },
+}
+
+export const FileHistorySnapshot: Story = {
+  args: { block: devSystemBlocks.fileHistorySnapshot },
+}
+
+export const AiTitle: Story = {
+  args: { block: devSystemBlocks.aiTitle },
+}
+
+export const LastPrompt: Story = {
+  args: { block: devSystemBlocks.lastPrompt },
+}
+
+export const Informational: Story = {
+  args: { block: devSystemBlocks.informational },
+}
+
 export const WithRetryRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withRetry },
 }
