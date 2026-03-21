@@ -2,14 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { OutboxState } from '../types'
 import { outboxTransition } from './outbox'
 
-type OutboxEvent =
-  | { type: 'QUEUE'; localId: string; text: string }
-  | { type: 'MARK_SENT'; localId: string }
-  | { type: 'MARK_FAILED'; localId: string }
-  | { type: 'REMOVE'; localId: string }
-  | { type: 'MARK_ALL_FAILED' }
-  | { type: 'REMOVE_BY_TEXT'; text: string }
-
 const empty: OutboxState = { messages: [] }
 
 describe('outboxTransition', () => {
@@ -22,14 +14,15 @@ describe('outboxTransition', () => {
   it('MARK_SENT sets status to sent and adds sentAt', () => {
     const state: OutboxState = { messages: [{ localId: 'a', text: 'hi', status: 'queued' }] }
     const result = outboxTransition(state, { type: 'MARK_SENT', localId: 'a' })
-    expect(result.messages[0]!.status).toBe('sent')
-    expect(result.messages[0]!.sentAt).toBeTypeOf('number')
+    const msg = result.messages.at(0)
+    expect(msg?.status).toBe('sent')
+    expect(msg?.sentAt).toBeTypeOf('number')
   })
 
   it('MARK_FAILED sets status to failed', () => {
     const state: OutboxState = { messages: [{ localId: 'a', text: 'hi', status: 'queued' }] }
     const result = outboxTransition(state, { type: 'MARK_FAILED', localId: 'a' })
-    expect(result.messages[0]!.status).toBe('failed')
+    expect(result.messages.at(0)?.status).toBe('failed')
   })
 
   it('REMOVE removes entry by localId', () => {
@@ -41,7 +34,7 @@ describe('outboxTransition', () => {
     }
     const result = outboxTransition(state, { type: 'REMOVE', localId: 'a' })
     expect(result.messages).toHaveLength(1)
-    expect(result.messages[0]!.localId).toBe('b')
+    expect(result.messages.at(0)?.localId).toBe('b')
   })
 
   it('MARK_ALL_FAILED marks all queued and sent as failed', () => {
@@ -65,7 +58,7 @@ describe('outboxTransition', () => {
     }
     const result = outboxTransition(state, { type: 'REMOVE_BY_TEXT', text: 'hello' })
     expect(result.messages).toHaveLength(1)
-    expect(result.messages[0]!.localId).toBe('b')
+    expect(result.messages.at(0)?.localId).toBe('b')
   })
 
   it('REMOVE_BY_TEXT with no match returns same state', () => {
