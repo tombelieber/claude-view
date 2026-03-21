@@ -366,6 +366,23 @@ fn strip_command_tags(content: &str) -> String {
 ///   empty messages). Returns multiple messages when a single JSONL line contains
 ///   multiple content blocks (e.g., thinking + text, or multiple tool_use calls).
 fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Vec<String> {
+    if mode == "block" {
+        // Block mode: parse via BlockAccumulator, return ConversationBlock JSON.
+        // Per-line accumulator works for independent lines (user, progress, system).
+        // Multi-line constructs (AssistantBlock spanning assistant + tool_result)
+        // produce separate blocks per line — the frontend stream accumulator handles assembly.
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            let mut acc = claude_view_core::block_accumulator::BlockAccumulator::new();
+            acc.process_line(&entry);
+            let blocks = acc.finalize();
+            return blocks
+                .into_iter()
+                .filter_map(|block| serde_json::to_string(&block).ok())
+                .collect();
+        }
+        return vec![];
+    }
+
     if mode != "rich" {
         // Raw mode: send as-is
         let msg = serde_json::json!({
@@ -2130,5 +2147,21 @@ NaN ago
         assert_eq!(metadata["content"], "fix the bug");
 
         server_handle.abort();
+    }
+
+    // =========================================================================
+    // Test: format_line_block_mode_produces_conversation_blocks
+    // =========================================================================
+
+    #[test]
+    fn format_line_block_mode_produces_conversation_blocks() {
+        let finders = RichModeFinders::new();
+        // A user message line
+        let line = r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello world"}]},"timestamp":"2026-03-21T01:00:00.000Z"}"#;
+        let results = format_line_for_mode(line, "block", &finders);
+        assert!(!results.is_empty(), "Block mode should produce output");
+        let parsed: serde_json::Value = serde_json::from_str(&results[0]).unwrap();
+        assert_eq!(parsed["type"], "user", "Should produce a UserBlock");
+        assert_eq!(parsed["text"], "hello world");
     }
 }
