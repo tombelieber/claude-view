@@ -1,3 +1,4 @@
+import { CompactBoundaryCard } from '@claude-view/shared/components/CompactBoundaryCard'
 import type { NoticeBlock as NoticeBlockType } from '@claude-view/shared/types/blocks'
 import type {
   AssistantError,
@@ -74,14 +75,7 @@ function RateLimitDetail({ data }: { data: RateLimit }) {
 }
 
 function ContextCompactedDetail({ data }: { data: ContextCompacted }) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400">
-      <Info className="w-3.5 h-3.5 flex-shrink-0" />
-      <span>
-        Context compacted ({data.trigger}, {data.preTokens.toLocaleString()} pre-tokens)
-      </span>
-    </div>
-  )
+  return <CompactBoundaryCard trigger={data.trigger} preTokens={data.preTokens} />
 }
 
 function AuthStatusDetail({ data }: { data: AuthStatus }) {
