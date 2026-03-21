@@ -315,6 +315,65 @@ export const devSystemBlocks = {
       raw: { someField: 'someValue', count: 42 },
     } satisfies UnknownSdkEvent,
   } satisfies SystemBlock,
+
+  localCommand: {
+    type: 'system',
+    id: 'dsb_009',
+    variant: 'local_command',
+    data: { content: '/clear' } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
+
+  queueOperation: {
+    type: 'system',
+    id: 'dsb_010',
+    variant: 'queue_operation',
+    data: {
+      operation: 'enqueue',
+      timestamp: new Date().toISOString(),
+      content: 'Fix the login bug',
+    } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
+
+  fileHistorySnapshot: {
+    type: 'system',
+    id: 'dsb_011',
+    variant: 'file_history_snapshot',
+    data: {
+      fileCount: 3,
+      timestamp: new Date().toISOString(),
+      files: ['src/auth/middleware.rs', 'src/auth/validator.rs', 'src/auth/session.rs'],
+      isIncremental: true,
+    } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
+
+  aiTitle: {
+    type: 'system',
+    id: 'dsb_012',
+    variant: 'ai_title',
+    data: {
+      sessionId: 'sess_abc123',
+      aiTitle: 'Refactor authentication middleware',
+    } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
+
+  lastPrompt: {
+    type: 'system',
+    id: 'dsb_013',
+    variant: 'last_prompt',
+    data: {
+      sessionId: 'sess_abc123',
+      lastPrompt: 'Can you run the tests one more time?',
+    } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
+
+  informational: {
+    type: 'system',
+    id: 'dsb_014',
+    variant: 'informational',
+    data: {
+      content: 'Session resumed after network reconnection',
+    } as unknown as SystemBlock['data'],
+  } satisfies SystemBlock,
 }
 
 // ── System blocks with rawJson for detail panels ────────────────────────────

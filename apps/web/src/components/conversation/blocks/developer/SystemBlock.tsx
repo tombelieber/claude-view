@@ -1,3 +1,6 @@
+import { FileSnapshotCard } from '@claude-view/shared/components/FileSnapshotCard'
+import { LocalCommandEventCard } from '@claude-view/shared/components/LocalCommandEventCard'
+import { MessageQueueEventCard } from '@claude-view/shared/components/MessageQueueEventCard'
 import type { SystemBlock as SystemBlockType } from '@claude-view/shared/types/blocks'
 import type {
   CommandOutput,
@@ -18,9 +21,12 @@ import {
   Code,
   FileText,
   GitBranch,
+  Info,
+  MessageSquare,
   Play,
   Settings,
   StopCircle,
+  Tag,
   Terminal,
   Zap,
 } from 'lucide-react'
@@ -236,6 +242,65 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <StreamDeltaDetail data={block.data as StreamDelta} />
       case 'unknown':
         return <UnknownDetail data={block.data as UnknownSdkEvent} />
+      case 'local_command': {
+        const raw = block.data as unknown as Record<string, unknown>
+        return <LocalCommandEventCard content={String(raw.content ?? raw.command ?? '')} />
+      }
+      case 'queue_operation': {
+        const raw = block.data as unknown as Record<string, unknown>
+        return (
+          <MessageQueueEventCard
+            operation={(raw.operation as 'enqueue' | 'dequeue') ?? 'enqueue'}
+            timestamp={String(raw.timestamp ?? '')}
+            content={raw.content ? String(raw.content) : undefined}
+          />
+        )
+      }
+      case 'file_history_snapshot': {
+        const raw = block.data as unknown as Record<string, unknown>
+        const files = Array.isArray(raw.files) ? raw.files.map(String) : []
+        return (
+          <FileSnapshotCard
+            fileCount={files.length || (typeof raw.fileCount === 'number' ? raw.fileCount : 0)}
+            timestamp={String(raw.timestamp ?? '')}
+            files={files}
+            isIncremental={raw.isIncremental === true}
+            verboseMode
+          />
+        )
+      }
+      case 'ai_title': {
+        const raw = block.data as unknown as Record<string, unknown>
+        return (
+          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <Tag className="w-3 h-3" />
+            <span>
+              AI Title:{' '}
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                {String(raw.aiTitle ?? '')}
+              </span>
+            </span>
+          </div>
+        )
+      }
+      case 'last_prompt': {
+        const raw = block.data as unknown as Record<string, unknown>
+        return (
+          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <MessageSquare className="w-3 h-3" />
+            <span className="truncate">Last prompt: {String(raw.lastPrompt ?? '')}</span>
+          </div>
+        )
+      }
+      case 'informational': {
+        const raw = block.data as unknown as Record<string, unknown>
+        return (
+          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <Info className="w-3 h-3" />
+            <span>{String(raw.content ?? raw.message ?? JSON.stringify(raw))}</span>
+          </div>
+        )
+      }
       default:
         return null
     }
