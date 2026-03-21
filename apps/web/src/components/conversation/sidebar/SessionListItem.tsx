@@ -5,12 +5,13 @@ import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
 
+import type { LiveStatus } from '../../../lib/derive-panel-mode'
+
 interface Props {
   session: SessionInfo & {
     isActive?: boolean
-    isWatching?: boolean
+    liveStatus?: LiveStatus
     liveData?: LiveSession | null
-    isSidecarManaged?: boolean
   }
   isSelected: boolean
   isKeyboardActive?: boolean
