@@ -361,7 +361,7 @@ export function ConversationView() {
 
   const [panelOpen, setPanelOpen] = useState(true)
 
-  // Verbose mode: rich messages for RichPane (developer terminal view)
+  // Rich messages for side panel data pipeline (SessionDetailPanel)
   const richMessages = useMemo(
     () => (session?.messages?.length ? messagesToRichMessages(session.messages) : []),
     [session?.messages],
