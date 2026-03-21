@@ -1,4 +1,6 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { useMemo, useState } from 'react'
+import { CategoryFilterBar } from './CategoryFilterBar'
 import { DayDivider, formatDayLabel } from './DayDivider'
 import type { BlockRenderers } from './types'
 
@@ -6,6 +8,7 @@ interface Props {
   blocks: ConversationBlock[]
   renderers: BlockRenderers
   compact?: boolean
+  filterBar?: boolean
 }
 
 /** Extract unix-seconds timestamp from a block, if present. */
@@ -21,12 +24,25 @@ function dayKey(unixSeconds: number): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-export function ConversationThread({ blocks, renderers, compact }: Props) {
+export function ConversationThread({ blocks, renderers, compact, filterBar }: Props) {
+  const [activeFilter, setActiveFilter] = useState<ConversationBlock['type'] | null>(null)
+  const visibleBlocks = useMemo(
+    () => (activeFilter ? blocks.filter((b) => b.type === activeFilter) : blocks),
+    [blocks, activeFilter],
+  )
+
   let lastDay: string | null = null
 
   return (
     <div data-testid="message-thread" className={compact ? 'space-y-1' : 'space-y-3'}>
-      {blocks.map((block) => {
+      {filterBar && (
+        <CategoryFilterBar
+          blocks={blocks}
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+        />
+      )}
+      {visibleBlocks.map((block) => {
         const Renderer = renderers[block.type]
         if (!Renderer) return null
 
