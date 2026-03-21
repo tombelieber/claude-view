@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { computeInputState } from './use-input-state'
 
 describe('computeInputState (FSM)', () => {
-  // --- history mode (was: idle, false, true → canResumeLazy) ---
+  // --- history mode ---
   it('history mode returns canSend=true', () => {
     const state = computeInputState({ mode: 'history' })
     expect(state.canSend).toBe(true)
