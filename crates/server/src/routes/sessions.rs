@@ -2147,4 +2147,54 @@ mod tests {
         assert_eq!(json["total"], 0);
         assert_eq!(json["hasMore"], false);
     }
+
+    #[tokio::test]
+    async fn test_format_block_e2e_block_structure() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("e2e-block.jsonl");
+        // Write a multi-line JSONL fixture with user + assistant + tool + boundary
+        std::fs::write(&session_file, r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"List files"}]},"timestamp":"2026-03-21T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Sure!"},{"type":"tool_use","id":"tu-1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":500,"output_tokens":100},"stop_reason":"tool_use"},"timestamp":"2026-03-21T01:00:01.000Z"}
+{"type":"user","uuid":"u-2","message":{"content":[{"type":"tool_result","tool_use_id":"tu-1","content":"file1\nfile2","is_error":false}]},"timestamp":"2026-03-21T01:00:02.000Z"}
+{"type":"assistant","uuid":"a-2","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Here are the files."}],"usage":{"input_tokens":600,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-21T01:00:03.000Z"}
+{"type":"system","uuid":"s-1","durationMs":3000,"timestamp":"2026-03-21T01:00:04.000Z"}
+{"type":"system","uuid":"s-2","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-21T01:00:05.000Z"}
+"#).unwrap();
+
+        let mut session = make_session("e2e-block", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/e2e-block/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+
+        // Verify block types present
+        let types: Vec<&str> = blocks
+            .iter()
+            .filter_map(|b| b.get("type").and_then(|t| t.as_str()))
+            .collect();
+        assert!(types.contains(&"user"), "Should have user block");
+        assert!(types.contains(&"assistant"), "Should have assistant block");
+        assert!(
+            types.contains(&"turn_boundary"),
+            "Should have turn_boundary block"
+        );
+
+        // Verify block count matches expected
+        assert_eq!(
+            json["total"].as_u64().unwrap() as usize,
+            blocks.len(),
+            "total should match actual block count for small sessions"
+        );
+
+        // Verify hasMore is false for small session
+        assert_eq!(json["hasMore"], false);
+    }
 }
