@@ -4,7 +4,7 @@ import type {
 } from '@claude-view/shared/types/blocks'
 import { ThinkingBlock } from '../../../chat/ThinkingBlock'
 import { Markdown } from '../shared/Markdown'
-import { ToolDetail } from '../shared/ToolDetail'
+import { ToolCard } from './ToolCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
 import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
 import { RENDERED_KEYS as STOP_KEYS, StopReasonDetail } from './details/StopReasonDetail'
@@ -42,7 +42,7 @@ function SegmentRenderer({ segment }: { segment: AssistantSegment }) {
     <div
       className={isNested ? 'ml-4 pl-3 border-l-2 border-purple-200 dark:border-purple-800' : ''}
     >
-      <ToolDetail execution={segment.execution} />
+      <ToolCard execution={segment.execution} />
     </div>
   )
 }
