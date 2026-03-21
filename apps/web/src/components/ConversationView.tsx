@@ -35,7 +35,12 @@ import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { derivePanelMode, modeToInputBar } from '../lib/derive-panel-mode'
+import {
+  deriveLiveStatus,
+  derivePanelMode,
+  modeToConnectionHealth,
+  modeToInputBar,
+} from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -49,7 +54,6 @@ import { getContextLimit } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
-import type { ConnectionHealth } from '../types/control'
 import { CommitsPanel } from './CommitsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
@@ -67,13 +71,7 @@ import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
 import { historyToPanelData } from './live/session-panel-data'
-
-/** Map sessionState to connection health for banner */
-function deriveConnectionHealth(sessionState: string): ConnectionHealth {
-  if (sessionState === 'reconnecting') return 'degraded'
-  if (sessionState === 'error') return 'lost'
-  return 'ok'
-}
+import type { UseLiveSessionsResult } from './live/use-live-sessions'
 
 /** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
 function HistoryRichPane({
@@ -98,7 +96,11 @@ function HistoryRichPane({
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
+  const { summaries, liveSessions } = useOutletContext<{
+    summaries: ProjectSummary[]
+    liveSessions: UseLiveSessionsResult
+  }>()
+  const liveStatus = deriveLiveStatus(liveSessions.sessions.find((s) => s.id === sessionId))
 
   // Session metadata
   const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
@@ -116,14 +118,19 @@ export function ConversationView() {
   const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
 
   // Unified conversation hook: blocks + actions + session state
-  const { blocks, history, actions, sessionInfo: convInfo } = useConversation(sessionId)
+  const {
+    blocks,
+    history,
+    actions,
+    sessionInfo: convInfo,
+  } = useConversation(sessionId, { liveStatus })
 
   const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
     onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
     isFetchingOlder: history.isFetchingOlder,
     blockCount: blocks.length,
   })
-  const { liveStatus: convLiveStatus, sessionState } = convInfo
+  const { sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
   const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
@@ -187,7 +194,7 @@ export function ConversationView() {
   // Push persisted mode once session goes live (triggered by user sending a message)
   const lastSentModeRef = useRef<PermissionMode | null>(null)
   useEffect(() => {
-    if (convLiveStatus === 'inactive') return
+    if (liveStatus === 'inactive') return
     // Skip sending 'default' on initial connect — SDK already defaults to it
     if (lastSentModeRef.current === null && chatMode === 'default') {
       lastSentModeRef.current = chatMode
@@ -197,7 +204,7 @@ export function ConversationView() {
       lastSentModeRef.current = chatMode
       actions.setPermissionMode(chatMode)
     }
-  }, [convLiveStatus, chatMode, actions])
+  }, [liveStatus, chatMode, actions])
 
   // Model selection for resume (persisted in localStorage)
   const [resumeModel, setResumeModel] = useState<string>(() => {
@@ -409,7 +416,7 @@ export function ConversationView() {
   }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
 
   // FSM: derive panel mode from live status + session state
-  const panelMode = derivePanelMode(sessionId, convLiveStatus, sessionState)
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionState)
   const inputBarState = modeToInputBar(panelMode)
 
   // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL
@@ -432,7 +439,7 @@ export function ConversationView() {
     return undefined
   }, [panelMode.mode, convInfo, panelData])
 
-  const connectionHealth = deriveConnectionHealth(sessionState)
+  const connectionHealth = modeToConnectionHealth(panelMode)
 
   // ----- Early returns -----
 
@@ -463,7 +470,7 @@ export function ConversationView() {
     )
   }
 
-  if (!blocks.length && convLiveStatus === 'inactive' && !sessionDetail) {
+  if (!blocks.length && liveStatus === 'inactive' && !sessionDetail) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState

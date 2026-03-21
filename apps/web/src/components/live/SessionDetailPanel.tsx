@@ -33,7 +33,7 @@ import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionCapabilities } from '../../hooks/use-session-capabilities'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
+import { deriveLiveStatus, derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { getContextLimit } from '../../lib/model-context-windows'
@@ -176,15 +176,18 @@ export function SessionDetailPanel({
   )
   const hasPlans = planDocuments && planDocuments.length > 0
 
+  // Derive liveStatus from SSE session data (falls back to 'inactive' when undefined)
+  const detailLiveStatus = deriveLiveStatus(session)
+
   // ---- Unified conversation hook — handles WS lifecycle + blocks + actions ----
   const {
     blocks: convBlocks,
     actions: convActions,
     sessionInfo: convInfo,
-  } = useConversation(data.id)
+  } = useConversation(data.id, { liveStatus: detailLiveStatus })
 
   // FSM: derive panel mode for this detail panel
-  const detailPanelMode = derivePanelMode(data.id, convInfo.liveStatus, convInfo.sessionState)
+  const detailPanelMode = derivePanelMode(data.id, detailLiveStatus, convInfo.sessionState)
 
   // Command palette capabilities
   const sdpCapabilities = useSessionCapabilities(convInfo)
