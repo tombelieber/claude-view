@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SessionChannel } from '../lib/session-channel'
-import { deriveCanResumeLazy, deriveEffectiveSend } from './use-session-source'
+import { deriveEffectiveSend } from './use-session-source'
 
 describe('deriveEffectiveSend', () => {
   const send = vi.fn()
@@ -31,33 +31,6 @@ describe('deriveEffectiveSend', () => {
   // --- Edge: isLive=true but send is null (shouldn't happen, but defensive) ---
   it('returns null send when live but send is null', () => {
     expect(deriveEffectiveSend(true, 'ctrl-1', 'sess-1', null, connectAndSend)).toBe(null)
-  })
-})
-
-describe('deriveCanResumeLazy', () => {
-  // --- Unit: controlId + not live → true ---
-  it('returns true when controlId is set and not live', () => {
-    expect(deriveCanResumeLazy('abc', 'sess-1', false)).toBe(true)
-  })
-
-  // --- Unit: controlId + live → false (WS already open) ---
-  it('returns false when live (WS already open)', () => {
-    expect(deriveCanResumeLazy('abc', 'sess-1', true)).toBe(false)
-  })
-
-  // --- Unit: no controlId but sessionId → true (auto-resume capable) ---
-  it('returns true when sessionId exists but no controlId (dormant, auto-resumable)', () => {
-    expect(deriveCanResumeLazy(null, 'sess-1', false)).toBe(true)
-  })
-
-  // --- Unit: no controlId, no sessionId → false ---
-  it('returns false when no controlId and no sessionId', () => {
-    expect(deriveCanResumeLazy(null, undefined, false)).toBe(false)
-  })
-
-  // --- Unit: no controlId + live → false ---
-  it('returns false when live regardless of controlId', () => {
-    expect(deriveCanResumeLazy(null, 'sess-1', true)).toBe(false)
   })
 })
 
