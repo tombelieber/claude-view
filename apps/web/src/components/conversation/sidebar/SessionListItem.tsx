@@ -5,7 +5,7 @@ import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
 
-import type { LiveStatus } from '../../../lib/derive-panel-mode'
+import type { LiveStatus } from '../../../lib/live-status'
 
 interface Props {
   session: SessionInfo & {
