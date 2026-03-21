@@ -821,7 +821,7 @@ export function SessionDetailPanel({
                 onRespond={convActions.respondPermission}
               />
             )}
-            {detailPanelMode.mode !== 'blank' && detailPanelMode.mode !== 'watching' && (
+            {detailPanelMode.mode !== 'blank' && (
               <ChatInputBar
                 onSend={convActions.sendMessage}
                 state={modeToInputBar(detailPanelMode)}
