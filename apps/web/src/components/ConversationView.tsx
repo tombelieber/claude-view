@@ -34,7 +34,6 @@ import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { computeCategoryCounts } from '../lib/compute-category-counts'
 import {
   deriveLiveStatus,
   derivePanelMode,
@@ -67,31 +66,10 @@ import { ModelSelector } from './chat/ModelSelector'
 import { ConversationThread } from './conversation/ConversationThread'
 import { chatRegistry } from './conversation/blocks/chat/registry'
 import { developerRegistry } from './conversation/blocks/developer/registry'
-import { RichPane } from './live/RichPane'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { ViewModeControls } from './live/ViewModeControls'
 import { historyToPanelData } from './live/session-panel-data'
 import type { UseLiveSessionsResult } from './live/use-live-sessions'
-
-/** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
-function HistoryRichPane({
-  messages,
-  categoryCounts,
-}: {
-  messages: import('./live/RichPane').RichMessage[]
-  categoryCounts?: import('../lib/compute-category-counts').CategoryCounts
-}) {
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
-  return (
-    <RichPane
-      messages={messages}
-      isVisible={true}
-      verboseMode={verboseMode}
-      bufferDone={true}
-      categoryCounts={categoryCounts}
-    />
-  )
-}
 
 export function ConversationView() {
   const { sessionId } = useParams()
@@ -398,11 +376,6 @@ export function ConversationView() {
     }
     return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
   }, [richMessages, richHookMessages])
-
-  const historyCategoryCounts = useMemo(
-    () => computeCategoryCounts(richMessagesWithHookEvents),
-    [richMessagesWithHookEvents],
-  )
 
   // Side panel data
   const panelData = useMemo(() => {
@@ -783,34 +756,27 @@ export function ConversationView() {
               </div>
             )}
 
-            {verboseMode ? (
-              <HistoryRichPane
-                messages={richMessagesWithHookEvents}
-                categoryCounts={historyCategoryCounts}
-              />
-            ) : (
-              <FindProvider value={findQuery}>
-                <ThreadHighlightProvider>
-                  <ExpandProvider>
-                    <div className="max-w-4xl mx-auto px-6 py-4">
-                      <ErrorBoundary>
-                        <ConversationActionsProvider
-                          actions={{
-                            retryMessage: actions.retryMessage,
-                            respondPermission: actions.respondPermission,
-                            answerQuestion: actions.answerQuestion,
-                            approvePlan: actions.approvePlan,
-                            submitElicitation: actions.submitElicitation,
-                          }}
-                        >
-                          <ConversationThread blocks={blocks} renderers={registry} />
-                        </ConversationActionsProvider>
-                      </ErrorBoundary>
-                    </div>
-                  </ExpandProvider>
-                </ThreadHighlightProvider>
-              </FindProvider>
-            )}
+            <FindProvider value={findQuery}>
+              <ThreadHighlightProvider>
+                <ExpandProvider>
+                  <div className="max-w-4xl mx-auto px-6 py-4">
+                    <ErrorBoundary>
+                      <ConversationActionsProvider
+                        actions={{
+                          retryMessage: actions.retryMessage,
+                          respondPermission: actions.respondPermission,
+                          answerQuestion: actions.answerQuestion,
+                          approvePlan: actions.approvePlan,
+                          submitElicitation: actions.submitElicitation,
+                        }}
+                      >
+                        <ConversationThread blocks={blocks} renderers={registry} />
+                      </ConversationActionsProvider>
+                    </ErrorBoundary>
+                  </div>
+                </ExpandProvider>
+              </ThreadHighlightProvider>
+            </FindProvider>
 
             {/* Bottom anchor — OUTSIDE the mode-switching block */}
             <div ref={bottomRef} />
