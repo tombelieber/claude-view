@@ -2153,6 +2153,70 @@ NaN ago
     // Test: format_line_block_mode_produces_conversation_blocks
     // =========================================================================
 
+    // =========================================================================
+    // Test: ws_block_mode_scrollback
+    // =========================================================================
+
+    #[tokio::test]
+    async fn ws_block_mode_scrollback() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","uuid":"u-1","message":{{"content":[{{"type":"text","text":"hello"}}]}},"timestamp":"2026-03-21T01:00:00.000Z"}}"#
+        )
+        .unwrap();
+
+        let state = test_state_with_session("ws-block-test", tmp.path().to_str().unwrap()).await;
+        let (addr, server_handle) = start_test_server(state).await;
+        let mut ws = ws_connect(addr, "ws-block-test").await;
+
+        // Send handshake with block mode
+        ws.send(tungstenite::Message::Text(
+            r#"{"mode":"block","scrollback":50}"#.into(),
+        ))
+        .await
+        .unwrap();
+
+        // Collect scrollback messages until we see buffer_end or timeout
+        let mut received: Vec<serde_json::Value> = Vec::new();
+        let timeout_result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(text) = recv_text(&mut ws).await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let msg_type = json.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    if msg_type == "buffer_end" {
+                        break;
+                    }
+                    received.push(json);
+                }
+            }
+        })
+        .await;
+        assert!(
+            timeout_result.is_ok(),
+            "Should receive buffer_end within timeout"
+        );
+
+        // Should have received at least one block
+        assert!(
+            !received.is_empty(),
+            "Should receive scrollback blocks in block mode"
+        );
+
+        // First received block should have a type discriminator
+        let first = &received[0];
+        assert!(
+            first.get("type").is_some(),
+            "Block should have 'type' discriminator"
+        );
+
+        ws.close(None).await.ok();
+        server_handle.abort();
+    }
+
+    // =========================================================================
+    // Test: format_line_block_mode_produces_conversation_blocks
+    // =========================================================================
+
     #[test]
     fn format_line_block_mode_produces_conversation_blocks() {
         let finders = RichModeFinders::new();
