@@ -581,4 +581,124 @@ mod tests {
         let fk = acc.forked_from().unwrap();
         assert_eq!(fk["sessionId"], "parent-sess");
     }
+
+    // ── Extended integration tests (fixture-based) ───────────────
+
+    #[test]
+    fn multi_turn_produces_two_boundaries() {
+        let fixture = std::fs::read_to_string(fixtures_path().join("multi_turn.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+        let boundaries: Vec<_> = blocks
+            .iter()
+            .filter(|b| matches!(b, ConversationBlock::TurnBoundary(_)))
+            .collect();
+        assert_eq!(
+            boundaries.len(),
+            2,
+            "Expected 2 TurnBoundaryBlocks for 2 turns"
+        );
+    }
+
+    #[test]
+    fn ask_user_question_creates_assistant_with_tool() {
+        let fixture =
+            std::fs::read_to_string(fixtures_path().join("with_interactions.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+        let assistant = blocks
+            .iter()
+            .find(|b| matches!(b, ConversationBlock::Assistant(_)));
+        assert!(assistant.is_some(), "Should have an AssistantBlock");
+        if let ConversationBlock::Assistant(a) = assistant.unwrap() {
+            let has_ask = a.segments.iter().any(|s| {
+                if let AssistantSegment::Tool { execution } = s {
+                    execution.tool_name == "AskUserQuestion"
+                } else {
+                    false
+                }
+            });
+            assert!(has_ask, "Should have AskUserQuestion tool");
+        }
+    }
+
+    #[test]
+    fn notices_from_compact_and_errors() {
+        let fixture = std::fs::read_to_string(fixtures_path().join("with_notices.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+        let notices: Vec<_> = blocks
+            .iter()
+            .filter(|b| matches!(b, ConversationBlock::Notice(_)))
+            .collect();
+        assert!(
+            notices.len() >= 2,
+            "Expected at least 2 notices (rate_limit + context_compacted), got {}",
+            notices.len()
+        );
+    }
+
+    #[test]
+    fn forked_from_extracted_from_fixture() {
+        let fixture =
+            std::fs::read_to_string(fixtures_path().join("with_forked_from.jsonl")).unwrap();
+        let mut acc = BlockAccumulator::new();
+        acc.process_all(&fixture);
+        assert!(acc.forked_from().is_some());
+        let fk = acc.forked_from().unwrap();
+        assert!(fk.get("sessionId").is_some());
+        assert!(fk.get("messageUuid").is_some());
+        assert_eq!(fk["sessionId"], "parent-session-abc");
+        assert_eq!(fk["messageUuid"], "parent-msg-xyz");
+    }
+
+    #[test]
+    fn orphaned_tool_result_emits_system_block() {
+        let fixture =
+            std::fs::read_to_string(fixtures_path().join("orphaned_tool_result.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+        let unknown_systems: Vec<_> = blocks
+            .iter()
+            .filter(|b| {
+                if let ConversationBlock::System(s) = b {
+                    matches!(s.variant, SystemVariant::Unknown)
+                } else {
+                    false
+                }
+            })
+            .collect();
+        assert!(
+            !unknown_systems.is_empty(),
+            "Expected at least 1 SystemBlock(Unknown) for orphaned tool_result"
+        );
+    }
+
+    #[test]
+    fn system_only_session_no_crash() {
+        let fixture = std::fs::read_to_string(fixtures_path().join("system_only.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+        assert_eq!(
+            blocks.len(),
+            4,
+            "Expected 4 SystemBlocks, got {}",
+            blocks.len()
+        );
+        for block in &blocks {
+            assert!(
+                matches!(block, ConversationBlock::System(_)),
+                "Expected all SystemBlocks"
+            );
+        }
+        let variants: Vec<_> = blocks
+            .iter()
+            .map(|b| {
+                if let ConversationBlock::System(s) = b {
+                    s.variant
+                } else {
+                    panic!("Expected SystemBlock")
+                }
+            })
+            .collect();
+        assert!(variants.contains(&SystemVariant::AiTitle));
+        assert!(variants.contains(&SystemVariant::LastPrompt));
+        assert!(variants.contains(&SystemVariant::QueueOperation));
+        assert!(variants.contains(&SystemVariant::FileHistorySnapshot));
+    }
 }

@@ -1,0 +1,4 @@
+{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"Continue from where we left off"}]},"forkedFrom":{"sessionId":"parent-session-abc","messageUuid":"parent-msg-xyz"},"timestamp":"2026-03-21T04:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","parentUuid":"u-1","message":{"id":"msg-030","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Sure, picking up where we left off."}],"usage":{"input_tokens":300,"output_tokens":25},"stop_reason":"end_turn"},"timestamp":"2026-03-21T04:00:01.000Z"}
+{"type":"system","uuid":"s-1","parentUuid":"a-1","durationMs":1000,"timestamp":"2026-03-21T04:00:02.000Z"}
+{"type":"system","uuid":"s-2","parentUuid":"s-1","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-21T04:00:03.000Z"}
