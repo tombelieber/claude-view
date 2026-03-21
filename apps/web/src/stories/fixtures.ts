@@ -777,7 +777,7 @@ export const progressBlocks = {
         'Compiling claude-view-core v0.23.0\n   Compiling claude-view-server v0.23.0\n    Finished in 12.3s',
       elapsedTimeSeconds: 12.3,
       totalLines: 3,
-      totalBytes: 128n,
+      totalBytes: 128 as unknown as bigint,
     },
     ts: FIVE_MIN_AGO,
     parentToolUseId: 'tu_bash_001',
