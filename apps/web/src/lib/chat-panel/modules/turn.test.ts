@@ -1,19 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TurnState } from '../types'
-import { turnTransition } from './turn'
-
-type TurnEvent =
-  | { type: 'STREAM_DELTA' }
-  | { type: 'BLOCKS_UPDATE' }
-  | { type: 'TURN_COMPLETE' }
-  | { type: 'TURN_ERROR' }
-  | {
-      type: 'PERMISSION_REQUEST'
-      kind: 'permission' | 'question' | 'plan' | 'elicitation'
-      requestId: string
-    }
-  | { type: 'SESSION_COMPACTING' }
-  | { type: 'COMPACT_DONE' }
+import { type TurnEvent, turnTransition } from './turn'
 
 const idle: TurnState = { turn: 'idle' }
 const streaming: TurnState = { turn: 'streaming' }
