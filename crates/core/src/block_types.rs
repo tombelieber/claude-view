@@ -27,6 +27,21 @@ pub enum ConversationBlock {
     Progress(ProgressBlock),
 }
 
+impl ConversationBlock {
+    /// Extract the block's ID regardless of variant.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::User(b) => &b.id,
+            Self::Assistant(b) => &b.id,
+            Self::Interaction(b) => &b.id,
+            Self::TurnBoundary(b) => &b.id,
+            Self::Notice(b) => &b.id,
+            Self::System(b) => &b.id,
+            Self::Progress(b) => &b.id,
+        }
+    }
+}
+
 // ── User ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

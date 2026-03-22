@@ -16,6 +16,8 @@ pub struct FilePositionTracker {
     position: u64,
     /// Path to the file being tracked.
     path: PathBuf,
+    /// True if the last `read_new_lines` detected file truncation.
+    truncated: bool,
 }
 
 impl FilePositionTracker {
@@ -25,7 +27,11 @@ impl FilePositionTracker {
     /// the file, which is useful for sending the full scrollback buffer
     /// to a newly connected viewer.
     pub fn new(path: PathBuf) -> Self {
-        Self { position: 0, path }
+        Self {
+            position: 0,
+            path,
+            truncated: false,
+        }
     }
 
     /// Create a new tracker starting at the current end of the file.
@@ -38,6 +44,7 @@ impl FilePositionTracker {
         Ok(Self {
             position: metadata.len(),
             path,
+            truncated: false,
         })
     }
 
@@ -59,6 +66,9 @@ impl FilePositionTracker {
         // reset to 0 and re-read from the beginning.
         if file_len < self.position {
             self.position = 0;
+            self.truncated = true;
+        } else {
+            self.truncated = false;
         }
 
         // Nothing new to read
@@ -103,6 +113,13 @@ impl FilePositionTracker {
             .collect();
 
         Ok(lines)
+    }
+
+    /// True if the last `read_new_lines` call detected file truncation.
+    /// Callers should reset any derived state (e.g., block accumulators)
+    /// when this returns true, since position was reset to 0.
+    pub fn was_truncated(&self) -> bool {
+        self.truncated
     }
 
     /// Get the current byte position.
