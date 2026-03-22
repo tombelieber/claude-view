@@ -351,6 +351,7 @@ export function ConversationThread({
             />
             {hasNewItems && !isAtBottom && (
               <button
+                type="button"
                 onClick={scrollToBottom}
                 className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium shadow-lg hover:bg-blue-500 transition-colors cursor-pointer z-10"
               >

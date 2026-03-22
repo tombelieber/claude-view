@@ -12,6 +12,7 @@ const INITIAL: ChatPanelStore = {
   lastPermissionMode: null,
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: test fixture — ConversationBlock shape is complex
 const mockBlocks = [{ type: 'user' as const, id: '1', text: 'hi', timestamp: 1 }] as any
 
 function drive(
