@@ -1,6 +1,7 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
+import { EventCard } from './EventCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
 import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
 
@@ -29,28 +30,32 @@ function StatusDot({ status }: { status: UserBlockType['status'] }) {
 
 export function DevUserBlock({ block }: UserBlockProps) {
   return (
-    <div className="rounded-lg bg-blue-500/5 dark:bg-blue-400/5 border border-blue-500/15 dark:border-blue-400/15 px-4 py-3">
-      <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
-        {block.text}
-      </p>
-      <div className="flex items-center gap-2 mt-1.5">
-        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
-          {block.id.slice(0, 8)}
-        </span>
+    <EventCard
+      dot={block.status === 'failed' ? 'red' : 'blue'}
+      chip="User"
+      label={block.id.slice(0, 8)}
+      rawData={block}
+      error={block.status === 'failed'}
+      pulse={block.status === 'sending' || block.status === 'optimistic'}
+      meta={<StatusDot status={block.status} />}
+    >
+      <div className="space-y-1.5">
+        <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+          {block.text}
+        </p>
         <MessageTimestamp timestamp={block.timestamp} />
-        <StatusDot status={block.status} />
+        {block.rawJson != null && (
+          <div className="space-y-1">
+            {Array.isArray(block.rawJson.imagePasteIds) && (
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                {(block.rawJson.imagePasteIds as unknown[]).length} image(s) pasted
+              </span>
+            )}
+            <MessageLineageDetail rawJson={block.rawJson} />
+            <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={USER_RENDERED_KEYS} />
+          </div>
+        )}
       </div>
-      {block.rawJson != null && (
-        <div className="mt-1.5 space-y-1">
-          {Array.isArray(block.rawJson.imagePasteIds) && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">
-              {(block.rawJson.imagePasteIds as unknown[]).length} image(s) pasted
-            </span>
-          )}
-          <MessageLineageDetail rawJson={block.rawJson} />
-          <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={USER_RENDERED_KEYS} />
-        </div>
-      )}
-    </div>
+    </EventCard>
   )
 }

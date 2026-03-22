@@ -582,9 +582,9 @@ describe('integration: stream_delta filtering', () => {
   })
 })
 
-// ── CLI watching → inactive → back to nobody ──────────────────────
+// ── CLI watching: full lifecycle + streaming ──────────────────────
 
-describe('integration: CLI session ends naturally', () => {
+describe('integration: CLI watching mode lifecycle', () => {
   test('cc_cli(watching) → LIVE_STATUS inactive → nobody(ready)', () => {
     const historyBlocks = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }]
     const watchingStore: ChatPanelStore = {
@@ -610,5 +610,249 @@ describe('integration: CLI session ends naturally', () => {
       expect(store.panel.sub).toEqual({ sub: 'ready', blocks: historyBlocks })
     }
     expect(allCmds).toContainEqual({ cmd: 'CLOSE_TERMINAL_WS' })
+  })
+})
+
+// ── Watching mode streaming: regression protection ───────────────
+
+describe('integration: watching mode streaming', () => {
+  // Happy path: history first, then cc_owned, then live blocks stream in
+  test('select → history → cc_owned → cc_cli → TERMINAL_BLOCK streams live updates', () => {
+    const { store, allCmds } = drive(INITIAL, [
+      // 1. Select session → nobody(loading)
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      // 2. History loads → nobody(ready, blocks)
+      { type: 'HISTORY_OK', blocks: mockBlocks },
+      // 3. SSE says CLI owns it → cc_cli(watching) with history blocks
+      { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
+      // 4. Terminal WS connected
+      { type: 'TERMINAL_CONNECTED' },
+      // 5. Live block streams in — new user message
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'user', id: 'u2', text: 'new msg', timestamp: 2 },
+      },
+      // 6. Live block streams in — assistant response
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'assistant', id: 'a1', segments: [], streaming: true, timestamp: 3 },
+      },
+      // 7. Assistant block updates (same ID = replace, not append)
+      {
+        type: 'TERMINAL_BLOCK',
+        block: {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'Hello!' }],
+          streaming: false,
+          timestamp: 3,
+        },
+      },
+    ])
+
+    // Final state: cc_cli with 3 blocks (history + 2 streamed)
+    expect(store.panel.phase).toBe('cc_cli')
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toHaveLength(3)
+      expect(store.panel.blocks[0].id).toBe('1') // original history
+      expect(store.panel.blocks[1].id).toBe('u2') // streamed user
+      expect(store.panel.blocks[2].id).toBe('a1') // streamed assistant (replaced, not duplicated)
+      // Verify the assistant block was replaced, not appended
+      const a1 = store.panel.blocks[2]
+      if (a1.type === 'assistant') {
+        expect(a1.streaming).toBe(false) // final version
+      }
+    }
+
+    // Commands: FETCH_HISTORY + CHECK_SIDECAR + OPEN_TERMINAL_WS
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'FETCH_HISTORY' }))
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
+  })
+
+  // Race condition: cc_owned arrives BEFORE history loads
+  test('select → cc_owned (race!) → deferred → HISTORY_OK → cc_cli → streaming works', () => {
+    const { store: midStore } = drive(INITIAL, [
+      // 1. Select session → nobody(loading)
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      // 2. SSE arrives FIRST (race!) — cc_owned while still loading
+      { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
+    ])
+
+    // Should NOT be cc_cli yet — still nobody with pendingLive
+    expect(midStore.panel.phase).toBe('nobody')
+    if (midStore.panel.phase === 'nobody' && midStore.panel.sub.sub === 'loading') {
+      expect(midStore.panel.sub.pendingLive).toBe('cc_owned')
+    }
+
+    // Now history arrives → completes deferred transition
+    const { store, allCmds } = drive(midStore, [
+      { type: 'HISTORY_OK', blocks: mockBlocks },
+      // Terminal WS connected, then live blocks
+      { type: 'TERMINAL_CONNECTED' },
+      { type: 'TERMINAL_BLOCK', block: { type: 'user', id: 'u2', text: 'live!', timestamp: 2 } },
+    ])
+
+    expect(store.panel.phase).toBe('cc_cli')
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toHaveLength(2) // history + streamed
+      expect(store.panel.blocks[0].id).toBe('1') // from HISTORY_OK
+      expect(store.panel.blocks[1].id).toBe('u2') // from TERMINAL_BLOCK
+    }
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
+  })
+
+  // Race condition: HISTORY_FAILED with pendingLive → cc_cli with empty blocks
+  test('select → cc_owned (race!) → HISTORY_FAILED → cc_cli with empty blocks', () => {
+    const { store } = drive(INITIAL, [
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
+      { type: 'HISTORY_FAILED', error: 'not found' },
+    ])
+
+    // Still transitions to cc_cli (empty blocks is better than stuck in nobody)
+    expect(store.panel.phase).toBe('cc_cli')
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toHaveLength(0)
+    }
+  })
+
+  // TERMINAL_BLOCK in non-cc_cli phase → ignored (no-op)
+  test('TERMINAL_BLOCK in nobody phase → no-op', () => {
+    const nobodyStore: ChatPanelStore = {
+      panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+
+    const { store } = drive(nobodyStore, [
+      { type: 'TERMINAL_BLOCK', block: { type: 'user', id: 'u2', text: 'ignored', timestamp: 2 } },
+    ])
+
+    // Block should NOT be added — wrong phase
+    if (store.panel.phase === 'nobody' && store.panel.sub.sub === 'ready') {
+      expect(store.panel.sub.blocks).toHaveLength(1) // unchanged
+    }
+  })
+
+  // Full lifecycle: start watching → stream → CLI ends → back to history
+  test('full lifecycle: select → watch → stream → CLI exits → nobody preserves all blocks', () => {
+    const { store } = drive(INITIAL, [
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      { type: 'HISTORY_OK', blocks: mockBlocks },
+      { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
+      { type: 'TERMINAL_CONNECTED' },
+      // Stream some blocks
+      { type: 'TERMINAL_BLOCK', block: { type: 'user', id: 'u2', text: 'msg2', timestamp: 2 } },
+      { type: 'TERMINAL_BLOCK', block: { type: 'user', id: 'u3', text: 'msg3', timestamp: 3 } },
+      // CLI session ends
+      { type: 'LIVE_STATUS_CHANGED', status: 'inactive' },
+    ])
+
+    // Back to nobody — all blocks (history + streamed) preserved
+    expect(store.panel.phase).toBe('nobody')
+    if (store.panel.phase === 'nobody' && store.panel.sub.sub === 'ready') {
+      expect(store.panel.sub.blocks).toHaveLength(3) // 1 history + 2 streamed
+      expect(store.panel.sub.blocks.map((b) => b.id)).toEqual(['1', 'u2', 'u3'])
+    }
+  })
+
+  // Rapid merge-by-ID: same block updated 3 times → only last version kept
+  test('rapid TERMINAL_BLOCK updates for same ID → replaced each time, no duplicates', () => {
+    const watchingStore: ChatPanelStore = {
+      panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+
+    const { store } = drive(watchingStore, [
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'assistant', id: 'a1', segments: [], streaming: true, timestamp: 1 },
+      },
+      {
+        type: 'TERMINAL_BLOCK',
+        block: {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'Hel' }],
+          streaming: true,
+          timestamp: 1,
+        },
+      },
+      {
+        type: 'TERMINAL_BLOCK',
+        block: {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'Hello!' }],
+          streaming: false,
+          timestamp: 1,
+        },
+      },
+    ])
+
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toHaveLength(1) // NOT 3
+      const block = store.panel.blocks[0]
+      if (block.type === 'assistant') {
+        expect(block.streaming).toBe(false) // final version
+        expect(block.segments).toEqual([{ kind: 'text', text: 'Hello!' }])
+      }
+    }
+  })
+
+  // Multiple different block types streaming concurrently
+  test('mixed block types stream and maintain order', () => {
+    const watchingStore: ChatPanelStore = {
+      panel: {
+        phase: 'cc_cli',
+        sessionId: 'abc',
+        blocks: [...mockBlocks],
+        sub: { sub: 'watching' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+
+    const { store } = drive(watchingStore, [
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture — ProgressData/SystemData shapes are complex
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'progress', id: 'p1', variant: 'hook', category: 'hook', data: {} } as any,
+      },
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'system', id: 's1', variant: 'file_history_snapshot', data: {} } as any,
+      },
+      {
+        type: 'TERMINAL_BLOCK',
+        block: { type: 'user', id: 'u2', text: 'next prompt', timestamp: 2 },
+      },
+      {
+        type: 'TERMINAL_BLOCK',
+        block: {
+          type: 'assistant',
+          id: 'a1',
+          segments: [{ kind: 'text', text: 'response' }],
+          streaming: false,
+          timestamp: 3,
+        },
+      },
+    ])
+
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toHaveLength(5) // 1 history + 4 streamed
+      expect(store.panel.blocks.map((b) => b.id)).toEqual(['1', 'p1', 's1', 'u2', 'a1'])
+    }
   })
 })
