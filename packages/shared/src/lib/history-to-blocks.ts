@@ -1,11 +1,11 @@
 import type {
   AssistantBlock,
   ConversationBlock,
+  ProgressBlock,
   SystemBlock,
   ToolExecution,
   UserBlock,
 } from '../types/blocks'
-import type { UnknownSdkEvent } from '../types/sidecar-protocol'
 
 // Local interface matching the generated Message type from Rust (apps/web/src/types/generated/Message.ts)
 // Defined locally to avoid coupling shared to the web app's generated types.
@@ -93,11 +93,14 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
       case 'system': {
         const meta = msg.metadata as Record<string, unknown> | undefined
         const subtype = (meta?.subtype as string) ?? 'unknown'
+        const variant = mapSystemSubtype(subtype)
         const block: SystemBlock = {
           type: 'system',
           id: genId(msg.uuid),
-          variant: 'unknown',
-          data: { sdkType: subtype } as UnknownSdkEvent,
+          variant,
+          data: (variant === 'unknown'
+            ? { sdkType: subtype }
+            : { type: variant, ...(meta ?? {}) }) as SystemBlock['data'],
           rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)
@@ -105,12 +108,18 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
       }
 
       case 'progress': {
-        const block: SystemBlock = {
-          type: 'system',
+        const meta = msg.metadata as Record<string, unknown> | undefined
+        const progressType = (meta?.progress_type as string) ?? 'bash'
+        const block: ProgressBlock = {
+          type: 'progress',
           id: genId(msg.uuid),
-          variant: 'unknown',
-          data: { sdkType: 'progress' } as UnknownSdkEvent,
-          rawJson: msg.raw_json as Record<string, unknown> | undefined,
+          variant: progressType as ProgressBlock['variant'],
+          category: ((meta?.category as string) ?? 'builtin') as ProgressBlock['category'],
+          data: ((meta?.data as Record<string, unknown>) ?? {
+            type: progressType,
+          }) as ProgressBlock['data'],
+          ts: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : 0,
+          parentToolUseId: meta?.parent_tool_use_id as string | undefined,
         }
         blocks.push(block)
         break
@@ -119,4 +128,24 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
   }
 
   return blocks
+}
+
+/** Map JSONL metadata.subtype → SystemBlock variant.
+ *  SDK subtypes that don't map to a known variant fall through to 'unknown'. */
+const SUBTYPE_TO_VARIANT: Record<string, SystemBlock['variant']> = {
+  init: 'session_init',
+  status: 'session_status',
+  elicitation_complete: 'elicitation_complete',
+  task_started: 'task_started',
+  task_progress: 'task_progress',
+  task_notification: 'task_notification',
+  hook_started: 'hook_event',
+  hook_progress: 'hook_event',
+  hook_response: 'hook_event',
+  files_persisted: 'files_saved',
+  local_command_output: 'command_output',
+}
+
+function mapSystemSubtype(subtype: string): SystemBlock['variant'] {
+  return SUBTYPE_TO_VARIANT[subtype] ?? 'unknown'
 }
