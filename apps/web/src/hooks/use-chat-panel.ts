@@ -7,6 +7,7 @@ import {
   deriveBlocks,
   deriveCanFork,
   deriveCanSend,
+  deriveConnectionStatus,
   deriveInputBar,
   deriveViewMode,
 } from '../lib/chat-panel'
@@ -17,13 +18,20 @@ const initialStore: ChatPanelStore = {
   meta: null,
 }
 
-/** E-B1: pendingCmdsRef OVERWRITES (not pushes) — safe under StrictMode double-invoke */
+/** E-B1: pendingCmdsRef ACCUMULATES via push; drain effect splices.
+ *  StrictMode guard: React calls reducer twice with the same event ref — skip duplicate push. */
 export function useChatPanel(sessionId: string | undefined) {
   const pendingCmdsRef = useRef<Command[]>([])
+  const lastEventRef = useRef<RawEvent | null>(null)
 
   function reducer(state: ChatPanelStore, event: RawEvent): ChatPanelStore {
     const [newState, cmds] = coordinate(state, event)
-    pendingCmdsRef.current = cmds // OVERWRITE, not push
+    // Push only once per event: StrictMode calls reducer twice with the same reference.
+    // Different dispatches in the same batch use different event objects → both push.
+    if (cmds.length > 0 && event !== lastEventRef.current) {
+      pendingCmdsRef.current.push(...cmds)
+      lastEventRef.current = event
+    }
     return newState
   }
 
@@ -35,6 +43,7 @@ export function useChatPanel(sessionId: string | undefined) {
   const canFork = deriveCanFork(store)
   const inputBar = deriveInputBar(store)
   const viewMode = deriveViewMode(store)
+  const connectionStatus = deriveConnectionStatus(store)
 
   // E-m3: Guard SELECT_SESSION re-dispatch
   useEffect(() => {
@@ -51,5 +60,15 @@ export function useChatPanel(sessionId: string | undefined) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- store intentionally excluded
   }, [sessionId])
 
-  return { store, dispatch, pendingCmdsRef, blocks, canSend, canFork, inputBar, viewMode }
+  return {
+    store,
+    dispatch,
+    pendingCmdsRef,
+    blocks,
+    canSend,
+    canFork,
+    inputBar,
+    viewMode,
+    connectionStatus,
+  }
 }

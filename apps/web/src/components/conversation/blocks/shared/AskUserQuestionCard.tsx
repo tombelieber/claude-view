@@ -100,7 +100,7 @@ export function AskUserQuestionCard({
           <button
             type="button"
             onClick={handleSubmit}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors"
           >
             <Send className="w-3 h-3" />
             Submit
@@ -112,7 +112,7 @@ export function AskUserQuestionCard({
         {questions.map((q, qi) => (
           <div key={q.question}>
             {q.header && (
-              <div className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-0.5">
+              <div className="text-[10px] font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-0.5">
                 {q.header}
               </div>
             )}
@@ -136,15 +136,15 @@ export function AskUserQuestionCard({
                       }
                       className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors ${
                         isSelected
-                          ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-500/40'
-                          : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-purple-300/50 dark:hover:border-purple-500/20'
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-500/40'
+                          : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-amber-300/50 dark:hover:border-amber-500/20'
                       }`}
                     >
                       {q.multiSelect ? (
                         <CheckCircle2
                           className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
                             isSelected
-                              ? 'text-purple-500 dark:text-purple-400'
+                              ? 'text-amber-500 dark:text-amber-400'
                               : 'text-gray-400 dark:text-gray-500'
                           }`}
                         />
@@ -152,9 +152,10 @@ export function AskUserQuestionCard({
                         <Circle
                           className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
                             isSelected
-                              ? 'text-purple-500 dark:text-purple-400'
+                              ? 'text-amber-500 dark:text-amber-400'
                               : 'text-gray-400 dark:text-gray-500'
                           }`}
+                          {...(isSelected ? { fill: 'currentColor' } : {})}
                         />
                       )}
                       <div className="min-w-0 flex-1">
@@ -176,16 +177,17 @@ export function AskUserQuestionCard({
                   onClick={() => handleOtherToggle(qi, !!q.multiSelect)}
                   className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors ${
                     otherSelected[qi]
-                      ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-500/40'
-                      : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-purple-300/50 dark:hover:border-purple-500/20'
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-500/40'
+                      : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-amber-300/50 dark:hover:border-amber-500/20'
                   }`}
                 >
                   <Circle
                     className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${
                       otherSelected[qi]
-                        ? 'text-purple-500 dark:text-purple-400'
+                        ? 'text-amber-500 dark:text-amber-400'
                         : 'text-gray-400 dark:text-gray-500'
                     }`}
+                    {...(otherSelected[qi] ? { fill: 'currentColor' } : {})}
                   />
                   <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 italic">
                     Other...
@@ -198,7 +200,7 @@ export function AskUserQuestionCard({
                     value={otherTexts[qi] ?? ''}
                     onChange={(e) => handleOtherText(qi, e.target.value)}
                     placeholder="Type your answer..."
-                    className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                    className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
                   />
                 )}
 

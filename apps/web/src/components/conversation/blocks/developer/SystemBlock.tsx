@@ -15,23 +15,11 @@ import type {
   TaskStarted,
   UnknownSdkEvent,
 } from '@claude-view/shared/types/sidecar-protocol'
-import {
-  Activity,
-  Bell,
-  Code,
-  FileText,
-  GitBranch,
-  Info,
-  MessageSquare,
-  Play,
-  Settings,
-  StopCircle,
-  Tag,
-  Terminal,
-  Zap,
-} from 'lucide-react'
+import { StopCircle } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
+import { cn } from '../../../../lib/utils'
 import { Markdown } from '../shared/Markdown'
+import { EventCard } from './EventCard'
 import { RENDERED_KEYS as API_ERROR_KEYS, ApiErrorDetail } from './details/ApiErrorDetail'
 import { RENDERED_KEYS as HOOK_KEYS, HookMetadataDetail } from './details/HookMetadataDetail'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
@@ -59,163 +47,273 @@ interface SystemBlockProps {
   block: SystemBlockType
 }
 
+// ── Variant renderers ───────────────────────────────────────────────────────
+
 function SessionInitDetail({ data }: { data: SessionInit }) {
   return (
-    <div className="rounded border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200/50 dark:border-gray-700/50">
-        <Settings className="w-3 h-3 text-gray-500 dark:text-gray-400" />
-        <span className="text-[10px] font-medium text-gray-600 dark:text-gray-300">
-          Session Init
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-[10px]">
-        <div className="text-gray-500 dark:text-gray-400">Model</div>
-        <div className="font-mono text-gray-700 dark:text-gray-300 truncate">{data.model}</div>
-        <div className="text-gray-500 dark:text-gray-400">Mode</div>
-        <div className="font-mono text-gray-700 dark:text-gray-300">{data.permissionMode}</div>
-        <div className="text-gray-500 dark:text-gray-400">Tools</div>
-        <div className="font-mono text-gray-700 dark:text-gray-300">{data.tools.length}</div>
-        <div className="text-gray-500 dark:text-gray-400">CWD</div>
-        <div className="font-mono text-gray-700 dark:text-gray-300 truncate">{data.cwd}</div>
+    <EventCard
+      dot="green"
+      chip="Init"
+      label={`${data.model} — ${data.tools.length} tools`}
+      rawData={data}
+    >
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+        <span className="text-gray-500 dark:text-gray-400">Model</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">{data.model}</span>
+        <span className="text-gray-500 dark:text-gray-400">Mode</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300">{data.permissionMode}</span>
+        <span className="text-gray-500 dark:text-gray-400">CWD</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">{data.cwd}</span>
         {data.agents.length > 0 && (
           <>
-            <div className="text-gray-500 dark:text-gray-400">Agents</div>
-            <div className="font-mono text-gray-700 dark:text-gray-300">
+            <span className="text-gray-500 dark:text-gray-400">Agents</span>
+            <span className="font-mono text-gray-700 dark:text-gray-300">
               {data.agents.join(', ')}
-            </div>
+            </span>
           </>
         )}
       </div>
-    </div>
+    </EventCard>
   )
 }
 
 function SessionStatusDetail({ data }: { data: SidecarSessionStatus }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Activity className="w-3 h-3" />
-      <span>Status: {data.status ?? 'idle'}</span>
-      {data.permissionMode && <span className="font-mono">({data.permissionMode})</span>}
-    </div>
+    <EventCard
+      dot={data.status === 'compacting' ? 'amber' : 'blue'}
+      chip="Status"
+      label={data.status ?? 'idle'}
+      pulse={data.status === 'compacting'}
+      rawData={data}
+      meta={
+        data.permissionMode ? (
+          <span className="text-[9px] font-mono text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+            {data.permissionMode}
+          </span>
+        ) : undefined
+      }
+    />
   )
 }
 
 function ElicitationCompleteDetail({ data }: { data: ElicitationComplete }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Code className="w-3 h-3" />
-      <span>
-        Elicitation complete: {data.mcpServerName} / {data.elicitationId}
-      </span>
-    </div>
+    <EventCard
+      dot="green"
+      chip="Elicitation"
+      label={`${data.mcpServerName} / ${data.elicitationId}`}
+      rawData={data}
+    />
   )
 }
 
 function HookEventDetail({ data }: { data: SidecarHookEvent }) {
+  const isError = data.outcome === 'error'
   return (
-    <div className="flex items-start gap-2 px-3 py-1.5 text-[10px]">
-      <GitBranch className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-      <div>
-        <div className="text-gray-600 dark:text-gray-300">
-          Hook: {data.hookName} ({data.phase})
-        </div>
-        {data.outcome && (
-          <div className="text-gray-500 dark:text-gray-400">Outcome: {data.outcome}</div>
-        )}
-        {data.stdout && (
-          <pre className="font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap mt-0.5">
-            {data.stdout.slice(0, 200)}
-          </pre>
-        )}
-      </div>
-    </div>
+    <EventCard
+      dot={isError ? 'red' : 'amber'}
+      chip="Hook"
+      label={`${data.hookName} (${data.phase})`}
+      error={isError}
+      rawData={data}
+      meta={
+        data.outcome ? (
+          <span
+            className={cn(
+              'text-[9px] font-mono px-1.5 py-0.5 rounded',
+              isError ? 'text-red-400 bg-red-500/10' : 'text-green-400 bg-green-500/10',
+            )}
+          >
+            {data.outcome}
+          </span>
+        ) : undefined
+      }
+    >
+      {(data.stdout || data.stderr) && (
+        <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+          {(data.stdout || data.stderr || '').slice(0, 200)}
+        </pre>
+      )}
+    </EventCard>
   )
 }
 
 function TaskStartedDetail({ data }: { data: TaskStarted }) {
   const convActions = useConversationActions()
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Play className="w-3 h-3" />
-      <span>Task started: {data.description}</span>
-      <span className="font-mono">[{data.taskId.slice(0, 8)}]</span>
-      {convActions?.stopTask && (
-        <button
-          type="button"
-          onClick={() => convActions.stopTask?.(data.taskId)}
-          className="ml-auto text-red-400 hover:text-red-500 transition-colors"
-          title="Stop task"
-        >
-          <StopCircle className="w-3 h-3" />
-        </button>
-      )}
-    </div>
+    <EventCard
+      dot="blue"
+      chip="Task"
+      chipColor="bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
+      label={data.description}
+      pulse
+      rawData={data}
+      meta={
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[9px] font-mono text-gray-400">{data.taskId.slice(0, 8)}</span>
+          {convActions?.stopTask && (
+            <button
+              type="button"
+              onClick={() => convActions.stopTask?.(data.taskId)}
+              className="text-red-400 hover:text-red-500 transition-colors duration-200 cursor-pointer"
+              title="Stop task"
+            >
+              <StopCircle className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      }
+    />
   )
 }
 
 function TaskProgressDetail({ data }: { data: TaskProgressEvent }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Activity className="w-3 h-3" />
-      <span className="truncate">{data.summary ?? data.description}</span>
-      <span className="font-mono flex-shrink-0">
-        {data.usage.totalTokens.toLocaleString()}tok / {data.usage.toolUses} tools
-      </span>
-    </div>
+    <EventCard
+      dot="blue"
+      chip="Task"
+      chipColor="bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
+      label={data.summary ?? data.description}
+      rawData={data}
+    >
+      <div className="flex items-center gap-3 text-[10px] font-mono text-gray-500 dark:text-gray-400">
+        <span>{data.usage.totalTokens.toLocaleString()} tok</span>
+        <span>{data.usage.toolUses} tools</span>
+        <span>{(data.usage.durationMs / 1000).toFixed(1)}s</span>
+      </div>
+    </EventCard>
   )
 }
 
 function TaskNotificationDetail({ data }: { data: TaskNotification }) {
+  const isFailed = data.status === 'failed'
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Bell className="w-3 h-3" />
-      <span className={data.status === 'failed' ? 'text-red-500 dark:text-red-400' : ''}>
-        Task {data.status}: {data.summary}
-      </span>
-    </div>
+    <EventCard
+      dot={isFailed ? 'red' : 'green'}
+      chip="Task"
+      chipColor="bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
+      label={`${data.status}: ${data.summary}`}
+      error={isFailed}
+      rawData={data}
+    />
   )
 }
 
 function FilesSavedDetail({ data }: { data: FilesSaved }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <FileText className="w-3 h-3" />
-      <span>
-        {data.files.length} file(s) saved
-        {data.failed.length > 0 && `, ${data.failed.length} failed`}
-      </span>
-    </div>
+    <EventCard
+      dot={data.failed.length > 0 ? 'amber' : 'green'}
+      chip="Files"
+      label={`${data.files.length} saved${data.failed.length > 0 ? `, ${data.failed.length} failed` : ''}`}
+      rawData={data}
+    />
   )
 }
 
 function CommandOutputDetail({ data }: { data: CommandOutput }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-1.5 text-[10px]">
-      <Terminal className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-      <pre className="font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+    <EventCard
+      dot="gray"
+      chip="Output"
+      chipColor="bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300"
+      rawData={data}
+    >
+      <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
         {data.content.slice(0, 500)}
       </pre>
-    </div>
+    </EventCard>
   )
 }
 
 function StreamDeltaDetail({ data }: { data: StreamDelta }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Zap className="w-3 h-3" />
-      <span className="font-mono">stream_delta [{data.messageId.slice(0, 8)}]</span>
-    </div>
+    <EventCard
+      dot="gray"
+      chip="Delta"
+      label={`stream_delta [${data.messageId.slice(0, 8)}]`}
+      rawData={data}
+    />
   )
 }
 
 function UnknownDetail({ data }: { data: UnknownSdkEvent }) {
+  return <EventCard dot="gray" chip="Unknown" label={data.sdkType} rawData={data} />
+}
+
+// ── Shared card wrappers for special system subtypes ────────────────────────
+
+function LocalCommandDetail({ data }: { data: Record<string, unknown> }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-      <Code className="w-3 h-3" />
-      <span className="font-mono">Unknown: {data.sdkType}</span>
-    </div>
+    <EventCard
+      dot="gray"
+      chip="Command"
+      label={String(data.content ?? data.command ?? '')}
+      rawData={data}
+    >
+      <LocalCommandEventCard content={String(data.content ?? data.command ?? '')} />
+    </EventCard>
   )
 }
+
+function QueueOperationDetail({ data }: { data: Record<string, unknown> }) {
+  const op = (data.operation as 'enqueue' | 'dequeue') ?? 'enqueue'
+  return (
+    <EventCard
+      dot="orange"
+      chip="Queue"
+      label={`${op}${data.content ? `: ${data.content}` : ''}`}
+      rawData={data}
+    >
+      <MessageQueueEventCard
+        operation={op}
+        timestamp={String(data.timestamp ?? '')}
+        content={data.content ? String(data.content) : undefined}
+      />
+    </EventCard>
+  )
+}
+
+function FileHistorySnapshotDetail({ data }: { data: Record<string, unknown> }) {
+  const files = Array.isArray(data.files) ? data.files.map(String) : []
+  const fileCount = files.length || (typeof data.fileCount === 'number' ? data.fileCount : 0)
+  return (
+    <EventCard
+      dot="teal"
+      chip="Snapshot"
+      label={`${fileCount} file(s)${data.isIncremental ? ' (incremental)' : ''}`}
+      rawData={data}
+    >
+      <FileSnapshotCard
+        fileCount={fileCount}
+        timestamp={String(data.timestamp ?? '')}
+        files={files}
+        isIncremental={data.isIncremental === true}
+        verboseMode
+      />
+    </EventCard>
+  )
+}
+
+function AiTitleDetail({ data }: { data: Record<string, unknown> }) {
+  return <EventCard dot="blue" chip="Title" label={String(data.aiTitle ?? '')} rawData={data} />
+}
+
+function LastPromptDetail({ data }: { data: Record<string, unknown> }) {
+  return <EventCard dot="gray" chip="Prompt" label={String(data.lastPrompt ?? '')} rawData={data} />
+}
+
+function InformationalDetail({ data }: { data: Record<string, unknown> }) {
+  return (
+    <EventCard
+      dot="blue"
+      chip="Info"
+      label={String(data.content ?? data.message ?? JSON.stringify(data))}
+      rawData={data}
+    />
+  )
+}
+
+// ── Main dispatcher ─────────────────────────────────────────────────────────
 
 export function DevSystemBlock({ block }: SystemBlockProps) {
   const variantContent = (() => {
@@ -242,65 +340,18 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <StreamDeltaDetail data={block.data as StreamDelta} />
       case 'unknown':
         return <UnknownDetail data={block.data as UnknownSdkEvent} />
-      case 'local_command': {
-        const raw = block.data as unknown as Record<string, unknown>
-        return <LocalCommandEventCard content={String(raw.content ?? raw.command ?? '')} />
-      }
-      case 'queue_operation': {
-        const raw = block.data as unknown as Record<string, unknown>
-        return (
-          <MessageQueueEventCard
-            operation={(raw.operation as 'enqueue' | 'dequeue') ?? 'enqueue'}
-            timestamp={String(raw.timestamp ?? '')}
-            content={raw.content ? String(raw.content) : undefined}
-          />
-        )
-      }
-      case 'file_history_snapshot': {
-        const raw = block.data as unknown as Record<string, unknown>
-        const files = Array.isArray(raw.files) ? raw.files.map(String) : []
-        return (
-          <FileSnapshotCard
-            fileCount={files.length || (typeof raw.fileCount === 'number' ? raw.fileCount : 0)}
-            timestamp={String(raw.timestamp ?? '')}
-            files={files}
-            isIncremental={raw.isIncremental === true}
-            verboseMode
-          />
-        )
-      }
-      case 'ai_title': {
-        const raw = block.data as unknown as Record<string, unknown>
-        return (
-          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-            <Tag className="w-3 h-3" />
-            <span>
-              AI Title:{' '}
-              <span className="font-medium text-gray-700 dark:text-gray-300">
-                {String(raw.aiTitle ?? '')}
-              </span>
-            </span>
-          </div>
-        )
-      }
-      case 'last_prompt': {
-        const raw = block.data as unknown as Record<string, unknown>
-        return (
-          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-            <MessageSquare className="w-3 h-3" />
-            <span className="truncate">Last prompt: {String(raw.lastPrompt ?? '')}</span>
-          </div>
-        )
-      }
-      case 'informational': {
-        const raw = block.data as unknown as Record<string, unknown>
-        return (
-          <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-gray-500 dark:text-gray-400">
-            <Info className="w-3 h-3" />
-            <span>{String(raw.content ?? raw.message ?? JSON.stringify(raw))}</span>
-          </div>
-        )
-      }
+      case 'local_command':
+        return <LocalCommandDetail data={block.data as unknown as Record<string, unknown>} />
+      case 'queue_operation':
+        return <QueueOperationDetail data={block.data as unknown as Record<string, unknown>} />
+      case 'file_history_snapshot':
+        return <FileHistorySnapshotDetail data={block.data as unknown as Record<string, unknown>} />
+      case 'ai_title':
+        return <AiTitleDetail data={block.data as unknown as Record<string, unknown>} />
+      case 'last_prompt':
+        return <LastPromptDetail data={block.data as unknown as Record<string, unknown>} />
+      case 'informational':
+        return <InformationalDetail data={block.data as unknown as Record<string, unknown>} />
       default:
         return null
     }
@@ -310,15 +361,24 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
     <>
       {variantContent}
       {block.rawJson && (
-        <>
-          {block.rawJson.permissionMode && (
-            <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+        <div className="mt-1 space-y-1">
+          {block.rawJson.permissionMode != null && (
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}
             </span>
           )}
           {block.rawJson.durationMs != null && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">
-              {String(block.rawJson.durationMs)}ms
+            <span
+              className={cn(
+                'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
+                Number(block.rawJson.durationMs) > 30000
+                  ? 'text-red-400 bg-red-500/10'
+                  : Number(block.rawJson.durationMs) > 5000
+                    ? 'text-amber-400 bg-amber-500/10'
+                    : 'text-gray-400 bg-gray-500/10',
+              )}
+            >
+              {Number(block.rawJson.durationMs).toLocaleString()}ms
             </span>
           )}
           {typeof block.rawJson.planContent === 'string' && block.rawJson.planContent && (
@@ -329,12 +389,12 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
               <Markdown content={block.rawJson.planContent} />
             </details>
           )}
-          {block.rawJson.prUrl && (
+          {block.rawJson.prUrl != null && (
             <a
               href={String(block.rawJson.prUrl)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline"
+              className="inline-flex items-center text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
             >
               PR #{String(block.rawJson.prNumber ?? '')}
             </a>
@@ -345,7 +405,7 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
           <StopReasonDetail rawJson={block.rawJson} />
           <MessageLineageDetail rawJson={block.rawJson} />
           <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={SYSTEM_RENDERED_KEYS} />
-        </>
+        </div>
       )}
     </>
   )

@@ -17,12 +17,12 @@ describe('connTransition', () => {
       { stay: true, state: { health: 'reconnecting', attempt: 1 } },
     ],
 
-    // ok + non-recoverable close → stays ok (exit handled by parent)
+    // ok + non-recoverable close → exit ws_fatal immediately
     [
-      'ok + WS_CLOSE non-recoverable → stay ok',
+      'ok + WS_CLOSE non-recoverable → exit ws_fatal',
       ok,
       { type: 'WS_CLOSE', recoverable: false },
-      { stay: true, state: ok },
+      { stay: false, exit: 'ws_fatal', error: 'Non-recoverable WebSocket close' } as ConnResult,
     ],
 
     // reconnecting → ok on WS_OPEN

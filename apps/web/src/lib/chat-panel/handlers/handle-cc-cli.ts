@@ -18,7 +18,7 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
         sessionId: p.sessionId,
         targetSessionId: null,
         action: 'resume',
-        historyBlocks: [],
+        historyBlocks: p.blocks,
         pendingMessage: null,
         step: { step: 'posting' },
       }
@@ -36,11 +36,16 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
         const panel: PanelState = {
           phase: 'nobody',
           sessionId: p.sessionId,
-          sub: { sub: 'ready', blocks: [] },
+          sub: { sub: 'ready', blocks: p.blocks },
         }
         return [{ ...store, panel }, [{ cmd: 'CLOSE_TERMINAL_WS' }]]
       }
       return [store, []]
+    }
+
+    case 'HISTORY_OK': {
+      // History may arrive after cc_cli transition (race: FETCH_HISTORY vs LIVE_STATUS)
+      return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
     }
 
     default:

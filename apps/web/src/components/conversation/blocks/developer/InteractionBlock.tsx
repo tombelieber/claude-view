@@ -10,12 +10,41 @@ import { ElicitationCard } from '../shared/ElicitationCard'
 import { PermissionCard } from '../shared/PermissionCard'
 import { PlanApprovalCard } from '../shared/PlanApprovalCard'
 import { useInteractionHandlers } from '../shared/use-interaction-handlers'
+import { EventCard } from './EventCard'
+import { useJsonMode } from './json-mode-context'
 
 interface InteractionBlockProps {
   block: InteractionBlockType
 }
 
+const VARIANT_CONFIG: Record<
+  string,
+  { chip: string; chipColor: string; dot: 'purple' | 'blue' | 'amber' }
+> = {
+  permission: {
+    chip: 'Permission',
+    chipColor: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
+    dot: 'amber',
+  },
+  question: {
+    chip: 'Question',
+    chipColor: 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
+    dot: 'amber',
+  },
+  plan: {
+    chip: 'Plan',
+    chipColor: 'bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300',
+    dot: 'purple',
+  },
+  elicitation: {
+    chip: 'Elicitation',
+    chipColor: 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300',
+    dot: 'blue',
+  },
+}
+
 export function DevInteractionBlock({ block }: InteractionBlockProps) {
+  const globalJsonMode = useJsonMode()
   const {
     localResponse,
     isPending,
@@ -27,6 +56,23 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
   } = useInteractionHandlers(block.requestId)
 
   const responded = block.resolved || localResponse !== null
+  const config = VARIANT_CONFIG[block.variant] ?? {
+    chip: block.variant,
+    chipColor: '',
+    dot: 'blue' as const,
+  }
+
+  if (globalJsonMode) {
+    return (
+      <EventCard
+        dot={config.dot}
+        chip={config.chip}
+        chipColor={config.chipColor}
+        label={block.requestId}
+        rawData={block}
+      />
+    )
+  }
 
   switch (block.variant) {
     case 'permission': {

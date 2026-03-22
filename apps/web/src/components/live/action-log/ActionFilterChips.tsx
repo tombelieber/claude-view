@@ -1,7 +1,7 @@
-import { cn } from '../../../lib/utils'
+import { type ChipDefinition, FilterChips } from './FilterChips'
 import type { ActionCategory } from './types'
 
-const CATEGORIES: { id: ActionCategory | 'all'; label: string; color: string }[] = [
+const ACTION_CATEGORIES: ChipDefinition<ActionCategory>[] = [
   { id: 'all', label: 'All', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
   { id: 'builtin', label: 'Builtin', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
   { id: 'mcp', label: 'MCP', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
@@ -25,37 +25,6 @@ interface ActionFilterChipsProps {
   onFilterChange: (category: ActionCategory | 'all') => void
 }
 
-export function ActionFilterChips({
-  counts,
-  activeFilter,
-  onFilterChange,
-}: ActionFilterChipsProps) {
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-
-  return (
-    <div className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto flex-shrink-0">
-      {CATEGORIES.map((cat) => {
-        const count = cat.id === 'all' ? total : (counts[cat.id] ?? 0)
-        const isActive =
-          activeFilter === 'all'
-            ? cat.id === 'all'
-            : cat.id !== 'all' && activeFilter.includes(cat.id)
-        return (
-          <button
-            key={cat.id}
-            onClick={() => onFilterChange(cat.id)}
-            className={cn(
-              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border transition-colors cursor-pointer whitespace-nowrap',
-              isActive
-                ? cat.color
-                : 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-600',
-            )}
-          >
-            {cat.label}
-            {count > 0 && <span className="font-mono tabular-nums">{count}</span>}
-          </button>
-        )
-      })}
-    </div>
-  )
+export function ActionFilterChips(props: ActionFilterChipsProps) {
+  return <FilterChips categories={ACTION_CATEGORIES} {...props} />
 }

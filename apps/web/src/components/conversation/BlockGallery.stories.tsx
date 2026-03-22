@@ -1,14 +1,12 @@
 /**
  * Gallery — THE single source of truth for all conversation UI.
  * Renders ALL 7 block types × ALL variants in one scrollable view,
- * PLUS the RichPane + ActionLog pipelines for completeness.
+ * PLUS the RichPane pipeline for completeness.
  *
  * Display modes:
  *   1. Chat       — clean bubble UI for end users
- *   2. Developer  — rich detail cards (ToolCard, TurnDurationCard, CompactBoundaryCard, CategoryFilterBar)
- *   3. JSON       — raw JSON dump of every block
- *   4. RichPane   — Live Monitor terminal view (RichMessage[] pipeline)
- *   5. ActionLog  — Live Monitor action log tab
+ *   2. Developer  — rich detail cards (use { } toggle for JSON mode)
+ *   3. RichPane   — Live Monitor terminal view (RichMessage[] pipeline)
  */
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { Meta, StoryObj } from '@storybook/react-vite'
@@ -29,6 +27,9 @@ import {
   devTurnBoundaryBlocks,
   devUserBlocks,
 } from '../../stories/fixtures-developer'
+import type { RichMessage } from '../live/RichPane'
+import { RichPane } from '../live/RichPane'
+import { ActionLogTab } from '../live/action-log/ActionLogTab'
 import { ConversationThread } from './ConversationThread'
 import { chatRegistry } from './blocks/chat/registry'
 import { developerRegistry } from './blocks/developer/registry'
@@ -132,30 +133,6 @@ const devEnrichedBlocks: ConversationBlock[] = [
   devTurnBoundaryBlocks.withPermissionDenials as ConversationBlock,
 ]
 
-// ── JSON renderer — raw block dump ──────────────────────────────────────────
-
-function JsonBlockRenderer({ block }: { block: ConversationBlock }) {
-  return (
-    <pre className="text-[11px] font-mono bg-gray-900 text-green-400 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
-      {JSON.stringify(
-        block,
-        (_key, value) => (typeof value === 'bigint' ? Number(value) : value),
-        2,
-      )}
-    </pre>
-  )
-}
-
-const jsonRegistry: BlockRenderers = {
-  user: JsonBlockRenderer,
-  assistant: JsonBlockRenderer,
-  interaction: JsonBlockRenderer,
-  turn_boundary: JsonBlockRenderer,
-  notice: JsonBlockRenderer,
-  system: JsonBlockRenderer,
-  progress: JsonBlockRenderer,
-}
-
 // ── Gallery layout ──────────────────────────────────────────────────────────
 
 function BlockGallery({
@@ -164,12 +141,16 @@ function BlockGallery({
   compact,
   title,
   filterBar,
+  defaultJsonMode,
+  actionLogMessages,
 }: {
   blocks: ConversationBlock[]
   renderers: BlockRenderers
   compact?: boolean
   title?: string
   filterBar?: boolean
+  defaultJsonMode?: boolean
+  actionLogMessages?: RichMessage[]
 }) {
   const groups: { type: string; blocks: ConversationBlock[] }[] = []
   let current: { type: string; blocks: ConversationBlock[] } | null = null
@@ -205,68 +186,31 @@ function BlockGallery({
             renderers={renderers}
             compact={compact}
             filterBar={filterBar}
+            defaultJsonMode={defaultJsonMode}
           />
         </section>
       ))}
+
+      {/* ActionLog — merged from Live Monitor pipeline */}
+      {actionLogMessages && actionLogMessages.length > 0 && (
+        <section>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3 border-b border-gray-200 dark:border-gray-700 pb-1">
+            action_log ({actionLogMessages.length} messages)
+          </h2>
+          <div style={{ height: 500 }}>
+            <ActionLogTab messages={actionLogMessages} bufferDone={true} />
+          </div>
+        </section>
+      )}
     </div>
   )
 }
 
-// ── Meta ─────────────────────────────────────────────────────────────────────
-
-const meta = {
-  title: 'Gallery',
-  component: BlockGallery,
-  decorators: [withChatContext],
-  parameters: { layout: 'fullscreen' },
-} satisfies Meta<typeof BlockGallery>
-
-export default meta
-type Story = StoryObj<typeof meta>
-
-/** 1. Chat mode — clean bubble UI for end users. */
-export const Chat: Story = {
-  args: { blocks: allBlocks, renderers: chatRegistry, title: 'Chat Mode' },
-}
-
-/** 2. Developer Rich — ALL rich detail cards with CategoryFilterBar. */
-export const DeveloperRich: Story = {
-  args: {
-    blocks: allBlocks,
-    renderers: developerRegistry,
-    title: 'Developer — Rich',
-    filterBar: true,
-  },
-}
-
-/** 2b. Developer Rich + rawJson — extra detail panels visible. */
-export const DeveloperRichWithRawJson: Story = {
-  args: {
-    blocks: [...allBlocks, ...devEnrichedBlocks],
-    renderers: developerRegistry,
-    title: 'Developer — Rich + rawJson',
-    filterBar: true,
-  },
-}
-
-/** 3. Developer JSON — raw JSON dump of every block. */
-export const DeveloperJSON: Story = {
-  args: { blocks: allBlocks, renderers: jsonRegistry, title: 'Developer — JSON' },
-}
-
-/** Compact — used in Live Monitor side panel. */
-export const Compact: Story = {
-  args: { blocks: allBlocks, renderers: chatRegistry, compact: true, title: 'Compact' },
-}
-
-// ── RichPane + ActionLog Pipeline (RichMessage[]) ───────────────────────────
+// ── RichMessage fixtures (Live Monitor pipeline) ─────────────────────────────
 //
-// These use the SEPARATE RichMessage pipeline (not ConversationBlock).
-// Included here so the Gallery is THE single view for ALL conversation UI.
-
-import type { RichMessage } from '../live/RichPane'
-import { RichPane } from '../live/RichPane'
-import { ActionLogTab } from '../live/action-log/ActionLogTab'
+// RichMessage[] is the Live Monitor's streaming pipeline (separate from ConversationBlock).
+// ActionLog is merged into DeveloperRich/DeveloperRichWithRawJson;
+// RichPaneView remains standalone as it's a different rendering mode.
 
 const NOW_SECS = Math.floor(Date.now() / 1000)
 
@@ -442,6 +386,51 @@ const richPaneMessages: RichMessage[] = [
   },
 ]
 
+// ── Meta ─────────────────────────────────────────────────────────────────────
+
+const meta = {
+  title: 'Gallery',
+  component: BlockGallery,
+  decorators: [withChatContext],
+  parameters: { layout: 'fullscreen' },
+} satisfies Meta<typeof BlockGallery>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+/** 1. Chat mode — clean bubble UI for end users. */
+export const Chat: Story = {
+  args: { blocks: allBlocks, renderers: chatRegistry, title: 'Chat Mode' },
+}
+
+/** 2. Developer Rich — ALL rich detail cards + ActionLog (all action categories). */
+export const DeveloperRich: Story = {
+  args: {
+    blocks: allBlocks,
+    renderers: developerRegistry,
+    title: 'Developer — Rich',
+    filterBar: true,
+    actionLogMessages: richPaneMessages,
+  },
+}
+
+/** 2b. Developer Rich + JSON mode on — all cards show raw JSON by default. */
+export const DeveloperRichWithRawJson: Story = {
+  args: {
+    blocks: [...allBlocks, ...devEnrichedBlocks],
+    renderers: developerRegistry,
+    title: 'Developer — JSON Mode',
+    filterBar: true,
+    defaultJsonMode: true,
+    actionLogMessages: richPaneMessages,
+  },
+}
+
+/** Compact — used in Live Monitor side panel. */
+export const Compact: Story = {
+  args: { blocks: allBlocks, renderers: chatRegistry, compact: true, title: 'Compact' },
+}
+
 /** 4. RichPane — Live Monitor terminal view (all RichMessage types). */
 export const RichPaneView: Story = {
   args: { blocks: [], renderers: {}, title: 'RichPane — Live Monitor' },
@@ -461,25 +450,6 @@ export const RichPaneView: Story = {
           verboseMode={true}
           bufferDone={true}
         />
-      </div>
-    </div>
-  ),
-}
-
-/** 5. ActionLog — Live Monitor action log tab (all categories). */
-export const ActionLogView: Story = {
-  args: { blocks: [], renderers: {}, title: 'ActionLog — Live Monitor' },
-  render: () => (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-700 pb-3 mb-6">
-        <span className="font-bold text-sm text-gray-700 dark:text-gray-300">
-          ActionLog — Live Monitor
-        </span>
-        <span>{richPaneMessages.length} messages</span>
-        <span>All action categories</span>
-      </div>
-      <div style={{ height: 500 }}>
-        <ActionLogTab messages={richPaneMessages} bufferDone={true} />
       </div>
     </div>
   ),

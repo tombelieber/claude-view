@@ -39,10 +39,17 @@ describe('deriveBlocks', () => {
     ).toEqual(mockBlocks)
   })
 
-  test('cc_cli → []', () => {
+  test('cc_cli → blocks (history preserved while watching)', () => {
     expect(
-      deriveBlocks(makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'watching' } })),
-    ).toEqual([])
+      deriveBlocks(
+        makeStore({
+          phase: 'cc_cli',
+          sessionId: 's1',
+          blocks: mockBlocks,
+          sub: { sub: 'watching' },
+        }),
+      ),
+    ).toEqual(mockBlocks)
   })
 
   test('acquiring → historyBlocks for display continuity', () => {
@@ -176,14 +183,21 @@ describe('deriveCanSend', () => {
 
   test('cc_cli.watching → true', () => {
     expect(
-      deriveCanSend(makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'watching' } })),
+      deriveCanSend(
+        makeStore({ phase: 'cc_cli', sessionId: 's1', blocks: [], sub: { sub: 'watching' } }),
+      ),
     ).toBe(true)
   })
 
   test('cc_cli.takeover_killing → false', () => {
     expect(
       deriveCanSend(
-        makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'takeover_killing' } }),
+        makeStore({
+          phase: 'cc_cli',
+          sessionId: 's1',
+          blocks: [],
+          sub: { sub: 'takeover_killing' },
+        }),
       ),
     ).toBe(false)
   })
@@ -357,7 +371,9 @@ describe('deriveCanFork', () => {
 
   test('cc_cli → false', () => {
     expect(
-      deriveCanFork(makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'watching' } })),
+      deriveCanFork(
+        makeStore({ phase: 'cc_cli', sessionId: 's1', blocks: [], sub: { sub: 'watching' } }),
+      ),
     ).toBe(false)
   })
 
@@ -422,7 +438,9 @@ describe('deriveInputBar', () => {
 
   test('cc_cli → controlled_elsewhere', () => {
     expect(
-      deriveInputBar(makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'watching' } })),
+      deriveInputBar(
+        makeStore({ phase: 'cc_cli', sessionId: 's1', blocks: [], sub: { sub: 'watching' } }),
+      ),
     ).toBe('controlled_elsewhere')
   })
 
@@ -570,7 +588,9 @@ describe('deriveViewMode', () => {
 
   test('cc_cli → watching', () => {
     expect(
-      deriveViewMode(makeStore({ phase: 'cc_cli', sessionId: 's1', sub: { sub: 'watching' } })),
+      deriveViewMode(
+        makeStore({ phase: 'cc_cli', sessionId: 's1', blocks: [], sub: { sub: 'watching' } }),
+      ),
     ).toBe('watching')
   })
 

@@ -21,10 +21,10 @@ const VARIANT_COLORS: Record<
   { border: string; bg: string; headerBg: string; text: string }
 > = {
   question: {
-    border: 'border-purple-200/50 dark:border-purple-500/20',
-    bg: 'bg-purple-50/30 dark:bg-purple-900/10',
-    headerBg: 'bg-purple-100/50 dark:bg-purple-900/20',
-    text: 'text-purple-600 dark:text-purple-400',
+    border: 'border-amber-200/50 dark:border-amber-500/20',
+    bg: 'bg-amber-50/30 dark:bg-amber-900/10',
+    headerBg: 'bg-amber-100/50 dark:bg-amber-900/20',
+    text: 'text-amber-600 dark:text-amber-400',
   },
   permission: {
     border: 'border-amber-200/50 dark:border-amber-500/20',

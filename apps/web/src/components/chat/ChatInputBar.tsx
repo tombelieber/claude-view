@@ -43,7 +43,7 @@ const STATE_CONFIG: Record<InputBarState, StateConfig> = {
     disabled: false,
     muted: false,
   },
-  streaming: { placeholder: 'Claude is responding...', disabled: true, muted: false },
+  streaming: { placeholder: 'Type to queue a follow-up...', disabled: false, muted: false },
   waiting_permission: {
     placeholder: 'Waiting for permission response...',
     disabled: true,
@@ -369,27 +369,38 @@ export function ChatInputBar({
           </div>
 
           {/* Send / Stop button */}
-          <button
-            type="button"
-            onClick={isStreaming ? onStop : send}
-            disabled={isStreaming ? !onStop : !canSend}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-              isStreaming
-                ? 'bg-red-500 hover:bg-red-600 text-white disabled:opacity-50'
-                : canSend
+          {/* During streaming: show Send if user typed text (queues message), Stop otherwise */}
+          {isStreaming && !canSend ? (
+            <button
+              type="button"
+              onClick={onStop}
+              disabled={!onStop}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                'bg-red-500 hover:bg-red-600 text-white disabled:opacity-50',
+              )}
+              aria-label="Stop generation"
+            >
+              <Square className="w-4 h-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={send}
+              disabled={!canSend}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                canSend
                   ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed',
-            )}
-            aria-label={isStreaming ? 'Stop generation' : 'Send message'}
-          >
-            {isStreaming ? (
-              <Square className="w-4 h-4" aria-hidden="true" />
-            ) : (
+              )}
+              aria-label="Send message"
+            >
               <ArrowUp className="w-4 h-4" aria-hidden="true" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
       </div>
     </div>
