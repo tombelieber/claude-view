@@ -29,7 +29,7 @@ export function handleRecovering(store: ChatPanelStore, event: RawEvent): Transi
         step: { step: 'posting' },
       }
       return [
-        { panel, outbox, meta: store.meta },
+        { panel, outbox, meta: store.meta, projectPath: store.projectPath },
         [
           {
             cmd: 'POST_RESUME',
@@ -37,6 +37,7 @@ export function handleRecovering(store: ChatPanelStore, event: RawEvent): Transi
             message: event.text,
             model: event.model,
             permissionMode: event.permissionMode,
+            projectPath: store.projectPath ?? undefined,
           },
         ],
       ]
@@ -50,6 +51,7 @@ export function handleRecovering(store: ChatPanelStore, event: RawEvent): Transi
       return [store, []]
 
     case 'LIVE_STATUS_CHANGED': {
+      const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
       if (event.status === 'cc_owned') {
         const panel: PanelState = {
           phase: 'cc_cli',
@@ -57,9 +59,9 @@ export function handleRecovering(store: ChatPanelStore, event: RawEvent): Transi
           blocks: p.blocks,
           sub: { sub: 'watching' },
         }
-        return [{ ...store, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
+        return [{ ...updatedStore, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
       }
-      return [store, []]
+      return [updatedStore, []]
     }
 
     default:

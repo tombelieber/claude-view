@@ -54,7 +54,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         step: { step: 'posting' },
       }
       return [
-        { panel, outbox, meta: store.meta },
+        { panel, outbox, meta: store.meta, projectPath: store.projectPath },
         [
           {
             cmd: 'POST_RESUME',
@@ -62,6 +62,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
             message: event.text,
             model: event.model,
             permissionMode: event.permissionMode,
+            projectPath: store.projectPath ?? undefined,
           },
         ],
       ]
@@ -80,11 +81,20 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
       }
       return [
         { ...store, panel },
-        [{ cmd: 'POST_FORK', sessionId: p.sessionId, message: event.message }],
+        [
+          {
+            cmd: 'POST_FORK',
+            sessionId: p.sessionId,
+            message: event.message,
+            projectPath: store.projectPath ?? undefined,
+          },
+        ],
       ]
     }
 
     case 'LIVE_STATUS_CHANGED': {
+      // Update projectPath from Live Monitor data whenever available
+      const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
       if (event.status === 'cc_owned') {
         const blocks = p.sub.sub === 'ready' ? p.sub.blocks : []
         const panel: PanelState = {
@@ -93,9 +103,9 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
           blocks,
           sub: { sub: 'watching' },
         }
-        return [{ ...store, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
+        return [{ ...updatedStore, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
       }
-      return [store, []]
+      return [updatedStore, []]
     }
 
     default:
