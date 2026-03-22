@@ -45,7 +45,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   )
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full overflow-hidden">
+    <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">
       <ChatSession
         sessionId={sessionId || undefined}
         liveStatus={liveStatus ?? 'inactive'}

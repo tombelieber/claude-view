@@ -181,7 +181,7 @@ export function ChatPageV2() {
   return (
     <div className="flex h-full overflow-hidden">
       <SessionSidebar liveSessions={liveSessions.sessions} onNewChat={openNewChat} />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <ChatDockLayout initialLayout={savedLayout} onReady={handleDockReady} />
       </div>
     </div>
