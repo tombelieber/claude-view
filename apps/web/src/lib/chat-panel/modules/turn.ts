@@ -28,6 +28,20 @@ export function turnTransition(state: TurnState, event: TurnEvent): TurnState {
           return state
       }
 
+    case 'pending':
+      switch (event.type) {
+        case 'STREAM_DELTA':
+        case 'BLOCKS_UPDATE':
+          return { turn: 'streaming' }
+        case 'TURN_COMPLETE':
+        case 'TURN_ERROR':
+          return { turn: 'idle' }
+        case 'PERMISSION_REQUEST':
+          return { turn: 'awaiting', kind: event.kind, requestId: event.requestId }
+        default:
+          return state
+      }
+
     case 'streaming':
       switch (event.type) {
         case 'TURN_COMPLETE':
