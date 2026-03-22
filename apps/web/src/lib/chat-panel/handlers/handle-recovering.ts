@@ -36,6 +36,7 @@ export function handleRecovering(store: ChatPanelStore, event: RawEvent): Transi
           projectPath: store.projectPath,
           lastModel: event.model ?? store.lastModel,
           lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+          historyPagination: store.historyPagination,
         },
         [
           {

@@ -1,6 +1,14 @@
 import { nobodyTransition } from '../modules/nobody'
 import { outboxTransition } from '../modules/outbox'
-import type { ChatPanelStore, PanelState, RawEvent, TransitionResult } from '../types'
+import type {
+  ChatPanelStore,
+  HistoryPagination,
+  PanelState,
+  RawEvent,
+  TransitionResult,
+} from '../types'
+
+const PAGE_SIZE = 100
 
 export function handleNobody(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -10,6 +18,11 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
     case 'HISTORY_OK':
     case 'HISTORY_FAILED': {
       const sub = nobodyTransition(p.sub, event)
+      // Store pagination metadata from HISTORY_OK
+      let pagination: HistoryPagination | null = store.historyPagination
+      if (event.type === 'HISTORY_OK' && event.total != null && event.offset != null) {
+        pagination = { total: event.total, offset: event.offset, fetchingOlder: false }
+      }
       // If LIVE_STATUS_CHANGED(cc_owned) arrived while loading, now that
       // history is ready, complete the deferred transition to cc_cli.
       if (sub.sub === 'ready' && p.sub.sub === 'loading' && p.sub.pendingLive === 'cc_owned') {
@@ -19,9 +32,39 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
           blocks: sub.blocks,
           sub: { sub: 'watching' },
         }
-        return [{ ...store, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
+        return [
+          { ...store, panel, historyPagination: pagination },
+          [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }],
+        ]
       }
-      return [{ ...store, panel: { ...p, sub } }, []]
+      return [{ ...store, panel: { ...p, sub }, historyPagination: pagination }, []]
+    }
+
+    case 'LOAD_OLDER_HISTORY': {
+      if (p.sub.sub !== 'ready') return [store, []]
+      const pg = store.historyPagination
+      if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
+      const newOffset = Math.max(0, pg.offset - PAGE_SIZE)
+      const limit = pg.offset - newOffset
+      return [
+        { ...store, historyPagination: { ...pg, fetchingOlder: true } },
+        [{ cmd: 'FETCH_OLDER_HISTORY', sessionId: p.sessionId, offset: newOffset, limit }],
+      ]
+    }
+
+    case 'OLDER_HISTORY_OK': {
+      if (p.sub.sub !== 'ready') return [store, []]
+      const blocks = [...event.blocks, ...p.sub.blocks]
+      return [
+        {
+          ...store,
+          panel: { ...p, sub: { sub: 'ready', blocks } },
+          historyPagination: store.historyPagination
+            ? { ...store.historyPagination, offset: event.offset, fetchingOlder: false }
+            : null,
+        },
+        [],
+      ]
     }
 
     case 'SIDECAR_NO_SESSION':
@@ -72,6 +115,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
           projectPath: store.projectPath,
           lastModel: event.model ?? store.lastModel,
           lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+          historyPagination: store.historyPagination,
         },
         [
           {

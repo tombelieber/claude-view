@@ -184,6 +184,51 @@ export function deriveConnectionStatus(store: ChatPanelStore): ConnectionStatusI
   }
 }
 
+export function deriveHistoryPagination(store: ChatPanelStore): {
+  hasOlderMessages: boolean
+  isFetchingOlder: boolean
+} {
+  const pg = store.historyPagination
+  if (!pg) return { hasOlderMessages: false, isFetchingOlder: false }
+  return {
+    hasOlderMessages: pg.offset > 0,
+    isFetchingOlder: pg.fetchingOlder,
+  }
+}
+
+// ─── Thinking state (spinner verbs indicator) ─────────────
+export type ThinkingPhase = 'loading' | 'connecting' | 'thinking'
+
+/**
+ * Derives when the inline thinking indicator should show.
+ * Covers the gap: session loading / acquiring / agent thinking before first output.
+ *
+ *  - 'loading'    — fetching session history (nobody.loading)
+ *  - 'connecting' — acquiring phase (POST / WS connect / WS init)
+ *  - 'thinking'   — sdk_owned streaming with no text output yet
+ *
+ * NOTE: We intentionally do NOT check outbox entries here. Outbox entries
+ * persist with status 'sent' even after TURN_COMPLETE, which would keep
+ * the indicator visible after the response is fully rendered. The ~0.5s gap
+ * between send (sdk_owned.idle) and first STREAM_DELTA is acceptable.
+ */
+export function deriveThinkingState(store: ChatPanelStore): ThinkingPhase | null {
+  const { panel } = store
+
+  // History loading
+  if (panel.phase === 'nobody' && panel.sub.sub === 'loading') return 'loading'
+
+  // Acquiring (creating / resuming / forking session)
+  if (panel.phase === 'acquiring') return 'connecting'
+
+  // SDK owned, streaming turn, but agent hasn't produced text yet
+  if (panel.phase === 'sdk_owned' && panel.turn.turn === 'streaming' && !panel.pendingText) {
+    return 'thinking'
+  }
+
+  return null
+}
+
 export function deriveViewMode(store: ChatPanelStore): ViewMode {
   const { panel } = store
   switch (panel.phase) {

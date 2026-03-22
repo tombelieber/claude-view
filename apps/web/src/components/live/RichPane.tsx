@@ -636,10 +636,7 @@ function SystemMessageCard({
   )
 }
 
-function ProgressMessageCard({
-  message,
-  verboseMode,
-}: { message: RichMessage; verboseMode?: boolean }) {
+function ProgressMessageCard({ message }: { message: RichMessage; verboseMode?: boolean }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const m = (message.metadata ?? {}) as Record<string, any>
   const subtype = m.type
@@ -652,52 +649,45 @@ function ProgressMessageCard({
       case 'agent_progress':
         return (
           <AgentProgressCard
-            agentId={m.agentId}
-            prompt={m.prompt}
-            model={m.model}
-            tokens={m.tokens}
-            normalizedMessages={m.normalizedMessages}
-            indent={m.indent}
-            verboseMode={verboseMode}
+            agentId={m.agentId ?? ''}
+            prompt={m.prompt ?? ''}
+            message={m.message}
           />
         )
-      case 'bash_progress':
+      case 'bash_progress': {
+        const output = m.output ?? ''
+        const lines = output ? output.split('\n').length : 0
         return (
           <BashProgressCard
-            command={m.command}
-            output={m.output}
-            exitCode={m.exitCode}
-            duration={m.duration}
+            output={output}
+            fullOutput={output}
+            elapsedTimeSeconds={m.duration ? m.duration / 1000 : 0}
+            totalLines={lines}
+            totalBytes={output.length}
             blockId={`bash-${message.ts ?? 0}`}
           />
         )
+      }
       case 'hook_progress':
         return (
           <HookProgressCard
-            hookEvent={m.hookEvent}
-            hookName={m.hookName}
-            command={m.command}
-            output={m.output}
-            verboseMode={verboseMode}
+            hookEvent={m.hookEvent ?? ''}
+            hookName={m.hookName ?? ''}
+            command={m.command ?? ''}
+            statusMessage={m.statusMessage ?? ''}
           />
         )
       case 'mcp_progress':
         return (
           <McpProgressCard
-            server={m.server}
-            method={m.method}
-            params={m.params}
-            result={m.result}
-            verboseMode={verboseMode}
+            serverName={m.server ?? m.serverName ?? ''}
+            toolName={m.method ?? m.toolName ?? ''}
+            status={m.status ?? 'running'}
           />
         )
       case 'waiting_for_task':
         return (
-          <TaskQueueCard
-            waitDuration={m.waitDuration}
-            position={m.position}
-            queueLength={m.queueLength}
-          />
+          <TaskQueueCard taskDescription={m.taskDescription ?? ''} taskType={m.taskType ?? ''} />
         )
       case 'hook_event':
         return m._hookEvent ? <HookEventRow event={m._hookEvent} /> : null

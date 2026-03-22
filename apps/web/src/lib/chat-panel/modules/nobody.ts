@@ -2,7 +2,7 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { NobodySub } from '../types'
 
 export type NobodyEvent =
-  | { type: 'HISTORY_OK'; blocks: ConversationBlock[] }
+  | { type: 'HISTORY_OK'; blocks: ConversationBlock[]; total?: number; offset?: number }
   | { type: 'HISTORY_FAILED' }
 
 export function nobodyTransition(s: NobodySub, e: NobodyEvent): NobodySub {

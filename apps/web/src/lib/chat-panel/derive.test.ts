@@ -23,6 +23,7 @@ function makeStore(panel: PanelState, overrides?: Partial<ChatPanelStore>): Chat
     projectPath: null,
     lastModel: null,
     lastPermissionMode: null,
+    historyPagination: null,
     ...overrides,
   }
 }

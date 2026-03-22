@@ -297,54 +297,57 @@ function renderSystemSubtype(metadata: Record<string, any>): React.ReactNode | n
   }
 }
 
+/**
+ * Map share-viewer JSONL metadata (legacy field names) → schema-faithful card props.
+ * The share viewer's event format predates the progress block schema, so field names differ.
+ */
 function renderProgressSubtype(metadata: Record<string, any>): React.ReactNode | null {
   const subtype = metadata?.type
   switch (subtype) {
     case 'agent_progress':
       return (
         <AgentProgressCard
-          agentId={metadata.agentId}
-          prompt={metadata.prompt}
-          model={metadata.model}
-          tokens={metadata.tokens}
-          normalizedMessages={metadata.normalizedMessages}
-          indent={metadata.indent}
+          agentId={metadata.agentId ?? ''}
+          prompt={metadata.prompt ?? ''}
+          message={metadata.message}
         />
       )
-    case 'bash_progress':
+    case 'bash_progress': {
+      const output = metadata.output ?? ''
+      const lines = output ? output.split('\n').length : 0
       return (
         <BashProgressCard
-          command={metadata.command}
-          output={metadata.output}
-          exitCode={metadata.exitCode}
-          duration={metadata.duration}
-          blockId={`bash-${metadata.command?.slice(0, 40) ?? ''}`}
+          output={output}
+          fullOutput={output}
+          elapsedTimeSeconds={metadata.duration ? metadata.duration / 1000 : 0}
+          totalLines={lines}
+          totalBytes={output.length}
+          blockId={`bash-${(metadata.command ?? '').slice(0, 40)}`}
         />
       )
+    }
     case 'hook_progress':
       return (
         <HookProgressCard
-          hookEvent={metadata.hookEvent}
-          hookName={metadata.hookName}
-          command={metadata.command}
-          output={metadata.output}
+          hookEvent={metadata.hookEvent ?? ''}
+          hookName={metadata.hookName ?? ''}
+          command={metadata.command ?? ''}
+          statusMessage={metadata.statusMessage ?? ''}
         />
       )
     case 'mcp_progress':
       return (
         <McpProgressCard
-          server={metadata.server}
-          method={metadata.method}
-          params={metadata.params}
-          result={metadata.result}
+          serverName={metadata.server ?? metadata.serverName ?? ''}
+          toolName={metadata.method ?? metadata.toolName ?? ''}
+          status={metadata.status ?? 'running'}
         />
       )
     case 'waiting_for_task':
       return (
         <TaskQueueCard
-          waitDuration={metadata.waitDuration}
-          position={metadata.position}
-          queueLength={metadata.queueLength}
+          taskDescription={metadata.taskDescription ?? ''}
+          taskType={metadata.taskType ?? ''}
         />
       )
     case 'hook_event':

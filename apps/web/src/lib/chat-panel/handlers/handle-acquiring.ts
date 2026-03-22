@@ -158,6 +158,7 @@ function exitAcquiring(
         projectPath: store.projectPath,
         lastModel: store.lastModel,
         lastPermissionMode: store.lastPermissionMode,
+        historyPagination: store.historyPagination,
       },
       cmds,
     ]

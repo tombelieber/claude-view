@@ -37,18 +37,67 @@ export function useCommandExecutor(
   function executeCommand(cmd: Command) {
     switch (cmd.cmd) {
       case 'FETCH_HISTORY': {
-        const params = new URLSearchParams({
-          limit: String(cmd.limit ?? 100),
-          offset: String(cmd.offset ?? 0),
-          format: 'block',
-        })
-        fetch(`/api/sessions/${encodeURIComponent(cmd.sessionId)}/messages?${params}`)
+        const limit = cmd.limit ?? 100
+        // Probe total first, then fetch the LAST page (most recent messages).
+        // Without this, offset=0 returns the oldest messages — wrong for chat UI.
+        fetch(
+          `/api/sessions/${encodeURIComponent(cmd.sessionId)}/messages?limit=1&offset=0&format=block`,
+        )
           .then(async (r) => {
             if (!r.ok) throw new Error(`Failed to fetch history (${r.status})`)
             return r.json()
           })
-          .then((data) => dispatch({ type: 'HISTORY_OK', blocks: data.blocks ?? [] }))
+          .then((probe) => {
+            const total = probe.total ?? 0
+            if (total === 0) {
+              dispatch({ type: 'HISTORY_OK', blocks: [], total: 0, offset: 0 })
+              return
+            }
+            const tailOffset = Math.max(0, total - limit)
+            const params = new URLSearchParams({
+              limit: String(limit),
+              offset: String(tailOffset),
+              format: 'block',
+            })
+            return fetch(`/api/sessions/${encodeURIComponent(cmd.sessionId)}/messages?${params}`)
+              .then(async (r) => {
+                if (!r.ok) throw new Error(`Failed to fetch history (${r.status})`)
+                return r.json()
+              })
+              .then((data) =>
+                dispatch({
+                  type: 'HISTORY_OK',
+                  blocks: data.blocks ?? [],
+                  total,
+                  offset: tailOffset,
+                }),
+              )
+          })
           .catch((err) => dispatch({ type: 'HISTORY_FAILED', error: err.message }))
+        break
+      }
+      case 'FETCH_OLDER_HISTORY': {
+        const params = new URLSearchParams({
+          limit: String(cmd.limit),
+          offset: String(cmd.offset),
+          format: 'block',
+        })
+        fetch(`/api/sessions/${encodeURIComponent(cmd.sessionId)}/messages?${params}`)
+          .then(async (r) => {
+            if (!r.ok) throw new Error(`Failed to fetch older history (${r.status})`)
+            return r.json()
+          })
+          .then((data) =>
+            dispatch({
+              type: 'OLDER_HISTORY_OK',
+              blocks: data.blocks ?? [],
+              offset: cmd.offset,
+            }),
+          )
+          .catch(() => {
+            // On error, reset fetchingOlder flag by dispatching a no-op older history
+            dispatch({ type: 'OLDER_HISTORY_OK', blocks: [], offset: cmd.offset })
+          })
         break
       }
       case 'CHECK_SIDECAR_ACTIVE': {
