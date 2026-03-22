@@ -70,7 +70,7 @@ describe('coordinator', () => {
     expect(store.outbox.messages[0]).toMatchObject({
       localId: 'l1',
       text: 'hello',
-      status: 'queued',
+      status: 'sent',
     })
     expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'POST_RESUME' }))
   })
@@ -181,7 +181,7 @@ describe('coordinator', () => {
   // Scenario 7: CC CLI watching + takeover flow
   test('cc_cli.watching + TAKEOVER_CLI → killing → KILL_CLI_OK → acquiring', () => {
     const watchingStore: ChatPanelStore = {
-      panel: { phase: 'cc_cli', sessionId: 'abc', sub: { sub: 'watching' } },
+      panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
       outbox: { messages: [] },
       meta: null,
     }

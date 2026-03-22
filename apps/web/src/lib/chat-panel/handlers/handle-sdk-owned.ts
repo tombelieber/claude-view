@@ -1,8 +1,28 @@
+import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { connTransition } from '../modules/conn-health'
 import { metaTransition } from '../modules/meta'
 import { outboxTransition } from '../modules/outbox'
 import { turnTransition } from '../modules/turn'
 import type { ChatPanelStore, Command, RawEvent, TransitionResult } from '../types'
+
+/**
+ * Merge server blocks (from accumulator) with existing blocks (from FETCH_HISTORY).
+ * On resume, the sidecar accumulator starts fresh — it only has the current turn.
+ * History blocks (from FETCH_HISTORY) are preserved by keeping any block whose ID
+ * doesn't appear in the incoming set, then appending the incoming blocks.
+ *
+ * For new sessions: existing is empty → returns incoming unchanged.
+ * For reconnects: accumulator has everything → history blocks are all in incoming → preserved is empty.
+ */
+function mergeBlocks(
+  existing: ConversationBlock[],
+  incoming: ConversationBlock[],
+): ConversationBlock[] {
+  if (existing.length === 0) return incoming
+  const incomingIds = new Set(incoming.map((b) => b.id))
+  const preserved = existing.filter((b) => !incomingIds.has(b.id))
+  return [...preserved, ...incoming]
+}
 
 export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -21,7 +41,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
           ...store,
           panel: {
             ...p,
-            blocks: event.blocks,
+            blocks: mergeBlocks(p.blocks, event.blocks),
             turn: turnTransition(p.turn, { type: 'BLOCKS_UPDATE' }),
           },
         },
@@ -29,7 +49,16 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
       ]
 
     case 'BLOCKS_SNAPSHOT':
-      return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
+      return [{ ...store, panel: { ...p, blocks: mergeBlocks(p.blocks, event.blocks) } }, []]
+
+    // HISTORY_OK race: history API response arrives after we're already sdk_owned
+    // (SELECT_SESSION fired FETCH_HISTORY + CHECK_SIDECAR_ACTIVE in parallel)
+    // Only merge if we have no blocks yet (don't overwrite live blocks with stale history)
+    case 'HISTORY_OK':
+      if (p.blocks.length === 0) {
+        return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
+      }
+      return [store, []]
 
     case 'TURN_COMPLETE': {
       const turn = turnTransition(p.turn, { type: 'TURN_COMPLETE' })
@@ -38,7 +67,14 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
         totalInputTokens: event.totalInputTokens,
         contextWindowSize: event.contextWindowSize,
       })
-      return [{ ...store, panel: { ...p, turn, blocks: event.blocks, pendingText: '' }, meta }, []]
+      return [
+        {
+          ...store,
+          panel: { ...p, turn, blocks: mergeBlocks(p.blocks, event.blocks), pendingText: '' },
+          meta,
+        },
+        [],
+      ]
     }
 
     case 'TURN_ERROR': {
@@ -48,7 +84,14 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
         totalInputTokens: event.totalInputTokens,
         contextWindowSize: event.contextWindowSize,
       })
-      return [{ ...store, panel: { ...p, turn, blocks: event.blocks, pendingText: '' }, meta }, []]
+      return [
+        {
+          ...store,
+          panel: { ...p, turn, blocks: mergeBlocks(p.blocks, event.blocks), pendingText: '' },
+          meta,
+        },
+        [],
+      ]
     }
 
     case 'PERMISSION_REQUEST': {
@@ -83,7 +126,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
       })
       return [
         { ...store, outbox: sentOutbox },
-        [{ cmd: 'WS_SEND', message: { type: 'user_message', text: event.text } }],
+        [{ cmd: 'WS_SEND', message: { type: 'user_message', content: event.text } }],
       ]
     }
 

@@ -165,12 +165,18 @@ export function ChatSession({
 
   const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
 
-  // Send via FSM dispatch
+  // Send via FSM dispatch — pass model + permissionMode so create/resume use the right values
   const handleSend = useCallback(
     (text: string) => {
-      dispatch({ type: 'SEND_MESSAGE', text, localId: crypto.randomUUID() })
+      dispatch({
+        type: 'SEND_MESSAGE',
+        text,
+        localId: crypto.randomUUID(),
+        model: selectedModel,
+        permissionMode: permMode,
+      })
     },
-    [dispatch],
+    [dispatch, selectedModel, permMode],
   )
 
   const handleModeChangePermission = useCallback(
@@ -296,7 +302,11 @@ export function ChatSession({
                   dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
               }}
             >
-              <ConversationThread blocks={blocks} renderers={registry} />
+              <ConversationThread
+                blocks={blocks}
+                renderers={registry}
+                filterBar={displayMode !== 'chat'}
+              />
             </ConversationActionsProvider>
           </div>
         )}
@@ -343,7 +353,15 @@ export function ChatSession({
                 : undefined
             }
             modelOptions={modelOptions}
-            onModelSwitch={(newModel) => dispatch({ type: 'RESUME_WITH_OPTIONS', model: newModel })}
+            onModelSwitch={(newModel) => {
+              setSelectedModel(newModel)
+              try {
+                localStorage.setItem(MODEL_STORAGE_KEY, newModel)
+              } catch {
+                /* noop */
+              }
+              channel?.send({ type: 'set_model', model: newModel })
+            }}
             onPaletteModeChange={(newMode) =>
               dispatch({ type: 'RESUME_WITH_OPTIONS', permissionMode: newMode })
             }

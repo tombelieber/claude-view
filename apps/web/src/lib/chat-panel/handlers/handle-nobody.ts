@@ -31,10 +31,17 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
     }
 
     case 'SEND_MESSAGE': {
-      const outbox = outboxTransition(store.outbox, {
+      // Queue then immediately mark sent — POST_RESUME carries the message as initialMessage.
+      // Keeping it in outbox (as 'sent') preserves the optimistic UI block via reconcileOutbox.
+      // Status 'sent' prevents exitAcquiring from draining it again (only drains 'queued').
+      let outbox = outboxTransition(store.outbox, {
         type: 'QUEUE',
         localId: event.localId,
         text: event.text,
+      })
+      outbox = outboxTransition(outbox, {
+        type: 'MARK_SENT',
+        localId: event.localId,
       })
       const blocks = p.sub.sub === 'ready' ? p.sub.blocks : []
       const panel: PanelState = {
@@ -46,7 +53,18 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         pendingMessage: event.text,
         step: { step: 'posting' },
       }
-      return [{ panel, outbox, meta: store.meta }, [{ cmd: 'POST_RESUME', sessionId: p.sessionId }]]
+      return [
+        { panel, outbox, meta: store.meta },
+        [
+          {
+            cmd: 'POST_RESUME',
+            sessionId: p.sessionId,
+            message: event.text,
+            model: event.model,
+            permissionMode: event.permissionMode,
+          },
+        ],
+      ]
     }
 
     case 'FORK_SESSION': {
@@ -68,9 +86,11 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
 
     case 'LIVE_STATUS_CHANGED': {
       if (event.status === 'cc_owned') {
+        const blocks = p.sub.sub === 'ready' ? p.sub.blocks : []
         const panel: PanelState = {
           phase: 'cc_cli',
           sessionId: p.sessionId,
+          blocks,
           sub: { sub: 'watching' },
         }
         return [{ ...store, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
