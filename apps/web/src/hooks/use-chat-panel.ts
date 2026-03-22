@@ -49,6 +49,7 @@ export function useChatPanel(sessionId: string | undefined, projectPath?: string
   const connectionStatus = deriveConnectionStatus(store)
 
   // E-m3: Guard SELECT_SESSION re-dispatch
+  // biome-ignore lint/correctness/useExhaustiveDependencies: projectPath and store.panel.phase intentionally excluded — only re-dispatch on sessionId change
   useEffect(() => {
     if (sessionId) {
       if (
@@ -60,8 +61,6 @@ export function useChatPanel(sessionId: string | undefined, projectPath?: string
     } else {
       dispatch({ type: 'DESELECT' })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- store intentionally excluded
-    // biome-ignore lint/correctness/useExhaustiveDependencies: projectPath and store.panel.phase intentionally excluded — only re-dispatch on sessionId change
   }, [sessionId])
 
   return {
