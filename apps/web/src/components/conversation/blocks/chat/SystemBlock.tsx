@@ -6,6 +6,9 @@ import type {
 } from '@claude-view/shared/types/sidecar-protocol'
 import { Activity, Bell, Play } from 'lucide-react'
 
+/** Variants that ChatSystemBlock actually renders — used to filter items before Virtuoso. */
+export const CHAT_SYSTEM_VARIANTS = new Set(['task_started', 'task_progress', 'task_notification'])
+
 interface SystemBlockProps {
   block: SystemBlockType
 }
