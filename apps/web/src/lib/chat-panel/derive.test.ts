@@ -16,7 +16,15 @@ const mockBlocks: ConversationBlock[] = [
 ] as ConversationBlock[]
 
 function makeStore(panel: PanelState, overrides?: Partial<ChatPanelStore>): ChatPanelStore {
-  return { panel, outbox: emptyOutbox, meta: null, projectPath: null, ...overrides }
+  return {
+    panel,
+    outbox: emptyOutbox,
+    meta: null,
+    projectPath: null,
+    lastModel: null,
+    lastPermissionMode: null,
+    ...overrides,
+  }
 }
 
 // ─── deriveBlocks ──────────────────────────────────────────

@@ -68,7 +68,11 @@ export function useCommandExecutor(
               (s) => s.sessionId === cmd.sessionId && HEALTHY_STATES.has(s.state),
             )
             if (active) {
-              dispatch({ type: 'SIDECAR_HAS_SESSION', controlId: active.controlId })
+              dispatch({
+                type: 'SIDECAR_HAS_SESSION',
+                controlId: active.controlId,
+                sessionState: active.state,
+              })
             } else {
               dispatch({ type: 'SIDECAR_NO_SESSION' })
             }
@@ -85,6 +89,7 @@ export function useCommandExecutor(
             initialMessage: cmd.message,
             permissionMode: cmd.permissionMode,
             persistSession: cmd.persistSession,
+            projectPath: cmd.projectPath,
           }),
         })
           .then(async (r) => {

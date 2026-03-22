@@ -28,14 +28,21 @@ export function handleClosed(store: ChatPanelStore, event: RawEvent): Transition
         step: { step: 'posting' },
       }
       return [
-        { panel, outbox, meta: store.meta, projectPath: store.projectPath },
+        {
+          panel,
+          outbox,
+          meta: store.meta,
+          projectPath: store.projectPath,
+          lastModel: event.model ?? store.lastModel,
+          lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+        },
         [
           {
             cmd: 'POST_RESUME',
             sessionId: p.sessionId,
             message: event.text,
-            model: event.model,
-            permissionMode: event.permissionMode,
+            model: event.model ?? store.lastModel ?? undefined,
+            permissionMode: event.permissionMode ?? store.lastPermissionMode ?? undefined,
             projectPath: store.projectPath ?? undefined,
           },
         ],

@@ -156,6 +156,21 @@ export async function resumeControlSession(
     }
   }
 
+  // Fail fast: verify session exists in CLI session store before spawning SDK.
+  // Without this, an invalid sessionId causes a 15s timeout waiting for session_init.
+  try {
+    const available = await listSessions()
+    if (!available.some((s) => s.sessionId === req.sessionId)) {
+      throw new Error(
+        `Session ${req.sessionId} not found in CLI session store. ` +
+          `It may have been deleted or belongs to a different project path.`,
+      )
+    }
+  } catch (err) {
+    // Re-throw "not found" errors; swallow listSessions failures (let SDK give specific error)
+    if (err instanceof Error && err.message.includes('not found in CLI')) throw err
+  }
+
   const controlId = crypto.randomUUID()
   const emitter = new EventEmitter()
   const permissions = new PermissionHandler()
