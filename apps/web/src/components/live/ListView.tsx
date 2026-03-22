@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SourceBadge } from '../shared/SourceBadge'
 import { ContextBar } from './ContextBar'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
@@ -39,17 +40,22 @@ function formatCost(session: LiveSession): string {
     : formatCostUsd(usd)
 }
 
-const COLUMNS: { key: SortColumn | 'activity'; label: string; width: string; sortable: boolean }[] =
-  [
-    { key: 'status', label: 'Status', width: 'w-[40px]', sortable: true },
-    { key: 'project', label: 'Project', width: 'w-[140px]', sortable: true },
-    { key: 'branch', label: 'Branch', width: 'w-[120px]', sortable: true },
-    { key: 'activity', label: 'Activity', width: 'flex-1', sortable: false },
-    { key: 'turns', label: 'Turns', width: 'w-[60px]', sortable: true },
-    { key: 'cost', label: 'Cost', width: 'w-[70px]', sortable: true },
-    { key: 'context', label: 'Context%', width: 'w-[65px]', sortable: true },
-    { key: 'lastActive', label: 'Last Active', width: 'w-[90px]', sortable: true },
-  ]
+const COLUMNS: {
+  key: SortColumn | 'activity' | 'source'
+  label: string
+  width: string
+  sortable: boolean
+}[] = [
+  { key: 'status', label: 'Status', width: 'w-[40px]', sortable: true },
+  { key: 'source', label: 'Source', width: 'w-[80px]', sortable: false },
+  { key: 'project', label: 'Project', width: 'w-[140px]', sortable: true },
+  { key: 'branch', label: 'Branch', width: 'w-[120px]', sortable: true },
+  { key: 'activity', label: 'Activity', width: 'flex-1', sortable: false },
+  { key: 'turns', label: 'Turns', width: 'w-[60px]', sortable: true },
+  { key: 'cost', label: 'Cost', width: 'w-[70px]', sortable: true },
+  { key: 'context', label: 'Context%', width: 'w-[65px]', sortable: true },
+  { key: 'lastActive', label: 'Last Active', width: 'w-[90px]', sortable: true },
+]
 
 export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
   const [sortColumn, setSortColumn] = useState<SortColumn>('status')
@@ -181,6 +187,11 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                   <div className="flex items-center justify-center">
                     <StatusDot group={group} size="sm" pulse={group === 'autonomous'} />
                   </div>
+                </td>
+
+                {/* Source */}
+                <td className="px-2 py-2 w-[80px]">
+                  <SourceBadge source={session.source} />
                 </td>
 
                 {/* Project */}

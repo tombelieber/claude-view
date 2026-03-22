@@ -5,6 +5,7 @@ import type { EcosystemTag } from '../../types/generated/EcosystemTag'
 import type { SessionResource } from '../../types/generated/SessionResource'
 import type { SystemInfo } from '../../types/generated/SystemInfo'
 import { type LiveSession, sessionTotalCost } from '../live/use-live-sessions'
+import { SourceBadge } from '../shared/SourceBadge'
 import { ChildProcessRow } from './ChildProcessRow'
 import { SessionRollupBar } from './SessionRollupBar'
 
@@ -109,7 +110,9 @@ export function SessionAccordionRow({
             </span>
           )}
 
-          {badge ? (
+          {session.source ? (
+            <SourceBadge source={session.source} />
+          ) : badge ? (
             <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
               {badge}
             </span>
