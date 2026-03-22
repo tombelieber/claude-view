@@ -61,6 +61,7 @@ export function useChatPanel(sessionId: string | undefined, projectPath?: string
       dispatch({ type: 'DESELECT' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- store intentionally excluded
+    // biome-ignore lint/correctness/useExhaustiveDependencies: projectPath and store.panel.phase intentionally excluded — only re-dispatch on sessionId change
   }, [sessionId])
 
   return {
