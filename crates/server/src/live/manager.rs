@@ -24,7 +24,7 @@ use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
 use super::file_resolver::resolve_file_path;
-use super::process::{count_claude_processes, is_pid_alive};
+use super::process::{count_claude_processes, detect_claude_processes, is_pid_alive};
 use super::state::{
     append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
     HookEvent, LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
@@ -276,6 +276,7 @@ fn build_recovered_session(
         compact_count: 0,
         slug: None,
         closed_at: None,
+        source: None,
         control: None,
         statusline_context_window_size: None,
         statusline_used_pct: None,
@@ -1540,11 +1541,28 @@ impl LiveSessionManager {
                     continue;
                 }
 
-                // 2.1 — Process count refresh (display metric only)
-                let total_count = tokio::task::spawn_blocking(count_claude_processes)
+                // 2.1 — Process scan: count + backfill source on sessions
+                let (processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
                     .await
                     .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
+
+                // Backfill source on sessions that don't have it yet
+                // (sessions created via hooks start with source: None)
+                {
+                    let mut sessions = manager.sessions.write().await;
+                    for session in sessions.values_mut() {
+                        if session.source.is_some() || session.status == SessionStatus::Done {
+                            continue;
+                        }
+                        if let Some(pid) = session.pid {
+                            // Find matching process by PID
+                            if let Some(cp) = processes.values().find(|p| p.pid == pid) {
+                                session.source = Some(cp.source.clone());
+                            }
+                        }
+                    }
+                }
 
                 // 2.2 — Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
@@ -3474,6 +3492,7 @@ mod hook_event_tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            source: None,
             hook_events: Vec::new(),
         }
     }
