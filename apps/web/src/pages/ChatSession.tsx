@@ -63,6 +63,8 @@ interface ChatSessionProps {
   liveContextData?: LiveContextData
   /** Called when a new session is created from a blank panel (dockview transition). */
   onSessionCreated?: (sessionId: string) => void
+  /** Incremented by ChatPanel on dockview group change (drag-drop). Forces scroll-to-bottom. */
+  scrollToBottomSignal?: number
 }
 
 export function ChatSession({
@@ -71,6 +73,7 @@ export function ChatSession({
   liveProjectPath,
   liveContextData,
   onSessionCreated,
+  scrollToBottomSignal,
 }: ChatSessionProps) {
   const trackEvent = useTrackEvent()
   const { recordSessionView } = useTelemetryPrompt()
@@ -334,6 +337,7 @@ export function ChatSession({
                 onStartReached={handleLoadOlderHistory}
                 isFetchingOlder={historyPagination.isFetchingOlder}
                 hasOlderMessages={historyPagination.hasOlderMessages}
+                scrollToBottomSignal={scrollToBottomSignal}
               />
             </ConversationActionsProvider>
           )}
