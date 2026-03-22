@@ -240,7 +240,6 @@ async fn handle_hook(
                         exceeds_200k_tokens: None,
                         statusline_transcript_path: None,
                         statusline_raw: None,
-                        source: None,
                         hook_events: Vec::new(),
                     };
                     append_capped_hook_events(
@@ -407,7 +406,6 @@ async fn handle_hook(
                     statusline_version: None,
                     exceeds_200k_tokens: None,
                     statusline_transcript_path: None,
-                    source: None,
                     statusline_raw: None,
                     hook_events: Vec::new(),
                 };
@@ -1256,7 +1254,6 @@ mod tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
-            source: None,
             hook_events: Vec::new(),
         }
     }
