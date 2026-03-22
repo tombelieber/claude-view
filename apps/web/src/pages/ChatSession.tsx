@@ -327,6 +327,7 @@ export function ChatSession({
               }}
             >
               <ConversationThread
+                key={sessionId || 'new'}
                 blocks={blocks}
                 renderers={registry}
                 filterBar={displayMode !== 'chat'}

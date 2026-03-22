@@ -5,9 +5,12 @@
 pre-commit:
   parallel: true
   commands:
-    biome:
+    biome-format:
       glob: "*.{js,ts,jsx,tsx,json}"
-      run: bunx biome check --write --no-errors-on-unmatched {staged_files} && git add {staged_files}
+      run: bunx biome format --write --no-errors-on-unmatched {staged_files} && git add {staged_files}
+    biome-lint:
+      glob: "*.{js,ts,jsx,tsx,json}"
+      run: bunx biome lint --no-errors-on-unmatched {staged_files}
     typecheck:
       glob: "*.{ts,tsx}"
       run: bunx turbo typecheck
