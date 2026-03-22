@@ -671,7 +671,7 @@ describe('deriveConnectionStatus', () => {
     ).toBeNull()
   })
 
-  test('acquiring.create.posting → "Creating session..."', () => {
+  test('acquiring.create.posting → loading "Creating session..."', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -684,10 +684,10 @@ describe('deriveConnectionStatus', () => {
           step: { step: 'posting' },
         }),
       ),
-    ).toBe('Creating session...')
+    ).toEqual({ message: 'Creating session...', kind: 'loading' })
   })
 
-  test('acquiring.resume.posting → "Resuming session..."', () => {
+  test('acquiring.resume.posting → loading "Resuming session..."', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -700,10 +700,10 @@ describe('deriveConnectionStatus', () => {
           step: { step: 'posting' },
         }),
       ),
-    ).toBe('Resuming session...')
+    ).toEqual({ message: 'Resuming session...', kind: 'loading' })
   })
 
-  test('acquiring.fork.posting → "Forking session..."', () => {
+  test('acquiring.fork.posting → loading "Forking session..."', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -716,10 +716,10 @@ describe('deriveConnectionStatus', () => {
           step: { step: 'posting' },
         }),
       ),
-    ).toBe('Forking session...')
+    ).toEqual({ message: 'Forking session...', kind: 'loading' })
   })
 
-  test('acquiring.ws_connecting → "Connecting to session..."', () => {
+  test('acquiring.ws_connecting → loading "Connecting to session..."', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -732,10 +732,10 @@ describe('deriveConnectionStatus', () => {
           step: { step: 'ws_connecting', controlId: 'c1' },
         }),
       ),
-    ).toBe('Connecting to session...')
+    ).toEqual({ message: 'Connecting to session...', kind: 'loading' })
   })
 
-  test('acquiring.ws_initializing → "Initializing..."', () => {
+  test('acquiring.ws_initializing → loading "Initializing..."', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -748,10 +748,10 @@ describe('deriveConnectionStatus', () => {
           step: { step: 'ws_initializing', controlId: 'c1' },
         }),
       ),
-    ).toBe('Initializing...')
+    ).toEqual({ message: 'Initializing...', kind: 'loading' })
   })
 
-  test('recovering.ws_fatal → connection lost message', () => {
+  test('recovering.ws_fatal → loading (reconnecting)', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -761,7 +761,7 @@ describe('deriveConnectionStatus', () => {
           recovering: { kind: 'ws_fatal', error: 'timeout' },
         }),
       ),
-    ).toBe('Connection lost. Reconnecting...')
+    ).toEqual({ message: 'Connection lost. Reconnecting...', kind: 'loading' })
   })
 
   test('recovering.action_failed → error message', () => {
@@ -774,10 +774,10 @@ describe('deriveConnectionStatus', () => {
           recovering: { kind: 'action_failed', error: 'server 500' },
         }),
       ),
-    ).toBe('Error: server 500')
+    ).toEqual({ message: 'Resume failed: server 500', kind: 'error' })
   })
 
-  test('recovering.replaced → takeover message', () => {
+  test('recovering.replaced → error message', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -787,7 +787,7 @@ describe('deriveConnectionStatus', () => {
           recovering: { kind: 'replaced' },
         }),
       ),
-    ).toBe('Session taken over by another client')
+    ).toEqual({ message: 'Session taken over by another client', kind: 'error' })
   })
 
   test('sdk_owned.ok → null', () => {
@@ -807,7 +807,7 @@ describe('deriveConnectionStatus', () => {
     ).toBeNull()
   })
 
-  test('sdk_owned.reconnecting → shows attempt number', () => {
+  test('sdk_owned.reconnecting → loading with attempt number', () => {
     expect(
       deriveConnectionStatus(
         makeStore({
@@ -821,7 +821,7 @@ describe('deriveConnectionStatus', () => {
           conn: { health: 'reconnecting', attempt: 3 },
         }),
       ),
-    ).toBe('Reconnecting... (attempt 3)')
+    ).toEqual({ message: 'Reconnecting... (attempt 3)', kind: 'loading' })
   })
 
   test('closed → null', () => {

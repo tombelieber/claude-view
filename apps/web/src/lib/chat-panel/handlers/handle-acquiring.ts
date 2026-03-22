@@ -1,5 +1,6 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { acquiringTransition } from '../modules/acquiring'
+import { type MetaEvent, metaTransition } from '../modules/meta'
 import { outboxTransition } from '../modules/outbox'
 import type { ChatPanelStore, Command, PanelState, RawEvent, TransitionResult } from '../types'
 
@@ -104,7 +105,13 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
       return [{ ...store, panel }, cmds]
     }
 
-    return exitAcquiring(store, p, result)
+    // SESSION_INIT triggers exit to sdk_owned — populate meta with the full event
+    // (the leaf only needs { type: 'SESSION_INIT' }, but meta needs model/capabilities/etc.)
+    const storeForExit =
+      event.type === 'SESSION_INIT'
+        ? { ...store, meta: metaTransition(store.meta, event as MetaEvent) }
+        : store
+    return exitAcquiring(storeForExit, p, result)
   }
 
   return [store, []]
