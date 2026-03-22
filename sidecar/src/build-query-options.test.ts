@@ -9,6 +9,8 @@ import { SessionRegistry } from './session-registry.js'
 // Capture the Options passed to the SDK query() function
 let capturedOptions: Options | undefined
 
+const mockGetSessionInfo = vi.fn()
+
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn((args: { options: Options }) => {
     capturedOptions = args.options
@@ -45,6 +47,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     }
   }),
   listSessions: vi.fn().mockResolvedValue([]),
+  getSessionInfo: (...args: unknown[]) => mockGetSessionInfo(...args),
 }))
 
 vi.mock('./cli-path.js', () => ({
@@ -52,7 +55,9 @@ vi.mock('./cli-path.js', () => ({
 }))
 
 // Import AFTER mocks
-const { createControlSession, forkControlSession } = await import('./sdk-session.js')
+const { createControlSession, forkControlSession, resumeControlSession } = await import(
+  './sdk-session.js'
+)
 
 describe('buildQueryOptions (via createControlSession)', () => {
   let registry: SessionRegistry
@@ -146,5 +151,63 @@ describe('buildQueryOptions (via forkControlSession)', () => {
 
     expect(capturedOptions).toBeDefined()
     expect(capturedOptions!.settingSources).toEqual(['user', 'project'])
+  })
+})
+
+describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd', () => {
+  let registry: SessionRegistry
+
+  beforeEach(() => {
+    registry = new SessionRegistry()
+    capturedOptions = undefined
+    mockGetSessionInfo.mockReset()
+  })
+
+  it('uses info.cwd when req.projectPath is missing (inactive session resume)', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      cwd: '/Users/test/original-project',
+    })
+
+    await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/Users/test/original-project')
+  })
+
+  it('prefers req.projectPath over info.cwd when both are available', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      cwd: '/Users/test/original-project',
+    })
+
+    await resumeControlSession(
+      {
+        sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        projectPath: '/Users/test/explicit-path',
+      },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/Users/test/explicit-path')
+  })
+
+  it('falls back to process.cwd() when both req.projectPath and info.cwd are missing', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      // no cwd field
+    })
+
+    await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe(process.cwd())
   })
 })
