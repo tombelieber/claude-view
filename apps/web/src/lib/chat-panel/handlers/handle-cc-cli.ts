@@ -22,7 +22,16 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
         pendingMessage: null,
         step: { step: 'posting' },
       }
-      return [{ ...store, panel }, [{ cmd: 'POST_RESUME', sessionId: p.sessionId }]]
+      return [
+        { ...store, panel },
+        [
+          {
+            cmd: 'POST_RESUME',
+            sessionId: p.sessionId,
+            projectPath: store.projectPath ?? undefined,
+          },
+        ],
+      ]
     }
 
     case 'KILL_CLI_FAILED':
@@ -32,15 +41,16 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       ]
 
     case 'LIVE_STATUS_CHANGED': {
+      const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
       if (event.status === 'inactive') {
         const panel: PanelState = {
           phase: 'nobody',
           sessionId: p.sessionId,
           sub: { sub: 'ready', blocks: p.blocks },
         }
-        return [{ ...store, panel }, [{ cmd: 'CLOSE_TERMINAL_WS' }]]
+        return [{ ...updatedStore, panel }, [{ cmd: 'CLOSE_TERMINAL_WS' }]]
       }
-      return [store, []]
+      return [updatedStore, []]
     }
 
     case 'HISTORY_OK': {

@@ -7,6 +7,7 @@ const INITIAL: ChatPanelStore = {
   panel: { phase: 'empty' },
   outbox: { messages: [] },
   meta: null,
+  projectPath: null,
 }
 
 const mockBlocks = [{ type: 'user' as const, id: '1', text: 'hi', timestamp: 1 }] as any
@@ -131,6 +132,7 @@ describe('integration: fork flow', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -177,6 +179,7 @@ describe('integration: takeover flow', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [
@@ -223,6 +226,7 @@ describe('integration: error recovery', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -320,6 +324,7 @@ describe('integration: permission flow', () => {
         totalInputTokens: 100,
         contextWindowSize: 200000,
       },
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -366,6 +371,7 @@ describe('integration: session close and reopen', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -421,6 +427,7 @@ describe('integration: deselect resets everything', () => {
         totalInputTokens: 100,
         contextWindowSize: 200000,
       },
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(liveStore, [{ type: 'DESELECT' }])
@@ -493,6 +500,7 @@ describe('integration: history arrives after sdk_owned', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store } = drive(emptyStore, [{ type: 'HISTORY_OK', blocks: historyBlocks }])
@@ -522,6 +530,7 @@ describe('integration: history arrives after sdk_owned', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const staleHistory = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }] as any
@@ -565,6 +574,7 @@ describe('integration: CLI session ends naturally', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [

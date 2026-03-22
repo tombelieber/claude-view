@@ -93,12 +93,15 @@ export interface ChatPanelStore {
   panel: PanelState
   outbox: OutboxState
   meta: SessionMeta | null
+  /** Decoded project path for the current session — threaded through from LiveSession
+   *  or sidebar data so the sidecar can pass the correct `cwd` to the SDK on resume/fork. */
+  projectPath: string | null
 }
 
 // ─── Events ──────────────────────────────────────────────────
 export type RawEvent =
   // Navigation
-  | { type: 'SELECT_SESSION'; sessionId: string }
+  | { type: 'SELECT_SESSION'; sessionId: string; projectPath?: string }
   | { type: 'DESELECT' }
   // History
   | { type: 'HISTORY_OK'; blocks: ConversationBlock[] }
@@ -169,7 +172,11 @@ export type RawEvent =
   | { type: 'COMMANDS_UPDATED'; commands: string[] }
   | { type: 'AGENTS_UPDATED'; agents: string[] }
   // SSE (pre-computed prop)
-  | { type: 'LIVE_STATUS_CHANGED'; status: 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive' }
+  | {
+      type: 'LIVE_STATUS_CHANGED'
+      status: 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive'
+      projectPath?: string
+    }
   // Takeover lifecycle
   | { type: 'KILL_CLI_OK' }
   | { type: 'KILL_CLI_FAILED'; error: string }
@@ -197,8 +204,9 @@ export type Command =
       model?: string
       resumeAtMessageId?: string
       message?: string
+      projectPath?: string
     }
-  | { cmd: 'POST_FORK'; sessionId: string; message?: string }
+  | { cmd: 'POST_FORK'; sessionId: string; message?: string; projectPath?: string }
   | { cmd: 'OPEN_SIDECAR_WS'; sessionId: string }
   | { cmd: 'CLOSE_SIDECAR_WS' }
   | { cmd: 'OPEN_TERMINAL_WS'; sessionId: string }

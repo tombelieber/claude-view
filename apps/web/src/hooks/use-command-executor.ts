@@ -9,7 +9,6 @@ import { SessionChannel } from '../lib/session-channel'
 import { sidecarWsUrl } from '../lib/ws-url'
 import { wsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
-import type { SessionInfo } from '../types/generated/SessionInfo'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 
@@ -34,15 +33,6 @@ export function useCommandExecutor(
       executeCommand(cmd)
     }
   })
-
-  /** Look up a session's projectPath from the sidebar React Query cache. */
-  function lookupProjectPath(sessionId: string): string | undefined {
-    const data = queryClient.getQueryData<{
-      pages: { sessions: SessionInfo[] }[]
-    }>(['chat-sidebar-sessions'])
-    const session = data?.pages.flatMap((p) => p.sessions).find((s) => s.id === sessionId)
-    return session?.projectPath
-  }
 
   function executeCommand(cmd: Command) {
     switch (cmd.cmd) {
@@ -113,7 +103,6 @@ export function useCommandExecutor(
         break
       }
       case 'POST_RESUME': {
-        const projectPath = lookupProjectPath(cmd.sessionId)
         fetch(`/api/sidecar/sessions/${encodeURIComponent(cmd.sessionId)}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -121,7 +110,7 @@ export function useCommandExecutor(
             permissionMode: cmd.permissionMode,
             model: cmd.model,
             resumeAtMessageId: cmd.resumeAtMessageId,
-            projectPath,
+            projectPath: cmd.projectPath,
             initialMessage: cmd.message,
           }),
         })
@@ -138,7 +127,7 @@ export function useCommandExecutor(
         fetch(`/api/sidecar/sessions/${encodeURIComponent(cmd.sessionId)}/fork`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: cmd.message }),
+          body: JSON.stringify({ message: cmd.message, projectPath: cmd.projectPath }),
         })
           .then((r) => r.json())
           .then((data) =>

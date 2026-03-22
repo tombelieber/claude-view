@@ -16,11 +16,12 @@ const initialStore: ChatPanelStore = {
   panel: { phase: 'empty' },
   outbox: { messages: [] },
   meta: null,
+  projectPath: null,
 }
 
 /** E-B1: pendingCmdsRef ACCUMULATES via push; drain effect splices.
  *  StrictMode guard: React calls reducer twice with the same event ref — skip duplicate push. */
-export function useChatPanel(sessionId: string | undefined) {
+export function useChatPanel(sessionId: string | undefined, projectPath?: string) {
   const pendingCmdsRef = useRef<Command[]>([])
   const lastEventRef = useRef<RawEvent | null>(null)
 
@@ -52,7 +53,7 @@ export function useChatPanel(sessionId: string | undefined) {
         store.panel.phase === 'empty' ||
         ('sessionId' in store.panel && store.panel.sessionId !== sessionId)
       ) {
-        dispatch({ type: 'SELECT_SESSION', sessionId })
+        dispatch({ type: 'SELECT_SESSION', sessionId, projectPath })
       }
     } else {
       dispatch({ type: 'DESELECT' })

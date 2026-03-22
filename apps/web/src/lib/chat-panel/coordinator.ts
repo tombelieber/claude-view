@@ -12,7 +12,7 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
   switch (event.type) {
     case 'DESELECT':
       return [
-        { panel: { phase: 'empty' }, outbox: { messages: [] }, meta: null },
+        { panel: { phase: 'empty' }, outbox: { messages: [] }, meta: null, projectPath: null },
         [{ cmd: 'CLOSE_SIDECAR_WS' }, { cmd: 'CLOSE_TERMINAL_WS' }],
       ]
     case 'SELECT_SESSION':
@@ -21,6 +21,7 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
           panel: { phase: 'nobody', sessionId: event.sessionId, sub: { sub: 'loading' } },
           outbox: { messages: [] },
           meta: null,
+          projectPath: event.projectPath ?? null,
         },
         [
           { cmd: 'FETCH_HISTORY', sessionId: event.sessionId },
