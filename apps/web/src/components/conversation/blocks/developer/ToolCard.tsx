@@ -6,7 +6,6 @@ import { cn } from '../../../../lib/utils'
 import { JsonTree } from '../../../live/JsonTree'
 import { getToolRenderer } from '../../../live/ToolRenderers'
 import { ContentRenderer } from './ContentRenderer'
-import { useDefaultExpanded } from './default-expanded-context'
 import { useJsonMode } from './json-mode-context'
 
 // ── Status dot (ActionLog pattern) ──────────────────────────────────────────
@@ -100,8 +99,7 @@ interface ToolCardProps {
 
 export function ToolCard({ execution }: ToolCardProps) {
   const globalJsonMode = useJsonMode()
-  const defaultExpanded = useDefaultExpanded()
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const [expanded, setExpanded] = useState(true)
   const [localOverride, setLocalOverride] = useState<boolean | null>(null)
   const jsonMode = localOverride ?? globalJsonMode
   const hasContent = !!execution.result || Object.keys(execution.toolInput ?? {}).length > 0
