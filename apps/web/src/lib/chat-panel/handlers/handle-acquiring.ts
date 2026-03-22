@@ -137,7 +137,7 @@ function exitAcquiring(
       }
     }
 
-    return [{ panel, outbox, meta: store.meta }, cmds]
+    return [{ panel, outbox, meta: store.meta, projectPath: store.projectPath }, cmds]
   }
 
   const error = result.error ?? 'Unknown error'

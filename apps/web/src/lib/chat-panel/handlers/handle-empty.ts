@@ -23,7 +23,7 @@ export function handleEmpty(store: ChatPanelStore, event: RawEvent): TransitionR
       step: { step: 'posting' },
     }
     return [
-      { panel, outbox, meta: store.meta },
+      { panel, outbox, meta: store.meta, projectPath: store.projectPath },
       [
         {
           cmd: 'POST_CREATE',

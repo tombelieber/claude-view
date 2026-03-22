@@ -29,6 +29,7 @@ export function ChatPage() {
         key={sessionId ?? 'new'}
         sessionId={sessionId}
         liveStatus={liveStatus}
+        liveProjectPath={liveSession?.projectPath}
         liveContextData={liveContextData}
       />
     </div>

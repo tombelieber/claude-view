@@ -7,6 +7,7 @@ import { ChatSession } from '../../pages/ChatSession'
 interface ChatPanelParams {
   sessionId: string
   liveStatus?: LiveStatus
+  liveProjectPath?: string
 }
 
 /**
@@ -16,7 +17,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, liveStatus } = params
+  const { sessionId, liveStatus, liveProjectPath } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -48,6 +49,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
       <ChatSession
         sessionId={sessionId || undefined}
         liveStatus={liveStatus ?? 'inactive'}
+        liveProjectPath={liveProjectPath}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}
       />
     </div>

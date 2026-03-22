@@ -7,6 +7,7 @@ const INITIAL: ChatPanelStore = {
   panel: { phase: 'empty' },
   outbox: { messages: [] },
   meta: null,
+  projectPath: null,
 }
 
 const mockBlocks: ConversationBlock[] = [{ type: 'user', id: '1', text: 'hi', timestamp: 1 }]
@@ -61,6 +62,7 @@ describe('coordinator', () => {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const { store, allCmds } = drive(historyStore, [
       { type: 'SEND_MESSAGE', text: 'hello', localId: 'l1' },
@@ -89,6 +91,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [{ localId: 'l1', text: 'hello', status: 'queued' as const }] },
       meta: null,
+      projectPath: null,
     }
     const { store, allCmds } = drive(acquiringStore, [
       { type: 'ACQUIRE_OK', controlId: 'c1' },
@@ -118,6 +121,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'SEND_MESSAGE',
@@ -144,6 +148,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store] = coordinate(acquiringStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -166,6 +171,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(acquiringStore, {
       type: 'ACQUIRE_FAILED',
@@ -184,6 +190,7 @@ describe('coordinator', () => {
       panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     // Takeover
     const [s1, c1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
@@ -219,6 +226,7 @@ describe('coordinator', () => {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(historyStore, { type: 'FORK_SESSION' })
     expect(store.panel.phase).toBe('acquiring')
@@ -243,6 +251,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'WS_CLOSE',
@@ -263,6 +272,7 @@ describe('coordinator', () => {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store] = coordinate(historyStore, { type: 'DESELECT' })
     expect(store.panel.phase).toBe('empty')
@@ -295,6 +305,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [s1] = coordinate(liveStore, { type: 'STREAM_DELTA', text: 'hello' })
     if (s1.panel.phase === 'sdk_owned') {
@@ -329,6 +340,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(liveStore, { type: 'SESSION_CLOSED' })
     expect(store.panel.phase).toBe('closed')
@@ -350,6 +362,7 @@ describe('coordinator', () => {
       },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [, cmds] = coordinate(liveStore, { type: 'INTERRUPT' })
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
@@ -361,6 +374,7 @@ describe('coordinator', () => {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
       meta: null,
+      projectPath: null,
     }
     const [store, cmds] = coordinate(historyStore, {
       type: 'LIVE_STATUS_CHANGED',

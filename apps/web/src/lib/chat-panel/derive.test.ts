@@ -4,6 +4,7 @@ import {
   deriveBlocks,
   deriveCanFork,
   deriveCanSend,
+  deriveConnectionStatus,
   deriveInputBar,
   deriveViewMode,
 } from './derive'
@@ -15,7 +16,7 @@ const mockBlocks: ConversationBlock[] = [
 ] as ConversationBlock[]
 
 function makeStore(panel: PanelState, overrides?: Partial<ChatPanelStore>): ChatPanelStore {
-  return { panel, outbox: emptyOutbox, meta: null, ...overrides }
+  return { panel, outbox: emptyOutbox, meta: null, projectPath: null, ...overrides }
 }
 
 // ─── deriveBlocks ──────────────────────────────────────────
@@ -644,5 +645,182 @@ describe('deriveViewMode', () => {
     expect(
       deriveViewMode(makeStore({ phase: 'closed', sessionId: 's1', blocks: [], ephemeral: false })),
     ).toBe('closed')
+  })
+})
+
+// ─── deriveConnectionStatus ──────────────────────────────────
+
+describe('deriveConnectionStatus', () => {
+  test('empty → null', () => {
+    expect(deriveConnectionStatus(makeStore({ phase: 'empty' }))).toBeNull()
+  })
+
+  test('nobody → null', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({ phase: 'nobody', sessionId: 's1', sub: { sub: 'ready', blocks: [] } }),
+      ),
+    ).toBeNull()
+  })
+
+  test('acquiring.create.posting → "Creating session..."', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'create' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'posting' },
+        }),
+      ),
+    ).toBe('Creating session...')
+  })
+
+  test('acquiring.resume.posting → "Resuming session..."', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: 't1',
+          action: 'resume' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'posting' },
+        }),
+      ),
+    ).toBe('Resuming session...')
+  })
+
+  test('acquiring.fork.posting → "Forking session..."', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'fork' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'posting' },
+        }),
+      ),
+    ).toBe('Forking session...')
+  })
+
+  test('acquiring.ws_connecting → "Connecting to session..."', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'resume' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'ws_connecting', controlId: 'c1' },
+        }),
+      ),
+    ).toBe('Connecting to session...')
+  })
+
+  test('acquiring.ws_initializing → "Initializing..."', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'create' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'ws_initializing', controlId: 'c1' },
+        }),
+      ),
+    ).toBe('Initializing...')
+  })
+
+  test('recovering.ws_fatal → connection lost message', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'recovering',
+          sessionId: 's1',
+          blocks: [],
+          recovering: { kind: 'ws_fatal', error: 'timeout' },
+        }),
+      ),
+    ).toBe('Connection lost. Reconnecting...')
+  })
+
+  test('recovering.action_failed → error message', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'recovering',
+          sessionId: 's1',
+          blocks: [],
+          recovering: { kind: 'action_failed', error: 'server 500' },
+        }),
+      ),
+    ).toBe('Error: server 500')
+  })
+
+  test('recovering.replaced → takeover message', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'recovering',
+          sessionId: 's1',
+          blocks: [],
+          recovering: { kind: 'replaced' },
+        }),
+      ),
+    ).toBe('Session taken over by another client')
+  })
+
+  test('sdk_owned.ok → null', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'idle' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('sdk_owned.reconnecting → shows attempt number', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'idle' },
+          conn: { health: 'reconnecting', attempt: 3 },
+        }),
+      ),
+    ).toBe('Reconnecting... (attempt 3)')
+  })
+
+  test('closed → null', () => {
+    expect(
+      deriveConnectionStatus(
+        makeStore({ phase: 'closed', sessionId: 's1', blocks: [], ephemeral: false }),
+      ),
+    ).toBeNull()
   })
 })

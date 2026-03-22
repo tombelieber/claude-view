@@ -8,6 +8,7 @@ import { ConversationThread } from '../components/conversation/ConversationThrea
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 
+import { ExpandProvider } from '../contexts/ExpandContext'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useChatPanel } from '../hooks/use-chat-panel'
 import { useCommandExecutor } from '../hooks/use-command-executor'
@@ -56,6 +57,8 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 interface ChatSessionProps {
   sessionId: string | undefined
   liveStatus: LiveStatus
+  /** Decoded project path from Live Monitor — passed to SDK on resume/fork for correct cwd. */
+  liveProjectPath?: string
   /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
   liveContextData?: LiveContextData
   /** Called when a new session is created from a blank panel (dockview transition). */
@@ -65,6 +68,7 @@ interface ChatSessionProps {
 export function ChatSession({
   sessionId,
   liveStatus,
+  liveProjectPath,
   liveContextData,
   onSessionCreated,
 }: ChatSessionProps) {
@@ -81,13 +85,13 @@ export function ChatSession({
 
   // FSM: single hook replaces useConversation + useSendHandler + useSessionCapabilities
   const { store, dispatch, pendingCmdsRef, blocks, inputBar, viewMode, connectionStatus } =
-    useChatPanel(sessionId)
+    useChatPanel(sessionId, liveProjectPath)
   const { channel } = useCommandExecutor(store, dispatch, pendingCmdsRef)
 
-  // Dispatch LIVE_STATUS_CHANGED when liveStatus prop changes
+  // Dispatch LIVE_STATUS_CHANGED when liveStatus or projectPath changes
   useEffect(() => {
-    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus })
-  }, [liveStatus, dispatch])
+    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus, projectPath: liveProjectPath })
+  }, [liveStatus, liveProjectPath, dispatch])
 
   // Notify dockview when FSM creates a new session (blank panel → create flow)
   const notifiedSessionRef = useRef<string | null>(null)
@@ -271,82 +275,84 @@ export function ChatSession({
 
       {/* Thread — all modes (chat, developer, watching) use ConversationThread.
           Developer mode uses developerRegistry for richer block rendering. */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        {/* Top sentinel for infinite scroll */}
-        <div ref={topSentinelRef} className="h-1" />
-        {blocks.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-            <div className="text-center">
-              <p className="text-lg font-medium mb-2">Start a conversation</p>
-              <p className="text-sm mb-4">Send a message to begin.</p>
-              {!sessionId && (
-                <div className="flex justify-center">
-                  <ModelSelector
-                    model={selectedModel}
-                    onModelChange={handleModelChange}
-                    isLive={viewMode === 'active'}
+      <ExpandProvider>
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+          {/* Top sentinel for infinite scroll */}
+          <div ref={topSentinelRef} className="h-1" />
+          {blocks.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+              <div className="text-center">
+                <p className="text-lg font-medium mb-2">Start a conversation</p>
+                <p className="text-sm mb-4">Send a message to begin.</p>
+                {!sessionId && (
+                  <div className="flex justify-center">
+                    <ModelSelector
+                      model={selectedModel}
+                      onModelChange={handleModelChange}
+                      isLive={viewMode === 'active'}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto px-4 py-6">
+              <ConversationActionsProvider
+                actions={{
+                  retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                  stopTask: (taskId) => {
+                    channel?.send({ type: 'stop_task', taskId })
+                  },
+                  respondPermission: (rid, allowed, perms) =>
+                    dispatch({
+                      type: 'RESPOND_PERMISSION',
+                      requestId: rid,
+                      allowed,
+                      updatedPermissions: perms,
+                    }),
+                  answerQuestion: (rid, answers) =>
+                    dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                  approvePlan: (rid, approved, feedback) =>
+                    dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                  submitElicitation: (rid, response) =>
+                    dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
+                }}
+              >
+                <ConversationThread
+                  blocks={blocks}
+                  renderers={registry}
+                  filterBar={displayMode !== 'chat'}
+                />
+              </ConversationActionsProvider>
+            </div>
+          )}
+          {/* Connection status indicator — shows during acquiring/recovering phases */}
+          {connectionStatus && (
+            <div className="max-w-3xl mx-auto px-4 pb-3">
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
                   />
-                </div>
-              )}
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                {connectionStatus}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto px-4 py-6">
-            <ConversationActionsProvider
-              actions={{
-                retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
-                stopTask: (taskId) => {
-                  channel?.send({ type: 'stop_task', taskId })
-                },
-                respondPermission: (rid, allowed, perms) =>
-                  dispatch({
-                    type: 'RESPOND_PERMISSION',
-                    requestId: rid,
-                    allowed,
-                    updatedPermissions: perms,
-                  }),
-                answerQuestion: (rid, answers) =>
-                  dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
-                approvePlan: (rid, approved, feedback) =>
-                  dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
-                submitElicitation: (rid, response) =>
-                  dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
-              }}
-            >
-              <ConversationThread
-                blocks={blocks}
-                renderers={registry}
-                filterBar={displayMode !== 'chat'}
-              />
-            </ConversationActionsProvider>
-          </div>
-        )}
-        {/* Connection status indicator — shows during acquiring/recovering phases */}
-        {connectionStatus && (
-          <div className="max-w-3xl mx-auto px-4 pb-3">
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
-              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              {connectionStatus}
-            </div>
-          </div>
-        )}
-        {/* Bottom anchor for auto-scroll */}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          {/* Bottom anchor for auto-scroll */}
+          <div ref={bottomRef} />
+        </div>
+      </ExpandProvider>
 
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
