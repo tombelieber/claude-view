@@ -24,7 +24,34 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   // Add this WS to the multi-client set
   session.wsClients.add(ws)
 
-  // Subscribe to session events — relay with blocks when applicable
+  // 1. Re-send cached session_init if available (V2 multi-tab behavior)
+  if (session.lastSessionInit) {
+    ws.send(JSON.stringify(session.lastSessionInit))
+  }
+
+  // 2. Send session_status
+  ws.send(
+    JSON.stringify({
+      type: 'session_status',
+      status: session.state === 'compacting' ? 'compacting' : null,
+    }),
+  )
+
+  // 3. Heartbeat config
+  ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
+
+  // 4. Blocks snapshot
+  ws.send(
+    JSON.stringify({
+      type: 'blocks_snapshot',
+      blocks: session.accumulator.getBlocks(),
+    }),
+  )
+
+  // 5. Subscribe to live events AFTER cached messages are sent.
+  // If the listener were registered before step 1, the SDK's active stream
+  // could relay events (blocks_update) that arrive on the client before
+  // session_init — causing the frontend to process them in the wrong FSM phase.
   const onMessage = (rawMsg: unknown) => {
     if (ws.readyState !== ws.OPEN) return
     const msg = rawMsg as ServerEvent
@@ -49,30 +76,6 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     }
   }
   session.emitter.on('message', onMessage)
-
-  // 1. Re-send cached session_init if available (V2 multi-tab behavior)
-  if (session.lastSessionInit) {
-    ws.send(JSON.stringify(session.lastSessionInit))
-  }
-
-  // 2. Send session_status
-  ws.send(
-    JSON.stringify({
-      type: 'session_status',
-      status: session.state === 'compacting' ? 'compacting' : null,
-    }),
-  )
-
-  // 3. Heartbeat config
-  ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
-
-  // 4. Blocks snapshot
-  ws.send(
-    JSON.stringify({
-      type: 'blocks_snapshot',
-      blocks: session.accumulator.getBlocks(),
-    }),
-  )
 
   // Handle incoming messages
   ws.on('message', async (raw) => {

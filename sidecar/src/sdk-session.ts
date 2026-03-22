@@ -42,13 +42,11 @@ function buildQueryOptions(
     pathToClaudeCodeExecutable: findClaudeExecutable(),
     settingSources: ['user', 'project'],
     model: opts.model,
+    // Always allow bypassPermissions so setPermissionMode() can switch to it mid-session.
+    // Per SDK docs, setPermissionMode("bypassPermissions") is a valid dynamic change.
+    allowDangerouslySkipPermissions: true,
     ...(opts.permissionMode
-      ? {
-          permissionMode: opts.permissionMode as PermissionMode | undefined,
-          ...(opts.permissionMode === 'bypassPermissions'
-            ? { allowDangerouslySkipPermissions: true }
-            : {}),
-        }
+      ? { permissionMode: opts.permissionMode as PermissionMode | undefined }
       : {}),
     ...(opts.allowedTools ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
@@ -206,6 +204,25 @@ export async function resumeControlSession(
 
   registry.register(cs)
   runStreamLoop(cs, registry)
+
+  // Send initial message to kick-start the SDK stream.
+  // The SDK's query() with prompt:bridge waits for the first message
+  // before emitting session_init. Without this, resume deadlocks.
+  if (req.initialMessage) {
+    cs.bridge.push({
+      type: 'user',
+      session_id: '',
+      message: { role: 'user', content: [{ type: 'text', text: req.initialMessage }] },
+      parent_tool_use_id: null,
+    })
+    // Echo into accumulator so blocks_snapshot includes the user message
+    // (matches createControlSession behavior)
+    registry.emitSequenced(cs, {
+      type: 'user_message_echo',
+      content: req.initialMessage,
+      timestamp: Date.now() / 1000,
+    })
+  }
 
   return cs
 }
@@ -418,29 +435,21 @@ export async function setSessionMode(
     return { ok: false, currentMode: cs.permissionMode }
   }
 
-  if (mode === 'bypassPermissions') {
-    registry.emitSequenced(cs, {
-      type: 'error',
-      message:
-        'bypassPermissions requires allowDangerouslySkipPermissions at session init. Resume with bypassPermissions mode instead.',
-      fatal: false,
-    })
-    return { ok: false, currentMode: cs.permissionMode }
-  }
-
   await cs.query.setPermissionMode(mode as PermissionMode)
   cs.permissionMode = mode
   return { ok: true, currentMode: mode }
 }
 
 /**
- * Wait for session_id to be extracted from the first SDK message.
+ * Wait for the SDK session to fully initialize (session_init event emitted).
  *
- * Listens for 'session_id_ready' event (emitted by updateSessionStateFromRawMsg)
- * and fast-fails on fatal errors emitted on the 'message' channel.
+ * For new sessions: waits for session_id extraction + session_init.
+ * For resumed sessions: sessionId is already known, but still waits for session_init
+ * so that lastSessionInit is cached before the HTTP response triggers WS connections.
  */
 export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Promise<void> {
-  if (cs.sessionId) return Promise.resolve()
+  // Only skip if BOTH sessionId is set AND session_init has been received
+  if (cs.sessionId && cs.lastSessionInit) return Promise.resolve()
 
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -449,11 +458,21 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
     }, timeoutMs)
 
     const onSessionId = (_sessionId: string) => {
-      cleanup()
-      resolve()
+      // For resumed sessions, sessionId arrives immediately but we still need session_init
+      if (cs.lastSessionInit) {
+        cleanup()
+        resolve()
+      }
     }
 
     const onMessage = (event: { type: string; message?: string; fatal?: boolean }) => {
+      if (event.type === 'session_init') {
+        // session_init received — lastSessionInit is now cached by emitSequenced
+        if (cs.sessionId) {
+          cleanup()
+          resolve()
+        }
+      }
       if (event.type === 'error' && event.fatal) {
         cleanup()
         reject(new Error(event.message ?? 'Session init failed'))

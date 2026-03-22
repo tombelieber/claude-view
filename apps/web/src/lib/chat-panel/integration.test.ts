@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { coordinate } from './coordinator'
+import { mapWsEvent } from './event-mapper'
 import type { ChatPanelStore, Command, RawEvent } from './types'
 
 const INITIAL: ChatPanelStore = {
@@ -112,10 +113,9 @@ describe('integration: full resume flow', () => {
     expect(allCmds).toContainEqual(
       expect.objectContaining({ cmd: 'CANCEL_TIMER', id: 'init-timeout' }),
     )
-    // Queued message drained on exit to sdk_owned
-    expect(allCmds).toContainEqual(
-      expect.objectContaining({ cmd: 'WS_SEND', message: { type: 'user_message', text: 'hello' } }),
-    )
+    // Message NOT drained via WS — it was already sent as POST_RESUME initialMessage.
+    // Outbox entry is 'sent' (not 'queued'), so exitAcquiring skips it.
+    expect(allCmds).not.toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
   })
 })
 
@@ -172,6 +172,7 @@ describe('integration: takeover flow', () => {
       panel: {
         phase: 'cc_cli',
         sessionId: 'abc',
+        blocks: [],
         sub: { sub: 'watching' },
       },
       outbox: { messages: [] },
@@ -432,14 +433,134 @@ describe('integration: deselect resets everything', () => {
   })
 })
 
+// ── Race: SIDECAR_HAS_SESSION before HISTORY_OK ──────────────────
+
+describe('integration: history race — sidecar responds first', () => {
+  test('SIDECAR_HAS_SESSION before HISTORY_OK → history preserved through acquiring → sdk_owned', () => {
+    const historyBlocks = [
+      { type: 'user' as const, id: 'u1', text: 'old msg', timestamp: 1 },
+      { type: 'assistant' as const, id: 'a1', segments: [], streaming: false },
+    ] as any
+
+    const { store } = drive(INITIAL, [
+      // 1. Select session → nobody(loading)
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      // 2. Sidecar responds FIRST (before history API) → acquiring with blocks: []
+      { type: 'SIDECAR_HAS_SESSION', controlId: 'ctrl-1' },
+      // 3. History arrives LATE → should update historyBlocks in acquiring
+      { type: 'HISTORY_OK', blocks: historyBlocks },
+      // 4. WS connects
+      { type: 'WS_OPEN' },
+      // 5. Session init → exits acquiring → sdk_owned with the history blocks
+      {
+        type: 'SESSION_INIT',
+        model: 'opus',
+        permissionMode: 'default',
+        slashCommands: [],
+        mcpServers: [],
+        skills: [],
+        agents: [],
+        capabilities: [],
+      },
+    ])
+
+    expect(store.panel.phase).toBe('sdk_owned')
+    if (store.panel.phase === 'sdk_owned') {
+      // History blocks carried through — not empty
+      expect(store.panel.blocks).toHaveLength(2)
+      expect(store.panel.blocks[0].id).toBe('u1')
+    }
+  })
+})
+
+// ── Race: HISTORY_OK arrives in sdk_owned ────────────────────────
+
+describe('integration: history arrives after sdk_owned', () => {
+  test('HISTORY_OK with empty blocks in sdk_owned → merges history', () => {
+    const historyBlocks = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }] as any
+
+    // Start in sdk_owned with empty blocks (race happened)
+    const emptyStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 'abc',
+        controlId: 'c1',
+        blocks: [],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+    }
+
+    const { store } = drive(emptyStore, [{ type: 'HISTORY_OK', blocks: historyBlocks }])
+
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.blocks).toHaveLength(1)
+      expect(store.panel.blocks[0].id).toBe('u1')
+    }
+  })
+
+  test('HISTORY_OK with existing blocks in sdk_owned → ignores stale history', () => {
+    const liveBlocks = [
+      { type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 },
+      { type: 'assistant' as const, id: 'a1', segments: [], streaming: false },
+    ] as any
+
+    const liveStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 'abc',
+        controlId: 'c1',
+        blocks: liveBlocks,
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+    }
+
+    const staleHistory = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }] as any
+
+    const { store } = drive(liveStore, [{ type: 'HISTORY_OK', blocks: staleHistory }])
+
+    if (store.panel.phase === 'sdk_owned') {
+      // Should NOT replace live blocks with stale history
+      expect(store.panel.blocks).toHaveLength(2)
+    }
+  })
+})
+
+// ── stream_delta without textDelta ───────────────────────────────
+
+describe('integration: stream_delta filtering', () => {
+  test('stream_delta with null textDelta returns null from mapWsEvent', () => {
+    // content_block_start — no textDelta
+    expect(mapWsEvent({ type: 'stream_delta', deltaType: 'content_block_start' })).toBeNull()
+    // content_block_delta with textDelta
+    expect(mapWsEvent({ type: 'stream_delta', textDelta: 'hello' })).toEqual({
+      type: 'STREAM_DELTA',
+      text: 'hello',
+    })
+    // explicit undefined textDelta
+    expect(mapWsEvent({ type: 'stream_delta', textDelta: undefined })).toBeNull()
+  })
+})
+
 // ── CLI watching → inactive → back to nobody ──────────────────────
 
 describe('integration: CLI session ends naturally', () => {
   test('cc_cli(watching) → LIVE_STATUS inactive → nobody(ready)', () => {
+    const historyBlocks = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }]
     const watchingStore: ChatPanelStore = {
       panel: {
         phase: 'cc_cli',
         sessionId: 'abc',
+        blocks: historyBlocks,
         sub: { sub: 'watching' },
       },
       outbox: { messages: [] },
@@ -452,7 +573,7 @@ describe('integration: CLI session ends naturally', () => {
 
     expect(store.panel.phase).toBe('nobody')
     if (store.panel.phase === 'nobody') {
-      expect(store.panel.sub).toEqual({ sub: 'ready', blocks: [] })
+      expect(store.panel.sub).toEqual({ sub: 'ready', blocks: historyBlocks })
     }
     expect(allCmds).toContainEqual({ cmd: 'CLOSE_TERMINAL_WS' })
   })

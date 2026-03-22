@@ -34,7 +34,7 @@ export type RecoveringKind =
 export type PanelState =
   | { phase: 'empty' }
   | { phase: 'nobody'; sessionId: string; sub: NobodySub }
-  | { phase: 'cc_cli'; sessionId: string; sub: CcCliSub }
+  | { phase: 'cc_cli'; sessionId: string; blocks: ConversationBlock[]; sub: CcCliSub }
   | {
       phase: 'acquiring'
       sessionId: string
@@ -107,7 +107,7 @@ export type RawEvent =
   | { type: 'SIDECAR_HAS_SESSION'; controlId: string }
   | { type: 'SIDECAR_NO_SESSION' }
   // User actions (E-B1: localId at call site for StrictMode safety)
-  | { type: 'SEND_MESSAGE'; text: string; localId: string }
+  | { type: 'SEND_MESSAGE'; text: string; localId: string; model?: string; permissionMode?: string }
   | { type: 'FORK_SESSION'; message?: string }
   | { type: 'TAKEOVER_CLI' }
   | { type: 'RESUME_WITH_OPTIONS'; permissionMode?: string; model?: string }
@@ -196,6 +196,7 @@ export type Command =
       permissionMode?: string
       model?: string
       resumeAtMessageId?: string
+      message?: string
     }
   | { cmd: 'POST_FORK'; sessionId: string; message?: string }
   | { cmd: 'OPEN_SIDECAR_WS'; sessionId: string }
