@@ -21,6 +21,10 @@ interface AppState {
   sidebarScopeCollapsed: boolean
   sidebarRecentCollapsed: boolean
 
+  // Chat sidebar section collapse
+  chatNeedsYouCollapsed: boolean
+  chatWorkingCollapsed: boolean
+
   // Live Monitor
   recentLiveCommands: string[]
 
@@ -35,7 +39,9 @@ interface AppState {
   cycleTheme: () => void
   toggleSidebar: () => void
   setSidebarWidth: (width: number) => void
-  toggleSidebarSection: (section: 'tabs' | 'scope' | 'recent') => void
+  toggleSidebarSection: (
+    section: 'tabs' | 'scope' | 'recent' | 'chatNeedsYou' | 'chatWorking',
+  ) => void
   addRecentLiveCommand: (id: string) => void
 }
 
@@ -53,6 +59,8 @@ export const useAppStore = create<AppState>()(
       sidebarTabsCollapsed: false,
       sidebarScopeCollapsed: false,
       sidebarRecentCollapsed: false,
+      chatNeedsYouCollapsed: false,
+      chatWorkingCollapsed: false,
       recentLiveCommands: [],
 
       setSearchQuery: (query) => set({ searchQuery: query }),
@@ -100,6 +108,12 @@ export const useAppStore = create<AppState>()(
           case 'recent':
             set((state) => ({ sidebarRecentCollapsed: !state.sidebarRecentCollapsed }))
             break
+          case 'chatNeedsYou':
+            set((state) => ({ chatNeedsYouCollapsed: !state.chatNeedsYouCollapsed }))
+            break
+          case 'chatWorking':
+            set((state) => ({ chatWorkingCollapsed: !state.chatWorkingCollapsed }))
+            break
         }
       },
     }),
@@ -114,6 +128,8 @@ export const useAppStore = create<AppState>()(
         sidebarTabsCollapsed: state.sidebarTabsCollapsed,
         sidebarScopeCollapsed: state.sidebarScopeCollapsed,
         sidebarRecentCollapsed: state.sidebarRecentCollapsed,
+        chatNeedsYouCollapsed: state.chatNeedsYouCollapsed,
+        chatWorkingCollapsed: state.chatWorkingCollapsed,
       }),
     },
   ),

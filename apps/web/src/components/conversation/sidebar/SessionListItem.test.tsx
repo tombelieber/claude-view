@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
+import {
+  deriveDropdownActions,
+  getSessionSource,
+  getStatusDotColor,
+  getUrgencyGroup,
+  groupByUrgency,
+} from './session-list-helpers'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -47,36 +53,57 @@ describe('getStatusDotColor', () => {
 })
 
 // ---------------------------------------------------------------------------
-// getStatusBadge — Live/Watching with color matching agent state
+// getSessionSource — terminal vs sdk based on liveStatus
 // ---------------------------------------------------------------------------
 
-describe('getStatusBadge', () => {
-  it('"Live" amber when cc_agent_sdk_owned + needs_you', () => {
-    const badge = getStatusBadge({ liveData: liveNeedsYou, liveStatus: 'cc_agent_sdk_owned' })
-    expect(badge?.text).toBe('Live')
-    expect(badge?.className).toContain('amber')
+describe('getSessionSource', () => {
+  it('sdk when cc_agent_sdk_owned', () => {
+    expect(getSessionSource({ liveStatus: 'cc_agent_sdk_owned' })).toBe('sdk')
   })
 
-  it('"Live" green when cc_agent_sdk_owned + autonomous', () => {
-    const badge = getStatusBadge({ liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' })
-    expect(badge?.text).toBe('Live')
-    expect(badge?.className).toContain('green')
+  it('terminal when cc_owned', () => {
+    expect(getSessionSource({ liveStatus: 'cc_owned' })).toBe('terminal')
   })
 
-  it('"Watching" amber when cc_owned + needs_you', () => {
-    const badge = getStatusBadge({ liveData: liveNeedsYou, liveStatus: 'cc_owned' })
-    expect(badge?.text).toBe('Watching')
-    expect(badge?.className).toContain('amber')
+  it('terminal when inactive (default)', () => {
+    expect(getSessionSource({ liveStatus: 'inactive' })).toBe('terminal')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getUrgencyGroup + groupByUrgency — Mission Control grouping
+// ---------------------------------------------------------------------------
+
+describe('getUrgencyGroup', () => {
+  it('needs_you when agentState.group is needs_you', () => {
+    expect(getUrgencyGroup({ liveData: liveNeedsYou })).toBe('needs_you')
   })
 
-  it('"Watching" green when cc_owned + autonomous', () => {
-    const badge = getStatusBadge({ liveData: liveAutonomous, liveStatus: 'cc_owned' })
-    expect(badge?.text).toBe('Watching')
-    expect(badge?.className).toContain('green')
+  it('working when agentState.group is autonomous', () => {
+    expect(getUrgencyGroup({ liveData: liveAutonomous })).toBe('working')
   })
 
-  it('null when no live data', () => {
-    expect(getStatusBadge({})).toBeNull()
+  it('working when no agentState', () => {
+    expect(getUrgencyGroup({ liveData: { status: 'working' } })).toBe('working')
+  })
+})
+
+describe('groupByUrgency', () => {
+  it('splits sessions into needsYou and working', () => {
+    const sessions = [
+      { liveData: liveNeedsYou, liveStatus: 'cc_owned' as const },
+      { liveData: liveAutonomous, liveStatus: 'cc_owned' as const },
+      { liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' as const },
+    ]
+    const { needsYou, working } = groupByUrgency(sessions)
+    expect(needsYou).toHaveLength(1)
+    expect(working).toHaveLength(2)
+  })
+
+  it('returns empty arrays when no sessions', () => {
+    const { needsYou, working } = groupByUrgency([])
+    expect(needsYou).toHaveLength(0)
+    expect(working).toHaveLength(0)
   })
 })
 

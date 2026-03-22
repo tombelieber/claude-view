@@ -83,14 +83,19 @@ export class SessionRegistry {
     if (event.type === 'session_init') {
       cs.lastSessionInit = event as SessionInit
     }
-    cs.emitter.emit('message', event)
-    // Filter text-carrying deltas from accumulator (prevents doubled text with assistant_text).
-    // Keep structural events (content_block_start/stop) so accumulator builds block skeletons
-    // that blocks_snapshot can deliver — the frontend needs the skeleton to attach pendingText.
+    // Push to accumulator BEFORE emitting so that blocks_update (sent by
+    // ws-handler inside the 'message' listener) reflects the latest state.
+    // Without this, blocks_update is one event stale — e.g. after assistant_text
+    // the blocks_update would lack the text, causing pendingText duplication.
+    //
+    // Filter text-carrying deltas (prevents doubled text with assistant_text).
+    // Keep structural events (content_block_start/stop) so accumulator builds
+    // block skeletons that blocks_snapshot can deliver.
     const isTextDelta =
       event.type === 'stream_delta' &&
       (event as { deltaType?: string }).deltaType === 'content_block_delta'
     if (!isTextDelta) cs.accumulator.push(event)
+    cs.emitter.emit('message', event)
   }
 
   async closeAll(): Promise<void> {

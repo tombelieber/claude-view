@@ -1,9 +1,9 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
+import { Clock, FolderOpen, GitBranch, MoreVertical, TerminalSquare, Zap } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
-import { deriveDropdownActions, getStatusBadge, getStatusDotColor } from './session-list-helpers'
+import { deriveDropdownActions, getSessionSource, getStatusDotColor } from './session-list-helpers'
 
 import type { LiveStatus } from '../../../lib/live-status'
 
@@ -13,6 +13,8 @@ interface Props {
     liveStatus?: LiveStatus
     liveData?: LiveSession | null
   }
+  /** Compact single-line rendering for WORKING group */
+  compact?: boolean
   isSelected: boolean
   isKeyboardActive?: boolean
   onSelect: (sessionId: string) => void
@@ -43,9 +45,17 @@ const menuItemClass =
 const dangerItemClass =
   'px-3 py-1.5 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 outline-none'
 
+const SourceIcon = ({ source, size = 10 }: { source: 'terminal' | 'sdk'; size?: number }) =>
+  source === 'sdk' ? (
+    <Zap size={size} className="text-blue-400 dark:text-blue-500" />
+  ) : (
+    <TerminalSquare size={size} className="text-gray-400 dark:text-gray-500" />
+  )
+
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
   {
     session,
+    compact,
     isSelected,
     isKeyboardActive,
     onSelect,
@@ -66,23 +76,113 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
   const dotColor = getStatusDotColor(session)
   const isAutonomous = session.liveData?.agentState?.group === 'autonomous'
   const showPulse = isAutonomous && session.liveData != null
-  const badge = getStatusBadge(session)
+  const source = getSessionSource(session)
   const actions = deriveDropdownActions(session)
 
+  const rowClasses = [
+    'group relative flex items-center gap-2 rounded-md cursor-pointer transition-colors',
+    compact ? 'px-2 py-1' : 'px-3 py-2 items-start',
+    isSelected
+      ? 'bg-blue-500/10 dark:bg-blue-400/10 text-blue-700 dark:text-blue-300'
+      : isKeyboardActive
+        ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+        : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
+  ].join(' ')
+
+  // --- Compact single-line row for WORKING group ---
+  if (compact) {
+    return (
+      <div ref={ref} className={rowClasses} onClick={handleClick}>
+        <div className="flex-shrink-0 relative inline-flex">
+          {showPulse && (
+            <span
+              className={`absolute inline-flex w-1.5 h-1.5 rounded-full opacity-60 motion-safe:animate-live-ring ${dotColor}`}
+            />
+          )}
+          <span
+            className={`relative inline-flex w-1.5 h-1.5 rounded-full ${dotColor} ${showPulse ? 'motion-safe:animate-live-breathe' : ''}`}
+          />
+        </div>
+        <SourceIcon source={source} size={11} />
+        {source === 'sdk' && (
+          <span
+            className="flex-shrink-0 text-[9px] font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1 leading-3.5"
+            title="Started from this app — you can send prompts and interact directly"
+          >
+            This App
+          </span>
+        )}
+        <span className="text-xs font-medium truncate flex-1 min-w-0">{title}</span>
+        {projectName && (
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-16 flex-shrink-0">
+            {projectName}
+          </span>
+        )}
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+          {formatRelativeTime(session.modifiedAt)}
+        </span>
+        {/* Compact context menu */}
+        <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenu.Trigger asChild>
+            <button
+              className={[
+                'flex-shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity',
+                'hover:bg-gray-200 dark:hover:bg-gray-700',
+                menuOpen ? 'opacity-100' : '',
+              ].join(' ')}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical size={12} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              className="z-50 min-w-32 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm"
+              sideOffset={4}
+            >
+              {actions.takeOver && onTakeOver && (
+                <DropdownMenu.Item
+                  className={menuItemClass}
+                  onSelect={() => onTakeOver(session.id)}
+                >
+                  Take Over
+                </DropdownMenu.Item>
+              )}
+              {actions.fork && onFork && (
+                <DropdownMenu.Item className={menuItemClass} onSelect={() => onFork(session.id)}>
+                  Fork
+                </DropdownMenu.Item>
+              )}
+              {actions.openInMonitor && onOpenInMonitor && (
+                <DropdownMenu.Item
+                  className={menuItemClass}
+                  onSelect={() => onOpenInMonitor(session.id)}
+                >
+                  Open in Monitor
+                </DropdownMenu.Item>
+              )}
+              {actions.shutDown && onShutDown && (
+                <>
+                  <DropdownMenu.Separator className="my-1 border-t border-gray-200 dark:border-gray-700" />
+                  <DropdownMenu.Item
+                    className={dangerItemClass}
+                    onSelect={() => onShutDown(session.id)}
+                  >
+                    Shut Down
+                  </DropdownMenu.Item>
+                </>
+              )}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      </div>
+    )
+  }
+
+  // --- Expanded card for NEEDS YOU group + history ---
   return (
-    <div
-      ref={ref}
-      className={[
-        'group relative flex items-start gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors',
-        isSelected
-          ? 'bg-blue-500/10 dark:bg-blue-400/10 text-blue-700 dark:text-blue-300'
-          : isKeyboardActive
-            ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-            : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
-      ].join(' ')}
-      onClick={handleClick}
-    >
-      {/* Status dot — aligned with Live Monitor StatusDot colors */}
+    <div ref={ref} className={rowClasses} onClick={handleClick}>
+      {/* Status dot */}
       <div className="mt-1 flex-shrink-0 relative inline-flex">
         {showPulse && (
           <span
@@ -97,14 +197,16 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="text-sm font-medium truncate">{title}</p>
-          {badge && (
+          {session.liveData && <SourceIcon source={source} size={12} />}
+          {session.liveData && source === 'sdk' && (
             <span
-              className={`flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none ${badge.className}`}
+              className="flex-shrink-0 text-[9px] font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1 leading-3.5"
+              title="Started from this app — you can send prompts and interact directly"
             >
-              {badge.text}
+              This App
             </span>
           )}
+          <p className="text-sm font-medium truncate">{title}</p>
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {projectName && (
