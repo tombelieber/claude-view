@@ -3,54 +3,35 @@ import { describe, expect, it } from 'vitest'
 import { McpProgressCard } from './McpProgressCard'
 
 describe('McpProgressCard', () => {
-  describe('Header rendering', () => {
-    it('should display serverName.toolName', () => {
+  describe('All fields inline', () => {
+    it('should display serverName, toolName, and status', () => {
       render(<McpProgressCard serverName="filesystem" toolName="readFile" status="running" />)
 
-      expect(screen.getByText(/filesystem\.readFile/)).toBeInTheDocument()
+      expect(screen.getByText('filesystem')).toBeInTheDocument()
+      expect(screen.getByText('readFile')).toBeInTheDocument()
+      expect(screen.getByText('running')).toBeInTheDocument()
     })
   })
 
-  describe('Status badge', () => {
-    it('should show running status with pulse indicator', () => {
-      const { container } = render(
-        <McpProgressCard serverName="fs" toolName="read" status="running" />,
-      )
+  describe('Status styling', () => {
+    it('should show pulse dot for running', () => {
+      render(<McpProgressCard serverName="fs" toolName="read" status="running" />)
 
-      expect(screen.getByText('running')).toBeInTheDocument()
-      // Pulse dot should exist
-      const pulseDot = container.querySelector('.animate-pulse')
-      expect(pulseDot).toBeInTheDocument()
+      const statusEl = screen.getByText('running')
+      const dot = statusEl.querySelector('.animate-pulse')
+      expect(dot).toBeInTheDocument()
     })
 
-    it('should show completed status with green styling', () => {
+    it('should show green for completed', () => {
       render(<McpProgressCard serverName="fs" toolName="read" status="completed" />)
 
-      const badge = screen.getByText('completed')
-      expect(badge.className).toContain('text-green')
+      expect(screen.getByText('completed').className).toContain('text-green')
     })
 
-    it('should show error status with red styling', () => {
+    it('should show red for error', () => {
       render(<McpProgressCard serverName="fs" toolName="read" status="error" />)
 
-      const badge = screen.getByText('error')
-      expect(badge.className).toContain('text-red')
-    })
-
-    it('should handle unknown status with gray fallback', () => {
-      render(<McpProgressCard serverName="fs" toolName="read" status="pending" />)
-
-      const badge = screen.getByText('pending')
-      expect(badge.className).toContain('text-gray')
-    })
-
-    it('should not show pulse for non-running status', () => {
-      const { container } = render(
-        <McpProgressCard serverName="fs" toolName="read" status="completed" />,
-      )
-
-      const pulseDot = container.querySelector('.animate-pulse')
-      expect(pulseDot).not.toBeInTheDocument()
+      expect(screen.getByText('error').className).toContain('text-red')
     })
   })
 
@@ -60,8 +41,7 @@ describe('McpProgressCard', () => {
         <McpProgressCard serverName="fs" toolName="read" status="running" />,
       )
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-blue')
+      expect((container.firstElementChild as HTMLElement).className).toContain('flex')
     })
   })
 

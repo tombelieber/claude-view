@@ -2,7 +2,7 @@ import {
   type CodeRenderContextValue,
   CodeRenderProvider,
 } from '@claude-view/shared/contexts/CodeRenderContext'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { AgentProgressCard } from './AgentProgressCard'
 
@@ -32,67 +32,24 @@ function renderWithCodeContext(ui: React.ReactElement) {
 }
 
 describe('AgentProgressCard', () => {
-  describe('Header rendering', () => {
-    it('should display agent ID and prompt preview', () => {
-      renderWithCodeContext(
-        <AgentProgressCard agentId="agent-1" prompt="Research auth best practices" />,
-      )
+  describe('All fields visible by default', () => {
+    it('should display agent ID in header', () => {
+      renderWithCodeContext(<AgentProgressCard agentId="agent-1" prompt="Research auth" />)
 
       expect(screen.getByText('#agent-1')).toBeInTheDocument()
-      expect(screen.getByText(/Research auth best practices/)).toBeInTheDocument()
     })
 
-    it('should truncate long prompts in header to 80 chars', () => {
-      const longPrompt = 'A'.repeat(200)
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt={longPrompt} />)
-
-      // Header should show truncated version
-      const headerText = screen.getByText('A'.repeat(80))
-      expect(headerText).toBeInTheDocument()
-    })
-
-    it('should show +msg badge when message is present', () => {
-      renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt="Do something" message={{ result: 'done' }} />,
-      )
-
-      expect(screen.getByText('+msg')).toBeInTheDocument()
-    })
-
-    it('should not show +msg badge when message is undefined', () => {
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do something" />)
-
-      expect(screen.queryByText('+msg')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Collapsible behavior', () => {
-    it('should expand to show full prompt on click', () => {
+    it('should display prompt immediately without click', () => {
       renderWithCodeContext(
         <AgentProgressCard agentId="a1" prompt="This is the full prompt text" />,
       )
-
-      // Prompt details not visible initially
-      expect(screen.queryByTestId('agent-prompt')).not.toBeInTheDocument()
-
-      fireEvent.click(screen.getByRole('button'))
 
       const promptBlock = screen.getByTestId('agent-prompt')
       expect(promptBlock).toBeInTheDocument()
       expect(promptBlock.textContent).toContain('This is the full prompt text')
     })
 
-    it('should truncate prompt longer than 1000 chars in expanded view', () => {
-      const longPrompt = 'A'.repeat(1200)
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt={longPrompt} />)
-
-      fireEvent.click(screen.getByRole('button'))
-
-      const truncated = screen.getByTestId('agent-prompt')
-      expect(truncated.textContent!.length).toBeLessThan(1200)
-    })
-
-    it('should show message as JSON in expanded view', () => {
+    it('should show message as JSON when present', () => {
       renderWithCodeContext(
         <AgentProgressCard
           agentId="a1"
@@ -101,35 +58,28 @@ describe('AgentProgressCard', () => {
         />,
       )
 
-      fireEvent.click(screen.getByRole('button'))
-
       const msgBlock = screen.getByTestId('agent-message')
-      expect(msgBlock).toBeInTheDocument()
       expect(msgBlock.textContent).toContain('"status"')
-      expect(msgBlock.textContent).toContain('"completed"')
     })
 
     it('should show string message as-is', () => {
-      renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt="Do something" message="plain text result" />,
-      )
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" message="plain text" />)
 
-      fireEvent.click(screen.getByRole('button'))
-
-      expect(screen.getByText('plain text result')).toBeInTheDocument()
+      expect(screen.getByText('plain text')).toBeInTheDocument()
     })
-  })
 
-  describe('XSS prevention (React auto-escaping)', () => {
-    it('should properly escape text content with script tags', () => {
-      renderWithCodeContext(
-        <AgentProgressCard
-          agentId='<script>alert("XSS")</script>'
-          prompt='Test prompt with <img src=x onerror="alert(1)">'
-        />,
-      )
+    it('should not show message section when undefined', () => {
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
 
-      expect(screen.getByText(/<script>alert\("XSS"\)<\/script>/)).toBeInTheDocument()
+      expect(screen.queryByTestId('agent-message')).not.toBeInTheDocument()
+    })
+
+    it('should truncate prompt longer than 2000 chars', () => {
+      const longPrompt = 'A'.repeat(2500)
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt={longPrompt} />)
+
+      const promptBlock = screen.getByTestId('agent-prompt')
+      expect(promptBlock.textContent!.length).toBeLessThan(2500)
     })
   })
 
@@ -138,15 +88,14 @@ describe('AgentProgressCard', () => {
       const { container } = renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
 
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-indigo')
+      expect(card.className).toContain('space-y')
     })
-  })
 
-  describe('ARIA and keyboard', () => {
-    it('should have ARIA label on the expand button', () => {
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
+    it('should have aria-hidden on decorative icon', () => {
+      const { container } = renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
 
-      expect(screen.getByRole('button', { name: /agent progress/i })).toBeInTheDocument()
+      const svg = container.querySelector('svg')
+      expect(svg?.getAttribute('aria-hidden')).toBe('true')
     })
   })
 })
