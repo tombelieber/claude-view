@@ -54,7 +54,14 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         step: { step: 'posting' },
       }
       return [
-        { panel, outbox, meta: store.meta, projectPath: store.projectPath },
+        {
+          panel,
+          outbox,
+          meta: store.meta,
+          projectPath: store.projectPath,
+          lastModel: event.model ?? store.lastModel,
+          lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+        },
         [
           {
             cmd: 'POST_RESUME',

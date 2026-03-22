@@ -18,8 +18,14 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
   const p = store.panel
   if (p.phase !== 'acquiring') return [store, []]
 
-  // SSE race rejection: ignore live status during acquire
-  if (event.type === 'LIVE_STATUS_CHANGED') return [store, []]
+  // SSE race rejection: ignore live status PHASE changes during acquire,
+  // but still update projectPath if provided (it's safe — no phase change).
+  if (event.type === 'LIVE_STATUS_CHANGED') {
+    if (event.projectPath && event.projectPath !== store.projectPath) {
+      return [{ ...store, projectPath: event.projectPath }, []]
+    }
+    return [store, []]
+  }
 
   // E-B2: Map WS events at coordinator level
   if (event.type === 'WS_OPEN' && p.step.step === 'ws_connecting') {
@@ -137,7 +143,17 @@ function exitAcquiring(
       }
     }
 
-    return [{ panel, outbox, meta: store.meta, projectPath: store.projectPath }, cmds]
+    return [
+      {
+        panel,
+        outbox,
+        meta: store.meta,
+        projectPath: store.projectPath,
+        lastModel: store.lastModel,
+        lastPermissionMode: store.lastPermissionMode,
+      },
+      cmds,
+    ]
   }
 
   const error = result.error ?? 'Unknown error'

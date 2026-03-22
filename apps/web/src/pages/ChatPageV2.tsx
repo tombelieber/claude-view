@@ -48,6 +48,7 @@ function makeSessionPanelArgs(
     params: {
       sessionId: sid,
       liveStatus: deriveLiveStatus(liveSession),
+      liveProjectPath: liveSession?.projectPath,
       agentStateGroup: liveSession?.agentState?.group ?? null,
     },
   }
@@ -167,6 +168,7 @@ export function ChatPageV2() {
       const live = liveSessions.sessions.find((s) => s.id === sid)
       panel.api.updateParameters({
         liveStatus: deriveLiveStatus(live),
+        liveProjectPath: live?.projectPath,
         agentStateGroup: live?.agentState?.group ?? null,
       })
       const title = deriveTabTitle(sid, cached, liveSessions.sessions)

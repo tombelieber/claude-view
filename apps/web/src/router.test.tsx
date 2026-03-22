@@ -37,8 +37,8 @@ vi.mock('./pages/AnalyticsPage', () => ({
   AnalyticsPage: () => <div>Analytics Page</div>,
 }))
 
-vi.mock('./pages/ChatPage', () => ({
-  ChatPage: () => <div>Chat Page</div>,
+vi.mock('./pages/ChatPageV2', () => ({
+  ChatPageV2: () => <div>Chat Page</div>,
 }))
 
 vi.mock('./pages/LiveMonitorPage', () => ({

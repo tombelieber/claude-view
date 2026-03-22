@@ -1,50 +1,179 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
-import { useMemo, useState } from 'react'
+import { ArrowDown } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../../lib/utils'
 import { type ChipDefinition, FilterChips } from '../live/action-log/FilterChips'
 import { DayDivider, formatDayLabel } from './DayDivider'
 import { JsonModeProvider } from './blocks/developer/json-mode-context'
 import type { BlockRenderers } from './types'
 
-// ── Block-type categories for FilterChips ───────────────────────────────────
+// ── Fine-grained filter categories ──────────────────────────────────────────
 
-type BlockCategory = ConversationBlock['type']
+export type FineCategory =
+  | 'user'
+  | 'assistant'
+  | 'builtin'
+  | 'mcp'
+  | 'skill'
+  | 'agent'
+  | 'hook'
+  | 'error'
+  | 'system'
+  | 'turn'
+  | 'prompt'
+  | 'queue'
 
-const BLOCK_CATEGORIES: ChipDefinition<BlockCategory>[] = [
+const FINE_CATEGORIES: ChipDefinition<FineCategory>[] = [
   { id: 'all', label: 'All', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
   { id: 'user', label: 'User', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
   { id: 'assistant', label: 'Assistant', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
-  {
-    id: 'interaction',
-    label: 'Prompt',
-    color: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  },
-  {
-    id: 'turn_boundary',
-    label: 'Turn',
-    color: 'bg-green-500/10 text-green-400 border-green-500/30',
-  },
-  { id: 'notice', label: 'Notice', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
+  { id: 'builtin', label: 'Builtin', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
+  { id: 'mcp', label: 'MCP', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
+  { id: 'skill', label: 'Skill', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
+  { id: 'agent', label: 'Agent', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
+  { id: 'hook', label: 'Hook', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
+  { id: 'error', label: 'Error', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
   { id: 'system', label: 'System', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
-  {
-    id: 'progress',
-    label: 'Progress',
-    color: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-  },
+  { id: 'turn', label: 'Turn', color: 'bg-green-500/10 text-green-400 border-green-500/30' },
+  { id: 'prompt', label: 'Prompt', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
+  { id: 'queue', label: 'Queue', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
 ]
 
-function computeCounts(blocks: ConversationBlock[]): Record<BlockCategory, number> {
-  const c: Record<BlockCategory, number> = {
+/**
+ * Derive one or more fine-grained categories for a block.
+ * A block passes the filter if ANY of its categories match the active filter.
+ */
+export function getBlockFineCategories(block: ConversationBlock): FineCategory[] {
+  switch (block.type) {
+    case 'user':
+      return ['user']
+
+    case 'assistant': {
+      const cats: FineCategory[] = []
+      let hasText = false
+      for (const seg of block.segments) {
+        if (seg.kind === 'text') {
+          hasText = true
+        } else {
+          // Map ActionCategory to FineCategory
+          const tc = mapActionCategory(seg.execution.category)
+          if (tc && !cats.includes(tc)) cats.push(tc)
+        }
+      }
+      // If block has only text (no tools), it's "assistant"
+      // If it has tools, include those categories; also include "assistant" if it has text
+      if (cats.length === 0) return ['assistant']
+      if (hasText) cats.push('assistant')
+      return cats
+    }
+
+    case 'interaction':
+      return ['prompt']
+
+    case 'turn_boundary':
+      return ['turn']
+
+    case 'notice':
+      return ['error']
+
+    case 'system': {
+      if (block.variant === 'hook_event') return ['hook']
+      if (block.variant === 'queue_operation') return ['queue']
+      return ['system']
+    }
+
+    case 'progress': {
+      const pc = mapActionCategory(block.category)
+      if (pc) return [pc]
+      if (block.variant === 'hook') return ['hook']
+      return ['system']
+    }
+
+    default:
+      return ['system']
+  }
+}
+
+function mapActionCategory(category: string | undefined): FineCategory | null {
+  switch (category) {
+    case 'builtin':
+      return 'builtin'
+    case 'mcp':
+      return 'mcp'
+    case 'skill':
+      return 'skill'
+    case 'agent':
+      return 'agent'
+    case 'hook':
+      return 'hook'
+    case 'queue':
+      return 'queue'
+    case 'snapshot':
+      return 'system'
+    case 'system':
+      return 'system'
+    default:
+      return null
+  }
+}
+
+function computeFineCounts(blocks: ConversationBlock[]): Record<FineCategory, number> {
+  const c: Record<FineCategory, number> = {
     user: 0,
     assistant: 0,
-    interaction: 0,
-    turn_boundary: 0,
-    notice: 0,
+    builtin: 0,
+    mcp: 0,
+    skill: 0,
+    agent: 0,
+    hook: 0,
+    error: 0,
     system: 0,
-    progress: 0,
+    turn: 0,
+    prompt: 0,
+    queue: 0,
   }
-  for (const block of blocks) c[block.type]++
+  for (const block of blocks) {
+    const cats = getBlockFineCategories(block)
+    for (const cat of cats) c[cat]++
+  }
   return c
+}
+
+// ── Flat item types for Virtuoso ────────────────────────────────────────────
+
+type ThreadItem =
+  | { kind: 'block'; block: ConversationBlock }
+  | { kind: 'divider'; label: string; key: string }
+
+function getBlockTimestamp(block: ConversationBlock): number | undefined {
+  if (block.type === 'user') return block.timestamp
+  if (block.type === 'assistant') return block.timestamp
+  return undefined
+}
+
+function dayKey(unixSeconds: number): string {
+  const d = new Date(unixSeconds * 1000)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+function buildThreadItems(blocks: ConversationBlock[]): ThreadItem[] {
+  const items: ThreadItem[] = []
+  let lastDay: string | null = null
+
+  for (const block of blocks) {
+    const ts = getBlockTimestamp(block)
+    if (ts && ts > 0) {
+      const day = dayKey(ts)
+      if (day !== lastDay) {
+        lastDay = day
+        items.push({ kind: 'divider', label: formatDayLabel(new Date(ts * 1000)), key: day })
+      }
+    }
+    items.push({ kind: 'block', block })
+  }
+
+  return items
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -58,17 +187,6 @@ interface Props {
   defaultJsonMode?: boolean
 }
 
-function getBlockTimestamp(block: ConversationBlock): number | undefined {
-  if (block.type === 'user') return block.timestamp
-  if (block.type === 'assistant') return block.timestamp
-  return undefined
-}
-
-function dayKey(unixSeconds: number): string {
-  const d = new Date(unixSeconds * 1000)
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-}
-
 export function ConversationThread({
   blocks,
   renderers,
@@ -76,16 +194,71 @@ export function ConversationThread({
   filterBar,
   defaultJsonMode,
 }: Props) {
-  const [activeFilter, setActiveFilter] = useState<BlockCategory[] | 'all'>('all')
+  const [activeFilter, setActiveFilter] = useState<FineCategory[] | 'all'>('all')
   const [globalJsonMode, setGlobalJsonMode] = useState(defaultJsonMode ?? false)
-  const counts = useMemo(() => computeCounts(blocks), [blocks])
+  const counts = useMemo(() => computeFineCounts(blocks), [blocks])
 
   const visibleBlocks = useMemo(() => {
     if (activeFilter === 'all') return blocks
-    return blocks.filter((b) => activeFilter.includes(b.type))
+    return blocks.filter((b) => {
+      const cats = getBlockFineCategories(b)
+      return cats.some((c) => activeFilter.includes(c))
+    })
   }, [blocks, activeFilter])
 
-  const handleFilterChange = (category: BlockCategory | 'all') => {
+  const items = useMemo(() => buildThreadItems(visibleBlocks), [visibleBlocks])
+
+  // ── Virtuoso scroll state ───────────────────────────────────────────────
+
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const [hasNewItems, setHasNewItems] = useState(false)
+  const prevCountRef = useRef(items.length)
+  const prevFilterRef = useRef(activeFilter)
+
+  // Track when new items arrive while user is scrolled up
+  useEffect(() => {
+    if (items.length > prevCountRef.current) {
+      if (!isAtBottom) {
+        setHasNewItems(true)
+      }
+    }
+    prevCountRef.current = items.length
+  }, [items.length, isAtBottom])
+
+  // Scroll to bottom when filter changes (list length changes drastically)
+  useEffect(() => {
+    if (prevFilterRef.current !== activeFilter) {
+      prevFilterRef.current = activeFilter
+      if (items.length > 0) {
+        requestAnimationFrame(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index: items.length - 1,
+            behavior: 'auto',
+          })
+        })
+      }
+    }
+  }, [activeFilter, items.length])
+
+  const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
+    setIsAtBottom(atBottom)
+    if (atBottom) {
+      setHasNewItems(false)
+    }
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    virtuosoRef.current?.scrollToIndex({
+      index: items.length - 1,
+      behavior: 'smooth',
+    })
+    setHasNewItems(false)
+  }, [items.length])
+
+  // ── Filter handling ─────────────────────────────────────────────────────
+
+  const handleFilterChange = (category: FineCategory | 'all') => {
     if (category === 'all') {
       setActiveFilter('all')
     } else {
@@ -100,16 +273,44 @@ export function ConversationThread({
     }
   }
 
-  let lastDay: string | null = null
+  // ── Stable render callback ──────────────────────────────────────────────
+
+  const renderItem = useCallback(
+    (_index: number, item: ThreadItem) => {
+      if (item.kind === 'divider') {
+        return (
+          <div className={compact ? 'py-0.5' : 'py-1 max-w-3xl mx-auto px-4'}>
+            <DayDivider label={item.label} />
+          </div>
+        )
+      }
+      const Renderer = renderers[item.block.type]
+      if (!Renderer) return null
+      return (
+        <div className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}>
+          <Renderer block={item.block} />
+        </div>
+      )
+    },
+    [renderers, compact],
+  )
+
+  const itemKey = useCallback(
+    (_index: number, item: ThreadItem) =>
+      item.kind === 'divider' ? `day-${item.key}` : item.block.id,
+    [],
+  )
+
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <JsonModeProvider value={globalJsonMode}>
-      <div data-testid="message-thread" className={compact ? 'space-y-1' : 'space-y-3'}>
+      <div data-testid="message-thread" className="relative h-full w-full flex flex-col">
         {filterBar && (
-          <div className="sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 -mx-4 px-1">
-            <div className="flex items-center">
+          <div className="sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 flex-shrink-0">
+            <div className="flex items-center px-1">
               <FilterChips
-                categories={BLOCK_CATEGORIES}
+                categories={FINE_CATEGORIES}
                 counts={counts}
                 activeFilter={activeFilter}
                 onFilterChange={handleFilterChange}
@@ -129,32 +330,36 @@ export function ConversationThread({
             </div>
           </div>
         )}
-        {visibleBlocks.map((block) => {
-          const Renderer = renderers[block.type]
-          if (!Renderer) return null
 
-          const ts = getBlockTimestamp(block)
-          let divider: React.ReactNode = null
-
-          if (ts && ts > 0) {
-            const day = dayKey(ts)
-            if (day !== lastDay) {
-              lastDay = day
-              divider = (
-                <DayDivider key={`day-${day}`} label={formatDayLabel(new Date(ts * 1000))} />
-              )
-            }
-          }
-
-          return divider ? (
-            <div key={block.id}>
-              {divider}
-              <Renderer block={block} />
-            </div>
-          ) : (
-            <Renderer key={block.id} block={block} />
-          )
-        })}
+        {items.length === 0 ? (
+          <div className="flex items-center justify-center flex-1 text-xs text-gray-500 dark:text-gray-600">
+            No messages yet
+          </div>
+        ) : (
+          <>
+            <Virtuoso
+              ref={virtuosoRef}
+              data={items}
+              computeItemKey={itemKey}
+              initialTopMostItemIndex={items.length - 1}
+              alignToBottom
+              followOutput="smooth"
+              atBottomStateChange={handleAtBottomStateChange}
+              atBottomThreshold={30}
+              itemContent={renderItem}
+              className="h-full flex-1 min-h-0"
+            />
+            {hasNewItems && !isAtBottom && (
+              <button
+                onClick={scrollToBottom}
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium shadow-lg hover:bg-blue-500 transition-colors cursor-pointer z-10"
+              >
+                <ArrowDown className="w-3 h-3" />
+                New messages
+              </button>
+            )}
+          </>
+        )}
       </div>
     </JsonModeProvider>
   )
