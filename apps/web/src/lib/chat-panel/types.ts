@@ -89,6 +89,13 @@ export interface OutboxState {
   messages: OutboxEntry[]
 }
 
+// ─── History pagination (orthogonal, survives phase transitions) ─
+export interface HistoryPagination {
+  total: number
+  offset: number
+  fetchingOlder: boolean
+}
+
 // ─── Composed Store ──────────────────────────────────────────
 export interface ChatPanelStore {
   panel: PanelState
@@ -101,6 +108,8 @@ export interface ChatPanelStore {
   lastModel: string | null
   /** Last permissionMode used in a SEND_MESSAGE — fallback for retries from recovering/closed. */
   lastPermissionMode: string | null
+  /** Pagination state for history blocks — tracks offset/total for infinite scroll. */
+  historyPagination: HistoryPagination | null
 }
 
 // ─── Events ──────────────────────────────────────────────────
@@ -109,8 +118,11 @@ export type RawEvent =
   | { type: 'SELECT_SESSION'; sessionId: string; projectPath?: string }
   | { type: 'DESELECT' }
   // History
-  | { type: 'HISTORY_OK'; blocks: ConversationBlock[] }
+  | { type: 'HISTORY_OK'; blocks: ConversationBlock[]; total?: number; offset?: number }
   | { type: 'HISTORY_FAILED'; error: string }
+  // Pagination (scroll-up infinite load)
+  | { type: 'LOAD_OLDER_HISTORY' }
+  | { type: 'OLDER_HISTORY_OK'; blocks: ConversationBlock[]; offset: number }
   // Active check
   | { type: 'SIDECAR_HAS_SESSION'; controlId: string; sessionState?: string }
   | { type: 'SIDECAR_NO_SESSION' }
@@ -197,6 +209,7 @@ export type RawEvent =
 // ─── Commands (side effects as data) ─────────────────────────
 export type Command =
   | { cmd: 'FETCH_HISTORY'; sessionId: string; limit?: number; offset?: number }
+  | { cmd: 'FETCH_OLDER_HISTORY'; sessionId: string; offset: number; limit: number }
   | { cmd: 'CHECK_SIDECAR_ACTIVE'; sessionId: string }
   | {
       cmd: 'POST_CREATE'

@@ -35,6 +35,7 @@ export function handleClosed(store: ChatPanelStore, event: RawEvent): Transition
           projectPath: store.projectPath,
           lastModel: event.model ?? store.lastModel,
           lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+          historyPagination: store.historyPagination,
         },
         [
           {

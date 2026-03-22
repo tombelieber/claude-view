@@ -4,6 +4,7 @@ import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
 import { TakeoverDialog } from '../components/chat/TakeoverDialog'
 import { ConversationThread } from '../components/conversation/ConversationThread'
+import { ThinkingIndicator } from '../components/conversation/ThinkingIndicator'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
 
@@ -83,8 +84,17 @@ export function ChatSession({
   }, [sessionId])
 
   // FSM: single hook replaces useConversation + useSendHandler + useSessionCapabilities
-  const { store, dispatch, pendingCmdsRef, blocks, inputBar, viewMode, connectionStatus } =
-    useChatPanel(sessionId, liveProjectPath)
+  const {
+    store,
+    dispatch,
+    pendingCmdsRef,
+    blocks,
+    inputBar,
+    viewMode,
+    connectionStatus,
+    thinkingState,
+    historyPagination,
+  } = useChatPanel(sessionId, liveProjectPath)
   const { channel } = useCommandExecutor(store, dispatch, pendingCmdsRef)
 
   // Dispatch LIVE_STATUS_CHANGED when liveStatus or projectPath changes
@@ -163,6 +173,11 @@ export function ChatSession({
   })
 
   const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
+
+  // Pagination: load older messages on scroll-up
+  const handleLoadOlderHistory = useCallback(() => {
+    dispatch({ type: 'LOAD_OLDER_HISTORY' })
+  }, [dispatch])
 
   // Send via FSM dispatch — pass model + permissionMode so create/resume use the right values
   const handleSend = useCallback(
@@ -270,7 +285,7 @@ export function ChatSession({
         {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
             flex-1 min-h-0 gives Virtuoso a measurable viewport height. */}
         <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-          {blocks.length === 0 ? (
+          {blocks.length === 0 && !thinkingState ? (
             <div className="flex items-center justify-center flex-1 text-gray-400 dark:text-gray-500">
               <div className="text-center">
                 <p className="text-lg font-medium mb-2">Start a conversation</p>
@@ -286,6 +301,9 @@ export function ChatSession({
                 )}
               </div>
             </div>
+          ) : blocks.length === 0 && thinkingState ? (
+            /* No blocks yet but something is happening — centered indicator */
+            <ThinkingIndicator phase={thinkingState} centered />
           ) : (
             <ConversationActionsProvider
               actions={{
@@ -312,41 +330,26 @@ export function ChatSession({
                 blocks={blocks}
                 renderers={registry}
                 filterBar={displayMode !== 'chat'}
+                onStartReached={handleLoadOlderHistory}
+                isFetchingOlder={historyPagination.isFetchingOlder}
+                hasOlderMessages={historyPagination.hasOlderMessages}
               />
             </ConversationActionsProvider>
           )}
-          {/* Connection status indicator — shows during acquiring/recovering phases */}
-          {connectionStatus && (
+          {/* Thinking indicator — inline below thread when blocks exist */}
+          {blocks.length > 0 && thinkingState && <ThinkingIndicator phase={thinkingState} />}
+          {/* Error status — connection lost, session replaced, resume failed */}
+          {connectionStatus?.kind === 'error' && (
             <div className="max-w-3xl mx-auto px-4 pb-3">
-              {connectionStatus.kind === 'error' ? (
-                <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
-                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-                    <line x1="8" y1="8" x2="16" y2="16" stroke="currentColor" strokeWidth="2" />
-                    <line x1="16" y1="8" x2="8" y2="16" stroke="currentColor" strokeWidth="2" />
-                  </svg>
-                  {connectionStatus.message}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  {connectionStatus.message}
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                  <title>Error</title>
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <line x1="8" y1="8" x2="16" y2="16" stroke="currentColor" strokeWidth="2" />
+                  <line x1="16" y1="8" x2="8" y2="16" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                {connectionStatus.message}
+              </div>
             </div>
           )}
         </div>

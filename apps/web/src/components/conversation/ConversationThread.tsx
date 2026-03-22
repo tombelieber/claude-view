@@ -1,6 +1,6 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
-import { ArrowDown } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../../lib/utils'
 import { type ChipDefinition, FilterChips } from '../live/action-log/FilterChips'
@@ -188,6 +188,12 @@ interface Props {
   defaultJsonMode?: boolean
   /** Start with all collapsible cards expanded (ToolCards, etc.). */
   defaultExpanded?: boolean
+  /** Called when user scrolls to the top — triggers loading older messages. */
+  onStartReached?: () => void
+  /** Whether older messages are currently being fetched. */
+  isFetchingOlder?: boolean
+  /** Whether there are older messages available above. */
+  hasOlderMessages?: boolean
 }
 
 export function ConversationThread({
@@ -197,6 +203,9 @@ export function ConversationThread({
   filterBar,
   defaultJsonMode,
   defaultExpanded,
+  onStartReached,
+  isFetchingOlder,
+  hasOlderMessages,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<FineCategory[] | 'all'>('all')
   const [globalJsonMode, setGlobalJsonMode] = useState(defaultJsonMode ?? false)
@@ -230,6 +239,26 @@ export function ConversationThread({
   const [hasNewItems, setHasNewItems] = useState(false)
   const prevCountRef = useRef(items.length)
   const prevFilterRef = useRef(activeFilter)
+
+  // ── Pagination: firstItemIndex for scroll-anchored prepending ─────────
+  // Virtuoso uses firstItemIndex to maintain scroll position when items are
+  // prepended. We start at a high number and decrease it as older pages load.
+  const FIRST_INDEX = 100_000
+  const [firstItemIndex, setFirstItemIndex] = useState(FIRST_INDEX)
+  const wasFetchingOlderRef = useRef(false)
+  const prevItemCountForPrepend = useRef(items.length)
+
+  // Detect prepend completion: isFetchingOlder transitions true → false
+  useLayoutEffect(() => {
+    if (wasFetchingOlderRef.current && !isFetchingOlder) {
+      const delta = items.length - prevItemCountForPrepend.current
+      if (delta > 0) {
+        setFirstItemIndex((prev) => prev - delta)
+      }
+    }
+    wasFetchingOlderRef.current = !!isFetchingOlder
+    prevItemCountForPrepend.current = items.length
+  }, [items.length, isFetchingOlder])
 
   // Track when new items arrive while user is scrolled up
   useEffect(() => {
@@ -356,16 +385,28 @@ export function ConversationThread({
             </div>
           ) : (
             <>
+              {isFetchingOlder && (
+                <div className="flex justify-center py-2 flex-shrink-0">
+                  <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+                </div>
+              )}
               <Virtuoso
                 ref={virtuosoRef}
                 data={items}
                 computeItemKey={itemKey}
-                initialTopMostItemIndex={items.length - 1}
+                {...(onStartReached
+                  ? { firstItemIndex, initialTopMostItemIndex: items.length - 1 }
+                  : { initialTopMostItemIndex: items.length - 1 })}
                 alignToBottom
                 followOutput="smooth"
                 atBottomStateChange={handleAtBottomStateChange}
                 atBottomThreshold={30}
                 itemContent={renderItem}
+                startReached={
+                  onStartReached && hasOlderMessages && !isFetchingOlder
+                    ? onStartReached
+                    : undefined
+                }
                 className="h-full flex-1 min-h-0"
               />
               {!isAtBottom && (

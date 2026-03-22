@@ -19,6 +19,7 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
           projectPath: null,
           lastModel: null,
           lastPermissionMode: null,
+          historyPagination: null,
         },
         [{ cmd: 'CLOSE_SIDECAR_WS' }, { cmd: 'CLOSE_TERMINAL_WS' }],
       ]
@@ -31,6 +32,7 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
           projectPath: event.projectPath ?? null,
           lastModel: null,
           lastPermissionMode: null,
+          historyPagination: null,
         },
         [
           { cmd: 'FETCH_HISTORY', sessionId: event.sessionId },

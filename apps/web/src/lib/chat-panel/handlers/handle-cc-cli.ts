@@ -1,4 +1,12 @@
-import type { ChatPanelStore, PanelState, RawEvent, TransitionResult } from '../types'
+import type {
+  ChatPanelStore,
+  HistoryPagination,
+  PanelState,
+  RawEvent,
+  TransitionResult,
+} from '../types'
+
+const PAGE_SIZE = 100
 
 export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -55,7 +63,39 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
 
     case 'HISTORY_OK': {
       // History may arrive after cc_cli transition (race: FETCH_HISTORY vs LIVE_STATUS)
-      return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
+      let pagination: HistoryPagination | null = store.historyPagination
+      if (event.total != null && event.offset != null) {
+        pagination = { total: event.total, offset: event.offset, fetchingOlder: false }
+      }
+      return [
+        { ...store, panel: { ...p, blocks: event.blocks }, historyPagination: pagination },
+        [],
+      ]
+    }
+
+    case 'LOAD_OLDER_HISTORY': {
+      const pg = store.historyPagination
+      if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
+      const newOffset = Math.max(0, pg.offset - PAGE_SIZE)
+      const limit = pg.offset - newOffset
+      return [
+        { ...store, historyPagination: { ...pg, fetchingOlder: true } },
+        [{ cmd: 'FETCH_OLDER_HISTORY', sessionId: p.sessionId, offset: newOffset, limit }],
+      ]
+    }
+
+    case 'OLDER_HISTORY_OK': {
+      const blocks = [...event.blocks, ...p.blocks]
+      return [
+        {
+          ...store,
+          panel: { ...p, blocks },
+          historyPagination: store.historyPagination
+            ? { ...store.historyPagination, offset: event.offset, fetchingOlder: false }
+            : null,
+        },
+        [],
+      ]
     }
 
     case 'TERMINAL_BLOCK': {
