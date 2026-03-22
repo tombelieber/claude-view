@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { coordinate } from './coordinator'
+import { deriveBlocks } from './derive'
 import { mapWsEvent } from './event-mapper'
 import type { ChatPanelStore, Command, RawEvent } from './types'
 
@@ -866,6 +867,138 @@ describe('integration: watching mode streaming', () => {
     if (store.panel.phase === 'cc_cli') {
       expect(store.panel.blocks).toHaveLength(5) // 1 history + 4 streamed
       expect(store.panel.blocks.map((b) => b.id)).toEqual(['1', 'p1', 's1', 'u2', 'a1'])
+    }
+  })
+})
+
+// ── REGRESSION: BLOCKS_UPDATE must clear pendingText ──────────────
+
+describe('integration: BLOCKS_UPDATE clears pendingText (no doubled assistant text)', () => {
+  test('STREAM_DELTA accumulates, then BLOCKS_UPDATE clears pendingText', () => {
+    // Start in sdk_owned.streaming with some pendingText
+    const liveStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: [],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+
+    // 1. STREAM_DELTA accumulates text
+    const { store: s1 } = drive(liveStore, [
+      { type: 'STREAM_DELTA', text: 'Hello ' },
+      { type: 'STREAM_DELTA', text: 'world!' },
+    ])
+    if (s1.panel.phase === 'sdk_owned') {
+      expect(s1.panel.pendingText).toBe('Hello world!')
+      expect(s1.panel.turn.turn).toBe('streaming')
+    }
+
+    // 2. BLOCKS_UPDATE brings the same text in server blocks → clears pendingText
+    const assistantBlock = {
+      type: 'assistant' as const,
+      id: 'msg-1',
+      segments: [{ kind: 'text' as const, text: 'Hello world!' }],
+      streaming: true,
+      timestamp: 1,
+    }
+    const { store: s2 } = drive(s1, [{ type: 'BLOCKS_UPDATE', blocks: [assistantBlock] }])
+    if (s2.panel.phase === 'sdk_owned') {
+      // CRITICAL: pendingText must be cleared — server blocks are authoritative
+      expect(s2.panel.pendingText).toBe('')
+      // Server blocks have the text
+      expect(s2.panel.blocks).toHaveLength(1)
+      expect(s2.panel.blocks[0].id).toBe('msg-1')
+    }
+  })
+
+  test('deriveBlocks does NOT produce duplicate assistant blocks after BLOCKS_UPDATE', () => {
+    // Simulates the bug: pendingText + server blocks both had the same text
+    // After BLOCKS_UPDATE clears pendingText, only server blocks are shown
+    const store: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: [
+          {
+            type: 'assistant',
+            id: 'msg-1',
+            segments: [{ kind: 'text', text: 'Hello world!' }],
+            streaming: true,
+            timestamp: 1,
+          },
+        ],
+        pendingText: '', // Cleared by BLOCKS_UPDATE
+        ephemeral: false,
+        turn: { turn: 'streaming' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+
+    const blocks = deriveBlocks(store)
+    const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
+
+    // Must have exactly ONE assistant block, not two (no __pending__ duplicate)
+    expect(assistantBlocks).toHaveLength(1)
+    expect(assistantBlocks[0].id).toBe('msg-1')
+  })
+
+  test('BLOCKS_SNAPSHOT also clears pendingText', () => {
+    const liveStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: [],
+        pendingText: 'stale text from before reconnect',
+        ephemeral: false,
+        turn: { turn: 'streaming' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+
+    const { store } = drive(liveStore, [
+      {
+        type: 'BLOCKS_SNAPSHOT',
+        blocks: [
+          {
+            type: 'assistant',
+            id: 'msg-snap',
+            segments: [{ kind: 'text', text: 'fresh from snapshot' }],
+            streaming: false,
+            timestamp: 1,
+          },
+        ],
+      },
+    ])
+
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.pendingText).toBe('')
+      expect(store.panel.blocks).toHaveLength(1)
     }
   })
 })
