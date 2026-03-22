@@ -31,7 +31,7 @@ pub enum SessionSource {
 }
 
 /// Metadata about the source environment of a Claude process.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
     ts(
@@ -64,16 +64,14 @@ pub struct ClaudeProcess {
 
 /// Detect all running Claude Code processes on the system.
 ///
-/// Returns a map from working directory to process info. If multiple Claude
-/// processes share the same cwd, only the most recent one is kept.
+/// Returns a map from PID to process info, plus the total count.
+/// Indexed by PID (unique) — no deduplication. Multiple processes sharing
+/// the same CWD (e.g. terminal + IDE sessions in the same worktree) are
+/// all returned so the backfill can match each session's PID.
 ///
 /// This function does synchronous system calls and should be called from
 /// `tokio::task::spawn_blocking`.
-/// Returns `(processes_by_cwd, total_process_count)`.
-///
-/// The map deduplicates by cwd (keeping the newest process per directory).
-/// The total count is the raw number of Claude processes found before dedup.
-pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
+pub fn detect_claude_processes() -> (HashMap<u32, ClaudeProcess>, u32) {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 
@@ -111,19 +109,11 @@ pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
             let source = classify_source(&sys, process);
             let cp = ClaudeProcess {
                 pid: pid_u32,
-                cwd: cwd.clone(),
+                cwd,
                 start_time,
                 source,
             };
-            // If there's already a process for this cwd, keep the newer one
-            result
-                .entry(cwd)
-                .and_modify(|existing: &mut ClaudeProcess| {
-                    if cp.start_time > existing.start_time {
-                        *existing = cp.clone();
-                    }
-                })
-                .or_insert(cp);
+            result.insert(pid_u32, cp);
         }
     }
     (result, total_count)
@@ -186,123 +176,107 @@ const SHELL_NAMES: &[&str] = &[
     "powershell",
 ];
 
-/// Known IDE patterns: (substring to match in parent command, human-readable label).
-/// Checked against the parent process command line in order — first match wins.
-const IDE_PATTERNS: &[(&str, &str)] = &[
-    ("Visual Studio Code", "VS Code"),
-    ("Code Helper", "VS Code"),
-    (".vscode/", "VS Code"),
-    ("cursor", "Cursor"),
-    ("Cursor Helper", "Cursor"),
-    ("idea", "IntelliJ"),
-    ("IntelliJ", "IntelliJ"),
-    ("webstorm", "WebStorm"),
-    ("WebStorm", "WebStorm"),
-    ("pycharm", "PyCharm"),
-    ("PyCharm", "PyCharm"),
-    ("goland", "GoLand"),
-    ("GoLand", "GoLand"),
-    ("rustrover", "RustRover"),
-    ("RustRover", "RustRover"),
-    ("rider", "Rider"),
-    ("Rider", "Rider"),
-    ("clion", "CLion"),
-    ("CLion", "CLion"),
-    ("phpstorm", "PhpStorm"),
-    ("PhpStorm", "PhpStorm"),
-    ("Xcode", "Xcode"),
-    ("xcode", "Xcode"),
-    ("zed", "Zed"),
-    ("Zed", "Zed"),
-    ("neovim", "Neovim"),
-    ("nvim", "Neovim"),
-    ("vim", "Vim"),
-    ("emacs", "Emacs"),
-    ("Emacs", "Emacs"),
-    ("sublime_text", "Sublime Text"),
-    ("Sublime Text", "Sublime Text"),
-    ("Atom", "Atom"),
-    ("Eclipse", "Eclipse"),
-    ("Android Studio", "Android Studio"),
-    ("Fleet", "Fleet"),
-    ("Windsurf", "Windsurf"),
-    ("windsurf", "Windsurf"),
-];
-
-/// Classify where a Claude process was launched from by inspecting its parent.
+/// IDE extension path patterns for own-binary detection.
+///
+/// IDE classification uses ONLY the Claude binary's own path — not the parent
+/// process chain. A global `claude` binary launched from an IDE's integrated
+/// terminal is a terminal session, not an IDE session.
+///
+/// Currently VS Code, Cursor, and Windsurf install their own Claude binary
+/// inside their extension directories. Other IDEs (IntelliJ, Neovim, etc.)
+/// use the global binary, so they appear as terminal sessions.
+/// This is intentional: the IDE badge means "launched BY the IDE extension."
+///
+/// Classify where a Claude process was launched from.
+///
+/// Two-pass approach:
+/// 1. Check the process's OWN binary path for IDE extension paths
+///    (only the extension's bundled binary counts as "IDE" — typing `claude`
+///    in an IDE's integrated terminal is still a terminal session)
+/// 2. Walk ancestors for sidecar detection (Agent SDK, defense-in-depth)
+/// 3. Everything else → Terminal
+///
+/// IDE detection relies ONLY on the binary path, not the ancestor chain.
+/// Finding "VS Code" as a grandparent means nothing — the user may have
+/// just typed `claude` in VS Code's integrated terminal.
 fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInfo {
-    // 1. Check binary path — VS Code extension has distinctive path
+    // Pass 1: Check the process's own binary path for IDE extension installs.
+    // This is the ONLY reliable IDE signal. A global `claude` binary launched
+    // from an IDE's terminal is still a terminal session.
     let cmd_args = process.cmd();
-    if let Some(binary) = cmd_args.first() {
-        let bin_str = binary.to_string_lossy();
-        if bin_str.contains(".vscode/extensions/") || bin_str.contains(".vscode-server/") {
-            return SessionSourceInfo {
-                category: SessionSource::Ide,
-                label: Some("VS Code".to_string()),
-            };
-        }
-        if bin_str.contains(".cursor/extensions/") || bin_str.contains(".cursor-server/") {
-            return SessionSourceInfo {
-                category: SessionSource::Ide,
-                label: Some("Cursor".to_string()),
-            };
-        }
+    let own_full = cmd_args
+        .iter()
+        .map(|s| s.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // VS Code extension bundles Claude at .vscode/extensions/anthropic.claude-code-*/
+    if own_full.contains(".vscode/extensions/") || own_full.contains(".vscode-server/") {
+        return SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("VS Code".to_string()),
+        };
+    }
+    if own_full.contains(".cursor/extensions/") || own_full.contains(".cursor-server/") {
+        return SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("Cursor".to_string()),
+        };
+    }
+    if own_full.contains(".windsurf/extensions/") || own_full.contains(".windsurf-server/") {
+        return SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("Windsurf".to_string()),
+        };
     }
 
-    // 2. Check parent process
-    if let Some(ppid) = process.parent() {
-        if let Some(parent) = sys.process(ppid) {
-            let parent_name = parent.name().to_string_lossy().to_lowercase();
-            let parent_cmd = parent
-                .cmd()
-                .first()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+    // Pass 2: Walk ancestors for sidecar detection only (Agent SDK).
+    // Defense-in-depth — the authoritative path is control binding → AgentSdk
+    // set in manager.rs / live.rs. This catches edge cases where the control
+    // binding was missed.
+    let mut current_pid = process.parent();
+    let mut depth = 0u32;
+    const MAX_ANCESTOR_DEPTH: u32 = 5;
 
-            // Parent is sidecar → Agent SDK
-            if parent_cmd.contains("sidecar") {
-                return SessionSourceInfo {
-                    category: SessionSource::AgentSdk,
-                    label: None,
-                };
-            }
+    while let Some(pid) = current_pid {
+        if depth >= MAX_ANCESTOR_DEPTH {
+            break;
+        }
+        depth += 1;
 
-            // Parent is a shell → Terminal
-            if SHELL_NAMES
-                .iter()
-                .any(|sh| parent_name == *sh || parent_name.ends_with(sh))
-            {
-                return SessionSourceInfo {
-                    category: SessionSource::Terminal,
-                    label: None,
-                };
-            }
+        let Some(ancestor) = sys.process(pid) else {
+            break;
+        };
+        let anc_name = ancestor.name().to_string_lossy().to_lowercase();
+        let anc_full = ancestor
+            .cmd()
+            .iter()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
 
-            // Check IDE patterns against parent command line
-            let parent_full = parent
-                .cmd()
-                .iter()
-                .map(|s| s.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-            for &(pattern, label) in IDE_PATTERNS {
-                if parent_full.contains(pattern) || parent_name.contains(&pattern.to_lowercase()) {
-                    return SessionSourceInfo {
-                        category: SessionSource::Ide,
-                        label: Some(label.to_string()),
-                    };
-                }
-            }
-
-            // Unknown parent — default to terminal (most common case)
+        // Sidecar → Agent SDK
+        if anc_full.contains("sidecar/dist/index.js") {
             return SessionSourceInfo {
-                category: SessionSource::Terminal,
+                category: SessionSource::AgentSdk,
                 label: None,
             };
         }
+
+        // Skip shells — sidecar might be higher up
+        let is_shell = SHELL_NAMES
+            .iter()
+            .any(|sh| anc_name == *sh || anc_name.ends_with(sh));
+        if is_shell {
+            current_pid = ancestor.parent();
+            continue;
+        }
+
+        // Non-shell ancestor found, not sidecar → stop walking
+        break;
     }
 
-    // No parent info available — default to terminal
+    // Default: terminal (global binary, any terminal — including IDE integrated terminals)
     SessionSourceInfo {
         category: SessionSource::Terminal,
         label: None,
@@ -339,26 +313,19 @@ fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
 /// The comparison is done by checking whether the process cwd starts with or
 /// equals the project path (to handle worktrees and nested directories).
 pub fn find_process_for_project<'a>(
-    processes: &'a HashMap<PathBuf, ClaudeProcess>,
+    processes: &'a HashMap<u32, ClaudeProcess>,
     project_path: &str,
 ) -> Option<&'a ClaudeProcess> {
     let project = PathBuf::from(project_path);
-    // Exact match first
-    if let Some(p) = processes.get(&project) {
-        return Some(p);
-    }
-    // Check if any process cwd starts with the project path
-    for (cwd, proc) in processes {
-        if cwd.starts_with(&project) || project.starts_with(cwd) {
-            return Some(proc);
-        }
-    }
-    None
+    // Check all processes — multiple may share the same cwd
+    processes.values().find(|proc| {
+        proc.cwd == project || proc.cwd.starts_with(&project) || project.starts_with(&proc.cwd)
+    })
 }
 
 /// Convenience: check and return just whether there's a matching process + its PID.
 pub fn has_running_process(
-    processes: &HashMap<PathBuf, ClaudeProcess>,
+    processes: &HashMap<u32, ClaudeProcess>,
     project_path: &str,
 ) -> (bool, Option<u32>) {
     match find_process_for_project(processes, project_path) {
@@ -389,13 +356,13 @@ mod tests {
         // Just verify it doesn't panic — we can't guarantee any Claude processes
         // are running during tests.
         let (processes, total_count) = detect_claude_processes();
-        // total_count >= deduplicated map size
-        assert!(total_count as usize >= processes.len());
+        // PID-indexed map: total_count == map size (no dedup)
+        assert_eq!(total_count as usize, processes.len());
     }
 
     #[test]
     fn test_find_process_for_project_empty() {
-        let processes = HashMap::new();
+        let processes: HashMap<u32, ClaudeProcess> = HashMap::new();
         assert!(find_process_for_project(&processes, "/some/path").is_none());
     }
 
@@ -404,7 +371,7 @@ mod tests {
         let mut processes = HashMap::new();
         let path = PathBuf::from("/Users/test/project");
         processes.insert(
-            path.clone(),
+            1234,
             ClaudeProcess {
                 pid: 1234,
                 cwd: path,
@@ -423,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_has_running_process_not_found() {
-        let processes = HashMap::new();
+        let processes: HashMap<u32, ClaudeProcess> = HashMap::new();
         let (running, pid) = has_running_process(&processes, "/nonexistent");
         assert!(!running);
         assert!(pid.is_none());
@@ -434,7 +401,7 @@ mod tests {
         let mut processes = HashMap::new();
         let path = PathBuf::from("/Users/test/project");
         processes.insert(
-            path.clone(),
+            5678,
             ClaudeProcess {
                 pid: 5678,
                 cwd: path,
