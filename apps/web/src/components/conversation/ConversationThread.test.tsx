@@ -31,7 +31,9 @@ describe('ConversationThread filterBar integration', () => {
   it('renders filter bar when filterBar={true}', () => {
     render(<ConversationThread blocks={mockBlocks} renderers={mockRenderers} filterBar={true} />)
     expect(screen.getByText(/All/)).toBeInTheDocument()
-    expect(screen.getByText('User (2)')).toBeInTheDocument()
+    // FilterChips renders label + count as separate nodes: "User" + "2"
+    expect(screen.getByText('User')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
   })
 
   it('filtering hides blocks of other types', () => {
@@ -42,8 +44,8 @@ describe('ConversationThread filterBar integration', () => {
     expect(screen.getByTestId('block-a1')).toBeInTheDocument()
     expect(screen.getByTestId('block-n1')).toBeInTheDocument()
 
-    // Click "User (2)" to filter
-    fireEvent.click(screen.getByText('User (2)'))
+    // Click "User" chip to filter
+    fireEvent.click(screen.getByText('User'))
 
     // Only user blocks visible
     expect(screen.getByTestId('block-u1')).toBeInTheDocument()

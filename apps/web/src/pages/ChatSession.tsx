@@ -80,7 +80,8 @@ export function ChatSession({
   }, [sessionId])
 
   // FSM: single hook replaces useConversation + useSendHandler + useSessionCapabilities
-  const { store, dispatch, pendingCmdsRef, blocks, inputBar, viewMode } = useChatPanel(sessionId)
+  const { store, dispatch, pendingCmdsRef, blocks, inputBar, viewMode, connectionStatus } =
+    useChatPanel(sessionId)
   const { channel } = useCommandExecutor(store, dispatch, pendingCmdsRef)
 
   // Dispatch LIVE_STATUS_CHANGED when liveStatus prop changes
@@ -216,10 +217,20 @@ export function ChatSession({
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
             </span>
-          ) : viewMode === 'active' || viewMode === 'connecting' ? (
+          ) : viewMode === 'connecting' ? (
+            <span className="flex items-center gap-1.5 text-xs text-amber-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Connecting
+            </span>
+          ) : viewMode === 'active' ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
+            </span>
+          ) : viewMode === 'error' ? (
+            <span className="flex items-center gap-1.5 text-xs text-red-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              Disconnected
             </span>
           ) : null}
         </div>
@@ -308,6 +319,29 @@ export function ChatSession({
                 filterBar={displayMode !== 'chat'}
               />
             </ConversationActionsProvider>
+          </div>
+        )}
+        {/* Connection status indicator — shows during acquiring/recovering phases */}
+        {connectionStatus && (
+          <div className="max-w-3xl mx-auto px-4 pb-3">
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              {connectionStatus}
+            </div>
           </div>
         )}
         {/* Bottom anchor for auto-scroll */}

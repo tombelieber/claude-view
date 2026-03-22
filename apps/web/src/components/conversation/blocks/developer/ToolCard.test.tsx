@@ -37,6 +37,7 @@ describe('ToolCard', () => {
     render(
       <ToolCard
         execution={makeExecution({
+          toolName: 'CustomTool',
           toolInput: { command: 'echo hello' },
           result: { output: 'hello\n', isError: false, isReplay: false },
         })}
@@ -45,8 +46,8 @@ describe('ToolCard', () => {
     // Body should not be visible initially
     expect(screen.queryByText('Input')).not.toBeInTheDocument()
 
-    // Click header to expand
-    await user.click(screen.getByRole('button'))
+    // Click the header row to expand
+    await user.click(screen.getByTestId('status-complete'))
     expect(screen.getByText('Input')).toBeInTheDocument()
     expect(screen.getByText('Output')).toBeInTheDocument()
   })

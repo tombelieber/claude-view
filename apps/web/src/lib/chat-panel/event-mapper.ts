@@ -24,35 +24,37 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
     case 'blocks_snapshot':
       return {
         type: 'BLOCKS_SNAPSHOT',
-        blocks: raw.blocks as ConversationBlock[],
+        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
       }
 
     case 'blocks_update':
       return {
         type: 'BLOCKS_UPDATE',
-        blocks: raw.blocks as ConversationBlock[],
+        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
       }
 
     case 'stream_delta':
-      return {
-        type: 'STREAM_DELTA',
-        text: raw.textDelta as string,
+      // Only emit STREAM_DELTA for text deltas — content_block_start/stop
+      // and input_json_delta have no textDelta (undefined → "undefinedundefined..." bug)
+      if (raw.textDelta != null) {
+        return { type: 'STREAM_DELTA', text: raw.textDelta as string }
       }
+      return null
 
     case 'turn_complete':
       return {
         type: 'TURN_COMPLETE',
-        blocks: raw.blocks as ConversationBlock[],
-        totalInputTokens: raw.totalInputTokens as number,
-        contextWindowSize: raw.contextWindowSize as number,
+        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        totalInputTokens: (raw.totalInputTokens as number) ?? 0,
+        contextWindowSize: (raw.contextWindowSize as number) ?? 0,
       }
 
     case 'turn_error':
       return {
         type: 'TURN_ERROR',
-        blocks: raw.blocks as ConversationBlock[],
-        totalInputTokens: raw.totalInputTokens as number,
-        contextWindowSize: raw.contextWindowSize as number,
+        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        totalInputTokens: (raw.totalInputTokens as number) ?? 0,
+        contextWindowSize: (raw.contextWindowSize as number) ?? 0,
       }
 
     case 'session_status':

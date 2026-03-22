@@ -11,11 +11,20 @@ function getBaseBlocks(store: ChatPanelStore): ConversationBlock[] {
     case 'nobody':
       return panel.sub.sub === 'ready' ? panel.sub.blocks : []
     case 'cc_cli':
-      return []
+      return panel.blocks
     case 'acquiring':
       return panel.historyBlocks
     case 'sdk_owned': {
-      const blocks = [...panel.blocks]
+      // Strip `streaming` from server blocks — we manage the streaming cursor
+      // exclusively via the synthetic __pending__ block below.  Without this,
+      // a BLOCKS_UPDATE that includes `streaming: true` on the last assistant
+      // block produces a SECOND pulsing cursor above the real one.
+      const blocks = panel.pendingText
+        ? panel.blocks.map((b) =>
+            b.type === 'assistant' && b.streaming ? { ...b, streaming: false } : b,
+          )
+        : [...panel.blocks]
+
       if (panel.pendingText) {
         blocks.push({
           type: 'assistant',
@@ -129,6 +138,41 @@ export function deriveInputBar(store: ChatPanelStore): InputBarState {
       return 'active'
     case 'closed':
       return 'completed'
+  }
+}
+
+/**
+ * Human-readable status string shown in the thread during
+ * acquiring/recovering phases so users know what's happening.
+ * Returns null when no status indicator is needed.
+ */
+export function deriveConnectionStatus(store: ChatPanelStore): string | null {
+  const { panel } = store
+  switch (panel.phase) {
+    case 'acquiring': {
+      const verb =
+        panel.action === 'create' ? 'Creating' : panel.action === 'fork' ? 'Forking' : 'Resuming'
+      switch (panel.step.step) {
+        case 'posting':
+          return `${verb} session...`
+        case 'ws_connecting':
+          return 'Connecting to session...'
+        case 'ws_initializing':
+          return 'Initializing...'
+      }
+      return `${verb} session...`
+    }
+    case 'recovering':
+      if (panel.recovering.kind === 'ws_fatal') return 'Connection lost. Reconnecting...'
+      if (panel.recovering.kind === 'replaced') return 'Session taken over by another client'
+      return `Error: ${panel.recovering.error}`
+    case 'sdk_owned':
+      if (panel.conn.health === 'reconnecting') {
+        return `Reconnecting... (attempt ${panel.conn.attempt})`
+      }
+      return null
+    default:
+      return null
   }
 }
 

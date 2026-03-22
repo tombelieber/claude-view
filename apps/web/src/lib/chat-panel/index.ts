@@ -6,5 +6,6 @@ export {
   deriveCanSend,
   deriveCanFork,
   deriveInputBar,
+  deriveConnectionStatus,
   deriveViewMode,
 } from './derive'

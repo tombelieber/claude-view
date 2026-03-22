@@ -52,12 +52,17 @@ export function createRoutes(registry: SessionRegistry) {
     // a prior bind was lost (startup race, server restart, etc.)
     if (registry.hasSessionId(sessionId)) {
       const existing = registry.getBySessionId(sessionId)!
-      notifyBindControl(sessionId, existing.controlId)
-      return c.json({
-        controlId: existing.controlId,
-        sessionId,
-        status: 'already_active',
-      })
+      if (existing.lastSessionInit) {
+        // Healthy session — reuse it
+        notifyBindControl(sessionId, existing.controlId)
+        return c.json({
+          controlId: existing.controlId,
+          sessionId,
+          status: 'already_active',
+        })
+      }
+      // Zombie session (never fully initialized) — close and re-resume below
+      closeSession(existing, registry)
     }
 
     const body = await c.req.json<Omit<ResumeSessionRequest, 'sessionId'>>().catch(() => ({}))

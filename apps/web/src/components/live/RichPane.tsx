@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDown, Bot, Brain, User, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowDown, Zap } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -239,43 +239,49 @@ export function UserMessage({
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
+  const preview =
+    message.content.length > 60 ? `${message.content.slice(0, 57)}...` : message.content
+
   return (
-    <div
-      className={cn(
-        'border-l-2 pl-2 py-1',
-        message.pending ? 'border-blue-400/50 dark:border-blue-500/30' : 'border-blue-500',
-      )}
-    >
-      <div className="flex items-start gap-1.5">
-        <User className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          {parsedJson !== null ? (
-            verboseMode && richRenderMode === 'rich' ? (
-              <JsonTree data={parsedJson} />
-            ) : (
-              <CompactCodeBlock
-                code={JSON.stringify(parsedJson, null, 2)}
-                language="json"
-                blockId={`user-json-${message.ts ?? 0}`}
-              />
-            )
-          ) : (
-            <div className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-                components={markdownComponents}
-              >
-                {message.content}
-              </Markdown>
-            </div>
+    <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span
+          className={cn(
+            'w-1.5 h-1.5 rounded-full flex-shrink-0',
+            message.pending ? 'bg-amber-400 animate-pulse' : 'bg-blue-500',
           )}
-        </div>
+        />
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300">
+          User
+        </span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">
+          {preview}
+        </span>
+        <span className="flex-1" />
         <Timestamp ts={message.ts} />
         {message.pending && (
-          <span className="text-[9px] font-mono text-blue-400 dark:text-blue-500 bg-blue-500/10 px-1 py-0.5 rounded flex-shrink-0">
+          <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded flex-shrink-0">
             Queued
           </span>
+        )}
+      </div>
+      {/* Body */}
+      <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
+        {parsedJson !== null ? (
+          verboseMode && richRenderMode === 'rich' ? (
+            <JsonTree data={parsedJson} />
+          ) : (
+            <CompactCodeBlock
+              code={JSON.stringify(parsedJson, null, 2)}
+              language="json"
+              blockId={`user-json-${message.ts ?? 0}`}
+            />
+          )
+        ) : (
+          <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
         )}
       </div>
     </div>
@@ -289,34 +295,46 @@ function AssistantMessage({
   const richRenderMode = useMonitorStore((s) => s.richRenderMode)
   const jsonDetected = isJsonContent(message.content)
   const parsedJson = jsonDetected ? tryParseJson(message.content) : null
+  const preview = message.content.split('\n')[0]
+  const previewTrunc = preview.length > 60 ? `${preview.slice(0, 57)}...` : preview
+
   return (
-    <div className="pl-2 py-1">
-      <div className="flex items-start gap-1.5">
-        <Bot className="w-3 h-3 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          {parsedJson !== null ? (
-            verboseMode && richRenderMode === 'rich' ? (
-              <JsonTree data={parsedJson} />
-            ) : (
-              <CompactCodeBlock
-                code={JSON.stringify(parsedJson, null, 2)}
-                language="json"
-                blockId={`asst-json-${message.ts ?? 0}`}
-              />
-            )
-          ) : (
-            <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
-              <Markdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-                components={markdownComponents}
-              >
-                {message.content}
-              </Markdown>
-            </div>
-          )}
-        </div>
+    <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-green-500" />
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300">
+          Assistant
+        </span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">
+          {previewTrunc}
+        </span>
+        <span className="flex-1" />
         <Timestamp ts={message.ts} />
+      </div>
+      {/* Body */}
+      <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
+        {parsedJson !== null ? (
+          verboseMode && richRenderMode === 'rich' ? (
+            <JsonTree data={parsedJson} />
+          ) : (
+            <CompactCodeBlock
+              code={JSON.stringify(parsedJson, null, 2)}
+              language="json"
+              blockId={`asst-json-${message.ts ?? 0}`}
+            />
+          )
+        ) : (
+          <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose dark:prose-invert prose-sm max-w-none">
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={markdownComponents}
+            >
+              {message.content}
+            </Markdown>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -389,34 +407,40 @@ function ThinkingMessage({
 }: { message: RichMessage; verboseMode?: boolean }) {
   const [manualExpanded, setManualExpanded] = useState(false)
   const expanded = verboseMode || manualExpanded
-  // Show a preview: first line or first ~120 chars
   const preview = useMemo(() => {
     const first = message.content.split('\n')[0] || ''
-    return first.length > 120 ? `${first.slice(0, 120)}…` : first
+    return first.length > 60 ? `${first.slice(0, 57)}…` : first
   }, [message.content])
 
   return (
-    <div className="py-0.5">
+    <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
+      {/* Header */}
       <button
         onClick={() => setManualExpanded((v) => !v)}
-        className="flex items-center gap-1.5 w-full text-left cursor-pointer group"
+        className="flex items-center gap-2 px-3 py-2 w-full text-left cursor-pointer hover:bg-gray-50/5 transition-colors duration-200"
       >
-        <Brain className="w-3 h-3 text-purple-500/50 dark:text-purple-400/50 flex-shrink-0" />
-        <span className="text-[10px] text-gray-500 dark:text-gray-600 italic">thinking...</span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-700 italic truncate flex-1 min-w-0 opacity-60 group-hover:opacity-100 transition-opacity">
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-500" />
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0 bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">
+          Thinking
+        </span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate italic">
           {preview}
         </span>
+        <span className="flex-1" />
         <Timestamp ts={message.ts} />
       </button>
+      {/* Body */}
       {expanded && (
-        <div className="text-[10px] text-gray-500 dark:text-gray-600 italic mt-0.5 pl-5 leading-relaxed prose dark:prose-invert prose-sm max-w-none border-l border-purple-500/20 ml-1.5">
-          <Markdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-            components={markdownComponents}
-          >
-            {message.content}
-          </Markdown>
+        <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 italic leading-relaxed prose dark:prose-invert prose-sm max-w-none">
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={markdownComponents}
+            >
+              {message.content}
+            </Markdown>
+          </div>
         </div>
       )}
     </div>
