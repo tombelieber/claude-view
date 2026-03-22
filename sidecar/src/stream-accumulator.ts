@@ -161,6 +161,16 @@ export type SystemBlock = {
   rawJson?: Record<string, unknown> | null
 }
 
+export type ProgressBlock = {
+  type: 'progress'
+  id: string
+  variant: string
+  category: string
+  data: Record<string, unknown>
+  ts: number
+  parentToolUseId?: string
+}
+
 export type ConversationBlock =
   | UserBlock
   | AssistantBlock
@@ -168,6 +178,7 @@ export type ConversationBlock =
   | TurnBoundaryBlock
   | NoticeBlock
   | SystemBlock
+  | ProgressBlock
 
 // ── StreamAccumulator ───────────────────────────────────────────────────
 
@@ -181,24 +192,30 @@ export class StreamAccumulator {
   private currentAssistant: AssistantBlock | null = null
   private pushCounter = 0
   private initialized = false
-  private buffer: ServerEvent[] = []
+  private buffer: { event: ServerEvent; raw?: Record<string, unknown> }[] = []
+  /** Raw SDK message for the current push — available during handleEvent. */
+  private currentRaw: Record<string, unknown> | undefined = undefined
 
-  push(event: ServerEvent): void {
+  push(event: ServerEvent, rawSdkMessage?: Record<string, unknown>): void {
     this.pushCounter++
 
     // user_message_echo bypasses init gate — render immediately
     if (event.type === 'user_message_echo') {
+      this.currentRaw = rawSdkMessage
       this.handleEvent(event)
+      this.currentRaw = undefined
       return
     }
 
     // Buffer events before session_init
     if (!this.initialized && event.type !== 'session_init') {
-      this.buffer.push(event)
+      this.buffer.push({ event, raw: rawSdkMessage })
       return
     }
 
+    this.currentRaw = rawSdkMessage
     this.handleEvent(event)
+    this.currentRaw = undefined
   }
 
   getBlocks(): ConversationBlock[] {
@@ -303,6 +320,18 @@ export class StreamAccumulator {
         break
       case 'task_progress':
         this.pushSystem('task_progress', event as TaskProgressEvent)
+        // Also emit an agent ProgressBlock for Developer mode progress cards
+        this.pushProgress(
+          'agent',
+          'agent',
+          {
+            type: 'agent',
+            prompt: (event as TaskProgressEvent).description,
+            agentId: (event as TaskProgressEvent).taskId,
+            message: (event as TaskProgressEvent).summary ?? undefined,
+          },
+          (event as TaskProgressEvent).toolUseId,
+        )
         break
       case 'task_notification':
         this.pushSystem('task_notification', event as TaskNotification)
@@ -343,6 +372,7 @@ export class StreamAccumulator {
       id: `user-${this.pushCounter}`,
       text: event.content,
       timestamp: event.timestamp,
+      rawJson: this.extractRawJson(),
     }
     this.blocks.push(block)
   }
@@ -350,10 +380,12 @@ export class StreamAccumulator {
   private handleSessionInit(event: SessionInit): void {
     this.initialized = true
     this.pushSystem('session_init', event)
-    // Flush buffered events
+    // Flush buffered events (with their raw SDK messages)
     const buffered = this.buffer.splice(0)
-    for (const e of buffered) {
+    for (const { event: e, raw } of buffered) {
+      this.currentRaw = raw
       this.handleEvent(e)
+      this.currentRaw = undefined
     }
   }
 
@@ -406,6 +438,21 @@ export class StreamAccumulator {
     if (execution) {
       execution.progress = { elapsedSeconds: event.elapsedSeconds }
     }
+    // Emit a ProgressBlock so Developer mode shows live progress cards
+    this.pushProgress(
+      'bash',
+      'builtin',
+      {
+        type: 'bash',
+        output: '',
+        fullOutput: '',
+        elapsedTimeSeconds: event.elapsedSeconds ?? 0,
+        totalLines: 0,
+        totalBytes: 0,
+        taskId: event.taskId ?? null,
+      },
+      event.parentToolUseId ?? undefined,
+    )
   }
 
   private handleToolSummary(event: ToolSummary): void {
@@ -502,6 +549,7 @@ export class StreamAccumulator {
         segments: [],
         streaming: true,
         timestamp: Date.now() / 1000,
+        rawJson: this.extractRawJson(),
       }
     }
     return this.currentAssistant
@@ -560,7 +608,35 @@ export class StreamAccumulator {
       id: genId(),
       variant,
       data,
+      rawJson: this.extractRawJson(),
     }
     this.blocks.push(block)
+  }
+
+  private pushProgress(
+    variant: string,
+    category: string,
+    data: Record<string, unknown>,
+    parentToolUseId?: string,
+  ): void {
+    const block: ProgressBlock = {
+      type: 'progress',
+      id: genId(),
+      variant,
+      category,
+      data,
+      ts: Date.now() / 1000,
+      parentToolUseId,
+    }
+    this.blocks.push(block)
+  }
+
+  /** Extract raw SDK message envelope, omitting the large `message.content`
+   *  payload that is already parsed into structured block fields. */
+  private extractRawJson(): Record<string, unknown> | undefined {
+    if (!this.currentRaw) return undefined
+    const { message, ...envelope } = this.currentRaw
+    // Keep envelope metadata, drop parsed content to avoid duplication
+    return Object.keys(envelope).length > 0 ? envelope : undefined
   }
 }

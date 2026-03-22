@@ -78,7 +78,11 @@ export class SessionRegistry {
     return this.sessions.size
   }
 
-  emitSequenced(cs: ControlSession, event: ServerEvent): void {
+  emitSequenced(
+    cs: ControlSession,
+    event: ServerEvent,
+    rawSdkMessage?: Record<string, unknown>,
+  ): void {
     // Cache session_init for late-joining WS clients
     if (event.type === 'session_init') {
       cs.lastSessionInit = event as SessionInit
@@ -94,7 +98,7 @@ export class SessionRegistry {
     const isTextDelta =
       event.type === 'stream_delta' &&
       (event as { deltaType?: string }).deltaType === 'content_block_delta'
-    if (!isTextDelta) cs.accumulator.push(event)
+    if (!isTextDelta) cs.accumulator.push(event, rawSdkMessage)
     cs.emitter.emit('message', event)
   }
 
