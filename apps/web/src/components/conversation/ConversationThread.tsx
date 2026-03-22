@@ -210,7 +210,18 @@ export function ConversationThread({
     })
   }, [blocks, activeFilter])
 
-  const items = useMemo(() => buildThreadItems(visibleBlocks), [visibleBlocks])
+  const allItems = useMemo(() => buildThreadItems(visibleBlocks), [visibleBlocks])
+  // Filter out items Virtuoso can't render — prevents "Zero-sized element" warnings and empty gaps.
+  // Uses registry.canRender() for variant-level filtering (e.g. chat mode skips system/queue_operation).
+  const items = useMemo(
+    () =>
+      allItems.filter((item) => {
+        if (item.kind === 'divider') return true
+        if (!renderers[item.block.type]) return false
+        return renderers.canRender ? renderers.canRender(item.block) : true
+      }),
+    [allItems, renderers],
+  )
 
   // ── Virtuoso scroll state ───────────────────────────────────────────────
 
