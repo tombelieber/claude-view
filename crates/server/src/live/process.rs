@@ -2,52 +2,10 @@
 //!
 //! Scans the system process table for processes whose name contains "claude"
 //! and extracts their working directories for correlation with JSONL session files.
-//! Also classifies the **source** of each process (terminal, IDE extension, or Agent SDK)
-//! by inspecting the parent process.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use sysinfo::{ProcessesToUpdate, System};
-use ts_rs::TS;
-
-/// Where a Claude Code process was launched from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[cfg_attr(
-    feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
-)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionSource {
-    /// Interactive shell (zsh, bash, fish, etc.)
-    Terminal,
-    /// IDE extension (VS Code, Cursor, IntelliJ, etc.)
-    Ide,
-    /// claude-view Agent SDK sidecar
-    AgentSdk,
-}
-
-/// Metadata about the source environment of a Claude process.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[cfg_attr(
-    feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionSourceInfo {
-    /// Category: terminal, ide, or agent_sdk.
-    pub category: SessionSource,
-    /// Human-readable label for the source (e.g. "VS Code", "IntelliJ", "Cursor").
-    /// None for terminal sessions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
 
 /// A running Claude Code process on the system.
 #[derive(Debug, Clone)]
@@ -58,8 +16,6 @@ pub struct ClaudeProcess {
     pub cwd: PathBuf,
     /// Unix timestamp when the process started.
     pub start_time: u64,
-    /// Where this process was launched from.
-    pub source: SessionSourceInfo,
 }
 
 /// Detect all running Claude Code processes on the system.
@@ -108,12 +64,10 @@ pub fn detect_claude_processes() -> (HashMap<PathBuf, ClaudeProcess>, u32) {
 
         if let Some(cwd) = cwd {
             total_count += 1;
-            let source = classify_source(&sys, process);
             let cp = ClaudeProcess {
                 pid: pid_u32,
                 cwd: cwd.clone(),
                 start_time,
-                source,
             };
             // If there's already a process for this cwd, keep the newer one
             result
@@ -168,145 +122,6 @@ pub fn count_claude_processes() -> u32 {
         }
     }
     total_count
-}
-
-/// Known shell process names — if the parent is one of these, the Claude process
-/// was launched from an interactive terminal.
-const SHELL_NAMES: &[&str] = &[
-    "zsh",
-    "bash",
-    "fish",
-    "sh",
-    "dash",
-    "tcsh",
-    "csh",
-    "ksh",
-    "nu",
-    "pwsh",
-    "powershell",
-];
-
-/// Known IDE patterns: (substring to match in parent command, human-readable label).
-/// Checked against the parent process command line in order — first match wins.
-const IDE_PATTERNS: &[(&str, &str)] = &[
-    ("Visual Studio Code", "VS Code"),
-    ("Code Helper", "VS Code"),
-    (".vscode/", "VS Code"),
-    ("cursor", "Cursor"),
-    ("Cursor Helper", "Cursor"),
-    ("idea", "IntelliJ"),
-    ("IntelliJ", "IntelliJ"),
-    ("webstorm", "WebStorm"),
-    ("WebStorm", "WebStorm"),
-    ("pycharm", "PyCharm"),
-    ("PyCharm", "PyCharm"),
-    ("goland", "GoLand"),
-    ("GoLand", "GoLand"),
-    ("rustrover", "RustRover"),
-    ("RustRover", "RustRover"),
-    ("rider", "Rider"),
-    ("Rider", "Rider"),
-    ("clion", "CLion"),
-    ("CLion", "CLion"),
-    ("phpstorm", "PhpStorm"),
-    ("PhpStorm", "PhpStorm"),
-    ("Xcode", "Xcode"),
-    ("xcode", "Xcode"),
-    ("zed", "Zed"),
-    ("Zed", "Zed"),
-    ("neovim", "Neovim"),
-    ("nvim", "Neovim"),
-    ("vim", "Vim"),
-    ("emacs", "Emacs"),
-    ("Emacs", "Emacs"),
-    ("sublime_text", "Sublime Text"),
-    ("Sublime Text", "Sublime Text"),
-    ("Atom", "Atom"),
-    ("Eclipse", "Eclipse"),
-    ("Android Studio", "Android Studio"),
-    ("Fleet", "Fleet"),
-    ("Windsurf", "Windsurf"),
-    ("windsurf", "Windsurf"),
-];
-
-/// Classify where a Claude process was launched from by inspecting its parent.
-fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInfo {
-    // 1. Check binary path — VS Code extension has distinctive path
-    let cmd_args = process.cmd();
-    if let Some(binary) = cmd_args.first() {
-        let bin_str = binary.to_string_lossy();
-        if bin_str.contains(".vscode/extensions/") || bin_str.contains(".vscode-server/") {
-            return SessionSourceInfo {
-                category: SessionSource::Ide,
-                label: Some("VS Code".to_string()),
-            };
-        }
-        if bin_str.contains(".cursor/extensions/") || bin_str.contains(".cursor-server/") {
-            return SessionSourceInfo {
-                category: SessionSource::Ide,
-                label: Some("Cursor".to_string()),
-            };
-        }
-    }
-
-    // 2. Check parent process
-    if let Some(ppid) = process.parent() {
-        if let Some(parent) = sys.process(ppid) {
-            let parent_name = parent.name().to_string_lossy().to_lowercase();
-            let parent_cmd = parent
-                .cmd()
-                .first()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
-
-            // Parent is sidecar → Agent SDK
-            if parent_cmd.contains("sidecar") {
-                return SessionSourceInfo {
-                    category: SessionSource::AgentSdk,
-                    label: None,
-                };
-            }
-
-            // Parent is a shell → Terminal
-            if SHELL_NAMES
-                .iter()
-                .any(|sh| parent_name == *sh || parent_name.ends_with(sh))
-            {
-                return SessionSourceInfo {
-                    category: SessionSource::Terminal,
-                    label: None,
-                };
-            }
-
-            // Check IDE patterns against parent command line
-            let parent_full = parent
-                .cmd()
-                .iter()
-                .map(|s| s.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join(" ");
-            for &(pattern, label) in IDE_PATTERNS {
-                if parent_full.contains(pattern) || parent_name.contains(&pattern.to_lowercase()) {
-                    return SessionSourceInfo {
-                        category: SessionSource::Ide,
-                        label: Some(label.to_string()),
-                    };
-                }
-            }
-
-            // Unknown parent — default to terminal (most common case)
-            return SessionSourceInfo {
-                category: SessionSource::Terminal,
-                label: None,
-            };
-        }
-    }
-
-    // No parent info available — default to terminal
-    SessionSourceInfo {
-        category: SessionSource::Terminal,
-        label: None,
-    }
 }
 
 /// Fallback: get a process's working directory via `lsof`.
@@ -409,10 +224,6 @@ mod tests {
                 pid: 1234,
                 cwd: path,
                 start_time: 100,
-                source: SessionSourceInfo {
-                    category: SessionSource::Terminal,
-                    label: None,
-                },
             },
         );
 
@@ -439,10 +250,6 @@ mod tests {
                 pid: 5678,
                 cwd: path,
                 start_time: 200,
-                source: SessionSourceInfo {
-                    category: SessionSource::Terminal,
-                    label: None,
-                },
             },
         );
 
