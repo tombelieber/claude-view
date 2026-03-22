@@ -9,7 +9,7 @@ import type {
   RateLimit,
   SessionClosed,
 } from '@claude-view/shared/types/sidecar-protocol'
-import { AlertCircle, Info, Loader2 } from 'lucide-react'
+import { EventCard } from './EventCard'
 
 interface NoticeBlockProps {
   block: NoticeBlockType
@@ -18,113 +18,84 @@ interface NoticeBlockProps {
 
 function AssistantErrorDetail({ data }: { data: AssistantError }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
-      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
-      <div>
-        <div className="text-xs font-medium text-red-700 dark:text-red-300">{data.error}</div>
-        <div className="text-[10px] font-mono text-red-600 dark:text-red-400 mt-0.5">
-          messageId: {data.messageId}
-        </div>
-      </div>
-    </div>
+    <EventCard dot="red" chip="Error" label={data.error} error rawData={data}>
+      <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+        messageId: {data.messageId}
+      </span>
+    </EventCard>
   )
 }
 
 function RateLimitDetail({ data }: { data: RateLimit }) {
-  const isWarning = data.status === 'allowed_warning'
   const isRejected = data.status === 'rejected'
+  const isWarning = data.status === 'allowed_warning'
+  const dot = isRejected ? ('red' as const) : isWarning ? ('amber' as const) : ('gray' as const)
+
   return (
-    <div
-      className={`flex items-start gap-2 px-3 py-2 rounded-lg border ${
-        isRejected
-          ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40'
-          : isWarning
-            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800/40'
-            : 'bg-gray-50 dark:bg-gray-800/20 border-gray-200 dark:border-gray-700/40'
-      }`}
+    <EventCard
+      dot={dot}
+      chip="Rate Limit"
+      chipColor={isRejected ? undefined : undefined}
+      label={data.status}
+      error={isRejected}
+      rawData={data}
     >
-      <AlertCircle
-        className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
-          isRejected
-            ? 'text-red-500 dark:text-red-400'
-            : isWarning
-              ? 'text-yellow-500 dark:text-yellow-400'
-              : 'text-gray-500 dark:text-gray-400'
-        }`}
-      />
-      <div className="text-[11px] space-y-0.5">
-        <div className="font-medium text-gray-700 dark:text-gray-300">
-          Rate limit: {data.status}
-        </div>
-        {data.rateLimitType && (
-          <div className="text-gray-500 dark:text-gray-400">Type: {data.rateLimitType}</div>
-        )}
-        {data.utilization != null && (
-          <div className="text-gray-500 dark:text-gray-400">
-            Utilization: {(data.utilization * 100).toFixed(0)}%
-          </div>
-        )}
+      <div className="text-[10px] space-y-0.5 text-gray-500 dark:text-gray-400">
+        {data.rateLimitType && <div>Type: {data.rateLimitType}</div>}
+        {data.utilization != null && <div>Utilization: {(data.utilization * 100).toFixed(0)}%</div>}
         {data.resetsAt && data.resetsAt > 0 && (
-          <div className="text-gray-500 dark:text-gray-400">
-            Resets: {new Date(data.resetsAt * 1000).toLocaleTimeString()}
-          </div>
+          <div>Resets: {new Date(data.resetsAt * 1000).toLocaleTimeString()}</div>
         )}
       </div>
-    </div>
+    </EventCard>
   )
 }
 
 function ContextCompactedDetail({ data }: { data: ContextCompacted }) {
-  return <CompactBoundaryCard trigger={data.trigger} preTokens={data.preTokens} />
+  return (
+    <EventCard
+      dot="cyan"
+      chip="Compacted"
+      label={`${data.trigger} — ${(data.preTokens ?? 0).toLocaleString()} tokens`}
+      rawData={data}
+    >
+      <CompactBoundaryCard trigger={data.trigger} preTokens={data.preTokens} />
+    </EventCard>
+  )
 }
 
 function AuthStatusDetail({ data }: { data: AuthStatus }) {
   return (
-    <div className="flex items-start gap-2 px-3 py-1.5 text-xs">
-      {data.isAuthenticating ? (
-        <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin flex-shrink-0 mt-0.5" />
-      ) : (
-        <Info className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />
+    <EventCard
+      dot={data.error ? 'red' : data.isAuthenticating ? 'amber' : 'green'}
+      chip="Auth"
+      label={data.isAuthenticating ? 'Authenticating...' : data.error ? data.error : 'Complete'}
+      pulse={data.isAuthenticating}
+      error={!!data.error}
+      rawData={data}
+    >
+      {data.output.length > 0 && (
+        <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+          {data.output.join('\n')}
+        </pre>
       )}
-      <div className="space-y-0.5">
-        <div className="text-gray-600 dark:text-gray-300">
-          {data.isAuthenticating ? 'Authenticating...' : 'Auth complete'}
-        </div>
-        {data.error && <div className="text-red-600 dark:text-red-400">{data.error}</div>}
-        {data.output.length > 0 && (
-          <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
-            {data.output.join('\n')}
-          </pre>
-        )}
-      </div>
-    </div>
+    </EventCard>
   )
 }
 
 function SessionClosedDetail({ data }: { data: SessionClosed }) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400">
-      <Info className="w-3.5 h-3.5 flex-shrink-0" />
-      <span>Session closed: {data.reason}</span>
-    </div>
-  )
+  return <EventCard dot="gray" chip="Closed" label={data.reason} rawData={data} />
 }
 
 function ErrorDetail({ data }: { data: ErrorEvent }) {
   return (
-    <div
-      className={`flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 ${
-        data.fatal ? 'w-full' : ''
-      }`}
-    >
-      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
-      <div>
-        <div className="text-xs text-red-700 dark:text-red-300">{data.message}</div>
-        <div className="text-[10px] text-red-500 dark:text-red-400 mt-0.5">
-          {data.fatal ? 'Fatal' : 'Non-fatal'}
-        </div>
-      </div>
-    </div>
+    <EventCard
+      dot="red"
+      chip={data.fatal ? 'Fatal' : 'Error'}
+      label={data.message}
+      error
+      rawData={data}
+    />
   )
 }
 
@@ -139,7 +110,7 @@ function PromptSuggestionDetail({
     <button
       type="button"
       onClick={() => onSuggestion?.(data.suggestion)}
-      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
+      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors duration-200 cursor-pointer"
     >
       {data.suggestion}
     </button>

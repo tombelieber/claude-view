@@ -113,6 +113,7 @@ describe('routes', () => {
       const cs = makeStubCs({
         controlId: 'existing-ctrl',
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        lastSessionInit: { type: 'session_init', model: 'test', permissionMode: 'default' },
       })
       registry.register(cs)
 

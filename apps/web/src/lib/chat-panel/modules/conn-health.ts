@@ -20,8 +20,12 @@ export function connTransition(
 ): ConnResult {
   switch (state.health) {
     case 'ok':
-      if (event.type === 'WS_CLOSE' && event.recoverable) {
-        return { stay: true, state: { health: 'reconnecting', attempt: 1 } }
+      if (event.type === 'WS_CLOSE') {
+        if (event.recoverable) {
+          return { stay: true, state: { health: 'reconnecting', attempt: 1 } }
+        }
+        // Non-recoverable close → fatal immediately (don't silently swallow)
+        return { stay: false, exit: 'ws_fatal', error: 'Non-recoverable WebSocket close' }
       }
       return { stay: true, state }
 

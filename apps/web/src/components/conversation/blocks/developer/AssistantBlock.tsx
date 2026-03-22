@@ -2,8 +2,11 @@ import type {
   AssistantBlock as AssistantBlockType,
   AssistantSegment,
 } from '@claude-view/shared/types/blocks'
+import { cn } from '../../../../lib/utils'
 import { ThinkingBlock } from '../../../chat/ThinkingBlock'
+import { JsonTree } from '../../../live/JsonTree'
 import { Markdown } from '../shared/Markdown'
+import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { ToolCard } from './ToolCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
 import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
@@ -12,6 +15,7 @@ import {
   RENDERED_KEYS as THINKING_META_KEYS,
   ThinkingMetadataDetail,
 } from './details/ThinkingMetadataDetail'
+import { useJsonMode } from './json-mode-context'
 
 const ASSISTANT_RENDERED_KEYS = [
   ...THINKING_META_KEYS,
@@ -48,6 +52,19 @@ function SegmentRenderer({ segment }: { segment: AssistantSegment }) {
 }
 
 export function DevAssistantBlock({ block }: AssistantBlockProps) {
+  const globalJsonMode = useJsonMode()
+  const durationMs = block.rawJson?.durationMs as number | undefined
+
+  if (globalJsonMode) {
+    return (
+      <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
+        <div className="px-3 py-2">
+          <JsonTree data={block} defaultExpandDepth={3} verboseMode />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2">
       {block.thinking && <ThinkingBlock content={block.thinking} defaultExpanded />}
@@ -63,23 +80,36 @@ export function DevAssistantBlock({ block }: AssistantBlockProps) {
         <span className="inline-block w-2 h-4 bg-gray-800 dark:bg-gray-200 animate-pulse rounded-sm" />
       )}
 
+      <div className="flex items-center gap-2">
+        <MessageTimestamp timestamp={block.timestamp} />
+        {durationMs != null && (
+          <span
+            className={cn(
+              'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
+              durationMs > 30000
+                ? 'text-red-400 bg-red-500/10'
+                : durationMs > 5000
+                  ? 'text-amber-400 bg-amber-500/10'
+                  : 'text-gray-400 bg-gray-500/10',
+            )}
+          >
+            {(durationMs / 1000).toFixed(1)}s
+          </span>
+        )}
+      </div>
+
       {block.rawJson && (
-        <>
-          {block.rawJson.permissionMode && (
-            <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+        <div className="space-y-1">
+          {block.rawJson.permissionMode != null && (
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}
-            </span>
-          )}
-          {block.rawJson.durationMs != null && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">
-              {String(block.rawJson.durationMs)}ms
             </span>
           )}
           <ThinkingMetadataDetail rawJson={block.rawJson} />
           <StopReasonDetail rawJson={block.rawJson} />
           <MessageLineageDetail rawJson={block.rawJson} />
           <RawEnvelopeDetail rawJson={block.rawJson} renderedKeys={ASSISTANT_RENDERED_KEYS} />
-        </>
+        </div>
       )}
     </div>
   )

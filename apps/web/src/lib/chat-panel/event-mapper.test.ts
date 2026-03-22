@@ -43,11 +43,18 @@ describe('mapWsEvent', () => {
     })
   })
 
-  test('stream_delta → STREAM_DELTA', () => {
+  test('stream_delta with textDelta → STREAM_DELTA', () => {
     expect(mapWsEvent({ type: 'stream_delta', textDelta: 'hello' })).toEqual({
       type: 'STREAM_DELTA',
       text: 'hello',
     })
+  })
+
+  test('stream_delta without textDelta → null (prevents undefined accumulation)', () => {
+    // content_block_start has no textDelta
+    expect(mapWsEvent({ type: 'stream_delta', deltaType: 'content_block_start' })).toBeNull()
+    // explicit undefined
+    expect(mapWsEvent({ type: 'stream_delta', textDelta: undefined })).toBeNull()
   })
 
   test('turn_complete → TURN_COMPLETE with token extraction', () => {

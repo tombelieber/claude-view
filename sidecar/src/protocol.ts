@@ -517,6 +517,7 @@ export interface ResumeSessionRequest {
   model?: string
   permissionMode?: string
   projectPath?: string
+  initialMessage?: string
 }
 
 export interface ForkSessionRequest {
