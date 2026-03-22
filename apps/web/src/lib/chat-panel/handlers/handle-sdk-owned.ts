@@ -43,13 +43,20 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
             ...p,
             blocks: mergeBlocks(p.blocks, event.blocks),
             turn: turnTransition(p.turn, { type: 'BLOCKS_UPDATE' }),
+            // Server blocks are now authoritative — clear pendingText so
+            // deriveBlocks() doesn't produce a duplicate __pending__ block
+            // with the same text the server already committed.
+            pendingText: '',
           },
         },
         [],
       ]
 
     case 'BLOCKS_SNAPSHOT':
-      return [{ ...store, panel: { ...p, blocks: mergeBlocks(p.blocks, event.blocks) } }, []]
+      return [
+        { ...store, panel: { ...p, blocks: mergeBlocks(p.blocks, event.blocks), pendingText: '' } },
+        [],
+      ]
 
     // HISTORY_OK race: history API response arrives after we're already sdk_owned
     // (SELECT_SESSION fired FETCH_HISTORY + CHECK_SIDECAR_ACTIVE in parallel)

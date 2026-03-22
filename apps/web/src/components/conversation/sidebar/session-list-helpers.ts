@@ -1,9 +1,10 @@
 // Pure helper functions for SessionListItem — extracted for testability.
 // Aligned with Live Monitor StatusDot colors: needs_you → amber, autonomous → green.
+// Mission Control grouping: urgency-first (NEEDS YOU → WORKING → history).
 
 import type { LiveStatus } from '../../../lib/live-status'
 
-interface SessionLike {
+export interface SessionLike {
   liveData?: {
     agentState?: { group: string }
     status?: string
@@ -13,6 +14,35 @@ interface SessionLike {
   liveStatus?: LiveStatus
 }
 
+// --- Source type (for icon rendering) ---
+
+export type SessionSource = 'terminal' | 'sdk'
+
+export function getSessionSource(session: SessionLike): SessionSource {
+  return session.liveStatus === 'cc_agent_sdk_owned' ? 'sdk' : 'terminal'
+}
+
+// --- Urgency grouping ---
+
+export type UrgencyGroup = 'needs_you' | 'working'
+
+export function getUrgencyGroup(session: SessionLike): UrgencyGroup {
+  const group = session.liveData?.agentState?.group
+  return group === 'needs_you' ? 'needs_you' : 'working'
+}
+
+export function groupByUrgency<T extends SessionLike>(
+  sessions: T[],
+): { needsYou: T[]; working: T[] } {
+  const needsYou: T[] = []
+  const working: T[] = []
+  for (const s of sessions) {
+    if (getUrgencyGroup(s) === 'needs_you') needsYou.push(s)
+    else working.push(s)
+  }
+  return { needsYou, working }
+}
+
 // --- Status dot color ---
 
 export function getStatusDotColor(session: SessionLike): string {
@@ -20,25 +50,6 @@ export function getStatusDotColor(session: SessionLike): string {
   const group = session.liveData.agentState?.group
   if (group === 'needs_you') return 'bg-amber-500'
   return 'bg-green-500'
-}
-
-// --- Status badge ---
-
-export function getStatusBadge(session: SessionLike): { text: string; className: string } | null {
-  if (!session.liveData) return null
-  const group = session.liveData.agentState?.group
-  const isNeedsYou = group === 'needs_you'
-
-  const label = session.liveStatus === 'cc_agent_sdk_owned' ? 'Live' : 'Watching'
-  return isNeedsYou
-    ? {
-        text: label,
-        className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      }
-    : {
-        text: label,
-        className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      }
 }
 
 // --- Dropdown action visibility ---

@@ -6,8 +6,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
 import { type SidebarSession, toSidebarItems } from '../../../lib/sidebar-mapper'
+import { useAppStore } from '../../../store/app-store'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
+import { groupByUrgency } from './session-list-helpers'
 
 const SIDEBAR_PAGE_SIZE = 30
 
@@ -47,6 +49,10 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
+  const chatNeedsYouCollapsed = useAppStore((s) => s.chatNeedsYouCollapsed)
+  const chatWorkingCollapsed = useAppStore((s) => s.chatWorkingCollapsed)
+  const toggleSidebarSection = useAppStore((s) => s.toggleSidebarSection)
+
   const [searchQuery, setSearchQuery] = useState('')
 
   // Server-side paginated fetch — loads pages on demand as user scrolls
@@ -81,9 +87,10 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
     [historySessions, liveSessions],
   )
 
-  // Separate active-pinned from rest
+  // Separate active-pinned from rest, then split active by urgency
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)
   const restSessions = enrichedHistory.filter((s) => !s.isActive)
+  const { needsYou, working } = useMemo(() => groupByUrgency(pinnedSessions), [pinnedSessions])
 
   // Client-side text search
   const filteredRest = useMemo(() => {
@@ -341,31 +348,101 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
           <div className="px-3 py-8 text-center text-sm text-gray-400">Loading...</div>
         ) : (
           <>
-            {/* Active sessions — pinned at top */}
-            {pinnedSessions.length > 0 && (
+            {/* NEEDS YOU — collapsible, amber-themed, urgent sessions */}
+            {needsYou.length > 0 && (
               <div className="mb-2">
-                <p className="px-3 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                  Active
-                </p>
-                {pinnedSessions.map((s) => {
-                  const idx = flatSessions.findIndex((f) => f.id === s.id)
-                  return (
-                    <SessionListItem
-                      key={s.id}
-                      ref={(el) => setItemRef(s.id, el)}
-                      session={s}
-                      isSelected={s.id === currentSessionId}
-                      isKeyboardActive={idx === activeNavIndex}
-                      onSelect={handleSelect}
-                      onResume={handleResume}
-                      onTakeOver={handleTakeOver}
-                      onFork={handleFork}
-                      onShutDown={handleShutDown}
-                      onOpenInMonitor={handleOpenInMonitor}
-                      onArchive={handleArchive}
-                    />
-                  )
-                })}
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarSection('chatNeedsYou')}
+                  className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-sm transition-colors"
+                >
+                  <span
+                    className={`text-[10px] text-amber-500 transition-transform duration-200 ${chatNeedsYouCollapsed ? '' : 'rotate-90'}`}
+                  >
+                    ▶
+                  </span>
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                    Needs You
+                  </span>
+                  <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 rounded-full px-1.5 leading-4">
+                    {needsYou.length}
+                  </span>
+                </button>
+                <div
+                  className="grid transition-[grid-template-rows] duration-200 ease-out"
+                  style={{ gridTemplateRows: chatNeedsYouCollapsed ? '0fr' : '1fr' }}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    {needsYou.map((s) => {
+                      const idx = flatSessions.findIndex((f) => f.id === s.id)
+                      return (
+                        <SessionListItem
+                          key={s.id}
+                          ref={(el) => setItemRef(s.id, el)}
+                          session={s}
+                          isSelected={s.id === currentSessionId}
+                          isKeyboardActive={idx === activeNavIndex}
+                          onSelect={handleSelect}
+                          onResume={handleResume}
+                          onTakeOver={handleTakeOver}
+                          onFork={handleFork}
+                          onShutDown={handleShutDown}
+                          onOpenInMonitor={handleOpenInMonitor}
+                          onArchive={handleArchive}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* WORKING — collapsible, green-themed, compact rows */}
+            {working.length > 0 && (
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarSection('chatWorking')}
+                  className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-green-50 dark:hover:bg-green-900/10 rounded-sm transition-colors"
+                >
+                  <span
+                    className={`text-[10px] text-green-500 transition-transform duration-200 ${chatWorkingCollapsed ? '' : 'rotate-90'}`}
+                  >
+                    ▶
+                  </span>
+                  <span className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">
+                    Working
+                  </span>
+                  <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-1.5 leading-4">
+                    {working.length}
+                  </span>
+                </button>
+                <div
+                  className="grid transition-[grid-template-rows] duration-200 ease-out"
+                  style={{ gridTemplateRows: chatWorkingCollapsed ? '0fr' : '1fr' }}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    {working.map((s) => {
+                      const idx = flatSessions.findIndex((f) => f.id === s.id)
+                      return (
+                        <SessionListItem
+                          key={s.id}
+                          ref={(el) => setItemRef(s.id, el)}
+                          session={s}
+                          isSelected={s.id === currentSessionId}
+                          isKeyboardActive={idx === activeNavIndex}
+                          onSelect={handleSelect}
+                          onResume={handleResume}
+                          onTakeOver={handleTakeOver}
+                          onFork={handleFork}
+                          onShutDown={handleShutDown}
+                          onOpenInMonitor={handleOpenInMonitor}
+                          onArchive={handleArchive}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
