@@ -89,10 +89,27 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
         : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
   ].join(' ')
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onSelect(session.id)
+      }
+    },
+    [onSelect, session.id],
+  )
+
   // --- Compact single-line row for WORKING group ---
   if (compact) {
     return (
-      <div ref={ref} className={rowClasses} onClick={handleClick}>
+      <div
+        ref={ref}
+        className={rowClasses}
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+      >
         <div className="flex-shrink-0 relative inline-flex">
           {showPulse && (
             <span
@@ -181,7 +198,14 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
 
   // --- Expanded card for NEEDS YOU group + history ---
   return (
-    <div ref={ref} className={rowClasses} onClick={handleClick}>
+    <div
+      ref={ref}
+      className={rowClasses}
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+    >
       {/* Status dot */}
       <div className="mt-1 flex-shrink-0 relative inline-flex">
         {showPulse && (
