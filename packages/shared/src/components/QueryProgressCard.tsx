@@ -1,6 +1,13 @@
 import { Database } from 'lucide-react'
 import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 
+/**
+ * QueryProgressCard — info-rich, SQL code block.
+ *
+ * Schema: query
+ * Design: icon + header, query in SQL code block.
+ */
+
 interface QueryProgressCardProps {
   query: string
   blockId?: string

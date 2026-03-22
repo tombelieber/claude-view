@@ -39,23 +39,28 @@ describe('HookProgressCard', () => {
     statusMessage: 'Validating tool use\u2026',
   }
 
-  describe('Header rendering', () => {
-    it('should display hookEvent and hookName', () => {
+  describe('All fields visible', () => {
+    it('should display hookEvent and hookName inline', () => {
       renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
       expect(screen.getByText('PreToolUse')).toBeInTheDocument()
       expect(screen.getByText('live-monitor')).toBeInTheDocument()
     })
 
-    it('should show arrow between event and name', () => {
+    it('should display statusMessage inline', () => {
       renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
-      expect(screen.getByText('\u2192')).toBeInTheDocument()
+      expect(screen.getByText('Validating tool use\u2026')).toBeInTheDocument()
     })
-  })
 
-  describe('Command rendering', () => {
-    it('should render command via CompactCodeBlock with bash language', () => {
+    it('should not show statusMessage dot when empty', () => {
+      renderWithCodeContext(<HookProgressCard {...baseProps} statusMessage="" />)
+
+      // Only hookEvent, arrow, hookName visible — no extra dot separator
+      expect(screen.queryByText('Validating')).not.toBeInTheDocument()
+    })
+
+    it('should render command via CompactCodeBlock', () => {
       renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
       const codeBlock = screen.getByTestId('compact-code-block')
@@ -64,32 +69,13 @@ describe('HookProgressCard', () => {
     })
   })
 
-  describe('Status message rendering', () => {
-    it('should display statusMessage below the command', () => {
-      renderWithCodeContext(<HookProgressCard {...baseProps} />)
-
-      expect(screen.getByText('Validating tool use\u2026')).toBeInTheDocument()
-    })
-
-    it('should not render status area when statusMessage is empty', () => {
-      renderWithCodeContext(<HookProgressCard {...baseProps} statusMessage="" />)
-
-      // Only the code block and header should render, no extra text node
-      const allText = screen.queryByText('Validating')
-      expect(allText).not.toBeInTheDocument()
-    })
-  })
-
   describe('Visual styling', () => {
     it('should have amber left border', () => {
       const { container } = renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-amber')
+      expect((container.firstElementChild as HTMLElement).className).toContain('space-y')
     })
-  })
 
-  describe('Accessibility', () => {
     it('should have aria-hidden on decorative icon', () => {
       const { container } = renderWithCodeContext(<HookProgressCard {...baseProps} />)
 

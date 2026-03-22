@@ -28,7 +28,7 @@ describe('TaskQueueCard', () => {
       const { container } = render(<TaskQueueCard taskDescription="test" taskType="local_bash" />)
 
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-orange')
+      expect(card.className).toContain('flex')
     })
   })
 

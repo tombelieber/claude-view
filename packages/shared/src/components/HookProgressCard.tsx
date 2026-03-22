@@ -2,22 +2,17 @@ import { GitBranch } from 'lucide-react'
 import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 
 /**
- * HookProgressCard — purpose-built for HookProgress schema.
+ * HookProgressCard — follows HookEventDetail pattern.
+ * Header with event→name + status, command as code block.
  *
- * Schema fields: hookEvent, hookName, command, statusMessage
- * Every field is rendered. No phantom props.
+ * Schema: hookEvent, hookName, command, statusMessage
  */
 
 interface HookProgressCardProps {
-  /** Lifecycle event that triggered this hook (e.g. "PreToolUse", "PostToolUse") */
   hookEvent: string
-  /** Hook identifier */
   hookName: string
-  /** Shell command / script path being executed */
   command: string
-  /** Human-readable status text from the hook */
   statusMessage: string
-  /** UI-only: stable key for code block rendering */
   blockId?: string
 }
 
@@ -31,34 +26,28 @@ export function HookProgressCard({
   const CompactCodeBlock = useCompactCodeBlock()
 
   return (
-    <div className="py-0.5 border-l-2 border-l-amber-400 pl-1 my-1">
-      {/* Event → Hook flow */}
-      <div className="flex items-center gap-1.5 mb-0.5">
+    <div className="space-y-1">
+      {/* Header: event → name + status */}
+      <div className="flex items-center gap-2 text-[10px] font-mono">
         <GitBranch className="w-3 h-3 text-amber-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-amber-400 dark:text-amber-500 flex-shrink-0">
-          {hookEvent}
-        </span>
-        <span className="text-[10px] text-gray-600 dark:text-gray-600" aria-hidden="true">
+        <span className="text-amber-700 dark:text-amber-300">{hookEvent}</span>
+        <span className="text-gray-500 dark:text-gray-500" aria-hidden="true">
           {'\u2192'}
         </span>
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate">
-          {hookName}
-        </span>
+        <span className="text-gray-700 dark:text-gray-300 truncate">{hookName}</span>
+        {statusMessage && (
+          <span className="text-gray-500 dark:text-gray-400 truncate ml-auto flex-shrink-0">
+            {statusMessage}
+          </span>
+        )}
       </div>
 
-      {/* Command script */}
+      {/* Command — always visible */}
       <CompactCodeBlock
         code={command}
         language="bash"
         blockId={blockId ? `${blockId}-cmd` : `hook-${hookName}-cmd`}
       />
-
-      {/* Status message */}
-      {statusMessage && (
-        <div className="text-[10px] font-mono text-gray-400 dark:text-gray-500 mt-0.5 px-1">
-          {statusMessage}
-        </div>
-      )}
     </div>
   )
 }
