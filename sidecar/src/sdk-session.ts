@@ -161,6 +161,9 @@ export async function resumeControlSession(
   // Without this, an invalid sessionId causes a 15s timeout waiting for session_init.
   // Use getSessionInfo() which searches ALL project directories when dir is omitted,
   // unlike listSessions() which defaults to sidecar's cwd and misses sessions from other projects.
+  // Also extract info.cwd as fallback projectPath for inactive sessions where the frontend
+  // doesn't know the project path (liveProjectPath is only set for currently-live sessions).
+  let resolvedProjectPath = req.projectPath
   try {
     const info = await getSessionInfo(req.sessionId, {
       dir: req.projectPath || undefined,
@@ -170,6 +173,9 @@ export async function resumeControlSession(
         `Session ${req.sessionId} not found in CLI session store. ` +
           `It may have been deleted or belongs to a different project path.`,
       )
+    }
+    if (!resolvedProjectPath && info.cwd) {
+      resolvedProjectPath = info.cwd
     }
   } catch (err) {
     // Re-throw "not found" errors; swallow getSessionInfo failures (let SDK give specific error)
@@ -193,7 +199,7 @@ export async function resumeControlSession(
       {
         model: req.model ?? 'claude-sonnet-4-20250514',
         permissionMode: req.permissionMode,
-        projectPath: req.projectPath,
+        projectPath: resolvedProjectPath,
         resume: req.sessionId,
       },
       permissions,
