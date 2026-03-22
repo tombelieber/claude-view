@@ -4,7 +4,6 @@ import type {
 } from '@claude-view/shared/types/blocks'
 import { cn } from '../../../../lib/utils'
 import { ThinkingBlock } from '../../../chat/ThinkingBlock'
-import { JsonTree } from '../../../live/JsonTree'
 import { Markdown } from '../shared/Markdown'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { ToolCard } from './ToolCard'
@@ -15,7 +14,6 @@ import {
   RENDERED_KEYS as THINKING_META_KEYS,
   ThinkingMetadataDetail,
 } from './details/ThinkingMetadataDetail'
-import { useJsonMode } from './json-mode-context'
 
 const ASSISTANT_RENDERED_KEYS = [
   ...THINKING_META_KEYS,
@@ -52,18 +50,7 @@ function SegmentRenderer({ segment }: { segment: AssistantSegment }) {
 }
 
 export function DevAssistantBlock({ block }: AssistantBlockProps) {
-  const globalJsonMode = useJsonMode()
   const durationMs = block.rawJson?.durationMs as number | undefined
-
-  if (globalJsonMode) {
-    return (
-      <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
-        <div className="px-3 py-2">
-          <JsonTree data={block} defaultExpandDepth={3} verboseMode />
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-2">

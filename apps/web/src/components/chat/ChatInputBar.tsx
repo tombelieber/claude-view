@@ -11,6 +11,7 @@ import { ChatPalette } from './ChatPalette'
 import { ModeSwitch, cycleMode } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
+import { ThinkingBudgetControl } from './ThinkingBudgetControl'
 import type { SlashCommand } from './commands'
 import { buildPaletteSections } from './palette-items'
 
@@ -85,6 +86,9 @@ export interface ChatInputBarProps {
   onAgent?: (agent: string) => void
   // NEW: Called when palette opens — refresh commands/agents via WS
   onPaletteOpen?: () => void
+  // Effort slider (thinking budget)
+  effortValue?: number | null
+  onEffortChange?: (tokens: number | null) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +118,8 @@ export function ChatInputBar({
   onPaletteModeChange,
   onAgent,
   onPaletteOpen,
+  effortValue,
+  onEffortChange,
 }: ChatInputBarProps) {
   const config = STATE_CONFIG[state]
   const resolvedPlaceholder = placeholderProp ?? config.placeholder
@@ -320,20 +326,29 @@ export function ChatInputBar({
             'focus-within:border-blue-400 dark:focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-400/30',
         )}
       >
-        {/* Top bar: ModeSwitch (left) + ModelSelector (right) */}
+        {/* Top bar: ModeSwitch (left) + Effort + ModelSelector (right) */}
         <div className="flex items-center justify-between px-3 pt-2 pb-1">
           <ModeSwitch
             mode={mode}
             onModeChange={onModeChange ?? (() => {})}
             disabled={isDisabled || !onModeChange}
           />
-          <ModelSelector
-            model={model}
-            onModelChange={onModelChange ?? (() => {})}
-            disabled={isDisabled || !onModelChange}
-            isLive={state === 'active' || state === 'streaming' || state === 'waiting_permission'}
-            onSetModel={onModelSwitch}
-          />
+          <div className="flex items-center gap-3">
+            {onEffortChange && (
+              <ThinkingBudgetControl
+                value={effortValue ?? null}
+                onChange={onEffortChange}
+                disabled={isDisabled}
+              />
+            )}
+            <ModelSelector
+              model={model}
+              onModelChange={onModelChange ?? (() => {})}
+              disabled={isDisabled || !onModelChange}
+              isLive={state === 'active' || state === 'streaming' || state === 'waiting_permission'}
+              onSetModel={onModelSwitch}
+            />
+          </div>
         </div>
 
         {/* Textarea */}
