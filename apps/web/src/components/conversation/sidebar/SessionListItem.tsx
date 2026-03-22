@@ -1,9 +1,10 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Clock, FolderOpen, GitBranch, MoreVertical, TerminalSquare, Zap } from 'lucide-react'
+import { Clock, FolderOpen, GitBranch, MoreVertical } from 'lucide-react'
 import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
-import { deriveDropdownActions, getSessionSource, getStatusDotColor } from './session-list-helpers'
+import { SourceBadge } from '../../shared/SourceBadge'
+import { deriveDropdownActions, getStatusDotColor } from './session-list-helpers'
 
 import type { LiveStatus } from '../../../lib/live-status'
 
@@ -43,13 +44,6 @@ const menuItemClass =
 const dangerItemClass =
   'px-3 py-1.5 cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 outline-none'
 
-const SourceIcon = ({ source, size = 10 }: { source: 'terminal' | 'sdk'; size?: number }) =>
-  source === 'sdk' ? (
-    <Zap size={size} className="text-blue-400 dark:text-blue-500" />
-  ) : (
-    <TerminalSquare size={size} className="text-gray-400 dark:text-gray-500" />
-  )
-
 export const SessionListItem = forwardRef<HTMLDivElement, Props>(function SessionListItem(
   {
     session,
@@ -73,7 +67,6 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
   const dotColor = getStatusDotColor(session)
   const isAutonomous = session.liveData?.agentState?.group === 'autonomous'
   const showPulse = isAutonomous && session.liveData != null
-  const source = getSessionSource(session)
   const actions = deriveDropdownActions(session)
 
   const rowClasses = [
@@ -112,15 +105,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          {session.liveData && <SourceIcon source={source} size={12} />}
-          {session.liveData && source === 'sdk' && (
-            <span
-              className="flex-shrink-0 text-[9px] font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1 leading-3.5"
-              title="Started from this app — you can send prompts and interact directly"
-            >
-              This App
-            </span>
-          )}
+          {session.liveData && <SourceBadge source={session.liveData.source} />}
           <p className="text-sm font-medium truncate">{title}</p>
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">

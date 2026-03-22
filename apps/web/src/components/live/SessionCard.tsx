@@ -24,6 +24,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SourceBadge } from '../shared/SourceBadge'
 import { SessionSpinner, pickVerb } from '../spinner'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { ContextGauge } from './ContextGauge'
@@ -144,6 +145,7 @@ export function SessionCard({
               />
             </span>
           )}
+          <SourceBadge source={session.source} />
           {!hideProjectBranch && (
             <>
               <span
