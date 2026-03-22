@@ -1,5 +1,6 @@
 import { TurnDurationCard } from '@claude-view/shared/components/TurnDurationCard'
 import type { TurnBoundaryBlock } from '@claude-view/shared/types/blocks'
+import { EventCard } from './EventCard'
 
 interface TurnBoundaryProps {
   block: TurnBoundaryBlock
@@ -28,23 +29,18 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
   const tokens = formatTokens(block.usage)
 
   return (
-    <div className="space-y-1">
-      <TurnDurationCard durationMs={block.durationMs} />
-      <div className="rounded border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200/50 dark:border-gray-700/50">
-          <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
-            Turn {block.numTurns}
-          </span>
-          {!block.success && (
-            <span className="text-[10px] font-medium text-red-500 dark:text-red-400 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20">
-              {block.error?.subtype ?? 'Error'}
-            </span>
-          )}
-        </div>
+    <EventCard
+      dot={block.success ? 'green' : 'red'}
+      chip="Turn"
+      label={`Turn ${block.numTurns} — ${formatCost(block.totalCostUsd)} / ${formatDuration(block.durationMs)}`}
+      error={!block.success}
+      rawData={block}
+    >
+      <div className="space-y-1">
+        <TurnDurationCard durationMs={block.durationMs} />
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 px-3 py-2 text-[11px]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
           <div className="flex justify-between">
             <span className="text-gray-500 dark:text-gray-400">Cost</span>
             <span className="font-mono text-gray-700 dark:text-gray-300">
@@ -97,7 +93,7 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
 
         {/* Permission denials */}
         {block.permissionDenials.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
+          <div className="pt-1 border-t border-gray-200/30 dark:border-gray-700/30">
             <div className="text-[10px] font-medium text-red-600 dark:text-red-400 mb-1">
               Permission Denials
             </div>
@@ -114,7 +110,7 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
 
         {/* Error messages */}
         {block.error && (
-          <div className="px-3 py-1.5 border-t border-red-200/30 dark:border-red-800/30 bg-red-50/30 dark:bg-red-900/10">
+          <div className="pt-1 border-t border-red-200/30 dark:border-red-800/30">
             {block.error.messages.map((msg) => (
               <p key={msg} className="text-[10px] text-red-600 dark:text-red-400">
                 {msg}
@@ -123,6 +119,6 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
           </div>
         )}
       </div>
-    </div>
+    </EventCard>
   )
 }

@@ -11,6 +11,7 @@
  */
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import type { ComponentType } from 'react'
 import { withConversationActions } from '../../stories/decorators'
 import {
   assistantBlocks,
@@ -28,8 +29,9 @@ import {
   devTurnBoundaryBlocks,
   devUserBlocks,
 } from '../../stories/fixtures-developer'
-import { ConversationThread } from './ConversationThread'
 import { chatRegistry } from './blocks/chat/registry'
+import { DefaultExpandedProvider } from './blocks/developer/default-expanded-context'
+import { JsonModeProvider } from './blocks/developer/json-mode-context'
 import { developerRegistry } from './blocks/developer/registry'
 import type { BlockRenderers } from './types'
 
@@ -39,8 +41,6 @@ interface ModeComparison {
   label: string
   description: string
   blocks: ConversationBlock[]
-  /** Height hint for each Virtuoso container (px). Default 200. */
-  paneHeight?: number
 }
 
 const comparisons: ModeComparison[] = [
@@ -62,7 +62,6 @@ const comparisons: ModeComparison[] = [
       userBlocks.failed,
       userBlocks.long,
     ],
-    paneHeight: 400,
   },
 
   // ── 3. Assistant (text only) ──
@@ -77,7 +76,6 @@ const comparisons: ModeComparison[] = [
     label: 'assistant (thinking)',
     description: 'Chat hides thinking vs Dev shows collapsible thinking block vs JSON tree',
     blocks: [assistantBlocks.withThinking],
-    paneHeight: 300,
   },
 
   // ── 5. Assistant (tools) ──
@@ -86,7 +84,6 @@ const comparisons: ModeComparison[] = [
     description:
       'Chat compact tool pill vs Dev ToolCard (expandable) vs JSON with full input/output',
     blocks: [assistantBlocks.withTools],
-    paneHeight: 350,
   },
 
   // ── 6. Assistant (all tool variants) ──
@@ -94,7 +91,6 @@ const comparisons: ModeComparison[] = [
     label: 'assistant (all tool variants)',
     description: 'Diff, JSON, MCP, agent tools — Dev shows rich tool-specific cards',
     blocks: [assistantBlocks.withAllToolVariants as ConversationBlock],
-    paneHeight: 400,
   },
 
   // ── 7. Assistant (streaming) ──
@@ -105,7 +101,6 @@ const comparisons: ModeComparison[] = [
       assistantBlocks.streaming as ConversationBlock,
       assistantBlocks.withRunningTool as ConversationBlock,
     ],
-    paneHeight: 250,
   },
 
   // ── 8. Assistant (markdown) ──
@@ -113,7 +108,6 @@ const comparisons: ModeComparison[] = [
     label: 'assistant (markdown)',
     description: 'Chat renders markdown (tables, code, lists) vs Dev segments vs JSON raw',
     blocks: [assistantBlocks.markdown as ConversationBlock],
-    paneHeight: 350,
   },
 
   // ── 9. Interaction: permission (pending) ──
@@ -121,7 +115,6 @@ const comparisons: ModeComparison[] = [
     label: 'interaction: permission (pending)',
     description: 'Chat PermissionCard vs Dev PermissionCard (with tool metadata) vs JSON',
     blocks: [interactionBlocks.permissionPending as ConversationBlock],
-    paneHeight: 250,
   },
 
   // ── 10. Interaction: permission (resolved) ──
@@ -129,7 +122,6 @@ const comparisons: ModeComparison[] = [
     label: 'interaction: permission (resolved)',
     description: 'Chat shows resolved state vs Dev shows resolution + timing vs JSON',
     blocks: [interactionBlocks.permissionResolved as ConversationBlock],
-    paneHeight: 250,
   },
 
   // ── 11. Interaction: question ──
@@ -137,7 +129,6 @@ const comparisons: ModeComparison[] = [
     label: 'interaction: question',
     description: 'Chat AskUserQuestionCard vs Dev AskUserQuestionCard (with options) vs JSON',
     blocks: [interactionBlocks.questionPending as ConversationBlock],
-    paneHeight: 300,
   },
 
   // ── 12. Interaction: plan ──
@@ -145,7 +136,6 @@ const comparisons: ModeComparison[] = [
     label: 'interaction: plan',
     description: 'Chat PlanApprovalCard vs Dev PlanApprovalCard (numbered steps) vs JSON',
     blocks: [interactionBlocks.planPending as ConversationBlock],
-    paneHeight: 300,
   },
 
   // ── 13. Interaction: elicitation ──
@@ -153,7 +143,6 @@ const comparisons: ModeComparison[] = [
     label: 'interaction: elicitation',
     description: 'Chat ElicitationCard vs Dev ElicitationCard vs JSON raw schema',
     blocks: [interactionBlocks.elicitationPending as ConversationBlock],
-    paneHeight: 250,
   },
 
   // ── 14. Turn boundary: success ──
@@ -174,7 +163,6 @@ const comparisons: ModeComparison[] = [
       turnBoundaryBlocks.error as ConversationBlock,
       turnBoundaryBlocks.maxTurns as ConversationBlock,
     ],
-    paneHeight: 350,
   },
 
   // ── 16. Notice: errors ──
@@ -188,7 +176,6 @@ const comparisons: ModeComparison[] = [
       noticeBlocks.error as ConversationBlock,
       noticeBlocks.fatalError as ConversationBlock,
     ],
-    paneHeight: 400,
   },
 
   // ── 17. Notice: rate limit ──
@@ -263,7 +250,6 @@ const comparisons: ModeComparison[] = [
       devSystemBlocks.hookEvent as ConversationBlock,
       devSystemBlocks.hookEventError as ConversationBlock,
     ],
-    paneHeight: 250,
   },
 
   // ── 25. System: task lifecycle ──
@@ -276,7 +262,6 @@ const comparisons: ModeComparison[] = [
       systemBlocks.taskCompleted as ConversationBlock,
       systemBlocks.taskFailed as ConversationBlock,
     ],
-    paneHeight: 350,
   },
 
   // ── 26. System: file operations ──
@@ -337,7 +322,6 @@ const comparisons: ModeComparison[] = [
       progressBlocks.search as ConversationBlock,
       progressBlocks.query as ConversationBlock,
     ],
-    paneHeight: 500,
   },
 
   // ── 31. Developer-enriched: rawJson extras ──
@@ -351,7 +335,6 @@ const comparisons: ModeComparison[] = [
       devAssistantBlocks.withRawJson as ConversationBlock,
       devAssistantBlocks.withPermissionMode as ConversationBlock,
     ],
-    paneHeight: 400,
   },
 
   // ── 32. Developer-enriched: system with rawJson ──
@@ -364,7 +347,6 @@ const comparisons: ModeComparison[] = [
       devSystemBlocksWithRawJson.withHooks as ConversationBlock,
       devSystemBlocksWithRawJson.withAll as ConversationBlock,
     ],
-    paneHeight: 400,
   },
 
   // ── 33. Developer-enriched: turn boundary ──
@@ -372,13 +354,39 @@ const comparisons: ModeComparison[] = [
     label: 'developer-enriched: turn_boundary',
     description: 'Chat divider vs Dev turn boundary with permission denials vs JSON',
     blocks: [devTurnBoundaryBlocks.withPermissionDenials as ConversationBlock],
-    paneHeight: 250,
   },
 ]
 
+// ── Block list (no Virtuoso — full height) ──────────────────────────────────
+
+function BlockList({
+  blocks,
+  renderers,
+}: {
+  blocks: ConversationBlock[]
+  renderers: BlockRenderers
+}) {
+  return (
+    <div className="space-y-1.5">
+      {blocks.map((block) => {
+        const Renderer = renderers[block.type] as
+          | ComponentType<{ block: ConversationBlock }>
+          | undefined
+        if (!Renderer) return null
+        if (renderers.canRender && !renderers.canRender(block)) return null
+        return (
+          <div key={block.id}>
+            <Renderer block={block} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Comparison Row ──────────────────────────────────────────────────────────
 
-function ModeComparisonRow({ label, description, blocks, paneHeight = 200 }: ModeComparison) {
+function ModeComparisonRow({ label, description, blocks }: ModeComparison) {
   return (
     <section className="border border-gray-700 rounded-lg overflow-hidden">
       {/* Row header */}
@@ -387,31 +395,26 @@ function ModeComparisonRow({ label, description, blocks, paneHeight = 200 }: Mod
         <p className="text-[11px] text-gray-400 mt-0.5">{description}</p>
       </div>
 
-      {/* Three-column comparison */}
-      <div className="grid grid-cols-3 divide-x divide-gray-700">
+      {/* Three-column comparison — grid stretches all columns to tallest */}
+      <div className="grid grid-cols-3 divide-x divide-gray-700 items-start">
         {/* Chat mode */}
         <div className="p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-2">
             Chat Mode
           </div>
-          <div style={{ height: paneHeight }}>
-            <ConversationThread blocks={blocks} renderers={chatRegistry} />
-          </div>
+          <BlockList blocks={blocks} renderers={chatRegistry} />
         </div>
 
-        {/* Developer Rich (filter bar always visible) */}
+        {/* Developer Rich (expanded) */}
         <div className="p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-2">
             Developer — Rich
           </div>
-          <div style={{ height: paneHeight }}>
-            <ConversationThread
-              blocks={blocks}
-              renderers={developerRegistry}
-              filterBar
-              defaultExpanded
-            />
-          </div>
+          <DefaultExpandedProvider value={true}>
+            <JsonModeProvider value={false}>
+              <BlockList blocks={blocks} renderers={developerRegistry} />
+            </JsonModeProvider>
+          </DefaultExpandedProvider>
         </div>
 
         {/* Developer JSON (same as Rich but JSON toggle = on) */}
@@ -419,15 +422,11 @@ function ModeComparisonRow({ label, description, blocks, paneHeight = 200 }: Mod
           <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-2">
             Developer — JSON
           </div>
-          <div style={{ height: paneHeight }}>
-            <ConversationThread
-              blocks={blocks}
-              renderers={developerRegistry}
-              filterBar
-              defaultExpanded
-              defaultJsonMode
-            />
-          </div>
+          <DefaultExpandedProvider value={true}>
+            <JsonModeProvider value={true}>
+              <BlockList blocks={blocks} renderers={developerRegistry} />
+            </JsonModeProvider>
+          </DefaultExpandedProvider>
         </div>
       </div>
     </section>
