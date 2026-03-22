@@ -8,7 +8,9 @@ import {
   deriveCanFork,
   deriveCanSend,
   deriveConnectionStatus,
+  deriveHistoryPagination,
   deriveInputBar,
+  deriveThinkingState,
   deriveViewMode,
 } from '../lib/chat-panel'
 
@@ -19,6 +21,7 @@ const initialStore: ChatPanelStore = {
   projectPath: null,
   lastModel: null,
   lastPermissionMode: null,
+  historyPagination: null,
 }
 
 /** E-B1: pendingCmdsRef ACCUMULATES via push; drain effect splices.
@@ -47,6 +50,8 @@ export function useChatPanel(sessionId: string | undefined, projectPath?: string
   const inputBar = deriveInputBar(store)
   const viewMode = deriveViewMode(store)
   const connectionStatus = deriveConnectionStatus(store)
+  const thinkingState = deriveThinkingState(store)
+  const historyPagination = deriveHistoryPagination(store)
 
   // E-m3: Guard SELECT_SESSION re-dispatch
   // biome-ignore lint/correctness/useExhaustiveDependencies: projectPath and store.panel.phase intentionally excluded — only re-dispatch on sessionId change
@@ -73,5 +78,7 @@ export function useChatPanel(sessionId: string | undefined, projectPath?: string
     inputBar,
     viewMode,
     connectionStatus,
+    thinkingState,
+    historyPagination,
   }
 }

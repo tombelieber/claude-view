@@ -10,6 +10,7 @@ const INITIAL: ChatPanelStore = {
   projectPath: null,
   lastModel: null,
   lastPermissionMode: null,
+  historyPagination: null,
 }
 
 const mockBlocks: ConversationBlock[] = [{ type: 'user', id: '1', text: 'hi', timestamp: 1 }]
@@ -67,6 +68,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const { store, allCmds } = drive(historyStore, [
       { type: 'SEND_MESSAGE', text: 'hello', localId: 'l1' },
@@ -98,6 +100,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const { store, allCmds } = drive(acquiringStore, [
       { type: 'ACQUIRE_OK', controlId: 'c1' },
@@ -130,6 +133,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'SEND_MESSAGE',
@@ -159,6 +163,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store] = coordinate(acquiringStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -184,6 +189,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(acquiringStore, {
       type: 'ACQUIRE_FAILED',
@@ -205,6 +211,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     // Takeover
     const [s1, c1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
@@ -243,6 +250,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(historyStore, { type: 'FORK_SESSION' })
     expect(store.panel.phase).toBe('acquiring')
@@ -270,6 +278,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'WS_CLOSE',
@@ -293,6 +302,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store] = coordinate(historyStore, { type: 'DESELECT' })
     expect(store.panel.phase).toBe('empty')
@@ -328,6 +338,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [s1] = coordinate(liveStore, { type: 'STREAM_DELTA', text: 'hello' })
     if (s1.panel.phase === 'sdk_owned') {
@@ -365,6 +376,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(liveStore, { type: 'SESSION_CLOSED' })
     expect(store.panel.phase).toBe('closed')
@@ -389,6 +401,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [, cmds] = coordinate(liveStore, { type: 'INTERRUPT' })
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
@@ -403,6 +416,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(historyStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -425,6 +439,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     // Step 1: LIVE_STATUS arrives while loading — should NOT transition to cc_cli
     const [midStore, midCmds] = coordinate(loadingStore, {
@@ -497,6 +512,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store] = coordinate(readyStore, {
       type: 'SEND_MESSAGE',
@@ -523,6 +539,7 @@ describe('coordinator', () => {
       projectPath: '/proj',
       lastModel: 'opus',
       lastPermissionMode: 'plan',
+      historyPagination: null,
     }
     const [store, cmds] = coordinate(recoverStore, {
       type: 'SEND_MESSAGE',
@@ -554,6 +571,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     // New block → append
@@ -590,6 +608,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store] = coordinate(acquiringStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -609,6 +628,7 @@ describe('coordinator', () => {
       projectPath: '/my/project',
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [s1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
     const [, c2] = coordinate(s1, { type: 'KILL_CLI_OK' })
@@ -628,6 +648,7 @@ describe('coordinator', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
     const [store] = coordinate(historyStore, {
       type: 'LIVE_STATUS_CHANGED',

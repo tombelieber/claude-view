@@ -30,6 +30,7 @@ export function handleEmpty(store: ChatPanelStore, event: RawEvent): TransitionR
         projectPath: store.projectPath,
         lastModel: event.model ?? store.lastModel,
         lastPermissionMode: event.permissionMode ?? store.lastPermissionMode,
+        historyPagination: null,
       },
       [
         {

@@ -10,6 +10,7 @@ const INITIAL: ChatPanelStore = {
   projectPath: null,
   lastModel: null,
   lastPermissionMode: null,
+  historyPagination: null,
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: test fixture — ConversationBlock shape is complex
@@ -141,6 +142,7 @@ describe('integration: fork flow', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -190,6 +192,7 @@ describe('integration: takeover flow', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [
@@ -239,6 +242,7 @@ describe('integration: error recovery', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -339,6 +343,7 @@ describe('integration: permission flow', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -388,6 +393,7 @@ describe('integration: session close and reopen', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -446,6 +452,7 @@ describe('integration: deselect resets everything', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(liveStore, [{ type: 'DESELECT' }])
@@ -521,6 +528,7 @@ describe('integration: history arrives after sdk_owned', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store } = drive(emptyStore, [{ type: 'HISTORY_OK', blocks: historyBlocks }])
@@ -553,6 +561,7 @@ describe('integration: history arrives after sdk_owned', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const staleHistory = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }] as any
@@ -599,6 +608,7 @@ describe('integration: CLI watching mode lifecycle', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [
@@ -725,6 +735,7 @@ describe('integration: watching mode streaming', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store } = drive(nobodyStore, [
@@ -768,6 +779,7 @@ describe('integration: watching mode streaming', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store } = drive(watchingStore, [
@@ -821,6 +833,7 @@ describe('integration: watching mode streaming', () => {
       projectPath: null,
       lastModel: null,
       lastPermissionMode: null,
+      historyPagination: null,
     }
 
     const { store } = drive(watchingStore, [

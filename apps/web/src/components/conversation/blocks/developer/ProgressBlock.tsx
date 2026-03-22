@@ -2,6 +2,8 @@ import { AgentProgressCard } from '@claude-view/shared/components/AgentProgressC
 import { BashProgressCard } from '@claude-view/shared/components/BashProgressCard'
 import { HookProgressCard } from '@claude-view/shared/components/HookProgressCard'
 import { McpProgressCard } from '@claude-view/shared/components/McpProgressCard'
+import { QueryProgressCard } from '@claude-view/shared/components/QueryProgressCard'
+import { SearchProgressCard } from '@claude-view/shared/components/SearchProgressCard'
 import { TaskQueueCard } from '@claude-view/shared/components/TaskQueueCard'
 import type { ProgressBlock as ProgressBlockType } from '@claude-view/shared/types/blocks'
 import { cn } from '../../../../lib/utils'
@@ -56,32 +58,88 @@ const VARIANT_CONFIG: Record<
   },
 }
 
-function extractLabel(variant: string, data: Record<string, unknown>): string | undefined {
-  switch (variant) {
+/** Extract a short label for the EventCard header — type-safe via discriminated union. */
+function extractLabel(block: ProgressBlockType): string | undefined {
+  const { data } = block
+  switch (data.type) {
     case 'bash':
-      return undefined // card shows it
+      return undefined // card renders its own stats
     case 'agent':
-      return (data.prompt as string)?.slice(0, 60) || undefined
+      return data.prompt?.slice(0, 60) || undefined
     case 'hook':
-      return `${data.hookEvent ?? ''} → ${data.hookName ?? ''}`
+      return `${data.hookEvent} \u2192 ${data.hookName}`
     case 'mcp':
-      return `${data.serverName ?? ''}:${data.toolName ?? ''}`
+      return `${data.serverName}:${data.toolName}`
     case 'task_queue':
-      return (data.taskDescription as string) || undefined
+      return data.taskDescription || undefined
     case 'search':
-      return `${data.query ?? ''} (${data.resultCount ?? 0} results)`
+      return `${data.query} (${data.resultCount} results)`
     case 'query':
-      return (data.query as string) || undefined
+      return data.query || undefined
     default:
       return undefined
   }
 }
 
+/** Render the purpose-built card for each variant — type-safe, no phantom props. */
+function renderCard(block: ProgressBlockType): React.ReactNode {
+  const { data } = block
+  switch (data.type) {
+    case 'bash':
+      return (
+        <BashProgressCard
+          output={data.output}
+          fullOutput={data.fullOutput}
+          elapsedTimeSeconds={data.elapsedTimeSeconds}
+          totalLines={data.totalLines}
+          totalBytes={data.totalBytes}
+          taskId={data.taskId}
+          blockId={block.id}
+        />
+      )
+    case 'agent':
+      return (
+        <AgentProgressCard
+          agentId={data.agentId}
+          prompt={data.prompt}
+          message={data.message}
+          blockId={block.id}
+        />
+      )
+    case 'hook':
+      return (
+        <HookProgressCard
+          hookEvent={data.hookEvent}
+          hookName={data.hookName}
+          command={data.command}
+          statusMessage={data.statusMessage}
+          blockId={block.id}
+        />
+      )
+    case 'mcp':
+      return (
+        <McpProgressCard
+          serverName={data.serverName}
+          toolName={data.toolName}
+          status={data.status}
+        />
+      )
+    case 'task_queue':
+      return <TaskQueueCard taskDescription={data.taskDescription} taskType={data.taskType} />
+    case 'search':
+      return <SearchProgressCard query={data.query} resultCount={data.resultCount} />
+    case 'query':
+      return <QueryProgressCard query={data.query} blockId={block.id} />
+    default:
+      return null
+  }
+}
+
 export function DevProgressBlock({ block }: ProgressBlockProps) {
-  const d = block.data as Record<string, unknown>
+  const { data } = block
   const config = VARIANT_CONFIG[block.variant] ?? { dot: 'gray' as const, chip: block.variant }
-  const label = extractLabel(block.variant, d)
-  const elapsed = typeof d.elapsedTimeSeconds === 'number' ? d.elapsedTimeSeconds : undefined
+  const label = extractLabel(block)
+  const elapsed = data.type === 'bash' ? data.elapsedTimeSeconds : undefined
 
   const meta = (
     <div className="flex items-center gap-2 flex-shrink-0">
@@ -107,39 +165,6 @@ export function DevProgressBlock({ block }: ProgressBlockProps) {
     </div>
   )
 
-  const card = (() => {
-    switch (block.variant) {
-      case 'bash':
-        return (
-          <BashProgressCard
-            command={String(d.output ?? d.fullOutput ?? '')}
-            output={String(d.fullOutput ?? d.output ?? '')}
-            duration={elapsed != null ? elapsed * 1000 : undefined}
-          />
-        )
-      case 'agent':
-        return (
-          <AgentProgressCard agentId={String(d.agentId ?? '')} prompt={String(d.prompt ?? '')} />
-        )
-      case 'hook':
-        return (
-          <HookProgressCard
-            hookEvent={String(d.hookEvent ?? '')}
-            hookName={String(d.hookName ?? '')}
-            command={String(d.command ?? '')}
-          />
-        )
-      case 'mcp':
-        return (
-          <McpProgressCard server={String(d.serverName ?? '')} method={String(d.toolName ?? '')} />
-        )
-      case 'task_queue':
-        return <TaskQueueCard />
-      default:
-        return null
-    }
-  })()
-
   return (
     <EventCard
       dot={config.dot}
@@ -150,7 +175,7 @@ export function DevProgressBlock({ block }: ProgressBlockProps) {
       pulse
       rawData={block}
     >
-      {card}
+      {renderCard(block)}
     </EventCard>
   )
 }
