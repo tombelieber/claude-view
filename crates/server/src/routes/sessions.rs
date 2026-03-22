@@ -1856,6 +1856,7 @@ mod tests {
             user_files: None,
             closed_at: None,
             control: None,
+            source: None,
             hook_events: Vec::new(),
             statusline_context_window_size: None,
             statusline_used_pct: None,
