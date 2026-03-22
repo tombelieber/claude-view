@@ -130,6 +130,7 @@ export function deriveInputBar(store: ChatPanelStore): InputBarState {
       switch (panel.turn.turn) {
         case 'idle':
           return 'active'
+        case 'pending':
         case 'streaming':
           return 'streaming'
         case 'awaiting':
@@ -220,6 +221,9 @@ export function deriveThinkingState(store: ChatPanelStore): ThinkingPhase | null
 
   // Acquiring (creating / resuming / forking session)
   if (panel.phase === 'acquiring') return 'connecting'
+
+  // SDK owned: message sent, waiting for first server response
+  if (panel.phase === 'sdk_owned' && panel.turn.turn === 'pending') return 'thinking'
 
   // SDK owned, streaming turn, but agent hasn't produced text yet
   if (panel.phase === 'sdk_owned' && panel.turn.turn === 'streaming' && !panel.pendingText) {

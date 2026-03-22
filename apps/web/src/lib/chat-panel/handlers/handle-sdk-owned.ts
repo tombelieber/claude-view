@@ -132,7 +132,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
         localId: event.localId,
       })
       return [
-        { ...store, outbox: sentOutbox },
+        { ...store, panel: { ...p, turn: { turn: 'pending' } }, outbox: sentOutbox },
         [{ cmd: 'WS_SEND', message: { type: 'user_message', content: event.text } }],
       ]
     }
