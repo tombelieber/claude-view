@@ -125,17 +125,6 @@ function exitAcquiring(
   if (result.exit === 'active') {
     const sessionId = result.sessionId ?? p.sessionId
     const controlId = result.controlId ?? ''
-    const panel: PanelState = {
-      phase: 'sdk_owned',
-      sessionId,
-      controlId,
-      blocks: p.historyBlocks,
-      pendingText: '',
-      ephemeral: p.action === 'create',
-      turn: { turn: 'idle' },
-      conn: { health: 'ok' },
-    }
-
     const cmds: Command[] = [
       { cmd: 'CANCEL_TIMER', id: 'init-timeout' },
       { cmd: 'INVALIDATE_SIDEBAR' },
@@ -148,6 +137,24 @@ function exitAcquiring(
         cmds.push({ cmd: 'WS_SEND', message: { type: 'user_message', content: msg.text } })
         outbox = outboxTransition(outbox, { type: 'MARK_SENT', localId: msg.localId })
       }
+    }
+
+    // If the acquire was triggered by a user message (SEND_MESSAGE or FORK with message),
+    // pendingMessage is set — the agent WILL produce a response after SESSION_INIT.
+    // Enter 'pending' so ThinkingIndicator shows immediately instead of a dead zone.
+    // Note: outbox messages are pre-marked 'sent' by handle-empty/handle-nobody, so
+    // checking outbox status would always miss them.
+    const hasPendingWork = p.pendingMessage != null
+
+    const panel: PanelState = {
+      phase: 'sdk_owned',
+      sessionId,
+      controlId,
+      blocks: p.historyBlocks,
+      pendingText: '',
+      ephemeral: p.action === 'create',
+      turn: hasPendingWork ? { turn: 'pending' } : { turn: 'idle' },
+      conn: { health: 'ok' },
     }
 
     return [

@@ -108,6 +108,10 @@ describe('coordinator', () => {
       mockInitEvent,
     ])
     expect(store.panel.phase).toBe('sdk_owned')
+    // Turn should be 'pending' — outbox had queued messages
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
+    }
     // Outbox drained: queued → sent
     expect(store.outbox.messages[0]?.status).toBe('sent')
     // WS_SEND command issued for the queued message
@@ -141,6 +145,10 @@ describe('coordinator', () => {
       localId: 'l2',
     })
     expect(store.panel.phase).toBe('sdk_owned')
+    // Turn should be 'pending' — message sent, waiting for first response
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
+    }
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
     // Should NOT issue POST_RESUME
     expect(cmds).not.toContainEqual(expect.objectContaining({ cmd: 'POST_RESUME' }))

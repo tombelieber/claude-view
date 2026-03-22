@@ -877,6 +877,23 @@ describe('deriveThinkingState', () => {
     ).toBeNull()
   })
 
+  test('sdk_owned.pending → thinking', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'pending' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBe('thinking')
+  })
+
   test('sdk_owned.streaming WITH pendingText → null (real content visible)', () => {
     expect(
       deriveThinkingState(

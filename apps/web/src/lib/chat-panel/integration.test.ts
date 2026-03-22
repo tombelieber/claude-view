@@ -65,7 +65,7 @@ describe('integration: full resume flow', () => {
       { type: 'ACQUIRE_OK', controlId: 'ctrl-1' },
       // 7. WS opens → acquiring(ws_initializing), emits START_TIMER(init-timeout)
       { type: 'WS_OPEN' },
-      // 8. Session init → exits acquiring → sdk_owned(idle), emits CANCEL_TIMER + WS_SEND (queued msg)
+      // 8. Session init → exits acquiring → sdk_owned(pending), emits CANCEL_TIMER + WS_SEND (queued msg)
       {
         type: 'SESSION_INIT',
         model: 'opus',
@@ -170,7 +170,8 @@ describe('integration: fork flow', () => {
     if (store.panel.phase === 'sdk_owned') {
       // Fork should update sessionId to the new one
       expect(store.panel.sessionId).toBe('fork-123')
-      expect(store.panel.turn).toEqual({ turn: 'idle' })
+      // Fork with message → pending (agent will respond)
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
     }
 
     expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }))
@@ -999,6 +1000,177 @@ describe('integration: BLOCKS_UPDATE clears pendingText (no doubled assistant te
     if (store.panel.phase === 'sdk_owned') {
       expect(store.panel.pendingText).toBe('')
       expect(store.panel.blocks).toHaveLength(1)
+    }
+  })
+})
+
+// ── REGRESSION: exitAcquiring must enter 'pending' when pendingMessage is set ──
+// Bug: outbox entries are pre-marked 'sent' in handle-empty/handle-nobody before
+// entering acquiring. Checking outbox status === 'queued' always found zero →
+// always entered 'idle' → 1-3s dead zone with no ThinkingIndicator.
+// Fix: check p.pendingMessage (FSM's own field), not outbox status.
+
+describe('integration: exitAcquiring enters pending turn when message was sent', () => {
+  const mockInitEvent = {
+    type: 'SESSION_INIT' as const,
+    model: 'opus',
+    permissionMode: 'default',
+    slashCommands: [] as string[],
+    mcpServers: [] as { name: string; status: string }[],
+    skills: [] as string[],
+    agents: [] as string[],
+    capabilities: [] as string[],
+  }
+
+  test('new session (empty → create): outbox pre-marked sent, but pendingMessage → pending', () => {
+    const { store } = drive(INITIAL, [
+      { type: 'SEND_MESSAGE', text: 'hello', localId: 'l1' },
+      { type: 'ACQUIRE_OK', controlId: 'c1', sessionId: 'new-1' },
+      { type: 'WS_OPEN' },
+      mockInitEvent,
+    ])
+    expect(store.panel.phase).toBe('sdk_owned')
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
+    }
+    // Outbox was pre-marked 'sent' — NOT 'queued'
+    expect(store.outbox.messages[0]?.status).toBe('sent')
+  })
+
+  test('resume with message (nobody → resume): pendingMessage → pending', () => {
+    const nobodyStore: ChatPanelStore = {
+      panel: {
+        phase: 'nobody',
+        sessionId: 'abc',
+        sub: { sub: 'ready', blocks: mockBlocks },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+    const { store } = drive(nobodyStore, [
+      { type: 'SEND_MESSAGE', text: 'continue', localId: 'l2' },
+      { type: 'ACQUIRE_OK', controlId: 'c2' },
+      { type: 'WS_OPEN' },
+      mockInitEvent,
+    ])
+    expect(store.panel.phase).toBe('sdk_owned')
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
+    }
+  })
+
+  test('resume without message (sidecar active): no pendingMessage → idle', () => {
+    const nobodyStore: ChatPanelStore = {
+      panel: {
+        phase: 'nobody',
+        sessionId: 'abc',
+        sub: { sub: 'ready', blocks: mockBlocks },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+    const { store } = drive(nobodyStore, [
+      // Sidecar already active — no user message, just WS connect
+      { type: 'SIDECAR_HAS_SESSION', controlId: 'c3' },
+      { type: 'WS_OPEN' },
+      mockInitEvent,
+    ])
+    expect(store.panel.phase).toBe('sdk_owned')
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'idle' })
+    }
+  })
+
+  test('SEND_MESSAGE in sdk_owned.idle → pending', () => {
+    const liveStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 'abc',
+        controlId: 'c1',
+        blocks: mockBlocks,
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+    const [store] = coordinate(liveStore, {
+      type: 'SEND_MESSAGE',
+      text: 'next question',
+      localId: 'l3',
+    })
+    expect(store.panel.phase).toBe('sdk_owned')
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'pending' })
+    }
+  })
+
+  test('pending → streaming on STREAM_DELTA', () => {
+    const pendingStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 'abc',
+        controlId: 'c1',
+        blocks: [],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'pending' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+    const [store] = coordinate(pendingStore, { type: 'STREAM_DELTA', text: 'Hi' })
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'streaming' })
+    }
+  })
+
+  test('pending → idle on TURN_COMPLETE (empty response)', () => {
+    const pendingStore: ChatPanelStore = {
+      panel: {
+        phase: 'sdk_owned',
+        sessionId: 'abc',
+        controlId: 'c1',
+        blocks: [],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'pending' },
+        conn: { health: 'ok' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+    const [store] = coordinate(pendingStore, {
+      type: 'TURN_COMPLETE',
+      blocks: [],
+      totalInputTokens: 100,
+      contextWindowSize: 200000,
+    })
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.turn).toEqual({ turn: 'idle' })
     }
   })
 })

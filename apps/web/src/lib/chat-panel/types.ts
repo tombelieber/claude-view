@@ -3,6 +3,7 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 // ─── Leaf FSMs (sdk_owned children only) ─────────────────────
 export type TurnState =
   | { turn: 'idle' }
+  | { turn: 'pending' }
   | { turn: 'streaming' }
   | {
       turn: 'awaiting'
