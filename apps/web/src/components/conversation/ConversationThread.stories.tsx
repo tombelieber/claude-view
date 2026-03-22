@@ -8,7 +8,14 @@ import { developerRegistry } from './blocks/developer/registry'
 const meta = {
   title: 'Chat/ConversationThread',
   component: ConversationThread,
-  decorators: [withChatContext],
+  decorators: [
+    withChatContext,
+    (Story) => (
+      <div style={{ height: '80vh' }}>
+        <Story />
+      </div>
+    ),
+  ],
   parameters: { layout: 'padded' },
 } satisfies Meta<typeof ConversationThread>
 

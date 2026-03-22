@@ -42,7 +42,6 @@ export type PanelState =
       action: AcquireAction
       historyBlocks: ConversationBlock[]
       pendingMessage: string | null
-      resumeAtMessageId?: string
       step: AcquiringStep
     }
   | {
@@ -96,6 +95,10 @@ export interface ChatPanelStore {
   /** Decoded project path for the current session — threaded through from LiveSession
    *  or sidebar data so the sidecar can pass the correct `cwd` to the SDK on resume/fork. */
   projectPath: string | null
+  /** Last model used in a SEND_MESSAGE — fallback for retries from recovering/closed. */
+  lastModel: string | null
+  /** Last permissionMode used in a SEND_MESSAGE — fallback for retries from recovering/closed. */
+  lastPermissionMode: string | null
 }
 
 // ─── Events ──────────────────────────────────────────────────
@@ -107,7 +110,7 @@ export type RawEvent =
   | { type: 'HISTORY_OK'; blocks: ConversationBlock[] }
   | { type: 'HISTORY_FAILED'; error: string }
   // Active check
-  | { type: 'SIDECAR_HAS_SESSION'; controlId: string }
+  | { type: 'SIDECAR_HAS_SESSION'; controlId: string; sessionState?: string }
   | { type: 'SIDECAR_NO_SESSION' }
   // User actions (E-B1: localId at call site for StrictMode safety)
   | { type: 'SEND_MESSAGE'; text: string; localId: string; model?: string; permissionMode?: string }
@@ -196,6 +199,7 @@ export type Command =
       message?: string
       permissionMode?: string
       persistSession?: boolean
+      projectPath?: string
     }
   | {
       cmd: 'POST_RESUME'

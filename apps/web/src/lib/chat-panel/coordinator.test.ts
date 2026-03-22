@@ -8,6 +8,8 @@ const INITIAL: ChatPanelStore = {
   outbox: { messages: [] },
   meta: null,
   projectPath: null,
+  lastModel: null,
+  lastPermissionMode: null,
 }
 
 const mockBlocks: ConversationBlock[] = [{ type: 'user', id: '1', text: 'hi', timestamp: 1 }]
@@ -63,6 +65,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const { store, allCmds } = drive(historyStore, [
       { type: 'SEND_MESSAGE', text: 'hello', localId: 'l1' },
@@ -92,6 +96,8 @@ describe('coordinator', () => {
       outbox: { messages: [{ localId: 'l1', text: 'hello', status: 'queued' as const }] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const { store, allCmds } = drive(acquiringStore, [
       { type: 'ACQUIRE_OK', controlId: 'c1' },
@@ -122,6 +128,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'SEND_MESSAGE',
@@ -149,6 +157,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store] = coordinate(acquiringStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -172,6 +182,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(acquiringStore, {
       type: 'ACQUIRE_FAILED',
@@ -191,6 +203,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     // Takeover
     const [s1, c1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
@@ -227,6 +241,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(historyStore, { type: 'FORK_SESSION' })
     expect(store.panel.phase).toBe('acquiring')
@@ -252,6 +268,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(liveStore, {
       type: 'WS_CLOSE',
@@ -273,6 +291,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store] = coordinate(historyStore, { type: 'DESELECT' })
     expect(store.panel.phase).toBe('empty')
@@ -306,6 +326,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [s1] = coordinate(liveStore, { type: 'STREAM_DELTA', text: 'hello' })
     if (s1.panel.phase === 'sdk_owned') {
@@ -341,6 +363,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(liveStore, { type: 'SESSION_CLOSED' })
     expect(store.panel.phase).toBe('closed')
@@ -363,6 +387,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [, cmds] = coordinate(liveStore, { type: 'INTERRUPT' })
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
@@ -375,6 +401,8 @@ describe('coordinator', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
     const [store, cmds] = coordinate(historyStore, {
       type: 'LIVE_STATUS_CHANGED',
@@ -385,5 +413,175 @@ describe('coordinator', () => {
       expect(store.panel.sub).toEqual({ sub: 'watching' })
     }
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
+  })
+
+  // ── Gap fixes ──────────────────────────────────────────────────
+
+  // Gap 4+9: resumeAtMessageId removed from PanelState.acquiring
+  test('acquiring phase type has no resumeAtMessageId field', () => {
+    const { store } = drive(INITIAL, [
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      { type: 'SIDECAR_NO_SESSION' },
+      { type: 'HISTORY_OK', blocks: mockBlocks },
+      { type: 'SEND_MESSAGE', text: 'hi', localId: 'l1' },
+    ])
+    expect(store.panel.phase).toBe('acquiring')
+    if (store.panel.phase === 'acquiring') {
+      expect('resumeAtMessageId' in store.panel).toBe(false)
+    }
+  })
+
+  // Gap 2: POST_CREATE includes projectPath from store
+  test('empty + SEND_MESSAGE → POST_CREATE includes projectPath', () => {
+    const storeWithProject: ChatPanelStore = {
+      ...INITIAL,
+      projectPath: '/some/project',
+    }
+    const [, cmds] = coordinate(storeWithProject, {
+      type: 'SEND_MESSAGE',
+      text: 'hi',
+      localId: 'l1',
+      model: 'opus',
+    })
+    const createCmd = cmds.find((c) => c.cmd === 'POST_CREATE')
+    expect(createCmd).toBeDefined()
+    if (createCmd && createCmd.cmd === 'POST_CREATE') {
+      expect(createCmd.projectPath).toBe('/some/project')
+    }
+  })
+
+  // Gap 5: lastModel/lastPermissionMode captured from SEND_MESSAGE
+  test('SEND_MESSAGE captures lastModel and lastPermissionMode in store', () => {
+    const readyStore: ChatPanelStore = {
+      panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+    const [store] = coordinate(readyStore, {
+      type: 'SEND_MESSAGE',
+      text: 'hi',
+      localId: 'l1',
+      model: 'opus',
+      permissionMode: 'plan',
+    })
+    expect(store.lastModel).toBe('opus')
+    expect(store.lastPermissionMode).toBe('plan')
+  })
+
+  // Gap 5: recovering retry uses lastModel as fallback
+  test('recovering + SEND_MESSAGE uses lastModel/lastPermissionMode as fallback', () => {
+    const recoverStore: ChatPanelStore = {
+      panel: {
+        phase: 'recovering',
+        sessionId: 'abc',
+        blocks: mockBlocks,
+        recovering: { kind: 'action_failed', error: 'fail' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: '/proj',
+      lastModel: 'opus',
+      lastPermissionMode: 'plan',
+    }
+    const [store, cmds] = coordinate(recoverStore, {
+      type: 'SEND_MESSAGE',
+      text: 'retry',
+      localId: 'l2',
+      // No model or permissionMode in event — should fallback to lastModel/lastPermissionMode
+    })
+    expect(store.panel.phase).toBe('acquiring')
+    const resumeCmd = cmds.find((c) => c.cmd === 'POST_RESUME')
+    expect(resumeCmd).toBeDefined()
+    if (resumeCmd && resumeCmd.cmd === 'POST_RESUME') {
+      expect(resumeCmd.model).toBe('opus')
+      expect(resumeCmd.permissionMode).toBe('plan')
+      expect(resumeCmd.projectPath).toBe('/proj')
+    }
+  })
+
+  // Gap 7: acquiring + LIVE_STATUS_CHANGED updates projectPath but stays acquiring
+  test('acquiring + LIVE_STATUS_CHANGED updates projectPath without phase change', () => {
+    const acquiringStore: ChatPanelStore = {
+      panel: {
+        phase: 'acquiring',
+        sessionId: 'abc',
+        targetSessionId: null,
+        action: 'resume' as const,
+        historyBlocks: [],
+        pendingMessage: null,
+        step: { step: 'posting' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+    const [store] = coordinate(acquiringStore, {
+      type: 'LIVE_STATUS_CHANGED',
+      status: 'cc_owned',
+      projectPath: '/new/path',
+    })
+    expect(store.panel.phase).toBe('acquiring')
+    expect(store.projectPath).toBe('/new/path')
+  })
+
+  // Gap 3 (projectPath fix): takeover POST_RESUME includes projectPath
+  test('cc_cli takeover → POST_RESUME includes projectPath from store', () => {
+    const watchingStore: ChatPanelStore = {
+      panel: { phase: 'cc_cli', sessionId: 'abc', blocks: mockBlocks, sub: { sub: 'watching' } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: '/my/project',
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+    const [s1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
+    const [, c2] = coordinate(s1, { type: 'KILL_CLI_OK' })
+    const resumeCmd = c2.find((c) => c.cmd === 'POST_RESUME')
+    expect(resumeCmd).toBeDefined()
+    if (resumeCmd && resumeCmd.cmd === 'POST_RESUME') {
+      expect(resumeCmd.projectPath).toBe('/my/project')
+    }
+  })
+
+  // LIVE_STATUS_CHANGED with projectPath updates store.projectPath
+  test('nobody + LIVE_STATUS_CHANGED with projectPath → store.projectPath updated', () => {
+    const historyStore: ChatPanelStore = {
+      panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+    const [store] = coordinate(historyStore, {
+      type: 'LIVE_STATUS_CHANGED',
+      status: 'cc_owned',
+      projectPath: '/from/sse',
+    })
+    expect(store.projectPath).toBe('/from/sse')
+  })
+
+  // Gap 8: SIDECAR_HAS_SESSION passes sessionState
+  test('SELECT + SIDECAR_HAS_SESSION with sessionState → acquiring', () => {
+    const { store } = drive(INITIAL, [
+      { type: 'SELECT_SESSION', sessionId: 'abc' },
+      { type: 'SIDECAR_HAS_SESSION', controlId: 'c1', sessionState: 'waiting_input' },
+    ])
+    expect(store.panel.phase).toBe('acquiring')
+  })
+
+  // SELECT_SESSION with projectPath sets store.projectPath
+  test('SELECT_SESSION with projectPath → store.projectPath set', () => {
+    const [store] = coordinate(INITIAL, {
+      type: 'SELECT_SESSION',
+      sessionId: 'abc',
+      projectPath: '/initial/path',
+    })
+    expect(store.projectPath).toBe('/initial/path')
   })
 })

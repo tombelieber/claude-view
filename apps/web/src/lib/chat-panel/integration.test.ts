@@ -8,6 +8,8 @@ const INITIAL: ChatPanelStore = {
   outbox: { messages: [] },
   meta: null,
   projectPath: null,
+  lastModel: null,
+  lastPermissionMode: null,
 }
 
 const mockBlocks = [{ type: 'user' as const, id: '1', text: 'hi', timestamp: 1 }] as any
@@ -133,6 +135,8 @@ describe('integration: fork flow', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -180,6 +184,8 @@ describe('integration: takeover flow', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [
@@ -227,6 +233,8 @@ describe('integration: error recovery', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(historyStore, [
@@ -325,6 +333,8 @@ describe('integration: permission flow', () => {
         contextWindowSize: 200000,
       },
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -372,6 +382,8 @@ describe('integration: session close and reopen', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(liveStore, [
@@ -428,6 +440,8 @@ describe('integration: deselect resets everything', () => {
         contextWindowSize: 200000,
       },
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(liveStore, [{ type: 'DESELECT' }])
@@ -501,6 +515,8 @@ describe('integration: history arrives after sdk_owned', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store } = drive(emptyStore, [{ type: 'HISTORY_OK', blocks: historyBlocks }])
@@ -531,6 +547,8 @@ describe('integration: history arrives after sdk_owned', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const staleHistory = [{ type: 'user' as const, id: 'u1', text: 'hello', timestamp: 1 }] as any
@@ -575,6 +593,8 @@ describe('integration: CLI session ends naturally', () => {
       outbox: { messages: [] },
       meta: null,
       projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
     }
 
     const { store, allCmds } = drive(watchingStore, [

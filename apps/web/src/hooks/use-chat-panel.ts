@@ -17,6 +17,8 @@ const initialStore: ChatPanelStore = {
   outbox: { messages: [] },
   meta: null,
   projectPath: null,
+  lastModel: null,
+  lastPermissionMode: null,
 }
 
 /** E-B1: pendingCmdsRef ACCUMULATES via push; drain effect splices.

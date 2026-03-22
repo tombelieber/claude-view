@@ -181,13 +181,15 @@ function BlockGallery({
           <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3 border-b border-gray-200 dark:border-gray-700 pb-1">
             {group.type} ({group.blocks.length})
           </h2>
-          <ConversationThread
-            blocks={group.blocks}
-            renderers={renderers}
-            compact={compact}
-            filterBar={filterBar}
-            defaultJsonMode={defaultJsonMode}
-          />
+          <div style={{ height: Math.max(300, group.blocks.length * 120) }}>
+            <ConversationThread
+              blocks={group.blocks}
+              renderers={renderers}
+              compact={compact}
+              filterBar={filterBar}
+              defaultJsonMode={defaultJsonMode}
+            />
+          </div>
         </section>
       ))}
 

@@ -16,7 +16,7 @@ import { useContextPercent } from '../hooks/use-context-percent'
 import type { LiveContextData } from '../hooks/use-context-percent'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
-import { useScrollAnchor } from '../hooks/use-scroll-anchor'
+
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
@@ -110,11 +110,6 @@ export function ChatSession({
 
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
-
-  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
-    blockCount: blocks.length,
-    lastBlockId: blocks.length > 0 ? blocks[blocks.length - 1].id : undefined,
-  })
 
   // Model selection persisted in localStorage (used at session creation)
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -276,11 +271,11 @@ export function ChatSession({
       {/* Thread — all modes (chat, developer, watching) use ConversationThread.
           Developer mode uses developerRegistry for richer block rendering. */}
       <ExpandProvider>
-        <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          {/* Top sentinel for infinite scroll */}
-          <div ref={topSentinelRef} className="h-1" />
+        {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
+            flex-1 min-h-0 gives Virtuoso a measurable viewport height. */}
+        <div className="flex-1 min-h-0 flex flex-col">
           {blocks.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
+            <div className="flex items-center justify-center flex-1 text-gray-400 dark:text-gray-500">
               <div className="text-center">
                 <p className="text-lg font-medium mb-2">Start a conversation</p>
                 <p className="text-sm mb-4">Send a message to begin.</p>
@@ -296,35 +291,33 @@ export function ChatSession({
               </div>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto px-4 py-6">
-              <ConversationActionsProvider
-                actions={{
-                  retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
-                  stopTask: (taskId) => {
-                    channel?.send({ type: 'stop_task', taskId })
-                  },
-                  respondPermission: (rid, allowed, perms) =>
-                    dispatch({
-                      type: 'RESPOND_PERMISSION',
-                      requestId: rid,
-                      allowed,
-                      updatedPermissions: perms,
-                    }),
-                  answerQuestion: (rid, answers) =>
-                    dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
-                  approvePlan: (rid, approved, feedback) =>
-                    dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
-                  submitElicitation: (rid, response) =>
-                    dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
-                }}
-              >
-                <ConversationThread
-                  blocks={blocks}
-                  renderers={registry}
-                  filterBar={displayMode !== 'chat'}
-                />
-              </ConversationActionsProvider>
-            </div>
+            <ConversationActionsProvider
+              actions={{
+                retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                stopTask: (taskId) => {
+                  channel?.send({ type: 'stop_task', taskId })
+                },
+                respondPermission: (rid, allowed, perms) =>
+                  dispatch({
+                    type: 'RESPOND_PERMISSION',
+                    requestId: rid,
+                    allowed,
+                    updatedPermissions: perms,
+                  }),
+                answerQuestion: (rid, answers) =>
+                  dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                approvePlan: (rid, approved, feedback) =>
+                  dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                submitElicitation: (rid, response) =>
+                  dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
+              }}
+            >
+              <ConversationThread
+                blocks={blocks}
+                renderers={registry}
+                filterBar={displayMode !== 'chat'}
+              />
+            </ConversationActionsProvider>
           )}
           {/* Connection status indicator — shows during acquiring/recovering phases */}
           {connectionStatus && (
@@ -349,8 +342,6 @@ export function ChatSession({
               </div>
             </div>
           )}
-          {/* Bottom anchor for auto-scroll */}
-          <div ref={bottomRef} />
         </div>
       </ExpandProvider>
 

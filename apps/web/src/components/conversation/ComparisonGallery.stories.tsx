@@ -884,7 +884,9 @@ function ComparisonRow({
             Developer (ConversationBlock)
           </div>
           <ActionFilterChips counts={counts} activeFilter="all" onFilterChange={() => {}} />
-          <ConversationThread blocks={devBlocks} renderers={developerRegistry} />
+          <div style={{ height: paneHeight }}>
+            <ConversationThread blocks={devBlocks} renderers={developerRegistry} />
+          </div>
         </div>
 
         {/* RichPane — has internal ActionFilterChips, pass categoryCounts */}
