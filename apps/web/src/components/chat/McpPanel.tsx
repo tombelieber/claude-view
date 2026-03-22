@@ -60,27 +60,33 @@ export function McpPanel({ queryMcpStatus, toggleMcp, reconnectMcp }: McpPanelPr
   )
 
   if (loading && servers.length === 0) {
-    return <div className="p-4 text-text-secondary text-sm">Loading MCP servers...</div>
+    return (
+      <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">Loading MCP servers...</div>
+    )
   }
 
   if (error) {
-    return <div className="p-4 text-text-error text-sm">Failed to load MCP status</div>
+    return (
+      <div className="p-4 text-red-500 dark:text-red-400 text-sm">Failed to load MCP status</div>
+    )
   }
 
   if (servers.length === 0) {
-    return <div className="p-4 text-text-secondary text-sm">No MCP servers configured</div>
+    return (
+      <div className="p-4 text-gray-500 dark:text-gray-400 text-sm">No MCP servers configured</div>
+    )
   }
 
   return (
     <div className="p-4 space-y-2">
-      <h3 className="font-medium text-sm">MCP Servers</h3>
+      <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">MCP Servers</h3>
       <div className="space-y-1">
         {servers.map((server) => {
           const isConnected = server.status === 'connected'
           return (
             <div
               key={server.name}
-              className="flex items-center justify-between px-3 py-2 rounded bg-bg-secondary text-sm"
+              className="flex items-center justify-between px-3 py-2 rounded bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-900 dark:text-gray-100"
             >
               <div className="flex items-center gap-2">
                 <span
@@ -92,7 +98,7 @@ export function McpPanel({ queryMcpStatus, toggleMcp, reconnectMcp }: McpPanelPr
                 <button
                   type="button"
                   onClick={() => handleToggle(server.name, isConnected)}
-                  className="text-xs px-2 py-0.5 rounded border border-border-secondary hover:bg-bg-tertiary"
+                  className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                   title={isConnected ? 'Disable' : 'Enable'}
                 >
                   {isConnected ? 'Disable' : 'Enable'}
@@ -100,7 +106,7 @@ export function McpPanel({ queryMcpStatus, toggleMcp, reconnectMcp }: McpPanelPr
                 <button
                   type="button"
                   onClick={() => handleReconnect(server.name)}
-                  className="text-xs px-2 py-0.5 rounded border border-border-secondary hover:bg-bg-tertiary"
+                  className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                   title="Reconnect"
                 >
                   Reconnect

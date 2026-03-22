@@ -1,10 +1,8 @@
 import type { UserBlock as UserBlockType } from '@claude-view/shared/types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
-import { JsonTree } from '../../../live/JsonTree'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
 import { RawEnvelopeDetail } from './details/RawEnvelopeDetail'
-import { useJsonMode } from './json-mode-context'
 
 const USER_RENDERED_KEYS = [...LINEAGE_KEYS, 'imagePasteIds'] as string[]
 
@@ -30,18 +28,6 @@ function StatusDot({ status }: { status: UserBlockType['status'] }) {
 }
 
 export function DevUserBlock({ block }: UserBlockProps) {
-  const globalJsonMode = useJsonMode()
-
-  if (globalJsonMode) {
-    return (
-      <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
-        <div className="px-3 py-2">
-          <JsonTree data={block} defaultExpandDepth={3} verboseMode />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="rounded-lg bg-blue-500/5 dark:bg-blue-400/5 border border-blue-500/15 dark:border-blue-400/15 px-4 py-3">
       <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
