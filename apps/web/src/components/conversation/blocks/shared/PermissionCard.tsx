@@ -53,29 +53,36 @@ export function PermissionCard({
   const requestId = permission.requestId
   const timeoutMs = permission.timeoutMs
 
+  const autoDeniedRef = useRef(false)
+
   useEffect(() => {
     if (resolved || !onRespondRef.current) return
+    autoDeniedRef.current = false
 
     const secs = Math.ceil(timeoutMs / 1000)
     setCountdown(secs)
 
     timerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          onRespondRef.current?.(requestId, false)
-          toast.error(`Permission for ${toolNameRef.current} auto-denied`, {
-            description: 'Timed out waiting for response',
-          })
-          return 0
-        }
-        return prev - 1
-      })
+      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1))
     }, 1000)
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [requestId, timeoutMs, resolved])
+
+  // Auto-deny side effect — runs outside the setState updater to avoid
+  // "Cannot update component X while rendering component Y" React warning.
+  useEffect(() => {
+    if (countdown === 0 && !resolved && !autoDeniedRef.current) {
+      autoDeniedRef.current = true
+      if (timerRef.current) clearInterval(timerRef.current)
+      onRespondRef.current?.(requestId, false)
+      toast.error(`Permission for ${toolNameRef.current} auto-denied`, {
+        description: 'Timed out waiting for response',
+      })
+    }
+  }, [countdown, resolved, requestId])
 
   const handleAllow = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current)
