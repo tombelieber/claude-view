@@ -58,6 +58,21 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
     }
 
+    case 'TERMINAL_BLOCK': {
+      // Live block from terminal WS block stream — merge by ID.
+      // Same ID → replace (block updated), new ID → append.
+      const existing = p.blocks.findIndex((b) => b.id === event.block.id)
+      const blocks =
+        existing >= 0
+          ? p.blocks.map((b, i) => (i === existing ? event.block : b))
+          : [...p.blocks, event.block]
+      return [{ ...store, panel: { ...p, blocks } }, []]
+    }
+
+    case 'TERMINAL_CONNECTED':
+      // Terminal WS finished scrollback — no-op, just marks readiness
+      return [store, []]
+
     default:
       return [store, []]
   }
