@@ -1,7 +1,5 @@
 import { TurnDurationCard } from '@claude-view/shared/components/TurnDurationCard'
 import type { TurnBoundaryBlock } from '@claude-view/shared/types/blocks'
-import { JsonTree } from '../../../live/JsonTree'
-import { useJsonMode } from './json-mode-context'
 
 interface TurnBoundaryProps {
   block: TurnBoundaryBlock
@@ -26,19 +24,8 @@ function formatTokens(usage: Record<string, number>): string {
 }
 
 export function DevTurnBoundary({ block }: TurnBoundaryProps) {
-  const globalJsonMode = useJsonMode()
   const models = Object.keys(block.modelUsage)
   const tokens = formatTokens(block.usage)
-
-  if (globalJsonMode) {
-    return (
-      <div className="overflow-hidden rounded-lg border border-gray-200/30 dark:border-gray-700/30">
-        <div className="px-3 py-2">
-          <JsonTree data={block} defaultExpandDepth={3} verboseMode />
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-1">

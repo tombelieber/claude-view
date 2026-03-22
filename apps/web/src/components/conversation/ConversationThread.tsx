@@ -5,6 +5,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../../lib/utils'
 import { type ChipDefinition, FilterChips } from '../live/action-log/FilterChips'
 import { DayDivider, formatDayLabel } from './DayDivider'
+import { DefaultExpandedProvider } from './blocks/developer/default-expanded-context'
 import { JsonModeProvider } from './blocks/developer/json-mode-context'
 import type { BlockRenderers } from './types'
 
@@ -185,6 +186,8 @@ interface Props {
   filterBar?: boolean
   /** Start with global JSON mode on (all cards show raw JSON). */
   defaultJsonMode?: boolean
+  /** Start with all collapsible cards expanded (ToolCards, etc.). */
+  defaultExpanded?: boolean
 }
 
 export function ConversationThread({
@@ -193,6 +196,7 @@ export function ConversationThread({
   compact,
   filterBar,
   defaultJsonMode,
+  defaultExpanded,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<FineCategory[] | 'all'>('all')
   const [globalJsonMode, setGlobalJsonMode] = useState(defaultJsonMode ?? false)
@@ -251,6 +255,7 @@ export function ConversationThread({
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
       index: items.length - 1,
+      align: 'end',
       behavior: 'smooth',
     })
     setHasNewItems(false)
@@ -304,64 +309,73 @@ export function ConversationThread({
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <JsonModeProvider value={globalJsonMode}>
-      <div data-testid="message-thread" className="relative h-full w-full flex flex-col">
-        {filterBar && (
-          <div className="sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 flex-shrink-0">
-            <div className="flex items-center px-1">
-              <FilterChips
-                categories={FINE_CATEGORIES}
-                counts={counts}
-                activeFilter={activeFilter}
-                onFilterChange={handleFilterChange}
-              />
-              <button
-                onClick={() => setGlobalJsonMode((v) => !v)}
-                className={cn(
-                  'ml-auto mr-3 text-[10px] font-mono px-2 py-1 rounded-full border transition-colors duration-200 cursor-pointer flex-shrink-0',
-                  globalJsonMode
-                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                    : 'text-gray-500 bg-transparent border-gray-700 hover:border-gray-600',
-                )}
-                title={globalJsonMode ? 'Switch all to Rich view' : 'Switch all to JSON view'}
-              >
-                {globalJsonMode ? '{ } JSON' : '{ }'}
-              </button>
+    <DefaultExpandedProvider value={defaultExpanded ?? false}>
+      <JsonModeProvider value={globalJsonMode}>
+        <div data-testid="message-thread" className="relative h-full w-full flex flex-col">
+          {filterBar && (
+            <div className="sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 flex-shrink-0">
+              <div className="flex items-center px-1 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <FilterChips
+                    categories={FINE_CATEGORIES}
+                    counts={counts}
+                    activeFilter={activeFilter}
+                    onFilterChange={handleFilterChange}
+                  />
+                </div>
+                <button
+                  onClick={() => setGlobalJsonMode((v) => !v)}
+                  className={cn(
+                    'ml-auto mr-3 text-[10px] font-mono px-2 py-1 rounded-full border transition-colors duration-200 cursor-pointer flex-shrink-0',
+                    globalJsonMode
+                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                      : 'text-gray-500 bg-transparent border-gray-700 hover:border-gray-600',
+                  )}
+                  title={globalJsonMode ? 'Switch all to Rich view' : 'Switch all to JSON view'}
+                >
+                  {globalJsonMode ? '{ } JSON' : '{ }'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {items.length === 0 ? (
-          <div className="flex items-center justify-center flex-1 text-xs text-gray-500 dark:text-gray-600">
-            No messages yet
-          </div>
-        ) : (
-          <>
-            <Virtuoso
-              ref={virtuosoRef}
-              data={items}
-              computeItemKey={itemKey}
-              initialTopMostItemIndex={items.length - 1}
-              alignToBottom
-              followOutput="smooth"
-              atBottomStateChange={handleAtBottomStateChange}
-              atBottomThreshold={30}
-              itemContent={renderItem}
-              className="h-full flex-1 min-h-0"
-            />
-            {hasNewItems && !isAtBottom && (
-              <button
-                type="button"
-                onClick={scrollToBottom}
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-medium shadow-lg hover:bg-blue-500 transition-colors cursor-pointer z-10"
-              >
-                <ArrowDown className="w-3 h-3" />
-                New messages
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </JsonModeProvider>
+          {items.length === 0 ? (
+            <div className="flex items-center justify-center flex-1 text-xs text-gray-500 dark:text-gray-600">
+              No messages yet
+            </div>
+          ) : (
+            <>
+              <Virtuoso
+                ref={virtuosoRef}
+                data={items}
+                computeItemKey={itemKey}
+                initialTopMostItemIndex={items.length - 1}
+                alignToBottom
+                followOutput="smooth"
+                atBottomStateChange={handleAtBottomStateChange}
+                atBottomThreshold={30}
+                itemContent={renderItem}
+                className="h-full flex-1 min-h-0"
+              />
+              {!isAtBottom && (
+                <button
+                  type="button"
+                  onClick={scrollToBottom}
+                  className={cn(
+                    'absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center rounded-full shadow-lg transition-all cursor-pointer z-10',
+                    hasNewItems
+                      ? 'gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium hover:bg-blue-500'
+                      : 'p-2 bg-gray-800/80 text-gray-300 hover:bg-gray-700/80 backdrop-blur-sm',
+                  )}
+                >
+                  <ArrowDown className="w-3.5 h-3.5" />
+                  {hasNewItems && <span>New messages</span>}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </JsonModeProvider>
+    </DefaultExpandedProvider>
   )
 }

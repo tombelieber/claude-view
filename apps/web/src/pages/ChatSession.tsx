@@ -3,7 +3,6 @@ import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
 import { TakeoverDialog } from '../components/chat/TakeoverDialog'
-import { ThinkingBudgetControl } from '../components/chat/ThinkingBudgetControl'
 import { ConversationThread } from '../components/conversation/ConversationThread'
 import { chatRegistry } from '../components/conversation/blocks/chat/registry'
 import { developerRegistry } from '../components/conversation/blocks/developer/registry'
@@ -234,24 +233,21 @@ export function ChatSession({
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {store.meta?.capabilities?.includes('set_max_thinking_tokens') && (
-            <ThinkingBudgetControl
-              value={thinkingBudget}
-              onChange={(tokens) => {
-                setThinkingBudget(tokens)
-                channel?.send({ type: 'set_max_thinking_tokens', tokens })
-              }}
-              disabled={viewMode !== 'active'}
-            />
-          )}
           {store.meta?.capabilities?.includes('query_mcp_status') && (
-            <button
-              type="button"
-              onClick={() => setMcpPanelOpen((o) => !o)}
-              className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              MCP
-            </button>
+            <div className="p-0.5 rounded-md bg-gray-100 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => setMcpPanelOpen((o) => !o)}
+                className={[
+                  'px-2.5 py-1 rounded text-sm transition-colors',
+                  mcpPanelOpen
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                ].join(' ')}
+              >
+                MCP
+              </button>
+            </div>
           )}
           <ModeToggle mode={displayMode} onChange={handleModeChange} />
         </div>
@@ -322,24 +318,35 @@ export function ChatSession({
           {/* Connection status indicator — shows during acquiring/recovering phases */}
           {connectionStatus && (
             <div className="max-w-3xl mx-auto px-4 pb-3">
-              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                {connectionStatus}
-              </div>
+              {connectionStatus.kind === 'error' ? (
+                <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                    <line x1="8" y1="8" x2="16" y2="16" stroke="currentColor" strokeWidth="2" />
+                    <line x1="16" y1="8" x2="8" y2="16" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                  {connectionStatus.message}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  {connectionStatus.message}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -371,6 +378,15 @@ export function ChatSession({
             contextPercent={contextPercent}
             model={selectedModel}
             onModelChange={handleModelChange}
+            effortValue={thinkingBudget}
+            onEffortChange={
+              store.meta?.capabilities?.includes('set_max_thinking_tokens')
+                ? (tokens) => {
+                    setThinkingBudget(tokens)
+                    channel?.send({ type: 'set_max_thinking_tokens', tokens })
+                  }
+                : undefined
+            }
             capabilities={
               store.meta
                 ? {
