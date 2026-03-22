@@ -182,6 +182,9 @@ export type RawEvent =
       status: 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive'
       projectPath?: string
     }
+  // Terminal WS block stream (watching mode)
+  | { type: 'TERMINAL_BLOCK'; block: ConversationBlock }
+  | { type: 'TERMINAL_CONNECTED' }
   // Takeover lifecycle
   | { type: 'KILL_CLI_OK' }
   | { type: 'KILL_CLI_FAILED'; error: string }

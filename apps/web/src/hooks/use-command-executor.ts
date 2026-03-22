@@ -222,10 +222,32 @@ export function useCommandExecutor(
           terminalWsRef.current.onclose = null
           terminalWsRef.current.close()
         }
-        // Terminal WS uses wsUrl (Rust server), not sidecarWsUrl
+        // Terminal WS uses wsUrl (Rust server), not sidecarWsUrl.
+        // Connect in block mode to stream ConversationBlocks for watching mode.
         const tws = new WebSocket(wsUrl(`/api/live/sessions/${cmd.sessionId}/terminal`))
         terminalWsRef.current = tws
-        // Terminal events are NOT routed to FSM — they go to a separate terminal renderer
+
+        tws.onopen = () => {
+          // Handshake: block mode, scrollback=0 (FETCH_HISTORY already loaded history)
+          tws.send(JSON.stringify({ mode: 'block', scrollback: 0 }))
+        }
+
+        tws.onmessage = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.data)
+            if (parsed.type === 'buffer_end') {
+              dispatch({ type: 'TERMINAL_CONNECTED' })
+              return
+            }
+            if (parsed.type === 'pong' || parsed.type === 'error') return
+            // Block mode: each message is a ConversationBlock (no wrapper type field)
+            if (parsed.id && parsed.type) {
+              dispatch({ type: 'TERMINAL_BLOCK', block: parsed })
+            }
+          } catch {
+            // Not JSON — ignore
+          }
+        }
         break
       }
       case 'CLOSE_TERMINAL_WS': {
