@@ -9,6 +9,7 @@ import { SessionChannel } from '../lib/session-channel'
 import { sidecarWsUrl } from '../lib/ws-url'
 import { wsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
+import type { SessionInfo } from '../types/generated/SessionInfo'
 
 const HEARTBEAT_INTERVAL_MS = 15_000
 
@@ -34,6 +35,15 @@ export function useCommandExecutor(
     }
   })
 
+  /** Look up a session's projectPath from the sidebar React Query cache. */
+  function lookupProjectPath(sessionId: string): string | undefined {
+    const data = queryClient.getQueryData<{
+      pages: { sessions: SessionInfo[] }[]
+    }>(['chat-sidebar-sessions'])
+    const session = data?.pages.flatMap((p) => p.sessions).find((s) => s.id === sessionId)
+    return session?.projectPath
+  }
+
   function executeCommand(cmd: Command) {
     switch (cmd.cmd) {
       case 'FETCH_HISTORY': {
@@ -43,16 +53,30 @@ export function useCommandExecutor(
           format: 'block',
         })
         fetch(`/api/sessions/${encodeURIComponent(cmd.sessionId)}/messages?${params}`)
-          .then((r) => r.json())
+          .then(async (r) => {
+            if (!r.ok) throw new Error(`Failed to fetch history (${r.status})`)
+            return r.json()
+          })
           .then((data) => dispatch({ type: 'HISTORY_OK', blocks: data.blocks ?? [] }))
           .catch((err) => dispatch({ type: 'HISTORY_FAILED', error: err.message }))
         break
       }
       case 'CHECK_SIDECAR_ACTIVE': {
+        // Only match sessions in healthy states — zombies (closed/error/initializing)
+        // would trigger SIDECAR_HAS_SESSION but have no cached session_init,
+        // causing the 10s init timeout on WS connect.
+        const HEALTHY_STATES = new Set([
+          'waiting_input',
+          'active',
+          'waiting_permission',
+          'compacting',
+        ])
         fetch('/api/sidecar/sessions')
           .then((r) => r.json())
           .then((data: { active: ActiveSession[] }) => {
-            const active = data.active.find((s) => s.sessionId === cmd.sessionId)
+            const active = data.active.find(
+              (s) => s.sessionId === cmd.sessionId && HEALTHY_STATES.has(s.state),
+            )
             if (active) {
               dispatch({ type: 'SIDECAR_HAS_SESSION', controlId: active.controlId })
             } else {
@@ -73,7 +97,11 @@ export function useCommandExecutor(
             persistSession: cmd.persistSession,
           }),
         })
-          .then((r) => r.json())
+          .then(async (r) => {
+            const data = await r.json()
+            if (!r.ok) throw new Error(data.error || `Create failed (${r.status})`)
+            return data
+          })
           .then((data) =>
             dispatch({
               type: 'ACQUIRE_OK',
@@ -85,6 +113,7 @@ export function useCommandExecutor(
         break
       }
       case 'POST_RESUME': {
+        const projectPath = lookupProjectPath(cmd.sessionId)
         fetch(`/api/sidecar/sessions/${encodeURIComponent(cmd.sessionId)}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -92,9 +121,15 @@ export function useCommandExecutor(
             permissionMode: cmd.permissionMode,
             model: cmd.model,
             resumeAtMessageId: cmd.resumeAtMessageId,
+            projectPath,
+            initialMessage: cmd.message,
           }),
         })
-          .then((r) => r.json())
+          .then(async (r) => {
+            const data = await r.json()
+            if (!r.ok) throw new Error(data.error || `Resume failed (${r.status})`)
+            return data
+          })
           .then((data) => dispatch({ type: 'ACQUIRE_OK', controlId: data.controlId }))
           .catch((err) => dispatch({ type: 'ACQUIRE_FAILED', error: err.message }))
         break

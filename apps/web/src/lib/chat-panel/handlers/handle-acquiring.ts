@@ -1,6 +1,18 @@
+import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { acquiringTransition } from '../modules/acquiring'
 import { outboxTransition } from '../modules/outbox'
 import type { ChatPanelStore, Command, PanelState, RawEvent, TransitionResult } from '../types'
+
+/** Merge incoming blocks with existing, preserving non-overlapping history. */
+function mergeBlocks(
+  existing: ConversationBlock[],
+  incoming: ConversationBlock[],
+): ConversationBlock[] {
+  if (existing.length === 0) return incoming
+  const incomingIds = new Set(incoming.map((b) => b.id))
+  const preserved = existing.filter((b) => !incomingIds.has(b.id))
+  return [...preserved, ...incoming]
+}
 
 export function handleAcquiring(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -28,8 +40,12 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
     ]
   }
 
-  if (event.type === 'WS_CLOSE' && p.step.step === 'ws_connecting') {
-    // Non-recoverable WS close during connecting → action_failed
+  if (
+    event.type === 'WS_CLOSE' &&
+    (p.step.step === 'ws_connecting' || p.step.step === 'ws_initializing')
+  ) {
+    // WS close during connecting or initializing → action_failed immediately
+    // (don't wait for init-timeout if WS is already dead)
     return exitAcquiring(store, p, {
       stay: false,
       exit: 'action_failed',
@@ -37,9 +53,23 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
     })
   }
 
-  // BLOCKS_SNAPSHOT during acquiring: update display blocks but stay
+  // BLOCKS_SNAPSHOT during acquiring: merge with history (don't replace — the
+  // accumulator starts fresh on resume and would wipe history from FETCH_HISTORY).
   if (event.type === 'BLOCKS_SNAPSHOT') {
-    return [{ ...store, panel: { ...p, historyBlocks: event.blocks } }, []]
+    return [
+      { ...store, panel: { ...p, historyBlocks: mergeBlocks(p.historyBlocks, event.blocks) } },
+      [],
+    ]
+  }
+
+  // HISTORY_OK race: history API responds after we already entered acquiring
+  // (SIDECAR_HAS_SESSION arrived before HISTORY_OK in nobody phase).
+  // Merge with existing — snapshot may have already set some blocks.
+  if (event.type === 'HISTORY_OK') {
+    return [
+      { ...store, panel: { ...p, historyBlocks: mergeBlocks(event.blocks, p.historyBlocks) } },
+      [],
+    ]
   }
 
   // Delegate to acquiring leaf
@@ -56,12 +86,13 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
       let panel: PanelState = { ...p, step: result.state }
       const cmds: Command[] = []
 
-      // ACQUIRE_OK → open WS + update sessionId if create/fork returned one
+      // ACQUIRE_OK → open WS + update sessionId if create/fork returned one.
+      // Use event.sessionId for the WS connection — p.sessionId is '' for creates.
       if (event.type === 'ACQUIRE_OK' && result.state.step === 'ws_connecting') {
-        cmds.push({ cmd: 'OPEN_SIDECAR_WS', sessionId: p.sessionId })
         if (event.sessionId) {
           panel = { ...panel, sessionId: event.sessionId, targetSessionId: event.sessionId }
         }
+        cmds.push({ cmd: 'OPEN_SIDECAR_WS', sessionId: event.sessionId ?? p.sessionId })
       }
 
       return [{ ...store, panel }, cmds]
@@ -92,13 +123,16 @@ function exitAcquiring(
       conn: { health: 'ok' },
     }
 
-    const cmds: Command[] = [{ cmd: 'CANCEL_TIMER', id: 'init-timeout' }]
+    const cmds: Command[] = [
+      { cmd: 'CANCEL_TIMER', id: 'init-timeout' },
+      { cmd: 'INVALIDATE_SIDEBAR' },
+    ]
 
     // Drain outbox: send all queued messages
     let outbox = store.outbox
     for (const msg of outbox.messages) {
       if (msg.status === 'queued') {
-        cmds.push({ cmd: 'WS_SEND', message: { type: 'user_message', text: msg.text } })
+        cmds.push({ cmd: 'WS_SEND', message: { type: 'user_message', content: msg.text } })
         outbox = outboxTransition(outbox, { type: 'MARK_SENT', localId: msg.localId })
       }
     }

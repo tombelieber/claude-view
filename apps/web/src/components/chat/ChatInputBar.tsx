@@ -331,6 +331,8 @@ export function ChatInputBar({
             model={model}
             onModelChange={onModelChange ?? (() => {})}
             disabled={isDisabled || !onModelChange}
+            isLive={state === 'active' || state === 'streaming' || state === 'waiting_permission'}
+            onSetModel={onModelSwitch}
           />
         </div>
 
