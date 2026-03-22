@@ -883,6 +883,16 @@ async fn handle_terminal_ws(
         "Terminal WebSocket connected"
     );
 
+    // Persistent BlockAccumulator for block mode — correlates multi-line constructs
+    // (e.g., incremental assistant entries with the same message.id) that a per-line
+    // accumulator cannot. The CC CLI writes thinking, text, and tool_use as separate
+    // JSONL lines with the same message.id; without persistence, each line produces a
+    // separate block that replaces the previous one via the frontend's ID-based merge.
+    let mut block_acc = claude_view_core::block_accumulator::BlockAccumulator::new();
+    // Track previously-sent block serializations by ID to send only changes.
+    let mut sent_blocks: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
     // 4b. Subscribe to hook event broadcasts for this session
     let mut hook_rx = {
         let mut channels = state.hook_event_channels.write().await;
@@ -912,18 +922,57 @@ async fn handle_terminal_ws(
                         // Read new lines from the file
                         match tracker.read_new_lines().await {
                             Ok(lines) => {
-                                for line in &lines {
-                                    for formatted in format_line_for_mode(line, &current_mode, &finders) {
-                                        if socket
-                                            .send(Message::Text(formatted.into()))
-                                            .await
-                                            .is_err()
-                                        {
-                                            tracing::debug!(
-                                                session_id = %session_id,
-                                                "Client disconnected during live stream"
-                                            );
-                                            return; // watcher dropped on return
+                                if current_mode == "block" {
+                                    // Reset accumulator on file truncation (compaction).
+                                    if tracker.was_truncated() {
+                                        block_acc.reset();
+                                        sent_blocks.clear();
+                                    }
+                                    // Block mode: feed lines into the persistent accumulator,
+                                    // then send only new/changed blocks. This correctly
+                                    // correlates incremental assistant entries (same message.id,
+                                    // different content blocks) that the CC CLI writes as
+                                    // separate JSONL lines during streaming.
+                                    for line in &lines {
+                                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+                                            block_acc.process_line(&entry);
+                                        }
+                                    }
+                                    let current = block_acc.snapshot();
+                                    for block in &current {
+                                        let id = block.id().to_string();
+                                        if let Ok(json) = serde_json::to_string(block) {
+                                            let changed = sent_blocks.get(&id).is_none_or(|prev| *prev != json);
+                                            if changed {
+                                                sent_blocks.insert(id, json.clone());
+                                                if socket
+                                                    .send(Message::Text(json.into()))
+                                                    .await
+                                                    .is_err()
+                                                {
+                                                    tracing::debug!(
+                                                        session_id = %session_id,
+                                                        "Client disconnected during live stream"
+                                                    );
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    for line in &lines {
+                                        for formatted in format_line_for_mode(line, &current_mode, &finders) {
+                                            if socket
+                                                .send(Message::Text(formatted.into()))
+                                                .await
+                                                .is_err()
+                                            {
+                                                tracing::debug!(
+                                                    session_id = %session_id,
+                                                    "Client disconnected during live stream"
+                                                );
+                                                return; // watcher dropped on return
+                                            }
                                         }
                                     }
                                 }
