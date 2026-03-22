@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AssistantBlock, SystemBlock, UserBlock } from '../types/blocks'
+import type { AssistantBlock, ProgressBlock, SystemBlock, UserBlock } from '../types/blocks'
 import { historyToBlocks } from './history-to-blocks'
 
 // Local interface for the historical message shape (matches generated Message type)
@@ -183,16 +183,20 @@ describe('historyToBlocks', () => {
     expect(block.rawJson).toEqual(raw)
   })
 
-  it('converts progress message to SystemBlock with rawJson', () => {
-    const raw = { type: 'progress', data: { type: 'bash_progress' } }
+  it('converts progress message to ProgressBlock', () => {
     const blocks = historyToBlocks([
-      { role: 'progress', content: 'Running...', uuid: 'p1', raw_json: raw } as any,
+      {
+        role: 'progress',
+        content: 'Running...',
+        uuid: 'p1',
+        metadata: { progress_type: 'bash', category: 'builtin', data: { type: 'bash' } },
+      } as any,
     ])
     expect(blocks).toHaveLength(1)
-    const block = blocks[0] as SystemBlock
-    expect(block.type).toBe('system')
-    expect(block.variant).toBe('unknown')
-    expect(block.rawJson).toEqual(raw)
+    const block = blocks[0] as ProgressBlock
+    expect(block.type).toBe('progress')
+    expect(block.variant).toBe('bash')
+    expect(block.category).toBe('builtin')
   })
 
   // ── Timestamp propagation ──────────────────────────────────────────────
