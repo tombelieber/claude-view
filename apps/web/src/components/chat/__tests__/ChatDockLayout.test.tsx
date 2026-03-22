@@ -34,8 +34,11 @@ class MockDockApi {
   onDidActivePanelChange = vi.fn()
 }
 
+let capturedClassName: string | undefined
+
 vi.mock('dockview-react', () => ({
   DockviewReact: (props: {
+    className?: string
     onReady?: (event: { api: MockDockApi }) => void
     components?: Record<string, unknown>
     tabComponents?: Record<string, unknown>
@@ -45,6 +48,7 @@ vi.mock('dockview-react', () => ({
     capturedComponents = props.components
     capturedTabComponents = props.tabComponents
     capturedRightHeaderActions = props.rightHeaderActionsComponent
+    capturedClassName = props.className
     return <div data-testid="dockview-react" />
   },
 }))
@@ -95,5 +99,12 @@ describe('ChatDockLayout', () => {
     // Verify the components and tab components are registered
     expect(capturedComponents).toHaveProperty('chat')
     expect(capturedTabComponents).toHaveProperty('chat')
+  })
+
+  it('passes min-w-0 to DockviewReact for responsive shrinking', () => {
+    render(<ChatDockLayout initialLayout={null} />)
+    // Without min-w-0, DockviewReact as a flex child refuses to shrink
+    // below its content width when the browser narrows.
+    expect(capturedClassName).toContain('min-w-0')
   })
 })

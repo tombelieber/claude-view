@@ -51,4 +51,15 @@ describe('ChatPanel', () => {
     const el = screen.getByTestId('chat-session')
     expect(el.getAttribute('data-live-status')).toBe('inactive')
   })
+
+  it('panel container has min-w-0 and overflow-hidden for responsive shrinking', () => {
+    renderPanel()
+    const session = screen.getByTestId('chat-session')
+    const container = session.parentElement
+    expect(container).not.toBeNull()
+    // Without min-w-0, the dockview panel content won't shrink when browser narrows.
+    // overflow-hidden clips content and creates a new block formatting context.
+    expect(container?.className).toContain('min-w-0')
+    expect(container?.className).toContain('overflow-hidden')
+  })
 })
