@@ -94,11 +94,14 @@ describe('integration: full resume flow', () => {
       expect(store.panel.controlId).toBe('ctrl-1')
     }
 
-    // Meta: SESSION_INIT during acquiring does NOT populate meta (consumed by acquiring leaf).
-    // Meta stays null until a SESSION_INIT arrives while in sdk_owned.
-    // But TURN_COMPLETE does update meta via TURN_USAGE if meta is non-null.
-    // Since meta is null after acquiring, TURN_USAGE on null meta returns null.
-    expect(store.meta).toBeNull()
+    // Meta: SESSION_INIT during acquiring now populates meta via metaTransition
+    // on exit to sdk_owned. TURN_COMPLETE then updates totalInputTokens + contextWindowSize.
+    expect(store.meta).toMatchObject({
+      model: 'opus',
+      permissionMode: 'default',
+      totalInputTokens: 500,
+      contextWindowSize: 200000,
+    })
 
     // Commands: verify key side effects emitted
     expect(allCmds).toContainEqual(

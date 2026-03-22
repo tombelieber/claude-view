@@ -1,6 +1,11 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ChatPanelStore, InputBarState, ViewMode } from './types'
 
+export type ConnectionStatusInfo = {
+  message: string
+  kind: 'loading' | 'error'
+}
+
 // ─── Helpers ───────────────────────────────────────────────
 
 function getBaseBlocks(store: ChatPanelStore): ConversationBlock[] {
@@ -142,11 +147,12 @@ export function deriveInputBar(store: ChatPanelStore): InputBarState {
 }
 
 /**
- * Human-readable status string shown in the thread during
+ * Structured status indicator shown in the thread during
  * acquiring/recovering phases so users know what's happening.
  * Returns null when no status indicator is needed.
+ * `kind` distinguishes loading (spinner) from error (static icon).
  */
-export function deriveConnectionStatus(store: ChatPanelStore): string | null {
+export function deriveConnectionStatus(store: ChatPanelStore): ConnectionStatusInfo | null {
   const { panel } = store
   switch (panel.phase) {
     case 'acquiring': {
@@ -154,21 +160,23 @@ export function deriveConnectionStatus(store: ChatPanelStore): string | null {
         panel.action === 'create' ? 'Creating' : panel.action === 'fork' ? 'Forking' : 'Resuming'
       switch (panel.step.step) {
         case 'posting':
-          return `${verb} session...`
+          return { message: `${verb} session...`, kind: 'loading' }
         case 'ws_connecting':
-          return 'Connecting to session...'
+          return { message: 'Connecting to session...', kind: 'loading' }
         case 'ws_initializing':
-          return 'Initializing...'
+          return { message: 'Initializing...', kind: 'loading' }
       }
-      return `${verb} session...`
+      return { message: `${verb} session...`, kind: 'loading' }
     }
     case 'recovering':
-      if (panel.recovering.kind === 'ws_fatal') return 'Connection lost. Reconnecting...'
-      if (panel.recovering.kind === 'replaced') return 'Session taken over by another client'
-      return `Error: ${panel.recovering.error}`
+      if (panel.recovering.kind === 'ws_fatal')
+        return { message: 'Connection lost. Reconnecting...', kind: 'loading' }
+      if (panel.recovering.kind === 'replaced')
+        return { message: 'Session taken over by another client', kind: 'error' }
+      return { message: `Resume failed: ${panel.recovering.error}`, kind: 'error' }
     case 'sdk_owned':
       if (panel.conn.health === 'reconnecting') {
-        return `Reconnecting... (attempt ${panel.conn.attempt})`
+        return { message: `Reconnecting... (attempt ${panel.conn.attempt})`, kind: 'loading' }
       }
       return null
     default:
