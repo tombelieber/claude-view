@@ -141,45 +141,82 @@ test.describe('Chat V2 Full Lifecycle', () => {
     // which means it was disabled during the turn.
   })
 
-  // ─── Scenario 2: Resume a history chat ────────────────────────────────────
+  // ─── Scenario 2: Resume an INACTIVE history session (no liveProjectPath) ──
+  // Regression guard: liveProjectPath is undefined for inactive sessions.
+  // The sidecar must resolve projectPath from getSessionInfo().cwd.
+  // Without this, resume fails with "No conversation found with session ID".
+  // This was fixed 5+ times in the frontend before the root cause fix in the sidecar.
 
-  test('S2: resume history session — send new message, goes live again', async ({ page }) => {
+  test('S2: resume inactive session — no live SSE entry, sidecar resolves cwd', async ({
+    page,
+  }) => {
     // Step 1: Create a session with a completed turn
     const sessionId = await startNewChatSession(
       page,
       'Say exactly: "original-response" and nothing else.',
     )
 
-    // Step 2: Navigate away to make it "history"
+    // Step 2: Force-release the sidecar session so it leaves the Live Monitor SSE.
+    // This makes it truly "inactive" — liveProjectPath will be undefined.
+    await page.request.delete(`/api/sidecar/sessions/${sessionId}`)
+
+    // Step 3: Wait until the session is no longer in the live sessions list.
+    // Poll the SSE-fed sidebar to confirm the session has left "Active".
     await page.goto('/')
     await page.waitForLoadState('domcontentloaded')
-    await page.waitForTimeout(2_000)
+    // Give SSE time to propagate the removal
+    await page.waitForTimeout(3_000)
 
-    // Step 3: Navigate back to the session
+    // Step 4: Navigate directly to the session by URL.
+    // At this point: no Live Monitor SSE entry → liveProjectPath = undefined
+    // → store.projectPath = null → resume body has NO projectPath.
     await page.goto(`/chat/${sessionId}`)
     await page.waitForLoadState('domcontentloaded')
 
-    // History messages should load (original conversation)
+    // History messages should load
     const thread = page.locator(THREAD)
     await page.locator(ASSISTANT_MSG).first().waitFor({ state: 'visible', timeout: 15_000 })
     const historyText = await thread.innerText()
     expect(historyText.toLowerCase()).toContain('original-response')
 
-    // Step 4: Send a NEW message to resume the session
+    // Step 5: Intercept the resume request to verify projectPath is NOT in the body.
+    // This is the exact condition that triggered the bug.
+    let resumeBody: Record<string, unknown> | null = null
+    page.on('request', (req) => {
+      if (req.url().includes('/resume') && req.method() === 'POST') {
+        try {
+          resumeBody = JSON.parse(req.postData() || '{}')
+        } catch {
+          /* noop */
+        }
+      }
+    })
+
+    // Step 6: Send a NEW message to trigger resume of the inactive session.
     await sendMessage(page, 'Say exactly: "resumed-response" and nothing else.')
 
-    // Step 5: Verify the session goes live — assistant responds
-    // Wait for a SECOND assistant message (the resume response)
+    // Step 7: Verify NO "Resume failed" error appears.
+    // The error banner would show within 5 seconds if the sidecar can't find the session.
+    const errorBanner = page.getByText('Resume failed', { exact: false })
+    await page.waitForTimeout(5_000)
+    const hasError = await errorBanner.isVisible().catch(() => false)
+    expect(hasError).toBe(false)
+
+    // Step 8: Verify the assistant responds (session went live again).
     const assistantMessages = page.locator(ASSISTANT_MSG)
     await expect(assistantMessages).toHaveCount(2, { timeout: 60_000 })
-
-    // The streaming cursor should appear and then disappear
     await waitForTurnComplete(page)
 
     // Both messages should be present
     const finalText = await thread.innerText()
     expect(finalText.toLowerCase()).toContain('original-response')
     expect(finalText.toLowerCase()).toContain('resumed-response')
+
+    // Step 9: Verify the resume body had no projectPath (confirming we tested the right path).
+    // If projectPath is undefined/null, the sidecar's getSessionInfo().cwd fallback fired.
+    if (resumeBody) {
+      expect(resumeBody.projectPath).toBeUndefined()
+    }
 
     // Input is re-enabled (session is in own:active state)
     const input = page.locator(CHAT_INPUT)
