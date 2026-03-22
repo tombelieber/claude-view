@@ -6,6 +6,7 @@ import {
   deriveCanSend,
   deriveConnectionStatus,
   deriveInputBar,
+  deriveThinkingState,
   deriveViewMode,
 } from './derive'
 import type { ChatPanelStore, PanelState } from './types'
@@ -829,6 +830,231 @@ describe('deriveConnectionStatus', () => {
     expect(
       deriveConnectionStatus(
         makeStore({ phase: 'closed', sessionId: 's1', blocks: [], ephemeral: false }),
+      ),
+    ).toBeNull()
+  })
+})
+
+// ─── deriveThinkingState ──────────────────────────────────
+
+describe('deriveThinkingState', () => {
+  // ── Returns null (no indicator needed) ──────────────────
+
+  test('empty → null', () => {
+    expect(deriveThinkingState(makeStore({ phase: 'empty' }))).toBeNull()
+  })
+
+  test('nobody.ready → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({ phase: 'nobody', sessionId: 's1', sub: { sub: 'ready', blocks: [] } }),
+      ),
+    ).toBeNull()
+  })
+
+  test('cc_cli → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({ phase: 'cc_cli', sessionId: 's1', blocks: [], sub: { sub: 'watching' } }),
+      ),
+    ).toBeNull()
+  })
+
+  test('sdk_owned.idle → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'idle' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('sdk_owned.streaming WITH pendingText → null (real content visible)', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: 'hello world',
+          ephemeral: false,
+          turn: { turn: 'streaming' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('sdk_owned.awaiting → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'awaiting', kind: 'permission', requestId: 'r1' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('sdk_owned.compacting → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'compacting' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('recovering → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'recovering',
+          sessionId: 's1',
+          blocks: [],
+          recovering: { kind: 'action_failed', error: 'err' },
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  test('closed → null', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({ phase: 'closed', sessionId: 's1', blocks: [], ephemeral: false }),
+      ),
+    ).toBeNull()
+  })
+
+  // ── Returns 'loading' ──────────────────────────────────
+
+  test('nobody.loading → loading', () => {
+    expect(
+      deriveThinkingState(makeStore({ phase: 'nobody', sessionId: 's1', sub: { sub: 'loading' } })),
+    ).toBe('loading')
+  })
+
+  // ── Returns 'connecting' ───────────────────────────────
+
+  test('acquiring.posting → connecting', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'create' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'posting' },
+        }),
+      ),
+    ).toBe('connecting')
+  })
+
+  test('acquiring.ws_connecting → connecting', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'resume' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'ws_connecting', controlId: 'c1' },
+        }),
+      ),
+    ).toBe('connecting')
+  })
+
+  test('acquiring.ws_initializing → connecting', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'acquiring',
+          sessionId: 's1',
+          targetSessionId: null,
+          action: 'fork' as const,
+          historyBlocks: [],
+          pendingMessage: null,
+          step: { step: 'ws_initializing', controlId: 'c1' },
+        }),
+      ),
+    ).toBe('connecting')
+  })
+
+  // ── Returns 'thinking' ────────────────────────────────
+
+  test('sdk_owned.streaming + empty pendingText → thinking', () => {
+    expect(
+      deriveThinkingState(
+        makeStore({
+          phase: 'sdk_owned',
+          sessionId: 's1',
+          controlId: 'c1',
+          blocks: [],
+          pendingText: '',
+          ephemeral: false,
+          turn: { turn: 'streaming' },
+          conn: { health: 'ok' },
+        }),
+      ),
+    ).toBe('thinking')
+  })
+
+  // ── Regression: indicator must NOT persist after turn completes ──
+
+  test('REGRESSION: sdk_owned.idle + stale outbox entries → null (not thinking)', () => {
+    expect(
+      deriveThinkingState(
+        makeStore(
+          {
+            phase: 'sdk_owned',
+            sessionId: 's1',
+            controlId: 'c1',
+            blocks: mockBlocks,
+            pendingText: '',
+            ephemeral: false,
+            turn: { turn: 'idle' },
+            conn: { health: 'ok' },
+          },
+          { outbox: { messages: [{ localId: 'l1', text: 'hi', status: 'sent' as const }] } },
+        ),
+      ),
+    ).toBeNull()
+  })
+
+  test('REGRESSION: closed + stale outbox entries → null (not thinking)', () => {
+    expect(
+      deriveThinkingState(
+        makeStore(
+          { phase: 'closed', sessionId: 's1', blocks: mockBlocks, ephemeral: false },
+          { outbox: { messages: [{ localId: 'l1', text: 'hi', status: 'sent' as const }] } },
+        ),
       ),
     ).toBeNull()
   })
