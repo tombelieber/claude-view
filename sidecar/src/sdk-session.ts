@@ -6,6 +6,7 @@ import {
   type Options,
   type PermissionMode,
   type SDKMessage,
+  getSessionInfo,
   listSessions,
   query,
 } from '@anthropic-ai/claude-agent-sdk'
@@ -158,16 +159,20 @@ export async function resumeControlSession(
 
   // Fail fast: verify session exists in CLI session store before spawning SDK.
   // Without this, an invalid sessionId causes a 15s timeout waiting for session_init.
+  // Use getSessionInfo() which searches ALL project directories when dir is omitted,
+  // unlike listSessions() which defaults to sidecar's cwd and misses sessions from other projects.
   try {
-    const available = await listSessions()
-    if (!available.some((s) => s.sessionId === req.sessionId)) {
+    const info = await getSessionInfo(req.sessionId, {
+      dir: req.projectPath || undefined,
+    })
+    if (!info) {
       throw new Error(
         `Session ${req.sessionId} not found in CLI session store. ` +
           `It may have been deleted or belongs to a different project path.`,
       )
     }
   } catch (err) {
-    // Re-throw "not found" errors; swallow listSessions failures (let SDK give specific error)
+    // Re-throw "not found" errors; swallow getSessionInfo failures (let SDK give specific error)
     if (err instanceof Error && err.message.includes('not found in CLI')) throw err
   }
 
