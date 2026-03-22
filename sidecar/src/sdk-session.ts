@@ -318,9 +318,10 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
       for await (const msg of cs.query) {
         updateSessionStateFromRawMsg(cs, msg)
         const events = mapSdkMessage(msg)
+        const raw = msg as unknown as Record<string, unknown>
         for (const event of events) {
           updateSessionState(cs, event)
-          registry.emitSequenced(cs, event)
+          registry.emitSequenced(cs, event, raw)
 
           // On first session_init, refresh model cache from SDK (fire-and-forget).
           // SDK is the source of truth for available models.
