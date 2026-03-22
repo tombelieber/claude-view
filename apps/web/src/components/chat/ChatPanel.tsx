@@ -21,17 +21,27 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
-  // Dockview panels may not have final dimensions when ChatSession's
-  // useScrollAnchor fires its initial scroll-to-bottom. Retry after
-  // the panel layout settles to ensure we start at the bottom.
+  // Focus the chat textarea when this panel becomes active (tab switch, sidebar click).
+  // Uses dockview's PanelApi.onDidActiveChange — fires when tab is selected.
   useEffect(() => {
-    if (!sessionId) return
-    const timer = setTimeout(() => {
-      const scroller = containerRef.current?.querySelector('[class*="overflow-y-auto"]')
-      if (scroller) scroller.scrollTop = scroller.scrollHeight
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [sessionId])
+    const focus = () => {
+      requestAnimationFrame(() => {
+        const textarea = containerRef.current?.querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-input"]',
+        )
+        if (textarea && !textarea.disabled) textarea.focus()
+      })
+    }
+
+    // Focus on initial mount if this panel is already active
+    if (api.isActive) focus()
+
+    // Focus on subsequent tab switches
+    const disposable = api.onDidActiveChange((event) => {
+      if (event.isActive) focus()
+    })
+    return () => disposable.dispose()
+  }, [api])
 
   // Called when ChatSession creates a new session from the blank "New Chat" panel.
   // Transitions this panel from blank to the real session.
