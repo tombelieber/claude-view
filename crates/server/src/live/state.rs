@@ -3,6 +3,7 @@
 //! Provides real-time session status tracking by analyzing the last JSONL line,
 //! file modification time, and process presence.
 
+use crate::live::process::SessionSourceInfo;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -240,6 +241,10 @@ pub struct LiveSession {
     /// "closed Xm ago" display and by recently-closed persistence.
     #[ts(type = "number | null")]
     pub closed_at: Option<i64>,
+    /// Where this session was launched from (terminal, IDE, or Agent SDK).
+    /// Detected from the parent process at discovery time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SessionSourceInfo>,
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
@@ -517,6 +522,7 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         exceeds_200k_tokens: None,
         statusline_transcript_path: None,
         statusline_raw: None,
+        source: None,
         hook_events: Vec::new(),
     }
 }
