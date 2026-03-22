@@ -540,6 +540,39 @@ describe('coordinator', () => {
     }
   })
 
+  // Scenario 17: cc_cli + TERMINAL_BLOCK merges live blocks
+  test('cc_cli + TERMINAL_BLOCK appends new block and replaces existing by ID', () => {
+    const ccCliStore: ChatPanelStore = {
+      panel: {
+        phase: 'cc_cli',
+        sessionId: 'abc',
+        blocks: mockBlocks, // has 'u1' and 'a1'
+        sub: { sub: 'watching' },
+      },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+
+    // New block → append
+    const newBlock = { type: 'user' as const, id: 'u2', text: 'new msg', timestamp: 2 }
+    const [s1] = coordinate(ccCliStore, { type: 'TERMINAL_BLOCK', block: newBlock as any })
+    if (s1.panel.phase === 'cc_cli') {
+      expect(s1.panel.blocks).toHaveLength(2) // '1' + 'u2'
+      expect(s1.panel.blocks[1]).toEqual(newBlock)
+    }
+
+    // Existing block → replace by ID
+    const updatedBlock = { type: 'user' as const, id: '1', text: 'updated', timestamp: 3 }
+    const [s2] = coordinate(ccCliStore, { type: 'TERMINAL_BLOCK', block: updatedBlock as any })
+    if (s2.panel.phase === 'cc_cli') {
+      expect(s2.panel.blocks).toHaveLength(1) // replaced '1'
+      expect(s2.panel.blocks[0]).toEqual(updatedBlock)
+    }
+  })
+
   // Gap 7: acquiring + LIVE_STATUS_CHANGED updates projectPath but stays acquiring
   test('acquiring + LIVE_STATUS_CHANGED updates projectPath without phase change', () => {
     const acquiringStore: ChatPanelStore = {
