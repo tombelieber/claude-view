@@ -54,6 +54,18 @@ vi.mock('./cli-path.js', () => ({
   findClaudeExecutable: vi.fn().mockReturnValue('/usr/local/bin/claude'),
 }))
 
+// sessionJsonlExists does fs.readdirSync + fs.existsSync on ~/.claude/projects/
+// Mock the fs module so we can control whether the JSONL file "exists" per-test
+const mockExistsSync = vi.fn().mockReturnValue(true)
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    readdirSync: vi.fn().mockReturnValue(['mock-project']),
+    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+  }
+})
+
 // Import AFTER mocks
 const { createControlSession, forkControlSession, resumeControlSession } = await import(
   './sdk-session.js'
@@ -209,5 +221,40 @@ describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd'
 
     expect(capturedOptions).toBeDefined()
     expect(capturedOptions!.cwd).toBe(process.cwd())
+  })
+})
+
+describe('resumeControlSession — interrupted session (no assistant messages)', () => {
+  let registry: SessionRegistry
+
+  beforeEach(() => {
+    registry = new SessionRegistry()
+    capturedOptions = undefined
+    mockGetSessionInfo.mockReset()
+    mockExistsSync.mockReset().mockReturnValue(true)
+  })
+
+  it('resumes when JSONL exists but getSessionInfo returns undefined (interrupted session)', async () => {
+    // getSessionInfo returns undefined for sessions with no extractable summary
+    // (e.g. interrupted before any assistant response). The JSONL file exists on disk.
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    mockExistsSync.mockReturnValue(true)
+
+    await resumeControlSession(
+      { sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', projectPath: '/test/project' },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/test/project')
+  })
+
+  it('throws when JSONL does not exist on disk (truly missing session)', async () => {
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    mockExistsSync.mockReturnValue(false)
+
+    await expect(
+      resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry),
+    ).rejects.toThrow('not found in CLI session store')
   })
 })

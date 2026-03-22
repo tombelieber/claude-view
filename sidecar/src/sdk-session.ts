@@ -2,6 +2,9 @@
 // Create/resume/fork SDK sessions with long-lived stream loops (V1 query() API).
 // All session state mutations go through SessionRegistry.emitSequenced().
 import { EventEmitter } from 'node:events'
+import { existsSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   type Options,
   type PermissionMode,
@@ -157,29 +160,29 @@ export async function resumeControlSession(
     }
   }
 
-  // Fail fast: verify session exists in CLI session store before spawning SDK.
-  // Without this, an invalid sessionId causes a 15s timeout waiting for session_init.
-  // Use getSessionInfo() which searches ALL project directories when dir is omitted,
-  // unlike listSessions() which defaults to sidecar's cwd and misses sessions from other projects.
-  // Also extract info.cwd as fallback projectPath for inactive sessions where the frontend
-  // doesn't know the project path (liveProjectPath is only set for currently-live sessions).
+  // Fail fast: verify session JSONL file exists on disk before spawning SDK.
+  // Without this check, an invalid sessionId causes a 15s timeout waiting for session_init.
+  //
+  // IMPORTANT: We use a filesystem existence check, NOT getSessionInfo().
+  // getSessionInfo() filters out sessions with "no extractable summary" (e.g. sessions
+  // interrupted before any assistant response) and returns undefined — but the JSONL file
+  // exists on disk and the SDK can resume it. Using getSessionInfo as an existence check
+  // was a recurring bug (fixed 7+ times as a "projectPath issue" when it was really this).
   let resolvedProjectPath = req.projectPath
+  if (!sessionJsonlExists(req.sessionId)) {
+    throw new Error(
+      `Session ${req.sessionId} not found in CLI session store. It may have been deleted or belongs to a different project path.`,
+    )
+  }
   try {
     const info = await getSessionInfo(req.sessionId, {
       dir: req.projectPath || undefined,
     })
-    if (!info) {
-      throw new Error(
-        `Session ${req.sessionId} not found in CLI session store. ` +
-          `It may have been deleted or belongs to a different project path.`,
-      )
-    }
-    if (!resolvedProjectPath && info.cwd) {
+    if (info?.cwd && !resolvedProjectPath) {
       resolvedProjectPath = info.cwd
     }
-  } catch (err) {
-    // Re-throw "not found" errors; swallow getSessionInfo failures (let SDK give specific error)
-    if (err instanceof Error && err.message.includes('not found in CLI')) throw err
+  } catch {
+    // getSessionInfo failures are non-fatal — only used for cwd fallback
   }
 
   const controlId = crypto.randomUUID()
@@ -515,6 +518,26 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
     cs.emitter.on('session_id_ready', onSessionId)
     cs.emitter.on('message', onMessage)
   })
+}
+
+/**
+ * Filesystem existence check for a session JSONL file.
+ * Searches all project directories under ~/.claude/projects/.
+ * This is intentionally separate from getSessionInfo() which filters out
+ * sessions with no extractable summary (e.g. interrupted before assistant response).
+ */
+export function sessionJsonlExists(sessionId: string): boolean {
+  const projectsDir = join(homedir(), '.claude', 'projects')
+  try {
+    for (const dir of readdirSync(projectsDir)) {
+      if (existsSync(join(projectsDir, dir, `${sessionId}.jsonl`))) {
+        return true
+      }
+    }
+  } catch {
+    // If ~/.claude/projects doesn't exist, session can't exist
+  }
+  return false
 }
 
 export async function listAvailableSessions(): Promise<AvailableSession[]> {
