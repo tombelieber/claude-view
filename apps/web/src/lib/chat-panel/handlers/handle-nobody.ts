@@ -10,6 +10,17 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
     case 'HISTORY_OK':
     case 'HISTORY_FAILED': {
       const sub = nobodyTransition(p.sub, event)
+      // If LIVE_STATUS_CHANGED(cc_owned) arrived while loading, now that
+      // history is ready, complete the deferred transition to cc_cli.
+      if (sub.sub === 'ready' && p.sub.sub === 'loading' && p.sub.pendingLive === 'cc_owned') {
+        const panel: PanelState = {
+          phase: 'cc_cli',
+          sessionId: p.sessionId,
+          blocks: sub.blocks,
+          sub: { sub: 'watching' },
+        }
+        return [{ ...store, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
+      }
       return [{ ...store, panel: { ...p, sub } }, []]
     }
 
@@ -103,14 +114,22 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
       // Update projectPath from Live Monitor data whenever available
       const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
       if (event.status === 'cc_owned') {
-        const blocks = p.sub.sub === 'ready' ? p.sub.blocks : []
-        const panel: PanelState = {
-          phase: 'cc_cli',
-          sessionId: p.sessionId,
-          blocks,
-          sub: { sub: 'watching' },
+        if (p.sub.sub === 'ready') {
+          // History loaded — transition immediately with blocks
+          const panel: PanelState = {
+            phase: 'cc_cli',
+            sessionId: p.sessionId,
+            blocks: p.sub.blocks,
+            sub: { sub: 'watching' },
+          }
+          return [{ ...updatedStore, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
         }
-        return [{ ...updatedStore, panel }, [{ cmd: 'OPEN_TERMINAL_WS', sessionId: p.sessionId }]]
+        // History still loading — defer cc_cli transition until HISTORY_OK arrives.
+        // Without this, cc_cli starts with blocks: [] and the user sees a blank page.
+        return [
+          { ...updatedStore, panel: { ...p, sub: { sub: 'loading', pendingLive: 'cc_owned' } } },
+          [],
+        ]
       }
       return [updatedStore, []]
     }

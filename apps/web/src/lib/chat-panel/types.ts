@@ -14,7 +14,9 @@ export type TurnState =
 export type ConnHealth = { health: 'ok' } | { health: 'reconnecting'; attempt: number }
 
 // ─── Sub-state types ─────────────────────────────────────────
-export type NobodySub = { sub: 'loading' } | { sub: 'ready'; blocks: ConversationBlock[] }
+export type NobodySub =
+  | { sub: 'loading'; pendingLive?: 'cc_owned' }
+  | { sub: 'ready'; blocks: ConversationBlock[] }
 
 export type CcCliSub = { sub: 'watching' } | { sub: 'takeover_killing' }
 

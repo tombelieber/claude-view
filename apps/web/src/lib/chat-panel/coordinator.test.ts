@@ -415,6 +415,44 @@ describe('coordinator', () => {
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
   })
 
+  // Scenario 16b: LIVE_STATUS cc_owned arrives BEFORE HISTORY_OK (race condition)
+  // Must defer cc_cli transition until history loads to avoid blank page.
+  test('nobody(loading) + LIVE_STATUS cc_owned → deferred, then HISTORY_OK → cc_cli with blocks', () => {
+    const loadingStore: ChatPanelStore = {
+      panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'loading' } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+    }
+    // Step 1: LIVE_STATUS arrives while loading — should NOT transition to cc_cli
+    const [midStore, midCmds] = coordinate(loadingStore, {
+      type: 'LIVE_STATUS_CHANGED',
+      status: 'cc_owned',
+    })
+    expect(midStore.panel.phase).toBe('nobody') // still nobody!
+    if (midStore.panel.phase === 'nobody') {
+      expect(midStore.panel.sub.sub).toBe('loading')
+      if (midStore.panel.sub.sub === 'loading') {
+        expect(midStore.panel.sub.pendingLive).toBe('cc_owned')
+      }
+    }
+    expect(midCmds).toHaveLength(0) // no OPEN_TERMINAL_WS yet
+
+    // Step 2: HISTORY_OK arrives — should complete the deferred cc_cli transition
+    const [store, cmds] = coordinate(midStore, {
+      type: 'HISTORY_OK',
+      blocks: mockBlocks,
+    })
+    expect(store.panel.phase).toBe('cc_cli')
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.blocks).toEqual(mockBlocks) // blocks carried!
+      expect(store.panel.sub).toEqual({ sub: 'watching' })
+    }
+    expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
+  })
+
   // ── Gap fixes ──────────────────────────────────────────────────
 
   // Gap 4+9: resumeAtMessageId removed from PanelState.acquiring
