@@ -206,7 +206,7 @@ export function ChatSession({
   const [showTakeover, setShowTakeover] = useState(false)
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" data-panel-mode={viewMode}>
+    <div className="flex-1 min-w-0 flex flex-col overflow-hidden" data-panel-mode={viewMode}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -269,7 +269,7 @@ export function ChatSession({
       <ExpandProvider>
         {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
             flex-1 min-h-0 gives Virtuoso a measurable viewport height. */}
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
           {blocks.length === 0 ? (
             <div className="flex items-center justify-center flex-1 text-gray-400 dark:text-gray-500">
               <div className="text-center">

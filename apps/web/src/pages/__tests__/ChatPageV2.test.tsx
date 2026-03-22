@@ -64,4 +64,15 @@ describe('ChatPageV2', () => {
     expect(screen.getByTestId('session-sidebar')).toBeDefined()
     expect(screen.getByTestId('chat-dock-layout')).toBeDefined()
   })
+
+  it('dockview wrapper has min-w-0 and overflow-hidden for responsive shrinking', () => {
+    renderWithProviders(<ChatPageV2 />)
+    const dockLayout = screen.getByTestId('chat-dock-layout')
+    const wrapper = dockLayout.parentElement
+    expect(wrapper).not.toBeNull()
+    // Without min-w-0, the flex child refuses to shrink below its content width
+    // when the browser narrows. overflow-hidden clips and creates a new BFC.
+    expect(wrapper?.className).toContain('min-w-0')
+    expect(wrapper?.className).toContain('overflow-hidden')
+  })
 })

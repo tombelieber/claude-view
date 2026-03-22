@@ -106,7 +106,7 @@ export function ChatDockLayout({ initialLayout, onReady }: ChatDockLayoutProps) 
 
   return (
     <DockviewReact
-      className="dockview-theme-cv flex-1"
+      className="dockview-theme-cv flex-1 min-w-0"
       components={chatComponents}
       tabComponents={chatTabComponents}
       defaultTabComponent={ChatTabRenderer}
