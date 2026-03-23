@@ -69,8 +69,8 @@ export function deriveDropdownActions(session: SessionLike): DropdownActions {
 
   return {
     resume: isHistory,
-    takeOver: ls === 'cc_owned',
-    fork: true,
+    takeOver: false, // TODO: re-enable when fork flow is fixed
+    fork: false, // TODO: re-enable when fork flow is fixed
     shutDown: ls === 'cc_agent_sdk_owned',
     openInMonitor: ls !== 'inactive',
     archive: isHistory,
