@@ -102,6 +102,27 @@ function SessionClosedNotice({ data }: { data: SessionClosed }) {
   )
 }
 
+function extractErrorMessage(data: ErrorEvent): string {
+  // data.message can be a string (normal) or a raw API response object
+  // (from history JSONL where isApiErrorMessage=true)
+  if (typeof data.message === 'string') return data.message
+  if (data.message && typeof data.message === 'object') {
+    const msg = data.message as Record<string, unknown>
+    // Extract text from API response content array
+    if (Array.isArray(msg.content)) {
+      const textBlock = msg.content.find(
+        (c: unknown) =>
+          typeof c === 'object' && c !== null && (c as Record<string, unknown>).type === 'text',
+      ) as { text?: string } | undefined
+      if (textBlock?.text) return textBlock.text
+    }
+  }
+  // Fallback: use the error field from the parent data or stringify
+  const raw = data as unknown as Record<string, unknown>
+  if (typeof raw.error === 'string') return raw.error
+  return 'Unknown error'
+}
+
 function ErrorNotice({ data }: { data: ErrorEvent }) {
   return (
     <div
@@ -110,7 +131,7 @@ function ErrorNotice({ data }: { data: ErrorEvent }) {
       }`}
     >
       <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
-      <span className="text-xs text-red-700 dark:text-red-300">{data.message}</span>
+      <span className="text-xs text-red-700 dark:text-red-300">{extractErrorMessage(data)}</span>
     </div>
   )
 }
