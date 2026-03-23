@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react'
-import type { HookEventItem } from '../components/live/action-log/types'
+
+export interface HookEventItem {
+  id: string
+  timestamp: number
+  type: 'hook_event'
+  eventName: string
+  toolName?: string
+  label: string
+  group: 'autonomous' | 'needs_you'
+  context?: string
+  source?: string
+}
 
 /**
  * Fetch stored hook events for a historical session.
