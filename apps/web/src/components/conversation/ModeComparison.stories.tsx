@@ -308,7 +308,14 @@ const comparisons: ModeComparison[] = [
     ],
   },
 
-  // ── 30. Progress: all variants ──
+  // ── 30. System: elicitation_complete ──
+  {
+    label: 'system: elicitation_complete',
+    description: 'Chat hides vs Dev elicitation complete card (MCP server + ID) vs JSON',
+    blocks: [devSystemBlocks.elicitationComplete as ConversationBlock],
+  },
+
+  // ── 31. Progress: all variants ──
   {
     label: 'progress: all variants',
     description:
@@ -345,6 +352,7 @@ const comparisons: ModeComparison[] = [
       devSystemBlocksWithRawJson.withRetry as ConversationBlock,
       devSystemBlocksWithRawJson.withApiError as ConversationBlock,
       devSystemBlocksWithRawJson.withHooks as ConversationBlock,
+      devSystemBlocksWithRawJson.withHookErrors as ConversationBlock,
       devSystemBlocksWithRawJson.withAll as ConversationBlock,
     ],
   },

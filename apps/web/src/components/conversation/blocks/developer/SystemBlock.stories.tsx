@@ -117,6 +117,10 @@ export const WithHooksRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withHooks },
 }
 
+export const WithHookErrorsRawJson: Story = {
+  args: { block: devSystemBlocksWithRawJson.withHookErrors },
+}
+
 export const WithAllRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withAll },
 }

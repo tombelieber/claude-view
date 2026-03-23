@@ -33,3 +33,7 @@ export const TaskCompleted: Story = {
 export const TaskFailed: Story = {
   args: { block: systemBlocks.taskFailed },
 }
+
+export const QueueOperation: Story = {
+  args: { block: systemBlocks.queueOperation },
+}
