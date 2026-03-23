@@ -149,7 +149,7 @@ describe('historyToPanelData', () => {
       totalCacheCreationTokens: 50,
     } as unknown as SessionDetail
 
-    const data = historyToPanelData(sessionDetail, undefined, undefined, [])
+    const data = historyToPanelData(sessionDetail, undefined, undefined)
 
     expect(data.modelDisplayName).toBeNull()
     expect(data.statuslineCostUsd).toBeNull()
@@ -179,7 +179,7 @@ describe('historyToPanelData', () => {
       model: 'claude-opus-4-6',
     } as unknown as RichSessionData
 
-    const data = historyToPanelData(sessionDetail, richData, undefined, [])
+    const data = historyToPanelData(sessionDetail, richData, undefined)
     expect(data.model).toBe('claude-opus-4-6')
     expect(data.modelDisplayName).toBeNull()
   })

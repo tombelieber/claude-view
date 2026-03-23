@@ -1,4 +1,4 @@
-import { cn } from '../../../lib/utils'
+import { cn } from '../../lib/utils'
 
 /**
  * Generic filter chips — same visual language, any category type.

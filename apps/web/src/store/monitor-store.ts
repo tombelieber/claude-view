@@ -1,6 +1,17 @@
 import { create } from 'zustand'
 import { type StorageValue, persist } from 'zustand/middleware'
-import type { ActionCategory } from '../components/live/action-log/types'
+/** Inlined from action-log/types to break import dependency on soon-to-be-deleted directory. */
+type ActionCategory =
+  | 'skill'
+  | 'mcp'
+  | 'builtin'
+  | 'agent'
+  | 'hook'
+  | 'hook_progress'
+  | 'error'
+  | 'system'
+  | 'snapshot'
+  | 'queue'
 
 export type VerboseFilter = ActionCategory[] | 'all'
 
