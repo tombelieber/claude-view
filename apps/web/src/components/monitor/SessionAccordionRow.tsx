@@ -1,7 +1,6 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatBytes } from '../../lib/format-utils'
 import type { ClassifiedProcess } from '../../types/generated/ClassifiedProcess'
-import type { EcosystemTag } from '../../types/generated/EcosystemTag'
 import type { SessionResource } from '../../types/generated/SessionResource'
 import type { SystemInfo } from '../../types/generated/SystemInfo'
 import { type LiveSession, sessionTotalCost } from '../live/use-live-sessions'
@@ -22,23 +21,6 @@ interface SessionAccordionRowProps {
   expandAll?: boolean
   /** When true, process tree hasn't loaded yet — show skeleton placeholders. */
   processTreePending?: boolean
-}
-
-function ecosystemLabel(tag: EcosystemTag | null | undefined): string {
-  switch (tag) {
-    case 'cli':
-      return 'CLI'
-    case 'ide':
-      return 'IDE'
-    case 'desktop':
-      return 'Desktop'
-    case 'self':
-      return 'Server'
-    case 'sidecar':
-      return 'Agent SDK'
-    default:
-      return ''
-  }
 }
 
 function statusDotClass(status: LiveSession['status']): string {
@@ -72,7 +54,6 @@ export function SessionAccordionRow({
     : resource.memoryBytes
 
   const cost = sessionTotalCost(session)
-  const badge = ecosystemLabel(ecosystemProcess?.ecosystemTag)
   const descendantCount = ecosystemProcess?.descendantCount ?? 0
 
   return (
@@ -112,10 +93,6 @@ export function SessionAccordionRow({
 
           {session.source ? (
             <SourceBadge source={session.source} />
-          ) : badge ? (
-            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
-              {badge}
-            </span>
           ) : processTreePending ? (
             <span className="inline-block h-4 w-8 rounded bg-gray-100 dark:bg-gray-800 animate-pulse shrink-0" />
           ) : null}

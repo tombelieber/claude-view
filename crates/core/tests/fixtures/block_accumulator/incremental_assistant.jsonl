@@ -1,0 +1,8 @@
+{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"Fix the bug"}]},"timestamp":"2026-03-23T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","parentUuid":"u-1","message":{"id":"msg-inc-001","model":"claude-sonnet-4-6","content":[{"type":"thinking","thinking":"Let me look at the code..."}]},"timestamp":"2026-03-23T01:00:01.000Z"}
+{"type":"assistant","uuid":"a-1b","parentUuid":"u-1","message":{"id":"msg-inc-001","model":"claude-sonnet-4-6","content":[{"type":"text","text":"I'll read the file to understand the issue."}]},"timestamp":"2026-03-23T01:00:02.000Z"}
+{"type":"assistant","uuid":"a-1c","parentUuid":"u-1","message":{"id":"msg-inc-001","model":"claude-sonnet-4-6","content":[{"type":"tool_use","id":"tu-1","name":"Read","input":{"file_path":"/src/main.rs"}}],"stop_reason":"tool_use"},"timestamp":"2026-03-23T01:00:03.000Z"}
+{"type":"user","uuid":"u-2","parentUuid":"a-1c","message":{"content":[{"type":"tool_result","tool_use_id":"tu-1","content":"fn main() { println!(\"hello\"); }","is_error":false}]},"timestamp":"2026-03-23T01:00:04.000Z"}
+{"type":"assistant","uuid":"a-2","parentUuid":"u-2","message":{"id":"msg-inc-002","model":"claude-sonnet-4-6","content":[{"type":"text","text":"I see the issue. Let me fix it."}],"stop_reason":"end_turn","usage":{"input_tokens":500,"output_tokens":40}},"timestamp":"2026-03-23T01:00:05.000Z"}
+{"type":"system","uuid":"s-1","parentUuid":"a-2","durationMs":5000,"timestamp":"2026-03-23T01:00:06.000Z"}
+{"type":"system","uuid":"s-2","parentUuid":"s-1","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-23T01:00:07.000Z"}

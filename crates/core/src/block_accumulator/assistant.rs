@@ -9,6 +9,7 @@ use crate::block_types::*;
 use crate::category::{categorize_tool, ActionCategory};
 
 /// Builder for accumulating an AssistantBlock from multiple JSONL entries.
+#[derive(Clone)]
 pub struct AssistantBlockBuilder {
     message_id: String,
     segments: Vec<AssistantSegment>,
