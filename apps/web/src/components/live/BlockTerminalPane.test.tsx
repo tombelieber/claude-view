@@ -28,6 +28,7 @@ describe('BlockTerminalPane', () => {
       blocks: [{ type: 'user', id: 'u-1', text: 'hi', timestamp: 1000 } as any],
       bufferDone: true,
       connectionState: 'connected',
+      error: null,
     })
     render(<BlockTerminalPane sessionId="s-1" isVisible />)
     expect(screen.queryByText('No messages yet')).not.toBeInTheDocument()
