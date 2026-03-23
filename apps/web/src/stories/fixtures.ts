@@ -25,6 +25,7 @@ import type {
   PromptSuggestion,
   RateLimit,
   SessionClosed,
+  QueueOperation,
   TaskNotification,
   TaskProgressEvent,
   TaskStarted,
@@ -689,6 +690,18 @@ export const systemBlocks = {
       outputFile: '/tmp/task_002_output.md',
       summary: 'Failed to connect to MCP server: timeout after 30s',
     } satisfies TaskNotification,
+  } satisfies SystemBlock,
+
+  queueOperation: {
+    type: 'system',
+    id: 'sb_005',
+    variant: 'queue_operation',
+    data: {
+      type: 'queue-operation',
+      operation: 'enqueue',
+      timestamp: new Date().toISOString(),
+      content: 'Fix the login bug on the settings page',
+    } satisfies QueueOperation,
   } satisfies SystemBlock,
 }
 
