@@ -136,8 +136,9 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     capturedOptions = undefined
   })
 
-  it('passes projectPath for fork sessions', () => {
-    forkControlSession(
+  it('passes projectPath for fork sessions', async () => {
+    mockGetSessionInfo.mockResolvedValue(null)
+    await forkControlSession(
       {
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
         model: 'claude-haiku-4-5-20251001',
@@ -153,8 +154,9 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     expect(capturedOptions!.resume).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
   })
 
-  it('always includes settingSources for fork sessions', () => {
-    forkControlSession(
+  it('always includes settingSources for fork sessions', async () => {
+    mockGetSessionInfo.mockResolvedValue(null)
+    await forkControlSession(
       {
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       },

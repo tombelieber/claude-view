@@ -65,22 +65,43 @@ function buildQueryOptions(
   }
 }
 
-export function createControlSession(
-  req: CreateSessionRequest,
-  registry: SessionRegistry,
-): ControlSession {
+// ─── Generic session setup ──────────────────────────────────────
+// All session types (create/resume/fork) share the same wiring.
+// Differences are expressed via SessionSetupOpts — no ad-hoc per-type logic.
+
+interface SessionSetupOpts {
+  /** Model to use. */
+  model: string
+  /** Permission mode ('default', 'plan', 'bypassPermissions', etc.). */
+  permissionMode?: string
+  /** Allowed/disallowed tools — create-only, ignored for resume/fork. */
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  /** Resolved project path (cwd for the SDK). */
+  projectPath?: string
+  /** Session ID to resume from — set for resume and fork, absent for create. */
+  resume?: string
+  /** Branch conversation history into a new session. Requires resume. */
+  forkSession?: boolean
+  /** Known session ID — set for resume (known up front), empty for create/fork (SDK assigns). */
+  knownSessionId?: string
+  /** Initial user message to queue before the stream loop starts. */
+  initialMessage?: string
+}
+
+function setupControlSession(opts: SessionSetupOpts, registry: SessionRegistry): ControlSession {
   const controlId = crypto.randomUUID()
   const emitter = new EventEmitter()
   const permissions = new PermissionHandler()
   const bridge = new MessageBridge()
   const abort = new AbortController()
 
-  // Pre-queue initial message if provided
-  if (req.initialMessage) {
+  // Pre-queue initial message so SDK gets it before session_init.
+  if (opts.initialMessage) {
     bridge.push({
       type: 'user',
       session_id: '',
-      message: { role: 'user', content: [{ type: 'text', text: req.initialMessage }] },
+      message: { role: 'user', content: [{ type: 'text', text: opts.initialMessage }] },
       parent_tool_use_id: null,
     })
   }
@@ -94,11 +115,13 @@ export function createControlSession(
     prompt: bridge,
     options: buildQueryOptions(
       {
-        model: req.model,
-        permissionMode: req.permissionMode,
-        allowedTools: req.allowedTools,
-        disallowedTools: req.disallowedTools,
-        projectPath: req.projectPath,
+        model: opts.model,
+        permissionMode: opts.permissionMode,
+        allowedTools: opts.allowedTools,
+        disallowedTools: opts.disallowedTools,
+        projectPath: opts.projectPath,
+        resume: opts.resume,
+        forkSession: opts.forkSession,
       },
       permissions,
       emit,
@@ -108,8 +131,8 @@ export function createControlSession(
 
   cs = {
     controlId,
-    sessionId: '',
-    model: req.model,
+    sessionId: opts.knownSessionId ?? '',
+    model: opts.model,
     query: q,
     bridge,
     abort,
@@ -120,7 +143,7 @@ export function createControlSession(
     startedAt: Date.now(),
     emitter,
     permissions,
-    permissionMode: req.permissionMode ?? 'default',
+    permissionMode: opts.permissionMode ?? 'default',
     wsClients: new Set(),
     lastSessionInit: null,
     accumulator: new StreamAccumulator(),
@@ -128,11 +151,11 @@ export function createControlSession(
 
   registry.register(cs)
 
-  // Echo initial message into accumulator
-  if (req.initialMessage) {
+  // Echo initial message into accumulator so blocks_snapshot includes it.
+  if (opts.initialMessage) {
     registry.emitSequenced(cs, {
       type: 'user_message_echo',
-      content: req.initialMessage,
+      content: opts.initialMessage,
       timestamp: Date.now() / 1000,
     })
   }
@@ -140,6 +163,58 @@ export function createControlSession(
   runStreamLoop(cs, registry)
 
   return cs
+}
+
+/**
+ * Shared pre-flight for resume and fork: verify session file exists on disk,
+ * resolve projectPath from session metadata if not provided.
+ *
+ * IMPORTANT: Uses filesystem existence check, NOT getSessionInfo().
+ * getSessionInfo() filters out sessions with "no extractable summary" (e.g. sessions
+ * interrupted before any assistant response) and returns undefined — but the JSONL file
+ * exists on disk and the SDK can resume it. Using getSessionInfo as an existence check
+ * was a recurring bug (fixed 7+ times as a "projectPath issue" when it was really this).
+ */
+async function resolveExistingSession(
+  sessionId: string,
+  projectPath?: string,
+): Promise<string | undefined> {
+  if (!sessionJsonlExists(sessionId)) {
+    throw new Error(
+      `Session ${sessionId} not found in CLI session store. It may have been deleted or belongs to a different project path.`,
+    )
+  }
+  let resolved = projectPath
+  try {
+    const info = await getSessionInfo(sessionId, {
+      dir: projectPath || undefined,
+    })
+    if (info?.cwd && !resolved) {
+      resolved = info.cwd
+    }
+  } catch {
+    // getSessionInfo failures are non-fatal — only used for cwd fallback
+  }
+  return resolved
+}
+
+// ─── Public API ─────────────────────────────────────────────────
+
+export function createControlSession(
+  req: CreateSessionRequest,
+  registry: SessionRegistry,
+): ControlSession {
+  return setupControlSession(
+    {
+      model: req.model,
+      permissionMode: req.permissionMode,
+      allowedTools: req.allowedTools,
+      disallowedTools: req.disallowedTools,
+      projectPath: req.projectPath,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
 export async function resumeControlSession(
@@ -160,157 +235,38 @@ export async function resumeControlSession(
     }
   }
 
-  // Fail fast: verify session JSONL file exists on disk before spawning SDK.
-  // Without this check, an invalid sessionId causes a 15s timeout waiting for session_init.
-  //
-  // IMPORTANT: We use a filesystem existence check, NOT getSessionInfo().
-  // getSessionInfo() filters out sessions with "no extractable summary" (e.g. sessions
-  // interrupted before any assistant response) and returns undefined — but the JSONL file
-  // exists on disk and the SDK can resume it. Using getSessionInfo as an existence check
-  // was a recurring bug (fixed 7+ times as a "projectPath issue" when it was really this).
-  let resolvedProjectPath = req.projectPath
-  if (!sessionJsonlExists(req.sessionId)) {
-    throw new Error(
-      `Session ${req.sessionId} not found in CLI session store. It may have been deleted or belongs to a different project path.`,
-    )
-  }
-  try {
-    const info = await getSessionInfo(req.sessionId, {
-      dir: req.projectPath || undefined,
-    })
-    if (info?.cwd && !resolvedProjectPath) {
-      resolvedProjectPath = info.cwd
-    }
-  } catch {
-    // getSessionInfo failures are non-fatal — only used for cwd fallback
-  }
+  const resolvedPath = await resolveExistingSession(req.sessionId, req.projectPath)
 
-  const controlId = crypto.randomUUID()
-  const emitter = new EventEmitter()
-  const permissions = new PermissionHandler()
-  const bridge = new MessageBridge()
-  const abort = new AbortController()
-
-  // biome-ignore lint/style/useConst: definite assignment pattern — cs assigned below
-  let cs!: ControlSession
-
-  const emit = (event: ServerEvent) => registry.emitSequenced(cs, event)
-
-  const q = query({
-    prompt: bridge,
-    options: buildQueryOptions(
-      {
-        model: req.model ?? 'claude-sonnet-4-20250514',
-        permissionMode: req.permissionMode,
-        projectPath: resolvedProjectPath,
-        resume: req.sessionId,
-      },
-      permissions,
-      emit,
-      abort,
-    ),
-  })
-
-  cs = {
-    controlId,
-    sessionId: req.sessionId,
-    model: req.model ?? 'claude-sonnet-4-20250514',
-    query: q,
-    bridge,
-    abort,
-    state: 'initializing',
-    totalCostUsd: 0,
-    turnCount: 0,
-    modelUsage: {},
-    startedAt: Date.now(),
-    emitter,
-    permissions,
-    permissionMode: req.permissionMode ?? 'default',
-    wsClients: new Set(),
-    lastSessionInit: null,
-    accumulator: new StreamAccumulator(),
-  }
-
-  registry.register(cs)
-  runStreamLoop(cs, registry)
-
-  // Send initial message to kick-start the SDK stream.
-  // The SDK's query() with prompt:bridge waits for the first message
-  // before emitting session_init. Without this, resume deadlocks.
-  if (req.initialMessage) {
-    cs.bridge.push({
-      type: 'user',
-      session_id: '',
-      message: { role: 'user', content: [{ type: 'text', text: req.initialMessage }] },
-      parent_tool_use_id: null,
-    })
-    // Echo into accumulator so blocks_snapshot includes the user message
-    // (matches createControlSession behavior)
-    registry.emitSequenced(cs, {
-      type: 'user_message_echo',
-      content: req.initialMessage,
-      timestamp: Date.now() / 1000,
-    })
-  }
-
-  return cs
+  return setupControlSession(
+    {
+      model: req.model ?? 'claude-sonnet-4-20250514',
+      permissionMode: req.permissionMode,
+      projectPath: resolvedPath,
+      resume: req.sessionId,
+      knownSessionId: req.sessionId,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
-export function forkControlSession(
+export async function forkControlSession(
   req: ForkSessionRequest,
   registry: SessionRegistry,
-): ControlSession {
-  const controlId = crypto.randomUUID()
-  const emitter = new EventEmitter()
-  const permissions = new PermissionHandler()
-  const bridge = new MessageBridge()
-  const abort = new AbortController()
+): Promise<ControlSession> {
+  const resolvedPath = await resolveExistingSession(req.sessionId, req.projectPath)
 
-  // biome-ignore lint/style/useConst: definite assignment pattern — cs assigned below
-  let cs!: ControlSession
-
-  const emit = (event: ServerEvent) => registry.emitSequenced(cs, event)
-
-  const q = query({
-    prompt: bridge,
-    options: buildQueryOptions(
-      {
-        model: req.model ?? 'claude-sonnet-4-20250514',
-        permissionMode: req.permissionMode,
-        projectPath: req.projectPath,
-        resume: req.sessionId,
-        forkSession: true,
-      },
-      permissions,
-      emit,
-      abort,
-    ),
-  })
-
-  cs = {
-    controlId,
-    sessionId: '', // will be populated from SDK message session_id
-    model: req.model ?? 'claude-sonnet-4-20250514',
-    query: q,
-    bridge,
-    abort,
-    state: 'initializing',
-    totalCostUsd: 0,
-    turnCount: 0,
-    modelUsage: {},
-    startedAt: Date.now(),
-    emitter,
-    permissions,
-    permissionMode: req.permissionMode ?? 'default',
-    wsClients: new Set(),
-    lastSessionInit: null,
-    accumulator: new StreamAccumulator(),
-  }
-
-  registry.register(cs)
-  runStreamLoop(cs, registry)
-
-  return cs
+  return setupControlSession(
+    {
+      model: req.model ?? 'claude-sonnet-4-20250514',
+      permissionMode: req.permissionMode,
+      projectPath: resolvedPath,
+      resume: req.sessionId,
+      forkSession: true,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
 /** One long-lived stream loop per session. Runs until session closes or errors. */

@@ -525,6 +525,7 @@ export interface ForkSessionRequest {
   model?: string
   permissionMode?: string
   projectPath?: string
+  initialMessage?: string
 }
 
 export interface PromptRequest {

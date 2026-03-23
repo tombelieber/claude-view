@@ -151,7 +151,7 @@ describe('routes', () => {
       const app = createRoutes(registry)
       const cs = makeStubCs({ controlId: 'fork-ctrl', sessionId: '' })
 
-      vi.mocked(sdkSession.forkControlSession).mockReturnValue(cs)
+      vi.mocked(sdkSession.forkControlSession).mockResolvedValue(cs)
       mockWaitForSessionInit.mockImplementation(async (target: ControlSession) => {
         target.sessionId = 'new-forked-session-id'
       })
@@ -177,7 +177,7 @@ describe('routes', () => {
       const app = createRoutes(registry)
       const cs = makeStubCs({ controlId: 'fork-ctrl', sessionId: '' })
 
-      vi.mocked(sdkSession.forkControlSession).mockReturnValue(cs)
+      vi.mocked(sdkSession.forkControlSession).mockResolvedValue(cs)
       mockWaitForSessionInit.mockImplementation(async (target: ControlSession) => {
         target.sessionId = 'new-forked-id'
       })
