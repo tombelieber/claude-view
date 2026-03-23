@@ -25,7 +25,6 @@ import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
-import { useHookEvents } from '../hooks/use-hook-events'
 import { useModelOptions } from '../hooks/use-models'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
@@ -47,8 +46,6 @@ import {
   generateStandaloneHtml,
 } from '../lib/export-html'
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
-import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
-import { messagesToRichMessages } from '../lib/message-to-rich'
 import { getContextLimit } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
@@ -67,7 +64,7 @@ import { ConversationThread } from './conversation/ConversationThread'
 import { chatRegistry } from './conversation/blocks/chat/registry'
 import { developerRegistry } from './conversation/blocks/developer/registry'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
-import { ViewModeControls } from './live/ViewModeControls'
+import { DisplayModeToggle } from './live/DisplayModeToggle'
 import { historyToPanelData } from './live/session-panel-data'
 import type { UseLiveSessionsResult } from './live/use-live-sessions'
 
@@ -93,8 +90,6 @@ export function ConversationView() {
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
-  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
-
   // Unified conversation hook: blocks + actions + session state
   const {
     blocks,
@@ -361,32 +356,11 @@ export function ConversationView() {
 
   const [panelOpen, setPanelOpen] = useState(true)
 
-  // Rich messages for side panel data pipeline (SessionDetailPanel)
-  const richMessages = useMemo(
-    () => (session?.messages?.length ? messagesToRichMessages(session.messages) : []),
-    [session?.messages],
-  )
-  const richHookMessages = useMemo(() => hookEventsToRichMessages(hookEvents), [hookEvents])
-  const richMessagesWithHookEvents = useMemo(() => {
-    if (
-      richHookMessages.length === 0 ||
-      richMessages.some((m) => m.metadata?.type === 'hook_event')
-    ) {
-      return richMessages
-    }
-    return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
-  }, [richMessages, richHookMessages])
-
   // Side panel data
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
-    return historyToPanelData(
-      sessionDetail,
-      richData ?? undefined,
-      sessionInfo,
-      richMessagesWithHookEvents,
-    )
-  }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo)
+  }, [sessionDetail, richData, sessionInfo])
 
   // FSM: derive panel mode from live status + session state
   const panelMode = derivePanelMode(sessionId, liveStatus, sessionState)
@@ -555,7 +529,7 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
-          <ViewModeControls />
+          <DisplayModeToggle />
         </div>
 
         <div className="flex items-center gap-2">

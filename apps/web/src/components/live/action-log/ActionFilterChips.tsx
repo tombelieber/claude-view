@@ -1,4 +1,4 @@
-import { type ChipDefinition, FilterChips } from './FilterChips'
+import { type ChipDefinition, FilterChips } from '../../ui/FilterChips'
 import type { ActionCategory } from './types'
 
 const ACTION_CATEGORIES: ChipDefinition<ActionCategory>[] = [
