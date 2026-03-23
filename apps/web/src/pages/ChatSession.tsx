@@ -288,25 +288,23 @@ export function ChatSession({
         {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
             flex-1 min-h-0 gives Virtuoso a measurable viewport height. */}
         <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-          {blocks.length === 0 && !thinkingState ? (
+          {blocks.length === 0 && !thinkingState && !sessionId ? (
             <div className="flex items-center justify-center flex-1 text-gray-400 dark:text-gray-500">
               <div className="text-center">
                 <p className="text-lg font-medium mb-2">Start a conversation</p>
                 <p className="text-sm mb-4">Send a message to begin.</p>
-                {!sessionId && (
-                  <div className="flex justify-center">
-                    <ModelSelector
-                      model={selectedModel}
-                      onModelChange={handleModelChange}
-                      isLive={viewMode === 'active'}
-                    />
-                  </div>
-                )}
+                <div className="flex justify-center">
+                  <ModelSelector
+                    model={selectedModel}
+                    onModelChange={handleModelChange}
+                    isLive={viewMode === 'active'}
+                  />
+                </div>
               </div>
             </div>
-          ) : blocks.length === 0 && thinkingState ? (
+          ) : blocks.length === 0 && (thinkingState || sessionId) ? (
             /* No blocks yet but something is happening — centered indicator */
-            <ThinkingIndicator phase={thinkingState} centered />
+            <ThinkingIndicator phase={thinkingState ?? 'loading'} centered />
           ) : (
             <ConversationActionsProvider
               actions={{
