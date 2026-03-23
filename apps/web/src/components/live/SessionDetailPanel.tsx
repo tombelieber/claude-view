@@ -1,5 +1,3 @@
-import type { InteractionBlock } from '@claude-view/shared/types/blocks'
-import type { PermissionRequest } from '@claude-view/shared/types/sidecar-protocol'
 import {
   Check,
   CheckSquare,
@@ -11,8 +9,6 @@ import {
   GitBranch,
   LayoutDashboard,
   MessageSquare,
-  ScrollText,
-  Terminal,
   Timer,
   TreePine,
   Users,
@@ -20,23 +16,21 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import { ConversationActionsProvider } from '../../contexts/conversation-actions-context'
+import { ConversationThread } from '../conversation/ConversationThread'
+import { chatRegistry } from '../conversation/blocks/chat/registry'
+import { developerRegistry } from '../conversation/blocks/developer/registry'
 import { useConversation } from '../../hooks/use-conversation'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
-import { useLiveSessionMessages } from '../../hooks/use-live-session-messages'
-import { useModelOptions } from '../../hooks/use-models'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
-import { useSessionCapabilities } from '../../hooks/use-session-capabilities'
 import { useSessionDetail } from '../../hooks/use-session-detail'
-import { computeCategoryCounts } from '../../lib/compute-category-counts'
-import { deriveLiveStatus, derivePanelMode, modeToInputBar } from '../../lib/derive-panel-mode'
+import { deriveLiveStatus } from '../../lib/derive-panel-mode'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
-import { getContextLimit } from '../../lib/model-context-windows'
 import { cn } from '../../lib/utils'
 import { useMonitorStore } from '../../store/monitor-store'
 import { COST_CATEGORY_COLORS } from '../../theme'
@@ -44,24 +38,19 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
-import { ChatInputBar } from '../chat/ChatInputBar'
-import { PermissionCard } from '../chat/cards/PermissionCard'
 import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
-import { CompactChatTab } from './CompactChatTab'
+import { DisplayModeToggle } from './DisplayModeToggle'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { PlanTab } from './PlanTab'
-import { RichPane } from './RichPane'
 import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
 import { TaskDetailTab } from './TaskDetailTab'
 import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
-import { ViewModeControls } from './ViewModeControls'
-import { ActionLogTab } from './action-log'
 import { hasUnavailableCost } from './cost-display'
 import { getEffectiveBranch } from './effective-branch'
 import type { SessionPanelData } from './session-panel-data'
@@ -72,17 +61,7 @@ import type { LiveSession } from './use-live-sessions'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId =
-  | 'overview'
-  | 'chat'
-  | 'terminal'
-  | 'log'
-  | 'sub-agents'
-  | 'teams'
-  | 'cost'
-  | 'tasks'
-  | 'changes'
-  | 'plan'
+type TabId = 'overview' | 'chat' | 'sub-agents' | 'teams' | 'cost' | 'tasks' | 'changes' | 'plan'
 
 interface SessionDetailPanelProps {
   /** Live session (existing callers) */
@@ -101,8 +80,6 @@ interface SessionDetailPanelProps {
 const TABS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'chat', label: 'Chat', icon: MessageSquare },
-  { id: 'terminal', label: 'Terminal', icon: Terminal },
-  { id: 'log', label: 'Log', icon: ScrollText },
   { id: 'sub-agents', label: 'Sub-Agents', icon: Users },
   { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'cost', label: 'Cost', icon: DollarSign },
@@ -180,65 +157,22 @@ export function SessionDetailPanel({
   const detailLiveStatus = deriveLiveStatus(session)
 
   // ---- Unified conversation hook — handles WS lifecycle + blocks + actions ----
-  const {
-    blocks: convBlocks,
-    actions: convActions,
-    sessionInfo: convInfo,
-  } = useConversation(data.id, { liveStatus: detailLiveStatus })
-
-  // FSM: derive panel mode for this detail panel
-  const detailPanelMode = derivePanelMode(data.id, detailLiveStatus, convInfo.sessionState)
-
-  // Command palette capabilities
-  const sdpCapabilities = useSessionCapabilities(convInfo)
-  const { options: sdpModelOptions } = useModelOptions()
-
-  // Build ControlCallbacks from convActions for RichPane interactive cards
-  const controlCallbacks = useMemo(
-    () => ({
-      answerQuestion: convActions.answerQuestion,
-      respondPermission: (requestId: string, allowed: boolean) =>
-        convActions.respondPermission(requestId, allowed),
-      approvePlan: convActions.approvePlan,
-      submitElicitation: convActions.submitElicitation,
-    }),
-    [convActions],
-  )
-
-  // Find the first unresolved permission request from the live block stream
-  const pendingPermission = useMemo(
-    () =>
-      convBlocks.find(
-        (b) => b.type === 'interaction' && b.variant === 'permission' && !b.resolved,
-      ) as InteractionBlock | undefined,
-    [convBlocks],
-  )
+  const { blocks: convBlocks, actions: convActions } = useConversation(data.id, {
+    liveStatus: detailLiveStatus,
+  })
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
   const hasTeam = !!data.teamName
 
-  // ---- URL param: ?tab=teams ----
+  // ---- URL param: ?tab= (with backward compat for removed terminal/log tabs) ----
   const [searchParams] = useSearchParams()
-  const initialTab = searchParams.get('tab') as TabId | null
+  const rawTab = searchParams.get('tab')
+  const resolvedTab: TabId =
+    rawTab === 'terminal' || rawTab === 'log' ? 'chat' : ((rawTab as TabId) ?? 'overview')
 
   // ---- Local state ----
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'overview')
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
-
-  // Live mode: WebSocket messages; History mode: pre-loaded messages
-  const {
-    messages: liveMessages,
-    hookEvents: _liveHookEvents,
-    bufferDone: liveBufferDone,
-  } = useLiveSessionMessages(
-    data.id,
-    isLive, // only connect WebSocket for live sessions
-  )
-  const richMessages = isLive ? liveMessages : (data.terminalMessages ?? [])
-  const bufferDone = isLive ? liveBufferDone : true // history messages are always fully loaded
-
-  // Shared category counts — computed once, passed to both Terminal and Log tabs
-  const categoryCounts = useMemo(() => computeCategoryCounts(richMessages), [richMessages])
+  const [activeTab, setActiveTab] = useState<TabId>(resolvedTab)
+  const displayMode = useMonitorStore((s) => s.displayMode)
 
   // Historical hook events (REST fetch for non-live sessions)
   useHookEvents(data.id, !isLive)
@@ -559,11 +493,11 @@ export function SessionDetailPanel({
           </button>
         )}
 
-        {/* Chat / Debug + Rich / JSON — only shown on Terminal tab */}
-        {activeTab === 'terminal' && (
+        {/* Display mode toggle — only shown on Chat tab */}
+        {activeTab === 'chat' && (
           <>
             <div className="flex-1" />
-            <ViewModeControls className="mr-2" />
+            <DisplayModeToggle className="mr-2" />
           </>
         )}
       </div>
@@ -785,7 +719,7 @@ export function SessionDetailPanel({
           </div>
         )}
 
-        {/* ---- Chat tab (compact block renderer) ---- */}
+        {/* ---- Chat tab (conversation thread with mode toggle) ---- */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-full overflow-hidden">
             <ConversationActionsProvider
@@ -797,67 +731,14 @@ export function SessionDetailPanel({
                 submitElicitation: convActions.submitElicitation,
               }}
             >
-              <CompactChatTab blocks={convBlocks} />
+              <ConversationThread
+                blocks={convBlocks}
+                renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
+                filterBar={displayMode === 'developer'}
+                compact
+              />
             </ConversationActionsProvider>
           </div>
-        )}
-
-        {/* ---- Terminal tab ---- */}
-        {activeTab === 'terminal' && (
-          <div className="flex flex-col h-full">
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <RichPane
-                messages={richMessages}
-                isVisible={true}
-                verboseMode={verboseMode}
-                bufferDone={bufferDone}
-                categoryCounts={categoryCounts}
-                controlCallbacks={controlCallbacks}
-              />
-            </div>
-            {pendingPermission && pendingPermission.variant === 'permission' && (
-              <PermissionCard
-                permission={pendingPermission.data as PermissionRequest}
-                onRespond={convActions.respondPermission}
-              />
-            )}
-            {detailPanelMode.mode !== 'blank' && (
-              <ChatInputBar
-                onSend={convActions.sendMessage}
-                state={modeToInputBar(detailPanelMode)}
-                contextPercent={
-                  data.contextWindowTokens > 0
-                    ? Math.min(
-                        100,
-                        Math.round(
-                          data.statuslineUsedPct ??
-                            (data.contextWindowTokens /
-                              getContextLimit(
-                                data.model,
-                                data.contextWindowTokens,
-                                data.statuslineContextWindowSize,
-                              )) *
-                              100,
-                        ),
-                      )
-                    : undefined
-                }
-                capabilities={sdpCapabilities}
-                modelOptions={sdpModelOptions}
-                onCommand={(cmd) => convActions.sendMessage(`/${cmd}`)}
-                onAgent={(agent) => convActions.sendMessage(`@${agent}`)}
-              />
-            )}
-          </div>
-        )}
-
-        {/* ---- Log tab ---- */}
-        {activeTab === 'log' && (
-          <ActionLogTab
-            messages={richMessages}
-            bufferDone={bufferDone}
-            categoryCounts={categoryCounts}
-          />
         )}
 
         {/* ---- Sub-Agents tab (merged with Timeline) ---- */}
