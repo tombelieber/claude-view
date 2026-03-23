@@ -1075,4 +1075,21 @@ describe('deriveThinkingState', () => {
       ),
     ).toBeNull()
   })
+
+  // ── Regression: loading gap prevention ─────────────────
+  // ChatSession.tsx uses: blocks.length === 0 && !thinkingState && !sessionId
+  // to decide the "Start a conversation" empty state. This verifies the
+  // pre-condition: when phase is 'empty' (before useEffect fires SELECT_SESSION),
+  // thinkingState IS null — so the UI MUST also check sessionId to avoid flashing
+  // the empty state for 1 frame.
+  test('REGRESSION: empty phase returns null — UI must guard with sessionId', () => {
+    const store = makeStore({ phase: 'empty' })
+    const blocks = deriveBlocks(store)
+    const thinking = deriveThinkingState(store)
+    // Both are falsy — without sessionId guard, ChatSession would show "Start a conversation"
+    expect(blocks).toEqual([])
+    expect(thinking).toBeNull()
+    // This proves the UI layer MUST check sessionId independently.
+    // See ChatSession.tsx: `blocks.length === 0 && !thinkingState && !sessionId`
+  })
 })
