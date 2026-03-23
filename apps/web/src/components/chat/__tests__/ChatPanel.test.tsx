@@ -26,7 +26,13 @@ function renderPanel(overrides?: { sessionId?: string; liveStatus?: string }) {
   }
   const props = {
     params,
-    api: {} as unknown,
+    api: {
+      isActive: false,
+      onDidActiveChange: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidGroupChange: vi.fn(() => ({ dispose: vi.fn() })),
+      updateParameters: vi.fn(),
+      setTitle: vi.fn(),
+    } as unknown,
     containerApi: {} as unknown,
   }
   // biome-ignore lint/suspicious/noExplicitAny: mock dockview props in test
