@@ -176,33 +176,56 @@ const SHELL_NAMES: &[&str] = &[
     "powershell",
 ];
 
-/// IDE extension path patterns for own-binary detection.
+/// IDE parent process patterns: (substring to match, human-readable label).
 ///
-/// IDE classification uses ONLY the Claude binary's own path — not the parent
-/// process chain. A global `claude` binary launched from an IDE's integrated
-/// terminal is a terminal session, not an IDE session.
-///
-/// Currently VS Code, Cursor, and Windsurf install their own Claude binary
-/// inside their extension directories. Other IDEs (IntelliJ, Neovim, etc.)
-/// use the global binary, so they appear as terminal sessions.
-/// This is intentional: the IDE badge means "launched BY the IDE extension."
-///
+/// Checked against the DIRECT parent process only (not grandparents) to
+/// distinguish "extension launched Claude" from "user typed `claude` in
+/// IDE's integrated terminal." When the parent is a shell, the session is
+/// Terminal — even if an IDE is further up the process tree.
+const IDE_PARENT_PATTERNS: &[(&str, &str)] = &[
+    // VS Code and variants
+    ("Visual Studio Code", "VS Code"),
+    ("Code Helper", "VS Code"),
+    ("code-insiders", "VS Code"),
+    // Cursor
+    ("Cursor Helper", "Cursor"),
+    ("cursor-helper", "Cursor"),
+    // Windsurf
+    ("Windsurf Helper", "Windsurf"),
+    ("windsurf-helper", "Windsurf"),
+    // JetBrains family
+    ("IntelliJ IDEA", "IntelliJ"),
+    ("WebStorm", "WebStorm"),
+    ("PyCharm", "PyCharm"),
+    ("GoLand", "GoLand"),
+    ("RustRover", "RustRover"),
+    ("Rider", "Rider"),
+    ("CLion", "CLion"),
+    ("PhpStorm", "PhpStorm"),
+    // Others
+    ("Xcode", "Xcode"),
+    ("Zed", "Zed"),
+    ("Neovim", "Neovim"),
+    ("nvim", "Neovim"),
+    ("Sublime Text", "Sublime Text"),
+    ("sublime_text", "Sublime Text"),
+    ("Eclipse", "Eclipse"),
+    ("Android Studio", "Android Studio"),
+    ("Fleet", "Fleet"),
+];
+
 /// Classify where a Claude process was launched from.
 ///
-/// Two-pass approach:
-/// 1. Check the process's OWN binary path for IDE extension paths
-///    (only the extension's bundled binary counts as "IDE" — typing `claude`
-///    in an IDE's integrated terminal is still a terminal session)
-/// 2. Walk ancestors for sidecar detection (Agent SDK, defense-in-depth)
+/// Three-pass approach:
+/// 1. Check the process's OWN binary path for IDE extension installs
+///    (the most reliable signal — extension bundles its own Claude binary)
+/// 2. Walk ancestors: sidecar (any depth) + IDE (direct parent only)
+///    - Shell parent → Terminal (user typed `claude` in a terminal, even inside IDE)
+///    - IDE parent → IDE (extension launched Claude directly, no shell in between)
+///    - Sidecar parent → AgentSdk (defense-in-depth for control binding)
 /// 3. Everything else → Terminal
-///
-/// IDE detection relies ONLY on the binary path, not the ancestor chain.
-/// Finding "VS Code" as a grandparent means nothing — the user may have
-/// just typed `claude` in VS Code's integrated terminal.
 fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInfo {
     // Pass 1: Check the process's own binary path for IDE extension installs.
-    // This is the ONLY reliable IDE signal. A global `claude` binary launched
-    // from an IDE's terminal is still a terminal session.
     let cmd_args = process.cmd();
     let own_full = cmd_args
         .iter()
@@ -210,30 +233,42 @@ fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInf
         .collect::<Vec<_>>()
         .join(" ");
 
-    // VS Code extension bundles Claude at .vscode/extensions/anthropic.claude-code-*/
-    if own_full.contains(".vscode/extensions/") || own_full.contains(".vscode-server/") {
-        return SessionSourceInfo {
-            category: SessionSource::Ide,
-            label: Some("VS Code".to_string()),
-        };
-    }
-    if own_full.contains(".cursor/extensions/") || own_full.contains(".cursor-server/") {
-        return SessionSourceInfo {
-            category: SessionSource::Ide,
-            label: Some("Cursor".to_string()),
-        };
-    }
-    if own_full.contains(".windsurf/extensions/") || own_full.contains(".windsurf-server/") {
-        return SessionSourceInfo {
-            category: SessionSource::Ide,
-            label: Some("Windsurf".to_string()),
-        };
+    if let Some(source) = classify_by_binary_path(&own_full) {
+        return source;
     }
 
-    // Pass 2: Walk ancestors for sidecar detection only (Agent SDK).
-    // Defense-in-depth — the authoritative path is control binding → AgentSdk
-    // set in manager.rs / live.rs. This catches edge cases where the control
-    // binding was missed.
+    // Pass 2: Walk ancestors for sidecar + direct-parent IDE detection.
+    let ancestors = collect_ancestors(sys, process);
+    classify_by_ancestors(&ancestors)
+}
+
+/// Pure classification from the Claude binary's own command line.
+/// Returns Some(IDE) if the path contains a known extension directory.
+fn classify_by_binary_path(own_full: &str) -> Option<SessionSourceInfo> {
+    if own_full.contains(".vscode/extensions/") || own_full.contains(".vscode-server/") {
+        return Some(SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("VS Code".to_string()),
+        });
+    }
+    if own_full.contains(".cursor/extensions/") || own_full.contains(".cursor-server/") {
+        return Some(SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("Cursor".to_string()),
+        });
+    }
+    if own_full.contains(".windsurf/extensions/") || own_full.contains(".windsurf-server/") {
+        return Some(SessionSourceInfo {
+            category: SessionSource::Ide,
+            label: Some("Windsurf".to_string()),
+        });
+    }
+    None
+}
+
+/// Collect ancestor (name, full_cmd) pairs from the process tree.
+fn collect_ancestors(sys: &System, process: &sysinfo::Process) -> Vec<(String, String)> {
+    let mut result = Vec::new();
     let mut current_pid = process.parent();
     let mut depth = 0u32;
     const MAX_ANCESTOR_DEPTH: u32 = 5;
@@ -247,15 +282,29 @@ fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInf
         let Some(ancestor) = sys.process(pid) else {
             break;
         };
-        let anc_name = ancestor.name().to_string_lossy().to_lowercase();
-        let anc_full = ancestor
+        let name = ancestor.name().to_string_lossy().to_lowercase();
+        let full = ancestor
             .cmd()
             .iter()
             .map(|s| s.to_string_lossy().to_string())
             .collect::<Vec<_>>()
             .join(" ");
+        result.push((name, full));
+        current_pid = ancestor.parent();
+    }
+    result
+}
 
-        // Sidecar → Agent SDK
+/// Pure classification from ancestor data. Testable without real processes.
+///
+/// Rules:
+/// - Sidecar at ANY depth → AgentSdk
+/// - Direct parent (index 0) is a shell → Terminal (even if IDE is grandparent)
+/// - Direct parent matches IDE pattern → IDE
+/// - Everything else → Terminal
+fn classify_by_ancestors(ancestors: &[(String, String)]) -> SessionSourceInfo {
+    for (depth_0, (anc_name, anc_full)) in ancestors.iter().enumerate() {
+        // Sidecar → Agent SDK (at any depth)
         if anc_full.contains("sidecar/dist/index.js") {
             return SessionSourceInfo {
                 category: SessionSource::AgentSdk,
@@ -263,20 +312,35 @@ fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInf
             };
         }
 
-        // Skip shells — sidecar might be higher up
         let is_shell = SHELL_NAMES
             .iter()
-            .any(|sh| anc_name == *sh || anc_name.ends_with(sh));
+            .any(|sh| anc_name == sh || anc_name.ends_with(sh));
+
+        // Direct parent (depth 0): also check IDE patterns.
+        // Shell parent → skip IDE (user typed `claude` in terminal).
+        if depth_0 == 0 && !is_shell {
+            for &(pattern, label) in IDE_PARENT_PATTERNS {
+                // Substring match on full command line (catches paths and multi-word names).
+                // Exact equality on process name (prevents "zed" matching "freezed").
+                if anc_full.contains(pattern) || *anc_name == pattern.to_lowercase() {
+                    return SessionSourceInfo {
+                        category: SessionSource::Ide,
+                        label: Some(label.to_string()),
+                    };
+                }
+            }
+        }
+
+        // Skip shells — sidecar might be higher up
         if is_shell {
-            current_pid = ancestor.parent();
             continue;
         }
 
-        // Non-shell ancestor found, not sidecar → stop walking
+        // Non-shell ancestor found, not sidecar or IDE → stop walking
         break;
     }
 
-    // Default: terminal (global binary, any terminal — including IDE integrated terminals)
+    // Default: terminal
     SessionSourceInfo {
         category: SessionSource::Terminal,
         label: None,
@@ -433,5 +497,245 @@ mod tests {
     fn test_is_pid_alive_rejects_zero_and_one() {
         assert!(!is_pid_alive(0));
         assert!(!is_pid_alive(1));
+    }
+
+    // =========================================================================
+    // classify_by_binary_path tests
+    // =========================================================================
+
+    #[test]
+    fn binary_path_vscode_extension() {
+        let cmd = "/Users/me/.vscode/extensions/anthropic.claude-code-1.0.0/cli.js";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn binary_path_vscode_server() {
+        let cmd = "/home/me/.vscode-server/extensions/anthropic.claude-code/cli.js";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn binary_path_cursor_extension() {
+        let cmd = "/Users/me/.cursor/extensions/anthropic.claude-code-1.0.0/cli.js";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Cursor"));
+    }
+
+    #[test]
+    fn binary_path_windsurf_extension() {
+        let cmd = "/Users/me/.windsurf/extensions/anthropic.claude-code-1.0.0/cli.js";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Windsurf"));
+    }
+
+    #[test]
+    fn binary_path_global_binary_returns_none() {
+        let cmd = "/usr/local/bin/claude";
+        assert!(classify_by_binary_path(cmd).is_none());
+    }
+
+    #[test]
+    fn binary_path_node_global_returns_none() {
+        let cmd = "node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js";
+        assert!(classify_by_binary_path(cmd).is_none());
+    }
+
+    // =========================================================================
+    // classify_by_ancestors tests — the core logic for Issue 1
+    // =========================================================================
+
+    #[test]
+    fn ancestors_empty_returns_terminal() {
+        let result = classify_by_ancestors(&[]);
+        assert_eq!(result.category, SessionSource::Terminal);
+        assert!(result.label.is_none());
+    }
+
+    #[test]
+    fn ancestors_shell_parent_returns_terminal() {
+        // claude → zsh: user typed `claude` in terminal
+        let ancestors = vec![("zsh".to_string(), "/bin/zsh".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Terminal);
+    }
+
+    #[test]
+    fn ancestors_shell_parent_with_ide_grandparent_returns_terminal() {
+        // claude → zsh → Code Helper: user typed `claude` in VS Code terminal
+        // MUST be Terminal, not VS Code!
+        let ancestors = vec![
+            ("zsh".to_string(), "/bin/zsh".to_string()),
+            (
+                "code helper".to_string(),
+                "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app"
+                    .to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(
+            result.category,
+            SessionSource::Terminal,
+            "CLI in VS Code terminal must be Terminal, not IDE"
+        );
+    }
+
+    #[test]
+    fn ancestors_vscode_helper_direct_parent_returns_ide() {
+        // claude → Code Helper: VS Code extension launched Claude
+        let ancestors = vec![(
+            "code helper".to_string(),
+            "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn ancestors_cursor_helper_direct_parent_returns_ide() {
+        let ancestors = vec![(
+            "cursor helper".to_string(),
+            "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper.app".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Cursor"));
+    }
+
+    #[test]
+    fn ancestors_windsurf_helper_direct_parent_returns_ide() {
+        let ancestors = vec![(
+            "windsurf helper".to_string(),
+            "/Applications/Windsurf.app/Contents/Frameworks/Windsurf Helper.app".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Windsurf"));
+    }
+
+    #[test]
+    fn ancestors_jetbrains_direct_parent_returns_ide() {
+        let ancestors = vec![(
+            "idea".to_string(),
+            "/Applications/IntelliJ IDEA.app/Contents/MacOS/idea".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("IntelliJ"));
+    }
+
+    #[test]
+    fn ancestors_neovim_direct_parent_returns_ide() {
+        let ancestors = vec![("nvim".to_string(), "/usr/local/bin/nvim".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Neovim"));
+    }
+
+    #[test]
+    fn ancestors_sidecar_direct_parent_returns_agent_sdk() {
+        let ancestors = vec![(
+            "node".to_string(),
+            "node /app/sidecar/dist/index.js".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::AgentSdk);
+    }
+
+    #[test]
+    fn ancestors_sidecar_through_shell_returns_agent_sdk() {
+        // claude → bash → sidecar: sidecar spawned via shell wrapper
+        let ancestors = vec![
+            ("bash".to_string(), "/bin/bash".to_string()),
+            (
+                "node".to_string(),
+                "node /app/sidecar/dist/index.js".to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(
+            result.category,
+            SessionSource::AgentSdk,
+            "Sidecar through shell must still be AgentSdk"
+        );
+    }
+
+    #[test]
+    fn ancestors_sidecar_with_ide_grandparent_returns_agent_sdk() {
+        // Sidecar takes priority over IDE even if IDE is in the chain
+        let ancestors = vec![
+            (
+                "node".to_string(),
+                "node /app/sidecar/dist/index.js".to_string(),
+            ),
+            (
+                "code helper".to_string(),
+                "/Applications/Visual Studio Code.app/Code Helper".to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::AgentSdk);
+    }
+
+    #[test]
+    fn ancestors_unknown_parent_returns_terminal() {
+        // claude → some-random-daemon: not shell, not IDE, not sidecar
+        let ancestors = vec![("launchd".to_string(), "/sbin/launchd".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Terminal);
+    }
+
+    #[test]
+    fn ancestors_fish_shell_returns_terminal() {
+        let ancestors = vec![("fish".to_string(), "/usr/bin/fish".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Terminal);
+    }
+
+    #[test]
+    fn ancestors_powershell_returns_terminal() {
+        let ancestors = vec![("pwsh".to_string(), "/usr/local/bin/pwsh".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Terminal);
+    }
+
+    #[test]
+    fn ancestors_process_containing_zed_substring_not_ide() {
+        // "freezed" contains "zed" as substring — must NOT match Zed IDE
+        let ancestors = vec![("freezed".to_string(), "/usr/bin/freezed".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(
+            result.category,
+            SessionSource::Terminal,
+            "Process name containing 'zed' as substring must not match Zed IDE"
+        );
+    }
+
+    #[test]
+    fn ancestors_process_named_exactly_zed_is_ide() {
+        // Exact "zed" process name = Zed IDE
+        let ancestors = vec![("zed".to_string(), "/usr/bin/zed".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Zed"));
+    }
+
+    #[test]
+    fn ancestors_jetbrains_bare_symlink_detected_by_name() {
+        // Linux: JetBrains Toolbox symlinks bare `idea` binary
+        // anc_full has no "IntelliJ IDEA" string, but process name is "idea"
+        // The pattern "IntelliJ IDEA" won't match name or cmd, but we don't
+        // have a bare "idea" pattern — this is a known gap (documented).
+        let ancestors = vec![("idea".to_string(), "/usr/local/bin/idea".to_string())];
+        let result = classify_by_ancestors(&ancestors);
+        // Currently Terminal — known gap for bare symlinks without full path
+        assert_eq!(result.category, SessionSource::Terminal);
     }
 }
