@@ -20,6 +20,8 @@ pre-commit:
     skill-sync:
       glob: "{claude-view/**,packages/mcp/src/tools/**,plugin.json,marketplace.json}"
       run: bash test/skill-sync.sh
+    pii-check:
+      run: bash scripts/integrity/pii-check.sh
 
 pre-push:
   parallel: true
