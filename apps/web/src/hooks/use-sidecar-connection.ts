@@ -1,7 +1,7 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { clearRespondedCache } from '../components/conversation/blocks/shared/use-interaction-handlers'
+import { clearRespondedCache } from '@claude-view/shared/components/conversation/blocks/shared/use-interaction-handlers'
 import { sidecarWsUrl } from '../lib/ws-url'
 
 export type ChatSessionStatus = 'active' | 'idle' | 'watching' | 'error' | 'ended'

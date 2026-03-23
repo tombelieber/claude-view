@@ -1,8 +1,8 @@
 import { useBlockSocket } from '../../hooks/use-block-socket'
 import { useMonitorStore } from '../../store/monitor-store'
-import { ConversationThread } from '../conversation/ConversationThread'
-import { chatRegistry } from '../conversation/blocks/chat/registry'
-import { developerRegistry } from '../conversation/blocks/developer/registry'
+import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 
 interface BlockTerminalPaneProps {
   sessionId: string
