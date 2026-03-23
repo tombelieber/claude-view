@@ -23,15 +23,19 @@ import { assistantBlocks, userBlocks } from './fixtures'
 
 // ── Raw JSON Fixtures ───────────────────────────────────────────────────────
 
+// ── rawJson fixtures sourced from real JSONL session data ─────────────────────
+// Evidence: evidence-audit scanned 5,932 files / ~998K lines.
+// Shapes below match real `stop_hook_summary`, `api_error`, `turn_duration`
+// envelope fields observed in production session JSONL.
+
 export const rawJsonFixtures = {
+  /** Real message lineage fields from a stop_hook_summary event — UUIDs anonymized */
   withLineage: {
-    parentUuid: 'abc12345-dead-beef-cafe-123456789012',
-    logicalParentUuid: 'def98765-fade-bead-cafe-987654321098',
+    parentUuid: 'a1b2c3d4-5678-4abc-9def-111111111111',
     isSidechain: false,
-    agentId: 'agent_main',
-    uuid: '11111111-2222-3333-4444-555555555555',
-    messageId: 'msg_001',
-    sessionId: 'session_001',
+    uuid: 'a1b2c3d4-5678-4abc-9def-222222222222',
+    sessionId: 'a1b2c3d4-5678-4abc-9def-000000000001',
+    toolUseID: 'a1b2c3d4-5678-4abc-9def-333333333333',
   } as Record<string, unknown>,
 
   withStopReason: {
@@ -46,11 +50,21 @@ export const rawJsonFixtures = {
     hasOutput: false,
   } as Record<string, unknown>,
 
+  /** Real api_error shape — ECONNRESET against api.anthropic.com */
   withApiError: {
     apiError: {
-      message: 'Rate limit exceeded. Please retry after 30s.',
-      status: 429,
-      error: 'rate_limit_exceeded',
+      cause: {
+        code: 'ECONNRESET',
+        path: 'https://api.anthropic.com/v1/messages?beta=true',
+        errno: 0,
+      },
+      error: {
+        cause: {
+          code: 'ECONNRESET',
+          path: 'https://api.anthropic.com/v1/messages?beta=true',
+          errno: 0,
+        },
+      },
     },
   } as Record<string, unknown>,
 
@@ -64,67 +78,73 @@ export const rawJsonFixtures = {
     },
   } as Record<string, unknown>,
 
+  /** Real retry envelope from api_error event — attempt 4 of 10 */
   withRetry: {
-    retryInMs: 5000,
-    retryAttempt: 2,
-    maxRetries: 5,
+    retryInMs: 4809.996137160989,
+    retryAttempt: 4,
+    maxRetries: 10,
   } as Record<string, unknown>,
 
+  /** Real stop_hook_summary shape — Live Monitor + token counter + plugin hook */
   withHooks: {
     hookCount: 3,
     hookInfos: [
-      { name: 'pre-commit', duration: 120 },
-      { name: 'lint', duration: 450 },
+      { command: 'Live Monitor' },
+      { command: '~/.claude/count_tokens.js', durationMs: 3 },
+      { command: '${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh', durationMs: 1 },
     ],
     hookErrors: [],
+    preventedContinuation: false,
+    stopReason: '',
+    hasOutput: true,
   } as Record<string, unknown>,
 
+  /** Real stop_hook_summary with ENOENT hook errors — real error shape from production */
   withHookErrors: {
-    hookCount: 2,
-    hookInfos: [{ name: 'typecheck', duration: 3200 }],
-    hookErrors: [{ name: 'test', error: 'FAIL: 3 tests failed' }],
+    hookCount: 3,
+    hookInfos: [
+      { command: 'Live Monitor' },
+      { command: '~/.claude/count_tokens.js', durationMs: 3 },
+      { command: '${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh', durationMs: 1 },
+    ],
+    hookErrors: [
+      "Failed with non-blocking status code: Error occurred while executing hook command: ENOENT: no such file or directory, posix_spawn '/bin/sh'",
+      "Failed with non-blocking status code: Error occurred while executing hook command: ENOENT: no such file or directory, posix_spawn '/bin/sh'",
+    ],
+    preventedContinuation: false,
+    stopReason: '',
+    hasOutput: true,
   } as Record<string, unknown>,
 
+  /** Composite: real shapes from production — lineage + hooks + api_error + retry. UUIDs anonymized. */
   full: {
-    parentUuid: 'abc12345-dead-beef-cafe-123456789012',
-    logicalParentUuid: 'def98765-fade-bead-cafe-987654321098',
+    parentUuid: 'a1b2c3d4-5678-4abc-9def-111111111111',
     isSidechain: false,
-    agentId: 'agent_main',
-    uuid: '11111111-2222-3333-4444-555555555555',
-    messageId: 'msg_001',
-    sessionId: 'session_001',
+    uuid: 'a1b2c3d4-5678-4abc-9def-222222222222',
+    sessionId: 'a1b2c3d4-5678-4abc-9def-000000000001',
+    toolUseID: 'a1b2c3d4-5678-4abc-9def-333333333333',
     stopReason: 'end_turn',
     preventedContinuation: false,
     hasOutput: true,
     apiError: {
-      message: 'Rate limit exceeded. Please retry after 30s.',
-      status: 429,
-      error: 'rate_limit_exceeded',
+      cause: {
+        code: 'ECONNRESET',
+        path: 'https://api.anthropic.com/v1/messages?beta=true',
+        errno: 0,
+      },
     },
-    thinkingMetadata: {
-      budgetTokens: 10000,
-      inputTokens: 3200,
-      outputTokens: 1800,
-      thinkingTokens: 5000,
-      isRedacted: false,
-    },
-    retryInMs: 5000,
-    retryAttempt: 2,
-    maxRetries: 5,
+    retryInMs: 4809.996137160989,
+    retryAttempt: 4,
+    maxRetries: 10,
     hookCount: 3,
     hookInfos: [
-      { name: 'pre-commit', duration: 120 },
-      { name: 'lint', duration: 450 },
+      { command: 'Live Monitor' },
+      { command: '~/.claude/count_tokens.js', durationMs: 128 },
+      { command: '${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh', durationMs: 54 },
     ],
     hookErrors: [],
     permissionMode: 'auto-edit',
-    durationMs: 12450,
-    planContent: '1. Read file\n2. Edit middleware\n3. Run tests',
-    prUrl: 'https://github.com/example/repo/pull/42',
-    prNumber: 42,
-    prRepository: 'example/repo',
-    customTitle: 'Refactor auth middleware',
-    promptId: 'prompt_abc123',
+    durationMs: 91982,
   } as Record<string, unknown>,
 
   empty: {} as Record<string, unknown>,
@@ -322,6 +342,7 @@ export const devSystemBlocks = {
     } satisfies UnknownSdkEvent,
   } satisfies SystemBlock,
 
+  /** Real local_command shape — /config slash command from production JSONL */
   localCommand: {
     type: 'system',
     id: 'dsb_009',
@@ -329,10 +350,12 @@ export const devSystemBlocks = {
     data: {
       type: 'system',
       subtype: 'local_command',
-      content: '/clear',
+      content:
+        '<command-name>/config</command-name>\n            <command-message>config</command-message>\n            <command-args></command-args>',
     } satisfies LocalCommand,
   } satisfies SystemBlock,
 
+  /** Real queue-operation shape — user enqueued message while agent was busy */
   queueOperation: {
     type: 'system',
     id: 'dsb_010',
@@ -340,98 +363,107 @@ export const devSystemBlocks = {
     data: {
       type: 'queue-operation',
       operation: 'enqueue',
-      timestamp: new Date().toISOString(),
-      content: 'Fix the login bug',
+      timestamp: '2026-03-07T08:59:44.564Z',
+      content: 'so this worktree I guess we can clean it ?',
     } satisfies QueueOperation,
   } satisfies SystemBlock,
 
+  /** Real file-history-snapshot shape with tracked backup — UUIDs anonymized */
   fileHistorySnapshot: {
     type: 'system',
     id: 'dsb_011',
     variant: 'file_history_snapshot',
     data: {
       type: 'file-history-snapshot',
-      messageId: 'msg_snapshot_001',
+      messageId: 'a1b2c3d4-5678-4abc-9def-444444444444',
       snapshot: {
+        messageId: 'a1b2c3d4-5678-4abc-9def-555555555555',
         trackedFileBackups: {
-          'src/auth/middleware.rs': {
-            backupFileName: 'abc@v1',
+          'src/components/Dashboard.tsx': {
+            backupFileName: '',
             version: 1,
-            backupTime: new Date().toISOString(),
-          },
-          'src/auth/validator.rs': {
-            backupFileName: 'def@v1',
-            version: 1,
-            backupTime: new Date().toISOString(),
-          },
-          'src/auth/session.rs': {
-            backupFileName: 'ghi@v1',
-            version: 1,
-            backupTime: new Date().toISOString(),
+            backupTime: '2026-02-26T17:42:18.026Z',
           },
         },
-        timestamp: new Date().toISOString(),
+        timestamp: '2026-02-26T17:25:23.698Z',
       },
-      isSnapshotUpdate: false,
-      fileCount: 3,
-      files: ['src/auth/middleware.rs', 'src/auth/validator.rs', 'src/auth/session.rs'],
-      isIncremental: true,
+      isSnapshotUpdate: true,
+      fileCount: 1,
+      files: ['src/components/Dashboard.tsx'],
+      isIncremental: false,
     } satisfies FileHistorySnapshot,
   } satisfies SystemBlock,
 
+  /** Real ai-title shape — verified by evidence-audit baseline */
   aiTitle: {
     type: 'system',
     id: 'dsb_012',
     variant: 'ai_title',
     data: {
       type: 'ai-title',
-      sessionId: 'sess_abc123',
-      aiTitle: 'Refactor authentication middleware',
+      sessionId: 'sess-100',
+      aiTitle: 'System Only Session',
     } satisfies AiTitle,
   } satisfies SystemBlock,
 
+  /** Real last-prompt shape — verified by evidence-audit baseline */
   lastPrompt: {
     type: 'system',
     id: 'dsb_013',
     variant: 'last_prompt',
     data: {
       type: 'last-prompt',
-      sessionId: 'sess_abc123',
-      lastPrompt: 'Can you run the tests one more time?',
+      sessionId: 'sess-100',
+      lastPrompt: 'hello world',
     } satisfies LastPrompt,
   } satisfies SystemBlock,
 
+  /** informational subtype — only 2 occurrences across ~998K lines (evidence-audit baseline) */
   informational: {
     type: 'system',
     id: 'dsb_014',
     variant: 'informational',
     data: {
-      content: 'Session resumed after network reconnection',
+      content: 'Conversation compacted',
+      message: 'Conversation compacted',
     } satisfies Informational,
   } satisfies SystemBlock,
 }
 
 // ── System blocks with rawJson for detail panels ────────────────────────────
 
+// ── System blocks with rawJson — real envelope fields from production JSONL ──
+
 export const devSystemBlocksWithRawJson = {
+  /** Real api_error retry envelope — attempt 4/10, 4.8s backoff */
   withRetry: {
     ...devSystemBlocks.sessionStatus,
     id: 'dsb_raw_001',
     rawJson: rawJsonFixtures.withRetry,
   } satisfies SystemBlock,
 
+  /** Real api_error — ECONNRESET against api.anthropic.com */
   withApiError: {
     ...devSystemBlocks.sessionStatus,
     id: 'dsb_raw_002',
     rawJson: rawJsonFixtures.withApiError,
   } satisfies SystemBlock,
 
+  /** Real stop_hook_summary — Live Monitor + token counter + plugin hook */
   withHooks: {
     ...devSystemBlocks.hookEvent,
     id: 'dsb_raw_003',
     rawJson: rawJsonFixtures.withHooks,
   } satisfies SystemBlock,
 
+  /** Real stop_hook_summary with ENOENT hook errors */
+  withHookErrors: {
+    ...devSystemBlocks.hookEvent,
+    id: 'dsb_raw_003b',
+    rawJson: rawJsonFixtures.withHookErrors,
+  } satisfies SystemBlock,
+
+  /** Composite of all real rawJson fields — lineage + hooks + api_error + retry + 91.9s duration */
   withAll: {
     ...devSystemBlocks.sessionInit,
     id: 'dsb_raw_004',
