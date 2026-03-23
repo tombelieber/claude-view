@@ -3,6 +3,7 @@ import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../../utils/cn'
+import { buildThreadMap } from '../../utils/thread-map'
 import { type ChipDefinition, FilterChips } from './FilterChips'
 import { DayDivider, formatDayLabel } from './DayDivider'
 import { DefaultExpandedProvider } from './blocks/developer/default-expanded-context'
@@ -221,6 +222,15 @@ export function ConversationThread({
       return cats.some((c) => activeFilter.includes(c))
     })
   }, [blocks, activeFilter])
+
+  // Build thread indentation map from parentUuid on blocks
+  const threadMap = useMemo(() => {
+    const threadable = blocks.map((b) => ({
+      uuid: b.id,
+      parent_uuid: ('parentUuid' in b ? b.parentUuid : null) ?? null,
+    }))
+    return buildThreadMap(threadable)
+  }, [blocks])
 
   const allItems = useMemo(() => buildThreadItems(visibleBlocks), [visibleBlocks])
   // Filter out items Virtuoso can't render — prevents "Zero-sized element" warnings and empty gaps.
@@ -449,13 +459,18 @@ export function ConversationThread({
       }
       const Renderer = renderers[item.block.type]
       if (!Renderer) return null
+      const thread = threadMap.get(item.block.id)
+      const indent = thread?.indent ?? 0
       return (
-        <div className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}>
+        <div
+          className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}
+          style={indent > 0 ? { paddingLeft: `${indent * 24}px` } : undefined}
+        >
           <Renderer block={item.block} />
         </div>
       )
     },
-    [renderers, compact],
+    [renderers, compact, threadMap],
   )
 
   const itemKey = useCallback(
