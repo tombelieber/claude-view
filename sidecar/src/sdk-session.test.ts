@@ -69,12 +69,10 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     startedAt: Date.now(),
     emitter: new EventEmitter(),
     // biome-ignore lint/suspicious/noExplicitAny: stub for testing
-    eventBuffer: { push: vi.fn() } as any,
-    nextSeq: 0,
-    // biome-ignore lint/suspicious/noExplicitAny: stub for testing
     permissions: { drainAll: vi.fn() } as any,
     permissionMode: 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
     ...overrides,
   }
@@ -475,7 +473,7 @@ describe('setSessionMode', () => {
     expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('default')
   })
 
-  it('blocks bypassPermissions with error event', async () => {
+  it('allows bypassPermissions mode change (allowDangerouslySkipPermissions always set)', async () => {
     const registry = new SessionRegistry()
     const mockQuery = makeMockQuery()
     const cs = makeStubCs({
@@ -486,25 +484,13 @@ describe('setSessionMode', () => {
     })
     registry.register(cs)
 
-    const messages: unknown[] = []
-    cs.emitter.on('message', (msg) => messages.push(msg))
-
     const result = await setSessionMode(cs, 'bypassPermissions', registry)
 
-    // Should NOT have called setPermissionMode on the query
-    expect(mockQuery.setPermissionMode).not.toHaveBeenCalled()
-
-    // Should have emitted a non-fatal error explaining bypassPermissions requires init
-    expect(messages).toHaveLength(1)
-    const errorMsg = messages[0] as { type: string; fatal: boolean; message: string }
-    expect(errorMsg.type).toBe('error')
-    expect(errorMsg.fatal).toBe(false)
-    expect(errorMsg.message).toContain('bypassPermissions')
-    expect(errorMsg.message).toContain('allowDangerouslySkipPermissions')
-
-    // Should return failure with original mode unchanged
-    expect(result).toEqual({ ok: false, currentMode: 'default' })
-    expect(cs.permissionMode).toBe('default')
+    // Should call setPermissionMode on the query — allowDangerouslySkipPermissions
+    // is always set at init time so bypassPermissions works mid-session.
+    expect(mockQuery.setPermissionMode).toHaveBeenCalledWith('bypassPermissions')
+    expect(result).toEqual({ ok: true, currentMode: 'bypassPermissions' })
+    expect(cs.permissionMode).toBe('bypassPermissions')
   })
 
   it('allows other non-bypassPermissions modes through', async () => {

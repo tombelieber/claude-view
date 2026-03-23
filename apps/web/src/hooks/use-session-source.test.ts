@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SessionChannel } from '../lib/session-channel'
-import { deriveCanResumeLazy, deriveEffectiveSend } from './use-session-source'
+import { deriveEffectiveSend } from './use-session-source'
 
 describe('deriveEffectiveSend', () => {
   const send = vi.fn()
@@ -31,33 +31,6 @@ describe('deriveEffectiveSend', () => {
   // --- Edge: isLive=true but send is null (shouldn't happen, but defensive) ---
   it('returns null send when live but send is null', () => {
     expect(deriveEffectiveSend(true, 'ctrl-1', 'sess-1', null, connectAndSend)).toBe(null)
-  })
-})
-
-describe('deriveCanResumeLazy', () => {
-  // --- Unit: controlId + not live → true ---
-  it('returns true when controlId is set and not live', () => {
-    expect(deriveCanResumeLazy('abc', 'sess-1', false)).toBe(true)
-  })
-
-  // --- Unit: controlId + live → false (WS already open) ---
-  it('returns false when live (WS already open)', () => {
-    expect(deriveCanResumeLazy('abc', 'sess-1', true)).toBe(false)
-  })
-
-  // --- Unit: no controlId but sessionId → true (auto-resume capable) ---
-  it('returns true when sessionId exists but no controlId (dormant, auto-resumable)', () => {
-    expect(deriveCanResumeLazy(null, 'sess-1', false)).toBe(true)
-  })
-
-  // --- Unit: no controlId, no sessionId → false ---
-  it('returns false when no controlId and no sessionId', () => {
-    expect(deriveCanResumeLazy(null, undefined, false)).toBe(false)
-  })
-
-  // --- Unit: no controlId + live → false ---
-  it('returns false when live regardless of controlId', () => {
-    expect(deriveCanResumeLazy(null, 'sess-1', true)).toBe(false)
   })
 })
 
@@ -184,12 +157,9 @@ describe('Bug 1 regression — no state filter in auto-connect (structural)', ()
   // in the init() function. This guards against re-introducing the anti-pattern.
   it('init() calls openWs unconditionally — source has no active.state filter', async () => {
     // Dynamic imports: vitest runs on Node but web tsconfig is browser-only
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
       'utf-8',
     )
@@ -209,12 +179,9 @@ describe('Bug 1 regression — no state filter in auto-connect (structural)', ()
   })
 
   it('init() has comment explaining unconditional auto-connect', async () => {
-    // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
     const fs = await import('node:fs/promises')
-    // @ts-expect-error — node:path unavailable in browser tsconfig
     const path = await import('node:path')
     const source = await fs.readFile(
-      // @ts-expect-error — process.cwd() unavailable in browser tsconfig
       path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
       'utf-8',
     )
@@ -318,7 +285,7 @@ describe('WS resume message always sent on connect', () => {
 })
 
 // ─── Create session response contract ─────────────────────────────────────
-// The API response from POST /api/control/sessions must include a non-empty
+// The API response from POST /api/sidecar/sessions must include a non-empty
 // sessionId for the frontend to navigate. These tests verify the contract.
 describe('Create session response handling', () => {
   // --- Regression: empty sessionId must NOT trigger navigation ---
@@ -523,7 +490,7 @@ describe('SDK session cleanup via beforeunload', () => {
     // Simulate the beforeunload handler
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+        fetchMock(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         })
@@ -532,7 +499,7 @@ describe('SDK session cleanup via beforeunload', () => {
 
     handleBeforeUnload()
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/control/sessions/ctrl-cleanup-test', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/sidecar/sessions/ctrl-cleanup-test', {
       method: 'DELETE',
       keepalive: true,
     })
@@ -545,7 +512,7 @@ describe('SDK session cleanup via beforeunload', () => {
 
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetchMock(`/api/control/sessions/${controlIdRef.current}`, {
+        fetchMock(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         })
@@ -564,8 +531,8 @@ describe('SDK session cleanup via beforeunload', () => {
         close: () => calls.push('ws.close'),
       },
     }
-    const heartbeatTimerRef = { current: 123 as ReturnType<typeof setInterval> | null }
-    const reconnectTimerRef = { current: 456 as ReturnType<typeof setTimeout> | null }
+    const heartbeatTimerRef = { current: 123 as unknown as ReturnType<typeof setInterval> | null }
+    const reconnectTimerRef = { current: 456 as unknown as ReturnType<typeof setTimeout> | null }
     const pendingMessagesRef = { current: [{ type: 'user_message', content: 'pending' }] }
 
     // Simulate React cleanup (mirrors the actual useEffect cleanup)
@@ -735,5 +702,91 @@ describe('WS message handling — committedBlocks/pendingText state (HT-07..HT-1
     const after2 = applyMessage(after1, { type: 'stream_delta', textDelta: ' world' })
     expect(after2.pendingText).toBe('hello world')
     expect(after2.committed).toHaveLength(1) // Still unchanged
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Task 2: openWs consistency + interactive card events
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('openWs consistency — setSessionState before every openWs call (Task 2)', () => {
+  it('connectAndSend sets initializing before openWs', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    // Extract connectAndSend body (the controlId branch)
+    const connectAndSendMatch = source.match(
+      /const connectAndSend[\s\S]*?if \(controlId\)\s*\{([\s\S]*?)\}/m,
+    )
+    expect(connectAndSendMatch).not.toBeNull()
+    const body = connectAndSendMatch?.[1] ?? ''
+    // setSessionState('initializing') must appear before openWs
+    const initIdx = body.indexOf("setSessionState('initializing')")
+    const openIdx = body.indexOf('openWs(')
+    expect(initIdx).toBeGreaterThanOrEqual(0)
+    expect(openIdx).toBeGreaterThan(initIdx)
+  })
+
+  it('reconnect callback sets initializing before openWs', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    const reconnectMatch = source.match(
+      /const reconnect = useCallback\(\(\) => \{([\s\S]*?)\}, \[/m,
+    )
+    expect(reconnectMatch).not.toBeNull()
+    const body = reconnectMatch?.[1] ?? ''
+    const initIdx = body.indexOf("setSessionState('initializing')")
+    const openIdx = body.indexOf('openWs(')
+    expect(initIdx).toBeGreaterThanOrEqual(0)
+    expect(openIdx).toBeGreaterThan(initIdx)
+  })
+
+  it('handleWsClose reconnect uses reconnecting (not initializing)', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    // The auto-reconnect in handleWsClose should use 'reconnecting'
+    expect(source).toMatch(/setSessionState\('reconnecting'[\s\S]*?openWs\(sid\)/)
+  })
+})
+
+describe('interactive card events → waiting_permission (Task 2)', () => {
+  it('handleWsMessage covers all 4 interactive card types', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    for (const cardType of ['permission_request', 'ask_question', 'plan_approval', 'elicitation']) {
+      expect(source).toMatch(new RegExp(`case '${cardType}'`))
+    }
+  })
+
+  it('all interactive cards are grouped before setSessionState waiting_permission', async () => {
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'src/hooks/use-session-source.ts'),
+      'utf-8',
+    )
+    const block = source.match(
+      /case 'permission_request':[\s\S]*?setSessionState\('waiting_permission'\)/m,
+    )
+    expect(block).not.toBeNull()
+    const matched = block?.[0] ?? ''
+    expect(matched).toContain("case 'ask_question'")
+    expect(matched).toContain("case 'plan_approval'")
+    expect(matched).toContain("case 'elicitation'")
   })
 })

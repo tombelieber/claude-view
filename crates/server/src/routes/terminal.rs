@@ -366,6 +366,23 @@ fn strip_command_tags(content: &str) -> String {
 ///   empty messages). Returns multiple messages when a single JSONL line contains
 ///   multiple content blocks (e.g., thinking + text, or multiple tool_use calls).
 fn format_line_for_mode(line: &str, mode: &str, finders: &RichModeFinders) -> Vec<String> {
+    if mode == "block" {
+        // Block mode: parse via BlockAccumulator, return ConversationBlock JSON.
+        // Per-line accumulator works for independent lines (user, progress, system).
+        // Multi-line constructs (AssistantBlock spanning assistant + tool_result)
+        // produce separate blocks per line — the frontend stream accumulator handles assembly.
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            let mut acc = claude_view_core::block_accumulator::BlockAccumulator::new();
+            acc.process_line(&entry);
+            let blocks = acc.finalize();
+            return blocks
+                .into_iter()
+                .filter_map(|block| serde_json::to_string(&block).ok())
+                .collect();
+        }
+        return vec![];
+    }
+
     if mode != "rich" {
         // Raw mode: send as-is
         let msg = serde_json::json!({
@@ -866,6 +883,16 @@ async fn handle_terminal_ws(
         "Terminal WebSocket connected"
     );
 
+    // Persistent BlockAccumulator for block mode — correlates multi-line constructs
+    // (e.g., incremental assistant entries with the same message.id) that a per-line
+    // accumulator cannot. The CC CLI writes thinking, text, and tool_use as separate
+    // JSONL lines with the same message.id; without persistence, each line produces a
+    // separate block that replaces the previous one via the frontend's ID-based merge.
+    let mut block_acc = claude_view_core::block_accumulator::BlockAccumulator::new();
+    // Track previously-sent block serializations by ID to send only changes.
+    let mut sent_blocks: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
     // 4b. Subscribe to hook event broadcasts for this session
     let mut hook_rx = {
         let mut channels = state.hook_event_channels.write().await;
@@ -895,18 +922,57 @@ async fn handle_terminal_ws(
                         // Read new lines from the file
                         match tracker.read_new_lines().await {
                             Ok(lines) => {
-                                for line in &lines {
-                                    for formatted in format_line_for_mode(line, &current_mode, &finders) {
-                                        if socket
-                                            .send(Message::Text(formatted.into()))
-                                            .await
-                                            .is_err()
-                                        {
-                                            tracing::debug!(
-                                                session_id = %session_id,
-                                                "Client disconnected during live stream"
-                                            );
-                                            return; // watcher dropped on return
+                                if current_mode == "block" {
+                                    // Reset accumulator on file truncation (compaction).
+                                    if tracker.was_truncated() {
+                                        block_acc.reset();
+                                        sent_blocks.clear();
+                                    }
+                                    // Block mode: feed lines into the persistent accumulator,
+                                    // then send only new/changed blocks. This correctly
+                                    // correlates incremental assistant entries (same message.id,
+                                    // different content blocks) that the CC CLI writes as
+                                    // separate JSONL lines during streaming.
+                                    for line in &lines {
+                                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+                                            block_acc.process_line(&entry);
+                                        }
+                                    }
+                                    let current = block_acc.snapshot();
+                                    for block in &current {
+                                        let id = block.id().to_string();
+                                        if let Ok(json) = serde_json::to_string(block) {
+                                            let changed = sent_blocks.get(&id).is_none_or(|prev| *prev != json);
+                                            if changed {
+                                                sent_blocks.insert(id, json.clone());
+                                                if socket
+                                                    .send(Message::Text(json.into()))
+                                                    .await
+                                                    .is_err()
+                                                {
+                                                    tracing::debug!(
+                                                        session_id = %session_id,
+                                                        "Client disconnected during live stream"
+                                                    );
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    for line in &lines {
+                                        for formatted in format_line_for_mode(line, &current_mode, &finders) {
+                                            if socket
+                                                .send(Message::Text(formatted.into()))
+                                                .await
+                                                .is_err()
+                                            {
+                                                tracing::debug!(
+                                                    session_id = %session_id,
+                                                    "Client disconnected during live stream"
+                                                );
+                                                return; // watcher dropped on return
+                                            }
                                         }
                                     }
                                 }
@@ -1266,6 +1332,7 @@ mod tests {
                 user_files: None,
                 closed_at: None,
                 control: None,
+                source: None,
                 hook_events: Vec::new(),
                 statusline_context_window_size: None,
                 statusline_used_pct: None,
@@ -2130,5 +2197,85 @@ NaN ago
         assert_eq!(metadata["content"], "fix the bug");
 
         server_handle.abort();
+    }
+
+    // =========================================================================
+    // Test: format_line_block_mode_produces_conversation_blocks
+    // =========================================================================
+
+    // =========================================================================
+    // Test: ws_block_mode_scrollback
+    // =========================================================================
+
+    #[tokio::test]
+    async fn ws_block_mode_scrollback() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp.as_file(),
+            r#"{{"type":"user","uuid":"u-1","message":{{"content":[{{"type":"text","text":"hello"}}]}},"timestamp":"2026-03-21T01:00:00.000Z"}}"#
+        )
+        .unwrap();
+
+        let state = test_state_with_session("ws-block-test", tmp.path().to_str().unwrap()).await;
+        let (addr, server_handle) = start_test_server(state).await;
+        let mut ws = ws_connect(addr, "ws-block-test").await;
+
+        // Send handshake with block mode
+        ws.send(tungstenite::Message::Text(
+            r#"{"mode":"block","scrollback":50}"#.into(),
+        ))
+        .await
+        .unwrap();
+
+        // Collect scrollback messages until we see buffer_end or timeout
+        let mut received: Vec<serde_json::Value> = Vec::new();
+        let timeout_result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(text) = recv_text(&mut ws).await {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let msg_type = json.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                    if msg_type == "buffer_end" {
+                        break;
+                    }
+                    received.push(json);
+                }
+            }
+        })
+        .await;
+        assert!(
+            timeout_result.is_ok(),
+            "Should receive buffer_end within timeout"
+        );
+
+        // Should have received at least one block
+        assert!(
+            !received.is_empty(),
+            "Should receive scrollback blocks in block mode"
+        );
+
+        // First received block should have a type discriminator
+        let first = &received[0];
+        assert!(
+            first.get("type").is_some(),
+            "Block should have 'type' discriminator"
+        );
+
+        ws.close(None).await.ok();
+        server_handle.abort();
+    }
+
+    // =========================================================================
+    // Test: format_line_block_mode_produces_conversation_blocks
+    // =========================================================================
+
+    #[test]
+    fn format_line_block_mode_produces_conversation_blocks() {
+        let finders = RichModeFinders::new();
+        // A user message line
+        let line = r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello world"}]},"timestamp":"2026-03-21T01:00:00.000Z"}"#;
+        let results = format_line_for_mode(line, "block", &finders);
+        assert!(!results.is_empty(), "Block mode should produce output");
+        let parsed: serde_json::Value = serde_json::from_str(&results[0]).unwrap();
+        assert_eq!(parsed["type"], "user", "Should produce a UserBlock");
+        assert_eq!(parsed["text"], "hello world");
     }
 }

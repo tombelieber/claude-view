@@ -1,14 +1,13 @@
 // sidecar/src/blocks-snapshot.integration.test.ts
 // IT-01..IT-09: Integration tests for the full pipeline:
-//   event → emitSequenced → accumulator + ringBuffer → handleWebSocket → blocks_snapshot/blocks_update
+//   event → emitSequenced → accumulator → handleWebSocket → blocks_snapshot/blocks_update
 //
-// Uses REAL: SessionRegistry, StreamAccumulator, RingBuffer, EventEmitter
+// Uses REAL: SessionRegistry, StreamAccumulator, EventEmitter
 // Mocks ONLY: WebSocket, ControlSession stubs (query, bridge, abort, permissions)
 
 import { EventEmitter } from 'node:events'
 import { describe, expect, it, vi } from 'vitest'
-import type { SequencedEvent, ServerEvent } from './protocol.js'
-import { RingBuffer } from './ring-buffer.js'
+import type { ServerEvent } from './protocol.js'
 import type { ControlSession } from './session-registry.js'
 import { SessionRegistry } from './session-registry.js'
 import { StreamAccumulator } from './stream-accumulator.js'
@@ -34,7 +33,7 @@ function getAllSentMessages(ws: ReturnType<typeof createMockWs>): Record<string,
   return ws.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string))
 }
 
-/** Builds a real ControlSession with real accumulator, emitter, ringBuffer.
+/** Builds a real ControlSession with real accumulator, emitter.
  *  Only query/bridge/abort/permissions are minimal stubs. */
 function buildRealSession(controlId: string, sessionId: string): ControlSession {
   return {
@@ -62,8 +61,6 @@ function buildRealSession(controlId: string, sessionId: string): ControlSession 
     modelUsage: {},
     startedAt: Date.now(),
     emitter: new EventEmitter(),
-    eventBuffer: new RingBuffer<{ seq: number; msg: SequencedEvent }>(1000),
-    nextSeq: 0,
     permissions: {
       resolvePermission: vi.fn(),
       resolveQuestion: vi.fn(),
@@ -73,12 +70,13 @@ function buildRealSession(controlId: string, sessionId: string): ControlSession 
       drainAll: vi.fn(),
     } as unknown as ControlSession['permissions'],
     permissionMode: 'default',
-    activeWs: null,
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 }
 
-/** Standard session_init event payload (no seq — emitSequenced adds it). */
+/** Standard session_init event payload. */
 function sessionInitEvent(): ServerEvent {
   return {
     type: 'session_init',
@@ -139,10 +137,9 @@ describe('IT-01: Full pipeline — blocks_snapshot on WS connect', () => {
     const messages = getAllSentMessages(ws)
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
-    expect(snapshot?.lastSeq).toBeTypeOf('number')
 
     const blocks = snapshot?.blocks as { type: string }[]
-    // Should have: system(session_init) + system(session_status) + assistant(streaming)
+    // Should have: system(session_init) + assistant(streaming)
     const systemBlocks = blocks.filter((b) => b.type === 'system')
     const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
     expect(systemBlocks.length).toBeGreaterThanOrEqual(1)
@@ -263,10 +260,10 @@ describe('IT-04: WS reconnect replays full accumulator state', () => {
   })
 })
 
-// ── IT-05: Multi-client — second WS replaces first ────────────────────────
+// ── IT-05: Multi-client — both WS connections coexist ──────────────────────
 
-describe('IT-05: Multi-client — second WS replaces first with 4001', () => {
-  it('closes first WS with 4001 and delivers blocks_snapshot to second', () => {
+describe('IT-05: Multi-client — both WS connections coexist in wsClients Set', () => {
+  it('both WS clients get blocks_snapshot and coexist', () => {
     const registry = new SessionRegistry()
     const cs = buildRealSession('ctrl-test', 'sess-5')
     registry.register(cs)
@@ -279,26 +276,31 @@ describe('IT-05: Multi-client — second WS replaces first with 4001', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mock
     handleWebSocket(ws1 as any, 'ctrl-test', registry)
 
-    // Second WS — should replace first
+    // Second WS — both should coexist
     const ws2 = createMockWs()
     // biome-ignore lint/suspicious/noExplicitAny: test mock
     handleWebSocket(ws2 as any, 'ctrl-test', registry)
 
-    // First WS was closed with 4001
-    expect(ws1.close).toHaveBeenCalledWith(4001, 'replaced_by_new_connection')
+    // First WS was NOT closed (multi-client)
+    expect(ws1.close).not.toHaveBeenCalled()
+    expect(cs.wsClients.size).toBe(2)
 
-    // Second WS got blocks_snapshot
+    // Both got blocks_snapshot
+    const messages1 = getAllSentMessages(ws1)
+    const snapshot1 = messages1.find((m) => m.type === 'blocks_snapshot')
+    expect(snapshot1).toBeDefined()
+
     const messages2 = getAllSentMessages(ws2)
-    const snapshot = messages2.find((m) => m.type === 'blocks_snapshot')
-    expect(snapshot).toBeDefined()
-    expect((snapshot?.blocks as unknown[]).length).toBeGreaterThan(0)
+    const snapshot2 = messages2.find((m) => m.type === 'blocks_snapshot')
+    expect(snapshot2).toBeDefined()
+    expect((snapshot2?.blocks as unknown[]).length).toBeGreaterThan(0)
   })
 })
 
 // ── IT-06: Accumulator captures every emitted event (no drift) ────────────
 
-describe('IT-06: Accumulator + RingBuffer capture every emitted event', () => {
-  it('accumulator and ringBuffer both reflect all 5 pushed events', () => {
+describe('IT-06: Accumulator captures every emitted event', () => {
+  it('accumulator reflects all 5 pushed events', () => {
     const registry = new SessionRegistry()
     const cs = buildRealSession('ctrl-test', 'sess-6')
     registry.register(cs)
@@ -316,17 +318,6 @@ describe('IT-06: Accumulator + RingBuffer capture every emitted event', () => {
       messageId: 'msg-1',
       parentToolUseId: null,
     })
-
-    // RingBuffer has all 5
-    expect(cs.eventBuffer.length).toBe(5)
-    const bufferedEvents = cs.eventBuffer.toArray()
-    expect(bufferedEvents.map((e) => e.msg.type)).toEqual([
-      'session_init',
-      'assistant_text',
-      'assistant_text',
-      'assistant_text',
-      'tool_use_start',
-    ])
 
     // Accumulator blocks reflect the state
     const blocks = cs.accumulator.getBlocks()
@@ -348,59 +339,15 @@ describe('IT-06: Accumulator + RingBuffer capture every emitted event', () => {
   })
 })
 
-// ── IT-07: Resume after blocks_snapshot — no duplicate events ─────────────
+// ── IT-08: Reconnect after disconnect — new snapshot covers everything ──────
 
-describe('IT-07: Resume after blocks_snapshot delivers no duplicates', () => {
-  it('resume with lastSeq=-1 after snapshot delivers 0 replayed events', () => {
-    const registry = new SessionRegistry()
-    const cs = buildRealSession('ctrl-test', 'sess-7')
-    registry.register(cs)
-
-    // Accumulate 3 events (seq 0, 1, 2)
-    registry.emitSequenced(cs, sessionInitEvent())
-    registry.emitSequenced(cs, assistantTextEvent('a'))
-    registry.emitSequenced(cs, assistantTextEvent('b'))
-
-    // Connect WS — gets blocks_snapshot with lastSnapshotSeq = 2
-    const ws = createMockWs()
-    // biome-ignore lint/suspicious/noExplicitAny: test mock
-    handleWebSocket(ws as any, 'ctrl-test', registry)
-
-    const connectMessages = getAllSentMessages(ws)
-    const snapshot = connectMessages.find((m) => m.type === 'blocks_snapshot')
-    expect(snapshot).toBeDefined()
-    // 3 user events (seq 0-2) + 1 session_status from handleWebSocket (seq 3)
-    // lastSnapshotSeq = nextSeq - 1 = 3
-    const lastSnapshotSeq = snapshot?.lastSeq as number
-    expect(lastSnapshotSeq).toBeGreaterThanOrEqual(2)
-
-    // Clear sends, then simulate client sending resume with lastSeq=-1
-    ws.send.mockClear()
-
-    // Get the WS 'message' listener
-    const messageListener = ws._listeners.message
-    expect(messageListener).toBeDefined()
-
-    // Client sends resume — snapshot covers everything, so replay = 0 events
-    // replayFrom = max(-1, lastSnapshotSeq) = lastSnapshotSeq
-    // getAfter(lastSnapshotSeq) → events with seq > lastSnapshotSeq → none
-    messageListener(JSON.stringify({ type: 'resume', lastSeq: -1 }))
-
-    const resumeMessages = getAllSentMessages(ws)
-    const replayed = resumeMessages.filter((m) => m.type !== 'error' && m.type !== 'pong')
-    expect(replayed).toHaveLength(0)
-  })
-})
-
-// ── IT-08: Resume after brief disconnect fills gap correctly ──────────────
-
-describe('IT-08: Resume after disconnect — new snapshot covers everything', () => {
+describe('IT-08: Reconnect after disconnect — new snapshot covers everything', () => {
   it('new WS connect gets full snapshot covering all events', () => {
     const registry = new SessionRegistry()
     const cs = buildRealSession('ctrl-test', 'sess-8')
     registry.register(cs)
 
-    // Accumulate 5 events (seq 0-4)
+    // Accumulate 5 events
     registry.emitSequenced(cs, sessionInitEvent())
     registry.emitSequenced(cs, assistantTextEvent('a', 'msg-1'))
     registry.emitSequenced(cs, assistantTextEvent('b', 'msg-1'))
@@ -416,11 +363,11 @@ describe('IT-08: Resume after disconnect — new snapshot covers everything', ()
     const closeCb = ws1._listeners.close
     closeCb()
 
-    // 2 more events while disconnected (seq 5, 6)
+    // 2 more events while disconnected
     registry.emitSequenced(cs, assistantTextEvent('e', 'msg-1'))
     registry.emitSequenced(cs, assistantTextEvent('f', 'msg-1'))
 
-    // New WS connects — gets fresh snapshot covering all 7 events
+    // New WS connects — gets fresh snapshot covering all events
     const ws2 = createMockWs()
     // biome-ignore lint/suspicious/noExplicitAny: test mock
     handleWebSocket(ws2 as any, 'ctrl-test', registry)
@@ -428,12 +375,6 @@ describe('IT-08: Resume after disconnect — new snapshot covers everything', ()
     const messages = getAllSentMessages(ws2)
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
-
-    // 5 user events (seq 0-4) + session_status from ws1 connect (seq 5)
-    // + 2 more events while disconnected (seq 6, 7)
-    // + session_status from ws2 connect (seq 8) → lastSnapshotSeq = 8
-    const lastSnapshotSeq = snapshot?.lastSeq as number
-    expect(lastSnapshotSeq).toBeGreaterThanOrEqual(7)
 
     // Blocks include all text
     const blocks = snapshot?.blocks as {
@@ -444,17 +385,6 @@ describe('IT-08: Resume after disconnect — new snapshot covers everything', ()
     expect(assistantBlocks).toHaveLength(1)
     const textSeg = assistantBlocks[0].segments?.find((s) => s.kind === 'text')
     expect(textSeg?.text).toBe('abcdef')
-
-    // Client sends resume with lastSeq=4 — snapshot already covers everything
-    ws2.send.mockClear()
-    const messageListener = ws2._listeners.message
-    messageListener(JSON.stringify({ type: 'resume', lastSeq: 4 }))
-
-    const resumeMessages = getAllSentMessages(ws2)
-    // replayFrom = max(4, lastSnapshotSeq) = lastSnapshotSeq
-    // getAfter(lastSnapshotSeq) → events with seq > lastSnapshotSeq → none
-    const replayed = resumeMessages.filter((m) => m.type !== 'error' && m.type !== 'pong')
-    expect(replayed).toHaveLength(0)
   })
 })
 

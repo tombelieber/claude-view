@@ -1,0 +1,7 @@
+{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"List files in /tmp"}]},"timestamp":"2026-03-21T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","parentUuid":"u-1","message":{"id":"msg-001","model":"claude-sonnet-4-6","content":[{"type":"text","text":"I'll list the files."},{"type":"tool_use","id":"tu-1","name":"Bash","input":{"command":"ls /tmp"}}],"usage":{"input_tokens":500,"output_tokens":100},"stop_reason":"tool_use"},"timestamp":"2026-03-21T01:00:01.000Z"}
+{"type":"progress","uuid":"p-1","parentUuid":"a-1","data":{"type":"bash_progress","output":"file1\nfile2","fullOutput":"file1\nfile2","elapsedTimeSeconds":1.5,"totalLines":2,"totalBytes":12},"parentToolUseID":"tu-1","timestamp":"2026-03-21T01:00:02.000Z"}
+{"type":"user","uuid":"u-2","parentUuid":"a-1","message":{"content":[{"type":"tool_result","tool_use_id":"tu-1","content":"file1\nfile2","is_error":false}]},"timestamp":"2026-03-21T01:00:03.000Z"}
+{"type":"assistant","uuid":"a-2","parentUuid":"u-2","message":{"id":"msg-001","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Here are the files in /tmp:\n- file1\n- file2"}],"usage":{"input_tokens":600,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-21T01:00:04.000Z"}
+{"type":"system","uuid":"s-1","parentUuid":"a-2","durationMs":4000,"timestamp":"2026-03-21T01:00:05.000Z"}
+{"type":"system","uuid":"s-2","parentUuid":"s-1","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-21T01:00:06.000Z"}

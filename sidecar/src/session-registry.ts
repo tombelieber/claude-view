@@ -4,8 +4,7 @@ import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
-import type { ActiveSession, SequencedEvent, ServerEvent } from './protocol.js'
-import type { RingBuffer } from './ring-buffer.js'
+import type { ActiveSession, ServerEvent, SessionInit } from './protocol.js'
 import type { StreamAccumulator } from './stream-accumulator.js'
 
 export type SessionState =
@@ -31,11 +30,10 @@ export interface ControlSession {
   modelUsage: Record<string, unknown>
   startedAt: number
   emitter: EventEmitter
-  eventBuffer: RingBuffer<{ seq: number; msg: SequencedEvent }>
-  nextSeq: number
   permissions: PermissionHandler
   permissionMode: string
-  activeWs: WebSocket | null
+  wsClients: Set<WebSocket>
+  lastSessionInit: SessionInit | null
   accumulator: StreamAccumulator
 }
 
@@ -80,19 +78,28 @@ export class SessionRegistry {
     return this.sessions.size
   }
 
-  emitSequenced(cs: ControlSession, event: ServerEvent): SequencedEvent {
-    const seq = cs.nextSeq++
-    const sequenced: SequencedEvent = { ...event, seq }
-    cs.eventBuffer.push({ seq, msg: sequenced })
-    cs.emitter.emit('message', sequenced)
-    // Filter text-carrying deltas from accumulator (prevents doubled text with assistant_text).
-    // Keep structural events (content_block_start/stop) so accumulator builds block skeletons
-    // that blocks_snapshot can deliver — the frontend needs the skeleton to attach pendingText.
+  emitSequenced(
+    cs: ControlSession,
+    event: ServerEvent,
+    rawSdkMessage?: Record<string, unknown>,
+  ): void {
+    // Cache session_init for late-joining WS clients
+    if (event.type === 'session_init') {
+      cs.lastSessionInit = event as SessionInit
+    }
+    // Push to accumulator BEFORE emitting so that blocks_update (sent by
+    // ws-handler inside the 'message' listener) reflects the latest state.
+    // Without this, blocks_update is one event stale — e.g. after assistant_text
+    // the blocks_update would lack the text, causing pendingText duplication.
+    //
+    // Filter text-carrying deltas (prevents doubled text with assistant_text).
+    // Keep structural events (content_block_start/stop) so accumulator builds
+    // block skeletons that blocks_snapshot can deliver.
     const isTextDelta =
       event.type === 'stream_delta' &&
       (event as { deltaType?: string }).deltaType === 'content_block_delta'
-    if (!isTextDelta) cs.accumulator.push(sequenced)
-    return sequenced
+    if (!isTextDelta) cs.accumulator.push(event, rawSdkMessage)
+    cs.emitter.emit('message', event)
   }
 
   async closeAll(): Promise<void> {

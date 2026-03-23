@@ -6,17 +6,20 @@ import { useHistoryBlocks } from './use-history-blocks'
 import { useSessionActions } from './use-session-actions'
 import { useSessionSource } from './use-session-source'
 
-const SEND_TIMEOUT_MS = 10_000
+// Dormant sessions auto-resume via connectAndSend → POST resume → waitForSessionInit (up to 15s).
+// Timeout must exceed the resume window to avoid false "Failed" during normal resume flow.
+const SEND_TIMEOUT_MS = 20_000
+
+import type { LiveStatus } from '../lib/derive-panel-mode'
 
 interface ConversationOptions {
-  /** Skip WS connection (watching mode). History still loads via REST. */
-  skipWs?: boolean
+  liveStatus?: LiveStatus
 }
 
 export function useConversation(sessionId: string | undefined, options?: ConversationOptions) {
-  // 'skipWs' allows watching mode: skip WS connection (no bind_control)
+  // cc_owned = watching mode: skip WS connection (no bind_control)
   // while still loading history with the real sessionId.
-  const source = useSessionSource(options?.skipWs ? undefined : sessionId)
+  const source = useSessionSource(options?.liveStatus === 'cc_owned' ? undefined : sessionId)
 
   // Gate history fetching with initComplete — prevents 404 error banner on new sessions.
   // Before init() resolves, the JSONL may not exist yet. After init(), either:
@@ -24,7 +27,8 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   // - Session is history-only → JSONL exists, safe to fetch (enabled=true)
   const isInitializing = source.sessionState === 'initializing'
   const history = useHistoryBlocks(sessionId ?? null, {
-    enabled: (options?.skipWs || source.initComplete) && !source.isLive && !!sessionId,
+    enabled:
+      (options?.liveStatus === 'cc_owned' || source.initComplete) && !source.isLive && !!sessionId,
     suppressNotFound: isInitializing,
     retry: 3,
     retryDelay: 1000,
@@ -34,6 +38,27 @@ export function useConversation(sessionId: string | undefined, options?: Convers
   const [optimisticBlocks, setOptimisticBlocks] = useState<UserBlock[]>([])
   const optimisticBlocksRef = useRef<UserBlock[]>([])
   optimisticBlocksRef.current = optimisticBlocks
+
+  // Deferred timer refs: messages sent while dormant (isLive=false) defer their
+  // fail timer until the WS connection opens (isLive transitions to true).
+  const pendingTimersRef = useRef<Map<string, number>>(new Map())
+  const activeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const isLiveRef = useRef(source.isLive)
+  isLiveRef.current = source.isLive
+
+  const startFailTimer = useCallback((localId: string) => {
+    const timer = setTimeout(() => {
+      setOptimisticBlocks((prev) =>
+        prev.map((b) => {
+          if (b.localId !== localId) return b
+          if (b.status === 'sending') return { ...b, status: 'failed' as const }
+          return b
+        }),
+      )
+      activeTimersRef.current.delete(localId)
+    }, SEND_TIMEOUT_MS)
+    activeTimersRef.current.set(localId, timer)
+  }, [])
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -49,58 +74,55 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       setOptimisticBlocks((prev) => [...prev, optimistic])
       actions.sendMessage(text)
 
-      const timer = setTimeout(() => {
-        setOptimisticBlocks((prev) =>
-          prev.map((b) => {
-            if (b.localId !== localId) return b
-            if (b.status === 'sending') return { ...b, status: 'failed' as const }
-            return b
-          }),
-        )
-      }, SEND_TIMEOUT_MS)
-
-      return () => clearTimeout(timer)
+      if (isLiveRef.current) {
+        // WS already open — start timer immediately
+        startFailTimer(localId)
+      } else {
+        // WS not yet open — defer timer until connection establishes
+        pendingTimersRef.current.set(localId, Date.now())
+      }
     },
-    [actions],
+    [actions, startFailTimer],
   )
+
+  // Fire deferred timers when WS opens (isLive transitions false → true)
+  useEffect(() => {
+    if (!source.isLive || pendingTimersRef.current.size === 0) return
+    for (const [localId] of pendingTimersRef.current) {
+      startFailTimer(localId)
+    }
+    pendingTimersRef.current.clear()
+  }, [source.isLive, startFailTimer])
+
+  // Cleanup active timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of activeTimersRef.current.values()) {
+        clearTimeout(timer)
+      }
+    }
+  }, [])
 
   const queryClient = useQueryClient()
 
-  // FLAG-B backward compat: if isLive but no blocks_snapshot arrives within 3s,
-  // fall back to JSONL history (sidecar hasn't been upgraded to send snapshots yet).
-  const [snapshotTimeout, setSnapshotTimeout] = useState(false)
-
-  useEffect(() => {
-    if (!source.isLive) {
-      setSnapshotTimeout(false)
-      return
-    }
-    const t = setTimeout(() => {
-      if (source.committedBlocks.length === 0) setSnapshotTimeout(true)
-    }, 3000)
-    return () => clearTimeout(t)
-  }, [source.isLive, source.committedBlocks.length])
-
-  // Binary source switch: live (sidecar WS) vs history (JSONL).
-  // When live and snapshot received, use committed blocks + pending text.
-  // When not live (or snapshot timeout), use JSONL history.
+  // Source switch: use live committedBlocks when the sidecar has content,
+  // otherwise use JSONL history. pendingText only applies to live blocks
+  // (never appended to history — that causes "response appends to last message" bug).
+  //
+  // No timeout fallback — the switch is purely content-based:
+  //   committedBlocks.length > 0 → sidecar has caught up, use it
+  //   committedBlocks.length === 0 → sidecar hasn't caught up, use history
   const blocks: ConversationBlock[] = useMemo(() => {
-    const base = source.isLive && !snapshotTimeout ? source.committedBlocks : history.blocks
-    const withPending = appendPendingText(base, source.pendingText)
+    const hasLiveBlocks = source.isLive && source.committedBlocks.length > 0
+    const base = hasLiveBlocks ? source.committedBlocks : history.blocks
+    const withPending = hasLiveBlocks ? appendPendingText(base, source.pendingText) : base
     const pendingOptimistic = optimisticBlocks.filter((ob) => {
       const matchesText = (b: ConversationBlock) =>
         b.type === 'user' && (b as UserBlock).text === ob.text
       return !withPending.some(matchesText)
     })
     return [...withPending, ...pendingOptimistic]
-  }, [
-    source.isLive,
-    snapshotTimeout,
-    source.committedBlocks,
-    source.pendingText,
-    history.blocks,
-    optimisticBlocks,
-  ])
+  }, [source.isLive, source.committedBlocks, source.pendingText, history.blocks, optimisticBlocks])
 
   // isLive->false transition: invalidate JSONL cache so history refetches
   useEffect(() => {
@@ -124,10 +146,10 @@ export function useConversation(sessionId: string | undefined, options?: Convers
 
   const fork = useCallback(async () => {
     if (!sessionId) return null
-    const res = await fetch('/api/control/sessions/fork', {
+    const res = await fetch(`/api/sidecar/sessions/${sessionId}/fork`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify({}),
     })
     return res.json()
   }, [sessionId])
@@ -143,10 +165,8 @@ export function useConversation(sessionId: string | undefined, options?: Convers
       fork,
     },
     sessionInfo: {
-      isLive: source.isLive,
       sessionState: source.sessionState,
       controlId: source.controlId,
-      canResumeLazy: source.canResumeLazy,
       totalInputTokens: source.totalInputTokens,
       contextWindowSize: source.contextWindowSize,
       model: source.model,

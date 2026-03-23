@@ -229,6 +229,58 @@ export interface CommandOutput {
   content: string
 }
 
+export interface QueueOperation {
+  type: 'queue-operation'
+  operation: 'enqueue' | 'dequeue' | 'remove' | 'popAll'
+  timestamp: string
+  sessionId?: string
+  content?: string
+  uuid?: string
+}
+
+export interface LocalCommand {
+  type: 'system'
+  subtype: 'local_command'
+  content: string
+  command?: string
+}
+
+export interface FileHistorySnapshot {
+  type: 'file-history-snapshot'
+  messageId: string
+  snapshot: {
+    messageId?: string
+    trackedFileBackups: Record<
+      string,
+      { backupFileName: string; version: number; backupTime: string }
+    >
+    timestamp?: string
+  }
+  isSnapshotUpdate: boolean
+  /** Derived: number of files in the snapshot */
+  fileCount?: number
+  /** Derived: flat list of file paths */
+  files?: string[]
+  isIncremental?: boolean
+}
+
+export interface AiTitle {
+  type: 'ai-title'
+  sessionId: string
+  aiTitle: string
+}
+
+export interface LastPrompt {
+  type: 'last-prompt'
+  sessionId: string
+  lastPrompt: string
+}
+
+export interface Informational {
+  content: string
+  message?: string
+}
+
 export interface UnknownSdkEvent {
   type: 'unknown_sdk_event'
   sdkType: string

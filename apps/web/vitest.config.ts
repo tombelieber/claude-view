@@ -15,5 +15,13 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./src/test-setup.ts'],
     exclude: ['**/node_modules/**', '**/e2e/**', '**/.claude/**', '**/.worktrees/**'],
+    server: {
+      deps: {
+        // @lobehub/fluent-emoji ships ESM with bare directory imports
+        // (e.g., `export { default } from "./FluentEmoji"` pointing to a directory).
+        // Node's ESM resolver rejects these. Inlining lets Vite resolve them.
+        inline: ['@lobehub/fluent-emoji', '@lobehub/ui'],
+      },
+    },
   },
 })

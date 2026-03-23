@@ -77,7 +77,7 @@ describe('ResumePreFlight', () => {
     })
 
     const firstCall = fetchSpy.mock.calls[0]
-    expect(firstCall[0]).toBe('/api/control/estimate')
+    expect(firstCall[0]).toBe('/api/estimate')
     expect(firstCall[1]).toMatchObject({ method: 'POST' })
   })
 
@@ -113,7 +113,7 @@ describe('ResumePreFlight', () => {
     const onOpenChange = vi.fn()
     const onResume = vi.fn()
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      if (input === '/api/control/estimate') {
+      if (input === '/api/estimate') {
         return new Response(JSON.stringify(estimatePayload({ model: 'claude-opus-4-20250514' })), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -143,9 +143,9 @@ describe('ResumePreFlight', () => {
     expect(onResume).toHaveBeenCalledWith('sess-1')
     // Dialog closed
     expect(onOpenChange).toHaveBeenCalledWith(false)
-    // NO fetch to /api/control/resume
+    // NO fetch to /api/sessions/resume
     const fetchSpy = vi.mocked(globalThis.fetch)
-    const resumeCalls = fetchSpy.mock.calls.filter((call) => call[0] === '/api/control/resume')
+    const resumeCalls = fetchSpy.mock.calls.filter((call) => call[0] === '/api/sessions/resume')
     expect(resumeCalls).toHaveLength(0)
   })
 })

@@ -1,16 +1,53 @@
 // sidecar/src/ws-handler.ts
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
-import type { ClientMessage, ResumeMsg, SequencedEvent } from './protocol.js'
+import type { ClientMessage, ServerEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
-// Content events that trigger blocks_update on relay — module scope to avoid per-connection recreation.
-const CONTENT_EVENTS = new Set([
+// Events that modify blocks in the accumulator and need immediate blocks_update to the client.
+// Without this, the client won't see new blocks until the next unrelated update.
+//
+// RULE: if StreamAccumulator.ingest() calls pushInteraction/pushNotice/pushSystem/
+// handleUserMessage or modifies currentAssistant for an event type, it belongs here.
+// Exceptions: turn_complete/turn_error are handled separately (line ~58) with full blocks.
+const BLOCK_PRODUCING_EVENTS = new Set([
+  // Streaming content — builds/extends assistant blocks
   'assistant_text',
-  'tool_use_start',
   'assistant_thinking',
+  'tool_use_start',
+  'tool_use_result',
   'user_message_echo',
+  // Interactive — creates InteractionBlock (permission card, question card, etc.)
+  'permission_request',
+  'ask_question',
+  'plan_approval',
+  'elicitation',
+  // Notices — rate limit, errors, compaction
+  'rate_limit',
+  'context_compacted',
+  'assistant_error',
+  // Tool lifecycle — updates existing assistant block segments
+  'tool_progress',
+  'tool_summary',
+  // System blocks — informational events that pushSystem() into the accumulator
+  'elicitation_complete',
+  'hook_event',
+  'task_started',
+  'task_progress',
+  'task_notification',
+  'files_saved',
+  'command_output',
+  'session_status',
+  'unknown_sdk_event',
+  'prompt_suggestion',
+  'auth_status',
+  // Error notice
+  'error',
+  // NOTE: turn_complete/turn_error send blocks directly (handled separately in onMessage).
+  // session_init is followed by blocks_snapshot. session_closed ends the session.
+  // content_block_start is handled by the isBlockStart check below.
+  // stream_delta (non-text) is handled by isBlockStart. pong produces no block.
 ])
 
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
@@ -21,16 +58,40 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     return
   }
 
-  // Enforce one WS per session: close old connection before subscribing new one
-  if (session.activeWs && session.activeWs.readyState === ws.OPEN) {
-    session.activeWs.close(4001, 'replaced_by_new_connection')
-  }
-  session.activeWs = ws
+  // Add this WS to the multi-client set
+  session.wsClients.add(ws)
 
-  // Subscribe to session events — relay with blocks when applicable
+  // 1. Re-send cached session_init if available (V2 multi-tab behavior)
+  if (session.lastSessionInit) {
+    ws.send(JSON.stringify(session.lastSessionInit))
+  }
+
+  // 2. Send session_status
+  ws.send(
+    JSON.stringify({
+      type: 'session_status',
+      status: session.state === 'compacting' ? 'compacting' : null,
+    }),
+  )
+
+  // 3. Heartbeat config
+  ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
+
+  // 4. Blocks snapshot
+  ws.send(
+    JSON.stringify({
+      type: 'blocks_snapshot',
+      blocks: session.accumulator.getBlocks(),
+    }),
+  )
+
+  // 5. Subscribe to live events AFTER cached messages are sent.
+  // If the listener were registered before step 1, the SDK's active stream
+  // could relay events (blocks_update) that arrive on the client before
+  // session_init — causing the frontend to process them in the wrong FSM phase.
   const onMessage = (rawMsg: unknown) => {
     if (ws.readyState !== ws.OPEN) return
-    const msg = rawMsg as SequencedEvent
+    const msg = rawMsg as ServerEvent
     if (msg.type === 'turn_complete' || msg.type === 'turn_error') {
       ws.send(JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
     } else {
@@ -41,7 +102,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
       const isBlockStart =
         msg.type === 'stream_delta' &&
         (msg as { deltaType?: string }).deltaType === 'content_block_start'
-      if (CONTENT_EVENTS.has(msg.type) || isBlockStart) {
+      if (BLOCK_PRODUCING_EVENTS.has(msg.type) || isBlockStart) {
         ws.send(
           JSON.stringify({
             type: 'blocks_update',
@@ -52,25 +113,6 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     }
   }
   session.emitter.on('message', onMessage)
-
-  // Send current state
-  registry.emitSequenced(session, {
-    type: 'session_status',
-    status: session.state === 'compacting' ? 'compacting' : null,
-  })
-
-  // Heartbeat config (no seq)
-  ws.send(JSON.stringify({ type: 'heartbeat_config', intervalMs: 15_000 }))
-
-  // Blocks snapshot — sent after heartbeat_config for initial state
-  const lastSnapshotSeq = session.nextSeq - 1
-  ws.send(
-    JSON.stringify({
-      type: 'blocks_snapshot',
-      blocks: session.accumulator.getBlocks(),
-      lastSeq: lastSnapshotSeq,
-    }),
-  )
 
   // Handle incoming messages
   ws.on('message', async (raw) => {
@@ -125,22 +167,6 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
             )
           }
           break
-
-        case 'resume': {
-          const clientLastSeq = (msg as ResumeMsg).lastSeq
-          const replayFrom = Math.max(clientLastSeq, lastSnapshotSeq)
-          const missed = session.eventBuffer.getAfter(replayFrom, (e) => e.seq)
-          if (missed === null) {
-            ws.send(
-              JSON.stringify({ type: 'error', message: 'replay_buffer_exhausted', fatal: false }),
-            )
-          } else {
-            for (const event of missed) {
-              if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event.msg))
-            }
-          }
-          break
-        }
 
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))
@@ -327,11 +353,9 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     }
   })
 
-  // Cleanup on close — drain interactive maps, keep session alive for reconnect
+  // Cleanup on close — remove from set, drain interactive maps
   ws.on('close', () => {
-    if (session.activeWs === ws) {
-      session.activeWs = null
-    }
+    session.wsClients.delete(ws)
     session.emitter.removeListener('message', onMessage)
     session.permissions.drainInteractive()
   })

@@ -11,8 +11,8 @@ import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 
-// Lazy-loaded: ChatPage pulls in react-markdown + block renderers (heavy deps)
-const ChatPage = lazy(() => import('./pages/ChatPage').then((m) => ({ default: m.ChatPage })))
+// Lazy-loaded: ChatPageV2 pulls in dockview + block renderers (heavy deps)
+const ChatPageV2 = lazy(() => import('./pages/ChatPageV2').then((m) => ({ default: m.ChatPageV2 })))
 import { PluginsPage } from './pages/PluginsPage'
 import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
@@ -66,7 +66,7 @@ export const router = createBrowserRouter([
         path: 'chat',
         element: (
           <Suspense fallback={null}>
-            <ChatPage />
+            <ChatPageV2 />
           </Suspense>
         ),
       },
@@ -74,7 +74,7 @@ export const router = createBrowserRouter([
         path: 'chat/:sessionId',
         element: (
           <Suspense fallback={null}>
-            <ChatPage />
+            <ChatPageV2 />
           </Suspense>
         ),
       },

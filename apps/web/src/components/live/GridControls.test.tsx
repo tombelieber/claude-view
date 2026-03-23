@@ -6,12 +6,12 @@ function renderGridControls(overrides: Partial<GridControlsProps> = {}) {
   const defaultProps: GridControlsProps = {
     gridOverride: { cols: 2, rows: 2 },
     compactHeaders: false,
-    verboseMode: false,
+    displayMode: 'chat',
     sessionCount: 6,
     visibleCount: 6,
     onGridOverrideChange: vi.fn(),
     onCompactHeadersChange: vi.fn(),
-    onVerboseModeChange: vi.fn(),
+    onDisplayModeChange: vi.fn(),
   }
 
   const props = { ...defaultProps, ...overrides }
@@ -199,41 +199,51 @@ describe('GridControls', () => {
     })
   })
 
-  describe('Verbose toggle', () => {
-    it('renders "Chat" label when verboseMode is off', () => {
-      renderGridControls({ verboseMode: false })
+  describe('Display mode toggle', () => {
+    it('renders "Chat" label when displayMode is chat', () => {
+      renderGridControls({ displayMode: 'chat' })
 
       expect(screen.getByText('Chat')).toBeInTheDocument()
     })
 
-    it('renders "Verbose" label when verboseMode is on', () => {
-      renderGridControls({ verboseMode: true })
+    it('renders "Developer" label when displayMode is developer', () => {
+      renderGridControls({ displayMode: 'developer' })
 
-      expect(screen.getByText('Verbose')).toBeInTheDocument()
+      expect(screen.getByText('Developer')).toBeInTheDocument()
     })
 
-    it('shows verbose button as active when verboseMode is true', () => {
-      renderGridControls({ verboseMode: true })
+    it('shows display mode button as active when displayMode is developer', () => {
+      renderGridControls({ displayMode: 'developer' })
 
-      const verboseBtn = screen.getByText('Verbose').closest('button')!
-      expect(verboseBtn.getAttribute('aria-pressed')).toBe('true')
+      const devBtn = screen.getByText('Developer').closest('button')!
+      expect(devBtn.getAttribute('aria-pressed')).toBe('true')
     })
 
-    it('shows verbose button as inactive when verboseMode is false', () => {
-      renderGridControls({ verboseMode: false })
+    it('shows display mode button as inactive when displayMode is chat', () => {
+      renderGridControls({ displayMode: 'chat' })
 
-      const verboseBtn = screen.getByText('Chat').closest('button')!
-      expect(verboseBtn.getAttribute('aria-pressed')).toBe('false')
+      const chatBtn = screen.getByText('Chat').closest('button')!
+      expect(chatBtn.getAttribute('aria-pressed')).toBe('false')
     })
 
-    it('calls onVerboseModeChange when clicked', () => {
-      const onVerboseModeChange = vi.fn()
-      renderGridControls({ verboseMode: false, onVerboseModeChange })
+    it('calls onDisplayModeChange with developer when Chat is clicked', () => {
+      const onDisplayModeChange = vi.fn()
+      renderGridControls({ displayMode: 'chat', onDisplayModeChange })
 
       const chatBtn = screen.getByText('Chat')
       fireEvent.click(chatBtn)
 
-      expect(onVerboseModeChange).toHaveBeenCalledOnce()
+      expect(onDisplayModeChange).toHaveBeenCalledWith('developer')
+    })
+
+    it('calls onDisplayModeChange with chat when Developer is clicked', () => {
+      const onDisplayModeChange = vi.fn()
+      renderGridControls({ displayMode: 'developer', onDisplayModeChange })
+
+      const devBtn = screen.getByText('Developer')
+      fireEvent.click(devBtn)
+
+      expect(onDisplayModeChange).toHaveBeenCalledWith('chat')
     })
   })
 })

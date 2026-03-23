@@ -5,7 +5,7 @@ export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'err
 
 export interface UseTerminalSocketOptions {
   sessionId: string
-  mode: 'raw' | 'rich'
+  mode: 'raw' | 'rich' | 'block'
   scrollback?: number
   enabled: boolean
   onMessage: (data: string) => void
