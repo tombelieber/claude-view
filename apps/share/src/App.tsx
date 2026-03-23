@@ -1,4 +1,4 @@
-import { SessionInfoPanel, ViewModeToggle } from '@claude-view/shared'
+import { SessionInfoPanel } from '@claude-view/shared'
 import type { SharePayload } from '@claude-view/shared/types/message'
 import * as Sentry from '@sentry/react'
 import { PanelRight } from 'lucide-react'
@@ -6,6 +6,30 @@ import posthog from 'posthog-js'
 import { useEffect, useState } from 'react'
 import { SharedConversationView } from './SharedConversationView'
 import { decryptShareBlob } from './crypto'
+
+type DisplayMode = 'chat' | 'developer'
+
+function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: DisplayMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 p-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-sm">
+      {(['chat', 'developer'] as const).map((m) => (
+        <button
+          type="button"
+          key={m}
+          onClick={() => onChange(m)}
+          className={[
+            'px-2.5 py-1 rounded transition-colors capitalize',
+            mode === m
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+          ].join(' ')}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://api-share.claudeview.ai'
 
@@ -28,7 +52,7 @@ export default function App() {
   const [session, setSession] = useState<SharePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [verboseMode, setVerboseMode] = useState(false)
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('chat')
   const [panelOpen, setPanelOpen] = useState(false)
 
   useEffect(() => {
@@ -109,10 +133,7 @@ export default function App() {
         </div>
 
         {/* Center: view mode toggle */}
-        <ViewModeToggle
-          verboseMode={verboseMode}
-          onToggleVerbose={() => setVerboseMode((v) => !v)}
-        />
+        <ModeToggle mode={displayMode} onChange={setDisplayMode} />
 
         {/* Right: panel toggle + CTA */}
         <div className="flex items-center gap-2">
@@ -141,7 +162,7 @@ export default function App() {
       <div className="flex">
         <main className="flex-1 min-w-0 py-8 px-4">
           {session && (
-            <SharedConversationView messages={session.messages} verboseMode={verboseMode} />
+            <SharedConversationView messages={session.messages} displayMode={displayMode} />
           )}
         </main>
 

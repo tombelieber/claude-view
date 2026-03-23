@@ -19,7 +19,7 @@ pub struct EncryptedShare {
 }
 
 pub async fn serialize_and_encrypt(input: &ShareInput) -> ApiResult<EncryptedShare> {
-    let parsed = claude_view_core::parse_session(&input.file_path)
+    let parsed = claude_view_core::parse_session_with_raw(&input.file_path)
         .await
         .map_err(|e| ApiError::Internal(format!("Parse: {e}")))?;
 

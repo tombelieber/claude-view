@@ -14,12 +14,13 @@
 import type { Message } from '@claude-view/shared'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 import { historyToBlocks } from '@claude-view/shared/lib/history-to-blocks'
 import { useMemo } from 'react'
 
 interface SharedConversationViewProps {
   messages: Message[]
-  verboseMode?: boolean
+  displayMode?: 'chat' | 'developer'
 }
 
 /** Strings that Claude Code emits as placeholder content (no real text) */
@@ -36,13 +37,18 @@ function filterMessages(messages: Message[]): Message[] {
   })
 }
 
-export function SharedConversationView({ messages, verboseMode }: SharedConversationViewProps) {
+export function SharedConversationView({
+  messages,
+  displayMode = 'chat',
+}: SharedConversationViewProps) {
+  const isDeveloper = displayMode === 'developer'
   const filtered = useMemo(
-    () => (verboseMode ? messages : filterMessages(messages)),
-    [messages, verboseMode],
+    () => (isDeveloper ? messages : filterMessages(messages)),
+    [messages, isDeveloper],
   )
 
   const blocks = useMemo(() => historyToBlocks(filtered), [filtered])
+  const registry = isDeveloper ? developerRegistry : chatRegistry
 
   if (blocks.length === 0) {
     return (
@@ -55,7 +61,7 @@ export function SharedConversationView({ messages, verboseMode }: SharedConversa
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0">
-        <ConversationThread blocks={blocks} renderers={chatRegistry} />
+        <ConversationThread blocks={blocks} renderers={registry} filterBar={isDeveloper} />
       </div>
       <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500 flex-shrink-0">
         {messages.length} messages
