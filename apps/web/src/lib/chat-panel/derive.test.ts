@@ -200,19 +200,6 @@ describe('deriveCanSend', () => {
     ).toBe(true)
   })
 
-  test('cc_cli.takeover_killing → false', () => {
-    expect(
-      deriveCanSend(
-        makeStore({
-          phase: 'cc_cli',
-          sessionId: 's1',
-          blocks: [],
-          sub: { sub: 'takeover_killing' },
-        }),
-      ),
-    ).toBe(false)
-  })
-
   test('acquiring → false', () => {
     expect(
       deriveCanSend(

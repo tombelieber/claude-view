@@ -210,8 +210,8 @@ describe('coordinator', () => {
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'TOAST', variant: 'error' }))
   })
 
-  // Scenario 7: CC CLI watching + takeover flow
-  test('cc_cli.watching + TAKEOVER_CLI → killing → KILL_CLI_OK → acquiring', () => {
+  // Scenario 7: CC CLI watching + takeover → fork (no kill)
+  test('cc_cli.watching + TAKEOVER_CLI → acquiring{fork} directly', () => {
     const watchingStore: ChatPanelStore = {
       panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
       outbox: { messages: [] },
@@ -221,18 +221,15 @@ describe('coordinator', () => {
       lastPermissionMode: null,
       historyPagination: null,
     }
-    // Takeover
+    // Takeover forks directly — no kill step
     const [s1, c1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
-    expect(s1.panel.phase).toBe('cc_cli')
-    if (s1.panel.phase === 'cc_cli') {
-      expect(s1.panel.sub).toEqual({ sub: 'takeover_killing' })
+    expect(s1.panel.phase).toBe('acquiring')
+    if (s1.panel.phase === 'acquiring') {
+      expect(s1.panel.action).toBe('fork')
     }
-    expect(c1).toContainEqual(expect.objectContaining({ cmd: 'KILL_CLI_SESSION' }))
-
-    // Kill succeeds
-    const [s2, c2] = coordinate(s1, { type: 'KILL_CLI_OK' })
-    expect(s2.panel.phase).toBe('acquiring')
-    expect(c2).toContainEqual(expect.objectContaining({ cmd: 'POST_RESUME' }))
+    expect(c1).toContainEqual(expect.objectContaining({ cmd: 'CLOSE_TERMINAL_WS' }))
+    expect(c1).toContainEqual(expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }))
+    expect(c1).not.toContainEqual(expect.objectContaining({ cmd: 'KILL_CLI_SESSION' }))
   })
 
   // Scenario 8: Create from empty
@@ -627,8 +624,8 @@ describe('coordinator', () => {
     expect(store.projectPath).toBe('/new/path')
   })
 
-  // Gap 3 (projectPath fix): takeover POST_RESUME includes projectPath
-  test('cc_cli takeover → POST_RESUME includes projectPath from store', () => {
+  // Gap 3 (projectPath fix): takeover POST_FORK includes projectPath
+  test('cc_cli takeover → POST_FORK includes projectPath from store', () => {
     const watchingStore: ChatPanelStore = {
       panel: { phase: 'cc_cli', sessionId: 'abc', blocks: mockBlocks, sub: { sub: 'watching' } },
       outbox: { messages: [] },
@@ -638,12 +635,11 @@ describe('coordinator', () => {
       lastPermissionMode: null,
       historyPagination: null,
     }
-    const [s1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
-    const [, c2] = coordinate(s1, { type: 'KILL_CLI_OK' })
-    const resumeCmd = c2.find((c) => c.cmd === 'POST_RESUME')
-    expect(resumeCmd).toBeDefined()
-    if (resumeCmd && resumeCmd.cmd === 'POST_RESUME') {
-      expect(resumeCmd.projectPath).toBe('/my/project')
+    const [, c1] = coordinate(watchingStore, { type: 'TAKEOVER_CLI' })
+    const forkCmd = c1.find((c) => c.cmd === 'POST_FORK')
+    expect(forkCmd).toBeDefined()
+    if (forkCmd && forkCmd.cmd === 'POST_FORK') {
+      expect(forkCmd.projectPath).toBe('/my/project')
     }
   })
 

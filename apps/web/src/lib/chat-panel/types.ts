@@ -19,7 +19,7 @@ export type NobodySub =
   | { sub: 'loading'; pendingLive?: 'cc_owned' }
   | { sub: 'ready'; blocks: ConversationBlock[] }
 
-export type CcCliSub = { sub: 'watching' } | { sub: 'takeover_killing' }
+export type CcCliSub = { sub: 'watching' }
 
 export type AcquireAction = 'create' | 'resume' | 'fork'
 
@@ -198,10 +198,6 @@ export type RawEvent =
   // Terminal WS block stream (watching mode)
   | { type: 'TERMINAL_BLOCK'; block: ConversationBlock }
   | { type: 'TERMINAL_CONNECTED' }
-  // Takeover lifecycle
-  | { type: 'KILL_CLI_OK' }
-  | { type: 'KILL_CLI_FAILED'; error: string }
-  | { type: 'TAKEOVER_TIMEOUT' }
   // Timers
   | { type: 'INIT_TIMEOUT' }
   | { type: 'RECONNECT_ATTEMPT' }
@@ -237,7 +233,6 @@ export type Command =
   | { cmd: 'WS_SEND'; message: Record<string, unknown> }
   | { cmd: 'INVALIDATE_HISTORY'; sessionId: string }
   | { cmd: 'INVALIDATE_SIDEBAR' }
-  | { cmd: 'KILL_CLI_SESSION'; sessionId: string }
   | { cmd: 'START_TIMER'; id: string; delayMs: number; event: RawEvent }
   | { cmd: 'CANCEL_TIMER'; id: string }
   | { cmd: 'TOAST'; message: string; variant: 'error' | 'info' | 'success' }
