@@ -18,6 +18,30 @@ use ts_rs::TS;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
+/// Resolve a session's JSONL file path: DB first, then live session store fallback.
+///
+/// Live sessions (especially IDE-spawned ones) may not be indexed in the DB yet.
+/// The live session store always has the file path for any actively-monitored session.
+async fn resolve_session_file_path(
+    state: &AppState,
+    session_id: &str,
+) -> ApiResult<std::path::PathBuf> {
+    let file_path = match state.db.get_session_file_path(session_id).await? {
+        Some(p) => p,
+        None => {
+            let map = state.live_sessions.read().await;
+            map.get(session_id)
+                .map(|s| s.file_path.clone())
+                .ok_or_else(|| ApiError::SessionNotFound(session_id.to_string()))?
+        }
+    };
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id.to_string()));
+    }
+    Ok(path)
+}
+
 // ============================================================================
 // Archive request/response types
 // ============================================================================
@@ -433,21 +457,7 @@ pub async fn get_session_parsed(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<ParsedSession>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    // NOTE: There is a small TOCTOU window between exists() and parse_session().
-    // If the file is deleted in that window, parse_session returns ParseError (different
-    // error message). This is acceptable — filesystem ops are inherently racy, and
-    // the exists() check provides a cleaner "Session not found" for the common case.
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
-
+    let path = resolve_session_file_path(&state, &session_id).await?;
     let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
@@ -461,16 +471,7 @@ pub async fn get_session_messages_by_id(
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
+    let path = resolve_session_file_path(&state, &session_id).await?;
 
     if query.format.as_deref() == Some("block") {
         // Block format — use BlockAccumulator
@@ -518,17 +519,8 @@ pub async fn get_session_rich(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<claude_view_core::accumulator::RichSessionData>> {
-    // 1. Look up session file path from DB
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
+    // 1. Resolve JSONL file path (DB → live session fallback)
+    let path = resolve_session_file_path(&state, &session_id).await?;
 
     // 2. Snapshot the current pricing table (clone inside read lock, then drop lock)
     let pricing = state.pricing.read().expect("pricing lock poisoned").clone();
