@@ -178,10 +178,10 @@ describe('integration: fork flow', () => {
   })
 })
 
-// ── Takeover flow ─────────────────────────────────────────────────
+// ── Takeover flow (fork-based, no kill) ──────────────────────────
 
-describe('integration: takeover flow', () => {
-  test('cc_cli(watching) → takeover → kill OK → resume → WS → SESSION_INIT → sdk_owned', () => {
+describe('integration: takeover flow (fork)', () => {
+  test('cc_cli(watching) → TAKEOVER_CLI → fork → ACQUIRE_OK → WS → SESSION_INIT → sdk_owned', () => {
     const watchingStore: ChatPanelStore = {
       panel: {
         phase: 'cc_cli',
@@ -198,12 +198,10 @@ describe('integration: takeover flow', () => {
     }
 
     const { store, allCmds } = drive(watchingStore, [
-      // User clicks takeover → cc_cli(takeover_killing), emits KILL_CLI_SESSION
+      // User clicks takeover → acquiring{fork}, emits CLOSE_TERMINAL_WS + POST_FORK
       { type: 'TAKEOVER_CLI' },
-      // CLI killed → acquiring(posting), emits POST_RESUME
-      { type: 'KILL_CLI_OK' },
-      // Resume OK → acquiring(ws_connecting)
-      { type: 'ACQUIRE_OK', controlId: 'c3' },
+      // Fork OK → acquiring(ws_connecting) with new forked sessionId
+      { type: 'ACQUIRE_OK', controlId: 'c3', sessionId: 'forked-abc' },
       // WS opens → acquiring(ws_initializing)
       { type: 'WS_OPEN' },
       // Session init → sdk_owned
@@ -220,11 +218,11 @@ describe('integration: takeover flow', () => {
     ])
 
     expect(store.panel.phase).toBe('sdk_owned')
+    // Fork-based: no kill, uses POST_FORK
+    expect(allCmds).not.toContainEqual(expect.objectContaining({ cmd: 'KILL_CLI_SESSION' }))
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'CLOSE_TERMINAL_WS' }))
     expect(allCmds).toContainEqual(
-      expect.objectContaining({ cmd: 'KILL_CLI_SESSION', sessionId: 'abc' }),
-    )
-    expect(allCmds).toContainEqual(
-      expect.objectContaining({ cmd: 'POST_RESUME', sessionId: 'abc' }),
+      expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }),
     )
   })
 })

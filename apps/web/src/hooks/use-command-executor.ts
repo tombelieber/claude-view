@@ -319,12 +319,6 @@ export function useCommandExecutor(
       case 'INVALIDATE_SIDEBAR':
         queryClient.invalidateQueries({ queryKey: ['chat-sidebar-sessions'] })
         break
-      case 'KILL_CLI_SESSION': {
-        fetch(`/api/live/sessions/${encodeURIComponent(cmd.sessionId)}/kill`, { method: 'POST' })
-          .then(() => dispatch({ type: 'KILL_CLI_OK' }))
-          .catch((err) => dispatch({ type: 'KILL_CLI_FAILED', error: err.message }))
-        break
-      }
       case 'START_TIMER': {
         const existing = timersRef.current.get(cmd.id)
         if (existing) clearTimeout(existing)
