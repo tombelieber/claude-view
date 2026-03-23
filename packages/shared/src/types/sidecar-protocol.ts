@@ -229,6 +229,15 @@ export interface CommandOutput {
   content: string
 }
 
+export interface QueueOperation {
+  type: 'queue-operation'
+  operation: 'enqueue' | 'dequeue' | 'remove' | 'popAll'
+  timestamp: string
+  sessionId?: string
+  content?: string
+  uuid?: string
+}
+
 export interface UnknownSdkEvent {
   type: 'unknown_sdk_event'
   sdkType: string
