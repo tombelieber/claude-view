@@ -60,6 +60,7 @@ import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
 import { ModelSelector } from './chat/ModelSelector'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { ThinkingIndicator } from '@claude-view/shared/components/conversation/ThinkingIndicator'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
 import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
@@ -718,27 +719,31 @@ export function ConversationView() {
             <ThreadHighlightProvider>
               <ExpandProvider>
                 <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-                  <ErrorBoundary>
-                    <ConversationActionsProvider
-                      actions={{
-                        retryMessage: actions.retryMessage,
-                        respondPermission: actions.respondPermission,
-                        answerQuestion: actions.answerQuestion,
-                        approvePlan: actions.approvePlan,
-                        submitElicitation: actions.submitElicitation,
-                      }}
-                    >
-                      <ConversationThread
-                        blocks={blocks}
-                        renderers={registry}
-                        onStartReached={
-                          history.hasOlderMessages ? history.fetchOlderMessages : undefined
-                        }
-                        isFetchingOlder={history.isFetchingOlder}
-                        hasOlderMessages={history.hasOlderMessages}
-                      />
-                    </ConversationActionsProvider>
-                  </ErrorBoundary>
+                  {blocks.length === 0 && history.isLoading ? (
+                    <ThinkingIndicator phase="loading" centered />
+                  ) : (
+                    <ErrorBoundary>
+                      <ConversationActionsProvider
+                        actions={{
+                          retryMessage: actions.retryMessage,
+                          respondPermission: actions.respondPermission,
+                          answerQuestion: actions.answerQuestion,
+                          approvePlan: actions.approvePlan,
+                          submitElicitation: actions.submitElicitation,
+                        }}
+                      >
+                        <ConversationThread
+                          blocks={blocks}
+                          renderers={registry}
+                          onStartReached={
+                            history.hasOlderMessages ? history.fetchOlderMessages : undefined
+                          }
+                          isFetchingOlder={history.isFetchingOlder}
+                          hasOlderMessages={history.hasOlderMessages}
+                        />
+                      </ConversationActionsProvider>
+                    </ErrorBoundary>
+                  )}
                 </div>
               </ExpandProvider>
             </ThreadHighlightProvider>
