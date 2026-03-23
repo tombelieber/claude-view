@@ -1,5 +1,5 @@
 import type { IDockviewPanelProps } from 'dockview-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { LiveStatus } from '../../lib/live-status'
 import { ChatSession } from '../../pages/ChatSession'
@@ -43,6 +43,18 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     return () => disposable.dispose()
   }, [api])
 
+  // Scroll-to-bottom signal: incremented when dockview moves this panel
+  // to a different group (drag-drop). The DOM is reparented without a React
+  // remount — scrollTop resets to 0 but no lifecycle fires. This counter
+  // propagates through ChatSession → ConversationThread to trigger scroll.
+  const [scrollSignal, setScrollSignal] = useState(0)
+  useEffect(() => {
+    const disposable = api.onDidGroupChange(() => {
+      setScrollSignal((n) => n + 1)
+    })
+    return () => disposable.dispose()
+  }, [api])
+
   // Called when ChatSession creates a new session from the blank "New Chat" panel.
   // Transitions this panel from blank to the real session.
   const onSessionCreated = useCallback(
@@ -61,6 +73,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
         liveStatus={liveStatus ?? 'inactive'}
         liveProjectPath={liveProjectPath}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}
+        scrollToBottomSignal={scrollSignal}
       />
     </div>
   )

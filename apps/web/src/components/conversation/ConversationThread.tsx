@@ -194,6 +194,8 @@ interface Props {
   isFetchingOlder?: boolean
   /** Whether there are older messages available above. */
   hasOlderMessages?: boolean
+  /** Increment to force scroll-to-bottom (e.g. after dockview drag-drop). */
+  scrollToBottomSignal?: number
 }
 
 export function ConversationThread({
@@ -206,6 +208,7 @@ export function ConversationThread({
   onStartReached,
   isFetchingOlder,
   hasOlderMessages,
+  scrollToBottomSignal = 0,
 }: Props) {
   const [activeFilter, setActiveFilter] = useState<FineCategory[] | 'all'>('all')
   const [globalJsonMode, setGlobalJsonMode] = useState(defaultJsonMode ?? false)
@@ -240,6 +243,44 @@ export function ConversationThread({
   const prevCountRef = useRef(items.length)
   const prevFilterRef = useRef(activeFilter)
 
+  // Refs for scroll-to-bottom logic (accessible outside React render cycle)
+  const isAtBottomRef = useRef(true)
+  const itemsLengthRef = useRef(items.length)
+  itemsLengthRef.current = items.length
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Suppress startReached during layout transitions (drag-drop, initial load)
+  // to prevent spurious older-history loads.
+  const startReachedSuppressedRef = useRef(false)
+  const suppressTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  // Shared scroll-to-bottom helper. Cancels any in-flight chain before
+  // starting a new one — prevents two loops (mount + resize) from racing.
+  const activeRafRef = useRef(0)
+  const scrollToBottomRetry = useCallback(() => {
+    cancelAnimationFrame(activeRafRef.current)
+    let frame = 0
+    const loop = () => {
+      if (frame++ >= 10) return
+      virtuosoRef.current?.scrollToIndex({
+        index: itemsLengthRef.current - 1,
+        align: 'end',
+        behavior: 'auto',
+      })
+      activeRafRef.current = requestAnimationFrame(loop)
+    }
+    activeRafRef.current = requestAnimationFrame(loop)
+  }, [])
+
+  // Suppress startReached helper
+  const suppressStartReached = useCallback(() => {
+    startReachedSuppressedRef.current = true
+    clearTimeout(suppressTimeoutRef.current)
+    suppressTimeoutRef.current = setTimeout(() => {
+      startReachedSuppressedRef.current = false
+    }, 500)
+  }, [])
+
   // ── Pagination: firstItemIndex for scroll-anchored prepending ─────────
   // Virtuoso uses firstItemIndex to maintain scroll position when items are
   // prepended. We start at a high number and decrease it as older pages load.
@@ -260,14 +301,83 @@ export function ConversationThread({
     prevItemCountForPrepend.current = items.length
   }, [items.length, isFetchingOlder])
 
-  // Track when new items arrive while user is scrolled up
+  // ── Scroll-to-bottom: after mount / data load ───────────────────────
+  // Scroll to bottom on every items change within 1s of mount.
+  // Covers: initial history load, any race.
+  // After 1s, followOutput takes over for normal chat.
+  const mountTimeRef = useRef(Date.now())
   useEffect(() => {
-    if (items.length > prevCountRef.current) {
-      if (!isAtBottom) {
+    if (items.length > 0 && Date.now() - mountTimeRef.current < 1000) {
+      scrollToBottomRetry()
+    }
+    return () => cancelAnimationFrame(activeRafRef.current)
+  }, [items.length, scrollToBottomRetry])
+
+  // ── Scroll-to-bottom: external signal (drag-drop) ─────────────────
+  // Dockview moves the DOM portal without React remount on drag-drop.
+  // scrollTop resets to 0 but no React lifecycle fires. ChatPanel
+  // listens to `api.onDidGroupChange()` and increments this signal.
+  const prevSignalRef = useRef(scrollToBottomSignal)
+  useEffect(() => {
+    if (scrollToBottomSignal !== prevSignalRef.current) {
+      prevSignalRef.current = scrollToBottomSignal
+      if (items.length > 0) {
+        scrollToBottomRetry()
+        suppressStartReached()
+      }
+    }
+  }, [scrollToBottomSignal, items.length, scrollToBottomRetry, suppressStartReached])
+
+  // ── Scroll-to-bottom: tab switch + resize ─────────────────────────
+  // ResizeObserver fires on ANY height change — covers tab switch (0→real),
+  // window resize, and dockview layout changes.
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+
+    let prevHeight = 0
+
+    const observer = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height ?? 0
+      if (h > 0 && prevHeight !== h && itemsLengthRef.current > 0) {
+        scrollToBottomRetry()
+      }
+      prevHeight = h
+    })
+
+    observer.observe(el)
+    return () => {
+      cancelAnimationFrame(activeRafRef.current)
+      observer.disconnect()
+    }
+  }, [scrollToBottomRetry])
+
+  // Track when new items arrive — scroll to bottom for user messages,
+  // show "new messages" badge for everything else when scrolled up.
+  const prevLastBlockIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    const lastItem = items[items.length - 1]
+    const lastBlockId = lastItem?.kind === 'block' ? lastItem.block.id : null
+
+    if (items.length > prevCountRef.current && lastBlockId !== prevLastBlockIdRef.current) {
+      // New item appended at end (not prepend of older history)
+      if (lastItem?.kind === 'block' && lastItem.block.type === 'user') {
+        // User sent a message → always scroll to bottom regardless of position
+        requestAnimationFrame(() => {
+          virtuosoRef.current?.scrollToIndex({
+            index: items.length - 1,
+            align: 'end',
+            behavior: 'smooth',
+          })
+        })
+        setHasNewItems(false)
+      } else if (!isAtBottom) {
         setHasNewItems(true)
       }
     }
+
     prevCountRef.current = items.length
+    prevLastBlockIdRef.current = lastBlockId
   }, [items.length, isAtBottom])
 
   // Scroll to bottom when filter changes (list length changes drastically)
@@ -285,8 +395,16 @@ export function ConversationThread({
     }
   }, [activeFilter, items.length])
 
+  // Guarded startReached — suppressed during layout transitions (drag-drop)
+  // to prevent spurious older-history loads that shift scroll to middle.
+  const guardedStartReached = useCallback(() => {
+    if (startReachedSuppressedRef.current) return
+    onStartReached?.()
+  }, [onStartReached])
+
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     setIsAtBottom(atBottom)
+    isAtBottomRef.current = atBottom
     if (atBottom) {
       setHasNewItems(false)
     }
@@ -351,7 +469,11 @@ export function ConversationThread({
   return (
     <DefaultExpandedProvider value={defaultExpanded ?? false}>
       <JsonModeProvider value={globalJsonMode}>
-        <div data-testid="message-thread" className="relative h-full w-full flex flex-col">
+        <div
+          ref={scrollContainerRef}
+          data-testid="message-thread"
+          className="relative h-full w-full flex flex-col"
+        >
           {filterBar && (
             <div className="sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 flex-shrink-0">
               <div className="flex items-center px-1 min-w-0">
@@ -404,7 +526,7 @@ export function ConversationThread({
                 itemContent={renderItem}
                 startReached={
                   onStartReached && hasOlderMessages && !isFetchingOlder
-                    ? onStartReached
+                    ? guardedStartReached
                     : undefined
                 }
                 className="h-full flex-1 min-h-0"
