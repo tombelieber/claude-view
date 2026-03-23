@@ -112,40 +112,40 @@ describe('groupByUrgency', () => {
 // ---------------------------------------------------------------------------
 
 describe('deriveDropdownActions', () => {
-  it('HISTORY session: Resume + Fork + Archive', () => {
+  it('HISTORY session: Resume + Archive (fork/takeOver hidden)', () => {
     const actions = deriveDropdownActions({
       liveStatus: 'inactive',
       liveData: null,
     })
     expect(actions.resume).toBe(true)
-    expect(actions.fork).toBe(true)
     expect(actions.archive).toBe(true)
+    expect(actions.fork).toBe(false)
     expect(actions.takeOver).toBe(false)
     expect(actions.shutDown).toBe(false)
     expect(actions.openInMonitor).toBe(false)
   })
 
-  it('WATCHING session: Take Over + Fork + Open in Monitor', () => {
+  it('WATCHING session: Open in Monitor (fork/takeOver hidden)', () => {
     const actions = deriveDropdownActions({
       liveStatus: 'cc_owned',
       liveData: liveAutonomous,
     })
-    expect(actions.takeOver).toBe(true)
-    expect(actions.fork).toBe(true)
     expect(actions.openInMonitor).toBe(true)
+    expect(actions.takeOver).toBe(false)
+    expect(actions.fork).toBe(false)
     expect(actions.resume).toBe(false)
     expect(actions.shutDown).toBe(false)
     expect(actions.archive).toBe(false)
   })
 
-  it('OWN session: Fork + Shut Down + Open in Monitor', () => {
+  it('OWN session: Shut Down + Open in Monitor (fork hidden)', () => {
     const actions = deriveDropdownActions({
       liveStatus: 'cc_agent_sdk_owned',
       liveData: liveSidecarManaged,
     })
-    expect(actions.fork).toBe(true)
     expect(actions.shutDown).toBe(true)
     expect(actions.openInMonitor).toBe(true)
+    expect(actions.fork).toBe(false)
     expect(actions.resume).toBe(false)
     expect(actions.takeOver).toBe(false)
     expect(actions.archive).toBe(false)
