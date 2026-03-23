@@ -14,18 +14,14 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
 
   switch (event.type) {
     case 'TAKEOVER_CLI': {
-      return [
-        { ...store, panel: { ...p, sub: { sub: 'takeover_killing' } } },
-        [{ cmd: 'KILL_CLI_SESSION', sessionId: p.sessionId }],
-      ]
-    }
-
-    case 'KILL_CLI_OK': {
+      // Fork instead of kill+resume: creates a new session from the conversation
+      // history without killing the CLI process. Eliminates the race condition where
+      // the CLI doesn't release the session lock in time (15s init timeout).
       const panel: PanelState = {
         phase: 'acquiring',
         sessionId: p.sessionId,
         targetSessionId: null,
-        action: 'resume',
+        action: 'fork',
         historyBlocks: p.blocks,
         pendingMessage: null,
         step: { step: 'posting' },
@@ -33,20 +29,15 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       return [
         { ...store, panel },
         [
+          { cmd: 'CLOSE_TERMINAL_WS' },
           {
-            cmd: 'POST_RESUME',
+            cmd: 'POST_FORK',
             sessionId: p.sessionId,
             projectPath: store.projectPath ?? undefined,
           },
         ],
       ]
     }
-
-    case 'KILL_CLI_FAILED':
-      return [
-        { ...store, panel: { ...p, sub: { sub: 'watching' } } },
-        [{ cmd: 'TOAST', message: event.error, variant: 'error' }],
-      ]
 
     case 'LIVE_STATUS_CHANGED': {
       const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store

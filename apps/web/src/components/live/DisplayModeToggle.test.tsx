@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 const mockSetDisplayMode = vi.fn()
 vi.mock('../../store/monitor-store', () => ({
-  useMonitorStore: vi.fn((sel: any) =>
+  useMonitorStore: vi.fn((sel: (s: Record<string, unknown>) => unknown) =>
     sel({ displayMode: 'chat', setDisplayMode: mockSetDisplayMode }),
   ),
 }))
