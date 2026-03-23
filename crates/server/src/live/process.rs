@@ -226,6 +226,9 @@ const IDE_PARENT_PATTERNS: &[(&str, &str)] = &[
 /// 3. Everything else → Terminal
 fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInfo {
     // Pass 1: Check the process's own binary path for IDE extension installs.
+    // Try cmd() first (full command line), then exe() as fallback.
+    // On macOS, cmd() may return empty due to security restrictions (SIP/sandbox),
+    // while exe() uses proc_pidpath which works reliably for same-user processes.
     let cmd_args = process.cmd();
     let own_full = cmd_args
         .iter()
@@ -235,6 +238,15 @@ fn classify_source(sys: &System, process: &sysinfo::Process) -> SessionSourceInf
 
     if let Some(source) = classify_by_binary_path(&own_full) {
         return source;
+    }
+    // Fallback: check exe() path (reliable on macOS via proc_pidpath)
+    if own_full.is_empty() || cmd_args.is_empty() {
+        if let Some(exe_path) = process.exe() {
+            let exe_str = exe_path.to_string_lossy();
+            if let Some(source) = classify_by_binary_path(&exe_str) {
+                return source;
+            }
+        }
     }
 
     // Pass 2: Walk ancestors for sidecar + direct-parent IDE detection.
@@ -267,6 +279,8 @@ fn classify_by_binary_path(own_full: &str) -> Option<SessionSourceInfo> {
 }
 
 /// Collect ancestor (name, full_cmd) pairs from the process tree.
+/// Uses cmd() for the full command line, with exe() fallback on macOS
+/// where cmd() may return empty due to security restrictions.
 fn collect_ancestors(sys: &System, process: &sysinfo::Process) -> Vec<(String, String)> {
     let mut result = Vec::new();
     let mut current_pid = process.parent();
@@ -283,12 +297,18 @@ fn collect_ancestors(sys: &System, process: &sysinfo::Process) -> Vec<(String, S
             break;
         };
         let name = ancestor.name().to_string_lossy().to_lowercase();
-        let full = ancestor
-            .cmd()
+        let cmd_args = ancestor.cmd();
+        let mut full = cmd_args
             .iter()
             .map(|s| s.to_string_lossy().to_string())
             .collect::<Vec<_>>()
             .join(" ");
+        // Fallback: use exe() path when cmd() is empty (macOS security restriction)
+        if full.is_empty() {
+            if let Some(exe_path) = ancestor.exe() {
+                full = exe_path.to_string_lossy().to_string();
+            }
+        }
         result.push((name, full));
         current_pid = ancestor.parent();
     }
