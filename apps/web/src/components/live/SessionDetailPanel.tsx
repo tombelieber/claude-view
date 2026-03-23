@@ -54,7 +54,7 @@ import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { PlanTab } from './PlanTab'
 import { RichPane } from './RichPane'
-import { SubAgentDrillDown } from './SubAgentDrillDown'
+import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
 import { TaskDetailTab } from './TaskDetailTab'
@@ -864,7 +864,7 @@ export function SessionDetailPanel({
         {activeTab === 'sub-agents' && (
           <div className="flex flex-col h-full overflow-hidden">
             {drillDownAgent ? (
-              <SubAgentDrillDown
+              <SubAgentBlockView
                 key={drillDownAgent.agentId}
                 sessionId={data.id}
                 agentId={drillDownAgent.agentId}

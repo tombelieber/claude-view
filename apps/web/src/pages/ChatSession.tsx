@@ -371,7 +371,7 @@ export function ChatSession({
                 onClick={() => setShowTakeover(true)}
                 className="mt-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
               >
-                Take Over
+                Fork &amp; Continue Here
               </button>
             </div>
           )}

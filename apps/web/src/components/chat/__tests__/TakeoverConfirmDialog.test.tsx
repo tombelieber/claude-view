@@ -14,7 +14,7 @@ describe('TakeoverConfirmDialog', () => {
   it('renders confirmation title and description', () => {
     render(<TakeoverConfirmDialog open onConfirm={vi.fn()} onCancel={vi.fn()} />)
 
-    expect(screen.getByText('Take Control?')).toBeInTheDocument()
+    expect(screen.getByText('Continue in Claude View?')).toBeInTheDocument()
     expect(screen.getByText(/started outside claude-view/i)).toBeInTheDocument()
   })
 
@@ -27,7 +27,7 @@ describe('TakeoverConfirmDialog', () => {
     fireEvent.click(checkbox)
 
     // Click Take Control
-    fireEvent.click(screen.getByRole('button', { name: /take control/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fork & continue/i }))
 
     expect(onConfirm).toHaveBeenCalled()
     expect(localStorage.getItem('claude-view:takeover-no-remind')).toBe('true')
@@ -38,7 +38,7 @@ describe('TakeoverConfirmDialog', () => {
     render(<TakeoverConfirmDialog open onConfirm={onConfirm} onCancel={vi.fn()} />)
 
     // Don't check the checkbox, just confirm
-    fireEvent.click(screen.getByRole('button', { name: /take control/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fork & continue/i }))
 
     expect(onConfirm).toHaveBeenCalled()
     expect(localStorage.getItem('claude-view:takeover-no-remind')).toBeNull()
@@ -48,7 +48,7 @@ describe('TakeoverConfirmDialog', () => {
     const onConfirm = vi.fn()
     render(<TakeoverConfirmDialog open onConfirm={onConfirm} onCancel={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /take control/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fork & continue/i }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
