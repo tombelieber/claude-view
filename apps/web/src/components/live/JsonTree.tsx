@@ -229,8 +229,8 @@ export function JsonTree({
   maxNodes = DEFAULT_MAX_NODES,
   verboseMode: verboseModeProp,
 }: JsonTreeProps) {
-  const storeVerbose = useMonitorStore((s) => s.verboseMode)
-  const verboseMode = verboseModeProp ?? storeVerbose
+  const storeIsDeveloper = useMonitorStore((s) => s.displayMode === 'developer')
+  const verboseMode = verboseModeProp ?? storeIsDeveloper
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [showFallback, setShowFallback] = useState(false)
   const [copied, setCopied] = useState(false)

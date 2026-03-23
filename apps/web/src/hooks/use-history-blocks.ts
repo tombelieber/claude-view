@@ -35,7 +35,7 @@ export function useHistoryBlocks(
   sessionId: string | null,
   options?: UseHistoryBlocksOptions,
 ): HistoryBlocksResult {
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const displayMode = useMonitorStore((s) => s.displayMode)
   const {
     data,
     error,
@@ -45,7 +45,7 @@ export function useHistoryBlocks(
     isFetching,
     isLoading,
   } = useSessionMessages(sessionId, {
-    raw: verboseMode,
+    raw: displayMode === 'developer',
     format: 'block',
     suppressNotFound: options?.suppressNotFound,
     enabled: options?.enabled,

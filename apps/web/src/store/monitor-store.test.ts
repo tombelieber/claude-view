@@ -12,6 +12,7 @@ describe('useMonitorStore', () => {
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
       verboseMode: false,
+      displayMode: 'chat',
     })
   })
 
@@ -195,6 +196,37 @@ describe('useMonitorStore', () => {
       expect(useMonitorStore.getState().verboseMode).toBe(true)
       useMonitorStore.getState().toggleVerbose()
       expect(useMonitorStore.getState().verboseMode).toBe(false)
+    })
+  })
+
+  describe('displayMode', () => {
+    it('defaults to chat', () => {
+      expect(useMonitorStore.getState().displayMode).toBe('chat')
+    })
+
+    it('setDisplayMode updates state', () => {
+      useMonitorStore.getState().setDisplayMode('developer')
+      expect(useMonitorStore.getState().displayMode).toBe('developer')
+    })
+
+    it('toggles back to chat', () => {
+      useMonitorStore.getState().setDisplayMode('developer')
+      useMonitorStore.getState().setDisplayMode('chat')
+      expect(useMonitorStore.getState().displayMode).toBe('chat')
+    })
+
+    it('setDisplayMode syncs verboseMode for backward compatibility', () => {
+      useMonitorStore.getState().setDisplayMode('developer')
+      expect(useMonitorStore.getState().verboseMode).toBe(true)
+      useMonitorStore.getState().setDisplayMode('chat')
+      expect(useMonitorStore.getState().verboseMode).toBe(false)
+    })
+
+    it('toggleVerbose syncs displayMode for backward compatibility', () => {
+      useMonitorStore.getState().toggleVerbose()
+      expect(useMonitorStore.getState().displayMode).toBe('developer')
+      useMonitorStore.getState().toggleVerbose()
+      expect(useMonitorStore.getState().displayMode).toBe('chat')
     })
   })
 })

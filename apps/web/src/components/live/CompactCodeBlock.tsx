@@ -16,8 +16,8 @@ const COLLAPSE_THRESHOLD = 12
 
 export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockProps) {
   const { expandedBlocks, toggleBlock } = useExpandContext()
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
-  const isExpanded = verboseMode || (blockId ? expandedBlocks.has(blockId) : false)
+  const isDeveloperMode = useMonitorStore((s) => s.displayMode === 'developer')
+  const isExpanded = isDeveloperMode || (blockId ? expandedBlocks.has(blockId) : false)
   const [copied, setCopied] = useState(false)
   const { resolvedTheme } = useTheme()
   const highlighter = useShikiHighlighter()
@@ -95,8 +95,8 @@ export function CompactCodeBlock({ code, language, blockId }: CompactCodeBlockPr
         </pre>
       )}
 
-      {/* Collapse/Expand control — hidden in verbose mode (always expanded) */}
-      {shouldCollapse && !verboseMode && (
+      {/* Collapse/Expand control — hidden in developer mode (always expanded) */}
+      {shouldCollapse && !isDeveloperMode && (
         <div className="border-t border-gray-200 dark:border-gray-700/60">
           <button
             onClick={() => blockId && toggleBlock(blockId)}

@@ -201,7 +201,7 @@ export function ConversationView() {
     }
   }, [])
 
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const displayMode = useMonitorStore((s) => s.displayMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
@@ -536,7 +536,7 @@ export function ConversationView() {
   }
 
   // Registry: chat bubbles (compact) vs developer terminal view
-  const registry = verboseMode ? developerRegistry : chatRegistry
+  const registry = displayMode === 'developer' ? developerRegistry : chatRegistry
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
