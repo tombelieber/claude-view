@@ -1,8 +1,8 @@
 /**
  * Shared Storybook decorators for conversation components.
  */
-import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
-import type { ConversationActions } from '../contexts/conversation-actions-context'
+import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
+import type { ConversationActions } from '@claude-view/shared/contexts/conversation-actions-context'
 
 /** No-op actions for stories that need ConversationActionsProvider but don't test actions. */
 const noopActions: ConversationActions = {
