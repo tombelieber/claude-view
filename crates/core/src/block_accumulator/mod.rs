@@ -185,6 +185,10 @@ impl BlockAccumulator {
                 .get("permissionMode")
                 .and_then(|p| p.as_str())
                 .map(String::from),
+            parent_uuid: entry
+                .get("parentUuid")
+                .and_then(|p| p.as_str())
+                .map(String::from),
             raw_json: None,
         }));
     }
@@ -228,7 +232,11 @@ impl BlockAccumulator {
         // Start or continue assistant builder
         if self.current_assistant.is_none() {
             let ts = self.extract_timestamp(entry);
-            self.current_assistant = Some(AssistantBlockBuilder::new(message_id.to_string(), ts));
+            let mut builder = AssistantBlockBuilder::new(message_id.to_string(), ts);
+            if let Some(pu) = entry.get("parentUuid").and_then(|p| p.as_str()) {
+                builder.set_parent_uuid(pu.to_string());
+            }
+            self.current_assistant = Some(builder);
         }
 
         // Process content blocks
@@ -894,5 +902,66 @@ mod tests {
         acc.reset();
         assert!(acc.snapshot().is_empty());
         assert!(acc.finalize().is_empty());
+    }
+
+    #[test]
+    fn parent_uuid_propagated_to_user_block() {
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "user",
+            "uuid": "u-child",
+            "parentUuid": "u-parent",
+            "message": {"content": [{"type": "text", "text": "sub-agent message"}]},
+            "timestamp": "2026-03-24T01:00:00.000Z"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        if let ConversationBlock::User(u) = &blocks[0] {
+            assert_eq!(u.parent_uuid, Some("u-parent".to_string()));
+        } else {
+            panic!("Expected UserBlock");
+        }
+    }
+
+    #[test]
+    fn parent_uuid_propagated_to_assistant_block() {
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "assistant",
+            "parentUuid": "u-parent",
+            "message": {
+                "id": "msg-child",
+                "content": [{"type": "text", "text": "sub-agent reply"}],
+                "stop_reason": "end_turn"
+            },
+            "timestamp": "2026-03-24T01:00:01.000Z"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        if let ConversationBlock::Assistant(a) = &blocks[0] {
+            assert_eq!(a.parent_uuid, Some("u-parent".to_string()));
+        } else {
+            panic!("Expected AssistantBlock");
+        }
+    }
+
+    #[test]
+    fn parent_uuid_none_when_absent_from_jsonl() {
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "user",
+            "uuid": "u-top",
+            "message": {"content": [{"type": "text", "text": "top-level message"}]},
+            "timestamp": "2026-03-24T01:00:00.000Z"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        if let ConversationBlock::User(u) = &blocks[0] {
+            assert_eq!(u.parent_uuid, None);
+        } else {
+            panic!("Expected UserBlock");
+        }
     }
 }

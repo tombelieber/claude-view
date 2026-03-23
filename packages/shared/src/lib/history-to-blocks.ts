@@ -13,6 +13,7 @@ interface HistoricalMessage {
   role: 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'
   content: string
   uuid?: string | null
+  parent_uuid?: string | null
   thinking?: string | null
   tool_calls?: Array<{
     name: string
@@ -48,6 +49,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           text: msg.content,
           timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : 0,
           status: 'sent',
+          parentUuid: msg.parent_uuid ?? undefined,
           rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)
@@ -78,6 +80,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           thinking: msg.thinking ?? undefined,
           streaming: false,
           timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : undefined,
+          parentUuid: msg.parent_uuid ?? undefined,
           rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)
