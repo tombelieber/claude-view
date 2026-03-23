@@ -40,6 +40,16 @@ impl BlockAccumulator {
         self.forked_from.as_ref()
     }
 
+    /// Reset the accumulator to its initial empty state.
+    /// Used when the JSONL file is truncated (e.g., context compaction).
+    pub fn reset(&mut self) {
+        self.blocks.clear();
+        self.current_assistant = None;
+        self.boundary_acc = TurnBoundaryAccumulator::new();
+        self.forked_from = None;
+        self.line_index = 0;
+    }
+
     /// Process a single JSONL entry.
     pub fn process_line(&mut self, entry: &Value) {
         self.line_index += 1;
@@ -78,6 +88,20 @@ impl BlockAccumulator {
         }
 
         std::mem::take(&mut self.blocks)
+    }
+
+    /// Non-consuming snapshot of current blocks, including any in-progress assistant.
+    ///
+    /// Used by the terminal WS block-mode stream to emit incremental updates
+    /// without resetting the accumulator. The persistent accumulator correlates
+    /// multi-line constructs (e.g., assistant + tool_result) that the per-line
+    /// approach cannot.
+    pub fn snapshot(&self) -> Vec<ConversationBlock> {
+        let mut blocks = self.blocks.clone();
+        if let Some(ref builder) = self.current_assistant {
+            blocks.push(ConversationBlock::Assistant(builder.clone().finalize()));
+        }
+        blocks
     }
 
     /// Process all lines from a string (convenience for batch mode).
@@ -700,5 +724,175 @@ mod tests {
         assert!(variants.contains(&SystemVariant::LastPrompt));
         assert!(variants.contains(&SystemVariant::QueueOperation));
         assert!(variants.contains(&SystemVariant::FileHistorySnapshot));
+    }
+
+    /// Regression test: CC CLI writes incremental assistant entries with the
+    /// same message.id (thinking, text, tool_use as separate lines). The
+    /// persistent accumulator must merge them into ONE AssistantBlock with
+    /// all segments, not produce separate blocks that replace each other.
+    #[test]
+    fn incremental_assistant_entries_merge_into_one_block() {
+        let fixture =
+            std::fs::read_to_string(fixtures_path().join("incremental_assistant.jsonl")).unwrap();
+        let blocks = parse_session_as_blocks(&fixture);
+
+        // Should have: User, Assistant(msg-inc-001), Assistant(msg-inc-002), TurnBoundary
+        let assistants: Vec<_> = blocks
+            .iter()
+            .filter(|b| matches!(b, ConversationBlock::Assistant(_)))
+            .collect();
+        assert_eq!(
+            assistants.len(),
+            2,
+            "Expected 2 AssistantBlocks (msg-inc-001 merged + msg-inc-002), got {}",
+            assistants.len()
+        );
+
+        // The first assistant block (msg-inc-001) must have ALL segments from the
+        // three incremental entries: thinking + text + tool_use
+        if let ConversationBlock::Assistant(a) = assistants[0] {
+            assert_eq!(a.id, "msg-inc-001");
+            assert!(
+                a.thinking.is_some(),
+                "msg-inc-001 should have thinking from first incremental entry"
+            );
+
+            let text_segs: Vec<_> = a
+                .segments
+                .iter()
+                .filter(|s| matches!(s, AssistantSegment::Text { .. }))
+                .collect();
+            assert!(
+                !text_segs.is_empty(),
+                "msg-inc-001 should have text segment from second entry"
+            );
+
+            let tool_segs: Vec<_> = a
+                .segments
+                .iter()
+                .filter(|s| matches!(s, AssistantSegment::Tool { .. }))
+                .collect();
+            assert!(
+                !tool_segs.is_empty(),
+                "msg-inc-001 should have tool segment from third entry"
+            );
+
+            // Tool result should be attached (from the user tool_result entry)
+            if let AssistantSegment::Tool { execution } = tool_segs[0] {
+                assert!(
+                    execution.result.is_some(),
+                    "Tool should have result attached from user tool_result"
+                );
+                assert_eq!(execution.status, ToolStatus::Complete);
+            }
+        } else {
+            panic!("Expected AssistantBlock");
+        }
+    }
+
+    /// Test that snapshot() returns in-progress assistant blocks without
+    /// consuming the accumulator state.
+    #[test]
+    fn snapshot_returns_in_progress_assistant() {
+        let mut acc = BlockAccumulator::new();
+
+        // Feed first incremental entry (thinking only)
+        let entry1 = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-snap-001",
+                "content": [{"type": "thinking", "thinking": "Let me think..."}]
+            },
+            "timestamp": "2026-03-23T01:00:00.000Z"
+        });
+        acc.process_line(&entry1);
+
+        // Snapshot should show the in-progress assistant
+        let snap1 = acc.snapshot();
+        assert_eq!(snap1.len(), 1);
+        if let ConversationBlock::Assistant(a) = &snap1[0] {
+            assert_eq!(a.id, "msg-snap-001");
+            assert!(a.thinking.is_some());
+        } else {
+            panic!("Expected AssistantBlock in snapshot");
+        }
+
+        // Feed second entry (text) — same message.id, should accumulate
+        let entry2 = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-snap-001",
+                "content": [{"type": "text", "text": "I'll read the file"}]
+            }
+        });
+        acc.process_line(&entry2);
+
+        // Second snapshot should have BOTH thinking and text
+        let snap2 = acc.snapshot();
+        assert_eq!(snap2.len(), 1);
+        if let ConversationBlock::Assistant(a) = &snap2[0] {
+            assert!(a.thinking.is_some());
+            assert_eq!(a.segments.len(), 1); // one text segment
+        } else {
+            panic!("Expected AssistantBlock in second snapshot");
+        }
+
+        // Feed third entry (tool_use) — same message.id
+        let entry3 = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-snap-001",
+                "content": [{"type": "tool_use", "id": "tu-1", "name": "Read", "input": {}}],
+                "stop_reason": "tool_use"
+            }
+        });
+        acc.process_line(&entry3);
+
+        let snap3 = acc.snapshot();
+        assert_eq!(snap3.len(), 1);
+        if let ConversationBlock::Assistant(a) = &snap3[0] {
+            assert!(a.thinking.is_some());
+            assert_eq!(a.segments.len(), 2); // text + tool
+        } else {
+            panic!("Expected AssistantBlock in third snapshot");
+        }
+
+        // Accumulator should still be usable (not consumed)
+        let entry4 = serde_json::json!({
+            "type": "user",
+            "uuid": "u-1",
+            "message": {"content": [{"type": "tool_result", "tool_use_id": "tu-1", "content": "result", "is_error": false}]}
+        });
+        acc.process_line(&entry4);
+        let snap4 = acc.snapshot();
+        // Still 1 block — tool result attached to existing assistant
+        assert_eq!(snap4.len(), 1);
+        if let ConversationBlock::Assistant(a) = &snap4[0] {
+            let tool_seg = a
+                .segments
+                .iter()
+                .find(|s| matches!(s, AssistantSegment::Tool { .. }));
+            if let Some(AssistantSegment::Tool { execution }) = tool_seg {
+                assert!(execution.result.is_some(), "Tool result should be attached");
+            }
+        }
+    }
+
+    #[test]
+    fn reset_clears_accumulator_state() {
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-reset",
+                "content": [{"type": "text", "text": "before reset"}]
+            }
+        });
+        acc.process_line(&entry);
+        assert_eq!(acc.snapshot().len(), 1);
+
+        acc.reset();
+        assert!(acc.snapshot().is_empty());
+        assert!(acc.finalize().is_empty());
     }
 }

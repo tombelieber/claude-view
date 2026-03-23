@@ -8,6 +8,7 @@ storybook-static/
 # Rust/Cargo
 target/
 target-codex*/
+target-wt/
 **/*.rs.bk
 *.pdb
 *.rlib
