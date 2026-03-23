@@ -53,7 +53,7 @@ interface Props {
 }
 
 export function ThinkingIndicator({ phase, centered }: Props) {
-  const verbs = VERB_SETS[phase]
+  const verbs = VERB_SETS[phase] ?? VERB_SETS.loading
   const [index, setIndex] = useState(0)
   const injectedRef = useRef(false)
 
