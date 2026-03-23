@@ -314,6 +314,14 @@ export function ChatPalette({ sections, filter, onClose }: ChatPaletteProps) {
     setActiveIndex(0)
   }, [itemCount, filter])
 
+  // Ensure scroll starts at top on mount (positioned bottom-full, browsers can default to bottom)
+  useEffect(() => {
+    const container = listRef.current
+    if (container) {
+      container.scrollTop = 0
+    }
+  }, [])
+
   // Scroll active item into view
   useEffect(() => {
     const container = listRef.current

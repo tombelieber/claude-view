@@ -182,6 +182,60 @@ describe('mapWsEvent', () => {
     )
   })
 
+  // ─── Object-format normalization (SDK format change) ─────
+
+  test('session_init normalizes object-format slashCommands to strings', () => {
+    const raw = {
+      type: 'session_init',
+      model: 'opus',
+      permissionMode: 'default',
+      slashCommands: [
+        { name: 'help', description: 'Show help', argumentHint: '' },
+        { name: 'commit', description: 'Commit', argumentHint: '<msg>' },
+      ],
+      mcpServers: [],
+      skills: [{ name: 'test', description: 'Run tests' }],
+      agents: [{ name: 'reviewer', description: 'Reviews code' }],
+      capabilities: [],
+    }
+    const result = mapWsEvent(raw)!
+    expect(result.type).toBe('SESSION_INIT')
+    if (result.type === 'SESSION_INIT') {
+      expect(result.slashCommands).toEqual(['help', 'commit'])
+      expect(result.skills).toEqual(['test'])
+      expect(result.agents).toEqual(['reviewer'])
+    }
+  })
+
+  test('query_result commands normalizes object-format to strings', () => {
+    expect(
+      mapWsEvent({
+        type: 'query_result',
+        queryType: 'commands',
+        data: [
+          { name: 'help', description: 'Show help', argumentHint: '' },
+          { name: 'clear', description: 'Clear history', argumentHint: '' },
+        ],
+      }),
+    ).toEqual({
+      type: 'COMMANDS_UPDATED',
+      commands: ['help', 'clear'],
+    })
+  })
+
+  test('query_result agents normalizes object-format to strings', () => {
+    expect(
+      mapWsEvent({
+        type: 'query_result',
+        queryType: 'agents',
+        data: [{ name: 'researcher', description: 'Researches topics' }],
+      }),
+    ).toEqual({
+      type: 'AGENTS_UPDATED',
+      agents: ['researcher'],
+    })
+  })
+
   // ─── Infrastructure → null ────────────────────────────────
 
   test('heartbeat_config → null', () => {

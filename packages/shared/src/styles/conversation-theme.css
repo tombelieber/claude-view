@@ -1,0 +1,49 @@
+/**
+ * Conversation Theme Contract
+ *
+ * Wires Tailwind's gray palette to --cv-* CSS variables so that consuming
+ * apps can override the palette without touching any component code.
+ *
+ * Usage in a consuming app:
+ *   @import "tailwindcss";
+ *   @import "@claude-view/shared/styles/conversation-theme.css";
+ *
+ * To customize, override --cv-* variables in your app CSS:
+ *   :root { --cv-gray-900: #0D1117; }
+ *
+ * The palette is mode-independent — components handle light/dark via
+ * Tailwind dark: variants. Override the SCALE, not per-mode values.
+ */
+
+/* Default palette — matches Tailwind v4 defaults */
+:root {
+  --cv-white: #ffffff;
+  --cv-gray-50: #f9fafb;
+  --cv-gray-100: #f3f4f6;
+  --cv-gray-200: #e5e7eb;
+  --cv-gray-300: #d1d5db;
+  --cv-gray-400: #9ca3af;
+  --cv-gray-500: #6b7280;
+  --cv-gray-600: #4b5563;
+  --cv-gray-700: #374151;
+  --cv-gray-800: #1f2937;
+  --cv-gray-900: #111827;
+  --cv-gray-950: #030712;
+}
+
+/* Wire Tailwind palette to CSS variables — every gray-* utility now
+   resolves through --cv-* at runtime. Zero component changes needed. */
+@theme {
+  --color-white: var(--cv-white);
+  --color-gray-50: var(--cv-gray-50);
+  --color-gray-100: var(--cv-gray-100);
+  --color-gray-200: var(--cv-gray-200);
+  --color-gray-300: var(--cv-gray-300);
+  --color-gray-400: var(--cv-gray-400);
+  --color-gray-500: var(--cv-gray-500);
+  --color-gray-600: var(--cv-gray-600);
+  --color-gray-700: var(--cv-gray-700);
+  --color-gray-800: var(--cv-gray-800);
+  --color-gray-900: var(--cv-gray-900);
+  --color-gray-950: var(--cv-gray-950);
+}

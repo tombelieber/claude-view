@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import '../../../packages/shared/src/styles/conversation-theme.css';
 @plugin "@tailwindcss/typography";
 
 /* Scan shared components so Tailwind generates their utility classes */

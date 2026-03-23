@@ -1,6 +1,18 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { RawEvent } from './types'
 
+/** Defensive backstop: ensure name arrays are string[] even if sidecar sends objects */
+function ensureStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((item) =>
+    typeof item === 'string'
+      ? item
+      : item !== null && typeof item === 'object' && 'name' in item
+        ? String(item.name)
+        : String(item),
+  )
+}
+
 /**
  * Maps raw WebSocket JSON messages (parsed objects) into typed RawEvent.
  * Returns null for infrastructure messages that don't need FSM handling.
@@ -14,10 +26,10 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
         type: 'SESSION_INIT',
         model: raw.model as string,
         permissionMode: raw.permissionMode as string,
-        slashCommands: raw.slashCommands as string[],
+        slashCommands: ensureStringArray(raw.slashCommands),
         mcpServers: raw.mcpServers as { name: string; status: string }[],
-        skills: raw.skills as string[],
-        agents: raw.agents as string[],
+        skills: ensureStringArray(raw.skills),
+        agents: ensureStringArray(raw.agents),
         capabilities: raw.capabilities as string[],
       }
 
@@ -90,10 +102,10 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
     case 'query_result': {
       const queryType = raw.queryType as string
       if (queryType === 'commands') {
-        return { type: 'COMMANDS_UPDATED', commands: raw.data as string[] }
+        return { type: 'COMMANDS_UPDATED', commands: ensureStringArray(raw.data) }
       }
       if (queryType === 'agents') {
-        return { type: 'AGENTS_UPDATED', agents: raw.data as string[] }
+        return { type: 'AGENTS_UPDATED', agents: ensureStringArray(raw.data) }
       }
       return null
     }
