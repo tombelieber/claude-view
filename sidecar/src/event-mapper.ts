@@ -35,6 +35,20 @@ import type {
 
 type AnyMsg = SDKMessage & Record<string, unknown>
 
+/**
+ * Normalize an SDK array that may contain plain strings OR objects with a `name` field.
+ * The Claude Code SDK changed slash_commands (and potentially agents/skills) from
+ * string[] to {name, description, argumentHint}[]. This handles both formats.
+ */
+export function normalizeNameArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((item) => {
+    if (typeof item === 'string') return item
+    if (item !== null && typeof item === 'object' && 'name' in item) return String(item.name)
+    return String(item)
+  })
+}
+
 export function mapSdkMessage(msg: SDKMessage): ServerEvent[] {
   const m = msg as AnyMsg
 
@@ -247,11 +261,11 @@ function mapSystem(m: AnyMsg): ServerEvent[] {
           model: (m.model as string) ?? '',
           mcpServers: (m.mcp_servers as { name: string; status: string }[]) ?? [],
           permissionMode: (m.permissionMode as string) ?? 'default',
-          slashCommands: (m.slash_commands as string[]) ?? [],
+          slashCommands: normalizeNameArray(m.slash_commands),
           claudeCodeVersion: (m.claude_code_version as string) ?? '',
           cwd: (m.cwd as string) ?? '',
-          agents: (m.agents as string[]) ?? [],
-          skills: (m.skills as string[]) ?? [],
+          agents: normalizeNameArray(m.agents),
+          skills: normalizeNameArray(m.skills),
           outputStyle: (m.output_style as string) ?? '',
           capabilities: [
             'interrupt',

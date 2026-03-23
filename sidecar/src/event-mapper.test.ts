@@ -1,7 +1,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 // sidecar/src/event-mapper.test.ts
 import { describe, expect, it } from 'vitest'
-import { mapSdkMessage } from './event-mapper.js'
+import { mapSdkMessage, normalizeNameArray } from './event-mapper.js'
 import type { SessionInit, StreamDelta, TurnComplete, TurnError } from './protocol.js'
 
 // Helper to create a minimal SDKAssistantMessage
@@ -213,6 +213,59 @@ describe('mapSdkMessage', () => {
       expect(e.cwd).toBe('/home/user/project')
     })
 
+    it('normalizes object-format slash_commands to string[] (SDK format change)', () => {
+      const msg = {
+        type: 'system',
+        subtype: 'init',
+        tools: [],
+        model: 'claude-sonnet-4-20250514',
+        mcp_servers: [],
+        permissionMode: 'default',
+        slash_commands: [
+          { name: 'help', description: 'Show help', argumentHint: '' },
+          { name: 'commit', description: 'Create a git commit', argumentHint: '<message>' },
+        ],
+        claude_code_version: '1.0.0',
+        cwd: '/tmp',
+        agents: [{ name: 'code-reviewer', description: 'Reviews code' }],
+        skills: [{ name: 'test', description: 'Run tests' }],
+        output_style: '',
+        uuid: 'u-obj',
+        session_id: 's1',
+      } as unknown as SDKMessage
+
+      const events = mapSdkMessage(msg)
+      const e = events[0] as SessionInit
+      expect(e.slashCommands).toEqual(['help', 'commit'])
+      expect(e.agents).toEqual(['code-reviewer'])
+      expect(e.skills).toEqual(['test'])
+    })
+
+    it('preserves string[] format for slash_commands (backward compat)', () => {
+      const msg = {
+        type: 'system',
+        subtype: 'init',
+        tools: [],
+        model: 'claude-sonnet-4-20250514',
+        mcp_servers: [],
+        permissionMode: 'default',
+        slash_commands: ['/help', '/clear'],
+        claude_code_version: '1.0.0',
+        cwd: '/tmp',
+        agents: ['code-reviewer'],
+        skills: ['commit'],
+        output_style: '',
+        uuid: 'u-str',
+        session_id: 's1',
+      } as unknown as SDKMessage
+
+      const events = mapSdkMessage(msg)
+      const e = events[0] as SessionInit
+      expect(e.slashCommands).toEqual(['/help', '/clear'])
+      expect(e.agents).toEqual(['code-reviewer'])
+      expect(e.skills).toEqual(['commit'])
+    })
+
     it('maps unknown system subtype to unknown_sdk_event', () => {
       const msg = {
         type: 'system',
@@ -222,6 +275,35 @@ describe('mapSdkMessage', () => {
       } as unknown as SDKMessage
       const events = mapSdkMessage(msg)
       expect(events[0].type).toBe('unknown_sdk_event')
+    })
+  })
+
+  describe('normalizeNameArray', () => {
+    it('passes through string arrays', () => {
+      expect(normalizeNameArray(['help', 'commit'])).toEqual(['help', 'commit'])
+    })
+
+    it('extracts .name from object arrays', () => {
+      expect(
+        normalizeNameArray([
+          { name: 'help', description: 'Show help', argumentHint: '' },
+          { name: 'commit', description: 'Create a git commit', argumentHint: '<msg>' },
+        ]),
+      ).toEqual(['help', 'commit'])
+    })
+
+    it('handles mixed arrays', () => {
+      expect(normalizeNameArray(['help', { name: 'commit' }])).toEqual(['help', 'commit'])
+    })
+
+    it('returns [] for non-array input', () => {
+      expect(normalizeNameArray(undefined)).toEqual([])
+      expect(normalizeNameArray(null)).toEqual([])
+      expect(normalizeNameArray('not-array')).toEqual([])
+    })
+
+    it('returns [] for empty array', () => {
+      expect(normalizeNameArray([])).toEqual([])
     })
   })
 

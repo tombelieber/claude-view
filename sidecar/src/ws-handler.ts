@@ -1,6 +1,7 @@
 // sidecar/src/ws-handler.ts
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
+import { normalizeNameArray } from './event-mapper.js'
 import type { ClientMessage, ServerEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
@@ -254,7 +255,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
               JSON.stringify({
                 type: 'query_result',
                 queryType: 'commands',
-                data: cmds,
+                data: normalizeNameArray(cmds),
                 requestId: msg.requestId,
               }),
             )
@@ -270,7 +271,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
               JSON.stringify({
                 type: 'query_result',
                 queryType: 'agents',
-                data: agents,
+                data: normalizeNameArray(agents),
                 requestId: msg.requestId,
               }),
             )
