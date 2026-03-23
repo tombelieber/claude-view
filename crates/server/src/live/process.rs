@@ -758,4 +758,131 @@ mod tests {
         // Currently Terminal — known gap for bare symlinks without full path
         assert_eq!(result.category, SessionSource::Terminal);
     }
+
+    // =========================================================================
+    // Regression tests — real-world process trees from production incidents
+    // =========================================================================
+
+    #[test]
+    fn regression_vscode_extension_native_binary_path() {
+        // Real path from macOS: VS Code extension bundles native binary.
+        // This is the primary detection path (Pass 1: binary path).
+        let cmd = "/Users/dev/.vscode/extensions/anthropic.claude-code-2.1.81-darwin-arm64/resources/native-binary/claude";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn regression_vscode_extension_node_based_path() {
+        // Node-based installs: extension runs via node cli.js
+        let cmd = "node /Users/dev/.vscode/extensions/anthropic.claude-code-2.1.0/cli.js";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn regression_vscode_code_helper_plugin_direct_parent() {
+        // Real macOS process tree: VS Code extension → Code Helper (Plugin) → claude
+        // When exe() fallback is needed (cmd() empty on macOS).
+        let ancestors = vec![(
+            "code helper (plugin)".to_string(),
+            "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin) --type=utility".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
+
+    #[test]
+    fn regression_cli_in_vscode_terminal_not_misclassified() {
+        // CRITICAL: User typed `claude` in VS Code's integrated terminal.
+        // Parent is zsh, grandparent is Code Helper → MUST be Terminal.
+        // This is the exact scenario that broke when parent detection was
+        // removed (2026-03-23), and the exact scenario we must NOT break
+        // when restoring it.
+        let ancestors = vec![
+            ("zsh".to_string(), "/bin/zsh -l".to_string()),
+            (
+                "code helper (plugin)".to_string(),
+                "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin) --type=utility".to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(
+            result.category,
+            SessionSource::Terminal,
+            "REGRESSION: CLI typed in VS Code terminal must be Terminal, not VS Code"
+        );
+    }
+
+    #[test]
+    fn regression_cursor_extension_binary_path() {
+        let cmd = "/Users/dev/.cursor/extensions/anthropic.claude-code-2.1.0-darwin-arm64/resources/native-binary/claude";
+        let result = classify_by_binary_path(cmd).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Cursor"));
+    }
+
+    #[test]
+    fn regression_cursor_helper_direct_parent() {
+        let ancestors = vec![(
+            "cursor helper (plugin)".to_string(),
+            "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper (Plugin).app/Contents/MacOS/Cursor Helper (Plugin)".to_string(),
+        )];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("Cursor"));
+    }
+
+    #[test]
+    fn regression_sidecar_via_shell_wrapper() {
+        // Sidecar spawns claude via a shell script wrapper.
+        // Must still be detected as AgentSdk.
+        let ancestors = vec![
+            ("sh".to_string(), "/bin/sh -c claude".to_string()),
+            ("bash".to_string(), "/bin/bash".to_string()),
+            (
+                "node".to_string(),
+                "node /app/sidecar/dist/index.js".to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(
+            result.category,
+            SessionSource::AgentSdk,
+            "REGRESSION: sidecar through multiple shell layers must still be AgentSdk"
+        );
+    }
+
+    #[test]
+    fn regression_global_binary_in_plain_terminal() {
+        // Global `claude` binary in a regular terminal.
+        // Parent is bash, no IDE or sidecar → Terminal.
+        let ancestors = vec![
+            ("bash".to_string(), "/bin/bash --login".to_string()),
+            (
+                "terminal".to_string(),
+                "/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal".to_string(),
+            ),
+        ];
+        let result = classify_by_ancestors(&ancestors);
+        assert_eq!(result.category, SessionSource::Terminal);
+    }
+
+    #[test]
+    fn regression_empty_cmd_with_vscode_exe_path() {
+        // macOS: cmd() returns empty but exe() has the VS Code extension path.
+        // The classify_source function should use exe() as fallback.
+        // This tests classify_by_binary_path which is called with exe() path.
+        let exe_path = "/Users/dev/.vscode/extensions/anthropic.claude-code-2.1.81-darwin-arm64/resources/native-binary/claude";
+
+        // cmd() is empty → classify_by_binary_path("") returns None
+        assert!(classify_by_binary_path("").is_none());
+        // exe() fallback → classify_by_binary_path(exe_path) returns VS Code
+        let result = classify_by_binary_path(exe_path).unwrap();
+        assert_eq!(result.category, SessionSource::Ide);
+        assert_eq!(result.label.as_deref(), Some("VS Code"));
+    }
 }
