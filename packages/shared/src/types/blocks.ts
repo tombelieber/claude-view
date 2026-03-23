@@ -21,6 +21,7 @@ import type {
   PermissionRequest,
   PlanApproval,
   PromptSuggestion,
+  QueueOperation,
   RateLimit,
   SessionClosed,
   SessionInit,
@@ -174,6 +175,7 @@ export type SystemBlock = {
     | FilesSaved
     | CommandOutput
     | StreamDelta
+    | QueueOperation
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
 }

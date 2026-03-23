@@ -6,6 +6,7 @@ import type {
   CommandOutput,
   ElicitationComplete,
   FilesSaved,
+  QueueOperation,
   SessionInit,
   HookEvent as SidecarHookEvent,
   SessionStatus as SidecarSessionStatus,
@@ -255,19 +256,18 @@ function LocalCommandDetail({ data }: { data: Record<string, unknown> }) {
   )
 }
 
-function QueueOperationDetail({ data }: { data: Record<string, unknown> }) {
-  const op = (data.operation as 'enqueue' | 'dequeue') ?? 'enqueue'
+function QueueOperationDetail({ data }: { data: QueueOperation }) {
   return (
     <EventCard
       dot="orange"
       chip="Queue"
-      label={`${op}${data.content ? `: ${data.content}` : ''}`}
+      label={`${data.operation}${data.content ? `: ${data.content}` : ''}`}
       rawData={data}
     >
       <MessageQueueEventCard
-        operation={op}
-        timestamp={String(data.timestamp ?? '')}
-        content={data.content ? String(data.content) : undefined}
+        operation={data.operation}
+        timestamp={data.timestamp}
+        content={data.content}
       />
     </EventCard>
   )
@@ -343,7 +343,7 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
       case 'local_command':
         return <LocalCommandDetail data={block.data as unknown as Record<string, unknown>} />
       case 'queue_operation':
-        return <QueueOperationDetail data={block.data as unknown as Record<string, unknown>} />
+        return <QueueOperationDetail data={block.data as QueueOperation} />
       case 'file_history_snapshot':
         return <FileHistorySnapshotDetail data={block.data as unknown as Record<string, unknown>} />
       case 'ai_title':
