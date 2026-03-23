@@ -1,7 +1,7 @@
 import { ListOrdered } from 'lucide-react'
 
 interface MessageQueueEventCardProps {
-  operation: 'enqueue' | 'dequeue'
+  operation: 'enqueue' | 'dequeue' | 'remove' | 'popAll'
   timestamp: string
   content?: string
   queueId?: string
@@ -14,11 +14,13 @@ export function MessageQueueEventCard({
   queueId,
 }: MessageQueueEventCardProps) {
   const messageText =
-    operation === 'dequeue'
+    operation === 'dequeue' || operation === 'remove'
       ? 'Message processed'
-      : timestamp
-        ? `Message enqueued at ${timestamp}`
-        : 'Message enqueued'
+      : operation === 'popAll'
+        ? 'Queue cleared'
+        : timestamp
+          ? `Message enqueued at ${timestamp}`
+          : 'Message enqueued'
 
   return (
     <div className="py-0.5 border-l-2 border-l-gray-400 pl-1 my-1" aria-label="Message queue event">

@@ -1,11 +1,11 @@
 import type { SystemBlock as SystemBlockType } from '@claude-view/shared/types/blocks'
 import type {
+  QueueOperation,
   TaskNotification,
   TaskProgressEvent,
   TaskStarted,
 } from '@claude-view/shared/types/sidecar-protocol'
 import { Activity, Bell, Clock, Play } from 'lucide-react'
-import { isUserQueueContent } from '../../../live/pending-queue'
 
 /** Variants that ChatSystemBlock actually renders — used to filter items before Virtuoso. */
 export const CHAT_SYSTEM_VARIANTS = new Set([
@@ -18,8 +18,8 @@ export const CHAT_SYSTEM_VARIANTS = new Set([
 /** Returns true if a queue_operation system block should render in chat mode. */
 export function isChatVisibleQueueOp(block: SystemBlockType): boolean {
   if (block.variant !== 'queue_operation') return false
-  const data = block.data as unknown as Record<string, unknown>
-  return data.operation === 'enqueue' && isUserQueueContent(data.content as string | undefined)
+  const data = block.data as QueueOperation
+  return data.operation === 'enqueue' && !!data.content?.trim()
 }
 
 interface SystemBlockProps {
@@ -58,14 +58,13 @@ export function ChatSystemBlock({ block }: SystemBlockProps) {
       )
     }
     case 'queue_operation': {
-      const data = block.data as unknown as Record<string, unknown>
-      const content = String(data.content ?? '')
+      const data = block.data as QueueOperation
       // Render user-typed enqueue as a chat bubble (right-aligned, like user messages)
       return (
         <div data-testid="queued-user-message" className="flex justify-end">
           <div className="max-w-[80%]">
             <div className="px-3.5 py-2.5 rounded-2xl rounded-br-md bg-blue-500/80 dark:bg-blue-600/80 text-white">
-              <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+              <p className="text-sm whitespace-pre-wrap break-words">{data.content}</p>
             </div>
             <div className="flex items-center justify-end gap-1 mt-1 px-1">
               <Clock className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
