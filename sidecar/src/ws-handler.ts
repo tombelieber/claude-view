@@ -5,12 +5,49 @@ import type { ClientMessage, ServerEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
 
-// Content events that trigger blocks_update on relay — module scope to avoid per-connection recreation.
-const CONTENT_EVENTS = new Set([
+// Events that modify blocks in the accumulator and need immediate blocks_update to the client.
+// Without this, the client won't see new blocks until the next unrelated update.
+//
+// RULE: if StreamAccumulator.ingest() calls pushInteraction/pushNotice/pushSystem/
+// handleUserMessage or modifies currentAssistant for an event type, it belongs here.
+// Exceptions: turn_complete/turn_error are handled separately (line ~58) with full blocks.
+const BLOCK_PRODUCING_EVENTS = new Set([
+  // Streaming content — builds/extends assistant blocks
   'assistant_text',
-  'tool_use_start',
   'assistant_thinking',
+  'tool_use_start',
+  'tool_use_result',
   'user_message_echo',
+  // Interactive — creates InteractionBlock (permission card, question card, etc.)
+  'permission_request',
+  'ask_question',
+  'plan_approval',
+  'elicitation',
+  // Notices — rate limit, errors, compaction
+  'rate_limit',
+  'context_compacted',
+  'assistant_error',
+  // Tool lifecycle — updates existing assistant block segments
+  'tool_progress',
+  'tool_summary',
+  // System blocks — informational events that pushSystem() into the accumulator
+  'elicitation_complete',
+  'hook_event',
+  'task_started',
+  'task_progress',
+  'task_notification',
+  'files_saved',
+  'command_output',
+  'session_status',
+  'unknown_sdk_event',
+  'prompt_suggestion',
+  'auth_status',
+  // Error notice
+  'error',
+  // NOTE: turn_complete/turn_error send blocks directly (handled separately in onMessage).
+  // session_init is followed by blocks_snapshot. session_closed ends the session.
+  // content_block_start is handled by the isBlockStart check below.
+  // stream_delta (non-text) is handled by isBlockStart. pong produces no block.
 ])
 
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
@@ -65,7 +102,7 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
       const isBlockStart =
         msg.type === 'stream_delta' &&
         (msg as { deltaType?: string }).deltaType === 'content_block_start'
-      if (CONTENT_EVENTS.has(msg.type) || isBlockStart) {
+      if (BLOCK_PRODUCING_EVENTS.has(msg.type) || isBlockStart) {
         ws.send(
           JSON.stringify({
             type: 'blocks_update',
