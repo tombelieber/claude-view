@@ -18,6 +18,11 @@ import type {
   FilesSaved,
   HookEvent,
   ModelUsageInfo,
+  AiTitle,
+  FileHistorySnapshot,
+  Informational,
+  LastPrompt,
+  LocalCommand,
   PermissionRequest,
   PlanApproval,
   PromptSuggestion,
@@ -175,7 +180,12 @@ export type SystemBlock = {
     | FilesSaved
     | CommandOutput
     | StreamDelta
+    | LocalCommand
     | QueueOperation
+    | FileHistorySnapshot
+    | AiTitle
+    | LastPrompt
+    | Informational
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
 }

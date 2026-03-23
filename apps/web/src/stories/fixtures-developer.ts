@@ -4,10 +4,16 @@
  */
 import type { AssistantBlock, SystemBlock, UserBlock } from '@claude-view/shared/types/blocks'
 import type {
+  AiTitle,
   CommandOutput,
   ElicitationComplete,
+  FileHistorySnapshot,
   FilesSaved,
   HookEvent,
+  Informational,
+  LastPrompt,
+  LocalCommand,
+  QueueOperation,
   SessionInit,
   SessionStatus,
   StreamDelta,
@@ -320,7 +326,11 @@ export const devSystemBlocks = {
     type: 'system',
     id: 'dsb_009',
     variant: 'local_command',
-    data: { content: '/clear' } as unknown as SystemBlock['data'],
+    data: {
+      type: 'system',
+      subtype: 'local_command',
+      content: '/clear',
+    } satisfies LocalCommand,
   } satisfies SystemBlock,
 
   queueOperation: {
@@ -328,10 +338,11 @@ export const devSystemBlocks = {
     id: 'dsb_010',
     variant: 'queue_operation',
     data: {
+      type: 'queue-operation',
       operation: 'enqueue',
       timestamp: new Date().toISOString(),
       content: 'Fix the login bug',
-    } as unknown as SystemBlock['data'],
+    } satisfies QueueOperation,
   } satisfies SystemBlock,
 
   fileHistorySnapshot: {
@@ -339,11 +350,33 @@ export const devSystemBlocks = {
     id: 'dsb_011',
     variant: 'file_history_snapshot',
     data: {
+      type: 'file-history-snapshot',
+      messageId: 'msg_snapshot_001',
+      snapshot: {
+        trackedFileBackups: {
+          'src/auth/middleware.rs': {
+            backupFileName: 'abc@v1',
+            version: 1,
+            backupTime: new Date().toISOString(),
+          },
+          'src/auth/validator.rs': {
+            backupFileName: 'def@v1',
+            version: 1,
+            backupTime: new Date().toISOString(),
+          },
+          'src/auth/session.rs': {
+            backupFileName: 'ghi@v1',
+            version: 1,
+            backupTime: new Date().toISOString(),
+          },
+        },
+        timestamp: new Date().toISOString(),
+      },
+      isSnapshotUpdate: false,
       fileCount: 3,
-      timestamp: new Date().toISOString(),
       files: ['src/auth/middleware.rs', 'src/auth/validator.rs', 'src/auth/session.rs'],
       isIncremental: true,
-    } as unknown as SystemBlock['data'],
+    } satisfies FileHistorySnapshot,
   } satisfies SystemBlock,
 
   aiTitle: {
@@ -351,9 +384,10 @@ export const devSystemBlocks = {
     id: 'dsb_012',
     variant: 'ai_title',
     data: {
+      type: 'ai-title',
       sessionId: 'sess_abc123',
       aiTitle: 'Refactor authentication middleware',
-    } as unknown as SystemBlock['data'],
+    } satisfies AiTitle,
   } satisfies SystemBlock,
 
   lastPrompt: {
@@ -361,9 +395,10 @@ export const devSystemBlocks = {
     id: 'dsb_013',
     variant: 'last_prompt',
     data: {
+      type: 'last-prompt',
       sessionId: 'sess_abc123',
       lastPrompt: 'Can you run the tests one more time?',
-    } as unknown as SystemBlock['data'],
+    } satisfies LastPrompt,
   } satisfies SystemBlock,
 
   informational: {
@@ -372,7 +407,7 @@ export const devSystemBlocks = {
     variant: 'informational',
     data: {
       content: 'Session resumed after network reconnection',
-    } as unknown as SystemBlock['data'],
+    } satisfies Informational,
   } satisfies SystemBlock,
 }
 
