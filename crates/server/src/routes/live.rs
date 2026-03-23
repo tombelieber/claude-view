@@ -383,6 +383,11 @@ async fn bind_control(
             bound_at: now,
             cancel: tokio_util::sync::CancellationToken::new(),
         });
+        // Control binding = sidecar Agent SDK — set source immediately
+        session.source = Some(crate::live::process::SessionSourceInfo {
+            category: crate::live::process::SessionSource::AgentSdk,
+            label: None,
+        });
         // Notify SSE clients of the control binding change
         let _ = state.live_tx.send(SessionEvent::SessionUpdated {
             session: session.clone(),

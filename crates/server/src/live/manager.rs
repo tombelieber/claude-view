@@ -746,6 +746,11 @@ impl LiveSessionManager {
                 bound_at: now,
                 cancel: tokio_util::sync::CancellationToken::new(),
             });
+            // Control binding = sidecar Agent SDK — set source immediately
+            session.source = Some(super::process::SessionSourceInfo {
+                category: super::process::SessionSource::AgentSdk,
+                label: None,
+            });
             true
         } else {
             false
@@ -1547,21 +1552,46 @@ impl LiveSessionManager {
                     .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
 
-                // Backfill source on sessions that don't have it yet
-                // (sessions created via hooks start with source: None)
-                {
+                // Classify source for all live sessions.
+                // Two paths: (1) control binding = AgentSdk (authoritative, no process scan needed)
+                //            (2) PID match from process scan (ancestor walking for IDE/terminal)
+                // Always re-classify — the processes map is indexed by PID (not CWD),
+                // so multiple Claude processes in the same directory are all matchable.
+                let sdk_source = super::process::SessionSourceInfo {
+                    category: super::process::SessionSource::AgentSdk,
+                    label: None,
+                };
+                let backfilled: Vec<LiveSession> = {
                     let mut sessions = manager.sessions.write().await;
+                    let mut updated = Vec::new();
                     for session in sessions.values_mut() {
-                        if session.source.is_some() || session.status == SessionStatus::Done {
+                        if session.status == SessionStatus::Done {
                             continue;
                         }
+                        // Path 1: control binding = AgentSdk (authoritative)
+                        if session.control.is_some() {
+                            if session.source.as_ref() != Some(&sdk_source) {
+                                session.source = Some(sdk_source.clone());
+                                updated.push(session.clone());
+                            }
+                            continue;
+                        }
+                        // Path 2: PID-based classification from process scan
                         if let Some(pid) = session.pid {
-                            // Find matching process by PID
-                            if let Some(cp) = processes.values().find(|p| p.pid == pid) {
-                                session.source = Some(cp.source.clone());
+                            if let Some(cp) = processes.get(&pid) {
+                                let new_source = Some(cp.source.clone());
+                                if session.source != new_source {
+                                    session.source = new_source;
+                                    updated.push(session.clone());
+                                }
                             }
                         }
                     }
+                    updated
+                };
+                // Emit SSE updates so frontends learn about the source
+                for session in backfilled {
+                    let _ = manager.tx.send(SessionEvent::SessionUpdated { session });
                 }
 
                 // 2.2 — Unconditional snapshot save (defense in depth)
