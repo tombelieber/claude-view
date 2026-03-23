@@ -243,6 +243,8 @@ pub struct PaginatedBlocks {
     pub offset: usize,
     pub limit: usize,
     pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forked_from: Option<serde_json::Value>,
 }
 
 // ============================================================================
@@ -479,13 +481,13 @@ pub async fn get_session_messages_by_id(
             .await
             .map_err(|e| ApiError::Internal(format!("Read error: {e}")))?;
 
-        let all_blocks = claude_view_core::block_accumulator::parse_session_as_blocks(&content);
-        let total = all_blocks.len();
+        let parsed = claude_view_core::block_accumulator::parse_session(&content);
+        let total = parsed.blocks.len();
         let offset = query.offset.unwrap_or(0);
         let limit = query.limit.unwrap_or(100);
         let end = std::cmp::min(offset + limit, total);
         let blocks: Vec<_> = if offset < total {
-            all_blocks.into_iter().skip(offset).take(limit).collect()
+            parsed.blocks.into_iter().skip(offset).take(limit).collect()
         } else {
             vec![]
         };
@@ -496,6 +498,7 @@ pub async fn get_session_messages_by_id(
             offset,
             limit,
             has_more: end < total,
+            forked_from: parsed.forked_from,
         };
         Ok(Json(serde_json::to_value(result).unwrap()))
     } else {

@@ -72,6 +72,7 @@ impl BlockAccumulator {
             "file-history-snapshot" => self.handle_file_history_snapshot(entry),
             "ai-title" => self.handle_ai_title(entry),
             "last-prompt" => self.handle_last_prompt(entry),
+            "worktree-state" => self.handle_worktree_state(entry),
             _ => {} // unknown entry type — skip silently
         }
     }
@@ -451,6 +452,15 @@ impl BlockAccumulator {
         }));
     }
 
+    fn handle_worktree_state(&mut self, entry: &Value) {
+        self.blocks.push(ConversationBlock::System(SystemBlock {
+            id: self.make_id("sys"),
+            variant: SystemVariant::WorktreeState,
+            data: entry.clone(),
+            raw_json: None,
+        }));
+    }
+
     // ── Helpers ──────────────────────────────────────────
 
     fn flush_current_assistant(&mut self) {
@@ -483,11 +493,27 @@ impl Default for BlockAccumulator {
     }
 }
 
-/// Convenience function for batch processing.
-pub fn parse_session_as_blocks(content: &str) -> Vec<ConversationBlock> {
+/// Session-level metadata extracted alongside blocks.
+pub struct ParsedSession {
+    pub blocks: Vec<ConversationBlock>,
+    pub forked_from: Option<Value>,
+}
+
+/// Convenience function for batch processing — returns blocks + session metadata.
+pub fn parse_session(content: &str) -> ParsedSession {
     let mut acc = BlockAccumulator::new();
     acc.process_all(content);
-    acc.finalize()
+    let forked_from = acc.forked_from().cloned();
+    let blocks = acc.finalize();
+    ParsedSession {
+        blocks,
+        forked_from,
+    }
+}
+
+/// Convenience function for batch processing (blocks only, legacy).
+pub fn parse_session_as_blocks(content: &str) -> Vec<ConversationBlock> {
+    parse_session(content).blocks
 }
 
 /// Helper: extract a string field with fallback to "".
@@ -902,6 +928,42 @@ mod tests {
         acc.reset();
         assert!(acc.snapshot().is_empty());
         assert!(acc.finalize().is_empty());
+    }
+
+    #[test]
+    fn worktree_state_creates_system_block() {
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "worktree-state",
+            "worktreeSession": {
+                "originalCwd": "/Users/test/project",
+                "worktreePath": "/Users/test/project/.claude/worktrees/feature",
+                "worktreeName": "feature",
+                "worktreeBranch": "worktree-feature",
+                "originalBranch": "main",
+                "originalHeadCommit": "abc123"
+            },
+            "sessionId": "sess-wt-1"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        if let ConversationBlock::System(s) = &blocks[0] {
+            assert_eq!(s.variant, SystemVariant::WorktreeState);
+            assert_eq!(s.data["worktreeSession"]["worktreeName"], "feature");
+        } else {
+            panic!("Expected SystemBlock with WorktreeState variant");
+        }
+    }
+
+    #[test]
+    fn parse_session_returns_forked_from() {
+        let content = r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hi"}]},"forkedFrom":{"sessionId":"parent-abc","messageUuid":"msg-xyz"},"timestamp":"2026-03-24T01:00:00.000Z"}"#;
+        let parsed = super::parse_session(content);
+        assert!(!parsed.blocks.is_empty());
+        assert!(parsed.forked_from.is_some());
+        let fk = parsed.forked_from.unwrap();
+        assert_eq!(fk["sessionId"], "parent-abc");
     }
 
     #[test]

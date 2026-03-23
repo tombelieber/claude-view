@@ -270,6 +270,22 @@ export interface AiTitle {
   aiTitle: string
 }
 
+export interface WorktreeSession {
+  originalCwd: string
+  worktreePath: string
+  worktreeName: string
+  worktreeBranch: string
+  originalBranch: string
+  originalHeadCommit: string
+  sessionId?: string
+}
+
+export interface WorktreeState {
+  type: 'worktree-state'
+  sessionId: string
+  worktreeSession: WorktreeSession
+}
+
 export interface LastPrompt {
   type: 'last-prompt'
   sessionId: string

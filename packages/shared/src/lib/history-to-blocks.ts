@@ -97,14 +97,22 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
         const meta = msg.metadata as Record<string, unknown> | undefined
         const subtype = (meta?.subtype as string) ?? 'unknown'
         const variant = mapSystemSubtype(subtype)
+        // raw_json IS the full JSONL entry — it matches sidecar protocol shapes
+        // that developer renderers expect. Type it at the boundary.
+        const rawData = msg.raw_json as SystemBlock['data'] | undefined
+        const rawJson = msg.raw_json as Record<string, unknown> | undefined
+        // Metadata fallback: best-effort reconstruction for legacy sessions
+        // that don't have raw_json. Renderers handle missing fields defensively.
+        const fallbackData: SystemBlock['data'] =
+          variant === 'unknown'
+            ? ({ sdkType: subtype } as SystemBlock['data'])
+            : ({ type: variant, ...(meta ?? {}) } as SystemBlock['data'])
         const block: SystemBlock = {
           type: 'system',
           id: genId(msg.uuid),
           variant,
-          data: (variant === 'unknown'
-            ? { sdkType: subtype }
-            : { type: variant, ...(meta ?? {}) }) as SystemBlock['data'],
-          rawJson: msg.raw_json as Record<string, unknown> | undefined,
+          data: rawData ?? fallbackData,
+          rawJson: rawJson,
         }
         blocks.push(block)
         break

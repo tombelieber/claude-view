@@ -36,6 +36,7 @@ import type {
   TaskProgressEvent,
   TaskStarted,
   UnknownSdkEvent,
+  WorktreeState,
 } from './sidecar-protocol'
 
 export type { ActionCategory } from './generated/ActionCategory'
@@ -169,6 +170,7 @@ export type SystemBlock = {
     | 'file_history_snapshot'
     | 'ai_title'
     | 'last_prompt'
+    | 'worktree_state'
     | 'informational'
     | 'unknown'
   data:
@@ -187,6 +189,7 @@ export type SystemBlock = {
     | FileHistorySnapshot
     | AiTitle
     | LastPrompt
+    | WorktreeState
     | Informational
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
