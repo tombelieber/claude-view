@@ -69,7 +69,6 @@ export function ChatDockLayout({ initialLayout, onReady }: ChatDockLayoutProps) 
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
       apiRef.current = event.api
-
       // Restore saved layout via dockview's native fromJSON
       if (initialLayout) {
         try {
