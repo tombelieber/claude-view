@@ -25,14 +25,14 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
         <AlertDialogOverlay className="bg-black/50 dark:bg-black/70" />
         <AlertDialogContent className="max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6">
           <AlertDialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Take Control?
+            <AlertTriangle className="h-5 w-5 text-blue-500" />
+            Continue in Claude View?
           </AlertDialog.Title>
 
           <AlertDialog.Description className="text-sm text-gray-600 dark:text-gray-400 mt-3 leading-relaxed">
-            This session was started outside claude-view (CLI / VS Code). Taking control will
-            disconnect any active terminal input and route all interaction through this panel. The
-            session&apos;s work will continue unaffected.
+            This session was started outside claude-view (CLI / VS Code). Forking will create a copy
+            of the conversation here so you can continue it in this panel. The original CLI session
+            will keep running separately.
           </AlertDialog.Description>
 
           <label className="mt-4 flex items-center gap-2 cursor-pointer select-none">
@@ -59,9 +59,9 @@ export function TakeoverConfirmDialog({ open, onConfirm, onCancel }: TakeoverCon
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700"
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
-                Take Control
+                Fork &amp; Continue
               </button>
             </AlertDialog.Action>
           </div>

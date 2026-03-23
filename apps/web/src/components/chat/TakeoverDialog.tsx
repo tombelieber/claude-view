@@ -16,11 +16,11 @@ export function TakeoverDialog({ open, onConfirm, onCancel }: TakeoverDialogProp
         <AlertDialogOverlay />
         <AlertDialogContent className="max-w-md rounded-lg bg-white dark:bg-gray-900 shadow-xl p-6">
           <AlertDialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Take over this session?
+            Continue in Claude View?
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            This will terminate the Claude CLI process currently running this session. The CLI's
-            work will be saved. You'll continue in Claude View.
+            This will fork the conversation so you can continue it here. The CLI session will keep
+            running separately.
           </AlertDialog.Description>
           <div className="flex justify-end gap-2 mt-4">
             <AlertDialog.Cancel
@@ -31,9 +31,9 @@ export function TakeoverDialog({ open, onConfirm, onCancel }: TakeoverDialogProp
             </AlertDialog.Cancel>
             <AlertDialog.Action
               onClick={onConfirm}
-              className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
             >
-              Take Over
+              Fork &amp; Continue
             </AlertDialog.Action>
           </div>
         </AlertDialogContent>
