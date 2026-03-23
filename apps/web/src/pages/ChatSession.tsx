@@ -361,18 +361,12 @@ export function ChatSession({
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
+          {/* TODO: re-enable fork banner when fork flow is fixed */}
           {viewMode === 'watching' && (
             <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
               <p className="text-xs text-blue-600/80 dark:text-blue-400/70">
                 This session is running in Claude Code CLI.
               </p>
-              <button
-                type="button"
-                onClick={() => setShowTakeover(true)}
-                className="mt-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-              >
-                Fork &amp; Continue Here
-              </button>
             </div>
           )}
           <ChatInputBar
