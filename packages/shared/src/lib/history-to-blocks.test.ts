@@ -230,4 +230,36 @@ describe('historyToBlocks', () => {
     ])
     expect((blocks[0] as AssistantBlock).timestamp).toBeUndefined()
   })
+
+  // ── parentUuid propagation ──────────────────────────────────────────────
+
+  it('propagates parent_uuid to UserBlock.parentUuid', () => {
+    const blocks = historyToBlocks([
+      { role: 'user', content: 'sub-agent msg', uuid: 'u1', parent_uuid: 'u-parent' } as any,
+    ])
+    const block = blocks[0] as UserBlock
+    expect(block.parentUuid).toBe('u-parent')
+  })
+
+  it('propagates parent_uuid to AssistantBlock.parentUuid', () => {
+    const blocks = historyToBlocks([
+      { role: 'assistant', content: 'reply', uuid: 'a1', parent_uuid: 'u-parent' } as any,
+    ])
+    const block = blocks[0] as AssistantBlock
+    expect(block.parentUuid).toBe('u-parent')
+  })
+
+  it('leaves parentUuid undefined when parent_uuid is null', () => {
+    const blocks = historyToBlocks([
+      { role: 'user', content: 'hi', uuid: 'u1', parent_uuid: null } as any,
+    ])
+    const block = blocks[0] as UserBlock
+    expect(block.parentUuid).toBeUndefined()
+  })
+
+  it('leaves parentUuid undefined when parent_uuid is absent', () => {
+    const blocks = historyToBlocks([{ role: 'user', content: 'hi', uuid: 'u1' } as Msg])
+    const block = blocks[0] as UserBlock
+    expect(block.parentUuid).toBeUndefined()
+  })
 })

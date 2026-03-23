@@ -49,6 +49,7 @@ export type UserBlock = {
   timestamp: number
   status?: 'optimistic' | 'sending' | 'sent' | 'failed'
   localId?: string
+  parentUuid?: string | null
   rawJson?: Record<string, unknown> | null
 }
 
@@ -62,6 +63,7 @@ export type AssistantBlock = {
   streaming: boolean
   /** Unix seconds — populated from JSONL timestamp or Date.now() for live blocks */
   timestamp?: number
+  parentUuid?: string | null
   rawJson?: Record<string, unknown> | null
 }
 

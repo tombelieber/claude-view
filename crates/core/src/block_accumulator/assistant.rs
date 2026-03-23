@@ -15,6 +15,7 @@ pub struct AssistantBlockBuilder {
     segments: Vec<AssistantSegment>,
     thinking: Option<String>,
     timestamp: Option<f64>,
+    parent_uuid: Option<String>,
     raw_json: Option<serde_json::Value>,
     has_ask_question: bool,
 }
@@ -26,6 +27,7 @@ impl AssistantBlockBuilder {
             segments: Vec::new(),
             thinking: None,
             timestamp,
+            parent_uuid: None,
             raw_json: None,
             has_ask_question: false,
         }
@@ -119,6 +121,11 @@ impl AssistantBlockBuilder {
         self.has_ask_question
     }
 
+    /// Set the parent UUID for message threading.
+    pub fn set_parent_uuid(&mut self, parent_uuid: String) {
+        self.parent_uuid = Some(parent_uuid);
+    }
+
     /// Store the raw JSON for the block (for debugging / pass-through).
     pub fn set_raw_json(&mut self, raw: serde_json::Value) {
         self.raw_json = Some(raw);
@@ -132,6 +139,7 @@ impl AssistantBlockBuilder {
             thinking: self.thinking,
             streaming: false,
             timestamp: self.timestamp,
+            parent_uuid: self.parent_uuid,
             raw_json: self.raw_json,
         }
     }
