@@ -24,7 +24,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::live::state::{AgentStateGroup, LiveSession, SessionEvent};
+use crate::live::state::{AgentStateGroup, ControlBinding, LiveSession, SessionEvent};
 use crate::state::AppState;
 
 /// Build the live monitoring sub-router.
@@ -54,6 +54,8 @@ pub fn router() -> Router<Arc<AppState>> {
             get(get_session_statusline_debug),
         )
         .route("/live/sessions/{id}/dismiss", delete(dismiss_session))
+        .route("/live/sessions/{id}/bind-control", post(bind_control))
+        .route("/live/sessions/{id}/unbind-control", post(unbind_control))
         .route("/live/recently-closed", delete(dismiss_all_closed))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
@@ -342,6 +344,105 @@ async fn kill_session(
     }
 }
 
+// =============================================================================
+// Control Binding (sidecar → Rust server notification)
+// =============================================================================
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BindControlRequest {
+    control_id: String,
+}
+
+/// POST /api/live/sessions/:id/bind-control -- Sidecar notifies that it now controls this session.
+///
+/// Sets the `control` field on the LiveSession, which flows to SSE clients.
+/// Idempotent: re-binding with the same controlId is a no-op success.
+async fn bind_control(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Json(body): Json<BindControlRequest>,
+) -> Response {
+    let mut sessions = state.live_sessions.write().await;
+    if let Some(session) = sessions.get_mut(&session_id) {
+        // Already bound with same controlId → idempotent success
+        if session
+            .control
+            .as_ref()
+            .is_some_and(|c| c.control_id == body.control_id)
+        {
+            return Json(serde_json::json!({ "bound": true, "status": "already_bound" }))
+                .into_response();
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before Unix epoch")
+            .as_secs() as i64;
+        session.control = Some(ControlBinding {
+            control_id: body.control_id,
+            bound_at: now,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        });
+        // Control binding = sidecar Agent SDK — set source immediately
+        session.source = Some(crate::live::process::SessionSourceInfo {
+            category: crate::live::process::SessionSource::AgentSdk,
+            label: None,
+        });
+        // Notify SSE clients of the control binding change
+        let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+            session: session.clone(),
+        });
+        Json(serde_json::json!({ "bound": true })).into_response()
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Session not found" })),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnbindControlRequest {
+    control_id: String,
+}
+
+/// POST /api/live/sessions/:id/unbind-control -- Sidecar notifies it released control.
+///
+/// Only unbinds if the current controlId matches (CAS semantics).
+async fn unbind_control(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<String>,
+    Json(body): Json<UnbindControlRequest>,
+) -> Response {
+    let mut sessions = state.live_sessions.write().await;
+    if let Some(session) = sessions.get_mut(&session_id) {
+        if session
+            .control
+            .as_ref()
+            .is_some_and(|c| c.control_id == body.control_id)
+        {
+            if let Some(binding) = session.control.take() {
+                binding.cancel.cancel();
+            }
+            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                session: session.clone(),
+            });
+            Json(serde_json::json!({ "unbound": true })).into_response()
+        } else {
+            Json(serde_json::json!({ "unbound": false, "reason": "control_id_mismatch" }))
+                .into_response()
+        }
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Session not found" })),
+        )
+            .into_response()
+    }
+}
+
 /// DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.
 ///
 /// Removes the session from the live map and marks it as dismissed in SQLite.
@@ -573,6 +674,7 @@ mod tests {
             user_files: None,
             closed_at: None,
             control: None,
+            source: None,
             hook_events: Vec::new(),
             statusline_context_window_size: None,
             statusline_used_pct: None,

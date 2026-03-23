@@ -1,16 +1,17 @@
 import { Grid3x3, ListTree, Maximize2, MessageSquare, Minimize2, RotateCcw } from 'lucide-react'
 import { useCallback } from 'react'
 import { cn } from '../../lib/utils'
+import type { DisplayMode } from '../../store/monitor-store'
 
 interface GridControlsProps {
   gridOverride: { cols: number; rows: number } | null
   compactHeaders: boolean
-  verboseMode: boolean
+  displayMode: DisplayMode
   sessionCount: number
   visibleCount: number
   onGridOverrideChange: (override: { cols: number; rows: number } | null) => void
   onCompactHeadersChange: (compact: boolean) => void
-  onVerboseModeChange: () => void
+  onDisplayModeChange: (mode: DisplayMode) => void
 }
 
 /**
@@ -25,13 +26,14 @@ interface GridControlsProps {
 export function GridControls({
   gridOverride,
   compactHeaders,
-  verboseMode,
+  displayMode,
   sessionCount,
   visibleCount,
   onGridOverrideChange,
   onCompactHeadersChange,
-  onVerboseModeChange,
+  onDisplayModeChange,
 }: GridControlsProps) {
+  const isDeveloper = displayMode === 'developer'
   const isAutoMode = gridOverride === null
 
   const handleColsChange = useCallback(
@@ -164,25 +166,25 @@ export function GridControls({
       {/* Separator */}
       <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
 
-      {/* Verbose toggle */}
+      {/* Display mode toggle */}
       <button
         type="button"
-        onClick={onVerboseModeChange}
+        onClick={() => onDisplayModeChange(isDeveloper ? 'chat' : 'developer')}
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
-          verboseMode
+          isDeveloper
             ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 border border-transparent',
         )}
-        aria-pressed={verboseMode}
+        aria-pressed={isDeveloper}
         title={
-          verboseMode
+          isDeveloper
             ? 'Showing all messages (tool calls, thinking, etc.)'
             : 'Showing chat only (user + assistant)'
         }
       >
-        {verboseMode ? <ListTree className="h-3 w-3" /> : <MessageSquare className="h-3 w-3" />}
-        {verboseMode ? 'Verbose' : 'Chat'}
+        {isDeveloper ? <ListTree className="h-3 w-3" /> : <MessageSquare className="h-3 w-3" />}
+        {isDeveloper ? 'Developer' : 'Chat'}
       </button>
 
       {/* Spacer */}

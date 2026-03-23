@@ -84,7 +84,7 @@ describe('fetchMessages — 404 handling', () => {
   it('returns parsed messages on 200', async () => {
     const result = await fetchMessages('sess-1', 0, 100, false)
 
-    expect(result.messages).toHaveLength(1)
+    expect('messages' in result && result.messages).toHaveLength(1)
     expect(result.total).toBe(1)
   })
 

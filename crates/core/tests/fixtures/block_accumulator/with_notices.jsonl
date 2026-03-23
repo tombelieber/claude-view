@@ -1,0 +1,8 @@
+{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"Refactor the module"}]},"timestamp":"2026-03-21T03:00:00.000Z"}
+{"type":"assistant","uuid":"a-err","error":{"message":"Rate limit exceeded"},"isApiErrorMessage":true,"retryInMs":5000,"retryAttempt":1,"maxRetries":3,"timestamp":"2026-03-21T03:00:01.000Z"}
+{"type":"assistant","uuid":"a-1","parentUuid":"u-1","message":{"id":"msg-020","model":"claude-sonnet-4-6","content":[{"type":"text","text":"I'll refactor it."},{"type":"tool_use","id":"tu-20","name":"Edit","input":{"file":"/src/lib.rs","old":"fn old()","new":"fn new()"}}],"usage":{"input_tokens":800,"output_tokens":200},"stop_reason":"tool_use"},"timestamp":"2026-03-21T03:00:06.000Z"}
+{"type":"user","uuid":"u-2","parentUuid":"a-1","message":{"content":[{"type":"tool_result","tool_use_id":"tu-20","content":"Edit applied","is_error":false}]},"timestamp":"2026-03-21T03:00:07.000Z"}
+{"type":"assistant","uuid":"a-2","parentUuid":"u-2","message":{"id":"msg-020","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Refactoring complete."}],"usage":{"input_tokens":900,"output_tokens":30},"stop_reason":"end_turn"},"timestamp":"2026-03-21T03:00:08.000Z"}
+{"type":"system","uuid":"s-compact","compactMetadata":{"trigger":"auto","preTokens":80000,"postTokens":40000},"timestamp":"2026-03-21T03:00:09.000Z"}
+{"type":"system","uuid":"s-1","parentUuid":"a-2","durationMs":9000,"timestamp":"2026-03-21T03:00:10.000Z"}
+{"type":"system","uuid":"s-2","parentUuid":"s-1","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-21T03:00:11.000Z"}

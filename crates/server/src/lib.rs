@@ -339,10 +339,10 @@ pub fn create_app_full(
         tokio::spawn(async move {
             // Start sidecar eagerly so SDK models are available on first page load.
             // The sidecar's model-cache.ts refreshes on startup via V1 query().
-            let socket_path = match sidecar.ensure_running().await {
-                Ok(path) => {
+            let sidecar_url = match sidecar.ensure_running().await {
+                Ok(url) => {
                     tracing::info!("Sidecar started eagerly for SDK model fetch");
-                    Some(std::path::PathBuf::from(path))
+                    Some(url)
                 }
                 Err(e) => {
                     tracing::debug!("Sidecar eager start skipped: {e}");
@@ -350,13 +350,13 @@ pub fn create_app_full(
                 }
             };
 
-            refresh_pricing(&pricing, &db, socket_path.as_deref()).await;
+            refresh_pricing(&pricing, &db, sidecar_url.as_deref()).await;
 
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
             interval.tick().await;
             loop {
                 interval.tick().await;
-                refresh_pricing(&pricing, &db, socket_path.as_deref()).await;
+                refresh_pricing(&pricing, &db, sidecar_url.as_deref()).await;
             }
         });
     }
@@ -378,7 +378,7 @@ pub fn create_app_full(
 async fn refresh_pricing(
     pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>,
     db: &Database,
-    sidecar_socket: Option<&std::path::Path>,
+    sidecar_url: Option<&str>,
 ) {
     // Tier 1: Try litellm fetch
     match claude_view_db::fetch_litellm_pricing().await {
@@ -430,13 +430,13 @@ async fn refresh_pricing(
     // The sidecar's model-cache.ts fires refreshModelCache() on startup which spawns
     // a V1 query() to get initializationResult().models. This is async and may take
     // several seconds. Retry up to 3 times with delays to give it time to populate.
-    if let Some(socket) = sidecar_socket {
+    if let Some(url) = sidecar_url {
         let mut fetched = false;
         for attempt in 1..=3 {
             if attempt > 1 {
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
             }
-            match fetch_sdk_models_from_sidecar(socket).await {
+            match fetch_sdk_models_from_sidecar(url).await {
                 Ok(sdk_models) if !sdk_models.is_empty() => {
                     match db.upsert_sdk_models(&sdk_models).await {
                         Ok(n) => {
@@ -464,46 +464,22 @@ async fn refresh_pricing(
     }
 }
 
-/// Best-effort fetch of SDK model list from sidecar.
+/// Best-effort fetch of SDK model list from sidecar over TCP.
 /// Returns Vec of (id, provider, family, display_name, description).
 /// `pub(crate)` so control routes can re-fetch after session create/resume.
 pub(crate) async fn fetch_sdk_models_from_sidecar(
-    socket_path: &std::path::Path,
+    base_url: &str,
 ) -> Result<Vec<(String, String, String, Option<String>, Option<String>)>, String> {
-    use bytes::Bytes;
-    use http_body_util::{BodyExt, Full};
-    use hyper::client::conn::http1;
-    use hyper_util::rt::TokioIo;
-    use tokio::net::UnixStream;
+    let url = format!("{}/api/sidecar/sessions/models", base_url);
 
-    if !tokio::fs::try_exists(socket_path).await.unwrap_or(false) {
-        return Err("sidecar socket does not exist".into());
-    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| format!("build client: {e}"))?;
 
-    let stream = UnixStream::connect(socket_path)
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
-    let io = TokioIo::new(stream);
-
-    let (mut sender, conn) = http1::handshake(io)
-        .await
-        .map_err(|e| format!("handshake: {e}"))?;
-    tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            tracing::debug!("SDK model fetch connection closed: {e}");
-        }
-    });
-
-    // Route is mounted at /control/supported-models in the sidecar (Hono basePath)
-    let req = hyper::Request::builder()
-        .method("GET")
-        .uri("/control/supported-models")
-        .header("host", "localhost")
-        .body(Full::new(Bytes::new()))
-        .map_err(|e| format!("build request: {e}"))?;
-
-    let resp = sender
-        .send_request(req)
+    let resp = client
+        .get(&url)
+        .send()
         .await
         .map_err(|e| format!("send: {e}"))?;
 
@@ -511,12 +487,7 @@ pub(crate) async fn fetch_sdk_models_from_sidecar(
         return Err(format!("sidecar returned {}", resp.status()));
     }
 
-    let bytes = resp
-        .into_body()
-        .collect()
-        .await
-        .map_err(|e| format!("read body: {e}"))?
-        .to_bytes();
+    let bytes = resp.bytes().await.map_err(|e| format!("read body: {e}"))?;
 
     // Parse: { models: [{ value, displayName, description }], updatedAt }
     // SDK returns aliases ("default", "sonnet", "haiku") not real model IDs.

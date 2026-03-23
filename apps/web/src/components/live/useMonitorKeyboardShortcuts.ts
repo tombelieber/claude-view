@@ -137,7 +137,7 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
         }
 
         case 'm': {
-          store.toggleVerbose()
+          store.setDisplayMode(store.displayMode === 'chat' ? 'developer' : 'chat')
           e.preventDefault()
           break
         }

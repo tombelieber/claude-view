@@ -9,6 +9,8 @@ import { SessionRegistry } from './session-registry.js'
 // Capture the Options passed to the SDK query() function
 let capturedOptions: Options | undefined
 
+const mockGetSessionInfo = vi.fn()
+
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn((args: { options: Options }) => {
     capturedOptions = args.options
@@ -45,14 +47,29 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     }
   }),
   listSessions: vi.fn().mockResolvedValue([]),
+  getSessionInfo: (...args: unknown[]) => mockGetSessionInfo(...args),
 }))
 
 vi.mock('./cli-path.js', () => ({
   findClaudeExecutable: vi.fn().mockReturnValue('/usr/local/bin/claude'),
 }))
 
+// sessionJsonlExists does fs.readdirSync + fs.existsSync on ~/.claude/projects/
+// Mock the fs module so we can control whether the JSONL file "exists" per-test
+const mockExistsSync = vi.fn().mockReturnValue(true)
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    readdirSync: vi.fn().mockReturnValue(['mock-project']),
+    existsSync: (...args: unknown[]) => mockExistsSync(...args),
+  }
+})
+
 // Import AFTER mocks
-const { createControlSession, forkControlSession } = await import('./sdk-session.js')
+const { createControlSession, forkControlSession, resumeControlSession } = await import(
+  './sdk-session.js'
+)
 
 describe('buildQueryOptions (via createControlSession)', () => {
   let registry: SessionRegistry
@@ -119,8 +136,9 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     capturedOptions = undefined
   })
 
-  it('passes projectPath for fork sessions', () => {
-    forkControlSession(
+  it('passes projectPath for fork sessions', async () => {
+    mockGetSessionInfo.mockResolvedValue(null)
+    await forkControlSession(
       {
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
         model: 'claude-haiku-4-5-20251001',
@@ -136,8 +154,9 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     expect(capturedOptions!.resume).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
   })
 
-  it('always includes settingSources for fork sessions', () => {
-    forkControlSession(
+  it('always includes settingSources for fork sessions', async () => {
+    mockGetSessionInfo.mockResolvedValue(null)
+    await forkControlSession(
       {
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       },
@@ -146,5 +165,98 @@ describe('buildQueryOptions (via forkControlSession)', () => {
 
     expect(capturedOptions).toBeDefined()
     expect(capturedOptions!.settingSources).toEqual(['user', 'project'])
+  })
+})
+
+describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd', () => {
+  let registry: SessionRegistry
+
+  beforeEach(() => {
+    registry = new SessionRegistry()
+    capturedOptions = undefined
+    mockGetSessionInfo.mockReset()
+  })
+
+  it('uses info.cwd when req.projectPath is missing (inactive session resume)', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      cwd: '/Users/test/original-project',
+    })
+
+    await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/Users/test/original-project')
+  })
+
+  it('prefers req.projectPath over info.cwd when both are available', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      cwd: '/Users/test/original-project',
+    })
+
+    await resumeControlSession(
+      {
+        sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        projectPath: '/Users/test/explicit-path',
+      },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/Users/test/explicit-path')
+  })
+
+  it('falls back to process.cwd() when both req.projectPath and info.cwd are missing', async () => {
+    mockGetSessionInfo.mockResolvedValue({
+      sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      summary: 'test session',
+      lastModified: Date.now(),
+      // no cwd field
+    })
+
+    await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe(process.cwd())
+  })
+})
+
+describe('resumeControlSession — interrupted session (no assistant messages)', () => {
+  let registry: SessionRegistry
+
+  beforeEach(() => {
+    registry = new SessionRegistry()
+    capturedOptions = undefined
+    mockGetSessionInfo.mockReset()
+    mockExistsSync.mockReset().mockReturnValue(true)
+  })
+
+  it('resumes when JSONL exists but getSessionInfo returns undefined (interrupted session)', async () => {
+    // getSessionInfo returns undefined for sessions with no extractable summary
+    // (e.g. interrupted before any assistant response). The JSONL file exists on disk.
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    mockExistsSync.mockReturnValue(true)
+
+    await resumeControlSession(
+      { sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', projectPath: '/test/project' },
+      registry,
+    )
+
+    expect(capturedOptions).toBeDefined()
+    expect(capturedOptions!.cwd).toBe('/test/project')
+  })
+
+  it('throws when JSONL does not exist on disk (truly missing session)', async () => {
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    mockExistsSync.mockReturnValue(false)
+
+    await expect(
+      resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry),
+    ).rejects.toThrow('not found in CLI session store')
   })
 })

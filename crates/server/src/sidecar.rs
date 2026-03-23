@@ -1,15 +1,19 @@
 // crates/server/src/sidecar.rs
-//! Node.js sidecar process manager for Phase F interactive control.
+//! Node.js sidecar process manager for interactive control.
 //!
 //! The sidecar wraps the Claude Agent SDK (npm-only) and exposes a local
-//! HTTP + WebSocket API on a Unix domain socket. Axum proxies all
-//! `/api/control/*` requests to this socket.
+//! HTTP + WebSocket API on TCP port 3001. The frontend connects directly
+//! to the sidecar via Vite proxy; the Rust server uses this manager for
+//! lifecycle management (spawn, health check, model fetch).
 
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 use tokio::time::sleep;
+
+/// Default sidecar TCP port.
+const SIDECAR_PORT: u16 = 3001;
 
 /// Errors from sidecar operations.
 #[derive(Debug, thiserror::Error)]
@@ -30,9 +34,12 @@ pub enum SidecarError {
 ///
 /// Thread-safe: uses `Mutex<Option<Child>>` for the child handle.
 /// The sidecar is lazy-started on first `ensure_running()` call.
+///
+/// Communication is over TCP HTTP (localhost:3001), not Unix socket.
 pub struct SidecarManager {
     child: Mutex<Option<Child>>,
-    socket_path: String,
+    base_url: String,
+    port: u16,
 }
 
 impl Default for SidecarManager {
@@ -43,22 +50,31 @@ impl Default for SidecarManager {
 
 impl SidecarManager {
     pub fn new() -> Self {
-        let pid = std::process::id();
+        let port = std::env::var("SIDECAR_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(SIDECAR_PORT);
         Self {
             child: Mutex::new(None),
-            socket_path: format!("/tmp/claude-view-sidecar-{pid}.sock"),
+            base_url: format!("http://localhost:{port}"),
+            port,
         }
     }
 
-    /// Get the Unix socket path for this sidecar instance.
-    pub fn socket_path(&self) -> &str {
-        &self.socket_path
+    /// Get the TCP base URL for this sidecar instance.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
-    /// Start sidecar if not already running. Returns the socket path.
+    /// Start sidecar if not already running. Returns the base URL.
     ///
     /// Idempotent: if the child is already alive, returns immediately.
     /// If the child died (crash), restarts it.
+    ///
+    /// External sidecar support: if a sidecar is already running on the
+    /// configured port (e.g. via `tsx watch` in dev mode), we skip spawning
+    /// and use the existing one. This allows `bun dev` to run the sidecar
+    /// independently with hot reload.
     pub async fn ensure_running(&self) -> Result<String, SidecarError> {
         // Determine action under the lock, then release lock before any async work.
         // Mutex<Option<Child>> is !Send, so no .await can be held while guard is alive.
@@ -69,14 +85,9 @@ impl SidecarManager {
 
             if let Some(ref mut child) = *guard {
                 match child.try_wait() {
-                    Ok(None) if std::path::Path::new(&self.socket_path).exists() => {
-                        return Ok(self.socket_path.clone()); // running + socket ready
-                    }
                     Ok(None) => {
-                        // Child alive but socket not yet created — concurrent caller
-                        // arrived while first caller is still in health check loop.
-                        // Just wait for readiness, don't re-spawn.
-                        "wait"
+                        // Child alive — check if health endpoint responds
+                        "check_health"
                     }
                     Ok(Some(status)) => {
                         tracing::warn!("Sidecar exited with {status}, restarting...");
@@ -92,8 +103,23 @@ impl SidecarManager {
             }
         }; // guard dropped here — safe for async
 
-        if action == "wait" {
+        if action == "check_health" {
+            // Quick health check — if it passes, sidecar is ready
+            if self.health_check().await.is_ok() {
+                return Ok(self.base_url.clone());
+            }
+            // Health check failed but child alive — wait for readiness
             return self.wait_for_ready().await;
+        }
+
+        // Before spawning, check if an external sidecar is already running
+        // on the port (e.g. `bun dev` runs sidecar independently via tsx watch).
+        if self.health_check().await.is_ok() {
+            tracing::info!(
+                port = self.port,
+                "External sidecar detected on port, skipping spawn"
+            );
+            return Ok(self.base_url.clone());
         }
 
         // Spawn new sidecar process
@@ -115,9 +141,6 @@ impl SidecarManager {
                 return Err(SidecarError::NodeNotFound);
             }
 
-            // Clean up stale socket
-            let _ = std::fs::remove_file(&self.socket_path);
-
             // CLAUDE.md HARD RULE: Strip ALL `CLAUDE*` env vars when spawning
             // child processes. Use env_clear() then re-add safe vars only.
             let filtered_env: Vec<(String, String)> = std::env::vars()
@@ -127,7 +150,7 @@ impl SidecarManager {
                 .arg(&entry_point)
                 .env_clear()
                 .envs(filtered_env)
-                .env("SIDECAR_SOCKET", &self.socket_path)
+                .env("SIDECAR_PORT", self.port.to_string())
                 .stdin(Stdio::null())
                 // inherit → logs flow to server process stdout/stderr without pipe buffering.
                 // piped+unread would fill the 64KB pipe buffer and deadlock the sidecar.
@@ -138,8 +161,8 @@ impl SidecarManager {
 
             tracing::info!(
                 pid = child.id(),
-                socket = %self.socket_path,
-                "Spawned sidecar process"
+                port = self.port,
+                "Spawned sidecar process on TCP"
             );
 
             *guard = Some(child);
@@ -149,13 +172,13 @@ impl SidecarManager {
     }
 
     /// Poll sidecar health endpoint until it responds. Used after spawn
-    /// and by concurrent callers that see the child alive but socket not yet ready.
+    /// and by concurrent callers that see the child alive but not yet ready.
     async fn wait_for_ready(&self) -> Result<String, SidecarError> {
         for attempt in 0..30 {
             sleep(Duration::from_millis(100)).await;
             if self.health_check().await.is_ok() {
                 tracing::info!(attempts = attempt + 1, "Sidecar ready");
-                return Ok(self.socket_path.clone());
+                return Ok(self.base_url.clone());
             }
         }
         Err(SidecarError::HealthCheckTimeout)
@@ -179,9 +202,6 @@ impl SidecarManager {
             let _ = child.wait(); // blocking but brief — child already killed
         }
         *guard = None;
-
-        // Cleanup socket file
-        let _ = std::fs::remove_file(&self.socket_path);
     }
 
     /// Check if the sidecar is currently running.
@@ -197,41 +217,19 @@ impl SidecarManager {
         }
     }
 
-    /// HTTP health check over Unix socket using raw hyper 1.x client.
-    ///
-    /// Replaces hyperlocal (incompatible with hyper 1.x -- audit fix B3).
-    /// Uses tokio::net::UnixStream + hyper::client::conn::http1 directly.
+    /// HTTP health check over TCP using reqwest.
     async fn health_check(&self) -> Result<(), SidecarError> {
-        use http_body_util::Empty;
-        use hyper::client::conn::http1;
-        use hyper_util::rt::TokioIo;
+        let url = format!("{}/health", self.base_url);
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .map_err(|e| SidecarError::RequestError(format!("Build HTTP client: {e}")))?;
 
-        let stream = tokio::net::UnixStream::connect(&self.socket_path)
+        let response = client
+            .get(&url)
+            .send()
             .await
-            .map_err(|e| SidecarError::RequestError(format!("Unix socket connect: {e}")))?;
-
-        let io = TokioIo::new(stream);
-        let (mut sender, conn) = http1::handshake(io)
-            .await
-            .map_err(|e| SidecarError::RequestError(format!("HTTP handshake: {e}")))?;
-
-        // Spawn connection driver (required for hyper 1.x)
-        tokio::spawn(async move {
-            if let Err(e) = conn.await {
-                tracing::debug!("Health check connection closed: {e}");
-            }
-        });
-
-        let req = hyper::Request::builder()
-            .uri("/health")
-            .header("host", "localhost")
-            .body(Empty::<bytes::Bytes>::new())
-            .map_err(|e| SidecarError::RequestError(format!("Build request: {e}")))?;
-
-        let response = sender
-            .send_request(req)
-            .await
-            .map_err(|e| SidecarError::RequestError(format!("Send request: {e}")))?;
+            .map_err(|e| SidecarError::RequestError(format!("Health check request: {e}")))?;
 
         if response.status().is_success() {
             Ok(())
@@ -271,44 +269,23 @@ impl SidecarManager {
         recovered
     }
 
-    /// Call sidecar POST /control/sessions/resume for a single session.
+    /// Call sidecar POST /api/sidecar/sessions/:id/resume for a single session.
     async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
-        use http_body_util::{BodyExt, Full};
-        use hyper::client::conn::http1;
-        use hyper_util::rt::TokioIo;
-
+        let url = format!(
+            "{}/api/sidecar/sessions/{}/resume",
+            self.base_url, session_id
+        );
         let body = serde_json::json!({
-            "sessionId": session_id,
             "model": "claude-sonnet-4-20250514",
         });
-        let body_str = serde_json::to_string(&body)
-            .map_err(|e| SidecarError::RequestError(format!("Serialize: {e}")))?;
 
-        let stream = tokio::net::UnixStream::connect(&self.socket_path)
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&url)
+            .json(&body)
+            .send()
             .await
-            .map_err(|e| SidecarError::RequestError(format!("Connect: {e}")))?;
-
-        let io = TokioIo::new(stream);
-        let (mut sender, conn) = http1::handshake(io)
-            .await
-            .map_err(|e| SidecarError::RequestError(format!("Handshake: {e}")))?;
-
-        tokio::spawn(async move {
-            let _ = conn.await;
-        });
-
-        let req = hyper::Request::builder()
-            .method("POST")
-            .uri("/control/sessions/resume")
-            .header("host", "localhost")
-            .header("content-type", "application/json")
-            .body(Full::new(bytes::Bytes::from(body_str)))
-            .map_err(|e| SidecarError::RequestError(format!("Build request: {e}")))?;
-
-        let resp = sender
-            .send_request(req)
-            .await
-            .map_err(|e| SidecarError::RequestError(format!("Send: {e}")))?;
+            .map_err(|e| SidecarError::RequestError(format!("Resume request: {e}")))?;
 
         if !resp.status().is_success() {
             return Err(SidecarError::RequestError(format!(
@@ -317,13 +294,9 @@ impl SidecarManager {
             )));
         }
 
-        let bytes = resp
-            .into_body()
-            .collect()
+        let data: serde_json::Value = resp
+            .json()
             .await
-            .map_err(|e| SidecarError::RequestError(format!("Read body: {e}")))?;
-
-        let data: serde_json::Value = serde_json::from_slice(&bytes.to_bytes())
             .map_err(|e| SidecarError::RequestError(format!("Parse JSON: {e}")))?;
 
         data["controlId"]
@@ -381,13 +354,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_creates_socket_path_with_pid() {
+    fn test_new_creates_base_url_with_default_port() {
         let mgr = SidecarManager::new();
-        let pid = std::process::id();
-        assert_eq!(
-            mgr.socket_path(),
-            format!("/tmp/claude-view-sidecar-{pid}.sock")
-        );
+        assert!(mgr.base_url().starts_with("http://localhost:"));
     }
 
     #[test]

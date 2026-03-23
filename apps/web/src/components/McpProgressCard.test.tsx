@@ -1,95 +1,55 @@
-import {
-  type CodeRenderContextValue,
-  CodeRenderProvider,
-} from '@claude-view/shared/contexts/CodeRenderContext'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { McpProgressCard } from './McpProgressCard'
 
-const MockCompactCodeBlock = ({
-  code,
-  language,
-  blockId,
-}: { code: string; language: string; blockId?: string }) => (
-  <pre data-testid="compact-code-block" data-language={language} data-block-id={blockId}>
-    {code}
-  </pre>
-)
-
-const MockCodeBlock = ({ code, language }: { code: string; language?: string | null }) => (
-  <pre data-testid="code-block" data-language={language}>
-    {code}
-  </pre>
-)
-
-const mockCodeRender: CodeRenderContextValue = {
-  CodeBlock: MockCodeBlock as any,
-  CompactCodeBlock: MockCompactCodeBlock as any,
-}
-
-function renderWithCodeContext(ui: React.ReactElement) {
-  return render(<CodeRenderProvider value={mockCodeRender}>{ui}</CodeRenderProvider>)
-}
-
 describe('McpProgressCard', () => {
-  describe('Title and status rendering', () => {
-    it('should display server.method with params', () => {
-      renderWithCodeContext(
-        <McpProgressCard
-          server="filesystem"
-          method="readFile"
-          params={{ path: '/tmp/test.txt' }}
-        />,
-      )
+  describe('All fields inline', () => {
+    it('should display serverName, toolName, and status', () => {
+      render(<McpProgressCard serverName="filesystem" toolName="readFile" status="running" />)
 
-      expect(screen.getByText(/filesystem\.readFile/)).toBeInTheDocument()
-    })
-
-    it('should show "(no params)" when params is undefined', () => {
-      renderWithCodeContext(<McpProgressCard server="memory" method="search" />)
-
-      expect(screen.getByText(/\(no params\)/)).toBeInTheDocument()
-    })
-
-    it('should have purple left border', () => {
-      const { container } = renderWithCodeContext(<McpProgressCard server="fs" method="read" />)
-
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-purple')
+      expect(screen.getByText('filesystem')).toBeInTheDocument()
+      expect(screen.getByText('readFile')).toBeInTheDocument()
+      expect(screen.getByText('running')).toBeInTheDocument()
     })
   })
 
-  describe('Collapsible behavior', () => {
-    it('should expand to show result on click', () => {
-      renderWithCodeContext(
-        <McpProgressCard
-          server="filesystem"
-          method="readFile"
-          params={{ path: '/tmp/test.txt' }}
-          result={{ content: 'file contents here' }}
-        />,
-      )
+  describe('Status styling', () => {
+    it('should show pulse dot for running', () => {
+      render(<McpProgressCard serverName="fs" toolName="read" status="running" />)
 
-      fireEvent.click(screen.getByRole('button'))
-
-      expect(screen.getByText(/file contents here/)).toBeInTheDocument()
+      const statusEl = screen.getByText('running')
+      const dot = statusEl.querySelector('.animate-pulse')
+      expect(dot).toBeInTheDocument()
     })
 
-    it('should show params in expanded view', () => {
-      renderWithCodeContext(
-        <McpProgressCard server="fs" method="read" params={{ path: '/tmp/test.txt' }} />,
-      )
+    it('should show green for completed', () => {
+      render(<McpProgressCard serverName="fs" toolName="read" status="completed" />)
 
-      fireEvent.click(screen.getByRole('button'))
+      expect(screen.getByText('completed').className).toContain('text-green')
+    })
 
-      expect(screen.getByText(/\/tmp\/test\.txt/)).toBeInTheDocument()
+    it('should show red for error', () => {
+      render(<McpProgressCard serverName="fs" toolName="read" status="error" />)
+
+      expect(screen.getByText('error').className).toContain('text-red')
     })
   })
 
-  describe('ARIA and keyboard', () => {
+  describe('Visual styling', () => {
+    it('should have blue left border', () => {
+      const { container } = render(
+        <McpProgressCard serverName="fs" toolName="read" status="running" />,
+      )
+
+      expect((container.firstElementChild as HTMLElement).className).toContain('flex')
+    })
+  })
+
+  describe('ARIA', () => {
     it('should have ARIA label', () => {
-      renderWithCodeContext(<McpProgressCard server="fs" method="read" />)
-      expect(screen.getByRole('button', { name: /mcp/i })).toBeInTheDocument()
+      render(<McpProgressCard serverName="fs" toolName="read" status="running" />)
+
+      expect(screen.getByLabelText('MCP tool call')).toBeInTheDocument()
     })
   })
 })

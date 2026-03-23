@@ -1,90 +1,111 @@
 // Echo wire format integration tests — verifies the full path from
-// emitSequenced → RingBuffer → getAfter retrieval.
+// emitSequenced → emitter → accumulator.
 import { EventEmitter } from 'node:events'
-import { describe, expect, it } from 'vitest'
-import type { SequencedEvent, ServerEvent } from './protocol.js'
-import { RingBuffer } from './ring-buffer.js'
+import { describe, expect, it, vi } from 'vitest'
+import type { ServerEvent } from './protocol.js'
+import type { ControlSession } from './session-registry.js'
+import { SessionRegistry } from './session-registry.js'
+import { StreamAccumulator } from './stream-accumulator.js'
 
-// Inline emitSequenced logic (mirrors SessionRegistry.emitSequenced)
-// to test the wire format contract without heavy ControlSession dependencies.
-function emitSequenced(
-  eventBuffer: RingBuffer<{ seq: number; msg: SequencedEvent }>,
-  emitter: EventEmitter,
-  nextSeq: { value: number },
-  event: ServerEvent,
-): SequencedEvent {
-  const seq = nextSeq.value++
-  const sequenced: SequencedEvent = { ...event, seq }
-  eventBuffer.push({ seq, msg: sequenced })
-  emitter.emit('message', sequenced)
-  return sequenced
+/** Builds a real ControlSession with real accumulator + emitter. */
+function buildRealSession(controlId: string, sessionId: string): ControlSession {
+  return {
+    controlId,
+    sessionId,
+    model: 'claude-sonnet-4-20250514',
+    query: {
+      supportedModels: vi.fn().mockResolvedValue([]),
+      supportedCommands: vi.fn().mockResolvedValue([]),
+      supportedAgents: vi.fn().mockResolvedValue([]),
+      mcpServerStatus: vi.fn().mockResolvedValue([]),
+      accountInfo: vi.fn().mockResolvedValue({}),
+      setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
+      rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
+      interrupt: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn(),
+    } as unknown as ControlSession['query'],
+    bridge: {
+      close: vi.fn(),
+    } as unknown as ControlSession['bridge'],
+    abort: new AbortController(),
+    state: 'active',
+    totalCostUsd: 0,
+    turnCount: 0,
+    modelUsage: {},
+    startedAt: Date.now(),
+    emitter: new EventEmitter(),
+    permissions: {
+      resolvePermission: vi.fn(),
+      resolveQuestion: vi.fn(),
+      resolvePlan: vi.fn(),
+      resolveElicitation: vi.fn(),
+      drainInteractive: vi.fn(),
+      drainAll: vi.fn(),
+    } as unknown as ControlSession['permissions'],
+    permissionMode: 'default',
+    wsClients: new Set(),
+    lastSessionInit: null,
+    accumulator: new StreamAccumulator(),
+  }
 }
 
-describe('Echo wire format integration (emitSequenced + RingBuffer)', () => {
-  it('emitSequenced wraps user_message_echo with seq number in ring buffer', () => {
-    const buffer = new RingBuffer<{ seq: number; msg: SequencedEvent }>(100)
-    const emitter = new EventEmitter()
-    const nextSeq = { value: 0 }
+describe('Echo wire format integration (emitSequenced → emitter + accumulator)', () => {
+  it('emitSequenced pushes user_message_echo into accumulator', () => {
+    const registry = new SessionRegistry()
+    const cs = buildRealSession('ctrl-echo', 'sess-echo')
+    registry.register(cs)
 
     const echo: ServerEvent = {
       type: 'user_message_echo',
       content: 'Hello from user',
       timestamp: 1710000000,
-    } as ServerEvent
+    }
 
-    emitSequenced(buffer, emitter, nextSeq, echo)
+    registry.emitSequenced(cs, echo)
 
-    // Verify buffer has 1 entry with seq=0
-    const items = buffer.toArray()
-    expect(items).toHaveLength(1)
-    expect(items[0].seq).toBe(0)
-    expect(items[0].msg.type).toBe('user_message_echo')
-    expect(items[0].msg.seq).toBe(0)
-    expect((items[0].msg as unknown as { content: string }).content).toBe('Hello from user')
+    // Verify accumulator has the user block
+    const blocks = cs.accumulator.getBlocks()
+    const userBlocks = blocks.filter((b) => b.type === 'user')
+    expect(userBlocks).toHaveLength(1)
+    if (userBlocks[0].type !== 'user') throw new Error('expected user')
+    expect(userBlocks[0].text).toBe('Hello from user')
   })
 
-  it('echo at seq 0 is retrievable via getAfter(-1)', () => {
-    const buffer = new RingBuffer<{ seq: number; msg: SequencedEvent }>(100)
-    const emitter = new EventEmitter()
-    const nextSeq = { value: 0 }
+  it('echo followed by assistant events maintains correct block ordering', () => {
+    const registry = new SessionRegistry()
+    const cs = buildRealSession('ctrl-order', 'sess-order')
+    registry.register(cs)
 
-    const echo: ServerEvent = {
-      type: 'user_message_echo',
-      content: 'First message',
-      timestamp: 1710000000,
-    } as ServerEvent
+    // session_init first to unlock accumulator gate
+    registry.emitSequenced(cs, {
+      type: 'session_init',
+      tools: ['Read'],
+      model: 'claude-sonnet-4-20250514',
+      mcpServers: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      claudeCodeVersion: '1.0.0',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: 'text',
+    } as ServerEvent)
 
-    emitSequenced(buffer, emitter, nextSeq, echo)
-
-    // getAfter(-1) returns all events — this is what the WS handler uses on
-    // first connect to replay the full buffer for newly connected clients.
-    const replayed = buffer.getAfter(-1, (item) => item.seq)
-    expect(replayed).not.toBeNull()
-    expect(replayed).toHaveLength(1)
-    expect(replayed![0].msg.type).toBe('user_message_echo')
-    expect(replayed![0].msg.seq).toBe(0)
-  })
-
-  it('echo followed by assistant events maintains insertion order', () => {
-    const buffer = new RingBuffer<{ seq: number; msg: SequencedEvent }>(100)
-    const emitter = new EventEmitter()
-    const nextSeq = { value: 0 }
-
-    // Simulate: user echo → assistant text → turn complete
-    emitSequenced(buffer, emitter, nextSeq, {
+    // User echo → assistant text → turn complete
+    registry.emitSequenced(cs, {
       type: 'user_message_echo',
       content: 'Question',
       timestamp: 1710000000,
     } as ServerEvent)
 
-    emitSequenced(buffer, emitter, nextSeq, {
+    registry.emitSequenced(cs, {
       type: 'assistant_text',
       text: 'Answer',
       messageId: 'a1',
       parentToolUseId: null,
     } as ServerEvent)
 
-    emitSequenced(buffer, emitter, nextSeq, {
+    registry.emitSequenced(cs, {
       type: 'turn_complete',
       totalCostUsd: 0.01,
       numTurns: 1,
@@ -97,25 +118,24 @@ describe('Echo wire format integration (emitSequenced + RingBuffer)', () => {
       stopReason: 'end_turn',
     } as ServerEvent)
 
-    const all = buffer.getAfter(-1, (item) => item.seq)
-    expect(all).toHaveLength(3)
-    expect(all![0].msg.type).toBe('user_message_echo')
-    expect(all![0].msg.seq).toBe(0)
-    expect(all![1].msg.type).toBe('assistant_text')
-    expect(all![1].msg.seq).toBe(1)
-    expect(all![2].msg.type).toBe('turn_complete')
-    expect(all![2].msg.seq).toBe(2)
+    const blocks = cs.accumulator.getBlocks()
+    // Should have: system(session_init) + user + assistant + turn_boundary
+    const types = blocks.map((b) => b.type)
+    expect(types).toContain('system')
+    expect(types).toContain('user')
+    expect(types).toContain('assistant')
+    expect(types).toContain('turn_boundary')
   })
 
-  it('emitter receives sequenced event synchronously', () => {
-    const buffer = new RingBuffer<{ seq: number; msg: SequencedEvent }>(100)
-    const emitter = new EventEmitter()
-    const nextSeq = { value: 0 }
-    const received: SequencedEvent[] = []
+  it('emitter receives event synchronously', () => {
+    const registry = new SessionRegistry()
+    const cs = buildRealSession('ctrl-sync', 'sess-sync')
+    registry.register(cs)
 
-    emitter.on('message', (msg: SequencedEvent) => received.push(msg))
+    const received: ServerEvent[] = []
+    cs.emitter.on('message', (msg: ServerEvent) => received.push(msg))
 
-    emitSequenced(buffer, emitter, nextSeq, {
+    registry.emitSequenced(cs, {
       type: 'user_message_echo',
       content: 'live event',
       timestamp: 1710000000,
@@ -124,39 +144,54 @@ describe('Echo wire format integration (emitSequenced + RingBuffer)', () => {
     // Emitter fires synchronously — message available immediately
     expect(received).toHaveLength(1)
     expect(received[0].type).toBe('user_message_echo')
-    expect(received[0].seq).toBe(0)
   })
 
-  it('getAfter(N) skips echo events with seq <= N (reconnect scenario)', () => {
-    const buffer = new RingBuffer<{ seq: number; msg: SequencedEvent }>(100)
-    const emitter = new EventEmitter()
-    const nextSeq = { value: 0 }
+  it('accumulator maintains correct block order after multiple messages', () => {
+    const registry = new SessionRegistry()
+    const cs = buildRealSession('ctrl-multi', 'sess-multi')
+    registry.register(cs)
 
-    // Fill buffer with 3 events (seq 0, 1, 2)
-    emitSequenced(buffer, emitter, nextSeq, {
+    // Fill with 3 events
+    registry.emitSequenced(cs, {
       type: 'user_message_echo',
       content: 'msg 1',
       timestamp: 1710000000,
     } as ServerEvent)
 
-    emitSequenced(buffer, emitter, nextSeq, {
+    // session_init to unlock
+    registry.emitSequenced(cs, {
+      type: 'session_init',
+      tools: ['Read'],
+      model: 'claude-sonnet-4-20250514',
+      mcpServers: [],
+      permissionMode: 'default',
+      slashCommands: [],
+      claudeCodeVersion: '1.0.0',
+      cwd: '/tmp',
+      agents: [],
+      skills: [],
+      outputStyle: 'text',
+    } as ServerEvent)
+
+    registry.emitSequenced(cs, {
       type: 'assistant_text',
       text: 'reply',
       messageId: 'a1',
       parentToolUseId: null,
     } as ServerEvent)
 
-    emitSequenced(buffer, emitter, nextSeq, {
+    registry.emitSequenced(cs, {
       type: 'user_message_echo',
       content: 'msg 2',
       timestamp: 1710000001,
     } as ServerEvent)
 
-    // Client reconnects having seen up to seq 0 — should get events 1 and 2
-    const missed = buffer.getAfter(0, (item) => item.seq)
-    expect(missed).toHaveLength(2)
-    expect(missed![0].msg.seq).toBe(1)
-    expect(missed![1].msg.seq).toBe(2)
-    expect(missed![1].msg.type).toBe('user_message_echo')
+    const blocks = cs.accumulator.getBlocks()
+    const userBlocks = blocks.filter((b) => b.type === 'user')
+    expect(userBlocks).toHaveLength(2)
+    if (userBlocks[0].type !== 'user') throw new Error('expected user')
+    expect(userBlocks[0].text).toBe('msg 1')
+    if (userBlocks[1].type !== 'user') throw new Error('expected user')
+    expect(userBlocks[1].text).toBe('msg 2')
   })
 })

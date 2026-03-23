@@ -11,6 +11,7 @@ import { ChatPalette } from './ChatPalette'
 import { ModeSwitch, cycleMode } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
+import { ThinkingBudgetControl } from './ThinkingBudgetControl'
 import type { SlashCommand } from './commands'
 import { buildPaletteSections } from './palette-items'
 
@@ -35,7 +36,7 @@ interface StateConfig {
 }
 
 const STATE_CONFIG: Record<InputBarState, StateConfig> = {
-  dormant: { placeholder: 'Resume this session...', disabled: false, muted: true },
+  dormant: { placeholder: 'Send a message...', disabled: false, muted: true },
   connecting: { placeholder: 'Connecting...', disabled: true, muted: true },
   reconnecting: { placeholder: 'Reconnecting...', disabled: true, muted: true },
   active: {
@@ -43,7 +44,7 @@ const STATE_CONFIG: Record<InputBarState, StateConfig> = {
     disabled: false,
     muted: false,
   },
-  streaming: { placeholder: 'Claude is responding...', disabled: true, muted: false },
+  streaming: { placeholder: 'Type to queue a follow-up...', disabled: false, muted: false },
   waiting_permission: {
     placeholder: 'Waiting for permission response...',
     disabled: true,
@@ -85,6 +86,9 @@ export interface ChatInputBarProps {
   onAgent?: (agent: string) => void
   // NEW: Called when palette opens — refresh commands/agents via WS
   onPaletteOpen?: () => void
+  // Effort slider (thinking budget)
+  effortValue?: number | null
+  onEffortChange?: (tokens: number | null) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +118,8 @@ export function ChatInputBar({
   onPaletteModeChange,
   onAgent,
   onPaletteOpen,
+  effortValue,
+  onEffortChange,
 }: ChatInputBarProps) {
   const config = STATE_CONFIG[state]
   const resolvedPlaceholder = placeholderProp ?? config.placeholder
@@ -188,7 +194,7 @@ export function ChatInputBar({
 
       requestAnimationFrame(autoGrow)
     },
-    [autoGrow],
+    [autoGrow, slashOpen, onPaletteOpen],
   )
 
   // ---- Keyboard: Enter=send, Shift+Enter=newline, Escape=stop ----
@@ -260,7 +266,7 @@ export function ChatInputBar({
   const paletteSections = useMemo(() => {
     if (!capabilities || !modelOptions) return null
     return buildPaletteSections(capabilities, modelOptions, paletteCallbacks, {
-      isLive: state !== 'dormant' && state !== 'completed',
+      sessionActive: state !== 'dormant' && state !== 'completed',
       isStreaming,
     })
   }, [capabilities, modelOptions, paletteCallbacks, state, isStreaming])
@@ -320,18 +326,29 @@ export function ChatInputBar({
             'focus-within:border-blue-400 dark:focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-400/30',
         )}
       >
-        {/* Top bar: ModeSwitch (left) + ModelSelector (right) */}
+        {/* Top bar: ModeSwitch (left) + Effort + ModelSelector (right) */}
         <div className="flex items-center justify-between px-3 pt-2 pb-1">
           <ModeSwitch
             mode={mode}
             onModeChange={onModeChange ?? (() => {})}
             disabled={isDisabled || !onModeChange}
           />
-          <ModelSelector
-            model={model}
-            onModelChange={onModelChange ?? (() => {})}
-            disabled={isDisabled || !onModelChange}
-          />
+          <div className="flex items-center gap-3">
+            {onEffortChange && (
+              <ThinkingBudgetControl
+                value={effortValue ?? null}
+                onChange={onEffortChange}
+                disabled={isDisabled}
+              />
+            )}
+            <ModelSelector
+              model={model}
+              onModelChange={onModelChange ?? (() => {})}
+              disabled={isDisabled || !onModelChange}
+              isLive={state === 'active' || state === 'streaming' || state === 'waiting_permission'}
+              onSetModel={onModelSwitch}
+            />
+          </div>
         </div>
 
         {/* Textarea */}
@@ -367,27 +384,38 @@ export function ChatInputBar({
           </div>
 
           {/* Send / Stop button */}
-          <button
-            type="button"
-            onClick={isStreaming ? onStop : send}
-            disabled={isStreaming ? !onStop : !canSend}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors duration-150',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-              isStreaming
-                ? 'bg-red-500 hover:bg-red-600 text-white disabled:opacity-50'
-                : canSend
+          {/* During streaming: show Send if user typed text (queues message), Stop otherwise */}
+          {isStreaming && !canSend ? (
+            <button
+              type="button"
+              onClick={onStop}
+              disabled={!onStop}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                'bg-red-500 hover:bg-red-600 text-white disabled:opacity-50',
+              )}
+              aria-label="Stop generation"
+            >
+              <Square className="w-4 h-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={send}
+              disabled={!canSend}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors duration-150',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                canSend
                   ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed',
-            )}
-            aria-label={isStreaming ? 'Stop generation' : 'Send message'}
-          >
-            {isStreaming ? (
-              <Square className="w-4 h-4" aria-hidden="true" />
-            ) : (
+              )}
+              aria-label="Send message"
+            >
               <ArrowUp className="w-4 h-4" aria-hidden="true" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
       </div>
     </div>

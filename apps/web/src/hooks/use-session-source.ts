@@ -2,8 +2,11 @@ import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
 import type { ModelUsageInfo } from '@claude-view/shared/types/sidecar-protocol'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { clearRespondedCache } from '@claude-view/shared/components/conversation/blocks/shared/use-interaction-handlers'
+import type { SessionState } from '../lib/derive-panel-mode'
 import { SessionChannel } from '../lib/session-channel'
-import { wsUrl } from '../lib/ws-url'
+import { sidecarWsUrl } from '../lib/ws-url'
 import { NON_RECOVERABLE_CODES } from '../types/control'
 
 const INITIAL_BACKOFF_MS = 1000
@@ -23,7 +26,7 @@ export interface SessionSourceResult {
   committedBlocks: ConversationBlock[]
   /** Pending streaming text not yet committed to a block */
   pendingText: string
-  sessionState: string
+  sessionState: SessionState
   controlId: string | null
   /** Send that may trigger session resume (for user_message only). */
   send: ((msg: Record<string, unknown>) => void) | null
@@ -35,8 +38,6 @@ export interface SessionSourceResult {
   resume: (permissionMode?: string, model?: string) => Promise<void>
   totalInputTokens: number
   contextWindowSize: number
-  /** True if session is known-active but WS not yet opened */
-  canResumeLazy: boolean
   model: string
   slashCommands: string[]
   mcpServers: { name: string; status: string }[]
@@ -63,18 +64,9 @@ export function deriveEffectiveSend(
   return null // No session at all
 }
 
-/** Exported for testing — true when session exists but WS not yet opened. */
-export function deriveCanResumeLazy(
-  controlId: string | null,
-  sessionId: string | undefined,
-  isLive: boolean,
-): boolean {
-  return !isLive && !!(controlId || sessionId)
-}
-
 export function useSessionSource(sessionId: string | undefined): SessionSourceResult {
   const [msgState, setMsgState] = useState<MessageState>({ committed: [], pendingText: '' })
-  const [sessionState, setSessionState] = useState<string>('idle')
+  const [sessionState, setSessionState] = useState<SessionState>('idle')
   const [controlId, setControlId] = useState<string | null>(null)
   const [isLive, setIsLive] = useState(false)
   const [initComplete, setInitComplete] = useState(false)
@@ -239,6 +231,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
           break
         }
         case 'permission_request':
+        case 'ask_question':
+        case 'plan_approval':
+        case 'elicitation':
           setSessionState('waiting_permission')
           break
         case 'session_closed':
@@ -255,6 +250,9 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         case 'mode_rejected':
           // Revert to the sidecar's actual mode
           setPermissionMode(raw.mode as string)
+          toast.error('Mode change rejected', {
+            description: (raw.reason as string) ?? (raw.requestedMode as string) ?? undefined,
+          })
           break
         case 'query_result': {
           const evt = raw as { requestId?: string; queryType?: string; data: unknown }
@@ -296,6 +294,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (wsRef.current !== ws) return
       if (unmountedRef.current) return
       clearHeartbeat()
+      clearRespondedCache()
       channelRef.current.handleDisconnect()
 
       // Connection replaced by a newer WS (e.g. another tab connected)
@@ -318,7 +317,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
         return
       }
 
-      setSessionState('reconnecting' as string)
+      setSessionState('reconnecting')
       reconnectAttemptRef.current++
       const backoff = Math.min(
         INITIAL_BACKOFF_MS * 2 ** (reconnectAttemptRef.current - 1),
@@ -343,7 +342,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
 
       const params = new URLSearchParams({ sessionId: sid })
       if (model) params.set('model', model)
-      const ws = new WebSocket(wsUrl(`/api/control/connect?${params.toString()}`))
+      const ws = new WebSocket(sidecarWsUrl(`/ws/chat/${sid}?${params.toString()}`))
       wsRef.current = ws
 
       ws.onopen = () => {
@@ -397,10 +396,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     async function init() {
       // Check if session is active
       try {
-        const res = await fetch('/api/control/sessions')
+        const res = await fetch('/api/sidecar/sessions')
         if (!cancelled && res.ok) {
-          const sessions: ActiveSession[] = await res.json()
-          const active = sessions.find((s) => s.sessionId === sid)
+          const data: { active: ActiveSession[] } = await res.json()
+          const active = data.active.find((s) => s.sessionId === sid)
           if (!cancelled && active) {
             setControlId(active.controlId)
             // Signal that session IS initializing — gates suppressNotFound in useConversation
@@ -443,7 +442,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (controlIdRef.current) {
-        fetch(`/api/control/sessions/${controlIdRef.current}`, {
+        fetch(`/api/sidecar/sessions/${controlIdRef.current}`, {
           method: 'DELETE',
           keepalive: true,
         }).catch(() => {})
@@ -476,9 +475,12 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (!ws && sessionId) {
         if (controlId) {
           // Have controlId — just open WS
+          setSessionState('initializing')
           openWs(sessionId)
         } else if (!resumingRef.current) {
           // Dormant session — auto-resume, then connect.
+          // Set visual state so input bar shows "connecting" instead of idle.
+          setSessionState('initializing')
           // Include persisted permission mode so the session starts with the correct mode.
           // Check session-specific key first, then global last-used mode.
           let permissionMode: string | undefined
@@ -491,10 +493,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
             /* noop */
           }
           resumingRef.current = true
-          fetch('/api/control/sessions/resume', {
+          fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId, permissionMode }),
+            body: JSON.stringify({ permissionMode }),
           })
             .then((res) => {
               if (!res.ok) throw new Error(`Resume failed: ${res.status}`)
@@ -525,6 +527,7 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   const reconnect = useCallback(() => {
     if (!sessionId) return
     reconnectAttemptRef.current = 0
+    setSessionState('initializing')
     openWs(sessionId)
   }, [sessionId, openWs])
 
@@ -534,10 +537,10 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
       if (!sessionId) return
 
       try {
-        const res = await fetch('/api/control/sessions/resume', {
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, permissionMode, model }),
+          body: JSON.stringify({ permissionMode, model }),
         })
         if (res.ok) {
           const data = await res.json()
@@ -565,7 +568,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
   }, [])
 
   const effectiveSend = deriveEffectiveSend(isLive, controlId, sessionId, send, connectAndSend)
-  const canResumeLazy = deriveCanResumeLazy(controlId, sessionId, isLive)
 
   return {
     blocks: msgState.committed, // Backward compat alias
@@ -580,7 +582,6 @@ export function useSessionSource(sessionId: string | undefined): SessionSourceRe
     resume,
     totalInputTokens,
     contextWindowSize,
-    canResumeLazy,
     model,
     slashCommands,
     mcpServers,

@@ -2,10 +2,14 @@
 // Create/resume/fork SDK sessions with long-lived stream loops (V1 query() API).
 // All session state mutations go through SessionRegistry.emitSequenced().
 import { EventEmitter } from 'node:events'
+import { existsSync, readdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import {
   type Options,
   type PermissionMode,
   type SDKMessage,
+  getSessionInfo,
   listSessions,
   query,
 } from '@anthropic-ai/claude-agent-sdk'
@@ -21,7 +25,6 @@ import type {
   ResumeSessionRequest,
   ServerEvent,
 } from './protocol.js'
-import { RingBuffer } from './ring-buffer.js'
 import type { ControlSession, SessionRegistry } from './session-registry.js'
 import { StreamAccumulator } from './stream-accumulator.js'
 
@@ -43,13 +46,11 @@ function buildQueryOptions(
     pathToClaudeCodeExecutable: findClaudeExecutable(),
     settingSources: ['user', 'project'],
     model: opts.model,
+    // Always allow bypassPermissions so setPermissionMode() can switch to it mid-session.
+    // Per SDK docs, setPermissionMode("bypassPermissions") is a valid dynamic change.
+    allowDangerouslySkipPermissions: true,
     ...(opts.permissionMode
-      ? {
-          permissionMode: opts.permissionMode as PermissionMode | undefined,
-          ...(opts.permissionMode === 'bypassPermissions'
-            ? { allowDangerouslySkipPermissions: true }
-            : {}),
-        }
+      ? { permissionMode: opts.permissionMode as PermissionMode | undefined }
       : {}),
     ...(opts.allowedTools ? { allowedTools: opts.allowedTools } : {}),
     ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
@@ -64,22 +65,43 @@ function buildQueryOptions(
   }
 }
 
-export function createControlSession(
-  req: CreateSessionRequest,
-  registry: SessionRegistry,
-): ControlSession {
+// ─── Generic session setup ──────────────────────────────────────
+// All session types (create/resume/fork) share the same wiring.
+// Differences are expressed via SessionSetupOpts — no ad-hoc per-type logic.
+
+interface SessionSetupOpts {
+  /** Model to use. */
+  model: string
+  /** Permission mode ('default', 'plan', 'bypassPermissions', etc.). */
+  permissionMode?: string
+  /** Allowed/disallowed tools — create-only, ignored for resume/fork. */
+  allowedTools?: string[]
+  disallowedTools?: string[]
+  /** Resolved project path (cwd for the SDK). */
+  projectPath?: string
+  /** Session ID to resume from — set for resume and fork, absent for create. */
+  resume?: string
+  /** Branch conversation history into a new session. Requires resume. */
+  forkSession?: boolean
+  /** Known session ID — set for resume (known up front), empty for create/fork (SDK assigns). */
+  knownSessionId?: string
+  /** Initial user message to queue before the stream loop starts. */
+  initialMessage?: string
+}
+
+function setupControlSession(opts: SessionSetupOpts, registry: SessionRegistry): ControlSession {
   const controlId = crypto.randomUUID()
   const emitter = new EventEmitter()
   const permissions = new PermissionHandler()
   const bridge = new MessageBridge()
   const abort = new AbortController()
 
-  // Pre-queue initial message if provided
-  if (req.initialMessage) {
+  // Pre-queue initial message so SDK gets it before session_init.
+  if (opts.initialMessage) {
     bridge.push({
       type: 'user',
       session_id: '',
-      message: { role: 'user', content: [{ type: 'text', text: req.initialMessage }] },
+      message: { role: 'user', content: [{ type: 'text', text: opts.initialMessage }] },
       parent_tool_use_id: null,
     })
   }
@@ -93,11 +115,13 @@ export function createControlSession(
     prompt: bridge,
     options: buildQueryOptions(
       {
-        model: req.model,
-        permissionMode: req.permissionMode,
-        allowedTools: req.allowedTools,
-        disallowedTools: req.disallowedTools,
-        projectPath: req.projectPath,
+        model: opts.model,
+        permissionMode: opts.permissionMode,
+        allowedTools: opts.allowedTools,
+        disallowedTools: opts.disallowedTools,
+        projectPath: opts.projectPath,
+        resume: opts.resume,
+        forkSession: opts.forkSession,
       },
       permissions,
       emit,
@@ -107,8 +131,8 @@ export function createControlSession(
 
   cs = {
     controlId,
-    sessionId: '',
-    model: req.model,
+    sessionId: opts.knownSessionId ?? '',
+    model: opts.model,
     query: q,
     bridge,
     abort,
@@ -118,21 +142,20 @@ export function createControlSession(
     modelUsage: {},
     startedAt: Date.now(),
     emitter,
-    eventBuffer: new RingBuffer(200),
-    nextSeq: 0,
     permissions,
-    permissionMode: req.permissionMode ?? 'default',
-    activeWs: null,
+    permissionMode: opts.permissionMode ?? 'default',
+    wsClients: new Set(),
+    lastSessionInit: null,
     accumulator: new StreamAccumulator(),
   }
 
   registry.register(cs)
 
-  // Echo initial message into ring buffer (seq 0)
-  if (req.initialMessage) {
+  // Echo initial message into accumulator so blocks_snapshot includes it.
+  if (opts.initialMessage) {
     registry.emitSequenced(cs, {
       type: 'user_message_echo',
-      content: req.initialMessage,
+      content: opts.initialMessage,
       timestamp: Date.now() / 1000,
     })
   }
@@ -140,6 +163,58 @@ export function createControlSession(
   runStreamLoop(cs, registry)
 
   return cs
+}
+
+/**
+ * Shared pre-flight for resume and fork: verify session file exists on disk,
+ * resolve projectPath from session metadata if not provided.
+ *
+ * IMPORTANT: Uses filesystem existence check, NOT getSessionInfo().
+ * getSessionInfo() filters out sessions with "no extractable summary" (e.g. sessions
+ * interrupted before any assistant response) and returns undefined — but the JSONL file
+ * exists on disk and the SDK can resume it. Using getSessionInfo as an existence check
+ * was a recurring bug (fixed 7+ times as a "projectPath issue" when it was really this).
+ */
+async function resolveExistingSession(
+  sessionId: string,
+  projectPath?: string,
+): Promise<string | undefined> {
+  if (!sessionJsonlExists(sessionId)) {
+    throw new Error(
+      `Session ${sessionId} not found in CLI session store. It may have been deleted or belongs to a different project path.`,
+    )
+  }
+  let resolved = projectPath
+  try {
+    const info = await getSessionInfo(sessionId, {
+      dir: projectPath || undefined,
+    })
+    if (info?.cwd && !resolved) {
+      resolved = info.cwd
+    }
+  } catch {
+    // getSessionInfo failures are non-fatal — only used for cwd fallback
+  }
+  return resolved
+}
+
+// ─── Public API ─────────────────────────────────────────────────
+
+export function createControlSession(
+  req: CreateSessionRequest,
+  registry: SessionRegistry,
+): ControlSession {
+  return setupControlSession(
+    {
+      model: req.model,
+      permissionMode: req.permissionMode,
+      allowedTools: req.allowedTools,
+      disallowedTools: req.disallowedTools,
+      projectPath: req.projectPath,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
 export async function resumeControlSession(
@@ -160,115 +235,38 @@ export async function resumeControlSession(
     }
   }
 
-  const controlId = crypto.randomUUID()
-  const emitter = new EventEmitter()
-  const permissions = new PermissionHandler()
-  const bridge = new MessageBridge()
-  const abort = new AbortController()
+  const resolvedPath = await resolveExistingSession(req.sessionId, req.projectPath)
 
-  // biome-ignore lint/style/useConst: definite assignment pattern — cs assigned below
-  let cs!: ControlSession
-
-  const emit = (event: ServerEvent) => registry.emitSequenced(cs, event)
-
-  const q = query({
-    prompt: bridge,
-    options: buildQueryOptions(
-      {
-        model: req.model ?? 'claude-sonnet-4-20250514',
-        permissionMode: req.permissionMode,
-        projectPath: req.projectPath,
-        resume: req.sessionId,
-      },
-      permissions,
-      emit,
-      abort,
-    ),
-  })
-
-  cs = {
-    controlId,
-    sessionId: req.sessionId,
-    model: req.model ?? 'claude-sonnet-4-20250514',
-    query: q,
-    bridge,
-    abort,
-    state: 'initializing',
-    totalCostUsd: 0,
-    turnCount: 0,
-    modelUsage: {},
-    startedAt: Date.now(),
-    emitter,
-    eventBuffer: new RingBuffer(200),
-    permissionMode: req.permissionMode ?? 'default',
-    nextSeq: 0,
-    permissions,
-    activeWs: null,
-    accumulator: new StreamAccumulator(),
-  }
-
-  registry.register(cs)
-  runStreamLoop(cs, registry)
-
-  return cs
+  return setupControlSession(
+    {
+      model: req.model ?? 'claude-sonnet-4-20250514',
+      permissionMode: req.permissionMode,
+      projectPath: resolvedPath,
+      resume: req.sessionId,
+      knownSessionId: req.sessionId,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
-export function forkControlSession(
+export async function forkControlSession(
   req: ForkSessionRequest,
   registry: SessionRegistry,
-): ControlSession {
-  const controlId = crypto.randomUUID()
-  const emitter = new EventEmitter()
-  const permissions = new PermissionHandler()
-  const bridge = new MessageBridge()
-  const abort = new AbortController()
+): Promise<ControlSession> {
+  const resolvedPath = await resolveExistingSession(req.sessionId, req.projectPath)
 
-  // biome-ignore lint/style/useConst: definite assignment pattern — cs assigned below
-  let cs!: ControlSession
-
-  const emit = (event: ServerEvent) => registry.emitSequenced(cs, event)
-
-  const q = query({
-    prompt: bridge,
-    options: buildQueryOptions(
-      {
-        model: req.model ?? 'claude-sonnet-4-20250514',
-        permissionMode: req.permissionMode,
-        projectPath: req.projectPath,
-        resume: req.sessionId,
-        forkSession: true,
-      },
-      permissions,
-      emit,
-      abort,
-    ),
-  })
-
-  cs = {
-    controlId,
-    sessionId: '', // will be populated from SDK message session_id
-    model: req.model ?? 'claude-sonnet-4-20250514',
-    query: q,
-    bridge,
-    abort,
-    state: 'initializing',
-    totalCostUsd: 0,
-    turnCount: 0,
-    modelUsage: {},
-    startedAt: Date.now(),
-    emitter,
-    eventBuffer: new RingBuffer(200),
-    nextSeq: 0,
-    permissions,
-    permissionMode: req.permissionMode ?? 'default',
-    activeWs: null,
-    accumulator: new StreamAccumulator(),
-  }
-
-  registry.register(cs)
-  runStreamLoop(cs, registry)
-
-  return cs
+  return setupControlSession(
+    {
+      model: req.model ?? 'claude-sonnet-4-20250514',
+      permissionMode: req.permissionMode,
+      projectPath: resolvedPath,
+      resume: req.sessionId,
+      forkSession: true,
+      initialMessage: req.initialMessage,
+    },
+    registry,
+  )
 }
 
 /** One long-lived stream loop per session. Runs until session closes or errors. */
@@ -279,9 +277,10 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
       for await (const msg of cs.query) {
         updateSessionStateFromRawMsg(cs, msg)
         const events = mapSdkMessage(msg)
+        const raw = msg as unknown as Record<string, unknown>
         for (const event of events) {
           updateSessionState(cs, event)
-          registry.emitSequenced(cs, event)
+          registry.emitSequenced(cs, event, raw)
 
           // On first session_init, refresh model cache from SDK (fire-and-forget).
           // SDK is the source of truth for available models.
@@ -302,6 +301,9 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
         cs.state = 'closed'
       } else {
         cs.state = 'error'
+        console.warn(
+          `[stream-loop] ${cs.sessionId.slice(0, 8)} error: ${err instanceof Error ? err.message : String(err)}`,
+        )
         registry.emitSequenced(cs, {
           type: 'error',
           message: err instanceof Error ? err.message : String(err),
@@ -419,29 +421,21 @@ export async function setSessionMode(
     return { ok: false, currentMode: cs.permissionMode }
   }
 
-  if (mode === 'bypassPermissions') {
-    registry.emitSequenced(cs, {
-      type: 'error',
-      message:
-        'bypassPermissions requires allowDangerouslySkipPermissions at session init. Resume with bypassPermissions mode instead.',
-      fatal: false,
-    })
-    return { ok: false, currentMode: cs.permissionMode }
-  }
-
   await cs.query.setPermissionMode(mode as PermissionMode)
   cs.permissionMode = mode
   return { ok: true, currentMode: mode }
 }
 
 /**
- * Wait for session_id to be extracted from the first SDK message.
+ * Wait for the SDK session to fully initialize (session_init event emitted).
  *
- * Listens for 'session_id_ready' event (emitted by updateSessionStateFromRawMsg)
- * and fast-fails on fatal errors emitted on the 'message' channel.
+ * For new sessions: waits for session_id extraction + session_init.
+ * For resumed sessions: sessionId is already known, but still waits for session_init
+ * so that lastSessionInit is cached before the HTTP response triggers WS connections.
  */
 export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Promise<void> {
-  if (cs.sessionId) return Promise.resolve()
+  // Only skip if BOTH sessionId is set AND session_init has been received
+  if (cs.sessionId && cs.lastSessionInit) return Promise.resolve()
 
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -450,11 +444,21 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
     }, timeoutMs)
 
     const onSessionId = (_sessionId: string) => {
-      cleanup()
-      resolve()
+      // For resumed sessions, sessionId arrives immediately but we still need session_init
+      if (cs.lastSessionInit) {
+        cleanup()
+        resolve()
+      }
     }
 
     const onMessage = (event: { type: string; message?: string; fatal?: boolean }) => {
+      if (event.type === 'session_init') {
+        // session_init received — lastSessionInit is now cached by emitSequenced
+        if (cs.sessionId) {
+          cleanup()
+          resolve()
+        }
+      }
       if (event.type === 'error' && event.fatal) {
         cleanup()
         reject(new Error(event.message ?? 'Session init failed'))
@@ -470,6 +474,26 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
     cs.emitter.on('session_id_ready', onSessionId)
     cs.emitter.on('message', onMessage)
   })
+}
+
+/**
+ * Filesystem existence check for a session JSONL file.
+ * Searches all project directories under ~/.claude/projects/.
+ * This is intentionally separate from getSessionInfo() which filters out
+ * sessions with no extractable summary (e.g. interrupted before assistant response).
+ */
+export function sessionJsonlExists(sessionId: string): boolean {
+  const projectsDir = join(homedir(), '.claude', 'projects')
+  try {
+    for (const dir of readdirSync(projectsDir)) {
+      if (existsSync(join(projectsDir, dir, `${sessionId}.jsonl`))) {
+        return true
+      }
+    }
+  } catch {
+    // If ~/.claude/projects doesn't exist, session can't exist
+  }
+  return false
 }
 
 export async function listAvailableSessions(): Promise<AvailableSession[]> {

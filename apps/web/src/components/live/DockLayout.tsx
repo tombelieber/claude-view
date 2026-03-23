@@ -8,9 +8,10 @@ import {
   type SerializedDockview,
 } from 'dockview-react'
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
+import { BlockTerminalPane } from './BlockTerminalPane'
 import { MonitorPane } from './MonitorPane'
-import { RichTerminalPane } from './RichTerminalPane'
 import type { LiveSession } from './use-live-sessions'
 
 // --- Context: provides session data + callbacks to dockview panel components ---
@@ -33,7 +34,7 @@ interface DockLayoutProps {
   /** Called once when the dockview API is ready — use to capture the API ref in the parent. */
   onApiReady?: (api: DockviewApi) => void
   compactHeaders: boolean
-  verboseMode: boolean
+  displayMode: DisplayMode
   onSelectSession?: (id: string) => void
 }
 
@@ -43,12 +44,18 @@ function SessionPanel({
   params,
 }: IDockviewPanelProps<{
   sessionId: string
-  verboseMode: boolean
+  displayMode?: DisplayMode
+  /** @deprecated Kept for localStorage migration — old layouts stored verboseMode. */
+  verboseMode?: boolean
   status: string
 }>) {
   const sessionId = params.sessionId
   const { sessions, onExpandSession } = useContext(DockPaneContext)
   const session = sessions.find((s) => s.id === sessionId)
+
+  // Note: old serialized layouts may have `verboseMode` instead of `displayMode`.
+  // The param type accepts both for backward compat. BlockTerminalPane reads
+  // displayMode from the monitor store directly, so no local conversion needed.
 
   // Store state + actions — read directly so panels stay in sync
   const compactHeaders = useMonitorStore((s) => s.compactHeaders)
@@ -84,7 +91,7 @@ function SessionPanel({
       onHide={() => hidePane(sessionId)}
       onContextMenu={() => {}}
     >
-      <RichTerminalPane sessionId={sessionId} isVisible={true} verboseMode={params.verboseMode} />
+      <BlockTerminalPane sessionId={sessionId} isVisible={true} />
     </MonitorPane>
   )
 }
@@ -126,8 +133,16 @@ function SessionTabRenderer({
   const status = params.status as LiveSession['status'] | undefined
   const statusColor = status ? statusToColor(status) : '#6b7280'
 
+  const handleMiddleClick = (e: React.MouseEvent) => {
+    if (e.button === 1) {
+      e.preventDefault()
+      e.stopPropagation()
+      api.close()
+    }
+  }
+
   return (
-    <div className="flex items-center gap-1.5 px-3 h-full text-xs">
+    <div className="flex items-center gap-1.5 px-3 h-full text-xs" onMouseDown={handleMiddleClick}>
       <div
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
         style={{ backgroundColor: statusColor }}
@@ -143,19 +158,19 @@ export function DockLayout({
   onLayoutChange,
   onApiReady,
   compactHeaders: _compactHeaders,
-  verboseMode,
+  displayMode,
   onSelectSession,
 }: DockLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null)
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
-  const verboseModeRef = useRef(verboseMode)
-  verboseModeRef.current = verboseMode
+  const displayModeRef = useRef(displayMode)
+  displayModeRef.current = displayMode
   const onLayoutChangeRef = useRef(onLayoutChange)
   onLayoutChangeRef.current = onLayoutChange
 
   // onReady fires ONCE when dockview mounts. All mutable values (sessions,
-  // verboseMode) are read via refs so the callback identity is stable and
+  // displayMode) are read via refs so the callback identity is stable and
   // dockview never re-initializes on SSE ticks.
   const onReady = useCallback(
     (event: DockviewReadyEvent) => {
@@ -163,7 +178,7 @@ export function DockLayout({
       onApiReady?.(event.api)
 
       const currentSessions = sessionsRef.current
-      const currentVerbose = verboseModeRef.current
+      const currentDisplayMode = displayModeRef.current
 
       let restored = false
       if (initialLayout) {
@@ -171,13 +186,13 @@ export function DockLayout({
           // Restore saved layout
           event.api.fromJSON(initialLayout)
           restored = true
-          // Update panel params with current verboseMode
+          // Update panel params with current displayMode
           for (const panel of event.api.panels) {
             const session = currentSessions.find((s) => s.id === panel.id)
             if (session) {
               panel.api.updateParameters({
                 sessionId: session.id,
-                verboseMode: currentVerbose,
+                displayMode: currentDisplayMode,
                 status: session.status,
               })
             }
@@ -198,7 +213,7 @@ export function DockLayout({
             title: session?.projectDisplayName ?? id.slice(0, 8),
             params: {
               sessionId: id,
-              verboseMode: currentVerbose,
+              displayMode: currentDisplayMode,
               status: session?.status ?? 'done',
             },
             // First panel gets its own group, rest stack or split
@@ -232,13 +247,13 @@ export function DockLayout({
     const api = apiRef.current
     if (!api) return
 
-    // Update existing panels with fresh verboseMode
+    // Update existing panels with fresh displayMode
     for (const panel of api.panels) {
       const session = sessions.find((s) => s.id === panel.id)
       if (session) {
         panel.api.updateParameters({
           sessionId: session.id,
-          verboseMode,
+          displayMode,
           status: session.status,
         })
       }
@@ -254,7 +269,7 @@ export function DockLayout({
           title: session.projectDisplayName ?? session.id.slice(0, 8),
           params: {
             sessionId: session.id,
-            verboseMode,
+            displayMode,
             status: session.status,
           },
         })
@@ -270,7 +285,7 @@ export function DockLayout({
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
     }
-  }, [sessions, verboseMode])
+  }, [sessions, displayMode])
 
   // Context value — memoized via ref to avoid unnecessary re-renders.
   // Sessions array changes on every SSE tick but dockview panels read from

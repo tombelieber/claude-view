@@ -13,11 +13,14 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build -o storybook-static"
   },
   "dependencies": {
     "@claude-view/design-tokens": "workspace:*",
     "@claude-view/shared": "workspace:*",
+    "@lobehub/icons": "^5.0.1",
     "@posthog/react": "^1.8.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-context-menu": "^2.2.16",
@@ -45,6 +48,7 @@
     "react": "19.2.0",
     "react-day-picker": "^9.13.0",
     "react-dom": "19.2.0",
+    "react-icons": "^5.6.0",
     "react-markdown": "^9.0.1",
     "react-router-dom": "^7.13.0",
     "react-virtuoso": "^4.18.1",
@@ -60,6 +64,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
+    "@storybook/addon-docs": "^10.3.1",
+    "@storybook/react-vite": "^10.3.1",
     "@tailwindcss/vite": "^4.1.18",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -71,6 +77,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/ui": "^4.0.18",
     "happy-dom": "^20.4.0",
+    "storybook": "^10.3.1",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",
     "vite": "^7.2.4",

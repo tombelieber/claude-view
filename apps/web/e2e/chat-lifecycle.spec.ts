@@ -31,7 +31,7 @@ async function waitForAssistantText(page: import('@playwright/test').Page, timeo
 test.describe('Chat Lifecycle', () => {
   test.beforeAll(async ({ request }) => {
     // Verify sidecar is available — fail loudly if not
-    const res = await request.get('/api/control/sessions').catch(() => null)
+    const res = await request.get('/api/sessions').catch(() => null)
     if (!res || !res.ok()) {
       throw new Error(
         'Sidecar not available. Start the full stack with `bun dev` before running chat E2E tests.\n' +

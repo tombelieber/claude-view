@@ -2,7 +2,7 @@ import {
   type CodeRenderContextValue,
   CodeRenderProvider,
 } from '@claude-view/shared/contexts/CodeRenderContext'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { BashProgressCard } from './BashProgressCard'
 
@@ -31,105 +31,122 @@ function renderWithCodeContext(ui: React.ReactElement) {
   return render(<CodeRenderProvider value={mockCodeRender}>{ui}</CodeRenderProvider>)
 }
 
+const baseProps = {
+  output: 'Compiling...\nDone.',
+  fullOutput: 'Downloading deps...\nCompiling...\nDone.',
+  elapsedTimeSeconds: 5.2,
+  totalLines: 3,
+  totalBytes: 256,
+}
+
 describe('BashProgressCard', () => {
-  describe('Status rendering', () => {
-    it('should display exit code and duration', () => {
-      renderWithCodeContext(
-        <BashProgressCard
-          command="npm test"
-          output="All tests passed"
-          exitCode={0}
-          duration={342}
-        />,
-      )
+  describe('Stats bar rendering', () => {
+    it('should display elapsed time, line count, and byte size', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      expect(screen.getByText(/exit 0/)).toBeInTheDocument()
-      expect(screen.getByText(/342ms/)).toBeInTheDocument()
+      expect(screen.getByText('5.2s')).toBeInTheDocument()
+      expect(screen.getByText('3 lines')).toBeInTheDocument()
+      expect(screen.getByText('256 B')).toBeInTheDocument()
     })
 
-    it('should show green styling for exit code 0', () => {
-      const { container } = renderWithCodeContext(<BashProgressCard command="ls" exitCode={0} />)
+    it('should format bytes as KB when >= 1024', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} totalBytes={2048} />)
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-green')
+      expect(screen.getByText('2.0 KB')).toBeInTheDocument()
     })
 
-    it('should show red styling for non-zero exit code', () => {
-      const { container } = renderWithCodeContext(
-        <BashProgressCard command="bad-cmd" exitCode={1} />,
-      )
+    it('should format bytes as MB when >= 1MB', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} totalBytes={1048576} />)
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-red')
+      expect(screen.getByText('1.0 MB')).toBeInTheDocument()
     })
-  })
 
-  describe('Command rendering', () => {
-    it('should render command via CompactCodeBlock with bash language', () => {
-      renderWithCodeContext(<BashProgressCard command="npm test" exitCode={0} />)
+    it('should show singular "line" for 1 line', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} totalLines={1} />)
 
-      const codeBlocks = screen.getAllByTestId('compact-code-block')
-      const cmdBlock = codeBlocks[0]
-      expect(cmdBlock).toHaveAttribute('data-language', 'bash')
-      expect(cmdBlock).toHaveTextContent('npm test')
+      expect(screen.getByText('1 line')).toBeInTheDocument()
+    })
+
+    it('should show taskId chip when provided', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} taskId="bg_001" />)
+
+      expect(screen.getByText('task:bg_001')).toBeInTheDocument()
+    })
+
+    it('should not show taskId chip when null', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} taskId={null} />)
+
+      expect(screen.queryByText(/task:/)).not.toBeInTheDocument()
     })
   })
 
   describe('Output rendering', () => {
-    it('should show output immediately without expand click', () => {
-      renderWithCodeContext(
-        <BashProgressCard
-          command="npm test"
-          output="All tests passed\n5 tests, 0 failures"
-          exitCode={0}
-        />,
-      )
+    it('should show recent output by default', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      expect(screen.getByText(/All tests passed/)).toBeInTheDocument()
+      const codeBlock = screen.getByTestId('compact-code-block')
+      expect(codeBlock.textContent).toContain('Compiling...')
+      expect(codeBlock.textContent).toContain('Done.')
     })
 
     it('should render output via CompactCodeBlock with bash language', () => {
-      renderWithCodeContext(<BashProgressCard command="echo hello" output="hello" exitCode={0} />)
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      const codeBlocks = screen.getAllByTestId('compact-code-block')
-      // First is command, second is output
-      expect(codeBlocks).toHaveLength(2)
-      expect(codeBlocks[1]).toHaveAttribute('data-language', 'bash')
-      expect(codeBlocks[1]).toHaveTextContent('hello')
+      const codeBlock = screen.getByTestId('compact-code-block')
+      expect(codeBlock).toHaveAttribute('data-language', 'bash')
     })
 
-    it('should show "No output" when output is empty string', () => {
-      renderWithCodeContext(<BashProgressCard command="touch file.txt" output="" exitCode={0} />)
+    it('should show "No output" when output is empty', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} output="" fullOutput="" />)
 
       expect(screen.getByText('No output')).toBeInTheDocument()
     })
+  })
 
-    it('should only render command code block when output is undefined', () => {
-      renderWithCodeContext(<BashProgressCard command="running..." />)
+  describe('Expand toggle', () => {
+    it('should show expand button when fullOutput is longer than output', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      const codeBlocks = screen.getAllByTestId('compact-code-block')
-      expect(codeBlocks).toHaveLength(1)
-      expect(codeBlocks[0]).toHaveTextContent('running...')
+      expect(screen.getByText(/full output/)).toBeInTheDocument()
+    })
+
+    it('should not show expand button when output equals fullOutput', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} output="Same" fullOutput="Same" />)
+
+      expect(screen.queryByText(/full output/)).not.toBeInTheDocument()
+    })
+
+    it('should switch to full output on click', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
+
+      fireEvent.click(screen.getByText(/full output/))
+
+      const codeBlock = screen.getByTestId('compact-code-block')
+      expect(codeBlock.textContent).toContain('Downloading deps...')
+      expect(codeBlock.textContent).toContain('Compiling...')
     })
   })
 
-  describe('Edge cases', () => {
-    it('should not show exit status when exitCode is undefined', () => {
-      renderWithCodeContext(<BashProgressCard command="running..." />)
+  describe('Visual styling', () => {
+    it('should have gray left border', () => {
+      const { container } = renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      expect(screen.queryByText(/exit/)).not.toBeInTheDocument()
+      const card = container.firstElementChild as HTMLElement
+      expect(card.className).toContain('border-l-gray')
     })
 
-    it('should not show duration when undefined', () => {
-      renderWithCodeContext(<BashProgressCard command="ls" exitCode={0} />)
+    it('should have bash-progress-card test id', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} />)
 
-      expect(screen.queryByText(/ms/)).not.toBeInTheDocument()
+      expect(screen.getByTestId('bash-progress-card')).toBeInTheDocument()
     })
+  })
 
-    it('should render with only command prop', () => {
-      const { container } = renderWithCodeContext(<BashProgressCard command="echo hello" />)
-      expect(container).toBeInTheDocument()
-      expect(screen.getByText('echo hello')).toBeInTheDocument()
+  describe('BigInt handling', () => {
+    it('should handle bigint totalBytes from Rust u64', () => {
+      renderWithCodeContext(<BashProgressCard {...baseProps} totalBytes={BigInt(4096)} />)
+
+      expect(screen.getByText('4.0 KB')).toBeInTheDocument()
     })
   })
 })

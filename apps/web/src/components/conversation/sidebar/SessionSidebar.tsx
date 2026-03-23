@@ -1,25 +1,25 @@
-import type { AvailableSession } from '@claude-view/shared'
 import type { LiveSession } from '@claude-view/shared/types/generated'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
+import { type SidebarSession, toSidebarItems } from '../../../lib/sidebar-mapper'
+import { useAppStore } from '../../../store/app-store'
+import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
+import { groupByUrgency } from './session-list-helpers'
 
-type EnrichedSession = AvailableSession & {
-  isActive?: boolean
-  liveData?: LiveSession | null
-  isSidecarManaged?: boolean
-}
+const SIDEBAR_PAGE_SIZE = 30
 
 interface SessionSidebarProps {
   liveSessions: LiveSession[]
-  /** Session IDs actively managed by the sidecar (from /control/sessions). */
-  sidecarSessionIds?: Set<string>
+  /** Called when user clicks "New Chat" — opens a blank tab directly in the dock. */
+  onNewChat?: () => void
 }
 
-function groupByTime(sessions: AvailableSession[], now: number) {
+function groupByTime(sessions: SessionInfo[], now: number) {
   const today = new Date(now * 1000)
   today.setHours(0, 0, 0, 0)
   const yesterday = new Date(today)
@@ -27,7 +27,7 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   const lastWeek = new Date(today)
   lastWeek.setDate(lastWeek.getDate() - 7)
 
-  const groups: { label: string; sessions: AvailableSession[] }[] = [
+  const groups: { label: string; sessions: SessionInfo[] }[] = [
     { label: 'Today', sessions: [] },
     { label: 'Yesterday', sessions: [] },
     { label: 'Last 7 days', sessions: [] },
@@ -35,7 +35,7 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   ]
 
   for (const s of sessions) {
-    const ts = new Date(s.lastModified * 1000)
+    const ts = new Date(s.modifiedAt * 1000)
     if (ts >= today) groups[0].sessions.push(s)
     else if (ts >= yesterday) groups[1].sessions.push(s)
     else if (ts >= lastWeek) groups[2].sessions.push(s)
@@ -45,125 +45,92 @@ function groupByTime(sessions: AvailableSession[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSidebarProps) {
+export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
 
-  const VISIBLE_BATCH = 30
+  const chatNeedsYouCollapsed = useAppStore((s) => s.chatNeedsYouCollapsed)
+  const chatWorkingCollapsed = useAppStore((s) => s.chatWorkingCollapsed)
+  const toggleSidebarSection = useAppStore((s) => s.toggleSidebarSection)
 
-  const [historySessions, setHistorySessions] = useState<AvailableSession[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [visibleCount, setVisibleCount] = useState(VISIBLE_BATCH)
 
-  // Active sessions: all live sessions that are working, paused, or SDK-controlled
-  const activeSessions = useMemo(
-    () =>
-      liveSessions.filter(
-        (s) => s.status === 'working' || s.status === 'paused' || s.control !== null,
-      ),
-    [liveSessions],
+  // Server-side paginated fetch — loads pages on demand as user scrolls
+  const {
+    data: historyData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ['chat-sidebar-sessions'],
+    queryFn: async ({ pageParam }) => {
+      const res = await fetch(`/api/sessions?limit=${SIDEBAR_PAGE_SIZE}&offset=${pageParam}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json() as Promise<{ sessions: SessionInfo[]; total: number; hasMore: boolean }>
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
+      if (!lastPage.hasMore) return undefined
+      return lastPageParam + SIDEBAR_PAGE_SIZE
+    },
+  })
+
+  const historySessions = useMemo(
+    () => historyData?.pages.flatMap((p) => p.sessions) ?? [],
+    [historyData],
   )
 
-  const activeSessionIds = useMemo(() => new Set(activeSessions.map((s) => s.id)), [activeSessions])
+  // Merge history + live data via pure mapper (no polling, uses SSE control field)
+  const enrichedHistory = useMemo(
+    () => toSidebarItems(historySessions, liveSessions),
+    [historySessions, liveSessions],
+  )
 
-  // Fetch history sessions on mount
-  useEffect(() => {
-    let cancelled = false
-    async function fetchHistory() {
-      try {
-        const res = await fetch('/api/control/available-sessions')
-        if (cancelled) return
-        if (res.ok) setHistorySessions(await res.json())
-      } catch {
-        // Network error — silently fail, show empty state
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    fetchHistory()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Refetch history when liveSessions count changes (session created/closed)
-  const prevLiveCount = useRef(liveSessions.length)
-  useEffect(() => {
-    if (prevLiveCount.current === liveSessions.length) return
-    prevLiveCount.current = liveSessions.length
-    fetch('/api/control/available-sessions')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data) setHistorySessions(data)
-      })
-      .catch(() => {})
-  }, [liveSessions.length])
-
-  // Merge: mark history sessions that are also active
-  const enrichedHistory = useMemo(() => {
-    return historySessions.map((s) => ({
-      ...s,
-      isActive: activeSessionIds.has(s.sessionId),
-      liveData: activeSessions.find((a) => a.id === s.sessionId) ?? null,
-      isSidecarManaged: sidecarSessionIds?.has(s.sessionId) ?? false,
-    }))
-  }, [historySessions, activeSessionIds, activeSessions, sidecarSessionIds])
-
-  // Separate active-pinned from rest
+  // Separate active-pinned from rest, then split active by urgency
   const pinnedSessions = enrichedHistory.filter((s) => s.isActive)
   const restSessions = enrichedHistory.filter((s) => !s.isActive)
+  const { needsYou, working } = useMemo(() => groupByUrgency(pinnedSessions), [pinnedSessions])
 
   // Client-side text search
   const filteredRest = useMemo(() => {
     if (!searchQuery.trim()) return restSessions
     const q = searchQuery.toLowerCase()
     return restSessions.filter(
-      (s) => s.customTitle?.toLowerCase().includes(q) || s.firstPrompt?.toLowerCase().includes(q),
+      (s) => s.slug?.toLowerCase().includes(q) || s.preview?.toLowerCase().includes(q),
     )
   }, [restSessions, searchQuery])
 
-  // Reset visibleCount when search query changes.
-  // searchQuery is intentionally listed as the dependency to trigger on change,
-  // even though it is not read inside the effect body.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers the reset
-  useEffect(() => {
-    setVisibleCount(VISIBLE_BATCH)
-  }, [searchQuery])
-
   const now = Math.floor(Date.now() / 1000)
-  const hasMore = visibleCount < filteredRest.length
-  const visibleTimeGroups = useMemo(
-    () => groupByTime(filteredRest.slice(0, visibleCount), now),
-    [filteredRest, visibleCount, now],
-  )
+  const visibleTimeGroups = useMemo(() => groupByTime(filteredRest, now), [filteredRest, now])
 
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
+  // Progressive load: fetch next page from server when sentinel enters viewport
   useEffect(() => {
     const sentinel = loadMoreRef.current
     const container = scrollContainerRef.current
-    if (!sentinel || !container || !hasMore) return
+    if (!sentinel || !container || !hasNextPage) return
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisibleCount((prev) => prev + VISIBLE_BATCH)
+        if (entry.isIntersecting && !isFetchingNextPage) {
+          fetchNextPage()
         }
       },
       { root: container, threshold: 0.1 },
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasMore])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   // Flatten all visible sessions into a single ordered list for keyboard nav
   const flatSessions = useMemo(() => {
-    const list: EnrichedSession[] = [...pinnedSessions]
+    const list: SidebarSession[] = [...pinnedSessions]
     for (const group of visibleTimeGroups) {
       for (const s of group.sessions) {
-        const enriched = enrichedHistory.find((e) => e.sessionId === s.sessionId)
+        const enriched = enrichedHistory.find((e) => e.id === s.id)
         if (enriched) list.push(enriched)
       }
     }
@@ -212,12 +179,12 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           const next = Math.min(prev + 1, flatSessions.length - 1)
           const session = flatSessions[next]
           if (session) {
-            debouncedNavigate(session.sessionId)
-            itemRefs.current.get(session.sessionId)?.scrollIntoView({ block: 'nearest' })
+            debouncedNavigate(session.id)
+            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
           }
-          // Near the bottom — proactively load more sessions
-          if (next >= flatSessions.length - 3 && hasMore) {
-            setVisibleCount((v) => v + VISIBLE_BATCH)
+          // Near the bottom — proactively load more from server
+          if (next >= flatSessions.length - 3 && hasNextPage && !isFetchingNextPage) {
+            fetchNextPage()
           }
           return next
         })
@@ -228,8 +195,8 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           const next = prev - 1
           const session = flatSessions[next]
           if (session) {
-            debouncedNavigate(session.sessionId)
-            itemRefs.current.get(session.sessionId)?.scrollIntoView({ block: 'nearest' })
+            debouncedNavigate(session.id)
+            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
           }
           return next
         })
@@ -238,7 +205,7 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [flatSessions, debouncedNavigate, hasMore])
+  }, [flatSessions, debouncedNavigate, hasNextPage, isFetchingNextPage, fetchNextPage])
 
   // Callback to register item refs
   const setItemRef = useCallback((sessionId: string, el: HTMLDivElement | null) => {
@@ -249,13 +216,19 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
   const handleSelect = useCallback(
     (id: string) => {
       // Update nav index to match clicked item
-      const idx = flatSessions.findIndex((s) => s.sessionId === id)
+      const idx = flatSessions.findIndex((s) => s.id === id)
       setActiveNavIndex(idx)
       navigate(`/chat/${id}`)
     },
     [navigate, flatSessions],
   )
-  const handleNewChat = useCallback(() => navigate('/chat'), [navigate])
+  const handleNewChat = useCallback(() => {
+    if (onNewChat) {
+      onNewChat()
+    } else {
+      navigate('/chat')
+    }
+  }, [onNewChat, navigate])
 
   const handleResume = useCallback(
     async (sessionId: string) => {
@@ -264,14 +237,64 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
     [navigate],
   )
 
+  const handleTakeOver = useCallback(
+    async (sessionId: string) => {
+      try {
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        })
+        const data = await res.json()
+        if (data.controlId) {
+          toast.success('Session taken over', { duration: TOAST_DURATION.micro })
+          navigate(`/chat/${sessionId}`)
+        } else {
+          toast.error('Take over failed', {
+            description: data.error,
+            duration: TOAST_DURATION.extended,
+          })
+        }
+      } catch {
+        toast.error('Failed to take over session', { duration: TOAST_DURATION.extended })
+      }
+    },
+    [navigate],
+  )
+
+  const handleShutDown = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/sidecar/sessions/${sessionId}`, { method: 'DELETE' })
+      toast.success('Session shut down', { duration: TOAST_DURATION.micro })
+    } catch {
+      toast.error('Failed to shut down session', { duration: TOAST_DURATION.extended })
+    }
+  }, [])
+
+  const handleOpenInMonitor = useCallback(
+    (sessionId: string) => {
+      navigate(`/monitor?session=${sessionId}`)
+    },
+    [navigate],
+  )
+
+  const handleArchive = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/sessions/${sessionId}/archive`, { method: 'POST' })
+      toast.success('Session archived', { duration: TOAST_DURATION.micro })
+    } catch {
+      toast.error('Failed to archive session', { duration: TOAST_DURATION.extended })
+    }
+  }, [])
+
   const handleFork = useCallback(
     async (sessionId: string) => {
       try {
-        const session = enrichedHistory.find((s) => s.sessionId === sessionId)
-        const res = await fetch('/api/control/sessions/fork', {
+        const session = enrichedHistory.find((s) => s.id === sessionId)
+        const res = await fetch(`/api/sidecar/sessions/${sessionId}/fork`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, projectPath: session?.cwd }),
+          body: JSON.stringify({ projectPath: session?.projectPath }),
         })
         const data = await res.json()
         if (data.sessionId) {
@@ -325,27 +348,101 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
           <div className="px-3 py-8 text-center text-sm text-gray-400">Loading...</div>
         ) : (
           <>
-            {/* Active sessions — pinned at top */}
-            {pinnedSessions.length > 0 && (
+            {/* NEEDS YOU — collapsible, amber-themed, urgent sessions */}
+            {needsYou.length > 0 && (
               <div className="mb-2">
-                <p className="px-3 py-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-                  Active
-                </p>
-                {pinnedSessions.map((s) => {
-                  const idx = flatSessions.findIndex((f) => f.sessionId === s.sessionId)
-                  return (
-                    <SessionListItem
-                      key={s.sessionId}
-                      ref={(el) => setItemRef(s.sessionId, el)}
-                      session={s}
-                      isSelected={s.sessionId === currentSessionId}
-                      isKeyboardActive={idx === activeNavIndex}
-                      onSelect={handleSelect}
-                      onResume={handleResume}
-                      onFork={handleFork}
-                    />
-                  )
-                })}
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarSection('chatNeedsYou')}
+                  className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-sm transition-colors"
+                >
+                  <span
+                    className={`text-[10px] text-amber-500 transition-transform duration-200 ${chatNeedsYouCollapsed ? '' : 'rotate-90'}`}
+                  >
+                    ▶
+                  </span>
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                    Needs You
+                  </span>
+                  <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 rounded-full px-1.5 leading-4">
+                    {needsYou.length}
+                  </span>
+                </button>
+                <div
+                  className="grid transition-[grid-template-rows] duration-200 ease-out"
+                  style={{ gridTemplateRows: chatNeedsYouCollapsed ? '0fr' : '1fr' }}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    {needsYou.map((s) => {
+                      const idx = flatSessions.findIndex((f) => f.id === s.id)
+                      return (
+                        <SessionListItem
+                          key={s.id}
+                          ref={(el) => setItemRef(s.id, el)}
+                          session={s}
+                          isSelected={s.id === currentSessionId}
+                          isKeyboardActive={idx === activeNavIndex}
+                          onSelect={handleSelect}
+                          onResume={handleResume}
+                          onTakeOver={handleTakeOver}
+                          onFork={handleFork}
+                          onShutDown={handleShutDown}
+                          onOpenInMonitor={handleOpenInMonitor}
+                          onArchive={handleArchive}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* WORKING — collapsible, green-themed, compact rows */}
+            {working.length > 0 && (
+              <div className="mb-2">
+                <button
+                  type="button"
+                  onClick={() => toggleSidebarSection('chatWorking')}
+                  className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-green-50 dark:hover:bg-green-900/10 rounded-sm transition-colors"
+                >
+                  <span
+                    className={`text-[10px] text-green-500 transition-transform duration-200 ${chatWorkingCollapsed ? '' : 'rotate-90'}`}
+                  >
+                    ▶
+                  </span>
+                  <span className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">
+                    Working
+                  </span>
+                  <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-1.5 leading-4">
+                    {working.length}
+                  </span>
+                </button>
+                <div
+                  className="grid transition-[grid-template-rows] duration-200 ease-out"
+                  style={{ gridTemplateRows: chatWorkingCollapsed ? '0fr' : '1fr' }}
+                >
+                  <div className="overflow-hidden min-h-0">
+                    {working.map((s) => {
+                      const idx = flatSessions.findIndex((f) => f.id === s.id)
+                      return (
+                        <SessionListItem
+                          key={s.id}
+                          ref={(el) => setItemRef(s.id, el)}
+                          session={s}
+                          isSelected={s.id === currentSessionId}
+                          isKeyboardActive={idx === activeNavIndex}
+                          onSelect={handleSelect}
+                          onResume={handleResume}
+                          onTakeOver={handleTakeOver}
+                          onFork={handleFork}
+                          onShutDown={handleShutDown}
+                          onOpenInMonitor={handleOpenInMonitor}
+                          onArchive={handleArchive}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -356,29 +453,33 @@ export function SessionSidebar({ liveSessions, sidecarSessionIds }: SessionSideb
                   {group.label}
                 </p>
                 {group.sessions.map((s) => {
-                  const enriched = enrichedHistory.find((e) => e.sessionId === s.sessionId) ?? {
+                  const enriched = enrichedHistory.find((e) => e.id === s.id) ?? {
                     ...s,
                     isActive: false,
                   }
-                  const idx = flatSessions.findIndex((f) => f.sessionId === s.sessionId)
+                  const idx = flatSessions.findIndex((f) => f.id === s.id)
                   return (
                     <SessionListItem
-                      key={s.sessionId}
-                      ref={(el) => setItemRef(s.sessionId, el)}
+                      key={s.id}
+                      ref={(el) => setItemRef(s.id, el)}
                       session={enriched}
-                      isSelected={s.sessionId === currentSessionId}
+                      isSelected={s.id === currentSessionId}
                       isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
+                      onTakeOver={handleTakeOver}
                       onFork={handleFork}
+                      onShutDown={handleShutDown}
+                      onOpenInMonitor={handleOpenInMonitor}
+                      onArchive={handleArchive}
                     />
                   )
                 })}
               </div>
             ))}
 
-            {/* Load-more sentinel */}
-            {hasMore && (
+            {/* Load-more sentinel — triggers fetchNextPage from server */}
+            {hasNextPage && (
               <div ref={loadMoreRef} className="flex justify-center py-3">
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-400" />
               </div>

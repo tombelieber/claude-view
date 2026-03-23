@@ -4,7 +4,6 @@ import type { RichSessionData } from '../../types/generated/RichSessionData'
 import type { SessionDetail } from '../../types/generated/SessionDetail'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { TaskItem } from '../../types/generated/TaskItem'
-import type { RichMessage } from './RichPane'
 import type { AgentState } from './types'
 // src/components/live/session-panel-data.ts
 import type { LiveSession } from './use-live-sessions'
@@ -107,11 +106,6 @@ export interface SessionPanelData {
   slug?: string | null
   /** Whether plan files exist for this session's slug */
   hasPlans?: boolean
-
-  // Terminal messages source
-  // - For live: undefined (uses WebSocket via useLiveSessionMessages)
-  // - For history: pre-converted RichMessage[] from messagesToRichMessages
-  terminalMessages?: RichMessage[]
 }
 
 /** Adapt a LiveSession into SessionPanelData (thin wrapper, mostly passthrough). */
@@ -175,7 +169,6 @@ export function historyToPanelData(
   sessionDetail: SessionDetail,
   richData: RichSessionData | undefined,
   sessionInfo: SessionInfo | undefined,
-  terminalMessages: RichMessage[],
 ): SessionPanelData {
   const tokens = richData?.tokens ?? {
     inputTokens: sessionDetail.totalInputTokens ?? 0,
@@ -249,6 +242,5 @@ export function historyToPanelData(
       sessionDetail,
       sessionInfo,
     },
-    terminalMessages,
   }
 }
