@@ -70,6 +70,11 @@ impl SidecarManager {
     ///
     /// Idempotent: if the child is already alive, returns immediately.
     /// If the child died (crash), restarts it.
+    ///
+    /// External sidecar support: if a sidecar is already running on the
+    /// configured port (e.g. via `tsx watch` in dev mode), we skip spawning
+    /// and use the existing one. This allows `bun dev` to run the sidecar
+    /// independently with hot reload.
     pub async fn ensure_running(&self) -> Result<String, SidecarError> {
         // Determine action under the lock, then release lock before any async work.
         // Mutex<Option<Child>> is !Send, so no .await can be held while guard is alive.
@@ -105,6 +110,16 @@ impl SidecarManager {
             }
             // Health check failed but child alive — wait for readiness
             return self.wait_for_ready().await;
+        }
+
+        // Before spawning, check if an external sidecar is already running
+        // on the port (e.g. `bun dev` runs sidecar independently via tsx watch).
+        if self.health_check().await.is_ok() {
+            tracing::info!(
+                port = self.port,
+                "External sidecar detected on port, skipping spawn"
+            );
+            return Ok(self.base_url.clone());
         }
 
         // Spawn new sidecar process
