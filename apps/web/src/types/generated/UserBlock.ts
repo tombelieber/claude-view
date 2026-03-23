@@ -8,5 +8,6 @@ export type UserBlock = {
   localId?: string | null
   pending?: boolean | null
   permissionMode?: string | null
+  parentUuid?: string | null
   rawJson?: any
 }
