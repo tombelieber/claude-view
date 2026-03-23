@@ -1,22 +1,21 @@
 /**
- * SharedConversationView -- renders a shared conversation using the same
- * MessageTyped component as the web app (from @claude-view/shared).
+ * SharedConversationView -- renders a shared conversation using the
+ * ConversationThread + ConversationBlock pipeline from @claude-view/shared.
+ *
+ * The share viewer is read-only — no interactive actions (permissions,
+ * questions, etc.) are provided. ConversationActionsContext defaults to null
+ * which disables interactive UI elements in the block renderers.
  *
  * Code blocks use plain-text rendering (no shiki syntax highlighting) since
  * the share viewer is a lightweight read-only SPA. The web app injects
  * shiki-based renderers via CodeRenderProvider for enhanced highlighting.
  */
 
-import {
-  ErrorBoundary,
-  ExpandProvider,
-  type Message,
-  MessageTyped,
-  ThreadHighlightProvider,
-  buildThreadMap,
-  getThreadChain,
-} from '@claude-view/shared'
-import { useCallback, useMemo } from 'react'
+import type { Message } from '@claude-view/shared'
+import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { historyToBlocks } from '@claude-view/shared/lib/history-to-blocks'
+import { useMemo } from 'react'
 
 interface SharedConversationViewProps {
   messages: Message[]
@@ -43,14 +42,9 @@ export function SharedConversationView({ messages, verboseMode }: SharedConversa
     [messages, verboseMode],
   )
 
-  const threadMap = useMemo(() => buildThreadMap(filtered), [filtered])
+  const blocks = useMemo(() => historyToBlocks(filtered), [filtered])
 
-  const getThreadChainForUuid = useCallback(
-    (uuid: string) => getThreadChain(uuid, filtered),
-    [filtered],
-  )
-
-  if (filtered.length === 0) {
+  if (blocks.length === 0) {
     return (
       <div className="text-center text-gray-400 dark:text-gray-500 py-12 text-sm">
         No messages to display.
@@ -59,42 +53,16 @@ export function SharedConversationView({ messages, verboseMode }: SharedConversa
   }
 
   return (
-    <ThreadHighlightProvider>
-      <ExpandProvider>
-        <div className="space-y-0">
-          {filtered.map((message, index) => {
-            const thread = message.uuid ? threadMap.get(message.uuid) : undefined
-            return (
-              <div key={message.uuid || index} className="max-w-4xl mx-auto px-6 pb-4">
-                <ErrorBoundary>
-                  <MessageTyped
-                    message={message}
-                    messageIndex={index}
-                    messageType={message.role}
-                    metadata={
-                      typeof message.metadata === 'object' && message.metadata !== null
-                        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          (message.metadata as Record<string, any>)
-                        : undefined
-                    }
-                    parentUuid={thread?.parentUuid}
-                    indent={thread?.indent ?? 0}
-                    isChildMessage={thread?.isChild ?? false}
-                    onGetThreadChain={getThreadChainForUuid}
-                    showThinking={false}
-                  />
-                </ErrorBoundary>
-              </div>
-            )
-          })}
-          <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500">
-            {messages.length} messages
-            {messages.length - filtered.length > 0 && (
-              <> &bull; {messages.length - filtered.length} system messages hidden</>
-            )}
-          </div>
-        </div>
-      </ExpandProvider>
-    </ThreadHighlightProvider>
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0">
+        <ConversationThread blocks={blocks} renderers={chatRegistry} />
+      </div>
+      <div className="max-w-4xl mx-auto px-6 py-6 text-center text-sm text-gray-400 dark:text-gray-500 flex-shrink-0">
+        {messages.length} messages
+        {messages.length - filtered.length > 0 && (
+          <> &bull; {messages.length - filtered.length} system messages hidden</>
+        )}
+      </div>
+    </div>
   )
 }

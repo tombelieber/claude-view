@@ -9,7 +9,12 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@claude-view/shared": ["../../packages/shared/src/index.ts"],
+      "@claude-view/shared/*": ["../../packages/shared/src/*"]
+    }
   },
   "include": ["src"]
 }
