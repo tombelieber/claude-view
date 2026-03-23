@@ -1056,6 +1056,28 @@ The `npx claude-view@latest` path still works and remains the easiest way to sta
 This release also adds comprehensive test coverage for the chat lifecycle — the code path that handles live sessions, watching mode, SDK hooks, and message reconciliation. Seven features that shipped with zero tests now have unit tests, hook tests, component tests, and regression tests. The regression tests specifically guard the three bugs we've fixed in recent releases, ensuring they never come back.
 
 
+--- blog/v0-24-0-multi-session-chat.mdx ---
+
+---
+title: "Multi-Session Chat and the Block Pipeline"
+description: "v0.24.0 adds VSCode-style tabbed sessions, a Rust-native conversation block pipeline, and a finite state machine that makes chat panels deterministic."
+date: 2026-03-24
+author: claude-view team
+---
+
+If you run more than one Claude Code session at a time, v0.24.0 changes how you work with them. Instead of switching between the monitor sidebar and individual session views, you can now open sessions as tabs — drag them, split them, arrange them however makes sense for what you're doing.
+
+The new chat page uses dockview — the same layout engine that powers VS Code's editor panels. Each session opens in its own tab. You can split horizontally or vertically, rearrange tabs by dragging, and persist layout across reloads.
+
+v0.24.0 introduces a Rust-native BlockAccumulator that transforms raw JSONL into typed ConversationBlock values: UserBlock, AssistantBlock, ProgressBlock, TurnBoundaryBlock, NoticeBlock, and SystemBlock. The accumulator correlates multi-line constructs — tool_use matched with tool_result, incremental entries merged by message.id, turn boundaries assembled from duration + hook summary + usage.
+
+Each chat panel is driven by an FSM with three phases (nobody → acquiring → active). Every transition is a pure function: (currentState, event) → (nextState, commands). The FSM solved 13 bugs in its first week.
+
+Developer mode shows structured event cards: ToolCard, EventCard, CategoryFilterBar, and ThinkingIndicator. Sessions are classified by source (Terminal, IDE, Agent SDK) with SourceBadge.
+
+Also: direct TCP sidecar, message threading with parentUuid, share viewer migration, ~5,800 lines of deprecated code removed.
+
+
 --- blog/v0-3-0-git-integration.mdx ---
 
 ---
@@ -2091,6 +2113,42 @@ version: v0.23.0
 ```bash
 curl -fsSL https://get.claudeview.ai | sh
 # or
+npx claude-view@latest
+```
+
+
+--- changelog/v0.24.0.md ---
+
+---
+title: v0.24.0 — Multi-Session Chat
+date: 2026-03-24
+version: v0.24.0
+---
+
+## New features
+
+**Multi-Session Chat (VSCode-style tabs)** — open multiple Claude Code sessions side-by-side in a dockview tabbed layout. Drag tabs to split horizontally or vertically.
+
+**ConversationBlock Pipeline** — Rust-native block accumulator parses JSONL into structured conversation blocks served via REST and real-time WS.
+
+**FSM Chat Panel** — finite state machine with explicit phases, typed events, and deterministic transitions.
+
+**Developer Mode Overhaul** — ToolCard, EventCard, CategoryFilterBar, and ThinkingIndicator.
+
+**Session Source Detection** — automatic Terminal/IDE/SDK classification with SourceBadge.
+
+**Message Threading** — parentUuid propagation enables indented sub-agent messages.
+
+## Improvements
+
+- Direct TCP sidecar connection replaces Unix socket relay
+- Worktree-state and forkedFrom JSONL types fully handled
+- ~5,800 lines of deprecated code removed
+- Evidence audit baseline updated for new Claude CLI fields
+
+## Getting started
+
+```bash
 npx claude-view@latest
 ```
 
