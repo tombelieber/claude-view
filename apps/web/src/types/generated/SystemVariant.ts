@@ -16,5 +16,6 @@ export type SystemVariant =
   | 'file_history_snapshot'
   | 'ai_title'
   | 'last_prompt'
+  | 'worktree_state'
   | 'informational'
   | 'unknown'

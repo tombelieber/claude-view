@@ -279,6 +279,7 @@ pub enum SystemVariant {
     FileHistorySnapshot,
     AiTitle,
     LastPrompt,
+    WorktreeState,
     Informational,
     Unknown,
 }
