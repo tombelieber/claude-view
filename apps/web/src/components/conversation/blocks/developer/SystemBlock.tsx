@@ -3,9 +3,14 @@ import { LocalCommandEventCard } from '@claude-view/shared/components/LocalComma
 import { MessageQueueEventCard } from '@claude-view/shared/components/MessageQueueEventCard'
 import type { SystemBlock as SystemBlockType } from '@claude-view/shared/types/blocks'
 import type {
+  AiTitle,
   CommandOutput,
   ElicitationComplete,
+  FileHistorySnapshot,
   FilesSaved,
+  Informational,
+  LastPrompt,
+  LocalCommand,
   QueueOperation,
   SessionInit,
   HookEvent as SidecarHookEvent,
@@ -243,15 +248,10 @@ function UnknownDetail({ data }: { data: UnknownSdkEvent }) {
 
 // ── Shared card wrappers for special system subtypes ────────────────────────
 
-function LocalCommandDetail({ data }: { data: Record<string, unknown> }) {
+function LocalCommandDetail({ data }: { data: LocalCommand }) {
   return (
-    <EventCard
-      dot="gray"
-      chip="Command"
-      label={String(data.content ?? data.command ?? '')}
-      rawData={data}
-    >
-      <LocalCommandEventCard content={String(data.content ?? data.command ?? '')} />
+    <EventCard dot="gray" chip="Command" label={data.content || data.command || ''} rawData={data}>
+      <LocalCommandEventCard content={data.content || data.command || ''} />
     </EventCard>
   )
 }
@@ -273,9 +273,9 @@ function QueueOperationDetail({ data }: { data: QueueOperation }) {
   )
 }
 
-function FileHistorySnapshotDetail({ data }: { data: Record<string, unknown> }) {
-  const files = Array.isArray(data.files) ? data.files.map(String) : []
-  const fileCount = files.length || (typeof data.fileCount === 'number' ? data.fileCount : 0)
+function FileHistorySnapshotDetail({ data }: { data: FileHistorySnapshot }) {
+  const files = data.files ?? Object.keys(data.snapshot?.trackedFileBackups ?? {})
+  const fileCount = files.length || data.fileCount || 0
   return (
     <EventCard
       dot="teal"
@@ -285,31 +285,26 @@ function FileHistorySnapshotDetail({ data }: { data: Record<string, unknown> }) 
     >
       <FileSnapshotCard
         fileCount={fileCount}
-        timestamp={String(data.timestamp ?? '')}
+        timestamp={data.snapshot?.timestamp ?? ''}
         files={files}
-        isIncremental={data.isIncremental === true}
+        isIncremental={data.isIncremental ?? false}
         verboseMode
       />
     </EventCard>
   )
 }
 
-function AiTitleDetail({ data }: { data: Record<string, unknown> }) {
-  return <EventCard dot="blue" chip="Title" label={String(data.aiTitle ?? '')} rawData={data} />
+function AiTitleDetail({ data }: { data: AiTitle }) {
+  return <EventCard dot="blue" chip="Title" label={data.aiTitle} rawData={data} />
 }
 
-function LastPromptDetail({ data }: { data: Record<string, unknown> }) {
-  return <EventCard dot="gray" chip="Prompt" label={String(data.lastPrompt ?? '')} rawData={data} />
+function LastPromptDetail({ data }: { data: LastPrompt }) {
+  return <EventCard dot="gray" chip="Prompt" label={data.lastPrompt} rawData={data} />
 }
 
-function InformationalDetail({ data }: { data: Record<string, unknown> }) {
+function InformationalDetail({ data }: { data: Informational }) {
   return (
-    <EventCard
-      dot="blue"
-      chip="Info"
-      label={String(data.content ?? data.message ?? JSON.stringify(data))}
-      rawData={data}
-    />
+    <EventCard dot="blue" chip="Info" label={data.content || data.message || ''} rawData={data} />
   )
 }
 
@@ -341,17 +336,17 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
       case 'unknown':
         return <UnknownDetail data={block.data as UnknownSdkEvent} />
       case 'local_command':
-        return <LocalCommandDetail data={block.data as unknown as Record<string, unknown>} />
+        return <LocalCommandDetail data={block.data as LocalCommand} />
       case 'queue_operation':
         return <QueueOperationDetail data={block.data as QueueOperation} />
       case 'file_history_snapshot':
-        return <FileHistorySnapshotDetail data={block.data as unknown as Record<string, unknown>} />
+        return <FileHistorySnapshotDetail data={block.data as FileHistorySnapshot} />
       case 'ai_title':
-        return <AiTitleDetail data={block.data as unknown as Record<string, unknown>} />
+        return <AiTitleDetail data={block.data as AiTitle} />
       case 'last_prompt':
-        return <LastPromptDetail data={block.data as unknown as Record<string, unknown>} />
+        return <LastPromptDetail data={block.data as LastPrompt} />
       case 'informational':
-        return <InformationalDetail data={block.data as unknown as Record<string, unknown>} />
+        return <InformationalDetail data={block.data as Informational} />
       default:
         return null
     }
