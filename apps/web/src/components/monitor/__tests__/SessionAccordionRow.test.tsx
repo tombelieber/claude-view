@@ -136,19 +136,24 @@ describe('SessionAccordionRow', () => {
     expect(screen.getByText('feat/auth')).toBeInTheDocument()
   })
 
-  it('renders ecosystem badge as CLI', () => {
-    render(<SessionAccordionRow {...defaultProps} />)
-    expect(screen.getByText('CLI')).toBeInTheDocument()
-  })
-
-  it('renders ecosystem badge as Server for self tag', () => {
+  it('renders source badge for IDE session', () => {
     render(
       <SessionAccordionRow
         {...defaultProps}
-        ecosystemProcess={makeEcosystem({ ecosystemTag: 'self' })}
+        session={makeLiveSession({ source: { category: 'ide', label: 'VS Code' } })}
       />,
     )
-    expect(screen.getByText('Server')).toBeInTheDocument()
+    expect(screen.getByText('VS Code')).toBeInTheDocument()
+  })
+
+  it('renders source badge for agent SDK session', () => {
+    render(
+      <SessionAccordionRow
+        {...defaultProps}
+        session={makeLiveSession({ source: { category: 'agent_sdk', label: null } })}
+      />,
+    )
+    expect(screen.getByText('This App')).toBeInTheDocument()
   })
 
   it('shows cost and turn count', () => {

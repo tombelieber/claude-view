@@ -177,7 +177,7 @@ describe('ClaudeSessionsPanel', () => {
 
   it('two-step merge: sessionId then PID', () => {
     const resources = [makeResource('s1', 100)]
-    const sessions = [makeLiveSession('s1', 100)]
+    const sessions = [makeLiveSession('s1', 100, { source: { category: 'ide', label: 'VS Code' } })]
     const eco = makeEcosystem(100)
     const tree = makeProcessTree([eco])
 
@@ -192,8 +192,8 @@ describe('ClaudeSessionsPanel', () => {
 
     // Session name rendered
     expect(screen.getByText('project-s1')).toBeInTheDocument()
-    // Ecosystem badge
-    expect(screen.getByText('CLI')).toBeInTheDocument()
+    // Source badge
+    expect(screen.getByText('VS Code')).toBeInTheDocument()
   })
 
   it('handles null PID gracefully', () => {
