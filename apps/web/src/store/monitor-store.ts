@@ -4,6 +4,8 @@ import type { ActionCategory } from '../components/live/action-log/types'
 
 export type VerboseFilter = ActionCategory[] | 'all'
 
+export type DisplayMode = 'chat' | 'developer'
+
 interface MonitorState {
   // Grid layout
   gridOverride: { cols: number; rows: number } | null
@@ -14,9 +16,11 @@ interface MonitorState {
   expandedPaneId: string | null
   pinnedPaneIds: Set<string>
   hiddenPaneIds: Set<string>
+  /** @deprecated Use `displayMode` instead. Kept for files pending deletion. */
   verboseMode: boolean
   verboseFilter: VerboseFilter
   richRenderMode: 'rich' | 'json'
+  displayMode: DisplayMode
 
   // Actions
   setGridOverride: (override: { cols: number; rows: number } | null) => void
@@ -27,9 +31,11 @@ interface MonitorState {
   unpinPane: (id: string) => void
   hidePane: (id: string) => void
   showPane: (id: string) => void
+  /** @deprecated Use `setDisplayMode` instead. Kept for files pending deletion. */
   toggleVerbose: () => void
   setVerboseFilter: (category: ActionCategory | 'all') => void
   setRichRenderMode: (mode: 'rich' | 'json') => void
+  setDisplayMode: (mode: DisplayMode) => void
 }
 
 export const useMonitorStore = create<MonitorState>()(
@@ -44,6 +50,7 @@ export const useMonitorStore = create<MonitorState>()(
       verboseMode: false,
       verboseFilter: 'all' as VerboseFilter,
       richRenderMode: 'rich',
+      displayMode: 'chat' as DisplayMode,
 
       setGridOverride: (override) => set({ gridOverride: override }),
       setCompactHeaders: (compact) => set({ compactHeaders: compact }),
@@ -79,7 +86,12 @@ export const useMonitorStore = create<MonitorState>()(
           return { hiddenPaneIds: next }
         }),
 
-      toggleVerbose: () => set((state) => ({ verboseMode: !state.verboseMode })),
+      toggleVerbose: () =>
+        set((state) => ({
+          verboseMode: !state.verboseMode,
+          displayMode: state.verboseMode ? 'chat' : 'developer',
+        })),
+      setDisplayMode: (mode) => set({ displayMode: mode, verboseMode: mode === 'developer' }),
       setVerboseFilter: (category) => {
         if (category === 'all') {
           set({ verboseFilter: 'all' })
@@ -110,6 +122,7 @@ export const useMonitorStore = create<MonitorState>()(
         verboseMode: state.verboseMode,
         verboseFilter: state.verboseFilter,
         richRenderMode: state.richRenderMode,
+        displayMode: state.displayMode,
       }),
       storage: {
         getItem: (name: string): StorageValue<Partial<MonitorState>> | null => {
@@ -129,6 +142,13 @@ export const useMonitorStore = create<MonitorState>()(
             }
             if (Array.isArray(parsed.state.hiddenPaneIds)) {
               parsed.state.hiddenPaneIds = new Set(parsed.state.hiddenPaneIds as string[])
+            }
+            // Migrate old verboseMode → displayMode
+            if (
+              parsed.state.displayMode === undefined &&
+              typeof parsed.state.verboseMode === 'boolean'
+            ) {
+              parsed.state.displayMode = parsed.state.verboseMode ? 'developer' : 'chat'
             }
             // Migrate old single-string verboseFilter to new format
             const vf = parsed.state.verboseFilter

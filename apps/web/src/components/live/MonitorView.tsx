@@ -34,7 +34,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
   const expandedPaneId = useMonitorStore((s) => s.expandedPaneId)
   const pinnedPaneIds = useMonitorStore((s) => s.pinnedPaneIds)
   const hiddenPaneIds = useMonitorStore((s) => s.hiddenPaneIds)
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const displayMode = useMonitorStore((s) => s.displayMode)
 
   // Store actions
   const setGridOverride = useMonitorStore((s) => s.setGridOverride)
@@ -44,7 +44,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
   const pinPane = useMonitorStore((s) => s.pinPane)
   const unpinPane = useMonitorStore((s) => s.unpinPane)
   const hidePane = useMonitorStore((s) => s.hidePane)
-  const toggleVerbose = useMonitorStore((s) => s.toggleVerbose)
+  const setDisplayMode = useMonitorStore((s) => s.setDisplayMode)
 
   // Phase E: layout mode + presets
   const { mode, setMode, toggleMode, savedLayout, setSavedLayout, activePreset, setActivePreset } =
@@ -202,12 +202,12 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
       <GridControls
         gridOverride={gridOverride}
         compactHeaders={compactHeaders}
-        verboseMode={verboseMode}
+        displayMode={displayMode}
         sessionCount={sessions.length}
         visibleCount={visibleSessions.length}
         onGridOverrideChange={setGridOverride}
         onCompactHeadersChange={setCompactHeaders}
-        onVerboseModeChange={toggleVerbose}
+        onDisplayModeChange={setDisplayMode}
       />
 
       {/* Layout mode toggle + preset controls (Phase E) */}
@@ -225,7 +225,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
               onSavePreset={handleSavePreset}
               onDeletePreset={handleDeletePreset}
               customPresets={customPresets}
-              verboseMode={verboseMode}
+              displayMode={displayMode}
             />
             <button
               type="button"
@@ -269,7 +269,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
                     <RichTerminalPane
                       sessionId={session.id}
                       isVisible={isPaneVisible}
-                      verboseMode={verboseMode}
+                      verboseMode={displayMode === 'developer'}
                     />
                   </MonitorPane>
                 </div>
@@ -285,7 +285,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
               dockviewApiRef.current = api
             }}
             compactHeaders={compactHeaders}
-            verboseMode={verboseMode}
+            verboseMode={displayMode === 'developer'}
             onSelectSession={onSelectSession}
           />
         )}
