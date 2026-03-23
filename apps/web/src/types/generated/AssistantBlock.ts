@@ -7,5 +7,6 @@ export type AssistantBlock = {
   thinking?: string | null
   streaming: boolean
   timestamp?: number | null
+  parentUuid?: string | null
   rawJson?: any
 }
