@@ -160,7 +160,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
             )}
             {actions.takeOver && onTakeOver && (
               <DropdownMenu.Item className={menuItemClass} onSelect={() => onTakeOver(session.id)}>
-                Take Over
+                Fork &amp; Continue
               </DropdownMenu.Item>
             )}
             {actions.fork && onFork && (
