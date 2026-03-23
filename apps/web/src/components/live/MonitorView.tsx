@@ -10,7 +10,7 @@ import { LayoutPresets } from './LayoutPresets'
 import { MonitorGrid } from './MonitorGrid'
 import { MonitorPane } from './MonitorPane'
 import { PaneContextMenu } from './PaneContextMenu'
-import { RichTerminalPane } from './RichTerminalPane'
+import { BlockTerminalPane } from './BlockTerminalPane'
 import type { LiveSession } from './use-live-sessions'
 import { useAutoFill } from './useAutoFill'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
@@ -23,7 +23,7 @@ interface MonitorViewProps {
 /**
  * MonitorView — orchestrates the full Monitor Mode experience.
  *
- * Wires together: MonitorGrid, GridControls, MonitorPane, RichPane,
+ * Wires together: MonitorGrid, GridControls, MonitorPane, BlockTerminalPane,
  * PaneContextMenu, keyboard shortcuts, and auto-fill.
  */
 export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
@@ -266,11 +266,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
                     onHide={() => hidePane(session.id)}
                     onContextMenu={(e) => handleContextMenu(e, session.id)}
                   >
-                    <RichTerminalPane
-                      sessionId={session.id}
-                      isVisible={isPaneVisible}
-                      verboseMode={displayMode === 'developer'}
-                    />
+                    <BlockTerminalPane sessionId={session.id} isVisible={isPaneVisible} />
                   </MonitorPane>
                 </div>
               )
@@ -285,7 +281,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
               dockviewApiRef.current = api
             }}
             compactHeaders={compactHeaders}
-            verboseMode={displayMode === 'developer'}
+            displayMode={displayMode}
             onSelectSession={onSelectSession}
           />
         )}

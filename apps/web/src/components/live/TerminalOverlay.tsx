@@ -2,12 +2,11 @@ import { Check, Copy, FolderOpen, GitBranch, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../../lib/utils'
-import { useMonitorStore } from '../../store/monitor-store'
 import { ContextBar } from './ContextBar'
-import { RichTerminalPane } from './RichTerminalPane'
+import { BlockTerminalPane } from './BlockTerminalPane'
+import { DisplayModeToggle } from './DisplayModeToggle'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
-import { ViewModeControls } from './ViewModeControls'
 import { hasUnavailableCost } from './cost-display'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
@@ -24,7 +23,6 @@ interface TerminalOverlayProps {
  */
 export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
   const [isVisible, setIsVisible] = useState(false)
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
   const [copied, setCopied] = useState(false)
 
   // Entrance animation
@@ -159,8 +157,8 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             )}
           </div>
 
-          {/* Chat / Debug + Rich / JSON */}
-          <ViewModeControls />
+          {/* Chat / Developer display mode */}
+          <DisplayModeToggle />
 
           {/* Close */}
           <button
@@ -175,7 +173,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
         {/* Terminal — takes up all remaining space (always dark) */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <RichTerminalPane sessionId={session.id} isVisible={true} verboseMode={verboseMode} />
+          <BlockTerminalPane sessionId={session.id} isVisible={true} compact={false} />
         </div>
 
         {/* Footer hint */}
