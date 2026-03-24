@@ -78,6 +78,7 @@ jobs:
       - name: Build frontend
         run: cd apps/web && bun run build
         env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
