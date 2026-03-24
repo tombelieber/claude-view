@@ -15,7 +15,7 @@ vi.mock('../../store/monitor-store', () => ({
 }))
 
 // Mock ConversationThread to avoid rendering the full tree
-vi.mock('../conversation/ConversationThread', () => ({
+vi.mock('@claude-view/shared/components/conversation/ConversationThread', () => ({
   ConversationThread: vi.fn(() => <div data-testid="conversation-thread" />),
 }))
 

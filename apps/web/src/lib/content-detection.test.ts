@@ -8,7 +8,7 @@ import {
   stripLineNumbers,
   toolChipColor,
   tryParseJson,
-} from './content-detection'
+} from '@claude-view/shared/utils/content-detection'
 
 describe('tryParseJson', () => {
   it('parses valid JSON object', () => {
