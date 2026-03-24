@@ -187,8 +187,15 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn handle_statusline(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<StatuslinePayload>,
 ) -> Json<serde_json::Value> {
+    // Extract PID from wrapper's $PPID header (secondary binding path).
+    let statusline_pid: Option<u32> = headers
+        .get("x-claude-pid")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .filter(|&pid: &u32| pid > 1);
     // Step 1: Check transcript dedup FIRST (acquire + release transcript lock).
     // Lock ordering: transcript_to_session → live_sessions → accumulators.
     let dedup_action = if let Some(ref tp) = payload.transcript_path {
@@ -213,31 +220,47 @@ async fn handle_statusline(
     let mut sessions = state.live_sessions.write().await;
 
     if let Some(older_id) = dedup_action {
-        // Merge: apply statusline to older session, remove newer one
-        if let Some(_newer) = sessions.remove(&payload.session_id) {
+        // Transcript-path collision: two session_ids share the same JSONL file.
+        // This is defense-in-depth — PID uniqueness at SessionStart should prevent
+        // this from happening. If it fires, something unexpected occurred.
+        if let Some(newer) = sessions.remove(&payload.session_id) {
+            tracing::warn!(
+                older_id = %older_id,
+                newer_id = %payload.session_id,
+                "transcript_path dedup fired (defense-in-depth) — closing newer session"
+            );
+            // Broadcast closure so frontend removes the duplicate card
+            let mut closed = newer;
+            closed.status = crate::live::state::SessionStatus::Done;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            closed.closed_at = Some(now);
+            let _ = state
+                .live_tx
+                .send(crate::live::state::SessionEvent::SessionClosed { session: closed });
             if let Some(older) = sessions.get_mut(&older_id) {
                 apply_statusline(older, &payload);
-                tracing::info!(
-                    older_id = %older_id,
-                    newer_id = %payload.session_id,
-                    "Merged duplicate session via transcript_path dedup"
-                );
             }
         } else if let Some(older) = sessions.get_mut(&older_id) {
             // Newer session not in map yet — just apply to the older one
             apply_statusline(older, &payload);
-            tracing::debug!(
-                older_id = %older_id,
-                newer_id = %payload.session_id,
-                "Statusline applied to existing session (newer not yet registered)"
-            );
         }
     } else if let Some(session) = sessions.get_mut(&payload.session_id) {
         apply_statusline(session, &payload);
-        tracing::debug!(
-            session_id = %payload.session_id,
-            "Statusline update applied"
-        );
+        // Secondary PID binding: if the session has no PID yet (hook didn't provide one),
+        // bind the PID from the statusline wrapper's $PPID header.
+        if session.pid.is_none() {
+            if let Some(pid) = statusline_pid {
+                session.pid = Some(pid);
+                tracing::debug!(
+                    session_id = %payload.session_id,
+                    pid = pid,
+                    "Bound PID via statusline $PPID (secondary path)"
+                );
+            }
+        }
     } else {
         tracing::debug!(
             session_id = %payload.session_id,

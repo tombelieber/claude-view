@@ -8,8 +8,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use sysinfo::{ProcessesToUpdate, System};
 use ts_rs::TS;
+
+/// Cache for source classification results.
+/// Key: (pid, start_time) — stable pair that uniquely identifies a process instance.
+/// A process's source (IDE/Terminal/AgentSdk) never changes during its lifetime.
+static SOURCE_CACHE: std::sync::LazyLock<Mutex<HashMap<(u32, u64), SessionSourceInfo>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Where a Claude Code process was launched from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -75,63 +82,15 @@ pub fn detect_claude_processes() -> (HashMap<u32, ClaudeProcess>, u32) {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All, true);
 
-    let mut result = HashMap::new();
-    let mut total_count = 0u32;
-    for (pid, process) in sys.processes() {
-        let name = process.name().to_string_lossy();
-
-        // Check process name first (native binary installs where name IS "claude")
-        let is_claude = name.contains("claude")
-            // Also check command-line args for Node.js-based installs.
-            // Claude Code runs as `node /path/to/@anthropic-ai/claude-code/cli.js`
-            // where the process name is "node", not "claude".
-            || process.cmd().iter().any(|arg| {
-                arg.to_string_lossy().contains("@anthropic-ai/claude")
-            });
-
-        if !is_claude {
-            continue;
-        }
-
-        let pid_u32 = pid.as_u32();
-        let start_time = process.start_time();
-
-        // sysinfo returns None for cwd on macOS due to security restrictions
-        // (sandboxing / SIP). On Linux, sysinfo reads /proc/<pid>/cwd directly.
-        // Fall back to lsof when cwd is None (works on both macOS and Linux).
-        let cwd = process
-            .cwd()
-            .map(|p| p.to_path_buf())
-            .or_else(|| get_cwd_via_lsof(pid_u32));
-
-        if let Some(cwd) = cwd {
-            total_count += 1;
-            let source = classify_source(&sys, process);
-            let cp = ClaudeProcess {
-                pid: pid_u32,
-                cwd,
-                start_time,
-                source,
-            };
-            result.insert(pid_u32, cp);
-        }
+    // Pass 1: Find all Claude processes, collect PIDs that need lsof fallback.
+    struct Candidate {
+        pid: u32,
+        start_time: u64,
+        cwd: Option<PathBuf>,
     }
-    (result, total_count)
-}
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut need_lsof: Vec<u32> = Vec::new();
 
-/// Count running Claude Code processes without building the full HashMap.
-///
-/// This is a lightweight alternative to `detect_claude_processes()` for call
-/// sites that only need the total process count (e.g. the dashboard metric).
-/// Avoids allocating the HashMap, cloning PathBufs, and deduplicating by cwd.
-///
-/// This function does synchronous system calls and should be called from
-/// `tokio::task::spawn_blocking`.
-pub fn count_claude_processes() -> u32 {
-    let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::All, true);
-
-    let mut total_count = 0u32;
     for (pid, process) in sys.processes() {
         let name = process.name().to_string_lossy();
 
@@ -146,18 +105,107 @@ pub fn count_claude_processes() -> u32 {
         }
 
         let pid_u32 = pid.as_u32();
+        let start_time = process.start_time();
 
-        // Only count processes where we can resolve a cwd (same filter as detect_claude_processes)
-        let cwd = process
-            .cwd()
-            .map(|p| p.to_path_buf())
-            .or_else(|| get_cwd_via_lsof(pid_u32));
+        // sysinfo returns None for cwd on macOS due to security restrictions
+        // (sandboxing / SIP). On Linux, sysinfo reads /proc/<pid>/cwd directly.
+        let cwd = process.cwd().map(|p| p.to_path_buf());
+        if cwd.is_none() {
+            need_lsof.push(pid_u32);
+        }
+        candidates.push(Candidate {
+            pid: pid_u32,
+            start_time,
+            cwd,
+        });
+    }
 
-        if cwd.is_some() {
+    // Pass 2: Batch lsof for all PIDs that need it (single subprocess instead of N).
+    let lsof_results = if need_lsof.is_empty() {
+        HashMap::new()
+    } else {
+        batch_get_cwd_via_lsof(&need_lsof)
+    };
+
+    // Pass 3: Assemble results with resolved CWDs + classify source (cached).
+    let mut result = HashMap::new();
+    let mut total_count = 0u32;
+    let mut cache = SOURCE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    for candidate in candidates {
+        let cwd = candidate
+            .cwd
+            .or_else(|| lsof_results.get(&candidate.pid).cloned());
+
+        if let Some(cwd) = cwd {
             total_count += 1;
+            let cache_key = (candidate.pid, candidate.start_time);
+            let source = if let Some(cached) = cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                let computed = match sys.process(sysinfo::Pid::from_u32(candidate.pid)) {
+                    Some(p) => classify_source(&sys, p),
+                    None => SessionSourceInfo {
+                        category: SessionSource::Terminal,
+                        label: None,
+                    },
+                };
+                cache.insert(cache_key, computed.clone());
+                computed
+            };
+            let cp = ClaudeProcess {
+                pid: candidate.pid,
+                cwd,
+                start_time: candidate.start_time,
+                source,
+            };
+            result.insert(candidate.pid, cp);
         }
     }
-    total_count
+
+    // Evict stale cache entries (dead processes) to prevent unbounded growth.
+    // Only keep entries for PIDs still in this scan's results.
+    cache.retain(|&(pid, _), _| result.contains_key(&pid));
+
+    (result, total_count)
+}
+
+/// Count running Claude Code processes without building the full HashMap.
+///
+/// Lightweight alternative to `detect_claude_processes()` — returns only the
+/// total count (e.g. dashboard metric). Uses the same batch-lsof pattern.
+///
+/// This function does synchronous system calls and should be called from
+/// `tokio::task::spawn_blocking`.
+pub fn count_claude_processes() -> u32 {
+    let mut sys = System::new();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut need_lsof: Vec<u32> = Vec::new();
+    let mut has_cwd_count = 0u32;
+
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+        let is_claude = name.contains("claude")
+            || process
+                .cmd()
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("@anthropic-ai/claude"));
+        if !is_claude {
+            continue;
+        }
+        if process.cwd().is_some() {
+            has_cwd_count += 1;
+        } else {
+            need_lsof.push(pid.as_u32());
+        }
+    }
+
+    let lsof_resolved = if need_lsof.is_empty() {
+        0
+    } else {
+        batch_get_cwd_via_lsof(&need_lsof).len() as u32
+    };
+    has_cwd_count + lsof_resolved
 }
 
 /// Known shell process names — if the parent is one of these, the Claude process
@@ -371,6 +419,7 @@ fn classify_by_ancestors(ancestors: &[(String, String)]) -> SessionSourceInfo {
 ///
 /// On macOS, `sysinfo` cannot read cwd for other processes (security restriction).
 /// `lsof -a -p <pid> -d cwd -Fn` reliably returns the cwd for same-user processes.
+#[allow(dead_code)] // Kept for single-PID fallback if batch lsof is unavailable
 fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
     let output = std::process::Command::new("lsof")
         .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
@@ -380,7 +429,6 @@ fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
         return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // lsof -Fn output: lines starting with 'n' contain the path
     for line in stdout.lines() {
         if let Some(path) = line.strip_prefix('n') {
             if path.starts_with('/') {
@@ -389,6 +437,51 @@ fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Batch CWD resolution: single `lsof` call for all PIDs.
+///
+/// `lsof -a -p <pid1>,<pid2>,... -d cwd -Fn` returns CWDs for all PIDs in one
+/// subprocess call. Output format groups by PID (lines starting with 'p') and
+/// path (lines starting with 'n').
+///
+/// 1 call for N PIDs instead of N calls for N PIDs: O(1) subprocess overhead.
+fn batch_get_cwd_via_lsof(pids: &[u32]) -> HashMap<u32, PathBuf> {
+    if pids.is_empty() {
+        return HashMap::new();
+    }
+    let pid_arg: String = pids
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    // Note: lsof exits with code 1 when ANY PID in the batch no longer exists,
+    // even if it successfully resolved the rest. We must parse stdout regardless
+    // of exit code — it contains valid results for the PIDs that were still alive.
+    let output = match std::process::Command::new("lsof")
+        .args(["-a", "-p", &pid_arg, "-d", "cwd", "-Fn"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return HashMap::new(),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse grouped output: 'p' lines = PID, 'n' lines = path
+    let mut result = HashMap::new();
+    let mut current_pid: Option<u32> = None;
+    for line in stdout.lines() {
+        if let Some(pid_str) = line.strip_prefix('p') {
+            current_pid = pid_str.parse().ok();
+        } else if let Some(path) = line.strip_prefix('n') {
+            if path.starts_with('/') {
+                if let Some(pid) = current_pid {
+                    result.insert(pid, PathBuf::from(path));
+                }
+            }
+        }
+    }
+    result
 }
 
 /// Check if there is a running Claude process whose cwd matches the given

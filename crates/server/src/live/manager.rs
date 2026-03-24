@@ -1377,6 +1377,7 @@ impl LiveSessionManager {
                 // Phase 1: Lightweight liveness check (every tick = 10s)
                 // =============================================================
                 let mut dead_sessions: Vec<String> = Vec::new();
+                let mut ghost_sessions: Vec<String> = Vec::new();
                 let mut transcript_paths_to_clean: Vec<PathBuf> = Vec::new();
                 let mut snapshot_dirty = false;
 
@@ -1391,11 +1392,24 @@ impl LiveSessionManager {
                         // 1a. PID liveness: dead PID → mark session ended
                         if let Some(pid) = session.pid {
                             if !is_pid_alive(pid) {
-                                info!(
-                                    session_id = %session_id,
-                                    pid = pid,
-                                    "Bound PID is dead — marking session ended"
-                                );
+                                // Ghost session: hook created skeleton but no JSONL was
+                                // ever written. Auto-complete (remove) instead of keeping
+                                // in "recently closed" — there's nothing to show.
+                                let is_ghost =
+                                    session.file_path.is_empty() && session.turn_count == 0;
+                                if is_ghost {
+                                    info!(
+                                        session_id = %session_id,
+                                        pid = pid,
+                                        "Ghost session (no JSONL, zero turns) — auto-completing"
+                                    );
+                                } else {
+                                    info!(
+                                        session_id = %session_id,
+                                        pid = pid,
+                                        "Bound PID is dead — marking session ended"
+                                    );
+                                }
                                 session.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
@@ -1413,7 +1427,11 @@ impl LiveSessionManager {
                                 if let Some(ref tp) = session.statusline_transcript_path {
                                     transcript_paths_to_clean.push(PathBuf::from(tp));
                                 }
-                                dead_sessions.push(session_id.clone());
+                                if is_ghost {
+                                    ghost_sessions.push(session_id.clone());
+                                } else {
+                                    dead_sessions.push(session_id.clone());
+                                }
                                 snapshot_dirty = true;
                                 continue;
                             }
@@ -1425,11 +1443,24 @@ impl LiveSessionManager {
                     // (design: no time-based auto-dismiss, no TTL).
                 }
 
-                // Remove accumulators for dead sessions to prevent stale data if
-                // a new session starts in the same project directory.
-                if !dead_sessions.is_empty() {
+                // Ghost sessions: remove from map entirely (no "recently closed" UI)
+                if !ghost_sessions.is_empty() {
+                    let mut sessions = manager.sessions.write().await;
+                    for session_id in &ghost_sessions {
+                        sessions.remove(session_id);
+                    }
+                }
+                // Broadcast ghost removals so frontend drops them immediately
+                for session_id in &ghost_sessions {
+                    let _ = manager.tx.send(SessionEvent::SessionCompleted {
+                        session_id: session_id.clone(),
+                    });
+                }
+
+                // Remove accumulators for all dead sessions (ghost + real)
+                if !dead_sessions.is_empty() || !ghost_sessions.is_empty() {
                     let mut accumulators = manager.accumulators.write().await;
-                    for session_id in &dead_sessions {
+                    for session_id in dead_sessions.iter().chain(ghost_sessions.iter()) {
                         accumulators.remove(session_id);
                     }
                 }
