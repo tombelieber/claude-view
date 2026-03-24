@@ -1,0 +1,56 @@
+---
+title: "Block Pipeline Polish and the Integrity Audit"
+description: "v0.25.0 overhauls Developer Rich mode rendering, adds dedicated block renderers for sidechains and hooks, and introduces a full-stack integrity audit that catches type drift before it ships."
+date: 2026-03-25
+author: claude-view team
+---
+
+Developer mode was functional but noisy. Every block type — tool calls, agent spawns, hook events, retries — rendered through the same generic card. You could read the data, but scanning a 200-block trace required too much visual parsing. v0.25.0 gives each block type its own renderer and locks the whole pipeline down with an automated integrity audit.
+
+## Purpose-built block renderers
+
+The block pipeline now has dedicated renderers for block types that were previously handled by fallback cards:
+
+- **Sidechain blocks** — agent-spawned sub-sessions now render with a nested card layout showing the parent-child relationship, sidechain status, and a collapsible execution trace
+- **Image blocks** — inline image rendering with lazy loading, aspect ratio preservation, and a lightbox for full-size viewing
+- **Hook metadata** — pre/post tool-use hooks display their timing, decision (allow/deny/modify), and the modified input when applicable
+- **Retry events** — failed tool executions show the retry chain: original attempt, error, retry count, and final outcome in a single card
+
+Each renderer is a single-file component following the one-component-per-file rule, with a corresponding Storybook story that exercises its variants.
+
+## Developer Rich mode overhaul
+
+The visual hierarchy in Developer Rich mode was flat — every card competed for attention equally. The overhaul introduces:
+
+- **Semantic color coding** — tool results use the tool category's color (blue for builtin, purple for MCP, amber for agent), making it possible to scan by color rather than reading labels
+- **Consistent spacing system** — all block cards now use the same padding, gap, and border-radius tokens from the design system, eliminating the visual noise from inconsistent spacing
+- **Typography refinement** — monospace content (tool inputs, code blocks, raw JSON) uses a slightly smaller font size with increased line-height, giving more content per screen without sacrificing readability
+- **Dark mode contrast** — 29 color classes that were hardcoded without `dark:` variants have been fixed, and the shared package's Tailwind `@source` directive now ensures cross-package components get scanned properly
+
+## The integrity audit
+
+The block pipeline spans four layers: Rust parser → generated TypeScript types → React components → Storybook stories. A new block type added in Rust but missing a React renderer is invisible to users. A type change in Rust that doesn't regenerate TS types causes a silent runtime mismatch.
+
+`block-pipeline-audit.sh` validates the full stack:
+
+1. **Type coverage** — every `ConversationBlock` variant in the Rust enum has a corresponding generated TS type
+2. **Renderer coverage** — every TS block type has a React component that handles it (not a generic fallback)
+3. **Story coverage** — every renderer has at least one Storybook story with realistic fixture data
+4. **Dark mode coverage** — every color class in block renderer files has a `dark:` pair
+
+The audit runs as a `/block-integrity` command and is wired into the pre-release pipeline. It catches the class of bug where parallel development — someone adds a Rust block type while someone else works on React components — creates a gap that only shows up when a user encounters that block type in production.
+
+## Chat mode visual identity
+
+Chat mode and Developer mode now have distinct visual identities. Previously, the only difference was content filtering — same colors, same typography, same layout. Now:
+
+- Chat mode uses warmer tones with larger text and more generous spacing, optimized for reading conversations
+- Developer mode uses cooler tones with denser layout, optimized for scanning execution traces
+
+The distinction is subtle but makes mode-switching feel like moving between two purpose-built interfaces rather than toggling a filter.
+
+## Update
+
+```bash
+npx claude-view@latest
+```
