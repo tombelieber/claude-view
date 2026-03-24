@@ -29,7 +29,6 @@ import { useModelOptions } from '../hooks/use-models'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
-import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
@@ -98,11 +97,6 @@ export function ConversationView() {
     sessionInfo: convInfo,
   } = useConversation(sessionId, { liveStatus })
 
-  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
-    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
-    isFetchingOlder: history.isFetchingOlder,
-    blockCount: blocks.length,
-  })
   const { sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
@@ -717,44 +711,38 @@ export function ConversationView() {
             </div>
           )}
 
-          <div
-            ref={scrollContainerRef}
-            onScroll={handleScroll}
-            className="flex-1 min-h-0 overflow-y-auto"
-          >
-            {/* Top sentinel for infinite scroll — OUTSIDE the mode-switching block */}
-            <div ref={topSentinelRef} className="h-1" />
-            {history.isFetchingOlder && (
-              <div className="flex justify-center py-3">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-              </div>
-            )}
-
-            <FindProvider value={findQuery}>
-              <ThreadHighlightProvider>
-                <ExpandProvider>
-                  <div className="max-w-4xl mx-auto px-6 py-4">
-                    <ErrorBoundary>
-                      <ConversationActionsProvider
-                        actions={{
-                          retryMessage: actions.retryMessage,
-                          respondPermission: actions.respondPermission,
-                          answerQuestion: actions.answerQuestion,
-                          approvePlan: actions.approvePlan,
-                          submitElicitation: actions.submitElicitation,
-                        }}
-                      >
-                        <ConversationThread blocks={blocks} renderers={registry} />
-                      </ConversationActionsProvider>
-                    </ErrorBoundary>
-                  </div>
-                </ExpandProvider>
-              </ThreadHighlightProvider>
-            </FindProvider>
-
-            {/* Bottom anchor — OUTSIDE the mode-switching block */}
-            <div ref={bottomRef} />
-          </div>
+          {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
+              flex-1 min-h-0 gives Virtuoso a measurable viewport height.
+              Same layout pattern as ChatSession. */}
+          <FindProvider value={findQuery}>
+            <ThreadHighlightProvider>
+              <ExpandProvider>
+                <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+                  <ErrorBoundary>
+                    <ConversationActionsProvider
+                      actions={{
+                        retryMessage: actions.retryMessage,
+                        respondPermission: actions.respondPermission,
+                        answerQuestion: actions.answerQuestion,
+                        approvePlan: actions.approvePlan,
+                        submitElicitation: actions.submitElicitation,
+                      }}
+                    >
+                      <ConversationThread
+                        blocks={blocks}
+                        renderers={registry}
+                        onStartReached={
+                          history.hasOlderMessages ? history.fetchOlderMessages : undefined
+                        }
+                        isFetchingOlder={history.isFetchingOlder}
+                        hasOlderMessages={history.hasOlderMessages}
+                      />
+                    </ConversationActionsProvider>
+                  </ErrorBoundary>
+                </div>
+              </ExpandProvider>
+            </ThreadHighlightProvider>
+          </FindProvider>
 
           <ConnectionBanner health={connectionHealth} />
           <ChatInputBar
