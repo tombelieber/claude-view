@@ -83,9 +83,13 @@ function RateLimitNotice({
 
 function ContextCompactedNotice({ data }: { data: ContextCompacted }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400">
-      <Info className="w-3.5 h-3.5 flex-shrink-0" />
-      <span>Context compacted ({data.trigger})</span>
+    <div className="flex items-center gap-3 py-1">
+      <div className="flex-1 h-px bg-gray-300/50 dark:bg-gray-600/50" />
+      <span className="inline-flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+        <Info className="w-3 h-3 flex-shrink-0" />
+        Context compacted{data.trigger === 'manual' ? ' (manual)' : ''}
+      </span>
+      <div className="flex-1 h-px bg-gray-300/50 dark:bg-gray-600/50" />
     </div>
   )
 }
