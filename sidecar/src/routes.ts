@@ -89,7 +89,7 @@ export function createRoutes(registry: SessionRegistry) {
     const body = await c.req.json<Omit<ForkSessionRequest, 'sessionId'>>().catch(() => ({}))
 
     try {
-      const cs = forkControlSession({ sessionId, ...body }, registry)
+      const cs = await forkControlSession({ sessionId, ...body }, registry)
       await waitForSessionInit(cs, 15_000)
       notifyBindControl(cs.sessionId, cs.controlId)
       return c.json({
