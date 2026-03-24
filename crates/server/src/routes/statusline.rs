@@ -137,16 +137,25 @@ pub fn apply_statusline(session: &mut LiveSession, payload: &StatuslinePayload) 
         }
     }
 
-    // Model
+    // Model — timestamp-guarded to prevent stale statusline from overwriting
+    // a newer hook value. Statusline is authoritative for model (it reflects
+    // mid-session model switches via /model command), but only if it's fresher.
     if let Some(ref m) = payload.model {
-        if let Some(ref id) = m.id {
-            if !id.is_empty() {
-                session.model = Some(id.clone());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        if now > session.model_set_at {
+            if let Some(ref id) = m.id {
+                if !id.is_empty() {
+                    session.model = Some(id.clone());
+                    session.model_set_at = now;
+                }
             }
-        }
-        if let Some(ref dn) = m.display_name {
-            if !dn.is_empty() {
-                session.model_display_name = Some(dn.clone());
+            if let Some(ref dn) = m.display_name {
+                if !dn.is_empty() {
+                    session.model_display_name = Some(dn.clone());
+                }
             }
         }
     }

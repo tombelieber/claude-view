@@ -169,6 +169,94 @@ pub fn detect_claude_processes() -> (HashMap<u32, ClaudeProcess>, u32) {
     (result, total_count)
 }
 
+/// Detect Claude processes using an already-refreshed `System` instance.
+///
+/// Same logic as `detect_claude_processes()` but reuses the caller's System
+/// instead of creating a new one. Used by `ProcessOracle` to avoid duplicate
+/// process table scans.
+pub fn detect_claude_processes_with_sys(sys: &System) -> super::process_oracle::ClaudeProcesses {
+    // Pass 1: Find all Claude processes, collect PIDs that need lsof fallback.
+    struct Candidate {
+        pid: u32,
+        start_time: u64,
+        cwd: Option<std::path::PathBuf>,
+    }
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut need_lsof: Vec<u32> = Vec::new();
+
+    for (pid, process) in sys.processes() {
+        let name = process.name().to_string_lossy();
+        let is_claude = name.contains("claude")
+            || process
+                .cmd()
+                .iter()
+                .any(|arg| arg.to_string_lossy().contains("@anthropic-ai/claude"));
+        if !is_claude {
+            continue;
+        }
+        let pid_u32 = pid.as_u32();
+        let start_time = process.start_time();
+        let cwd = process.cwd().map(|p| p.to_path_buf());
+        if cwd.is_none() {
+            need_lsof.push(pid_u32);
+        }
+        candidates.push(Candidate {
+            pid: pid_u32,
+            start_time,
+            cwd,
+        });
+    }
+
+    // Pass 2: Batch lsof for PIDs that need it.
+    let lsof_results = if need_lsof.is_empty() {
+        HashMap::new()
+    } else {
+        batch_get_cwd_via_lsof(&need_lsof)
+    };
+
+    // Pass 3: Assemble results with resolved CWDs + classify source (cached).
+    let mut result = HashMap::new();
+    let mut total_count = 0u32;
+    let mut cache = SOURCE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    for candidate in candidates {
+        let cwd = candidate
+            .cwd
+            .or_else(|| lsof_results.get(&candidate.pid).cloned());
+        if let Some(cwd) = cwd {
+            total_count += 1;
+            let cache_key = (candidate.pid, candidate.start_time);
+            let source = if let Some(cached) = cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                let computed = match sys.process(sysinfo::Pid::from_u32(candidate.pid)) {
+                    Some(p) => classify_source(sys, p),
+                    None => SessionSourceInfo {
+                        category: SessionSource::Terminal,
+                        label: None,
+                    },
+                };
+                cache.insert(cache_key, computed.clone());
+                computed
+            };
+            result.insert(
+                candidate.pid,
+                ClaudeProcess {
+                    pid: candidate.pid,
+                    cwd,
+                    start_time: candidate.start_time,
+                    source,
+                },
+            );
+        }
+    }
+    cache.retain(|&(pid, _), _| result.contains_key(&pid));
+
+    super::process_oracle::ClaudeProcesses {
+        processes: result,
+        count: total_count,
+    }
+}
+
 /// Count running Claude Code processes without building the full HashMap.
 ///
 /// Lightweight alternative to `detect_claude_processes()` — returns only the
@@ -446,7 +534,7 @@ fn get_cwd_via_lsof(pid: u32) -> Option<PathBuf> {
 /// path (lines starting with 'n').
 ///
 /// 1 call for N PIDs instead of N calls for N PIDs: O(1) subprocess overhead.
-fn batch_get_cwd_via_lsof(pids: &[u32]) -> HashMap<u32, PathBuf> {
+pub fn batch_get_cwd_via_lsof(pids: &[u32]) -> HashMap<u32, PathBuf> {
     if pids.is_empty() {
         return HashMap::new();
     }

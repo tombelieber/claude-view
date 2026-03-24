@@ -2041,6 +2041,8 @@ mod tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            model_set_at: 0,
+            agent_state_set_at: 0,
         };
         session.hook_events.push(HookEvent {
             timestamp: 1000,
@@ -2270,6 +2272,8 @@ mod tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            model_set_at: 0,
+            agent_state_set_at: 0,
         }
     }
 
