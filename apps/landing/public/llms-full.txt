@@ -1221,17 +1221,33 @@ Previously, the Live Monitor matched sessions to processes by correlating the se
 
 Now, each session is identified by its process ID at creation time. The monitor reads the PID from the session's lock file and tracks it through the process lifecycle. When the process exits, the session transitions to its terminal state immediately — no polling delay, no heuristic matching, no ambiguity.
 
+The five gaps this closes:
+
+1. **Phantom sessions** — a crashed process left a stale lock file, so the monitor showed a "running" session with no process behind it. Now, PID existence is checked directly.
+2. **Split identity** — a restarted session got assigned a new monitor entry instead of updating the existing one. PID continuity prevents this.
+3. **Delayed transitions** — the gap between "process exited" and "monitor notices" was up to one scan interval (2s). Now it's event-driven.
+4. **Cross-contamination** — two sessions in the same directory could swap identities when one exited and another started. PIDs are unique per session.
+5. **Orphaned watchers** — file watchers for exited sessions weren't cleaned up, slowly leaking resources. PID-based lifecycle ties cleanup to process exit.
+
 ## Batch process scanning
 
-The monitor used to call `ps` once per tracked session. v0.26.0 collects all tracked PIDs and checks them in a single batch `ps` call. The process tree classifier now operates on the full process table in one pass, reducing scan overhead from O(n) subprocess spawns to O(1).
+The monitor used to call `ps` once per tracked session — if you had 20 sessions, that was 20 subprocess spawns every scan interval. On macOS, `ps` is fast, but 20 invocations every 2 seconds adds up, especially on laptops where CPU cycles directly translate to battery drain.
+
+v0.26.0 collects all tracked PIDs and checks them in a single batch `ps` call. The process tree classifier — which determines whether a PID is a Claude Code session, a subprocess, or unrelated — now operates on the full process table in one pass. This reduces scan overhead from O(n) subprocess spawns to O(1).
 
 ## Live statusline via SSE
 
-Claude Code's statusline — the text showing what the agent is currently doing — now broadcasts to the Live Monitor via Server-Sent Events. The chat panel receives this context too, so you can see "Reading src/lib/auth.ts" or "Running tests" without switching to the terminal.
+Claude Code has a statusline — the text at the bottom of the terminal that shows what the agent is currently doing: reading a file, running a command, thinking, waiting for permission. This information was only visible in the terminal where the session was running.
+
+v0.26.0 broadcasts statusline updates to the Live Monitor via Server-Sent Events. The existing SSE connection that carries session state transitions now also carries statusline payloads. The chat panel receives this context too, so when you're chatting with an agent, you can see "Reading src/lib/auth.ts" or "Running tests" without switching to the terminal.
+
+This is particularly useful for long-running agent sessions where you've backgrounded the terminal. Instead of switching back to check if the agent is stuck or making progress, the Live Monitor shows the current activity in real-time.
 
 ## Opt-in telemetry
 
-v0.26.0 adds PostHog telemetry with a consent flow. The API key is baked into release builds at compile time, so telemetry works without configuration. If you opt out, no events are sent.
+v0.26.0 adds PostHog telemetry with a consent flow. On first launch, you're asked whether to opt in. The choice is persisted and can be changed in settings. If you opt in, claude-view reports anonymous usage events — which features are used, session counts, error rates — that help prioritize development.
+
+The PostHog API key is baked into release builds at compile time, so telemetry works without any environment variables or configuration. If you opt out, no events are sent — the integration is fully gated on the consent flag, not just filtered server-side.
 
 ## Update
 
