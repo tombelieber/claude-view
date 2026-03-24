@@ -94,7 +94,7 @@ function SessionStatusDetail({ data }: { data: SidecarSessionStatus }) {
       rawData={data}
       meta={
         data.permissionMode ? (
-          <span className="text-[9px] font-mono text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
             {data.permissionMode}
           </span>
         ) : undefined
@@ -128,7 +128,9 @@ function HookEventDetail({ data }: { data: SidecarHookEvent }) {
           <span
             className={cn(
               'text-[9px] font-mono px-1.5 py-0.5 rounded',
-              isError ? 'text-red-400 bg-red-500/10' : 'text-green-400 bg-green-500/10',
+              isError
+                ? 'text-red-600 dark:text-red-400 bg-red-500/10'
+                : 'text-green-600 dark:text-green-400 bg-green-500/10',
             )}
           >
             {data.outcome}
@@ -157,12 +159,14 @@ function TaskStartedDetail({ data }: { data: TaskStarted }) {
       rawData={data}
       meta={
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-[9px] font-mono text-gray-400">{data.taskId.slice(0, 8)}</span>
+          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
+            {data.taskId.slice(0, 8)}
+          </span>
           {convActions?.stopTask && (
             <button
               type="button"
               onClick={() => convActions.stopTask?.(data.taskId)}
-              className="text-red-400 hover:text-red-500 transition-colors duration-200 cursor-pointer"
+              className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-500 transition-colors duration-200 cursor-pointer"
               title="Stop task"
             >
               <StopCircle className="w-3 h-3" />
@@ -304,7 +308,7 @@ function AiTitleDetail({ data }: { data: AiTitle }) {
       label={data.aiTitle}
       rawData={data}
       meta={
-        <span className="text-[9px] font-mono text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+        <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
           {data.sessionId?.slice(0, 8)}
         </span>
       }
@@ -419,10 +423,10 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
               className={cn(
                 'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
                 Number(block.rawJson.durationMs) > 30000
-                  ? 'text-red-400 bg-red-500/10'
+                  ? 'text-red-600 dark:text-red-400 bg-red-500/10'
                   : Number(block.rawJson.durationMs) > 5000
-                    ? 'text-amber-400 bg-amber-500/10'
-                    : 'text-gray-400 bg-gray-500/10',
+                    ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
+                    : 'text-gray-500 dark:text-gray-400 bg-gray-500/10',
               )}
             >
               {Number(block.rawJson.durationMs).toLocaleString()}ms
