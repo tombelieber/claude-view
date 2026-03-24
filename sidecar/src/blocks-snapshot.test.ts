@@ -154,7 +154,7 @@ describe('UT-02: blocks_snapshot sent on connect', () => {
     const messages = getAllSentMessages(ws)
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
-    expect(snapshot!.blocks).toEqual([])
+    expect(snapshot?.blocks).toEqual([])
   })
 })
 
@@ -194,7 +194,7 @@ describe('UT-04: turn_complete includes blocks', () => {
     // Get the emitter listener that ws-handler registered
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
     expect(emitterOnCall).toBeDefined()
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
 
     // Fire a turn_complete event through the emitter
     onMessage({
@@ -214,7 +214,7 @@ describe('UT-04: turn_complete includes blocks', () => {
     const messages = getAllSentMessages(ws)
     const turnComplete = messages.find((m) => m.type === 'turn_complete')
     expect(turnComplete).toBeDefined()
-    expect(turnComplete!.blocks).toEqual([{ type: 'assistant', id: 'a1' }])
+    expect(turnComplete?.blocks).toEqual([{ type: 'assistant', id: 'a1' }])
   })
 })
 
@@ -231,7 +231,7 @@ describe('UT-05: turn_error includes blocks', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
 
     onMessage({
       type: 'turn_error',
@@ -250,7 +250,7 @@ describe('UT-05: turn_error includes blocks', () => {
     const messages = getAllSentMessages(ws)
     const turnError = messages.find((m) => m.type === 'turn_error')
     expect(turnError).toBeDefined()
-    expect(turnError!.blocks).toEqual([{ type: 'notice', id: 'n1' }])
+    expect(turnError?.blocks).toEqual([{ type: 'notice', id: 'n1' }])
   })
 })
 
@@ -267,7 +267,7 @@ describe('UT-06: assistant_text triggers blocks_update', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
 
     // Clear prior sends (heartbeat_config, blocks_snapshot, etc.)
     ws.send.mockClear()
@@ -302,7 +302,7 @@ describe('UT-07: tool_use_start triggers blocks_update', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
     ws.send.mockClear()
 
     onMessage({
@@ -335,7 +335,7 @@ describe('UT-08: assistant_thinking triggers blocks_update', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
     ws.send.mockClear()
 
     onMessage({
@@ -365,7 +365,7 @@ describe('UT-09: session_init does NOT trigger blocks_update', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
     ws.send.mockClear()
 
     onMessage({
@@ -404,7 +404,7 @@ describe('UT-10: stream_delta does NOT trigger blocks_update', () => {
     handleWebSocket(ws as any, 'ctrl-1', registry as any)
 
     const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
-    const onMessage = emitterOnCall![1] as (msg: unknown) => void
+    const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
     ws.send.mockClear()
 
     onMessage({
@@ -423,4 +423,71 @@ describe('UT-10: stream_delta does NOT trigger blocks_update', () => {
     const blocksUpdate = messages.find((m) => m.type === 'blocks_update')
     expect(blocksUpdate).toBeUndefined()
   })
+})
+
+// ── Regression: ALL block-producing events trigger blocks_update ─────────
+// Protects against the permission_request gap (2026-03-24): events were added
+// to StreamAccumulator.ingest() (producing blocks) but NOT to
+// BLOCK_PRODUCING_EVENTS in ws-handler.ts (triggering client notification).
+// Result: blocks silently invisible until next unrelated blocks_update.
+
+describe('regression: every block-producing event triggers blocks_update', () => {
+  const blockProducingEvents: { type: string; payload?: Record<string, unknown> }[] = [
+    // Streaming content
+    { type: 'assistant_text', payload: { text: 'hi', messageId: 'm1', parentToolUseId: null } },
+    {
+      type: 'assistant_thinking',
+      payload: { thinking: 'hmm', messageId: 'm1', parentToolUseId: null },
+    },
+    { type: 'tool_use_start', payload: { toolName: 'Read', toolInput: {} } },
+    { type: 'tool_use_result', payload: { toolName: 'Read', output: 'ok' } },
+    { type: 'user_message_echo', payload: { content: 'hi', timestamp: 1 } },
+    // Interactive (original bug: permission card only visible after timeout)
+    { type: 'permission_request', payload: { requestId: 'r1', toolName: 'Bash', input: {} } },
+    { type: 'ask_question', payload: { requestId: 'q1', question: 'which?', options: [] } },
+    { type: 'plan_approval', payload: { requestId: 'p1', plan: 'do x' } },
+    { type: 'elicitation', payload: { requestId: 'e1', prompt: 'enter value' } },
+    // Notices
+    { type: 'rate_limit', payload: { retryAfterMs: 5000 } },
+    { type: 'context_compacted', payload: { originalTokens: 1000, compactedTokens: 500 } },
+    { type: 'assistant_error', payload: { message: 'oops' } },
+    { type: 'error', payload: { message: 'fatal', fatal: true } },
+    // Tool lifecycle
+    { type: 'tool_progress', payload: { toolName: 'Bash', progress: 'running' } },
+    { type: 'tool_summary', payload: { toolName: 'Bash', summary: 'done' } },
+    // System blocks
+    { type: 'elicitation_complete', payload: {} },
+    { type: 'hook_event', payload: { hookName: 'pre-commit' } },
+    { type: 'task_started', payload: { taskId: 't1', name: 'test' } },
+    { type: 'task_progress', payload: { taskId: 't1', progress: 50 } },
+    { type: 'task_notification', payload: { taskId: 't1', message: 'done' } },
+    { type: 'files_saved', payload: { files: ['a.ts'] } },
+    { type: 'command_output', payload: { output: 'ok' } },
+    { type: 'session_status', payload: { status: 'compacting' } },
+    { type: 'unknown_sdk_event', payload: { data: {} } },
+    { type: 'prompt_suggestion', payload: { suggestion: 'try this' } },
+    { type: 'auth_status', payload: { status: 'ok' } },
+  ]
+
+  for (const { type, payload } of blockProducingEvents) {
+    it(`${type} → blocks_update`, () => {
+      const session = createMockSession()
+      session.accumulator.getBlocks.mockReturnValue([{ type: 'interaction', id: 'mock' }])
+      const registry = createMockRegistry(session)
+      const ws = createMockWs()
+
+      // biome-ignore lint/suspicious/noExplicitAny: test mocks
+      handleWebSocket(ws as any, 'ctrl-1', registry as any)
+
+      const emitterOnCall = session.emitter.on.mock.calls.find((c: unknown[]) => c[0] === 'message')
+      const onMessage = emitterOnCall?.[1] as (msg: unknown) => void
+      ws.send.mockClear()
+
+      onMessage({ type, seq: 99, ...payload })
+
+      const messages = getAllSentMessages(ws)
+      const hasBlocksUpdate = messages.some((m) => m.type === 'blocks_update')
+      expect(hasBlocksUpdate).toBe(true)
+    })
+  }
 })
