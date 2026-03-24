@@ -4,14 +4,19 @@ import { DialogContent, DialogOverlay } from './ui/CenteredDialog'
 interface TelemetryBannerProps {
   onEnable: () => void
   onDisable: () => void
+  isPending?: boolean
 }
 
-export function TelemetryBanner({ onEnable, onDisable }: TelemetryBannerProps) {
+export function TelemetryBanner({ onEnable, onDisable, isPending }: TelemetryBannerProps) {
   return (
     <Dialog.Root open>
       <Dialog.Portal>
         <DialogOverlay className="bg-black/50" />
-        <DialogContent className="max-w-sm rounded-xl border border-border bg-background p-6 shadow-2xl">
+        <DialogContent
+          className="max-w-sm rounded-xl border border-border bg-background p-6 shadow-2xl"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
           <Dialog.Title className="text-base font-semibold text-foreground">
             Help shape claude-view
           </Dialog.Title>
@@ -35,17 +40,19 @@ export function TelemetryBanner({ onEnable, onDisable }: TelemetryBannerProps) {
           <div className="mt-5 flex gap-3">
             <button
               type="button"
-              className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-accent"
+              className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-accent disabled:opacity-50"
               onClick={onDisable}
+              disabled={isPending}
             >
               No thanks
             </button>
             <button
               type="button"
-              className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               onClick={onEnable}
+              disabled={isPending}
             >
-              Enable analytics
+              {isPending ? 'Saving…' : 'Enable analytics'}
             </button>
           </div>
         </DialogContent>

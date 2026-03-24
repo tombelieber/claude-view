@@ -10,6 +10,7 @@ import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { TelemetryBanner } from './components/TelemetryBanner'
+import { useTelemetryPrompt } from './hooks/use-telemetry-prompt'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSessions } from './components/live/use-live-sessions'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
@@ -17,7 +18,6 @@ import { useNotificationSound } from './hooks/use-notification-sound'
 import { usePatternAlert } from './hooks/use-pattern-alert'
 import { useProjectSummaries } from './hooks/use-projects'
 import { useTelemetry } from './hooks/use-telemetry'
-import { useTelemetryPrompt } from './hooks/use-telemetry-prompt'
 import { useTheme } from './hooks/use-theme'
 import { useAppStore } from './store/app-store'
 import { useLiveCommandStore } from './store/live-command-context'
@@ -32,7 +32,7 @@ export default function App() {
     toggleSidebar,
   } = useAppStore()
   useTheme() // Apply dark class to <html>
-  const { enableTelemetry, disableTelemetry } = useTelemetry()
+  const { enableTelemetry, disableTelemetry, isPending: isTelemetryPending } = useTelemetry()
   const { shouldPrompt } = useTelemetryPrompt()
   const indexingProgress = useIndexingProgress()
   const liveSessions = useLiveSessions()
@@ -104,7 +104,11 @@ export default function App() {
           audioUnlocked={audioUnlocked}
         />
         {shouldPrompt && (
-          <TelemetryBanner onEnable={enableTelemetry} onDisable={disableTelemetry} />
+          <TelemetryBanner
+            onEnable={enableTelemetry}
+            onDisable={disableTelemetry}
+            isPending={isTelemetryPending}
+          />
         )}
         <AuthBanner />
         <ColdStartOverlay progress={indexingProgress} />

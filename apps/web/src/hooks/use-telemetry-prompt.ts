@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useConfig } from './use-config'
 
 const STORAGE_KEY = 'cv_session_views'
@@ -20,7 +20,7 @@ export function useTelemetryPrompt() {
   const isUndecided = config.telemetry === 'undecided' && config.posthogKey !== null
 
   // Increment counter when a session is viewed
-  const recordSessionView = () => {
+  const recordSessionView = useCallback(() => {
     if (!isUndecided) return
     const current = Number(localStorage.getItem(STORAGE_KEY) ?? '0')
     const next = current + 1
@@ -28,7 +28,7 @@ export function useTelemetryPrompt() {
     if (next >= PROMPT_THRESHOLD) {
       setShouldPrompt(true)
     }
-  }
+  }, [isUndecided])
 
   // Check on mount if threshold already reached
   useEffect(() => {
