@@ -124,7 +124,7 @@ export function ChatProgressBlock({ block }: ProgressBlockProps) {
         )}
       />
       <Icon className={cn('w-3.5 h-3.5 flex-shrink-0', isError ? 'text-red-500' : style.accent)} />
-      <span className="text-gray-300 dark:text-gray-400 font-mono truncate">{label}</span>
+      <span className="text-gray-600 dark:text-gray-400 font-mono truncate">{label}</span>
       {detail && (
         <span
           className={cn(

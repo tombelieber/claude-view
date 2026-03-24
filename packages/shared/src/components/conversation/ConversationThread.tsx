@@ -27,19 +27,71 @@ export type FineCategory =
   | 'queue'
 
 const FINE_CATEGORIES: ChipDefinition<FineCategory>[] = [
-  { id: 'all', label: 'All', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
-  { id: 'user', label: 'User', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-  { id: 'assistant', label: 'Assistant', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
-  { id: 'builtin', label: 'Builtin', color: 'bg-gray-500/10 text-gray-400 border-gray-500/30' },
-  { id: 'mcp', label: 'MCP', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-  { id: 'skill', label: 'Skill', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
-  { id: 'agent', label: 'Agent', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
-  { id: 'hook', label: 'Hook', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-  { id: 'error', label: 'Error', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
-  { id: 'system', label: 'System', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
-  { id: 'turn', label: 'Turn', color: 'bg-green-500/10 text-green-400 border-green-500/30' },
-  { id: 'prompt', label: 'Prompt', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-  { id: 'queue', label: 'Queue', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
+  {
+    id: 'all',
+    label: 'All',
+    color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30',
+  },
+  {
+    id: 'user',
+    label: 'User',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30',
+  },
+  {
+    id: 'assistant',
+    label: 'Assistant',
+    color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30',
+  },
+  {
+    id: 'builtin',
+    label: 'Builtin',
+    color: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30',
+  },
+  {
+    id: 'mcp',
+    label: 'MCP',
+    color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30',
+  },
+  {
+    id: 'skill',
+    label: 'Skill',
+    color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30',
+  },
+  {
+    id: 'agent',
+    label: 'Agent',
+    color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
+  },
+  {
+    id: 'hook',
+    label: 'Hook',
+    color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+  },
+  {
+    id: 'error',
+    label: 'Error',
+    color: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30',
+  },
+  {
+    id: 'system',
+    label: 'System',
+    color: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30',
+  },
+  {
+    id: 'turn',
+    label: 'Turn',
+    color: 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30',
+  },
+  {
+    id: 'prompt',
+    label: 'Prompt',
+    color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
+  },
+  {
+    id: 'queue',
+    label: 'Queue',
+    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30',
+  },
 ]
 
 /**
@@ -316,12 +368,13 @@ export function ConversationThread({
   // Covers: initial history load, any race.
   // After 1s, followOutput takes over for normal chat.
   const mountTimeRef = useRef(Date.now())
+  const hasItems = items.length > 0
   useEffect(() => {
-    if (items.length > 0 && Date.now() - mountTimeRef.current < 1000) {
+    if (hasItems && Date.now() - mountTimeRef.current < 1000) {
       scrollToBottomRetry()
     }
     return () => cancelAnimationFrame(activeRafRef.current)
-  }, [items.length, scrollToBottomRetry])
+  }, [hasItems, scrollToBottomRetry])
 
   // ── Scroll-to-bottom: external signal (drag-drop) ─────────────────
   // Dockview moves the DOM portal without React remount on drag-drop.
@@ -365,17 +418,18 @@ export function ConversationThread({
   // Track when new items arrive — scroll to bottom for user messages,
   // show "new messages" badge for everything else when scrolled up.
   const prevLastBlockIdRef = useRef<string | null>(null)
+  const lastItem = items[items.length - 1]
+  const lastBlockId = lastItem?.kind === 'block' ? lastItem.block.id : null
+  const lastBlockIsUser = lastItem?.kind === 'block' && lastItem.block.type === 'user'
+  const itemCount = items.length
   useEffect(() => {
-    const lastItem = items[items.length - 1]
-    const lastBlockId = lastItem?.kind === 'block' ? lastItem.block.id : null
-
-    if (items.length > prevCountRef.current && lastBlockId !== prevLastBlockIdRef.current) {
+    if (itemCount > prevCountRef.current && lastBlockId !== prevLastBlockIdRef.current) {
       // New item appended at end (not prepend of older history)
-      if (lastItem?.kind === 'block' && lastItem.block.type === 'user') {
+      if (lastBlockIsUser) {
         // User sent a message → always scroll to bottom regardless of position
         requestAnimationFrame(() => {
           virtuosoRef.current?.scrollToIndex({
-            index: items.length - 1,
+            index: itemCount - 1,
             align: 'end',
             behavior: 'smooth',
           })
@@ -386,9 +440,9 @@ export function ConversationThread({
       }
     }
 
-    prevCountRef.current = items.length
+    prevCountRef.current = itemCount
     prevLastBlockIdRef.current = lastBlockId
-  }, [items.length, isAtBottom])
+  }, [itemCount, isAtBottom, lastBlockId, lastBlockIsUser])
 
   // Scroll to bottom when filter changes (list length changes drastically)
   useEffect(() => {
@@ -505,8 +559,8 @@ export function ConversationThread({
                   className={cn(
                     'ml-auto mr-3 text-[10px] font-mono px-2 py-1 rounded-full border transition-colors duration-200 cursor-pointer flex-shrink-0',
                     globalJsonMode
-                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                      : 'text-gray-500 bg-transparent border-gray-700 hover:border-gray-600',
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30'
+                      : 'text-gray-500 dark:text-gray-400 bg-transparent border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600',
                   )}
                   title={globalJsonMode ? 'Switch all to Rich view' : 'Switch all to JSON view'}
                 >
@@ -554,7 +608,7 @@ export function ConversationThread({
                     'absolute bottom-3 left-1/2 -translate-x-1/2 inline-flex items-center rounded-full shadow-lg transition-all cursor-pointer z-10',
                     hasNewItems
                       ? 'gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium hover:bg-blue-500'
-                      : 'p-2 bg-gray-800/80 text-gray-300 hover:bg-gray-700/80 backdrop-blur-sm',
+                      : 'p-2 bg-gray-200/80 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-300/80 dark:hover:bg-gray-700/80 backdrop-blur-sm',
                   )}
                 >
                   <ArrowDown className="w-3.5 h-3.5" />

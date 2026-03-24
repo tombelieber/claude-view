@@ -66,10 +66,10 @@ export function DevAssistantBlock({ block }: AssistantBlockProps) {
             className={cn(
               'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
               durationMs > 30000
-                ? 'text-red-400 bg-red-500/10'
+                ? 'text-red-600 dark:text-red-400 bg-red-500/10'
                 : durationMs > 5000
-                  ? 'text-amber-400 bg-amber-500/10'
-                  : 'text-gray-400 bg-gray-500/10',
+                  ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
+                  : 'text-gray-500 dark:text-gray-400 bg-gray-500/10',
             )}
           >
             {(durationMs / 1000).toFixed(1)}s

@@ -141,6 +141,7 @@ export function EventCard({
         <span className="flex-1" />
         {hasRawData && (
           <button
+            type="button"
             onClick={() => setLocalOverride((v) => !(v ?? globalJsonMode))}
             className={cn(
               'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
@@ -167,7 +168,7 @@ export function EventCard({
             ))}
           {showChildrenBody && children}
           {autoExpandBody && (
-            <p className="text-sm text-gray-300 dark:text-gray-300 whitespace-pre-wrap break-words">
+            <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words">
               {label}
             </p>
           )}
