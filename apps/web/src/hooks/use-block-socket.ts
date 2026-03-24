@@ -60,7 +60,7 @@ export function useBlockSocket({
   // Derive ordered array for render — Map preserves insertion order
   const blocks = useMemo(() => [...blockMap.values()], [blockMap])
 
-  // Sub-agent path injection (same pattern as use-subagent-stream.ts)
+  // Sub-agent path injection: prefix sessionId with /subagents/{agentId}
   const wsSessionId = agentId ? `${sessionId}/subagents/${agentId}` : sessionId
 
   // Use the REAL connectionState from useTerminalSocket — never fabricate it.

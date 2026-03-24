@@ -32,7 +32,7 @@ describe('ToolCard', () => {
     expect(screen.getByText('1.5s')).toBeInTheDocument()
   })
 
-  it('expands to show input/output on click', async () => {
+  it('collapses and re-expands input/output on click', async () => {
     const user = userEvent.setup()
     render(
       <ToolCard
@@ -43,13 +43,17 @@ describe('ToolCard', () => {
         })}
       />,
     )
-    // Body should not be visible initially
-    expect(screen.queryByText('Input')).not.toBeInTheDocument()
-
-    // Click the header row to expand
-    await user.click(screen.getByTestId('status-complete'))
+    // Body should be visible initially (expanded by default)
     expect(screen.getByText('Input')).toBeInTheDocument()
     expect(screen.getByText('Output')).toBeInTheDocument()
+
+    // Click the header row to collapse
+    await user.click(screen.getByTestId('status-complete'))
+    expect(screen.queryByText('Input')).not.toBeInTheDocument()
+
+    // Click again to re-expand
+    await user.click(screen.getByTestId('status-complete'))
+    expect(screen.getByText('Input')).toBeInTheDocument()
   })
 
   it('shows error styling for error status', () => {
