@@ -2,7 +2,12 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../hooks/use-block-socket', () => ({
-  useBlockSocket: vi.fn(() => ({ blocks: [], bufferDone: false, connectionState: 'connecting' })),
+  useBlockSocket: vi.fn(() => ({
+    blocks: [],
+    bufferDone: false,
+    connectionState: 'connecting',
+    error: null,
+  })),
 }))
 
 vi.mock('../../store/monitor-store', () => ({
