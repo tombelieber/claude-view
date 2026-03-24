@@ -51,6 +51,13 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
 
     const es = new EventSource(sseUrl())
 
+    const MAX_RETRIES = 5
+    let retryCount = 0
+
+    es.addEventListener('open', () => {
+      retryCount = 0
+    })
+
     es.addEventListener('scanning', (e: MessageEvent) => {
       let data
       try {
@@ -123,6 +130,7 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
     // with data. Browser connection errors arrive as plain Events without data.
     es.addEventListener('error', (e: Event) => {
       if ('data' in e && (e as MessageEvent).data) {
+        // Terminal: server explicitly sent an error event
         let data
         try {
           data = JSON.parse((e as MessageEvent).data)
@@ -140,20 +148,26 @@ export function useGitSyncProgress(enabled: boolean): GitSyncProgress {
           phase: 'error',
           errorMessage: data.message ?? 'Unknown error',
         })
+        es.close()
       } else if (es.readyState === EventSource.CLOSED) {
+        // Terminal: connection permanently closed
         setProgress({
           ...INITIAL_STATE,
           phase: 'error',
           errorMessage: 'Lost connection to server',
         })
       } else {
-        setProgress({
-          ...INITIAL_STATE,
-          phase: 'error',
-          errorMessage: 'Connection to server failed',
-        })
+        // Transient: readyState === CONNECTING — browser will auto-retry.
+        retryCount++
+        if (retryCount > MAX_RETRIES) {
+          setProgress({
+            ...INITIAL_STATE,
+            phase: 'error',
+            errorMessage: 'Connection to server failed',
+          })
+          es.close()
+        }
       }
-      es.close()
     })
 
     return () => es.close()

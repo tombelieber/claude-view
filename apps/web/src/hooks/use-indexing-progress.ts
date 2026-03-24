@@ -69,6 +69,16 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
 
     const es = new EventSource(sseUrl())
 
+    // Transient connection errors: let EventSource auto-retry up to MAX_RETRIES.
+    // Each failed retry fires another 'error' event with readyState === CONNECTING.
+    // Only give up after exhausting retries — don't kill native retry on first failure.
+    const MAX_RETRIES = 5
+    let retryCount = 0
+
+    es.addEventListener('open', () => {
+      retryCount = 0
+    })
+
     es.addEventListener('status', (e: MessageEvent) => {
       let data: Record<string, unknown>
       try {
@@ -188,6 +198,7 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
     // with data. Browser connection errors arrive as plain Events without data.
     es.addEventListener('error', (e: Event) => {
       if ('data' in e && (e as MessageEvent).data) {
+        // Terminal: server explicitly sent an error event
         let data: Record<string, unknown>
         try {
           data = JSON.parse((e as MessageEvent).data)
@@ -205,20 +216,27 @@ export function useIndexingProgress(enabled = true): IndexingProgress {
           phase: 'error',
           errorMessage: typeof data.message === 'string' ? data.message : 'Unknown error',
         }))
+        es.close()
       } else if (es.readyState === EventSource.CLOSED) {
+        // Terminal: connection permanently closed
         setProgress({
           ...INITIAL_STATE,
           phase: 'error',
           errorMessage: 'Lost connection to server',
         })
       } else {
-        setProgress({
-          ...INITIAL_STATE,
-          phase: 'error',
-          errorMessage: 'Connection to server failed',
-        })
+        // Transient: readyState === CONNECTING — browser will auto-retry.
+        // Only give up after MAX_RETRIES consecutive failures.
+        retryCount++
+        if (retryCount > MAX_RETRIES) {
+          setProgress({
+            ...INITIAL_STATE,
+            phase: 'error',
+            errorMessage: 'Connection to server failed',
+          })
+          es.close()
+        }
       }
-      es.close()
     })
 
     return () => es.close()
