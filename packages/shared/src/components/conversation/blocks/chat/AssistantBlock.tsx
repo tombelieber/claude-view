@@ -1,11 +1,42 @@
+import { useState } from 'react'
 import type { AssistantBlock as AssistantBlockType } from '../../../../types/blocks'
-import { Bot, GitBranch } from 'lucide-react'
+import { Bot, Brain, ChevronDown, GitBranch } from 'lucide-react'
+import { cn } from '../../../../utils/cn'
 import { Markdown } from '../shared/Markdown'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { ToolChip } from '../shared/ToolChip'
 
 interface AssistantBlockProps {
   block: AssistantBlockType
+}
+
+function ThinkingIndicator({ thinking }: { thinking: string }) {
+  const [expanded, setExpanded] = useState(false)
+
+  // Estimate thinking duration from content length (heuristic: ~15 chars/sec of thinking)
+  const charCount = thinking.length
+  const estimatedSeconds = Math.max(1, Math.round(charCount / 15))
+
+  return (
+    <div className="space-y-0">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
+      >
+        <Brain className="w-3 h-3 text-violet-400 dark:text-violet-500" />
+        <span>Reasoned for {estimatedSeconds}s</span>
+        <ChevronDown
+          className={cn('w-3 h-3 transition-transform duration-150', expanded && 'rotate-180')}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-1 ml-2 pl-3 border-l-2 border-violet-200 dark:border-violet-800/50 text-xs text-gray-500 dark:text-gray-400 max-h-60 overflow-y-auto">
+          <Markdown content={thinking} />
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function ChatAssistantBlock({ block }: AssistantBlockProps) {
@@ -32,6 +63,11 @@ export function ChatAssistantBlock({ block }: AssistantBlockProps) {
             </span>
           )}
         </div>
+      )}
+
+      {/* Thinking indicator — collapsed by default */}
+      {block.thinking && block.thinking.length > 0 && (
+        <ThinkingIndicator thinking={block.thinking} />
       )}
 
       {block.segments.map((seg, i) => {
