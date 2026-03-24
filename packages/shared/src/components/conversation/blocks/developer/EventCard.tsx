@@ -1,8 +1,8 @@
 import { type ReactNode, useState } from 'react'
 import { useDeveloperTools } from '../../../../contexts/DeveloperToolsContext'
 import { cn } from '../../../../utils/cn'
-import { useJsonMode } from './json-mode-context'
 import { SimpleJsonView } from './SimpleJsonView'
+import { useJsonMode } from './json-mode-context'
 
 /**
  * Shared card wrapper for all developer-mode event blocks.
@@ -109,7 +109,7 @@ export function EventCard({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-lg border transition-colors duration-200',
+        'overflow-hidden rounded-lg border transition-colors duration-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]',
         error
           ? 'border-red-300/25 dark:border-red-800/40 bg-red-500/5 dark:bg-red-950/20'
           : 'border-gray-200/30 dark:border-gray-700/30',
@@ -134,7 +134,7 @@ export function EventCard({
         </span>
         {label && (
           <span
-            className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate"
+            className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate"
             title={label}
           >
             {label}
@@ -147,8 +147,10 @@ export function EventCard({
             onClick={() => setLocalOverride((v) => !(v ?? globalJsonMode))}
             className={cn(
               'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              'min-w-[28px] min-h-[28px] inline-flex items-center justify-center',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50',
               jsonMode
-                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
+                ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20 hover:bg-amber-500/25'
                 : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
             )}
             title={jsonMode ? 'Switch to rich view' : 'Switch to JSON view'}
@@ -160,22 +162,27 @@ export function EventCard({
       </div>
 
       {/* Body */}
-      {hasBody && (
-        <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
-          {showJsonBody &&
-            (JsonTree ? (
-              <JsonTree data={rawData} defaultExpandDepth={3} verboseMode />
-            ) : (
-              <SimpleJsonView data={rawData} />
-            ))}
-          {showChildrenBody && children}
-          {autoExpandBody && (
-            <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words">
-              {label}
-            </p>
-          )}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: hasBody ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
+            {showJsonBody &&
+              (JsonTree ? (
+                <JsonTree data={rawData} defaultExpandDepth={3} verboseMode />
+              ) : (
+                <SimpleJsonView data={rawData} />
+              ))}
+            {showChildrenBody && children}
+            {autoExpandBody && (
+              <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap break-words">
+                {label}
+              </p>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

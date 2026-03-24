@@ -1,6 +1,6 @@
-import type { AskQuestion } from '../../../../types/sidecar-protocol'
 import { CheckCircle2, Circle, HelpCircle, Send } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import type { AskQuestion } from '../../../../types/sidecar-protocol'
 import { InteractiveCardShell } from './InteractiveCardShell'
 
 export interface AskUserQuestionCardProps {
@@ -100,7 +100,7 @@ export function AskUserQuestionCard({
           <button
             type="button"
             onClick={handleSubmit}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
           >
             <Send className="w-3 h-3" />
             Submit
@@ -134,7 +134,7 @@ export function AskUserQuestionCard({
                       onClick={() =>
                         q.multiSelect ? handleMultiToggle(qi, oi) : handleSingleSelect(qi, oi)
                       }
-                      className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors ${
+                      className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
                         isSelected
                           ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-500/40'
                           : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-amber-300/50 dark:hover:border-amber-500/20'
@@ -175,7 +175,7 @@ export function AskUserQuestionCard({
                 <button
                   type="button"
                   onClick={() => handleOtherToggle(qi, !!q.multiSelect)}
-                  className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors ${
+                  className={`w-full flex items-start gap-2 px-2 py-1.5 rounded text-left border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 ${
                     otherSelected[qi]
                       ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-500/40'
                       : 'bg-white/50 dark:bg-gray-800/30 border-gray-200/50 dark:border-gray-700/30 hover:border-amber-300/50 dark:hover:border-amber-500/20'

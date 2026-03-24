@@ -1,5 +1,5 @@
-import type { UserBlock as UserBlockType } from '../../../../types/blocks'
 import { Check, Loader2, X } from 'lucide-react'
+import type { UserBlock as UserBlockType } from '../../../../types/blocks'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { EventCard } from './EventCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
@@ -33,7 +33,7 @@ export function DevUserBlock({ block }: UserBlockProps) {
     <EventCard
       dot={block.status === 'failed' ? 'red' : 'blue'}
       chip="User"
-      label={block.id.slice(0, 8)}
+      label={block.text?.slice(0, 40) || block.id.slice(0, 8)}
       rawData={block}
       error={block.status === 'failed'}
       pulse={block.status === 'sending' || block.status === 'optimistic'}

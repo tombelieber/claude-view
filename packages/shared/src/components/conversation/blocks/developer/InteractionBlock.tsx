@@ -110,7 +110,28 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
       dot={config.dot}
       chip={config.chip}
       chipColor={config.chipColor}
-      label={block.requestId}
+      label={(() => {
+        switch (block.variant) {
+          case 'permission': {
+            const perm = block.data as { toolName?: string }
+            return perm.toolName
+              ? `${block.requestId.slice(0, 8)} · ${perm.toolName}`
+              : block.requestId.slice(0, 8)
+          }
+          case 'question': {
+            const q = block.data as { question?: string }
+            return q.question?.slice(0, 50) || block.requestId.slice(0, 8)
+          }
+          case 'plan':
+            return `Plan approval · ${block.requestId.slice(0, 8)}`
+          case 'elicitation': {
+            const e = block.data as { mcpServerName?: string }
+            return e.mcpServerName || block.requestId.slice(0, 8)
+          }
+          default:
+            return block.requestId.slice(0, 8)
+        }
+      })()}
       rawData={block}
     >
       {richContent}

@@ -1,3 +1,5 @@
+import type { ProgressBlock as ProgressBlockType } from '../../../../types/blocks'
+import { cn } from '../../../../utils/cn'
 import { AgentProgressCard } from '../../../AgentProgressCard'
 import { BashProgressCard } from '../../../BashProgressCard'
 import { HookProgressCard } from '../../../HookProgressCard'
@@ -5,8 +7,6 @@ import { McpProgressCard } from '../../../McpProgressCard'
 import { QueryProgressCard } from '../../../QueryProgressCard'
 import { SearchProgressCard } from '../../../SearchProgressCard'
 import { TaskQueueCard } from '../../../TaskQueueCard'
-import type { ProgressBlock as ProgressBlockType } from '../../../../types/blocks'
-import { cn } from '../../../../utils/cn'
 import { EventCard } from './EventCard'
 
 interface ProgressBlockProps {
@@ -144,7 +144,7 @@ export function DevProgressBlock({ block }: ProgressBlockProps) {
   const meta = (
     <div className="flex items-center gap-2 flex-shrink-0">
       {block.parentToolUseId && (
-        <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">
+        <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-500/20 px-1.5 py-0.5 rounded">
           {block.parentToolUseId.slice(0, 12)}
         </span>
       )}
