@@ -20,6 +20,7 @@ import type {
   TaskProgressEvent,
   TaskStarted,
   UnknownSdkEvent,
+  WorktreeState,
 } from '../../../../types/sidecar-protocol'
 import { StopCircle } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
@@ -295,7 +296,56 @@ function FileHistorySnapshotDetail({ data }: { data: FileHistorySnapshot }) {
 }
 
 function AiTitleDetail({ data }: { data: AiTitle }) {
-  return <EventCard dot="blue" chip="Title" label={data.aiTitle} rawData={data} />
+  return (
+    <EventCard
+      dot="blue"
+      chip="Title"
+      chipColor="bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
+      label={data.aiTitle}
+      rawData={data}
+      meta={
+        <span className="text-[9px] font-mono text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+          {data.sessionId?.slice(0, 8)}
+        </span>
+      }
+    />
+  )
+}
+
+function WorktreeStateDetail({ data }: { data: WorktreeState }) {
+  const wt = data.worktreeSession
+  return (
+    <EventCard
+      dot="teal"
+      chip="Worktree"
+      chipColor="bg-teal-500/10 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300"
+      label={`${wt.worktreeName} (${wt.worktreeBranch})`}
+      rawData={data}
+    >
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+        <span className="text-gray-500 dark:text-gray-400">Worktree</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
+          {wt.worktreeName}
+        </span>
+        <span className="text-gray-500 dark:text-gray-400">Branch</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
+          {wt.worktreeBranch}
+        </span>
+        <span className="text-gray-500 dark:text-gray-400">Original</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
+          {wt.originalBranch}
+        </span>
+        <span className="text-gray-500 dark:text-gray-400">Base Commit</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
+          {wt.originalHeadCommit?.slice(0, 10)}
+        </span>
+        <span className="text-gray-500 dark:text-gray-400">Path</span>
+        <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
+          {wt.worktreePath}
+        </span>
+      </div>
+    </EventCard>
+  )
 }
 
 function LastPromptDetail({ data }: { data: LastPrompt }) {
@@ -343,6 +393,8 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <FileHistorySnapshotDetail data={block.data as FileHistorySnapshot} />
       case 'ai_title':
         return <AiTitleDetail data={block.data as AiTitle} />
+      case 'worktree_state':
+        return <WorktreeStateDetail data={block.data as WorktreeState} />
       case 'last_prompt':
         return <LastPromptDetail data={block.data as LastPrompt} />
       case 'informational':
