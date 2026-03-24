@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import type { StorybookConfig } from '@storybook/react-vite'
 
 const config: StorybookConfig = {
-  stories: ['../src/**/*.stories.@(ts|tsx)'],
+  stories: ['../src/**/*.stories.@(ts|tsx)', '../../../packages/shared/src/**/*.stories.@(ts|tsx)'],
   addons: [getAbsolutePath('@storybook/addon-docs')],
   framework: getAbsolutePath('@storybook/react-vite'),
   core: {

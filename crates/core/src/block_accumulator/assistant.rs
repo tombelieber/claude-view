@@ -16,6 +16,8 @@ pub struct AssistantBlockBuilder {
     thinking: Option<String>,
     timestamp: Option<f64>,
     parent_uuid: Option<String>,
+    is_sidechain: Option<bool>,
+    agent_id: Option<String>,
     raw_json: Option<serde_json::Value>,
     has_ask_question: bool,
 }
@@ -28,6 +30,8 @@ impl AssistantBlockBuilder {
             thinking: None,
             timestamp,
             parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
             raw_json: None,
             has_ask_question: false,
         }
@@ -126,6 +130,16 @@ impl AssistantBlockBuilder {
         self.parent_uuid = Some(parent_uuid);
     }
 
+    /// Set whether this message is on a sidechain (conversation branch).
+    pub fn set_is_sidechain(&mut self, is_sidechain: bool) {
+        self.is_sidechain = Some(is_sidechain);
+    }
+
+    /// Set the agent ID that produced this message.
+    pub fn set_agent_id(&mut self, agent_id: String) {
+        self.agent_id = Some(agent_id);
+    }
+
     /// Store the raw JSON for the block (for debugging / pass-through).
     pub fn set_raw_json(&mut self, raw: serde_json::Value) {
         self.raw_json = Some(raw);
@@ -140,6 +154,8 @@ impl AssistantBlockBuilder {
             streaming: false,
             timestamp: self.timestamp,
             parent_uuid: self.parent_uuid,
+            is_sidechain: self.is_sidechain,
+            agent_id: self.agent_id,
             raw_json: self.raw_json,
         }
     }

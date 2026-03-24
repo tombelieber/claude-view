@@ -223,6 +223,39 @@ export const userBlocks = {
     localId: 'local_003',
   } satisfies UserBlock,
 
+  withImage: {
+    type: 'user',
+    id: 'ub_007',
+    text: 'Here is a screenshot of the bug:',
+    timestamp: FIVE_MIN_AGO,
+    status: 'sent',
+    images: [
+      {
+        sourceType: 'base64',
+        mediaType: 'image/png',
+        data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      },
+    ],
+  } satisfies UserBlock,
+
+  sidechain: {
+    type: 'user',
+    id: 'ub_008',
+    text: 'This message is from a sidechain branch.',
+    timestamp: FIVE_MIN_AGO,
+    status: 'sent',
+    isSidechain: true,
+  } satisfies UserBlock,
+
+  fromAgent: {
+    type: 'user',
+    id: 'ub_009',
+    text: 'Running agent task in background...',
+    timestamp: FIVE_MIN_AGO,
+    status: 'sent',
+    agentId: 'a7f2e9b',
+  } satisfies UserBlock,
+
   long: {
     type: 'user',
     id: 'ub_006',
@@ -368,6 +401,26 @@ impl TokenValidator {
     ],
     streaming: false,
     timestamp: FIVE_MIN_AGO + 60,
+  } satisfies AssistantBlock,
+
+  sidechainReply: {
+    type: 'assistant',
+    id: 'ab_sidechain',
+    segments: [{ kind: 'text', text: 'This is a response from a sidechain conversation branch.' }],
+    streaming: false,
+    timestamp: FIVE_MIN_AGO + 30,
+    isSidechain: true,
+  } satisfies AssistantBlock,
+
+  fromAgent: {
+    type: 'assistant',
+    id: 'ab_agent',
+    segments: [
+      { kind: 'text', text: 'I found the relevant files. Here is my analysis from the sub-agent:' },
+    ],
+    streaming: false,
+    timestamp: FIVE_MIN_AGO + 45,
+    agentId: 'a7f2e9b',
   } satisfies AssistantBlock,
 
   /** Showcases ALL ToolCard variants: diff output, JSON output, MCP, agent, category badges, durations */
@@ -546,6 +599,20 @@ export const noticeBlocks = {
     variant: 'session_resumed',
     data: null,
   } satisfies NoticeBlock,
+
+  rateLimitWithRetry: {
+    type: 'notice',
+    id: 'nb_012',
+    variant: 'rate_limit',
+    data: {
+      type: 'rate_limit',
+      status: 'rejected',
+      utilization: 1.0,
+    } satisfies RateLimit,
+    retryInMs: 5000,
+    retryAttempt: 2,
+    maxRetries: 3,
+  } satisfies NoticeBlock,
 }
 
 // ── Turn Boundary Blocks ────────────────────────────────────────────────────
@@ -616,6 +683,43 @@ export const turnBoundaryBlocks = {
       subtype: 'error_during_execution',
       messages: ['Tool execution failed: ENOENT /tmp/missing.txt'],
     },
+  } satisfies TurnBoundaryBlock,
+
+  withHookErrors: {
+    type: 'turn_boundary',
+    id: 'tb_006',
+    success: false,
+    totalCostUsd: 0.018,
+    numTurns: 1,
+    durationMs: 9500,
+    usage: { input_tokens: 3000, output_tokens: 900 },
+    modelUsage: {},
+    permissionDenials: [],
+    stopReason: 'end_turn',
+    hookCount: 3,
+    hookInfos: [
+      { hookName: 'pre-commit-lint', hookEvent: 'PreToolUse', status: 'passed' },
+      { hookName: 'security-scan', hookEvent: 'PreToolUse', status: 'failed' },
+      { hookName: 'post-deploy-check', hookEvent: 'PostToolUse', status: 'passed' },
+    ],
+    hookErrors: ['security-scan: found hardcoded API key in config.ts:42'],
+  } satisfies TurnBoundaryBlock,
+
+  preventedContinuation: {
+    type: 'turn_boundary',
+    id: 'tb_007',
+    success: false,
+    totalCostUsd: 0.005,
+    numTurns: 1,
+    durationMs: 3000,
+    usage: { input_tokens: 1000, output_tokens: 200 },
+    modelUsage: {},
+    permissionDenials: [],
+    stopReason: 'end_turn',
+    preventedContinuation: true,
+    hookCount: 1,
+    hookInfos: [{ hookName: 'guard-mode', hookEvent: 'PreToolUse', status: 'blocked' }],
+    hookErrors: ['guard-mode: destructive command blocked (rm -rf)'],
   } satisfies TurnBoundaryBlock,
 
   maxTurns: {
@@ -703,6 +807,39 @@ export const systemBlocks = {
       content: 'Fix the login bug on the settings page',
     } satisfies QueueOperation,
   } satisfies SystemBlock,
+
+  prLink: {
+    type: 'system',
+    id: 'sb_006',
+    variant: 'pr_link',
+    data: {
+      type: 'pr-link',
+      prNumber: 142,
+      prUrl: 'https://github.com/tombelieber/claude-view/pull/142',
+      prRepository: 'tombelieber/claude-view',
+    },
+  } as SystemBlock,
+
+  customTitle: {
+    type: 'system',
+    id: 'sb_007',
+    variant: 'custom_title',
+    data: {
+      type: 'custom-title',
+      customTitle: 'Refactor auth middleware for compliance',
+    },
+  } as SystemBlock,
+
+  planContent: {
+    type: 'system',
+    id: 'sb_008',
+    variant: 'plan_content',
+    data: {
+      type: 'system',
+      planContent:
+        '## Implementation Plan\n\n1. Extract middleware to separate module\n2. Add JWT validation\n3. Update route guards\n4. Add integration tests',
+    },
+  } as SystemBlock,
 }
 
 // ── Interaction / Protocol Data ─────────────────────────────────────────────

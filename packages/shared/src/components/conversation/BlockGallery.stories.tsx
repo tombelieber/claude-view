@@ -33,15 +33,18 @@ import type { BlockRenderers } from './types'
 // ── Every single variant, grouped by block type ─────────────────────────────
 
 const allBlocks: ConversationBlock[] = [
-  // ── UserBlock (6 variants) ──
+  // ── UserBlock (9 variants) ──
   userBlocks.normal,
   userBlocks.sent,
   userBlocks.optimistic,
   userBlocks.sending,
   userBlocks.failed,
   userBlocks.long,
+  userBlocks.withImage,
+  userBlocks.sidechain,
+  userBlocks.fromAgent,
 
-  // ── AssistantBlock (8 variants) ──
+  // ── AssistantBlock (10 variants) ──
   assistantBlocks.textOnly,
   assistantBlocks.streaming,
   assistantBlocks.withThinking,
@@ -50,6 +53,8 @@ const allBlocks: ConversationBlock[] = [
   assistantBlocks.withToolError,
   assistantBlocks.markdown,
   assistantBlocks.withAllToolVariants,
+  assistantBlocks.sidechainReply,
+  assistantBlocks.fromAgent,
 
   // ── InteractionBlock (5 variants) ──
   interactionBlocks.permissionPending,
@@ -58,14 +63,16 @@ const allBlocks: ConversationBlock[] = [
   interactionBlocks.planPending,
   interactionBlocks.elicitationPending,
 
-  // ── TurnBoundaryBlock (5 variants) ──
+  // ── TurnBoundaryBlock (7 variants) ──
   turnBoundaryBlocks.success,
   turnBoundaryBlocks.cheap,
   turnBoundaryBlocks.free,
   turnBoundaryBlocks.error,
   turnBoundaryBlocks.maxTurns,
+  turnBoundaryBlocks.withHookErrors,
+  turnBoundaryBlocks.preventedContinuation,
 
-  // ── NoticeBlock (15 variants) ──
+  // ── NoticeBlock (16 variants) ──
   noticeBlocks.assistantError,
   noticeBlocks.billingError,
   noticeBlocks.authFailed,
@@ -81,8 +88,9 @@ const allBlocks: ConversationBlock[] = [
   noticeBlocks.fatalError,
   noticeBlocks.promptSuggestion,
   noticeBlocks.sessionResumed,
+  noticeBlocks.rateLimitWithRetry,
 
-  // ── SystemBlock (17 variants) ──
+  // ── SystemBlock (20 variants) ──
   devSystemBlocks.sessionInit,
   devSystemBlocks.sessionStatus,
   devSystemBlocks.sessionStatusIdle,
@@ -104,6 +112,9 @@ const allBlocks: ConversationBlock[] = [
   devSystemBlocks.aiTitle,
   devSystemBlocks.lastPrompt,
   devSystemBlocks.informational,
+  systemBlocks.prLink as ConversationBlock,
+  systemBlocks.customTitle as ConversationBlock,
+  systemBlocks.planContent as ConversationBlock,
 
   // ── ProgressBlock (7 variants) ──
   progressBlocks.bash,

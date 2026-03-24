@@ -37,3 +37,15 @@ export const TaskFailed: Story = {
 export const QueueOperation: Story = {
   args: { block: systemBlocks.queueOperation },
 }
+
+export const PrLink: Story = {
+  args: { block: systemBlocks.prLink },
+}
+
+export const CustomTitle: Story = {
+  args: { block: systemBlocks.customTitle },
+}
+
+export const PlanContent: Story = {
+  args: { block: systemBlocks.planContent },
+}
