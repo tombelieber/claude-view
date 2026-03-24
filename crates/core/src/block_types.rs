@@ -60,6 +60,8 @@ pub struct UserBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
 }
@@ -77,6 +79,8 @@ pub struct AssistantBlock {
     pub streaming: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_uuid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
@@ -403,6 +407,7 @@ mod tests {
             local_id: None,
             pending: None,
             permission_mode: None,
+            parent_uuid: None,
             raw_json: None,
         });
         let json = serde_json::to_value(&user).unwrap();
@@ -427,6 +432,7 @@ mod tests {
             local_id: Some("loc1".into()),
             pending: Some(false),
             permission_mode: Some("auto".into()),
+            parent_uuid: None,
             raw_json: None,
         };
         let json_str = serde_json::to_string(&block).unwrap();
@@ -438,6 +444,64 @@ mod tests {
         assert_eq!(block.local_id, deserialized.local_id);
         assert_eq!(block.pending, deserialized.pending);
         assert_eq!(block.permission_mode, deserialized.permission_mode);
+    }
+
+    #[test]
+    fn user_block_parent_uuid_serializes_as_camel_case() {
+        let block = UserBlock {
+            id: "u1".into(),
+            text: "hello".into(),
+            timestamp: 1000.0,
+            status: None,
+            local_id: None,
+            pending: None,
+            permission_mode: None,
+            parent_uuid: Some("parent-msg-123".into()),
+            raw_json: None,
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["parentUuid"], "parent-msg-123");
+
+        let deserialized: UserBlock = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.parent_uuid, Some("parent-msg-123".into()));
+    }
+
+    #[test]
+    fn user_block_parent_uuid_omitted_when_none() {
+        let block = UserBlock {
+            id: "u1".into(),
+            text: "hello".into(),
+            timestamp: 1000.0,
+            status: None,
+            local_id: None,
+            pending: None,
+            permission_mode: None,
+            parent_uuid: None,
+            raw_json: None,
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert!(json.get("parentUuid").is_none());
+    }
+
+    #[test]
+    fn assistant_block_parent_uuid_round_trips() {
+        let block = AssistantBlock {
+            id: "a1".into(),
+            segments: vec![AssistantSegment::Text {
+                text: "Hello".into(),
+                parent_tool_use_id: None,
+            }],
+            thinking: None,
+            streaming: false,
+            timestamp: None,
+            parent_uuid: Some("parent-msg-456".into()),
+            raw_json: None,
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["parentUuid"], "parent-msg-456");
+
+        let deserialized: AssistantBlock = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.parent_uuid, Some("parent-msg-456".into()));
     }
 
     #[test]
@@ -472,6 +536,7 @@ mod tests {
             thinking: Some("let me think".into()),
             streaming: false,
             timestamp: Some(100.0),
+            parent_uuid: None,
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
