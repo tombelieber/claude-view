@@ -6,6 +6,7 @@ import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDock
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
+import type { LiveContextData } from '../hooks/use-context-percent'
 import { deriveLiveStatus } from '../lib/live-status'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
@@ -41,6 +42,13 @@ function makeSessionPanelArgs(
   live: UseLiveSessionsResult['sessions'],
 ) {
   const liveSession = live.find((s) => s.id === sid)
+  const liveContextData: LiveContextData | undefined = liveSession
+    ? {
+        contextWindowTokens: liveSession.contextWindowTokens,
+        statuslineContextWindowSize: liveSession.statuslineContextWindowSize ?? null,
+        statuslineUsedPct: liveSession.statuslineUsedPct ?? null,
+      }
+    : undefined
   return {
     id: `chat-${sid}`,
     component: 'chat' as const,
@@ -49,6 +57,7 @@ function makeSessionPanelArgs(
       sessionId: sid,
       liveStatus: deriveLiveStatus(liveSession),
       liveProjectPath: liveSession?.projectPath,
+      liveContextData,
       agentStateGroup: liveSession?.agentState?.group ?? null,
     },
   }
@@ -166,9 +175,17 @@ export function ChatPageV2() {
       const sid = (panel.params as { sessionId?: string })?.sessionId
       if (!sid) continue
       const live = liveSessions.sessions.find((s) => s.id === sid)
+      const liveCtx: LiveContextData | undefined = live
+        ? {
+            contextWindowTokens: live.contextWindowTokens,
+            statuslineContextWindowSize: live.statuslineContextWindowSize ?? null,
+            statuslineUsedPct: live.statuslineUsedPct ?? null,
+          }
+        : undefined
       panel.api.updateParameters({
         liveStatus: deriveLiveStatus(live),
         liveProjectPath: live?.projectPath,
+        liveContextData: liveCtx,
         agentStateGroup: live?.agentState?.group ?? null,
       })
       const title = deriveTabTitle(sid, cached, liveSessions.sessions)

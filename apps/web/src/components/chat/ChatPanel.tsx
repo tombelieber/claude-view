@@ -1,6 +1,7 @@
 import type { IDockviewPanelProps } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import type { LiveContextData } from '../../hooks/use-context-percent'
 import type { LiveStatus } from '../../lib/live-status'
 import { ChatSession } from '../../pages/ChatSession'
 
@@ -8,6 +9,7 @@ interface ChatPanelParams {
   sessionId: string
   liveStatus?: LiveStatus
   liveProjectPath?: string
+  liveContextData?: LiveContextData
 }
 
 /**
@@ -17,7 +19,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, liveStatus, liveProjectPath } = params
+  const { sessionId, liveStatus, liveProjectPath, liveContextData } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -72,6 +74,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
         sessionId={sessionId || undefined}
         liveStatus={liveStatus ?? 'inactive'}
         liveProjectPath={liveProjectPath}
+        liveContextData={liveContextData}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}
         scrollToBottomSignal={scrollSignal}
       />
