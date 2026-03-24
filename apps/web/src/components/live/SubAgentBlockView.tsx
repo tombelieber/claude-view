@@ -25,10 +25,11 @@ export function SubAgentBlockView({
   const displayMode = useMonitorStore((s) => s.displayMode)
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
 
-  const { blocks, connectionState } = useBlockSocket({
+  const { blocks, connectionState, error } = useBlockSocket({
     sessionId,
     agentId,
     enabled: true,
+    scrollback: 100_000,
   })
 
   return (
@@ -66,11 +67,24 @@ export function SubAgentBlockView({
         </button>
       </div>
       <div className="flex-1 min-h-0">
-        <ConversationThread
-          blocks={blocks}
-          renderers={registry}
-          filterBar={displayMode === 'developer'}
-        />
+        {error ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2 p-4">
+            <p className="text-sm text-red-500 dark:text-red-400">{error}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Sub-agent JSONL may not exist yet or session has ended
+            </p>
+          </div>
+        ) : blocks.length === 0 && connectionState !== 'connecting' ? (
+          <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-gray-500 p-4">
+            {connectionState === 'error' ? 'Failed to load sub-agent content' : 'No messages yet'}
+          </div>
+        ) : (
+          <ConversationThread
+            blocks={blocks}
+            renderers={registry}
+            filterBar={displayMode === 'developer'}
+          />
+        )}
       </div>
     </div>
   )
