@@ -63,7 +63,7 @@ pub(super) fn get_command_via_ps(pid: u32) -> Option<String> {
 ///
 /// `ps -p pid1,pid2,... -o pid=,command=` returns command lines for all PIDs
 /// in one subprocess. 1 call for N PIDs instead of N calls.
-pub(super) fn batch_get_command_via_ps(pids: &[u32]) -> std::collections::HashMap<u32, String> {
+pub fn batch_get_command_via_ps(pids: &[u32]) -> std::collections::HashMap<u32, String> {
     use std::collections::HashMap;
     if pids.is_empty() {
         return HashMap::new();

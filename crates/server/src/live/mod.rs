@@ -3,6 +3,8 @@ pub mod hook_registrar;
 pub mod manager;
 pub mod monitor;
 pub mod process;
+pub mod process_death;
+pub mod process_oracle;
 pub mod process_tree;
 pub mod relay_client;
 pub mod state;

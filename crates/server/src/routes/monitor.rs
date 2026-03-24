@@ -80,7 +80,12 @@ async fn monitor_stream(
     // Lazy start: if 0 → 1, spawn the polling task
     let prev = subscribers.fetch_add(1, Ordering::SeqCst);
     if prev == 0 {
-        start_polling_task(tx.clone(), subscribers.clone(), live_sessions.clone());
+        start_polling_task(
+            tx.clone(),
+            subscribers.clone(),
+            live_sessions.clone(),
+            state.oracle_rx.clone(),
+        );
     }
     // Create guard EAGERLY (before Sse is returned) so subscriber_count never
     // drops back to 0 during the window between fetch_add and the first stream poll.
@@ -261,7 +266,8 @@ mod tests {
         let count = Arc::new(AtomicUsize::new(1)); // simulate one connected client
         let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-        start_polling_task(tx.clone(), count.clone(), sessions);
+        let oracle_rx = crate::live::process_oracle::stub();
+        start_polling_task(tx.clone(), count.clone(), sessions, oracle_rx);
 
         // Must receive at least one snapshot while subscribed (within 5s to account
         // for sysinfo's initial CPU baseline sleep of ~200ms + 2s poll interval).
@@ -304,7 +310,8 @@ mod tests {
         let count = Arc::new(AtomicUsize::new(1));
         let sessions = Arc::new(RwLock::new(HashMap::new()));
 
-        start_polling_task(tx.clone(), count.clone(), sessions);
+        let oracle_rx = crate::live::process_oracle::stub();
+        start_polling_task(tx.clone(), count.clone(), sessions, oracle_rx);
 
         // Receive two distinct snapshots to prove the task polls more than once.
         let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())

@@ -296,6 +296,8 @@ fn build_recovered_session(
         exceeds_200k_tokens: None,
         statusline_transcript_path: None,
         statusline_raw: None,
+        model_set_at: 0,
+        agent_state_set_at: 0,
         hook_events: Vec::new(),
         user_files: None,
     }
@@ -428,7 +430,20 @@ fn apply_jsonl_metadata(
         session.started_at = m.started_at;
     }
     session.last_activity_at = m.last_activity_at;
-    session.model = m.model.clone();
+    // Model — timestamp-guarded. JSONL parser has lower authority than statusline
+    // for model (statusline reflects mid-session /model switches). Only overwrite
+    // if no fresher value has been set. Use strict `>` so same-millisecond
+    // statusline writes (higher authority) are never overwritten by JSONL.
+    if m.model.is_some() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        if now > session.model_set_at {
+            session.model = m.model.clone();
+            session.model_set_at = now;
+        }
+    }
     session.tokens = m.tokens.clone();
     session.context_window_tokens = m.context_window_tokens;
     session.cost = m.cost.clone();
@@ -478,6 +493,11 @@ pub struct LiveSessionManager {
     teams: Arc<crate::teams::TeamsStore>,
     /// Transcript path → session ID dedup map, shared with AppState.
     transcript_to_session: TranscriptMap,
+    /// Unified process oracle receiver for reading process data.
+    oracle_rx: super::process_oracle::OracleReceiver,
+    /// Event-driven process death watcher (kqueue on macOS).
+    /// Held to prevent drop. Deaths are consumed by the reconciliation loop.
+    _death_watcher: super::process_death::ProcessDeathWatcher,
 }
 
 impl LiveSessionManager {
@@ -492,6 +512,7 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
+        oracle_rx: super::process_oracle::OracleReceiver,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -504,6 +525,9 @@ impl LiveSessionManager {
 
         // Debounced snapshot writer channel (bounded to 1 — extra signals are coalesced)
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(1);
+
+        // Start event-driven process death watcher (kqueue on macOS).
+        let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
@@ -519,6 +543,8 @@ impl LiveSessionManager {
             sidecar,
             teams,
             transcript_to_session: transcript_to_session.clone(),
+            oracle_rx,
+            _death_watcher: death_watcher,
         });
 
         // Spawn background tasks
@@ -526,6 +552,7 @@ impl LiveSessionManager {
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
+        manager.spawn_death_consumer(death_rx);
 
         // Spawn relay client for mobile remote access
         super::relay_client::spawn_relay_client(
@@ -534,7 +561,7 @@ impl LiveSessionManager {
             super::relay_client::RelayClientConfig::default(),
         );
 
-        info!("LiveSessionManager started with 5 background tasks (file watcher, reconciliation loop, cleanup, relay client, db writer)");
+        info!("LiveSessionManager started with 6 background tasks (file watcher, reconciliation loop, cleanup, death watcher, relay client, db writer)");
 
         (manager, sessions, transcript_to_session, tx)
     }
@@ -853,10 +880,18 @@ impl LiveSessionManager {
     }
 
     /// Run a one-shot process count scan (display metric only).
+    /// Reads from the oracle if available, falling back to direct scan.
     async fn run_eager_process_scan(&self) {
-        let total_count = tokio::task::spawn_blocking(count_claude_processes)
-            .await
-            .unwrap_or_default();
+        let oracle_snap = self.oracle_rx.borrow().clone();
+        let total_count = match oracle_snap.claude_processes.as_ref() {
+            Some(cp) => cp.count,
+            None => {
+                // Oracle hasn't produced Claude data yet — direct scan.
+                tokio::task::spawn_blocking(count_claude_processes)
+                    .await
+                    .unwrap_or_default()
+            }
+        };
         self.process_count.store(total_count, Ordering::Relaxed);
         info!("Process scan: {} Claude processes", total_count);
     }
@@ -1086,6 +1121,72 @@ impl LiveSessionManager {
                                 session_id = %session_id,
                                 pid = entry.pid,
                                 "Snapshot entry has alive PID but no matching JSONL file in 24h scan window — skipping"
+                            );
+                        }
+                    }
+
+                    // PID dedup pass: if two snapshot entries share the same PID
+                    // (OS PID reuse after crash), keep the one with more recent
+                    // last_activity_at and close the other as Done.
+                    {
+                        let mut sessions = manager.sessions.write().await;
+                        let mut pid_owners: HashMap<u32, (String, i64)> = HashMap::new();
+                        let mut pid_dupes: Vec<String> = Vec::new();
+
+                        for (id, session) in sessions.iter() {
+                            if session.status == SessionStatus::Done {
+                                continue;
+                            }
+                            if let Some(pid) = session.pid {
+                                if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
+                                    // Collision — evict the older one.
+                                    // On equal timestamps, tiebreak by session ID (deterministic
+                                    // regardless of HashMap iteration order).
+                                    let new_wins = session.last_activity_at > *existing_ts
+                                        || (session.last_activity_at == *existing_ts
+                                            && *id > *existing_id);
+                                    if new_wins {
+                                        pid_dupes.push(existing_id.clone());
+                                        pid_owners
+                                            .insert(pid, (id.clone(), session.last_activity_at));
+                                    } else {
+                                        pid_dupes.push(id.clone());
+                                    }
+                                } else {
+                                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                                }
+                            }
+                        }
+
+                        if !pid_dupes.is_empty() {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() as i64;
+                            for dupe_id in &pid_dupes {
+                                if let Some(session) = sessions.get_mut(dupe_id) {
+                                    info!(
+                                        session_id = %dupe_id,
+                                        pid = ?session.pid,
+                                        "Snapshot PID dedup: evicting stale entry"
+                                    );
+                                    session.status = SessionStatus::Done;
+                                    session.closed_at = Some(now);
+                                    session.agent_state = AgentState {
+                                        group: AgentStateGroup::NeedsYou,
+                                        state: "session_ended".into(),
+                                        label: "Evicted (PID collision)".into(),
+                                        context: None,
+                                    };
+                                }
+                            }
+                            // Also remove dupes from sidecar recovery list
+                            let dupe_set: std::collections::HashSet<&str> =
+                                pid_dupes.iter().map(|s| s.as_str()).collect();
+                            sessions_to_recover.retain(|(id, _)| !dupe_set.contains(id.as_str()));
+                            info!(
+                                evicted = pid_dupes.len(),
+                                "Snapshot recovery PID dedup complete"
                             );
                         }
                     }
@@ -1577,10 +1678,18 @@ impl LiveSessionManager {
                     continue;
                 }
 
-                // 2.1 — Process scan: count + backfill source on sessions
-                let (processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
-                    .await
-                    .unwrap_or_default();
+                // 2.1 — Process data from oracle (zero-cost read, no subprocess)
+                let oracle_snap = manager.oracle_rx.borrow().clone();
+                let (processes, total_count) = match oracle_snap.claude_processes.as_ref() {
+                    Some(cp) => (cp.processes.clone(), cp.count),
+                    None => {
+                        // Oracle hasn't produced Claude process data yet (first ticks).
+                        // Fall back to direct scan.
+                        tokio::task::spawn_blocking(detect_claude_processes)
+                            .await
+                            .unwrap_or_default()
+                    }
+                };
                 manager.process_count.store(total_count, Ordering::Relaxed);
 
                 // Classify source for all live sessions.
@@ -1625,7 +1734,19 @@ impl LiveSessionManager {
                     let _ = manager.tx.send(SessionEvent::SessionUpdated { session });
                 }
 
-                // 2.2 — Unconditional snapshot save (defense in depth)
+                // 2.2 — Register alive PIDs with death watcher (idempotent)
+                {
+                    let sessions = manager.sessions.read().await;
+                    for (id, session) in sessions.iter() {
+                        if session.status != SessionStatus::Done {
+                            if let Some(pid) = session.pid {
+                                manager._death_watcher.watch(pid, id.clone()).await;
+                            }
+                        }
+                    }
+                }
+
+                // 2.3 — Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
             }
         });
@@ -1656,6 +1777,65 @@ impl LiveSessionManager {
                     }
                     if !orphan_ids.is_empty() {
                         info!("Cleaned up {} orphaned accumulators", orphan_ids.len());
+                    }
+                }
+            }
+        });
+    }
+
+    /// Spawn the death notification consumer.
+    ///
+    /// Reads from the kqueue-based ProcessDeathWatcher and immediately marks
+    /// sessions as Done when their PID exits. This reduces the ghost session
+    /// window from 10s (polling) to ~0ms (event-driven).
+    fn spawn_death_consumer(
+        self: &Arc<Self>,
+        mut death_rx: tokio::sync::mpsc::Receiver<super::process_death::DeathNotification>,
+    ) {
+        let manager = self.clone();
+        tokio::spawn(async move {
+            while let Some((pid, session_id)) = death_rx.recv().await {
+                let mut sessions = manager.sessions.write().await;
+                if let Some(session) = sessions.get_mut(&session_id) {
+                    // Only act if this session is still alive and owns this PID
+                    if session.status != SessionStatus::Done && session.pid == Some(pid) {
+                        let is_ghost = session.file_path.is_empty() && session.turn_count == 0;
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64;
+
+                        info!(
+                            session_id = %session_id,
+                            pid = pid,
+                            ghost = is_ghost,
+                            "kqueue: PID death → marking session ended"
+                        );
+
+                        session.agent_state = AgentState {
+                            group: AgentStateGroup::NeedsYou,
+                            state: "session_ended".into(),
+                            label: "Session ended".into(),
+                            context: None,
+                        };
+                        session.status = SessionStatus::Done;
+                        session.closed_at = Some(now);
+
+                        if is_ghost {
+                            let sid = session_id.clone();
+                            sessions.remove(&sid);
+                            drop(sessions);
+                            let _ = manager
+                                .tx
+                                .send(SessionEvent::SessionCompleted { session_id: sid });
+                        } else {
+                            let session_clone = session.clone();
+                            drop(sessions);
+                            let _ = manager.tx.send(SessionEvent::SessionClosed {
+                                session: session_clone,
+                            });
+                        }
+                        manager.request_snapshot_save();
                     }
                 }
             }
@@ -3120,6 +3300,182 @@ mod tests {
             "session-2"
         );
     }
+
+    /// Two snapshot entries sharing the same PID — the older one must be evicted.
+    /// Simulates OS PID reuse after a crash: process A dies, OS assigns the
+    /// same PID to process B, and both appear in the snapshot file.
+    #[test]
+    fn test_snapshot_pid_dedup_evicts_stale_entry() {
+        use crate::live::state::{test_live_session, SessionStatus};
+
+        let mut sessions: HashMap<String, LiveSession> = HashMap::new();
+
+        // Session A: older activity, PID 42
+        let mut a = test_live_session("session-a");
+        a.pid = Some(42);
+        a.last_activity_at = 1000;
+        a.status = SessionStatus::Working;
+        sessions.insert("session-a".into(), a);
+
+        // Session B: newer activity, same PID 42
+        let mut b = test_live_session("session-b");
+        b.pid = Some(42);
+        b.last_activity_at = 2000;
+        b.status = SessionStatus::Working;
+        sessions.insert("session-b".into(), b);
+
+        // Session C: different PID, should be untouched
+        let mut c = test_live_session("session-c");
+        c.pid = Some(99);
+        c.last_activity_at = 500;
+        c.status = SessionStatus::Working;
+        sessions.insert("session-c".into(), c);
+
+        // Run the same dedup logic used in snapshot recovery
+        let mut pid_owners: HashMap<u32, (String, i64)> = HashMap::new();
+        let mut pid_dupes: Vec<String> = Vec::new();
+
+        for (id, session) in sessions.iter() {
+            if session.status == SessionStatus::Done {
+                continue;
+            }
+            if let Some(pid) = session.pid {
+                if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
+                    if session.last_activity_at > *existing_ts {
+                        pid_dupes.push(existing_id.clone());
+                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    } else {
+                        pid_dupes.push(id.clone());
+                    }
+                } else {
+                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                }
+            }
+        }
+
+        for dupe_id in &pid_dupes {
+            if let Some(session) = sessions.get_mut(dupe_id) {
+                session.status = SessionStatus::Done;
+                session.closed_at = Some(9999);
+            }
+        }
+
+        // session-a should be evicted (older)
+        assert_eq!(
+            sessions["session-a"].status,
+            SessionStatus::Done,
+            "Older session with same PID must be evicted"
+        );
+        assert!(sessions["session-a"].closed_at.is_some());
+
+        // session-b should survive (newer)
+        assert_eq!(
+            sessions["session-b"].status,
+            SessionStatus::Working,
+            "Newer session with same PID must survive"
+        );
+
+        // session-c should be untouched (different PID)
+        assert_eq!(
+            sessions["session-c"].status,
+            SessionStatus::Working,
+            "Session with unique PID must be untouched"
+        );
+    }
+
+    /// No PID collisions — dedup pass should be a no-op.
+    #[test]
+    fn test_snapshot_pid_dedup_no_collision() {
+        use crate::live::state::{test_live_session, SessionStatus};
+
+        let mut sessions: HashMap<String, LiveSession> = HashMap::new();
+
+        let mut a = test_live_session("session-a");
+        a.pid = Some(10);
+        a.status = SessionStatus::Working;
+        sessions.insert("session-a".into(), a);
+
+        let mut b = test_live_session("session-b");
+        b.pid = Some(20);
+        b.status = SessionStatus::Working;
+        sessions.insert("session-b".into(), b);
+
+        let mut pid_owners: HashMap<u32, (String, i64)> = HashMap::new();
+        let mut pid_dupes: Vec<String> = Vec::new();
+
+        for (id, session) in sessions.iter() {
+            if session.status == SessionStatus::Done {
+                continue;
+            }
+            if let Some(pid) = session.pid {
+                if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
+                    if session.last_activity_at > *existing_ts {
+                        pid_dupes.push(existing_id.clone());
+                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    } else {
+                        pid_dupes.push(id.clone());
+                    }
+                } else {
+                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                }
+            }
+        }
+
+        assert!(pid_dupes.is_empty(), "No PID collisions means no evictions");
+        assert_eq!(sessions["session-a"].status, SessionStatus::Working);
+        assert_eq!(sessions["session-b"].status, SessionStatus::Working);
+    }
+
+    /// Done sessions are excluded from PID dedup (they're already closed).
+    #[test]
+    fn test_snapshot_pid_dedup_skips_done_sessions() {
+        use crate::live::state::{test_live_session, SessionStatus};
+
+        let mut sessions: HashMap<String, LiveSession> = HashMap::new();
+
+        // Session A: Done, PID 42
+        let mut a = test_live_session("session-a");
+        a.pid = Some(42);
+        a.last_activity_at = 1000;
+        a.status = SessionStatus::Done;
+        sessions.insert("session-a".into(), a);
+
+        // Session B: Working, same PID 42
+        let mut b = test_live_session("session-b");
+        b.pid = Some(42);
+        b.last_activity_at = 2000;
+        b.status = SessionStatus::Working;
+        sessions.insert("session-b".into(), b);
+
+        let mut pid_owners: HashMap<u32, (String, i64)> = HashMap::new();
+        let mut pid_dupes: Vec<String> = Vec::new();
+
+        for (id, session) in sessions.iter() {
+            if session.status == SessionStatus::Done {
+                continue;
+            }
+            if let Some(pid) = session.pid {
+                if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
+                    if session.last_activity_at > *existing_ts {
+                        pid_dupes.push(existing_id.clone());
+                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    } else {
+                        pid_dupes.push(id.clone());
+                    }
+                } else {
+                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                }
+            }
+        }
+
+        assert!(
+            pid_dupes.is_empty(),
+            "Done sessions must be excluded from PID dedup"
+        );
+        // Both remain in their original states
+        assert_eq!(sessions["session-a"].status, SessionStatus::Done);
+        assert_eq!(sessions["session-b"].status, SessionStatus::Working);
+    }
 }
 
 #[cfg(test)]
@@ -3553,6 +3909,8 @@ mod hook_event_tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            model_set_at: 0,
+            agent_state_set_at: 0,
             source: None,
             hook_events: Vec::new(),
         }
