@@ -110,7 +110,9 @@ export function EventCard({
     <div
       className={cn(
         'overflow-hidden rounded-lg border transition-colors duration-200',
-        error ? 'border-red-500/30 bg-red-500/5' : 'border-gray-200/30 dark:border-gray-700/30',
+        error
+          ? 'border-red-300/25 dark:border-red-800/40 bg-red-500/5 dark:bg-red-950/20'
+          : 'border-gray-200/30 dark:border-gray-700/30',
       )}
     >
       {/* Header */}

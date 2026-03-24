@@ -51,11 +51,11 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
 
       {/* Hook error details — shown below the line when hooks failed */}
       {hasHookErrors && (
-        <div className="flex items-start gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-700/50">
-          <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-300 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-amber-600/30">
+          <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             {block.hookErrors!.map((err, i) => (
-              <p key={i} className="text-[11px] text-amber-700 dark:text-amber-200">
+              <p key={i} className="text-[11px] text-amber-700 dark:text-amber-300/90">
                 {err}
               </p>
             ))}
@@ -65,13 +65,13 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
 
       {/* Prevented continuation — shown when hooks blocked the agent */}
       {block.preventedContinuation && (
-        <div className="flex items-center gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-orange-50 dark:bg-orange-950/60 border border-orange-200 dark:border-orange-700/50">
-          <ShieldOff className="w-3 h-3 text-orange-600 dark:text-orange-300 flex-shrink-0" />
-          <span className="text-[11px] text-orange-700 dark:text-orange-200">
+        <div className="flex items-center gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-orange-50 dark:bg-gray-800 border border-orange-200 dark:border-orange-500/30">
+          <ShieldOff className="w-3 h-3 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+          <span className="text-[11px] text-orange-700 dark:text-orange-300/90">
             Hook blocked continuation
           </span>
           {block.hookCount != null && (
-            <span className="text-[10px] font-mono text-orange-600 dark:text-orange-300 ml-auto tabular-nums">
+            <span className="text-[10px] font-mono text-orange-600 dark:text-orange-400 ml-auto tabular-nums">
               {block.hookCount} hook{block.hookCount !== 1 ? 's' : ''} ran
             </span>
           )}
