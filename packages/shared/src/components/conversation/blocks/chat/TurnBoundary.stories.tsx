@@ -37,3 +37,11 @@ export const ErrorTurn: Story = {
 export const MaxTurns: Story = {
   args: { block: turnBoundaryBlocks.maxTurns },
 }
+
+export const WithHookErrors: Story = {
+  args: { block: turnBoundaryBlocks.withHookErrors },
+}
+
+export const PreventedContinuation: Story = {
+  args: { block: turnBoundaryBlocks.preventedContinuation },
+}

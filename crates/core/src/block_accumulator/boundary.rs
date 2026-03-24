@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use crate::block_types::*;
+use crate::pricing;
 
 /// Accumulates data for a TurnBoundaryBlock across multiple JSONL entries.
 pub struct TurnBoundaryAccumulator {
@@ -19,6 +20,15 @@ pub struct TurnBoundaryAccumulator {
     has_error: bool,
     error: Option<TurnError>,
     num_turns: u32,
+    // Hook detail fields (GAP 3)
+    hook_infos: Vec<serde_json::Value>,
+    hook_errors: Vec<String>,
+    hook_count: Option<u32>,
+    prevented_continuation: Option<bool>,
+    // Fields extracted from hook_summary (GAP 4)
+    result: Option<String>,
+    fast_mode_state: Option<String>,
+    duration_api_ms: Option<u64>,
 }
 
 impl Default for TurnBoundaryAccumulator {
@@ -38,6 +48,13 @@ impl TurnBoundaryAccumulator {
             has_error: false,
             error: None,
             num_turns: 0,
+            hook_infos: Vec::new(),
+            hook_errors: Vec::new(),
+            hook_count: None,
+            prevented_continuation: None,
+            result: None,
+            fast_mode_state: None,
+            duration_api_ms: None,
         }
     }
 
@@ -85,6 +102,36 @@ impl TurnBoundaryAccumulator {
             .get("stopReason")
             .and_then(|v| v.as_str())
             .map(String::from);
+
+        // GAP 3: Extract hook detail fields
+        if let Some(arr) = summary.get("hookInfos").and_then(|v| v.as_array()) {
+            self.hook_infos = arr.clone();
+        }
+        if let Some(arr) = summary.get("hookErrors").and_then(|v| v.as_array()) {
+            self.hook_errors = arr
+                .iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+        }
+        self.hook_count = summary
+            .get("hookCount")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32);
+        self.prevented_continuation = summary
+            .get("preventedContinuation")
+            .and_then(|v| v.as_bool());
+
+        // GAP 4: Extract result, fastModeState, durationApiMs
+        self.result = summary
+            .get("result")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        self.fast_mode_state = summary
+            .get("fastModeState")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        self.duration_api_ms = summary.get("durationApiMs").and_then(|v| v.as_u64());
+
         self.hook_summary = Some(summary.clone());
     }
 
@@ -105,21 +152,27 @@ impl TurnBoundaryAccumulator {
     pub fn build(&self, id: String) -> Option<TurnBoundaryBlock> {
         let duration_ms = self.duration_ms?;
 
+        let total_cost_usd = self.calculate_cost();
+
         Some(TurnBoundaryBlock {
             id,
             success: !self.has_error && self.hook_summary.is_some(),
-            total_cost_usd: 0.0, // cost calculated separately
+            total_cost_usd,
             num_turns: self.num_turns,
             duration_ms,
-            duration_api_ms: None,
+            duration_api_ms: self.duration_api_ms,
             usage: self.total_usage.clone(),
             model_usage: self.model_usage.clone(),
             permission_denials: Vec::new(),
-            result: None,
+            result: self.result.clone(),
             structured_output: None,
             stop_reason: self.stop_reason.clone(),
-            fast_mode_state: None,
+            fast_mode_state: self.fast_mode_state.clone(),
             error: self.error.clone(),
+            hook_infos: self.hook_infos.clone(),
+            hook_errors: self.hook_errors.clone(),
+            hook_count: self.hook_count,
+            prevented_continuation: self.prevented_continuation,
         })
     }
 
@@ -132,21 +185,27 @@ impl TurnBoundaryAccumulator {
             return None;
         }
 
+        let total_cost_usd = self.calculate_cost();
+
         Some(TurnBoundaryBlock {
             id,
             success: false, // partial = not successful
-            total_cost_usd: 0.0,
+            total_cost_usd,
             num_turns: self.num_turns,
             duration_ms,
-            duration_api_ms: None,
+            duration_api_ms: self.duration_api_ms,
             usage: self.total_usage.clone(),
             model_usage: self.model_usage.clone(),
             permission_denials: Vec::new(),
-            result: None,
+            result: self.result.clone(),
             structured_output: None,
             stop_reason: self.stop_reason.clone(),
-            fast_mode_state: None,
+            fast_mode_state: self.fast_mode_state.clone(),
             error: self.error.clone(),
+            hook_infos: self.hook_infos.clone(),
+            hook_errors: self.hook_errors.clone(),
+            hook_count: self.hook_count,
+            prevented_continuation: self.prevented_continuation,
         })
     }
 
@@ -160,6 +219,52 @@ impl TurnBoundaryAccumulator {
         self.has_error = false;
         self.error = None;
         self.num_turns = 0;
+        self.hook_infos.clear();
+        self.hook_errors.clear();
+        self.hook_count = None;
+        self.prevented_continuation = None;
+        self.result = None;
+        self.fast_mode_state = None;
+        self.duration_api_ms = None;
+    }
+
+    /// Calculate cost from accumulated model_usage using default pricing.
+    fn calculate_cost(&self) -> f64 {
+        let mut pricing_table = pricing::default_pricing();
+        pricing::fill_tiering_gaps(&mut pricing_table);
+
+        let mut total_cost = 0.0;
+        for (model, usage_val) in &self.model_usage {
+            let input = usage_val
+                .get("input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let output = usage_val
+                .get("output_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let cache_read = usage_val
+                .get("cache_read_input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let cache_creation = usage_val
+                .get("cache_creation_input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+
+            let tokens = pricing::TokenUsage {
+                input_tokens: input,
+                output_tokens: output,
+                cache_read_tokens: cache_read,
+                cache_creation_tokens: cache_creation,
+                cache_creation_5m_tokens: 0,
+                cache_creation_1hr_tokens: 0,
+                total_tokens: input + output + cache_read + cache_creation,
+            };
+            let breakdown = pricing::calculate_cost(&tokens, Some(model.as_str()), &pricing_table);
+            total_cost += breakdown.total_usd;
+        }
+        total_cost
     }
 }
 
@@ -170,6 +275,9 @@ pub fn detect_notice_from_system(subtype: &str, entry: &serde_json::Value) -> Op
             id: format!("notice-{}", uuid::Uuid::new_v4()),
             variant: NoticeVariant::ContextCompacted,
             data: entry.clone(),
+            retry_in_ms: None,
+            retry_attempt: None,
+            max_retries: None,
         }),
         _ => None,
     }
@@ -183,10 +291,24 @@ pub fn detect_notice_from_assistant_error(entry: &serde_json::Value) -> Option<N
         } else {
             NoticeVariant::Error
         };
+
+        let retry_in_ms = entry.get("retryInMs").and_then(|v| v.as_u64());
+        let retry_attempt = entry
+            .get("retryAttempt")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32);
+        let max_retries = entry
+            .get("maxRetries")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as u32);
+
         Some(NoticeBlock {
             id: format!("notice-{}", uuid::Uuid::new_v4()),
             variant,
             data: entry.clone(),
+            retry_in_ms,
+            retry_attempt,
+            max_retries,
         })
     } else {
         None

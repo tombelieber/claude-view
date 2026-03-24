@@ -64,6 +64,13 @@ const comparisons: ModeComparison[] = [
     ],
   },
 
+  // ── 2b. User (new: image, sidechain, agent) ──
+  {
+    label: 'user: image + sidechain + agent',
+    description: 'New fields: image content, sidechain branching, agent attribution',
+    blocks: [userBlocks.withImage, userBlocks.sidechain, userBlocks.fromAgent],
+  },
+
   // ── 3. Assistant (text only) ──
   {
     label: 'assistant (text)',
@@ -108,6 +115,16 @@ const comparisons: ModeComparison[] = [
     label: 'assistant (markdown)',
     description: 'Chat renders markdown (tables, code, lists) vs Dev segments vs JSON raw',
     blocks: [assistantBlocks.markdown as ConversationBlock],
+  },
+
+  // ── 8b. Assistant (sidechain + agent) ──
+  {
+    label: 'assistant: sidechain + agent',
+    description: 'New fields: sidechain reply, agent-attributed message',
+    blocks: [
+      assistantBlocks.sidechainReply as ConversationBlock,
+      assistantBlocks.fromAgent as ConversationBlock,
+    ],
   },
 
   // ── 9. Interaction: permission (pending) ──
@@ -165,6 +182,16 @@ const comparisons: ModeComparison[] = [
     ],
   },
 
+  // ── 15b. Turn boundary (hook details) ──
+  {
+    label: 'turn_boundary: hook errors + prevented',
+    description: 'New fields: hookInfos, hookErrors, hookCount, preventedContinuation',
+    blocks: [
+      turnBoundaryBlocks.withHookErrors as ConversationBlock,
+      turnBoundaryBlocks.preventedContinuation as ConversationBlock,
+    ],
+  },
+
   // ── 16. Notice: errors ──
   {
     label: 'notice: errors',
@@ -185,6 +212,7 @@ const comparisons: ModeComparison[] = [
     blocks: [
       noticeBlocks.rateLimitWarning as ConversationBlock,
       noticeBlocks.rateLimitRejected as ConversationBlock,
+      noticeBlocks.rateLimitWithRetry as ConversationBlock,
     ],
   },
 
@@ -313,6 +341,17 @@ const comparisons: ModeComparison[] = [
     label: 'system: elicitation_complete',
     description: 'Chat hides vs Dev elicitation complete card (MCP server + ID) vs JSON',
     blocks: [devSystemBlocks.elicitationComplete as ConversationBlock],
+  },
+
+  // ── 30b. System: new variants (pr_link, custom_title, plan_content) ──
+  {
+    label: 'system: new variants',
+    description: 'PR link, custom title, plan content — newly parsed from JSONL',
+    blocks: [
+      systemBlocks.prLink as ConversationBlock,
+      systemBlocks.customTitle as ConversationBlock,
+      systemBlocks.planContent as ConversationBlock,
+    ],
   },
 
   // ── 31. Progress: all variants ──

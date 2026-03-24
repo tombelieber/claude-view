@@ -1,8 +1,11 @@
+use crate::block_types::ImageContent;
+
 /// Extracted content blocks from a JSONL message.content[] array.
 pub struct ContentBlocks {
     pub text_segments: Vec<TextSegment>,
     pub tool_uses: Vec<ToolUseBlock>,
     pub thinking: Option<String>,
+    pub images: Vec<ImageContent>,
 }
 
 pub struct TextSegment {
@@ -32,6 +35,7 @@ pub fn extract_content_blocks(content: &[serde_json::Value]) -> ContentBlocks {
         text_segments: Vec::new(),
         tool_uses: Vec::new(),
         thinking: None,
+        images: Vec::new(),
     };
 
     for item in content {
@@ -73,6 +77,31 @@ pub fn extract_content_blocks(content: &[serde_json::Value]) -> ContentBlocks {
             "thinking" => {
                 let text = item.get("thinking").and_then(|v| v.as_str()).unwrap_or("");
                 blocks.thinking = Some(text.to_string());
+            }
+            "image" => {
+                if let Some(source) = item.get("source") {
+                    let source_type = source
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let media_type = source
+                        .get("media_type")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let url = source.get("url").and_then(|u| u.as_str()).map(String::from);
+                    let data = source
+                        .get("data")
+                        .and_then(|d| d.as_str())
+                        .map(String::from);
+                    blocks.images.push(ImageContent {
+                        source_type,
+                        media_type,
+                        url,
+                        data,
+                    });
+                }
             }
             _ => {
                 // Unknown block type — skip silently for forward compatibility

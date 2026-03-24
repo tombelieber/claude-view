@@ -35,9 +35,20 @@ function AssistantErrorNotice({ data }: { data: AssistantError }) {
   )
 }
 
-function RateLimitNotice({ data }: { data: RateLimit }) {
+function RateLimitNotice({
+  data,
+  retryInMs,
+  retryAttempt,
+  maxRetries,
+}: {
+  data: RateLimit
+  retryInMs?: number
+  retryAttempt?: number
+  maxRetries?: number
+}) {
   if (data.status === 'allowed') return null
   const isWarning = data.status === 'allowed_warning'
+  const hasRetry = retryInMs != null && retryInMs > 0
   return (
     <div
       className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
@@ -61,6 +72,11 @@ function RateLimitNotice({ data }: { data: RateLimit }) {
           ? ` (resets ${new Date(data.resetsAt * 1000).toLocaleTimeString()})`
           : ''}
       </span>
+      {hasRetry && (
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 ml-auto tabular-nums">
+          retry {retryAttempt ?? '?'}/{maxRetries ?? '?'} in {(retryInMs / 1000).toFixed(0)}s
+        </span>
+      )}
     </div>
   )
 }
@@ -169,7 +185,14 @@ export function ChatNoticeBlock({ block, onSuggestion }: NoticeBlockProps) {
     case 'assistant_error':
       return <AssistantErrorNotice data={block.data as AssistantError} />
     case 'rate_limit':
-      return <RateLimitNotice data={block.data as RateLimit} />
+      return (
+        <RateLimitNotice
+          data={block.data as RateLimit}
+          retryInMs={block.retryInMs}
+          retryAttempt={block.retryAttempt}
+          maxRetries={block.maxRetries}
+        />
+      )
     case 'context_compacted':
       return <ContextCompactedNotice data={block.data as ContextCompacted} />
     case 'auth_status':

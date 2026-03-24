@@ -77,3 +77,7 @@ export const PromptSuggestion: Story = {
 export const SessionResumed: Story = {
   args: { block: noticeBlocks.sessionResumed },
 }
+
+export const RateLimitWithRetry: Story = {
+  args: { block: noticeBlocks.rateLimitWithRetry },
+}

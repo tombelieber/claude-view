@@ -42,6 +42,20 @@ impl ConversationBlock {
     }
 }
 
+// ── Image content ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ImageContent {
+    pub source_type: String,
+    pub media_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+}
+
 // ── User ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -62,6 +76,12 @@ pub struct UserBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_uuid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_sidechain: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageContent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
 }
@@ -81,6 +101,10 @@ pub struct AssistantBlock {
     pub timestamp: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_sidechain: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
@@ -209,6 +233,15 @@ pub struct TurnBoundaryBlock {
     pub fast_mode_state: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<TurnError>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(type = "any[]")]
+    pub hook_infos: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hook_errors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook_count: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prevented_continuation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -229,6 +262,12 @@ pub struct NoticeBlock {
     pub variant: NoticeVariant,
     #[ts(type = "any")]
     pub data: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_in_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_attempt: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_retries: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -280,6 +319,9 @@ pub enum SystemVariant {
     AiTitle,
     LastPrompt,
     WorktreeState,
+    PrLink,
+    CustomTitle,
+    PlanContent,
     Informational,
     Unknown,
 }
@@ -409,6 +451,9 @@ mod tests {
             pending: None,
             permission_mode: None,
             parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: Vec::new(),
             raw_json: None,
         });
         let json = serde_json::to_value(&user).unwrap();
@@ -418,6 +463,9 @@ mod tests {
             id: "n1".into(),
             variant: NoticeVariant::Error,
             data: json!({}),
+            retry_in_ms: None,
+            retry_attempt: None,
+            max_retries: None,
         });
         let json = serde_json::to_value(&notice).unwrap();
         assert_eq!(json["type"], "notice");
@@ -434,6 +482,9 @@ mod tests {
             pending: Some(false),
             permission_mode: Some("auto".into()),
             parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: Vec::new(),
             raw_json: None,
         };
         let json_str = serde_json::to_string(&block).unwrap();
@@ -458,6 +509,9 @@ mod tests {
             pending: None,
             permission_mode: None,
             parent_uuid: Some("parent-msg-123".into()),
+            is_sidechain: None,
+            agent_id: None,
+            images: Vec::new(),
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -478,6 +532,9 @@ mod tests {
             pending: None,
             permission_mode: None,
             parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: Vec::new(),
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -496,6 +553,8 @@ mod tests {
             streaming: false,
             timestamp: None,
             parent_uuid: Some("parent-msg-456".into()),
+            is_sidechain: None,
+            agent_id: None,
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -538,6 +597,8 @@ mod tests {
             streaming: false,
             timestamp: Some(100.0),
             parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -589,6 +650,10 @@ mod tests {
             stop_reason: Some("end_turn".into()),
             fast_mode_state: None,
             error: None,
+            hook_infos: Vec::new(),
+            hook_errors: Vec::new(),
+            hook_count: None,
+            prevented_continuation: None,
         };
         let json = serde_json::to_value(&block).unwrap();
         assert_eq!(json["id"], "tb1");
@@ -616,10 +681,14 @@ mod tests {
             SystemVariant::FileHistorySnapshot,
             SystemVariant::AiTitle,
             SystemVariant::LastPrompt,
+            SystemVariant::WorktreeState,
+            SystemVariant::PrLink,
+            SystemVariant::CustomTitle,
+            SystemVariant::PlanContent,
             SystemVariant::Informational,
             SystemVariant::Unknown,
         ];
-        assert_eq!(variants.len(), 17);
+        assert_eq!(variants.len(), 21);
         for variant in &variants {
             let block = SystemBlock {
                 id: "s1".into(),
