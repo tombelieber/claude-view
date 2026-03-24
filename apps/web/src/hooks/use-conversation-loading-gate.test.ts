@@ -22,7 +22,7 @@ vi.mock('./use-session-source', () => ({
     resume: vi.fn(),
     totalInputTokens: 0,
     contextWindowSize: 0,
-    canResumeLazy: false,
+
     model: '',
     slashCommands: [],
     mcpServers: [],
@@ -52,6 +52,7 @@ vi.mock('./use-session-messages', () => ({
 }))
 
 import { useSessionMessages } from './use-session-messages'
+import type { SessionSourceResult } from './use-session-source'
 import { useSessionSource } from './use-session-source'
 
 const mockSessionSource = vi.mocked(useSessionSource)
@@ -68,7 +69,7 @@ const defaultSource = {
   resume: vi.fn(),
   totalInputTokens: 0,
   contextWindowSize: 0,
-  canResumeLazy: false,
+
   model: '',
   slashCommands: [],
   mcpServers: [],
@@ -81,7 +82,7 @@ const defaultSource = {
   pendingText: '',
   clearPendingMessage: vi.fn(),
   initComplete: false,
-}
+} satisfies SessionSourceResult
 
 const defaultMessages = {
   data: undefined,
@@ -199,21 +200,21 @@ describe('LG-02: suppressNotFound preserved when session is initializing', () =>
   })
 })
 
-// ── LG-03: skipWs bypasses initComplete gate ──
-// Watching mode (skipWs=true) calls useSessionSource(undefined) which never runs init(),
-// so initComplete stays false. History must still load via the skipWs bypass.
-describe('LG-03: skipWs bypasses initComplete gate', () => {
+// ── LG-03: liveStatus=cc_owned bypasses initComplete gate ──
+// Watching mode (liveStatus='cc_owned') calls useSessionSource(undefined) which never runs init(),
+// so initComplete stays false. History must still load via the liveStatus bypass.
+describe('LG-03: liveStatus=cc_owned bypasses initComplete gate', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    // skipWs path: useSessionSource(undefined) → initComplete stays false
+    // cc_owned path: useSessionSource(undefined) → initComplete stays false
     mockSessionSource.mockReturnValue({ ...defaultSource, initComplete: false })
     mockSessionMessages.mockReturnValue({
       ...defaultMessages,
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('history query is enabled even when initComplete=false if skipWs=true', () => {
-    renderHook(() => useConversation('test-session', { skipWs: true }), {
+  it('history query is enabled even when initComplete=false if liveStatus=cc_owned', () => {
+    renderHook(() => useConversation('test-session', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 

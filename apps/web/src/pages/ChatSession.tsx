@@ -1,30 +1,31 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { toast } from 'sonner'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
-import { ThinkingBudgetControl } from '../components/chat/ThinkingBudgetControl'
-import { ConversationThread } from '../components/conversation/ConversationThread'
-import { chatRegistry } from '../components/conversation/blocks/chat/registry'
-import { developerRegistry } from '../components/conversation/blocks/developer/registry'
+import { TakeoverDialog } from '../components/chat/TakeoverDialog'
+import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { ThinkingIndicator } from '@claude-view/shared/components/conversation/ThinkingIndicator'
+import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 
-import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
-import { useConversation } from '../hooks/use-conversation'
+import { ExpandProvider } from '../contexts/ExpandContext'
+import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
+import { useChatPanel } from '../hooks/use-chat-panel'
+import { useCommandExecutor } from '../hooks/use-command-executor'
+import { useContextPercent } from '../hooks/use-context-percent'
+import type { LiveContextData } from '../hooks/use-context-percent'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
-import { useScrollAnchor } from '../hooks/use-scroll-anchor'
-import { useSessionCapabilities } from '../hooks/use-session-capabilities'
+
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import { deriveInputBarState } from '../lib/control-status-map'
-import { getContextLimit } from '../lib/model-context-windows'
+import type { LiveStatus } from '../lib/live-status'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
 const MODEL_STORAGE_KEY = 'claude-view:last-model'
+const MODE_STORAGE_KEY = 'claude-view:last-mode'
 
 // NOTE: Display mode (chat/developer) is NOT the same as permission mode (default/plan/auto/etc.)
 // Display mode: which block renderers to use — client-side only, always toggleable
@@ -53,24 +54,27 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
   )
 }
 
-/** Authoritative context data from Live Monitor SSE (statusline source). */
-interface LiveContextData {
-  contextWindowTokens: number
-  statuslineContextWindowSize: number | null
-  statuslineUsedPct: number | null
-}
-
 interface ChatSessionProps {
   sessionId: string | undefined
-  /** True when session is live elsewhere (CLI/VS Code) but NOT sidecar-managed. */
-  isWatching?: boolean
+  liveStatus: LiveStatus
+  /** Decoded project path from Live Monitor — passed to SDK on resume/fork for correct cwd. */
+  liveProjectPath?: string
   /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
   liveContextData?: LiveContextData
+  /** Called when a new session is created from a blank panel (dockview transition). */
+  onSessionCreated?: (sessionId: string) => void
+  /** Incremented by ChatPanel on dockview group change (drag-drop). Forces scroll-to-bottom. */
+  scrollToBottomSignal?: number
 }
 
-export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSessionProps) {
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
+export function ChatSession({
+  sessionId,
+  liveStatus,
+  liveProjectPath,
+  liveContextData,
+  onSessionCreated,
+  scrollToBottomSignal,
+}: ChatSessionProps) {
   const trackEvent = useTrackEvent()
   const { recordSessionView } = useTelemetryPrompt()
 
@@ -81,18 +85,43 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
-  // When watching, skip WS to prevent auto-resume/bind_control. History loads via REST.
-  const { blocks, history, actions, sessionInfo } = useConversation(sessionId, {
-    skipWs: isWatching,
-  })
+
+  // FSM: single hook replaces useConversation + useSendHandler + useSessionCapabilities
+  const {
+    store,
+    dispatch,
+    pendingCmdsRef,
+    blocks,
+    inputBar,
+    viewMode,
+    connectionStatus,
+    thinkingState,
+    historyPagination,
+  } = useChatPanel(sessionId, liveProjectPath)
+  const { channel } = useCommandExecutor(store, dispatch, pendingCmdsRef)
+
+  // Dispatch LIVE_STATUS_CHANGED when liveStatus or projectPath changes
+  useEffect(() => {
+    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus, projectPath: liveProjectPath })
+  }, [liveStatus, liveProjectPath, dispatch])
+
+  // Notify dockview when FSM creates a new session (blank panel → create flow)
+  const notifiedSessionRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!onSessionCreated) return
+    const panelSessionId = 'sessionId' in store.panel ? store.panel.sessionId : undefined
+    if (
+      panelSessionId &&
+      panelSessionId !== sessionId &&
+      panelSessionId !== notifiedSessionRef.current
+    ) {
+      notifiedSessionRef.current = panelSessionId
+      onSessionCreated(panelSessionId)
+    }
+  }, [store.panel, sessionId, onSessionCreated])
+
   const { data: richData } = useRichSessionData(sessionId || null)
   const { data: sessionDetail } = useSessionDetail(sessionId || null)
-
-  const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
-    onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
-    isFetchingOlder: history.isFetchingOlder,
-    blockCount: blocks.length,
-  })
 
   // Model selection persisted in localStorage (used at session creation)
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -135,14 +164,8 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
   }, [])
 
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
-  const inputBarState = deriveInputBarState(
-    sessionInfo.sessionState,
-    sessionInfo.isLive,
-    sessionInfo.canResumeLazy,
-  )
 
   // Permission mode — persisted globally (like model), applied at session creation/resume
-  const MODE_STORAGE_KEY = 'claude-view:last-mode'
   const [permMode, setPermMode] = useState<PermissionMode>(() => {
     try {
       const stored = localStorage.getItem(MODE_STORAGE_KEY) as PermissionMode | null
@@ -152,67 +175,25 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
     }
   })
 
-  // Context gauge — priority chain (most authoritative first, never show wrong data):
-  //  1. statuslineUsedPct: pre-computed by Claude Code — correct numerator AND denominator
-  //  2. Live Monitor contextWindowTokens + statuslineContextWindowSize: correct per-turn fill
-  //  3. richData contextWindowTokens: JSONL accumulator (history), correct semantics
-  //  4. undefined: show "--" — refuse to guess
-  // NOTE: WS totalInputTokens is intentionally NOT used here — it sums across all models
-  // in modelUsage and may be session-cumulative, producing inflated percentages (84% vs 12%).
-  const contextPercent = (() => {
-    if (liveContextData?.statuslineUsedPct != null) {
-      return Math.round(liveContextData.statuslineUsedPct)
-    }
-    if (liveContextData && liveContextData.contextWindowTokens > 0) {
-      const limit = getContextLimit(
-        null,
-        liveContextData.contextWindowTokens,
-        liveContextData.statuslineContextWindowSize,
-      )
-      return Math.round((liveContextData.contextWindowTokens / limit) * 100)
-    }
-    if (richData && richData.contextWindowTokens > 0) {
-      const limit = getContextLimit(null, richData.contextWindowTokens)
-      return Math.round((richData.contextWindowTokens / limit) * 100)
-    }
-    return undefined
-  })()
+  const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
 
+  // Pagination: load older messages on scroll-up
+  const handleLoadOlderHistory = useCallback(() => {
+    dispatch({ type: 'LOAD_OLDER_HISTORY' })
+  }, [dispatch])
+
+  // Send via FSM dispatch — pass model + permissionMode so create/resume use the right values
   const handleSend = useCallback(
     (text: string) => {
-      if (!sessionId) {
-        // No session yet — create one first, then navigate.
-        // initialMessage is echoed back via user_message_echo in the stream,
-        // so the user sees their message as soon as the WS connects.
-        trackEvent('chat_started')
-        fetch('/api/control/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: selectedModel,
-            initialMessage: text,
-            permissionMode: permMode,
-          }),
-        })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.sessionId) {
-              navigate(`/chat/${data.sessionId}`)
-              queryClient.invalidateQueries({ queryKey: ['sidecar-sessions'] })
-            } else {
-              toast.error('Failed to create session', {
-                description: data.error || 'No session ID returned',
-              })
-            }
-          })
-          .catch(() => {
-            toast.error('Failed to create session')
-          })
-        return
-      }
-      actions.sendMessage(text)
+      dispatch({
+        type: 'SEND_MESSAGE',
+        text,
+        localId: crypto.randomUUID(),
+        model: selectedModel,
+        permissionMode: permMode,
+      })
     },
-    [sessionId, actions, navigate, selectedModel, permMode, queryClient, trackEvent],
+    [dispatch, selectedModel, permMode],
   )
 
   const handleModeChangePermission = useCallback(
@@ -223,16 +204,12 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
       } catch {
         /* noop */
       }
-      // Push to sidecar if live (sendIfLive no-ops if dormant).
-      // bypassPermissions will fail mid-session via setPermissionMode but the
-      // sidecar falls back to close+re-resume internally.
-      actions.setPermissionMode(mode)
+      dispatch({ type: 'SET_PERMISSION_MODE', mode })
     },
-    [actions],
+    [dispatch],
   )
 
   // --- Command palette ---
-  const capabilities = useSessionCapabilities(sessionInfo)
   const { options: modelOptions } = useModelOptions()
 
   // History session: auto-select the session's primary model if SDK-supported,
@@ -243,198 +220,220 @@ export function ChatSession({ sessionId, isWatching, liveContextData }: ChatSess
     if (resolved) setSelectedModel(resolved)
   }, [sessionId, sessionDetail?.primaryModel, modelOptions])
 
-  const handleModelSwitch = useCallback(
-    (newModel: string) => {
-      toast('Switch model?', {
-        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
-        action: {
-          label: 'Switch',
-          onClick: () => {
-            actions.resume(capabilities.permissionMode, newModel).catch(() => {
-              toast.error('Failed to switch model', {
-                description: 'Session may need manual resume.',
-              })
-            })
-          },
-        },
-      })
-    },
-    [actions, capabilities.permissionMode, sessionInfo.totalInputTokens],
-  )
-
-  const handlePaletteModeChange = useCallback(
-    (newMode: PermissionMode) => {
-      toast('Change permissions?', {
-        description: `Re-ingests ~${Math.round(sessionInfo.totalInputTokens / 1000)}K context tokens.`,
-        action: {
-          label: 'Change',
-          onClick: () => {
-            actions.resume(newMode, capabilities.model).catch(() => {
-              toast.error('Failed to change permissions', {
-                description: 'Session may need manual resume.',
-              })
-            })
-          },
-        },
-      })
-    },
-    [actions, capabilities.model, sessionInfo.totalInputTokens],
-  )
-
-  const handlePaletteCommand = useCallback(
-    (command: string) => {
-      actions.sendMessage(`/${command}`)
-    },
-    [actions],
-  )
+  // Takeover dialog state
+  const [showTakeover, setShowTakeover] = useState(false)
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 min-w-0 flex flex-col overflow-hidden" data-panel-mode={viewMode}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-800 flex-shrink-0">
         <div className="flex items-center gap-3">
-          {isWatching ? (
+          {viewMode === 'watching' ? (
             <span className="flex items-center gap-1.5 text-xs text-blue-500">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
               Watching
             </span>
-          ) : sessionInfo.isLive ? (
+          ) : viewMode === 'connecting' ? (
+            <span className="flex items-center gap-1.5 text-xs text-amber-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              Connecting
+            </span>
+          ) : viewMode === 'active' ? (
             <span className="flex items-center gap-1.5 text-xs text-green-500">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               Live
             </span>
+          ) : viewMode === 'error' ? (
+            <span className="flex items-center gap-1.5 text-xs text-red-500">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              Disconnected
+            </span>
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {sessionInfo.capabilities?.includes('set_max_thinking_tokens') && (
-            <ThinkingBudgetControl
-              value={thinkingBudget}
-              onChange={(tokens) => {
-                setThinkingBudget(tokens)
-                actions.setMaxThinkingTokens(tokens)
-              }}
-              disabled={!sessionInfo.isLive}
-            />
-          )}
-          {sessionInfo.capabilities?.includes('query_mcp_status') && (
-            <button
-              type="button"
-              onClick={() => setMcpPanelOpen((o) => !o)}
-              className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              MCP
-            </button>
+          {store.meta?.capabilities?.includes('query_mcp_status') && (
+            <div className="p-0.5 rounded-md bg-gray-100 dark:bg-gray-800">
+              <button
+                type="button"
+                onClick={() => setMcpPanelOpen((o) => !o)}
+                className={[
+                  'px-2.5 py-1 rounded text-sm transition-colors',
+                  mcpPanelOpen
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                ].join(' ')}
+              >
+                MCP
+              </button>
+            </div>
           )}
           <ModeToggle mode={displayMode} onChange={handleModeChange} />
         </div>
       </div>
 
       {/* MCP Panel (collapsible) */}
-      {mcpPanelOpen && sessionInfo.capabilities?.includes('query_mcp_status') && (
+      {mcpPanelOpen && store.meta?.capabilities?.includes('query_mcp_status') && (
         <div className="border-b border-gray-200 dark:border-gray-800">
           <McpPanel
-            queryMcpStatus={() => actions.queryMcpStatus()}
-            toggleMcp={(name, enabled) => actions.toggleMcp(name, enabled)}
-            reconnectMcp={(name) => actions.reconnectMcp(name)}
+            queryMcpStatus={() => channel?.request({ type: 'query_mcp_status' })}
+            toggleMcp={(name, enabled) => channel?.send({ type: 'mcp_set', name, enabled })}
+            reconnectMcp={(name) => channel?.send({ type: 'mcp_reconnect', name })}
           />
         </div>
       )}
 
-      {/* Thread */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-        {/* Top sentinel for infinite scroll */}
-        <div ref={topSentinelRef} className="h-1" />
-        {history.isFetchingOlder && (
-          <div className="flex justify-center py-3">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-          </div>
-        )}
-        {history.error && (
-          <div className="flex justify-center py-3 text-sm text-red-500">
-            Failed to load messages.{' '}
-            <button type="button" onClick={history.fetchOlderMessages} className="underline">
-              Retry
-            </button>
-          </div>
-        )}
-        {blocks.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
-            <div className="text-center">
-              <p className="text-lg font-medium mb-2">Start a conversation</p>
-              <p className="text-sm mb-4">Send a message to begin.</p>
-              {!sessionId && (
+      {/* Thread — all modes (chat, developer, watching) use ConversationThread.
+          Developer mode uses developerRegistry for richer block rendering. */}
+      <ExpandProvider>
+        {/* Virtuoso manages its own scroll — no overflow-y-auto wrapper.
+            flex-1 min-h-0 gives Virtuoso a measurable viewport height. */}
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+          {blocks.length === 0 && !thinkingState && !sessionId ? (
+            <div className="flex items-center justify-center flex-1 text-gray-400 dark:text-gray-500">
+              <div className="text-center">
+                <p className="text-lg font-medium mb-2">Start a conversation</p>
+                <p className="text-sm mb-4">Send a message to begin.</p>
                 <div className="flex justify-center">
                   <ModelSelector
                     model={selectedModel}
                     onModelChange={handleModelChange}
-                    isLive={sessionInfo.isLive}
-                    onSetModel={actions.setModel}
+                    isLive={viewMode === 'active'}
                   />
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto px-4 py-6">
+          ) : blocks.length === 0 && (thinkingState || sessionId) ? (
+            /* No blocks yet but something is happening — centered indicator */
+            <ThinkingIndicator phase={thinkingState ?? 'loading'} centered />
+          ) : (
             <ConversationActionsProvider
               actions={{
-                retryMessage: actions.retryMessage,
-                stopTask: actions.stopTask,
-                respondPermission: actions.respondPermission,
-                answerQuestion: actions.answerQuestion,
-                approvePlan: actions.approvePlan,
-                submitElicitation: actions.submitElicitation,
+                retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                stopTask: (taskId) => {
+                  channel?.send({ type: 'stop_task', taskId })
+                },
+                respondPermission: (rid, allowed, perms) =>
+                  dispatch({
+                    type: 'RESPOND_PERMISSION',
+                    requestId: rid,
+                    allowed,
+                    updatedPermissions: perms,
+                  }),
+                answerQuestion: (rid, answers) =>
+                  dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                approvePlan: (rid, approved, feedback) =>
+                  dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                submitElicitation: (rid, response) =>
+                  dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
               }}
             >
-              <ConversationThread blocks={blocks} renderers={registry} />
+              <ConversationThread
+                key={sessionId || 'new'}
+                blocks={blocks}
+                renderers={registry}
+                filterBar={displayMode !== 'chat'}
+                onStartReached={handleLoadOlderHistory}
+                isFetchingOlder={historyPagination.isFetchingOlder}
+                hasOlderMessages={historyPagination.hasOlderMessages}
+                scrollToBottomSignal={scrollToBottomSignal}
+              />
             </ConversationActionsProvider>
-          </div>
-        )}
-        {/* Bottom anchor for auto-scroll */}
-        <div ref={bottomRef} />
-      </div>
+          )}
+          {/* Thinking indicator — inline below thread when blocks exist */}
+          {blocks.length > 0 && thinkingState && <ThinkingIndicator phase={thinkingState} />}
+          {/* Error status — connection lost, session replaced, resume failed */}
+          {connectionStatus?.kind === 'error' && (
+            <div className="max-w-3xl mx-auto px-4 pb-3">
+              <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                  <title>Error</title>
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <line x1="8" y1="8" x2="16" y2="16" stroke="currentColor" strokeWidth="2" />
+                  <line x1="16" y1="8" x2="8" y2="16" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                {connectionStatus.message}
+              </div>
+            </div>
+          )}
+        </div>
+      </ExpandProvider>
 
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {isWatching && (
-            <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 text-blue-500 dark:text-blue-400 text-base">&#x1f441;</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                    Watching a live session
-                  </p>
-                  <p className="text-xs text-blue-600/70 dark:text-blue-400/60 mt-0.5">
-                    This session is running in another process. Take over and resume from Claude
-                    View is coming soon.
-                  </p>
-                </div>
-              </div>
+          {/* TODO: re-enable fork banner when fork flow is fixed */}
+          {viewMode === 'watching' && (
+            <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
+              <p className="text-xs text-blue-600/80 dark:text-blue-400/70">
+                This session is running in Claude Code CLI.
+              </p>
             </div>
           )}
           <ChatInputBar
             onSend={handleSend}
-            onStop={actions.interrupt}
-            state={isWatching ? 'controlled_elsewhere' : inputBarState}
+            onStop={() => dispatch({ type: 'INTERRUPT' })}
+            state={inputBar}
             mode={permMode}
             onModeChange={handleModeChangePermission}
             contextPercent={contextPercent}
             model={selectedModel}
             onModelChange={handleModelChange}
-            capabilities={capabilities}
+            effortValue={thinkingBudget}
+            onEffortChange={
+              store.meta?.capabilities?.includes('set_max_thinking_tokens')
+                ? (tokens) => {
+                    setThinkingBudget(tokens)
+                    channel?.send({ type: 'set_max_thinking_tokens', tokens })
+                  }
+                : undefined
+            }
+            capabilities={
+              store.meta
+                ? {
+                    model: store.meta.model,
+                    permissionMode: store.meta.permissionMode as PermissionMode,
+                    slashCommands: store.meta.slashCommands,
+                    mcpServers: store.meta.mcpServers,
+                    skills: store.meta.skills,
+                    agents: store.meta.agents,
+                  }
+                : undefined
+            }
             modelOptions={modelOptions}
-            onModelSwitch={handleModelSwitch}
-            onPaletteModeChange={handlePaletteModeChange}
-            onCommand={handlePaletteCommand}
-            onAgent={(agent) => actions.sendMessage(`@${agent}`)}
+            onModelSwitch={(newModel) => {
+              setSelectedModel(newModel)
+              try {
+                localStorage.setItem(MODEL_STORAGE_KEY, newModel)
+              } catch {
+                /* noop */
+              }
+              channel?.send({ type: 'set_model', model: newModel })
+            }}
+            onPaletteModeChange={(newMode) =>
+              dispatch({ type: 'RESUME_WITH_OPTIONS', permissionMode: newMode })
+            }
+            onCommand={(command) =>
+              dispatch({ type: 'SEND_MESSAGE', text: `/${command}`, localId: crypto.randomUUID() })
+            }
+            onAgent={(agent) =>
+              dispatch({ type: 'SEND_MESSAGE', text: `@${agent}`, localId: crypto.randomUUID() })
+            }
             onPaletteOpen={() => {
-              actions.queryCommands().catch(() => {})
-              actions.queryAgents().catch(() => {})
+              channel?.send({ type: 'query_commands' })
+              channel?.send({ type: 'query_agents' })
             }}
           />
         </div>
       </div>
+
+      <TakeoverDialog
+        open={showTakeover}
+        onConfirm={() => {
+          setShowTakeover(false)
+          dispatch({ type: 'TAKEOVER_CLI' })
+        }}
+        onCancel={() => setShowTakeover(false)}
+      />
     </div>
   )
 }

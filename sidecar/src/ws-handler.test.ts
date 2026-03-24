@@ -35,11 +35,10 @@ describe('ws-handler requestId echo', () => {
     }
 
     mockSession = {
-      activeWs: null,
+      wsClients: new Set(),
+      lastSessionInit: null,
       state: 'active',
-      nextSeq: 0,
       emitter: { on: vi.fn(), removeListener: vi.fn() },
-      eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
       permissions: {
         resolvePermission: vi.fn(),
         resolveQuestion: vi.fn(),
@@ -155,12 +154,11 @@ describe('ws-handler requestId echo', () => {
       }
 
       echoSession = {
-        activeWs: null,
+        wsClients: new Set(),
+        lastSessionInit: null,
         state: 'waiting_input',
         sessionId: 'sess-1',
-        nextSeq: 0,
         emitter: { on: vi.fn(), removeListener: vi.fn() },
-        eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
         permissions: {
           resolvePermission: vi.fn(),
           resolveQuestion: vi.fn(),
@@ -232,102 +230,7 @@ describe('ws-handler requestId echo', () => {
     })
   })
 
-  describe('Graceful buffer exhaustion', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: test mocks
-    let bufRegistry: any
-    // biome-ignore lint/suspicious/noExplicitAny: test mocks
-    let bufSession: any
-    // biome-ignore lint/suspicious/noExplicitAny: test mocks
-    let bufWs: any
-    let bufMessageHandler: (raw: Buffer) => Promise<void>
-
-    beforeEach(() => {
-      const listeners: Record<string, (...args: unknown[]) => void> = {}
-      bufWs = {
-        send: vi.fn(),
-        close: vi.fn(),
-        readyState: 1,
-        OPEN: 1,
-        on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-          listeners[event] = cb
-        }),
-      }
-
-      bufSession = {
-        activeWs: null,
-        state: 'active',
-        nextSeq: 0,
-        emitter: { on: vi.fn(), removeListener: vi.fn() },
-        eventBuffer: { getAfter: vi.fn().mockReturnValue(null) },
-        permissions: {
-          resolvePermission: vi.fn(),
-          resolveQuestion: vi.fn(),
-          resolvePlan: vi.fn(),
-          resolveElicitation: vi.fn(),
-          drainInteractive: vi.fn(),
-        },
-        query: {
-          supportedModels: vi.fn().mockResolvedValue([]),
-          supportedCommands: vi.fn().mockResolvedValue([]),
-          supportedAgents: vi.fn().mockResolvedValue([]),
-          mcpServerStatus: vi.fn().mockResolvedValue([]),
-          accountInfo: vi.fn().mockResolvedValue({}),
-          setMcpServers: vi.fn().mockResolvedValue({ ok: true }),
-          rewindFiles: vi.fn().mockResolvedValue({ files: [] }),
-        },
-        accumulator: {
-          getBlocks: vi.fn().mockReturnValue([]),
-          push: vi.fn(),
-          finalize: vi.fn(),
-          reset: vi.fn(),
-        },
-      }
-
-      bufRegistry = {
-        get: vi.fn().mockReturnValue(bufSession),
-        emitSequenced: vi.fn(),
-      }
-
-      handleWebSocket(bufWs, 'ctrl-1', bufRegistry)
-      bufMessageHandler = listeners.message as (raw: Buffer) => Promise<void>
-    })
-
-    it('sends replay_buffer_exhausted with fatal=false', async () => {
-      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
-
-      const errorSend = bufWs.send.mock.calls.find((c: string[]) => {
-        const parsed = JSON.parse(c[0])
-        return parsed.message === 'replay_buffer_exhausted'
-      })
-      expect(errorSend).toBeDefined()
-      const parsed = JSON.parse(errorSend[0])
-      expect(parsed.fatal).toBe(false)
-    })
-
-    it('does NOT close the WS after buffer exhaustion', async () => {
-      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
-
-      expect(bufWs.close).not.toHaveBeenCalled()
-    })
-
-    it('replays missed events on happy path', async () => {
-      bufSession.eventBuffer.getAfter.mockReturnValue([
-        { seq: 6, msg: { type: 'assistant_text', text: 'hello', seq: 6 } },
-        { seq: 7, msg: { type: 'assistant_text', text: 'world', seq: 7 } },
-      ])
-
-      await bufMessageHandler(Buffer.from(JSON.stringify({ type: 'resume', lastSeq: 5 })))
-
-      // Find the two replayed events (after initial sends from handleWebSocket setup)
-      const allSends = bufWs.send.mock.calls.map((c: string[]) => JSON.parse(c[0]))
-      const replayed = allSends.filter((m: Record<string, unknown>) => m.type === 'assistant_text')
-      expect(replayed).toHaveLength(2)
-      expect(replayed[0].text).toBe('hello')
-      expect(replayed[1].text).toBe('world')
-    })
-  })
-
-  describe('One WS per session', () => {
+  describe('Multi-client wsClients Set', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
     let wsRegistry: any
     // biome-ignore lint/suspicious/noExplicitAny: test mocks
@@ -335,11 +238,10 @@ describe('ws-handler requestId echo', () => {
 
     beforeEach(() => {
       wsSession = {
-        activeWs: null,
+        wsClients: new Set(),
+        lastSessionInit: null,
         state: 'active',
-        nextSeq: 0,
         emitter: { on: vi.fn(), removeListener: vi.fn() },
-        eventBuffer: { getAfter: vi.fn().mockReturnValue([]) },
         permissions: {
           resolvePermission: vi.fn(),
           resolveQuestion: vi.fn(),
@@ -370,49 +272,49 @@ describe('ws-handler requestId echo', () => {
       }
     })
 
-    it('closes old WS with code 4001 when new WS connects to same session', () => {
-      const oldWs = createMockWs()
-      const newWs = createMockWs()
-
-      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
-      expect(wsSession.activeWs).toBe(oldWs)
-
-      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
-      expect(oldWs.close).toHaveBeenCalledWith(4001, 'replaced_by_new_connection')
-      expect(wsSession.activeWs).toBe(newWs)
-    })
-
-    it('does not close when session has no previous WS', () => {
+    it('adds WS to wsClients on connect', () => {
       const ws = createMockWs()
       handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
-      expect(ws.close).not.toHaveBeenCalled()
-      expect(wsSession.activeWs).toBe(ws)
+      expect(wsSession.wsClients.has(ws)).toBe(true)
+      expect(wsSession.wsClients.size).toBe(1)
     })
 
-    it('clears activeWs on close only if it matches current WS', () => {
+    it('allows multiple WS connections to the same session', () => {
+      const ws1 = createMockWs()
+      const ws2 = createMockWs()
+
+      handleWebSocket(ws1 as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws2 as never, 'ctrl-1', wsRegistry)
+
+      expect(wsSession.wsClients.size).toBe(2)
+      expect(wsSession.wsClients.has(ws1)).toBe(true)
+      expect(wsSession.wsClients.has(ws2)).toBe(true)
+    })
+
+    it('removes WS from wsClients on close', () => {
       const ws = createMockWs()
       handleWebSocket(ws as never, 'ctrl-1', wsRegistry)
-      expect(wsSession.activeWs).toBe(ws)
+      expect(wsSession.wsClients.size).toBe(1)
 
-      // Trigger close handler
       const closeHandler = ws._listeners['close']
       closeHandler()
 
-      expect(wsSession.activeWs).toBeNull()
+      expect(wsSession.wsClients.size).toBe(0)
     })
 
-    it('does NOT clear activeWs if a newer WS replaced it before close fires', () => {
-      const oldWs = createMockWs()
-      const newWs = createMockWs()
+    it('closing one WS does not affect others in the set', () => {
+      const ws1 = createMockWs()
+      const ws2 = createMockWs()
 
-      handleWebSocket(oldWs as never, 'ctrl-1', wsRegistry)
-      handleWebSocket(newWs as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws1 as never, 'ctrl-1', wsRegistry)
+      handleWebSocket(ws2 as never, 'ctrl-1', wsRegistry)
+      expect(wsSession.wsClients.size).toBe(2)
 
-      // Old WS close fires late — should NOT clear activeWs (newWs owns it now)
-      const oldCloseHandler = oldWs._listeners['close']
-      oldCloseHandler()
+      const closeHandler = ws1._listeners['close']
+      closeHandler()
 
-      expect(wsSession.activeWs).toBe(newWs)
+      expect(wsSession.wsClients.size).toBe(1)
+      expect(wsSession.wsClients.has(ws2)).toBe(true)
     })
   })
 })

@@ -24,7 +24,7 @@ use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
 use super::file_resolver::resolve_file_path;
-use super::process::{count_claude_processes, is_pid_alive};
+use super::process::{count_claude_processes, detect_claude_processes, is_pid_alive};
 use super::state::{
     append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
     HookEvent, LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
@@ -276,6 +276,7 @@ fn build_recovered_session(
         compact_count: 0,
         slug: None,
         closed_at: None,
+        source: None,
         control: None,
         statusline_context_window_size: None,
         statusline_used_pct: None,
@@ -744,6 +745,11 @@ impl LiveSessionManager {
                 control_id,
                 bound_at: now,
                 cancel: tokio_util::sync::CancellationToken::new(),
+            });
+            // Control binding = sidecar Agent SDK — set source immediately
+            session.source = Some(super::process::SessionSourceInfo {
+                category: super::process::SessionSource::AgentSdk,
+                label: None,
             });
             true
         } else {
@@ -1540,11 +1546,53 @@ impl LiveSessionManager {
                     continue;
                 }
 
-                // 2.1 — Process count refresh (display metric only)
-                let total_count = tokio::task::spawn_blocking(count_claude_processes)
+                // 2.1 — Process scan: count + backfill source on sessions
+                let (processes, total_count) = tokio::task::spawn_blocking(detect_claude_processes)
                     .await
                     .unwrap_or_default();
                 manager.process_count.store(total_count, Ordering::Relaxed);
+
+                // Classify source for all live sessions.
+                // Two paths: (1) control binding = AgentSdk (authoritative, no process scan needed)
+                //            (2) PID match from process scan (ancestor walking for IDE/terminal)
+                // Always re-classify — the processes map is indexed by PID (not CWD),
+                // so multiple Claude processes in the same directory are all matchable.
+                let sdk_source = super::process::SessionSourceInfo {
+                    category: super::process::SessionSource::AgentSdk,
+                    label: None,
+                };
+                let backfilled: Vec<LiveSession> = {
+                    let mut sessions = manager.sessions.write().await;
+                    let mut updated = Vec::new();
+                    for session in sessions.values_mut() {
+                        if session.status == SessionStatus::Done {
+                            continue;
+                        }
+                        // Path 1: control binding = AgentSdk (authoritative)
+                        if session.control.is_some() {
+                            if session.source.as_ref() != Some(&sdk_source) {
+                                session.source = Some(sdk_source.clone());
+                                updated.push(session.clone());
+                            }
+                            continue;
+                        }
+                        // Path 2: PID-based classification from process scan
+                        if let Some(pid) = session.pid {
+                            if let Some(cp) = processes.get(&pid) {
+                                let new_source = Some(cp.source.clone());
+                                if session.source != new_source {
+                                    session.source = new_source;
+                                    updated.push(session.clone());
+                                }
+                            }
+                        }
+                    }
+                    updated
+                };
+                // Emit SSE updates so frontends learn about the source
+                for session in backfilled {
+                    let _ = manager.tx.send(SessionEvent::SessionUpdated { session });
+                }
 
                 // 2.2 — Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
@@ -3474,6 +3522,7 @@ mod hook_event_tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            source: None,
             hook_events: Vec::new(),
         }
     }

@@ -2,6 +2,10 @@
 // ConversationBlock view models — hand-written by design (no Rust equivalent).
 // Combine data from multiple ServerEvent types into semantic blocks for rendering.
 
+import type { ActionCategory } from './generated/ActionCategory'
+import type { ProgressData } from './generated/ProgressData'
+import type { ProgressVariant } from './generated/ProgressVariant'
+
 import type {
   AskQuestion,
   AssistantError,
@@ -14,9 +18,15 @@ import type {
   FilesSaved,
   HookEvent,
   ModelUsageInfo,
+  AiTitle,
+  FileHistorySnapshot,
+  Informational,
+  LastPrompt,
+  LocalCommand,
   PermissionRequest,
   PlanApproval,
   PromptSuggestion,
+  QueueOperation,
   RateLimit,
   SessionClosed,
   SessionInit,
@@ -28,6 +38,8 @@ import type {
   UnknownSdkEvent,
 } from './sidecar-protocol'
 
+export type { ActionCategory } from './generated/ActionCategory'
+
 // ── UserBlock ───────────────────────────────────────────────────────────────
 
 export type UserBlock = {
@@ -37,6 +49,7 @@ export type UserBlock = {
   timestamp: number
   status?: 'optimistic' | 'sending' | 'sent' | 'failed'
   localId?: string
+  parentUuid?: string | null
   rawJson?: Record<string, unknown> | null
 }
 
@@ -50,6 +63,7 @@ export type AssistantBlock = {
   streaming: boolean
   /** Unix seconds — populated from JSONL timestamp or Date.now() for live blocks */
   timestamp?: number
+  parentUuid?: string | null
   rawJson?: Record<string, unknown> | null
 }
 
@@ -66,6 +80,9 @@ export type ToolExecution = {
   progress?: { elapsedSeconds: number }
   summary?: string
   status: 'running' | 'complete' | 'error'
+  category?: ActionCategory
+  liveOutput?: string
+  duration?: number
 }
 
 // ── InteractionBlock ────────────────────────────────────────────────────────
@@ -147,6 +164,12 @@ export type SystemBlock = {
     | 'files_saved'
     | 'command_output'
     | 'stream_delta'
+    | 'local_command'
+    | 'queue_operation'
+    | 'file_history_snapshot'
+    | 'ai_title'
+    | 'last_prompt'
+    | 'informational'
     | 'unknown'
   data:
     | SessionInit
@@ -159,8 +182,26 @@ export type SystemBlock = {
     | FilesSaved
     | CommandOutput
     | StreamDelta
+    | LocalCommand
+    | QueueOperation
+    | FileHistorySnapshot
+    | AiTitle
+    | LastPrompt
+    | Informational
     | UnknownSdkEvent
   rawJson?: Record<string, unknown> | null
+}
+
+// ── ProgressBlock ──────────────────────────────────────────────────────────
+
+export type ProgressBlock = {
+  type: 'progress'
+  id: string
+  variant: ProgressVariant
+  category: ActionCategory
+  data: ProgressData
+  ts: number
+  parentToolUseId?: string
 }
 
 // ── ConversationBlock union ─────────────────────────────────────────────────
@@ -172,3 +213,10 @@ export type ConversationBlock =
   | TurnBoundaryBlock
   | NoticeBlock
   | SystemBlock
+  | ProgressBlock
+
+// ── Type guards ────────────────────────────────────────────────────────────
+
+export function isProgressBlock(block: ConversationBlock): block is ProgressBlock {
+  return block.type === 'progress'
+}

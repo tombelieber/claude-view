@@ -1,10 +1,10 @@
 // apps/web/src/hooks/message-state-errors.test.ts
 // NEG-01..NEG-06: Frontend-side negative/error path tests for message state
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { createElement } from 'react'
 import type { ReactNode } from 'react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useConversation } from './use-conversation'
 
 // Mock useSessionSource to return controlled values
@@ -20,7 +20,7 @@ vi.mock('./use-session-source', () => ({
     resume: vi.fn(),
     totalInputTokens: 0,
     contextWindowSize: 0,
-    canResumeLazy: false,
+
     model: '',
     slashCommands: [],
     mcpServers: [],
@@ -49,6 +49,7 @@ vi.mock('./use-session-messages', () => ({
 }))
 
 import { useSessionMessages } from './use-session-messages'
+import type { SessionSourceResult } from './use-session-source'
 import { useSessionSource } from './use-session-source'
 
 const mockSessionSource = vi.mocked(useSessionSource)
@@ -65,7 +66,7 @@ const defaultSource = {
   resume: vi.fn(),
   totalInputTokens: 0,
   contextWindowSize: 0,
-  canResumeLazy: false,
+
   model: '',
   slashCommands: [],
   mcpServers: [],
@@ -78,7 +79,7 @@ const defaultSource = {
   pendingText: '',
   clearPendingMessage: vi.fn(),
   initComplete: false,
-}
+} satisfies SessionSourceResult
 
 const defaultMessages = {
   data: undefined,
@@ -113,12 +114,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start' }],
           streaming: true,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: 'partial',
@@ -144,12 +145,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start' }],
           streaming: true,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: 'partial',
@@ -171,12 +172,12 @@ describe('NEG-01: WS disconnect mid-stream preserves pendingText', () => {
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
         {
           type: 'assistant',
           id: 'a1',
           segments: [{ kind: 'text', text: 'start complete response' }],
           streaming: false,
+          // biome-ignore lint/suspicious/noExplicitAny: test fixture
         } as any,
       ],
       pendingText: '',
@@ -293,10 +294,9 @@ describe('NEG-03: turn_complete without blocks field preserves committed', () =>
   })
 })
 
-// ── NEG-06: No blocks_snapshot within 3s triggers JSONL fallback ──────
-describe('NEG-06: snapshot timeout triggers JSONL fallback (FLAG-B)', () => {
+// ── NEG-06: Live session with empty committedBlocks falls back to history ──
+describe('NEG-06: live session uses history when committedBlocks is empty (resume case)', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
     vi.restoreAllMocks()
     mockSessionSource.mockReturnValue({ ...defaultSource })
     mockSessionMessages.mockReturnValue({
@@ -304,12 +304,8 @@ describe('NEG-06: snapshot timeout triggers JSONL fallback (FLAG-B)', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('falls back to history blocks when no snapshot arrives within 3s', () => {
-    // Live session, but committedBlocks is empty (no blocks_snapshot arrived yet)
+  it('shows history blocks immediately when live but committedBlocks is empty', () => {
+    // Resume scenario: WS connected (isLive=true) but sidecar accumulator empty
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       committedBlocks: [],
@@ -320,9 +316,6 @@ describe('NEG-06: snapshot timeout triggers JSONL fallback (FLAG-B)', () => {
       sendIfLive: vi.fn(),
     })
 
-    // History has data (useSessionMessages mock returns data — simulates JSONL availability).
-    // In production, the enabled gate (!isLive) would prevent fetching, but since we
-    // mock useSessionMessages directly, data is always available in the mock.
     mockSessionMessages.mockReturnValue({
       ...defaultMessages,
       data: {
@@ -350,23 +343,98 @@ describe('NEG-06: snapshot timeout triggers JSONL fallback (FLAG-B)', () => {
       wrapper: createWrapper(),
     })
 
-    // Before timeout: isLive + no snapshotTimeout → use committedBlocks (empty).
-    // History data exists but useMemo selects committed blocks when live and not timed out.
-    expect(result.current.blocks).toEqual([])
-
-    // Advance past 3s timeout
-    act(() => {
-      vi.advanceTimersByTime(3000)
-    })
-
-    // After timeout: snapshotTimeout=true → useMemo switches to history.blocks.
-    // The binary source switch: `source.isLive && !snapshotTimeout` is now false,
-    // so blocks come from history.blocks instead of committedBlocks.
-    // Since our mock provides history data, the blocks should now contain history content.
+    // No timeout needed — immediately shows history when committedBlocks is empty
     expect(result.current.blocks.length).toBeGreaterThan(0)
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
     const userBlock = result.current.blocks.find((b: any) => b.type === 'user') as any
     expect(userBlock).toBeDefined()
     expect(userBlock.text).toBe('from history')
+  })
+
+  it('does NOT append pendingText to history blocks (prevents corrupt display)', () => {
+    // Resume scenario: live, empty committedBlocks, but pendingText from stream_delta
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      committedBlocks: [],
+      pendingText: 'streaming text...',
+      isLive: true,
+      sessionState: 'active',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+    })
+
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+      data: {
+        pages: [
+          {
+            messages: [
+              {
+                role: 'user',
+                content: 'old message',
+                uuid: 'h1',
+                timestamp: '2026-03-17T00:00:00Z',
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            hasMore: false,
+          },
+        ],
+        pageParams: [-1],
+      },
+    } as unknown as ReturnType<typeof useSessionMessages>)
+
+    const { result } = renderHook(() => useConversation('sess-neg6b'), {
+      wrapper: createWrapper(),
+    })
+
+    // pendingText must NOT be appended to history blocks
+    const allText = result.current.blocks
+      // biome-ignore lint/suspicious/noExplicitAny: test assertion
+      .map((b: any) => b.text ?? '')
+      .join('')
+    expect(allText).not.toContain('streaming text...')
+  })
+
+  it('switches to committedBlocks once they have content', () => {
+    // Start: live, empty committed
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      committedBlocks: [],
+      pendingText: '',
+      isLive: true,
+      sessionState: 'active',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+    })
+
+    const { result, rerender } = renderHook(() => useConversation('sess-neg6c'), {
+      wrapper: createWrapper(),
+    })
+
+    // blocks_update arrives with content
+    const liveBlocks = [
+      { type: 'user', id: 'u1', text: 'new message', timestamp: Date.now() / 1000 },
+      { type: 'assistant', id: 'a1', text: 'response', timestamp: Date.now() / 1000 },
+    ]
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      // biome-ignore lint/suspicious/noExplicitAny: test fixture
+      committedBlocks: liveBlocks as any,
+      pendingText: '',
+      isLive: true,
+      sessionState: 'waiting_input',
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+    })
+
+    rerender()
+
+    // Now uses committedBlocks (has content)
+    expect(result.current.blocks.length).toBe(2)
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    expect((result.current.blocks[0] as any).text).toBe('new message')
   })
 })

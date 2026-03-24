@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useState } from 'react'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { SourceBadge } from '../shared/SourceBadge'
 import { SubAgentPills } from './SubAgentPills'
 import { hasUnavailableCost } from './cost-display'
 import type { AgentStateGroup } from './types'
@@ -217,6 +218,9 @@ function FullHeader({
       tabIndex={0}
       role="button"
     >
+      {/* Source badge */}
+      <SourceBadge source={session.source} />
+
       {/* Project name */}
       <span
         className="inline-flex items-center gap-1 text-xs font-medium text-gray-800 dark:text-[#C9D1D9] truncate max-w-[20ch]"

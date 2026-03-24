@@ -18,7 +18,7 @@ vi.mock('./use-session-source', () => ({
     resume: vi.fn(),
     totalInputTokens: 0,
     contextWindowSize: 0,
-    canResumeLazy: false,
+
     model: '',
     slashCommands: [],
     mcpServers: [],
@@ -49,6 +49,7 @@ vi.mock('./use-session-messages', () => ({
 
 import { useSessionMessages } from './use-session-messages'
 // Import mocks for dynamic control
+import type { SessionSourceResult } from './use-session-source'
 import { useSessionSource } from './use-session-source'
 
 const mockSessionSource = vi.mocked(useSessionSource)
@@ -65,7 +66,7 @@ const defaultSource = {
   resume: vi.fn(),
   totalInputTokens: 0,
   contextWindowSize: 0,
-  canResumeLazy: false,
+
   model: '',
   slashCommands: [],
   mcpServers: [],
@@ -78,7 +79,7 @@ const defaultSource = {
   pendingText: '',
   clearPendingMessage: vi.fn(),
   initComplete: false,
-}
+} satisfies SessionSourceResult
 
 const defaultMessages = {
   data: undefined,
@@ -113,7 +114,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -153,7 +154,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 100,
       contextWindowSize: 200000,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -232,7 +233,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 100,
       contextWindowSize: 200000,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -280,7 +281,7 @@ describe('useConversation block merging', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: true,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -349,7 +350,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: 'claude-opus-4-6',
       slashCommands: [],
       mcpServers: [],
@@ -379,7 +380,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: ['commit', 'test'],
       mcpServers: [],
@@ -409,7 +410,7 @@ describe('sessionInfo includes palette fields', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [{ name: 'gh', status: 'connected' }],
@@ -443,7 +444,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -481,7 +482,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'u1', text: 'hello', timestamp: 1 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -545,7 +546,7 @@ describe('source selection (single-stream pattern)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: true,
+
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -584,7 +585,7 @@ describe('source selection — binary source switch', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -622,7 +623,7 @@ describe('source selection — binary source switch', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       committedBlocks: [{ type: 'assistant', id: 'a1' }] as any,
       pendingText: '',
@@ -664,7 +665,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -703,7 +704,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'user-0', text: 'hello', timestamp: 1 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -746,7 +747,7 @@ describe('source selection — optimistic dedup', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [],
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -793,7 +794,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -833,17 +834,43 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
     expect(last.text).toBe('hello')
   })
 
-  it('marks block as failed after 10s if no echo arrives', () => {
+  it('marks block as failed after 20s if no echo arrives (live session)', () => {
     vi.useFakeTimers()
+    // Session must be live for timer to start immediately
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'active',
+      controlId: null,
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      committedBlocks: [],
+      pendingText: '',
+      clearPendingMessage: vi.fn(),
+      initComplete: true,
+    })
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
     act(() => {
       result.current.actions.sendMessage('timeout test')
     })
-    // Advance 10 seconds
+    // Advance 20 seconds
     act(() => {
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(20_000)
     })
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
     const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
@@ -855,6 +882,32 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
 
   it('retryMessage clears failed block and re-sends', () => {
     vi.useFakeTimers()
+    // Session must be live for timer to start immediately
+    mockSessionSource.mockReturnValue({
+      blocks: [],
+      sessionState: 'active',
+      controlId: null,
+      send: vi.fn(),
+      sendIfLive: vi.fn(),
+      isLive: true,
+      reconnect: vi.fn(),
+      resume: vi.fn(),
+      totalInputTokens: 0,
+      contextWindowSize: 0,
+
+      model: '',
+      slashCommands: [],
+      mcpServers: [],
+      permissionMode: 'default',
+      skills: [],
+      agents: [],
+      channel: null,
+      capabilities: [],
+      committedBlocks: [],
+      pendingText: '',
+      clearPendingMessage: vi.fn(),
+      initComplete: true,
+    })
     const { result } = renderHook(() => useConversation('test-session'), {
       wrapper: createWrapper(),
     })
@@ -862,7 +915,7 @@ describe('sendMessage — simplified optimistic (echo-based)', () => {
       result.current.actions.sendMessage('retry test')
     })
     act(() => {
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(20_000)
     })
     // Find the failed block's localId
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
@@ -901,7 +954,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -949,7 +1002,7 @@ describe('echo-based flow (replaces initialMessage seeding)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [
         { type: 'user', id: 'user-0', text: 'hello', timestamp: 1000 },
         { type: 'assistant', id: 'a-1', text: 'hi', timestamp: 1001 },
@@ -990,7 +1043,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -1031,7 +1084,7 @@ describe('turn ordering (replaces interleave-user-blocks coverage)', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [
         { type: 'user', id: 'user-0', text: 'question', timestamp: 1000 },
         { type: 'assistant', id: 'a-1', text: 'answer', timestamp: 1001 },
@@ -1073,7 +1126,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       model: '',
       slashCommands: [],
       mcpServers: [],
@@ -1111,7 +1164,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       // biome-ignore lint/suspicious/noExplicitAny: test fixture
       committedBlocks: [{ type: 'user', id: 'u-1', text: 'hello', timestamp: 1000 }] as any,
       pendingText: '',
@@ -1148,7 +1201,7 @@ describe('source selection always merges history + live overlay', () => {
       resume: vi.fn(),
       totalInputTokens: 0,
       contextWindowSize: 0,
-      canResumeLazy: false,
+
       committedBlocks: [{ type: 'user', id: 'u-new', text: 'new msg', timestamp: 2000 }] as any,
       pendingText: '',
       clearPendingMessage: vi.fn(),
@@ -1284,8 +1337,8 @@ describe('binary source: isLive=false uses history', () => {
 // These tested dual-source merge behavior (turnVersion/resetAccumulator/freshlyCreated)
 // which has been replaced by the binary source switch (committedBlocks/pendingText).
 
-// ─── skipWs (watching mode) ────────────────
-describe('skipWs (watching mode)', () => {
+// ─── liveStatus (watching mode) ────────────────
+describe('liveStatus (watching mode)', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockSessionSource.mockReturnValue({ ...defaultSource })
@@ -1294,24 +1347,24 @@ describe('skipWs (watching mode)', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('passes undefined to useSessionSource when skipWs = true', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+  it('passes undefined to useSessionSource when liveStatus = cc_owned', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
-    // skipWs: true → useSessionSource(undefined) — no WS connection
+    // liveStatus: cc_owned → useSessionSource(undefined) — no WS connection
     expect(mockSessionSource).toHaveBeenCalledWith(undefined)
   })
 
-  it('passes sessionId to useSessionSource when skipWs = false', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: false }), {
+  it('passes sessionId to useSessionSource when liveStatus = inactive', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'inactive' }), {
       wrapper: createWrapper(),
     })
 
     expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
   })
 
-  it('passes sessionId to useSessionSource when skipWs is undefined', () => {
+  it('passes sessionId to useSessionSource when liveStatus is undefined', () => {
     renderHook(() => useConversation('sess-1'), {
       wrapper: createWrapper(),
     })
@@ -1319,14 +1372,14 @@ describe('skipWs (watching mode)', () => {
     expect(mockSessionSource).toHaveBeenCalledWith('sess-1')
   })
 
-  it('still loads history via REST even when skipWs = true', () => {
-    renderHook(() => useConversation('sess-1', { skipWs: true }), {
+  it('still loads history via REST even when liveStatus = cc_owned', () => {
+    renderHook(() => useConversation('sess-1', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
     // useSessionMessages should still receive the real sessionId for REST history
     expect(mockSessionMessages).toHaveBeenCalledWith('sess-1', expect.any(Object))
-    // skipWs bypasses initComplete gate — history must be enabled immediately
+    // liveStatus=cc_owned bypasses initComplete gate — history must be enabled immediately
     const lastCall = mockSessionMessages.mock.calls[mockSessionMessages.mock.calls.length - 1]
     expect(lastCall[1]).toHaveProperty('enabled', true)
   })

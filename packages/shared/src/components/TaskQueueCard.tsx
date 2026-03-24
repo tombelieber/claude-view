@@ -1,35 +1,26 @@
 import { Clock } from 'lucide-react'
 
+/**
+ * TaskQueueCard — follows inline stats pattern.
+ *
+ * Schema: taskDescription, taskType
+ */
+
 interface TaskQueueCardProps {
-  waitDuration?: number
-  position?: number
-  queueLength?: number
+  taskDescription: string
+  taskType: string
 }
 
-export function TaskQueueCard({ waitDuration, position, queueLength }: TaskQueueCardProps) {
-  const details: string[] = []
-
-  if (position !== undefined) {
-    details.push(
-      queueLength !== undefined ? `position ${position}/${queueLength}` : `position ${position}`,
-    )
-  }
-
-  if (waitDuration !== undefined) {
-    details.push(`${waitDuration}s`)
-  }
-
-  const hasDetails = details.length > 0
-  const suffix = hasDetails ? ` (${details.join(', ')})` : '...'
-
+export function TaskQueueCard({ taskDescription, taskType }: TaskQueueCardProps) {
   return (
-    <div className="py-0.5 border-l-2 border-l-gray-400 pl-1 my-1" aria-label="Task queue status">
-      <div className="flex items-center gap-1.5">
-        <Clock className="w-3 h-3 text-gray-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
-          Waiting for task{suffix}
-        </span>
-      </div>
+    <div className="flex items-center gap-2 text-[10px] font-mono" aria-label="Task queue status">
+      <Clock className="w-3 h-3 text-orange-500 flex-shrink-0" aria-hidden="true" />
+      <span className="text-gray-700 dark:text-gray-300 truncate flex-1">
+        {taskDescription || 'Waiting for task'}
+      </span>
+      <span className="px-1.5 py-0.5 rounded bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 flex-shrink-0">
+        {taskType}
+      </span>
     </div>
   )
 }

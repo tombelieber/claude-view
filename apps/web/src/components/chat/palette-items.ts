@@ -93,9 +93,9 @@ export function buildPaletteSections(
   capabilities: SessionCapabilities,
   modelOptions: ModelOption[],
   callbacks: PaletteCallbacks,
-  flags: { isLive: boolean; isStreaming: boolean },
+  flags: { sessionActive: boolean; isStreaming: boolean },
 ): PaletteSection[] {
-  const resumeDisabled = !flags.isLive || flags.isStreaming
+  const resumeDisabled = !flags.sessionActive || flags.isStreaming
   const sections: PaletteSection[] = []
 
   // --- Context ---

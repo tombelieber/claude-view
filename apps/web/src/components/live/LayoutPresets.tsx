@@ -3,6 +3,7 @@ import type { DockviewApi, SerializedDockview } from 'dockview-react'
 import { ChevronDown, Maximize2, Save, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useState } from 'react'
 import { cn } from '../../lib/utils'
+import type { DisplayMode } from '../../store/monitor-store'
 import type { LiveSession } from './use-live-sessions'
 
 export interface LayoutPresetsProps {
@@ -13,7 +14,7 @@ export interface LayoutPresetsProps {
   onSavePreset: (name: string) => void
   onDeletePreset: (name: string) => void
   customPresets: Record<string, SerializedDockview>
-  verboseMode: boolean
+  displayMode: DisplayMode
 }
 
 // ---------------------------------------------------------------------------
@@ -38,9 +39,9 @@ function sessionTitle(id: string, sessions: LiveSession[]): string {
   return session?.projectDisplayName ?? id.slice(0, 8)
 }
 
-function panelParams(id: string, sessions: LiveSession[], verboseMode: boolean) {
+function panelParams(id: string, sessions: LiveSession[], displayMode: DisplayMode) {
   const s = sessions.find((sess) => sess.id === id)
-  return { sessionId: id, verboseMode, status: s?.status ?? 'done' }
+  return { sessionId: id, displayMode, status: s?.status ?? 'done' }
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ export function applyPreset(
   api: DockviewApi,
   presetName: string,
   sessions: LiveSession[],
-  verboseMode: boolean,
+  displayMode: DisplayMode,
 ) {
   if (sessions.length === 0) return
 
@@ -69,7 +70,7 @@ export function applyPreset(
           id,
           component: 'session',
           title: sessionTitle(id, sessions),
-          params: panelParams(id, sessions, verboseMode),
+          params: panelParams(id, sessions, displayMode),
           position:
             i === 0
               ? undefined
@@ -88,7 +89,7 @@ export function applyPreset(
         id: positioned[0],
         component: 'session',
         title: sessionTitle(positioned[0], sessions),
-        params: panelParams(positioned[0], sessions, verboseMode),
+        params: panelParams(positioned[0], sessions, displayMode),
       })
       // Left stack
       for (let i = 1; i < positioned.length; i++) {
@@ -96,7 +97,7 @@ export function applyPreset(
           id: positioned[i],
           component: 'session',
           title: sessionTitle(positioned[i], sessions),
-          params: panelParams(positioned[i], sessions, verboseMode),
+          params: panelParams(positioned[i], sessions, displayMode),
           position:
             i === 1
               ? { referencePanel: positioned[0], direction: 'left' as const }
@@ -110,14 +111,14 @@ export function applyPreset(
         id: sessionIds[0],
         component: 'session',
         title: sessionTitle(sessionIds[0], sessions),
-        params: panelParams(sessionIds[0], sessions, verboseMode),
+        params: panelParams(sessionIds[0], sessions, displayMode),
       })
       for (let i = 1; i < sessionIds.length; i++) {
         api.addPanel({
           id: sessionIds[i],
           component: 'session',
           title: sessionTitle(sessionIds[i], sessions),
-          params: panelParams(sessionIds[i], sessions, verboseMode),
+          params: panelParams(sessionIds[i], sessions, displayMode),
           position: { referencePanel: sessionIds[0] },
         })
       }
@@ -133,7 +134,7 @@ export function applyPreset(
         id,
         component: 'session',
         title: sessionTitle(id, sessions),
-        params: panelParams(id, sessions, verboseMode),
+        params: panelParams(id, sessions, displayMode),
         position: { referencePanel: lastPositionedId },
       })
     }
@@ -206,7 +207,7 @@ export function LayoutPresets({
   onSavePreset,
   onDeletePreset,
   customPresets,
-  verboseMode,
+  displayMode,
 }: LayoutPresetsProps) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -218,11 +219,11 @@ export function LayoutPresets({
   const handleSelectBuiltIn = useCallback(
     (name: BuiltInPreset) => {
       if (!dockviewApi) return
-      applyPreset(dockviewApi, name, sessions, verboseMode)
+      applyPreset(dockviewApi, name, sessions, displayMode)
       onSelectPreset(name)
       setOpen(false)
     },
-    [dockviewApi, sessions, verboseMode, onSelectPreset],
+    [dockviewApi, sessions, displayMode, onSelectPreset],
   )
 
   const handleSelectCustom = useCallback(

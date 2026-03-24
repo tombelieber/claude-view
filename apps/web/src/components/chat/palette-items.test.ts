@@ -58,7 +58,7 @@ describe('buildPaletteSections', () => {
 
   it('returns Context, Model, Customize, and Slash Commands sections', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const labels = sections.map((s) => s.label)
@@ -68,7 +68,7 @@ describe('buildPaletteSections', () => {
   it('hides Slash Commands section when no commands from sidecar', () => {
     const caps = { ...baseCapabilities, slashCommands: [] }
     const sections = buildPaletteSections(caps, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     expect(sections.find((s) => s.label === 'Commands')).toBeUndefined()
@@ -76,7 +76,7 @@ describe('buildPaletteSections', () => {
 
   it('disables resume actions when session is not live', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: false,
+      sessionActive: false,
       isStreaming: false,
     })
     const modelSection = sections.find((s) => s.label === 'Model')
@@ -90,7 +90,7 @@ describe('buildPaletteSections', () => {
 
   it('disables resume actions when streaming', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: true,
     })
     const customizeSection = sections.find((s) => s.label === 'Customize')
@@ -103,7 +103,7 @@ describe('buildPaletteSections', () => {
 
   it('shows current model label in Switch model submenu', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const modelSection = sections.find((s) => s.label === 'Model')
@@ -114,7 +114,7 @@ describe('buildPaletteSections', () => {
 
   it('shows current permission mode in Permissions submenu', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const customizeSection = sections.find((s) => s.label === 'Customize')
@@ -127,7 +127,7 @@ describe('buildPaletteSections', () => {
 
   it('merges known descriptions with dynamic slash commands', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const cmdSection = sections.find((s) => s.label === 'Commands')
@@ -142,7 +142,7 @@ describe('buildPaletteSections', () => {
 
   it('MCP servers section shows individual servers with status badge', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const mcpSection = sections.find((s) => s.label === 'MCP Servers')
@@ -155,7 +155,7 @@ describe('buildPaletteSections', () => {
 
   it('attach file action is disabled with hint', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const contextSection = sections.find((s) => s.label === 'Context')
@@ -169,7 +169,7 @@ describe('buildPaletteSections', () => {
 
   it('builds model submenu items from modelOptions parameter', () => {
     const sections = buildPaletteSections(baseCapabilities, mockModelOptions, noopCallbacks, {
-      isLive: true,
+      sessionActive: true,
       isStreaming: false,
     })
     const modelSection = sections.find((s) => s.label === 'Model')

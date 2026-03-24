@@ -57,7 +57,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
   const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
   const resyncRef = useRef<{
     ids: Set<string>
-    timer: ReturnType<typeof setTimeout> | null
+    timer: number | null
   } | null>(null)
 
   useEffect(() => {

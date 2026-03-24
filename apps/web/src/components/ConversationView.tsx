@@ -23,9 +23,8 @@ import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 
 import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
-import { ConversationActionsProvider } from '../contexts/conversation-actions-context'
+import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
 import { useConversation } from '../hooks/use-conversation'
-import { useHookEvents } from '../hooks/use-hook-events'
 import { useModelOptions } from '../hooks/use-models'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
@@ -34,8 +33,12 @@ import { useScrollAnchor } from '../hooks/use-scroll-anchor'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionCapabilities } from '../hooks/use-session-capabilities'
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { computeCategoryCounts } from '../lib/compute-category-counts'
-import { deriveInputBarState } from '../lib/control-status-map'
+import {
+  deriveLiveStatus,
+  derivePanelMode,
+  modeToConnectionHealth,
+  modeToInputBar,
+} from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -43,13 +46,10 @@ import {
   generateStandaloneHtml,
 } from '../lib/export-html'
 import { copyToClipboard, downloadMarkdown, generateMarkdown } from '../lib/export-markdown'
-import { hookEventsToRichMessages, mergeByTimestamp } from '../lib/hook-events-to-messages'
-import { messagesToRichMessages } from '../lib/message-to-rich'
 import { getContextLimit } from '../lib/model-context-windows'
 import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import { useMonitorStore } from '../store/monitor-store'
-import type { ConnectionHealth } from '../types/control'
 import { CommitsPanel } from './CommitsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from './FilesTouchedPanel'
@@ -60,45 +60,22 @@ import { ShareModal } from './ShareModal'
 import { ChatInputBar } from './chat/ChatInputBar'
 import { ConnectionBanner } from './chat/ConnectionBanner'
 import { ModelSelector } from './chat/ModelSelector'
-import { ConversationThread } from './conversation/ConversationThread'
-import { chatRegistry } from './conversation/blocks/chat/registry'
-import { developerRegistry } from './conversation/blocks/developer/registry'
-import { RichPane } from './live/RichPane'
+import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 import { SessionDetailPanel } from './live/SessionDetailPanel'
-import { ViewModeControls } from './live/ViewModeControls'
+import { DisplayModeToggle } from './live/DisplayModeToggle'
 import { historyToPanelData } from './live/session-panel-data'
-
-/** Map sessionState to connection health for banner */
-function deriveConnectionHealth(sessionState: string): ConnectionHealth {
-  if (sessionState === 'reconnecting') return 'degraded'
-  if (sessionState === 'error') return 'lost'
-  return 'ok'
-}
-
-/** RichPane wrapper that reads verboseMode from the store (same as terminal view) */
-function HistoryRichPane({
-  messages,
-  categoryCounts,
-}: {
-  messages: import('./live/RichPane').RichMessage[]
-  categoryCounts?: import('../lib/compute-category-counts').CategoryCounts
-}) {
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
-  return (
-    <RichPane
-      messages={messages}
-      isVisible={true}
-      verboseMode={verboseMode}
-      bufferDone={true}
-      categoryCounts={categoryCounts}
-    />
-  )
-}
+import type { UseLiveSessionsResult } from './live/use-live-sessions'
 
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const { summaries } = useOutletContext<{ summaries: ProjectSummary[] }>()
+  const { summaries, liveSessions } = useOutletContext<{
+    summaries: ProjectSummary[]
+    liveSessions: UseLiveSessionsResult
+  }>()
+  const liveStatus = deriveLiveStatus(liveSessions.sessions.find((s) => s.id === sessionId))
 
   // Session metadata
   const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
@@ -113,17 +90,20 @@ export function ConversationView() {
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
-  const hookEvents = useHookEvents(sessionId ?? '', !!sessionId)
-
   // Unified conversation hook: blocks + actions + session state
-  const { blocks, history, actions, sessionInfo: convInfo } = useConversation(sessionId)
+  const {
+    blocks,
+    history,
+    actions,
+    sessionInfo: convInfo,
+  } = useConversation(sessionId, { liveStatus })
 
   const { scrollContainerRef, topSentinelRef, bottomRef, handleScroll } = useScrollAnchor({
     onReachTop: history.hasOlderMessages ? history.fetchOlderMessages : undefined,
     isFetchingOlder: history.isFetchingOlder,
     blockCount: blocks.length,
   })
-  const { isLive, sessionState } = convInfo
+  const { sessionState } = convInfo
 
   // Detect missing JSONL (session in DB but file deleted)
   const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
@@ -187,7 +167,7 @@ export function ConversationView() {
   // Push persisted mode once session goes live (triggered by user sending a message)
   const lastSentModeRef = useRef<PermissionMode | null>(null)
   useEffect(() => {
-    if (!isLive) return
+    if (liveStatus === 'inactive') return
     // Skip sending 'default' on initial connect — SDK already defaults to it
     if (lastSentModeRef.current === null && chatMode === 'default') {
       lastSentModeRef.current = chatMode
@@ -197,7 +177,7 @@ export function ConversationView() {
       lastSentModeRef.current = chatMode
       actions.setPermissionMode(chatMode)
     }
-  }, [isLive, chatMode, actions])
+  }, [liveStatus, chatMode, actions])
 
   // Model selection for resume (persisted in localStorage)
   const [resumeModel, setResumeModel] = useState<string>(() => {
@@ -216,7 +196,7 @@ export function ConversationView() {
     }
   }, [])
 
-  const verboseMode = useMonitorStore((s) => s.verboseMode)
+  const displayMode = useMonitorStore((s) => s.displayMode)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const exportMenuRef = useRef<HTMLDivElement>(null)
   const [resumeMenuOpen, setResumeMenuOpen] = useState(false)
@@ -376,42 +356,20 @@ export function ConversationView() {
 
   const [panelOpen, setPanelOpen] = useState(true)
 
-  // Verbose mode: rich messages for RichPane (developer terminal view)
-  const richMessages = useMemo(
-    () => (session?.messages?.length ? messagesToRichMessages(session.messages) : []),
-    [session?.messages],
-  )
-  const richHookMessages = useMemo(() => hookEventsToRichMessages(hookEvents), [hookEvents])
-  const richMessagesWithHookEvents = useMemo(() => {
-    if (
-      richHookMessages.length === 0 ||
-      richMessages.some((m) => m.metadata?.type === 'hook_event')
-    ) {
-      return richMessages
-    }
-    return mergeByTimestamp(richMessages, richHookMessages, (m) => m.ts)
-  }, [richMessages, richHookMessages])
-
-  const historyCategoryCounts = useMemo(
-    () => computeCategoryCounts(richMessagesWithHookEvents),
-    [richMessagesWithHookEvents],
-  )
-
   // Side panel data
   const panelData = useMemo(() => {
     if (!sessionDetail) return undefined
-    return historyToPanelData(
-      sessionDetail,
-      richData ?? undefined,
-      sessionInfo,
-      richMessagesWithHookEvents,
-    )
-  }, [sessionDetail, richData, sessionInfo, richMessagesWithHookEvents])
+    return historyToPanelData(sessionDetail, richData ?? undefined, sessionInfo)
+  }, [sessionDetail, richData, sessionInfo])
+
+  // FSM: derive panel mode from live status + session state
+  const panelMode = derivePanelMode(sessionId, liveStatus, sessionState)
+  const inputBarState = modeToInputBar(panelMode)
 
   // Context gauge — live/sidecar uses WS token data, history uses panelData from JSONL
   const contextPercent = useMemo(() => {
     if (
-      (isLive || convInfo.canResumeLazy) &&
+      (panelMode.mode === 'own' || panelMode.mode === 'history') &&
       convInfo.contextWindowSize > 0 &&
       convInfo.totalInputTokens > 0
     ) {
@@ -426,11 +384,9 @@ export function ConversationView() {
       return Math.round((panelData.contextWindowTokens / limit) * 100)
     }
     return undefined
-  }, [isLive, convInfo, panelData])
+  }, [panelMode.mode, convInfo, panelData])
 
-  // Derived UI state from new hook
-  const inputBarState = deriveInputBarState(sessionState, isLive, convInfo.canResumeLazy)
-  const connectionHealth = deriveConnectionHealth(sessionState)
+  const connectionHealth = modeToConnectionHealth(panelMode)
 
   // ----- Early returns -----
 
@@ -461,7 +417,7 @@ export function ConversationView() {
     )
   }
 
-  if (!blocks.length && !isLive && !sessionDetail) {
+  if (!blocks.length && liveStatus === 'inactive' && !sessionDetail) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState
@@ -554,7 +510,7 @@ export function ConversationView() {
   }
 
   // Registry: chat bubbles (compact) vs developer terminal view
-  const registry = verboseMode ? developerRegistry : chatRegistry
+  const registry = displayMode === 'developer' ? developerRegistry : chatRegistry
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-950">
@@ -573,7 +529,7 @@ export function ConversationView() {
         </div>
 
         <div className="flex items-center gap-2">
-          <ViewModeControls />
+          <DisplayModeToggle />
         </div>
 
         <div className="flex items-center gap-2">
@@ -774,34 +730,27 @@ export function ConversationView() {
               </div>
             )}
 
-            {verboseMode ? (
-              <HistoryRichPane
-                messages={richMessagesWithHookEvents}
-                categoryCounts={historyCategoryCounts}
-              />
-            ) : (
-              <FindProvider value={findQuery}>
-                <ThreadHighlightProvider>
-                  <ExpandProvider>
-                    <div className="max-w-4xl mx-auto px-6 py-4">
-                      <ErrorBoundary>
-                        <ConversationActionsProvider
-                          actions={{
-                            retryMessage: actions.retryMessage,
-                            respondPermission: actions.respondPermission,
-                            answerQuestion: actions.answerQuestion,
-                            approvePlan: actions.approvePlan,
-                            submitElicitation: actions.submitElicitation,
-                          }}
-                        >
-                          <ConversationThread blocks={blocks} renderers={registry} />
-                        </ConversationActionsProvider>
-                      </ErrorBoundary>
-                    </div>
-                  </ExpandProvider>
-                </ThreadHighlightProvider>
-              </FindProvider>
-            )}
+            <FindProvider value={findQuery}>
+              <ThreadHighlightProvider>
+                <ExpandProvider>
+                  <div className="max-w-4xl mx-auto px-6 py-4">
+                    <ErrorBoundary>
+                      <ConversationActionsProvider
+                        actions={{
+                          retryMessage: actions.retryMessage,
+                          respondPermission: actions.respondPermission,
+                          answerQuestion: actions.answerQuestion,
+                          approvePlan: actions.approvePlan,
+                          submitElicitation: actions.submitElicitation,
+                        }}
+                      >
+                        <ConversationThread blocks={blocks} renderers={registry} />
+                      </ConversationActionsProvider>
+                    </ErrorBoundary>
+                  </div>
+                </ExpandProvider>
+              </ThreadHighlightProvider>
+            </FindProvider>
 
             {/* Bottom anchor — OUTSIDE the mode-switching block */}
             <div ref={bottomRef} />

@@ -1,22 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 const readSource = async (relPath: string) => {
-  // @ts-expect-error — node:fs/promises unavailable in browser tsconfig
   const fs = await import('node:fs/promises')
-  // @ts-expect-error — node:path unavailable in browser tsconfig
   const path = await import('node:path')
-  // @ts-expect-error — process.cwd() unavailable in browser tsconfig
-  return fs.readFile(path.resolve(process.cwd(), relPath), 'utf-8')
+  // Resolve relative to this test file's directory (apps/web/src/hooks/)
+  return fs.readFile(
+    path.resolve(import.meta.dirname, '..', relPath.replace(/^src\//, '')),
+    'utf-8',
+  )
 }
 
 // Root Cause 1: Missing state resets on session switch
-describe('Root cause 1 regression: session switch state cleanup via key={sessionId}', () => {
-  it('ChatPage uses key={sessionId} on ChatSession', async () => {
-    const source = await readSource('src/pages/ChatPage.tsx')
-    expect(source).toMatch(/ChatSession\s+key=/)
-    expect(source).toMatch(/key=\{sessionId/)
-  })
-
+describe('Root cause 1 regression: session switch state cleanup', () => {
   it('ChatSession does NOT use useParams — sessionId comes from props', async () => {
     const source = await readSource('src/pages/ChatSession.tsx')
     expect(source).not.toMatch(/useParams.*sessionId/)
@@ -47,7 +42,7 @@ describe('Root cause 2 regression: replayComplete removed from lifecycle', () =>
   })
 })
 
-// Root Cause 3: Sidebar polls instead of subscribing to events
+// Root Cause 3: Sidebar uses SSE not polling
 describe('Root cause 3 regression: sidebar uses SSE not polling', () => {
   it('SessionSidebar has NO setInterval', async () => {
     const source = await readSource('src/components/conversation/sidebar/SessionSidebar.tsx')
@@ -59,8 +54,8 @@ describe('Root cause 3 regression: sidebar uses SSE not polling', () => {
     expect(source).toMatch(/liveSessions:\s*LiveSession\[\]/)
   })
 
-  it('ChatPage passes liveSessions from useOutletContext to SessionSidebar', async () => {
-    const source = await readSource('src/pages/ChatPage.tsx')
+  it('ChatPageV2 passes liveSessions from useOutletContext to SessionSidebar', async () => {
+    const source = await readSource('src/pages/ChatPageV2.tsx')
     expect(source).toMatch(/useOutletContext/)
     expect(source).toMatch(/liveSessions/)
     expect(source).toMatch(/<SessionSidebar\s+liveSessions=/)

@@ -1,41 +1,53 @@
 import { GitBranch } from 'lucide-react'
 import { useCompactCodeBlock } from '../contexts/CodeRenderContext'
 
+/**
+ * HookProgressCard — follows HookEventDetail pattern.
+ * Header with event→name + status, command as code block.
+ *
+ * Schema: hookEvent, hookName, command, statusMessage
+ */
+
 interface HookProgressCardProps {
   hookEvent: string
   hookName: string
   command: string
-  output?: string
+  statusMessage: string
   blockId?: string
-  verboseMode?: boolean
 }
 
 export function HookProgressCard({
   hookEvent,
   hookName,
   command,
-  output,
+  statusMessage,
   blockId,
 }: HookProgressCardProps) {
   const CompactCodeBlock = useCompactCodeBlock()
-  const hasOutput = output !== undefined
 
   return (
-    <div className="py-0.5 border-l-2 border-l-amber-400 pl-1 my-1">
-      <div className="flex items-center gap-1.5 mb-0.5">
+    <div className="space-y-1">
+      {/* Header: event → name + status */}
+      <div className="flex items-center gap-2 text-[10px] font-mono">
         <GitBranch className="w-3 h-3 text-amber-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate">
-          {hookEvent} {'\u2192'} {command}
+        <span className="text-amber-700 dark:text-amber-300">{hookEvent}</span>
+        <span className="text-gray-500 dark:text-gray-500" aria-hidden="true">
+          {'\u2192'}
         </span>
+        <span className="text-gray-700 dark:text-gray-300 truncate">{hookName}</span>
+        {statusMessage && (
+          <span className="text-gray-500 dark:text-gray-400 truncate ml-auto flex-shrink-0">
+            {statusMessage}
+          </span>
+        )}
       </div>
 
-      {hasOutput && (
-        <CompactCodeBlock
-          code={output}
-          language="bash"
-          blockId={blockId ? `${blockId}-out` : `hook-${hookName}-out`}
-        />
-      )}
+      {/* Command — always visible */}
+      <CompactCodeBlock
+        code={command}
+        language="bash"
+        blockId={blockId ? `${blockId}-cmd` : `hook-${hookName}-cmd`}
+      />
     </div>
   )
 }

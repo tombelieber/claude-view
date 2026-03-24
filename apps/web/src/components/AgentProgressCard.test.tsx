@@ -2,7 +2,7 @@ import {
   type CodeRenderContextValue,
   CodeRenderProvider,
 } from '@claude-view/shared/contexts/CodeRenderContext'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { AgentProgressCard } from './AgentProgressCard'
 
@@ -32,168 +32,70 @@ function renderWithCodeContext(ui: React.ReactElement) {
 }
 
 describe('AgentProgressCard', () => {
-  describe('React auto-escaping XSS prevention', () => {
-    it('should properly escape text content with script tags (React auto-escaping)', () => {
-      const xssProps = {
-        agentId: '<script>alert("XSS")</script>',
-        prompt: 'Test prompt with <img src=x onerror="alert(1)">',
-        model: 'claude-<script>alert("model")</script>opus',
-        tokens: { input: 100, output: 200 },
-        normalizedMessages: 5,
-      }
+  describe('All fields visible by default', () => {
+    it('should display agent ID in header', () => {
+      renderWithCodeContext(<AgentProgressCard agentId="agent-1" prompt="Research auth" />)
 
-      renderWithCodeContext(<AgentProgressCard {...xssProps} />)
-
-      expect(screen.getByText(/<script>alert\("XSS"\)<\/script>/)).toBeInTheDocument()
-      expect(screen.getByText(/claude-<script>alert\("model"\)<\/script>opus/)).toBeInTheDocument()
+      expect(screen.getByText('#agent-1')).toBeInTheDocument()
     })
 
-    it('should render text content without interpreting HTML entities', () => {
-      const htmlProps = {
-        agentId: 'agent-&lt;malicious&gt;',
-        prompt: 'Prompt with &quot;quoted&quot; text',
-        model: 'claude-opus',
-        tokens: { input: 50, output: 150 },
-        normalizedMessages: 3,
-      }
-
-      renderWithCodeContext(<AgentProgressCard {...htmlProps} />)
-
-      expect(screen.getByText(/agent-&lt;malicious&gt;/)).toBeInTheDocument()
-    })
-
-    it('should not allow event handler binding to escaped text', () => {
-      const eventHandlerProps = {
-        agentId: 'onclick="console.log(\'clicked\')"',
-        prompt: 'onmouseover="alert(\'hover\')"',
-        model: 'claude-opus',
-        tokens: { input: 100, output: 200 },
-        normalizedMessages: 5,
-      }
-
-      const { container } = renderWithCodeContext(<AgentProgressCard {...eventHandlerProps} />)
-
-      const allElements = container.querySelectorAll('*')
-      for (const el of allElements) {
-        expect(el.getAttribute('onclick')).toBeNull()
-        expect(el.getAttribute('onmouseover')).toBeNull()
-      }
-    })
-  })
-
-  describe('Title and status rendering', () => {
-    it('should display agent title with model and token info', () => {
+    it('should display prompt immediately without click', () => {
       renderWithCodeContext(
-        <AgentProgressCard
-          agentId="agent-1"
-          prompt="Do something"
-          model="claude-opus"
-          tokens={{ input: 300, output: 200 }}
-        />,
+        <AgentProgressCard agentId="a1" prompt="This is the full prompt text" />,
       )
 
-      expect(screen.getByText(/Agent #agent-1/)).toBeInTheDocument()
-      expect(screen.getByText(/claude-opus/)).toBeInTheDocument()
-      expect(screen.getByText(/500 tokens/)).toBeInTheDocument()
+      const promptBlock = screen.getByTestId('agent-prompt')
+      expect(promptBlock).toBeInTheDocument()
+      expect(promptBlock.textContent).toContain('This is the full prompt text')
     })
 
-    it('should show "Sub-agent" when agentId is undefined', () => {
-      renderWithCodeContext(<AgentProgressCard prompt="Do something" model="claude-opus" />)
-
-      expect(screen.getByText(/Sub-agent/)).toBeInTheDocument()
-    })
-
-    it('should not show token display when tokens undefined', () => {
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />)
-
-      expect(screen.queryByText(/tokens/)).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Collapsible behavior', () => {
-    it('should expand to show prompt on click', () => {
+    it('should show message as JSON when present', () => {
       renderWithCodeContext(
         <AgentProgressCard
           agentId="a1"
-          prompt="This is the full prompt text"
-          model="claude-opus"
+          prompt="Do something"
+          message={{ status: 'completed', count: 42 }}
         />,
       )
 
-      // Prompt should not be visible initially
-      expect(screen.queryByText('This is the full prompt text')).not.toBeInTheDocument()
-
-      // Click to expand
-      fireEvent.click(screen.getByRole('button'))
-
-      // Prompt should now be visible via CompactCodeBlock
-      expect(screen.getByText('This is the full prompt text')).toBeInTheDocument()
+      const msgBlock = screen.getByTestId('agent-message')
+      expect(msgBlock.textContent).toContain('"status"')
     })
 
-    it('should truncate prompt longer than 1000 chars in expanded view', () => {
-      const longPrompt = 'A'.repeat(1200)
-      renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt={longPrompt} model="claude-opus" />,
-      )
+    it('should show string message as-is', () => {
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" message="plain text" />)
 
-      fireEvent.click(screen.getByRole('button'))
+      expect(screen.getByText('plain text')).toBeInTheDocument()
+    })
 
-      // Should show truncated text
-      const truncated = screen.getByTestId('agent-prompt')
-      expect(truncated.textContent!.length).toBeLessThan(1200)
+    it('should not show message section when undefined', () => {
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
+
+      expect(screen.queryByTestId('agent-message')).not.toBeInTheDocument()
+    })
+
+    it('should truncate prompt longer than 2000 chars', () => {
+      const longPrompt = 'A'.repeat(2500)
+      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt={longPrompt} />)
+
+      const promptBlock = screen.getByTestId('agent-prompt')
+      expect(promptBlock.textContent!.length).toBeLessThan(2500)
     })
   })
 
   describe('Visual styling', () => {
     it('should have indigo left border', () => {
-      const { container } = renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />,
-      )
+      const { container } = renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
 
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-indigo')
+      expect(card.className).toContain('space-y')
     })
 
-    it('should apply nested indentation via indent prop', () => {
-      const { container } = renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" indent={2} />,
-      )
+    it('should have aria-hidden on decorative icon', () => {
+      const { container } = renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" />)
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.style.marginLeft).toBe('32px')
-    })
-  })
-
-  describe('ARIA and keyboard', () => {
-    it('should have ARIA label on the card', () => {
-      renderWithCodeContext(<AgentProgressCard agentId="a1" prompt="Do" model="claude-opus" />)
-
-      expect(screen.getByRole('button', { name: /agent progress/i })).toBeInTheDocument()
-    })
-
-    it('should toggle expanded on Enter key', () => {
-      renderWithCodeContext(
-        <AgentProgressCard agentId="a1" prompt="Prompt text here" model="claude-opus" />,
-      )
-
-      const button = screen.getByRole('button')
-      fireEvent.keyDown(button, { key: 'Enter' })
-      // Native button handles Enter natively, so click fires
-    })
-  })
-
-  describe('Edge cases', () => {
-    it('should handle all props undefined gracefully', () => {
-      const { container } = renderWithCodeContext(<AgentProgressCard />)
-      expect(container).toBeInTheDocument()
-      expect(screen.getByText(/Sub-agent/)).toBeInTheDocument()
-    })
-
-    it('should handle empty strings safely', () => {
-      const { container } = renderWithCodeContext(
-        <AgentProgressCard agentId="" prompt="" model="" />,
-      )
-      expect(container).toBeInTheDocument()
+      const svg = container.querySelector('svg')
+      expect(svg?.getAttribute('aria-hidden')).toBe('true')
     })
   })
 })

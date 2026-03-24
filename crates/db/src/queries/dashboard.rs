@@ -46,12 +46,13 @@ impl Database {
         let now = Utc::now().timestamp();
         let active_threshold = now - 300; // 5 minutes
 
-        // Group by git_root when available so worktree sessions merge under
-        // their parent repo. NULLIF strips empty-string sentinels from backfill.
+        // Group by real decoded path, falling through: git_root → project_path → project_id.
+        // This prevents duplicates when some sessions have git_root resolved and
+        // others only have the encoded project_id (both decode to the same path).
         let rows: Vec<(String, String, String, i64, i64, Option<i64>)> = sqlx::query_as(
             r#"
             SELECT
-                COALESCE(NULLIF(git_root, ''), project_id) as effective_id,
+                COALESCE(NULLIF(git_root, ''), NULLIF(project_path, ''), project_id) as effective_id,
                 COALESCE(
                     CASE WHEN git_root IS NOT NULL AND git_root != ''
                          THEN REPLACE(REPLACE(git_root, RTRIM(git_root, REPLACE(git_root, '/', '')), ''), '/', '')
@@ -59,7 +60,7 @@ impl Database {
                     project_display_name,
                     project_id
                 ) as display_name,
-                COALESCE(NULLIF(git_root, ''), project_path, '') as effective_path,
+                COALESCE(NULLIF(git_root, ''), NULLIF(project_path, ''), '') as effective_path,
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
                 MAX(last_message_at) as last_activity_at
@@ -72,7 +73,7 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
 
-        let summaries = rows
+        let mut summaries: Vec<ProjectSummary> = rows
             .into_iter()
             .map(
                 |(name, display_name, path, session_count, active_count, last_activity_at)| {
@@ -87,6 +88,8 @@ impl Database {
                 },
             )
             .collect();
+
+        disambiguate_display_names(&mut summaries);
 
         Ok(summaries)
     }
@@ -107,8 +110,9 @@ impl Database {
         // Build WHERE clause dynamically.
         // Bind indices: ?1 = project_id, ?2 = limit, ?3 = offset.
         // ?4 is used only for BranchFilter::Named (a concrete branch name).
-        // Match by project_id or git_root so sidebar clicks include worktree sessions
-        let mut conditions = vec!["(s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ?1))".to_string()];
+        // Match by project_id, git_root, or project_path so sidebar clicks find
+        // sessions regardless of which key was used as effective_id.
+        let mut conditions = vec!["(s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ?1) OR (s.project_path IS NOT NULL AND s.project_path != '' AND s.project_path = ?1))".to_string()];
         // Always exclude archived sessions from user-facing lists
         conditions.push("s.archived_at IS NULL".to_string());
         if !include_sidechains {
@@ -438,11 +442,13 @@ impl Database {
                 qb.push_bind(before);
             }
 
-            // Project filter (worktree-aware: match project_id OR git_root)
+            // Project filter (worktree-aware: match project_id, git_root, or project_path)
             if let Some(ref project) = params.project {
                 qb.push(" AND (s.project_id = ");
                 qb.push_bind(project.as_str());
                 qb.push(" OR (s.git_root IS NOT NULL AND s.git_root != '' AND s.git_root = ");
+                qb.push_bind(project.as_str());
+                qb.push(") OR (s.project_path IS NOT NULL AND s.project_path != '' AND s.project_path = ");
                 qb.push_bind(project.as_str());
                 qb.push("))");
             }
@@ -514,6 +520,7 @@ impl Database {
             WHERE (
                 project_id = ?1
                 OR (git_root IS NOT NULL AND git_root != '' AND git_root = ?1)
+                OR (project_path IS NOT NULL AND project_path != '' AND project_path = ?1)
             )
             GROUP BY NULLIF(git_branch, '')
             ORDER BY count DESC
@@ -548,7 +555,7 @@ impl Database {
             JOIN invocables inv ON i.invocable_id = inv.id
             INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1))
+              AND (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?1))
               AND (?2 IS NULL OR s.git_branch = ?2)
             GROUP BY inv.kind, inv.name
             ORDER BY inv.kind, cnt DESC
@@ -584,7 +591,7 @@ impl Database {
             INNER JOIN valid_sessions s ON i.session_id = s.id
             WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
               AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
-              AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3))
+              AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?3))
               AND (?4 IS NULL OR s.git_branch = ?4)
             GROUP BY inv.kind, inv.name
             ORDER BY inv.kind, cnt DESC
@@ -627,7 +634,7 @@ impl Database {
               COALESCE(SUM(tool_counts_bash), 0),
               COALESCE(SUM(tool_counts_write), 0)
             FROM valid_sessions
-            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
+            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             "#,
         )
         .bind(project)
@@ -643,7 +650,7 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1
-              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2)) AND (?3 IS NULL OR git_branch = ?3)
+              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
@@ -671,7 +678,7 @@ impl Database {
             r#"
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM valid_sessions
-            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
+            WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -697,7 +704,7 @@ impl Database {
             SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
                         WHERE longest_task_seconds > 0
-              AND (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)
+              AND (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
@@ -775,7 +782,7 @@ impl Database {
               COALESCE(SUM(tool_counts_write), 0)
             FROM valid_sessions
             WHERE last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             "#,
         )
         .bind(from)
@@ -793,7 +800,7 @@ impl Database {
             SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1
-              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2)) AND (?3 IS NULL OR git_branch = ?3)
+              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
             "#,
@@ -823,7 +830,7 @@ impl Database {
             SELECT project_id, COALESCE(project_display_name, project_id), COUNT(*) as cnt
             FROM valid_sessions
             WHERE last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY project_id
             ORDER BY cnt DESC
             LIMIT 5
@@ -851,7 +858,7 @@ impl Database {
             SELECT id, COALESCE(NULLIF(longest_task_preview, ''), preview), project_id, COALESCE(project_display_name, project_id), longest_task_seconds
             FROM valid_sessions
             WHERE longest_task_seconds > 0 AND last_message_at >= ?1 AND last_message_at <= ?2
-              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)) AND (?4 IS NULL OR git_branch = ?4)
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             ORDER BY longest_task_seconds DESC
             LIMIT 5
             "#,
@@ -911,14 +918,14 @@ impl Database {
                 r#"
                 SELECT
                   (SELECT COUNT(*) FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COALESCE(SUM(COALESCE(total_input_tokens, 0) + COALESCE(total_output_tokens, 0)), 0)
                      FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COALESCE(SUM(files_edited_count), 0) FROM valid_sessions
-                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
+                     WHERE (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)),
                   (SELECT COUNT(DISTINCT sc.commit_hash) FROM session_commits sc INNER JOIN valid_sessions s ON sc.session_id = s.id
-                     WHERE (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1)) AND (?2 IS NULL OR s.git_branch = ?2))
+                     WHERE (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?1)) AND (?2 IS NULL OR s.git_branch = ?2))
                 "#,
             )
             .bind(project)
@@ -1022,6 +1029,51 @@ fn partition_invocables_by_kind(
     }
 
     Ok((skills, commands, mcp_tools, agents))
+}
+
+/// Extract "parent/leaf" from a path for disambiguation.
+/// e.g. "/Users/dev/@acme/fashion-ai/pod-ai" → Some("fashion-ai/pod-ai")
+///      "/Users/dev/@acme/pod-ai"             → Some("@acme/pod-ai")
+///      "/"                                        → None
+fn parent_qualified_name(path: &str) -> Option<String> {
+    let trimmed = path.trim_end_matches('/');
+    let last_sep = trimmed.rfind('/')?;
+    if last_sep == 0 && trimmed.len() == 1 {
+        // path was "/"
+        return None;
+    }
+    let leaf = &trimmed[last_sep + 1..];
+    if leaf.is_empty() {
+        return None;
+    }
+    let parent_slice = &trimmed[..last_sep];
+    let parent_name = match parent_slice.rfind('/') {
+        Some(pos) => &parent_slice[pos + 1..],
+        None => parent_slice,
+    };
+    Some(format!("{}/{}", parent_name, leaf))
+}
+
+/// When multiple projects share the same `display_name`, qualify them with
+/// their parent directory so the sidebar shows e.g. "fashion-ai/pod-ai" vs
+/// "@acme/pod-ai" instead of two identical "pod-ai" entries.
+fn disambiguate_display_names(summaries: &mut [ProjectSummary]) {
+    use std::collections::HashMap;
+
+    // Count occurrences of each display_name.
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for s in summaries.iter() {
+        *counts.entry(s.display_name.clone()).or_default() += 1;
+    }
+
+    // For duplicates, replace with parent-qualified name.
+    for s in summaries.iter_mut() {
+        if counts.get(&s.display_name).copied().unwrap_or(0) > 1 {
+            if let Some(qualified) = parent_qualified_name(&s.path) {
+                s.display_name = qualified;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1247,5 +1299,99 @@ mod filtered_query_tests {
         };
         let (sessions, _) = db.query_sessions_filtered(&params).await.unwrap();
         assert_eq!(sessions[0].id, "s-2"); // longest first
+    }
+}
+
+#[cfg(test)]
+mod disambiguate_tests {
+    use super::*;
+    use claude_view_core::ProjectSummary;
+
+    fn make_summary(display_name: &str, path: &str) -> ProjectSummary {
+        ProjectSummary {
+            name: path.to_string(),
+            display_name: display_name.to_string(),
+            path: path.to_string(),
+            session_count: 1,
+            active_count: 0,
+            last_activity_at: None,
+        }
+    }
+
+    // --- parent_qualified_name ---
+
+    #[test]
+    fn parent_qualified_scoped_deep_path() {
+        // Two parent segments visible: "fashion-ai/pod-ai"
+        assert_eq!(
+            parent_qualified_name("/Users/dev/@acme/fashion-ai/pod-ai"),
+            Some("fashion-ai/pod-ai".to_string()),
+        );
+    }
+
+    #[test]
+    fn parent_qualified_scoped_namespace() {
+        // Parent is a scoped namespace: "@acme/pod-ai"
+        assert_eq!(
+            parent_qualified_name("/Users/dev/@acme/pod-ai"),
+            Some("@acme/pod-ai".to_string()),
+        );
+    }
+
+    #[test]
+    fn parent_qualified_root_returns_none() {
+        // Root path has no parent directory
+        assert_eq!(parent_qualified_name("/"), None);
+    }
+
+    #[test]
+    fn parent_qualified_single_segment() {
+        // Only one segment after root — parent is empty string from split
+        assert_eq!(
+            parent_qualified_name("/pod-ai"),
+            Some("/pod-ai".to_string()),
+        );
+    }
+
+    // --- disambiguate_display_names ---
+
+    #[test]
+    fn disambiguate_duplicate_names() {
+        let mut summaries = vec![
+            make_summary("pod-ai", "/Users/dev/@acme/fashion-ai/pod-ai"),
+            make_summary("pod-ai", "/Users/dev/@acme/pod-ai"),
+        ];
+        disambiguate_display_names(&mut summaries);
+
+        assert_eq!(summaries[0].display_name, "fashion-ai/pod-ai");
+        assert_eq!(summaries[1].display_name, "@acme/pod-ai");
+    }
+
+    #[test]
+    fn disambiguate_unique_names_unchanged() {
+        let mut summaries = vec![
+            make_summary("frontend", "/Users/dev/frontend"),
+            make_summary("backend", "/Users/dev/backend"),
+        ];
+        disambiguate_display_names(&mut summaries);
+
+        assert_eq!(summaries[0].display_name, "frontend");
+        assert_eq!(summaries[1].display_name, "backend");
+    }
+
+    #[test]
+    fn disambiguate_mixed_dup_and_unique() {
+        let mut summaries = vec![
+            make_summary("api", "/Users/dev/alpha/api"),
+            make_summary("api", "/Users/dev/beta/api"),
+            make_summary("web", "/Users/dev/web"),
+        ];
+        disambiguate_display_names(&mut summaries);
+
+        // Duplicates get qualified
+        assert_eq!(summaries[0].display_name, "alpha/api");
+        assert_eq!(summaries[1].display_name, "beta/api");
+        // Unique stays unchanged
+        assert_eq!(summaries[2].display_name, "web");
     }
 }

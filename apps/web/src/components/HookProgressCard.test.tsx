@@ -32,69 +32,53 @@ function renderWithCodeContext(ui: React.ReactElement) {
 }
 
 describe('HookProgressCard', () => {
-  describe('Title and status rendering', () => {
-    it('should display hook event and command name', () => {
-      renderWithCodeContext(
-        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup-env.sh" />,
-      )
+  const baseProps = {
+    hookEvent: 'PreToolUse',
+    hookName: 'live-monitor',
+    command: '/Users/dev/.claude/hooks/pre-tool.sh',
+    statusMessage: 'Validating tool use\u2026',
+  }
 
-      expect(screen.getByText(/SessionStart/)).toBeInTheDocument()
-      expect(screen.getByText(/setup-env\.sh/)).toBeInTheDocument()
+  describe('All fields visible', () => {
+    it('should display hookEvent and hookName inline', () => {
+      renderWithCodeContext(<HookProgressCard {...baseProps} />)
+
+      expect(screen.getByText('PreToolUse')).toBeInTheDocument()
+      expect(screen.getByText('live-monitor')).toBeInTheDocument()
     })
 
-    it('should have amber left border', () => {
-      const { container } = renderWithCodeContext(
-        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
-      )
+    it('should display statusMessage inline', () => {
+      renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
-      const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-amber')
-    })
-  })
-
-  describe('Output rendering', () => {
-    it('should show output immediately via CompactCodeBlock', () => {
-      renderWithCodeContext(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="setup.sh"
-          output="Environment configured successfully"
-        />,
-      )
-
-      expect(screen.getByText(/Environment configured successfully/)).toBeInTheDocument()
+      expect(screen.getByText('Validating tool use\u2026')).toBeInTheDocument()
     })
 
-    it('should render output via CompactCodeBlock with bash language', () => {
-      renderWithCodeContext(
-        <HookProgressCard
-          hookEvent="SessionStart"
-          hookName="pre-session"
-          command="setup.sh"
-          output="some output"
-        />,
-      )
+    it('should not show statusMessage dot when empty', () => {
+      renderWithCodeContext(<HookProgressCard {...baseProps} statusMessage="" />)
+
+      // Only hookEvent, arrow, hookName visible — no extra dot separator
+      expect(screen.queryByText('Validating')).not.toBeInTheDocument()
+    })
+
+    it('should render command via CompactCodeBlock', () => {
+      renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
       const codeBlock = screen.getByTestId('compact-code-block')
       expect(codeBlock).toHaveAttribute('data-language', 'bash')
-      expect(codeBlock).toHaveTextContent('some output')
-    })
-
-    it('should not render code block when output is undefined', () => {
-      renderWithCodeContext(
-        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="setup.sh" />,
-      )
-
-      expect(screen.queryByTestId('compact-code-block')).not.toBeInTheDocument()
+      expect(codeBlock).toHaveTextContent('/Users/dev/.claude/hooks/pre-tool.sh')
     })
   })
 
-  describe('Accessibility', () => {
+  describe('Visual styling', () => {
+    it('should have amber left border', () => {
+      const { container } = renderWithCodeContext(<HookProgressCard {...baseProps} />)
+
+      expect((container.firstElementChild as HTMLElement).className).toContain('space-y')
+    })
+
     it('should have aria-hidden on decorative icon', () => {
-      const { container } = renderWithCodeContext(
-        <HookProgressCard hookEvent="SessionStart" hookName="pre-session" command="cmd" />,
-      )
+      const { container } = renderWithCodeContext(<HookProgressCard {...baseProps} />)
+
       const svg = container.querySelector('svg')
       expect(svg?.getAttribute('aria-hidden')).toBe('true')
     })

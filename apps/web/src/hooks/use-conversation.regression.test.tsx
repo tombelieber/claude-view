@@ -18,7 +18,7 @@ vi.mock('./use-session-source', () => ({
     resume: vi.fn(),
     totalInputTokens: 0,
     contextWindowSize: 0,
-    canResumeLazy: false,
+
     model: '',
     slashCommands: [],
     mcpServers: [],
@@ -48,6 +48,7 @@ vi.mock('./use-session-messages', () => ({
 }))
 
 import { useSessionMessages } from './use-session-messages'
+import type { SessionSourceResult } from './use-session-source'
 import { useSessionSource } from './use-session-source'
 
 const mockSessionSource = vi.mocked(useSessionSource)
@@ -64,7 +65,7 @@ const defaultSource = {
   resume: vi.fn(),
   totalInputTokens: 0,
   contextWindowSize: 0,
-  canResumeLazy: false,
+
   model: '',
   slashCommands: [],
   mcpServers: [],
@@ -77,7 +78,7 @@ const defaultSource = {
   pendingText: '',
   clearPendingMessage: vi.fn(),
   initComplete: false,
-}
+} satisfies SessionSourceResult
 
 const defaultMessages = {
   data: undefined,
@@ -193,8 +194,8 @@ describe('RC-002: optimistic message duplication', () => {
 // sidecarSessionIds (managed by sidecar), the user owns it. Watching mode must
 // NOT be applied — the user should have full input capability.
 // The watching derivation happens in ChatPage.tsx (not in useConversation), but
-// we test the hook's behavior with skipWs to verify: a sidecar-managed session
-// should NOT receive skipWs=true from the calling component.
+// we test the hook's behavior with liveStatus to verify: a sidecar-managed session
+// should NOT receive liveStatus='cc_owned' from the calling component.
 describe('RC-003: watching mode does not block own sessions', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -204,9 +205,9 @@ describe('RC-003: watching mode does not block own sessions', () => {
     } as unknown as ReturnType<typeof useSessionMessages>)
   })
 
-  it('sidecar-managed session (skipWs=false) connects via WS normally', () => {
+  it('sidecar-managed session (liveStatus=inactive) connects via WS normally', () => {
     // Simulate: session is in both liveSessions and sidecarIds → NOT watching
-    // ChatPage passes skipWs=false (or omits it)
+    // ChatPage passes liveStatus='inactive' (or omits it)
     mockSessionSource.mockReturnValue({
       ...defaultSource,
       sessionState: 'active',
@@ -216,7 +217,7 @@ describe('RC-003: watching mode does not block own sessions', () => {
       controlId: 'ctrl-1',
     })
 
-    renderHook(() => useConversation('my-session', { skipWs: false }), {
+    renderHook(() => useConversation('my-session', { liveStatus: 'inactive' }), {
       wrapper: createWrapper(),
     })
 
@@ -224,9 +225,9 @@ describe('RC-003: watching mode does not block own sessions', () => {
     expect(mockSessionSource).toHaveBeenCalledWith('my-session')
   })
 
-  it('watching session (skipWs=true) does NOT connect via WS', () => {
+  it('watching session (liveStatus=cc_owned) does NOT connect via WS', () => {
     // Simulate: session in liveSessions but NOT in sidecarIds → watching
-    renderHook(() => useConversation('external-session', { skipWs: true }), {
+    renderHook(() => useConversation('external-session', { liveStatus: 'cc_owned' }), {
       wrapper: createWrapper(),
     })
 
@@ -265,9 +266,12 @@ describe('RC-003: watching mode does not block own sessions', () => {
       },
     } as unknown as ReturnType<typeof useSessionMessages>)
 
-    const { result } = renderHook(() => useConversation('external-session', { skipWs: true }), {
-      wrapper: createWrapper(),
-    })
+    const { result } = renderHook(
+      () => useConversation('external-session', { liveStatus: 'cc_owned' }),
+      {
+        wrapper: createWrapper(),
+      },
+    )
 
     // History should be loaded even in watching mode
     expect(result.current.blocks.length).toBe(2)
@@ -402,7 +406,7 @@ describe('RC-002: page refresh on active session shows all messages', () => {
 })
 
 // ─── RC-003 (new): New SDK session appears in sidebar ─────────────────
-// After POST /api/control/sessions, queryClient.invalidateQueries is called
+// After POST /api/sidecar/sessions, queryClient.invalidateQueries is called
 // with { queryKey: ['sidecar-sessions'] }. This test verifies the ChatSession
 // handleSend path, which requires Step 9b changes.
 describe('RC-003: new SDK session appears in sidebar', () => {
@@ -546,5 +550,94 @@ describe('RC-005: optimistic message deduped correctly', () => {
     // biome-ignore lint/suspicious/noExplicitAny: test assertion
     userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
     expect(userBlocks).toHaveLength(1)
+  })
+})
+
+// ─── P1 regression: send timeout deferred to WS open (not queue time) ──
+// Bug: sendMessage() starts setTimeout(SEND_TIMEOUT_MS) immediately at queue time.
+// For dormant sessions, connectAndSend queues the message, then POST /resume runs,
+// then WS opens, then the message drains. The 20s timer is already ticking during
+// resume — causing false "Failed" if resume takes >20s.
+// Fix: defer the timer start until source.isLive transitions to true.
+describe('P1 regression: send timeout deferred to WS open (not queue time)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockSessionSource.mockReturnValue({ ...defaultSource })
+    mockSessionMessages.mockReturnValue({
+      ...defaultMessages,
+    } as unknown as ReturnType<typeof useSessionMessages>)
+  })
+
+  it('message does NOT go to failed while isLive=false (timer deferred)', () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useConversation('dormant-session'), {
+      wrapper: createWrapper(),
+    })
+
+    // Send message — session is dormant (isLive=false)
+    act(() => {
+      result.current.actions.sendMessage('hello from dormant')
+    })
+
+    // Advance 25s — PAST the 20s timeout. But WS hasn't opened yet.
+    act(() => {
+      vi.advanceTimersByTime(25_000)
+    })
+
+    // Message should still be 'sending' (NOT 'failed') because timer
+    // is deferred until WS opens
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    const msg = userBlocks.find((b: any) => b.text === 'hello from dormant') as any
+    expect(msg?.status).toBe('sending')
+
+    vi.useRealTimers()
+  })
+
+  it('message goes to failed 20s after isLive transitions to true', () => {
+    vi.useFakeTimers()
+    const { result, rerender } = renderHook(() => useConversation('dormant-session'), {
+      wrapper: createWrapper(),
+    })
+
+    // Send message while dormant
+    act(() => {
+      result.current.actions.sendMessage('deferred timeout test')
+    })
+
+    // Simulate WS open: isLive transitions false → true
+    mockSessionSource.mockReturnValue({
+      ...defaultSource,
+      isLive: true,
+      sessionState: 'waiting_input',
+    })
+
+    // Re-render to trigger the isLive useEffect that drains pending timers
+    act(() => {
+      rerender()
+    })
+
+    // Advance 19s — should still be 'sending'
+    act(() => {
+      vi.advanceTimersByTime(19_000)
+    })
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    let userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    let msg = userBlocks.find((b: any) => b.text === 'deferred timeout test') as any
+    expect(msg?.status).toBe('sending')
+
+    // Advance 2 more seconds (21s total from WS open) — NOW should be 'failed'
+    act(() => {
+      vi.advanceTimersByTime(2_000)
+    })
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    userBlocks = result.current.blocks.filter((b: any) => b.type === 'user')
+    // biome-ignore lint/suspicious/noExplicitAny: test assertion
+    msg = userBlocks.find((b: any) => b.text === 'deferred timeout test') as any
+    expect(msg?.status).toBe('failed')
+
+    vi.useRealTimers()
   })
 })

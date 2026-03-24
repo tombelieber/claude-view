@@ -18,6 +18,30 @@ use ts_rs::TS;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
+/// Resolve a session's JSONL file path: DB first, then live session store fallback.
+///
+/// Live sessions (especially IDE-spawned ones) may not be indexed in the DB yet.
+/// The live session store always has the file path for any actively-monitored session.
+async fn resolve_session_file_path(
+    state: &AppState,
+    session_id: &str,
+) -> ApiResult<std::path::PathBuf> {
+    let file_path = match state.db.get_session_file_path(session_id).await? {
+        Some(p) => p,
+        None => {
+            let map = state.live_sessions.read().await;
+            map.get(session_id)
+                .map(|s| s.file_path.clone())
+                .ok_or_else(|| ApiError::SessionNotFound(session_id.to_string()))?
+        }
+    };
+    let path = std::path::PathBuf::from(&file_path);
+    if !path.exists() {
+        return Err(ApiError::SessionNotFound(session_id.to_string()));
+    }
+    Ok(path)
+}
+
 // ============================================================================
 // Archive request/response types
 // ============================================================================
@@ -206,6 +230,19 @@ pub struct SessionMessagesQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
     pub raw: bool,
+    /// "block" → return ConversationBlock[], otherwise legacy Message[]
+    pub format: Option<String>,
+}
+
+/// Paginated response for `?format=block`
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedBlocks {
+    pub blocks: Vec<claude_view_core::ConversationBlock>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
 }
 
 // ============================================================================
@@ -420,21 +457,7 @@ pub async fn get_session_parsed(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<ParsedSession>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    // NOTE: There is a small TOCTOU window between exists() and parse_session().
-    // If the file is deleted in that window, parse_session returns ParseError (different
-    // error message). This is acceptable — filesystem ops are inherently racy, and
-    // the exists() check provides a cleaner "Session not found" for the common case.
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
-
+    let path = resolve_session_file_path(&state, &session_id).await?;
     let session = claude_view_core::parse_session(&path).await?;
     Ok(Json(session))
 }
@@ -447,26 +470,45 @@ pub async fn get_session_messages_by_id(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
-) -> ApiResult<Json<claude_view_core::PaginatedMessages>> {
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+) -> ApiResult<Json<serde_json::Value>> {
+    let path = resolve_session_file_path(&state, &session_id).await?;
 
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
+    if query.format.as_deref() == Some("block") {
+        // Block format — use BlockAccumulator
+        let content = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Read error: {e}")))?;
 
-    let limit = query.limit.unwrap_or(100);
-    let offset = query.offset.unwrap_or(0);
-    let result = if query.raw {
-        claude_view_core::parse_session_paginated_with_raw(&path, limit, offset).await?
+        let all_blocks = claude_view_core::block_accumulator::parse_session_as_blocks(&content);
+        let total = all_blocks.len();
+        let offset = query.offset.unwrap_or(0);
+        let limit = query.limit.unwrap_or(100);
+        let end = std::cmp::min(offset + limit, total);
+        let blocks: Vec<_> = if offset < total {
+            all_blocks.into_iter().skip(offset).take(limit).collect()
+        } else {
+            vec![]
+        };
+
+        let result = PaginatedBlocks {
+            blocks,
+            total,
+            offset,
+            limit,
+            has_more: end < total,
+        };
+        Ok(Json(serde_json::to_value(result).unwrap()))
     } else {
-        claude_view_core::parse_session_paginated(&path, limit, offset).await?
-    };
-    Ok(Json(result))
+        // Legacy format — existing behavior
+        let limit = query.limit.unwrap_or(100);
+        let offset = query.offset.unwrap_or(0);
+        let result = if query.raw {
+            claude_view_core::parse_session_paginated_with_raw(&path, limit, offset).await?
+        } else {
+            claude_view_core::parse_session_paginated(&path, limit, offset).await?
+        };
+        Ok(Json(serde_json::to_value(result).unwrap()))
+    }
 }
 /// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
 /// rich session data (tokens, cost, cache status, sub-agents, progress items, etc.).
@@ -477,17 +519,8 @@ pub async fn get_session_rich(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<claude_view_core::accumulator::RichSessionData>> {
-    // 1. Look up session file path from DB
-    let file_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-
-    let path = std::path::PathBuf::from(&file_path);
-    if !path.exists() {
-        return Err(ApiError::SessionNotFound(session_id));
-    }
+    // 1. Resolve JSONL file path (DB → live session fallback)
+    let path = resolve_session_file_path(&state, &session_id).await?;
 
     // 2. Snapshot the current pricing table (clone inside read lock, then drop lock)
     let pricing = state.pricing.read().expect("pricing lock poisoned").clone();
@@ -810,10 +843,136 @@ async fn bulk_unarchive_handler(
     }))
 }
 
+// ============================================================================
+// Cost Estimation (extracted from control.rs for Phase 3)
+// ============================================================================
+
+/// Request body for cost estimation.
+#[derive(Debug, Deserialize)]
+pub struct EstimateRequest {
+    pub session_id: String,
+    pub model: Option<String>,
+}
+
+/// Cost estimation response.
+#[derive(Debug, Serialize)]
+pub struct CostEstimate {
+    pub session_id: String,
+    pub history_tokens: u64,
+    pub cache_warm: bool,
+    pub first_message_cost: Option<f64>,
+    pub per_message_cost: Option<f64>,
+    pub has_pricing: bool,
+    pub model: String,
+    pub explanation: String,
+    pub session_title: Option<String>,
+    pub project_name: Option<String>,
+    pub turn_count: u32,
+    pub files_edited: u32,
+    pub last_active_secs_ago: i64,
+}
+
+/// POST /api/estimate — cost estimation (Rust-only, no sidecar).
+async fn estimate_cost(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<EstimateRequest>,
+) -> Result<Json<CostEstimate>, ApiError> {
+    let now = chrono::Utc::now().timestamp();
+
+    // Look up session in DB
+    let session = state
+        .db
+        .get_session_by_id(&req.session_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("DB error: {e}")))?
+        .ok_or_else(|| ApiError::NotFound(format!("Session {} not found", req.session_id)))?;
+
+    let model = req.model.unwrap_or_else(|| {
+        session
+            .primary_model
+            .clone()
+            .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string())
+    });
+
+    let history_tokens = session.total_input_tokens.unwrap_or(0);
+    let last_activity = session.modified_at; // epoch seconds
+    let cache_warm = last_activity > 0 && (now - last_activity) < 300; // 5 min TTL
+
+    // Look up model pricing
+    let pricing = state.pricing.read().expect("pricing lock poisoned");
+    let model_pricing = claude_view_core::pricing::lookup_pricing(&model, &pricing);
+
+    let per_million =
+        |tokens: u64, rate_per_m: f64| -> f64 { (tokens as f64 / 1_000_000.0) * rate_per_m };
+
+    let secs_ago = now - last_activity;
+    let (first_message_cost, per_message_cost, has_pricing, explanation) = if let Some(p) =
+        model_pricing
+    {
+        let input_base = p.input_cost_per_token * 1_000_000.0;
+        let first_message_cost = if cache_warm {
+            per_million(history_tokens, input_base * 0.10) // cache read
+        } else {
+            per_million(history_tokens, input_base * 1.25) // cache write
+        };
+        let per_message_cost = per_million(history_tokens, input_base * 0.10); // always cache read
+        let explanation = if cache_warm {
+            format!(
+                "Cache is warm (last active {}s ago). First message: ${:.4} (cached). Each follow-up: ~${:.4}.",
+                secs_ago, first_message_cost, per_message_cost,
+            )
+        } else {
+            format!(
+                "Cache is cold (last active {}m ago). First message: ${:.4} (cache warming). Follow-ups drop to ~${:.4} (cached).",
+                secs_ago / 60, first_message_cost, per_message_cost,
+            )
+        };
+        (
+            Some(first_message_cost),
+            Some(per_message_cost),
+            true,
+            explanation,
+        )
+    } else {
+        (
+            None,
+            None,
+            false,
+            format!(
+                "Model pricing not found for {} (last active {}s ago). Cost estimate unavailable without real pricing data.",
+                model, secs_ago
+            ),
+        )
+    };
+
+    let project_name = if session.display_name.is_empty() {
+        None
+    } else {
+        Some(session.display_name.clone())
+    };
+
+    Ok(Json(CostEstimate {
+        session_id: req.session_id,
+        history_tokens,
+        cache_warm,
+        first_message_cost,
+        per_message_cost,
+        has_pricing,
+        model,
+        explanation,
+        session_title: session.longest_task_preview.clone(),
+        project_name,
+        turn_count: session.turn_count_api.unwrap_or(0).min(u32::MAX as u64) as u32,
+        files_edited: session.files_edited_count,
+        last_active_secs_ago: secs_ago,
+    }))
+}
+
 /// Create the sessions routes router.
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/sessions", get(list_sessions))
+        .route("/estimate", post(estimate_cost))
         .route("/sessions/activity", get(session_activity))
         .route("/sessions/archive", post(bulk_archive_handler))
         .route("/sessions/unarchive", post(bulk_unarchive_handler))
@@ -1856,6 +2015,7 @@ mod tests {
             user_files: None,
             closed_at: None,
             control: None,
+            source: None,
             hook_events: Vec::new(),
             statusline_context_window_size: None,
             statusline_used_pct: None,
@@ -1915,5 +2075,350 @@ mod tests {
         assert_eq!(hook_events[1]["eventName"], "PreToolUse");
         assert_eq!(hook_events[1]["toolName"], "Read");
         assert_eq!(hook_events[1]["label"], "Reading file");
+    }
+
+    // ========================================================================
+    // GET /api/sessions/:id/messages?format=block tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_format_block_returns_paginated_blocks() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("block-test.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello"}]},"timestamp":"2026-03-21T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":100,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-21T01:00:01.000Z"}
+"#,
+        )
+        .unwrap();
+
+        let mut session = make_session("block-test", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/block-test/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(
+            json.get("blocks").is_some(),
+            "Response should have 'blocks' key"
+        );
+        let blocks = json["blocks"].as_array().unwrap();
+        assert!(!blocks.is_empty(), "blocks should not be empty");
+        assert!(
+            blocks[0].get("type").is_some(),
+            "Block should have 'type' discriminator"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_format_block_empty_session() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("block-empty.jsonl");
+        std::fs::write(&session_file, "").unwrap();
+
+        let mut session = make_session("block-empty", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/block-empty/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+        assert!(blocks.is_empty());
+        assert_eq!(json["total"], 0);
+        assert_eq!(json["hasMore"], false);
+    }
+
+    #[tokio::test]
+    async fn test_format_block_e2e_block_structure() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("e2e-block.jsonl");
+        // Write a multi-line JSONL fixture with user + assistant + tool + boundary
+        std::fs::write(&session_file, r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"List files"}]},"timestamp":"2026-03-21T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Sure!"},{"type":"tool_use","id":"tu-1","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":500,"output_tokens":100},"stop_reason":"tool_use"},"timestamp":"2026-03-21T01:00:01.000Z"}
+{"type":"user","uuid":"u-2","message":{"content":[{"type":"tool_result","tool_use_id":"tu-1","content":"file1\nfile2","is_error":false}]},"timestamp":"2026-03-21T01:00:02.000Z"}
+{"type":"assistant","uuid":"a-2","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Here are the files."}],"usage":{"input_tokens":600,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-21T01:00:03.000Z"}
+{"type":"system","uuid":"s-1","durationMs":3000,"timestamp":"2026-03-21T01:00:04.000Z"}
+{"type":"system","uuid":"s-2","stopReason":"end_turn","hookInfos":[],"hookErrors":[],"hookCount":0,"timestamp":"2026-03-21T01:00:05.000Z"}
+"#).unwrap();
+
+        let mut session = make_session("e2e-block", "proj", 1700000000);
+        session.file_path = session_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/e2e-block/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+
+        // Verify block types present
+        let types: Vec<&str> = blocks
+            .iter()
+            .filter_map(|b| b.get("type").and_then(|t| t.as_str()))
+            .collect();
+        assert!(types.contains(&"user"), "Should have user block");
+        assert!(types.contains(&"assistant"), "Should have assistant block");
+        assert!(
+            types.contains(&"turn_boundary"),
+            "Should have turn_boundary block"
+        );
+
+        // Verify block count matches expected
+        assert_eq!(
+            json["total"].as_u64().unwrap() as usize,
+            blocks.len(),
+            "total should match actual block count for small sessions"
+        );
+
+        // Verify hasMore is false for small session
+        assert_eq!(json["hasMore"], false);
+    }
+
+    // ========================================================================
+    // Live session file_path fallback tests
+    // ========================================================================
+
+    /// Helper: create a LiveSession with a given file_path (no DB insertion).
+    fn make_live_session(id: &str, file_path: &str) -> crate::live::state::LiveSession {
+        use crate::live::state::{AgentState, AgentStateGroup, LiveSession, SessionStatus};
+        use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
+
+        LiveSession {
+            id: id.to_string(),
+            project: "test-project".to_string(),
+            project_display_name: "test-project".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: file_path.to_string(),
+            status: SessionStatus::Working,
+            agent_state: AgentState {
+                state: "working".to_string(),
+                group: AgentStateGroup::Autonomous,
+                label: "Running".to_string(),
+                context: None,
+            },
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            pid: Some(12345),
+            title: String::new(),
+            last_user_message: String::new(),
+            current_activity: String::new(),
+            turn_count: 1,
+            started_at: Some(1000),
+            last_activity_at: 1001,
+            model: Some("claude-sonnet-4-5-20250929".to_string()),
+            tokens: TokenUsage::default(),
+            context_window_tokens: 200000,
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            current_turn_started_at: None,
+            last_turn_task_seconds: None,
+            sub_agents: Vec::new(),
+            team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
+            progress_items: Vec::new(),
+            tools_used: Vec::new(),
+            last_cache_hit_at: None,
+            compact_count: 0,
+            slug: None,
+            user_files: None,
+            closed_at: None,
+            control: None,
+            source: None,
+            hook_events: Vec::new(),
+            statusline_context_window_size: None,
+            statusline_used_pct: None,
+            statusline_cost_usd: None,
+            model_display_name: None,
+            statusline_cwd: None,
+            statusline_project_dir: None,
+            statusline_total_duration_ms: None,
+            statusline_api_duration_ms: None,
+            statusline_lines_added: None,
+            statusline_lines_removed: None,
+            statusline_input_tokens: None,
+            statusline_output_tokens: None,
+            statusline_cache_read_tokens: None,
+            statusline_cache_creation_tokens: None,
+            statusline_version: None,
+            exceeds_200k_tokens: None,
+            statusline_transcript_path: None,
+            statusline_raw: None,
+        }
+    }
+
+    /// Regression: GET /api/sessions/:id/messages?format=block must return blocks
+    /// for live sessions not yet indexed in the DB (file_path fallback).
+    #[tokio::test]
+    async fn test_messages_block_format_falls_back_to_live_session() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("live-only.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello from VS Code"}]},"timestamp":"2026-03-23T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hi!"}],"usage":{"input_tokens":100,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-23T01:00:01.000Z"}
+"#,
+        )
+        .unwrap();
+
+        // NOT inserted into DB — simulates un-indexed live session
+        let state = crate::state::AppState::new_with_indexing(
+            db,
+            Arc::new(crate::indexing_state::IndexingState::new()),
+        );
+
+        let live = make_live_session("live-only", session_file.to_str().unwrap());
+        state
+            .live_sessions
+            .write()
+            .await
+            .insert("live-only".to_string(), live);
+
+        let app = crate::api_routes(state);
+        let (status, body) = do_get(app, "/api/sessions/live-only/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+        // Must have both user AND assistant blocks
+        let types: Vec<&str> = blocks
+            .iter()
+            .filter_map(|b| b.get("type").and_then(|t| t.as_str()))
+            .collect();
+        assert!(
+            types.contains(&"user"),
+            "Live session fallback must return user blocks, got: {types:?}"
+        );
+        assert!(
+            types.contains(&"assistant"),
+            "Live session fallback must return assistant blocks, got: {types:?}"
+        );
+        assert_eq!(json["total"], 2);
+    }
+
+    /// Regression: GET /api/sessions/:id/rich must work for live sessions
+    /// not yet indexed in the DB (file_path fallback).
+    #[tokio::test]
+    async fn test_rich_endpoint_falls_back_to_live_session() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let session_file = tmp.path().join("live-rich.jsonl");
+        std::fs::write(
+            &session_file,
+            r#"{"type":"user","uuid":"u-1","message":{"content":[{"type":"text","text":"hello"}]},"timestamp":"2026-03-23T01:00:00.000Z"}
+{"type":"assistant","uuid":"a-1","message":{"id":"msg-1","model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hi!"}],"usage":{"input_tokens":100,"output_tokens":50},"stop_reason":"end_turn"},"timestamp":"2026-03-23T01:00:01.000Z"}
+"#,
+        )
+        .unwrap();
+
+        let state = crate::state::AppState::new_with_indexing(
+            db,
+            Arc::new(crate::indexing_state::IndexingState::new()),
+        );
+
+        let live = make_live_session("live-rich", session_file.to_str().unwrap());
+        state
+            .live_sessions
+            .write()
+            .await
+            .insert("live-rich".to_string(), live);
+
+        let app = crate::api_routes(state);
+        let (status, _body) = do_get(app, "/api/sessions/live-rich/rich").await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "rich endpoint should succeed via live fallback"
+        );
+    }
+
+    /// When session is in neither DB nor live store, should return 404.
+    #[tokio::test]
+    async fn test_messages_returns_404_when_not_in_db_or_live() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/sessions/nonexistent/messages?format=block").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert!(body.contains("not found") || body.contains("Session"));
+    }
+
+    /// DB path takes precedence over live session (ensures no conflict).
+    #[tokio::test]
+    async fn test_db_path_takes_precedence_over_live_session() {
+        let db = test_db().await;
+        let tmp = tempfile::tempdir().unwrap();
+
+        // DB file has one message
+        let db_file = tmp.path().join("db-priority.jsonl");
+        std::fs::write(
+            &db_file,
+            r#"{"type":"user","uuid":"u-db","message":{"content":[{"type":"text","text":"from DB"}]},"timestamp":"2026-03-23T01:00:00.000Z"}
+"#,
+        )
+        .unwrap();
+
+        let mut session = make_session("db-priority", "proj", 1700000000);
+        session.file_path = db_file.to_str().unwrap().to_string();
+        db.insert_session(&session, "proj", "Project")
+            .await
+            .unwrap();
+
+        // Live session points to a DIFFERENT file with different content
+        let live_file = tmp.path().join("live-priority.jsonl");
+        std::fs::write(
+            &live_file,
+            r#"{"type":"user","uuid":"u-live","message":{"content":[{"type":"text","text":"from live"}]},"timestamp":"2026-03-23T02:00:00.000Z"}
+"#,
+        )
+        .unwrap();
+
+        let state = crate::state::AppState::new_with_indexing(
+            db,
+            Arc::new(crate::indexing_state::IndexingState::new()),
+        );
+        let live = make_live_session("db-priority", live_file.to_str().unwrap());
+        state
+            .live_sessions
+            .write()
+            .await
+            .insert("db-priority".to_string(), live);
+
+        let app = crate::api_routes(state);
+        let (status, body) = do_get(app, "/api/sessions/db-priority/messages?format=block").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+        // Should use DB file ("from DB"), not live file ("from live")
+        if let Some(user_block) = blocks.iter().find(|b| b["type"] == "user") {
+            assert_eq!(
+                user_block["text"].as_str().unwrap(),
+                "from DB",
+                "DB path should take precedence over live session"
+            );
+        } else {
+            panic!("Expected a user block from DB file");
+        }
     }
 }

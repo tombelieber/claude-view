@@ -24,10 +24,10 @@ export function useAvailableSessions() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/control/available-sessions')
+      const res = await fetch('/api/sessions')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      setSessions(data)
+      setSessions(data.sessions ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
