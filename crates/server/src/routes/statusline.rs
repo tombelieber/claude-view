@@ -251,10 +251,20 @@ async fn handle_statusline(
                 .send(crate::live::state::SessionEvent::SessionClosed { session: closed });
             if let Some(older) = sessions.get_mut(&older_id) {
                 apply_statusline(older, &payload);
+                let _ = state
+                    .live_tx
+                    .send(crate::live::state::SessionEvent::SessionUpdated {
+                        session: older.clone(),
+                    });
             }
         } else if let Some(older) = sessions.get_mut(&older_id) {
             // Newer session not in map yet — just apply to the older one
             apply_statusline(older, &payload);
+            let _ = state
+                .live_tx
+                .send(crate::live::state::SessionEvent::SessionUpdated {
+                    session: older.clone(),
+                });
         }
     } else if let Some(session) = sessions.get_mut(&payload.session_id) {
         apply_statusline(session, &payload);
@@ -270,6 +280,12 @@ async fn handle_statusline(
                 );
             }
         }
+        // Broadcast the update so SSE clients see statusline fields (context window, cost, etc.)
+        let _ = state
+            .live_tx
+            .send(crate::live::state::SessionEvent::SessionUpdated {
+                session: session.clone(),
+            });
     } else {
         tracing::debug!(
             session_id = %payload.session_id,
