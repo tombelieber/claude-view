@@ -1067,15 +1067,81 @@ author: claude-view team
 
 If you run more than one Claude Code session at a time, v0.24.0 changes how you work with them. Instead of switching between the monitor sidebar and individual session views, you can now open sessions as tabs — drag them, split them, arrange them however makes sense for what you're doing.
 
-The new chat page uses dockview — the same layout engine that powers VS Code's editor panels. Each session opens in its own tab. You can split horizontally or vertically, rearrange tabs by dragging, and persist layout across reloads.
+## Tabbed sessions with dockview
 
-v0.24.0 introduces a Rust-native BlockAccumulator that transforms raw JSONL into typed ConversationBlock values: UserBlock, AssistantBlock, ProgressBlock, TurnBoundaryBlock, NoticeBlock, and SystemBlock. The accumulator correlates multi-line constructs — tool_use matched with tool_result, incremental entries merged by message.id, turn boundaries assembled from duration + hook summary + usage.
+The new chat page uses [dockview](https://dockview.dev) — the same layout engine that powers VS Code's editor panels. Each session opens in its own tab. You can:
 
-Each chat panel is driven by an FSM with three phases (nobody → acquiring → active). Every transition is a pure function: (currentState, event) → (nextState, commands). The FSM solved 13 bugs in its first week.
+- **Split horizontally or vertically** by dragging a tab to the edge of another panel
+- **Rearrange tabs** by dragging between groups
+- **Close sessions** from the tab context menu (Ctrl+W) or end the underlying Claude process
+- **Persist layout** across page reloads — dockview's native `fromJSON`/`toJSON` handles this without React effects
 
-Developer mode shows structured event cards: ToolCard, EventCard, CategoryFilterBar, and ThinkingIndicator. Sessions are classified by source (Terminal, IDE, Agent SDK) with SourceBadge.
+The layout state includes which sessions are open, how panels are arranged, and which tab is active in each group. When you reload, everything comes back exactly as you left it.
 
-Also: direct TCP sidecar, message threading with parentUuid, share viewer migration, ~5,800 lines of deprecated code removed.
+## The block pipeline
+
+Every Claude Code session is a JSONL file — one JSON object per line. Previous versions parsed this in TypeScript on the frontend, which meant duplicated parsing logic, inconsistent handling of edge cases, and no structural validation.
+
+v0.24.0 introduces a **Rust-native BlockAccumulator** that transforms raw JSONL into typed `ConversationBlock` values:
+
+- **UserBlock** — the human's message, with text content and optional parentUuid for threading
+- **AssistantBlock** — thinking, text segments, and tool uses with correlated results
+- **ProgressBlock** — bash output, MCP calls, agent spawns, hook events
+- **TurnBoundaryBlock** — turn duration, token usage, model, cost, and stop reason
+- **NoticeBlock** — rate limits, context compaction, API errors
+- **SystemBlock** — session init, worktree state, file snapshots, queue operations
+
+The accumulator is stateful — it correlates multi-line constructs. An assistant's `tool_use` on line 47 gets matched with the `tool_result` on line 52. Incremental entries with the same `message.id` merge into a single block. Turn boundaries assemble from `turn_duration` + `stop_hook_summary` + usage data across multiple lines.
+
+This pipeline serves two paths:
+1. **REST** — `GET /api/sessions/:id/messages?format=block` returns paginated `ConversationBlock[]`
+2. **WebSocket** — terminal WS in `mode=block` streams blocks in real-time via the same accumulator
+
+Both paths use the same Rust code, so parsing behavior is identical whether you're viewing a historical session or watching a live one.
+
+## Finite state machine for chat panels
+
+Each chat panel is driven by an FSM with three phases:
+
+- **nobody** — no session loaded. Waiting for the user to select or create one.
+- **acquiring** — connecting to the session, loading history, establishing WebSocket. Multiple sub-states handle the ordering: connect first, then fetch history, then switch to live streaming.
+- **active** — session is loaded and interactive. Sub-states track turn status (idle, pending, streaming) and connection health.
+
+Every transition is a pure function: `(currentState, event) → (nextState, commands)`. Commands are side effects (open WebSocket, fetch history, send message) that execute after the state update. This eliminates the class of bugs where a side effect reads stale state — the state is always updated before commands run.
+
+The FSM solved 13 bugs in its first week, including: doubled assistant text during streaming, focus stolen from chat input by polling, frozen pages when history loaded before WebSocket connected, and missing thinking indicators during the gap between "connected" and "first assistant response."
+
+## Developer mode
+
+Every session now has a Chat/Developer toggle. Developer mode shows the same conversation as structured event cards:
+
+- **ToolCard** — tool name, input, output, duration, and status in a collapsible card
+- **EventCard** — session init, hook events, task progress, file snapshots, worktree state
+- **CategoryFilterBar** — filter blocks by category (builtin, agent, MCP, hook)
+- **ThinkingIndicator** — animated spinner verbs ("Thinking...", "Analyzing...", "Writing...") with lifecycle trail
+
+This replaces the previous raw terminal view with something that's both more readable and more information-dense.
+
+## Session source detection
+
+Claude Code sessions can be launched from a terminal, an IDE (VS Code, Cursor, Windsurf), or the Agent SDK. v0.24.0 detects the source by inspecting the parent process tree at discovery time and displays a SourceBadge on every session card, sidebar entry, and detail panel.
+
+This matters for the sidebar's urgency grouping — an IDE session waiting for permission approval is more urgent than a terminal session that's just idle.
+
+## What else shipped
+
+- Direct TCP sidecar connection on port 3001 (relay removed)
+- Message threading with parentUuid indentation
+- Share viewer migrated to ConversationThread
+- Evidence audit handles new Claude CLI JSONL types (worktree-state, ai-title, forkedFrom)
+- ~5,800 lines of deprecated code removed
+- PII-check pre-commit hook
+
+## Update
+
+```bash
+npx claude-view@latest
+```
 
 
 --- blog/v0-3-0-git-integration.mdx ---
@@ -2117,6 +2183,26 @@ npx claude-view@latest
 ```
 
 
+--- changelog/v0.24.1.md ---
+
+---
+title: v0.24.1 — Share Viewer Developer Mode
+date: 2026-03-24
+version: v0.24.1
+---
+
+## Fixes
+
+**Share viewer developer mode** — The share viewer now has a proper Chat/Developer toggle matching the main app's design. Developer mode shows the full execution trace with filter chips (User, Assistant, MCP, Tool, etc.), so shared conversations can be inspected in detail.
+
+**Share blob raw data** — Share blobs now include raw JSON data from the session, enabling accurate developer mode rendering with proper tool cards, system events, and metadata.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
 --- changelog/v0.24.0.md ---
 
 ---
@@ -2127,23 +2213,31 @@ version: v0.24.0
 
 ## New features
 
-**Multi-Session Chat (VSCode-style tabs)** — open multiple Claude Code sessions side-by-side in a dockview tabbed layout. Drag tabs to split horizontally or vertically.
+**Multi-Session Chat (VSCode-style tabs)** — open multiple Claude Code sessions side-by-side in a dockview tabbed layout. Drag tabs to split horizontally or vertically. Each panel maintains its own connection, scroll position, and state.
 
-**ConversationBlock Pipeline** — Rust-native block accumulator parses JSONL into structured conversation blocks served via REST and real-time WS.
+**ConversationBlock Pipeline** — a new Rust-native block accumulator parses JSONL into structured conversation blocks (user, assistant, progress, system, notice, turn boundary). Served via `?format=block` REST endpoint and real-time WS block mode.
 
-**FSM Chat Panel** — finite state machine with explicit phases, typed events, and deterministic transitions.
+**FSM Chat Panel** — chat sessions are driven by a finite state machine with explicit phases (nobody → acquiring → active), typed events, and deterministic transitions. Eliminates an entire class of race conditions between connection, history load, and live streaming.
 
-**Developer Mode Overhaul** — ToolCard, EventCard, CategoryFilterBar, and ThinkingIndicator.
+**Developer Mode Overhaul** — ToolCard, EventCard, CategoryFilterBar, and ThinkingIndicator replace the old raw-JSON terminal view. Toggle between Chat and Developer modes per session.
 
-**Session Source Detection** — automatic Terminal/IDE/SDK classification with SourceBadge.
+**Session Source Detection** — sessions are automatically classified by launch source (Terminal, IDE, Agent SDK) via parent process inspection. SourceBadge shown across all three pages.
 
-**Message Threading** — parentUuid propagation enables indented sub-agent messages.
+**Message Threading** — parentUuid propagation enables indented sub-agent message display in ConversationThread.
+
+**Share Viewer Migration** — the share viewer now uses the same ConversationThread + ConversationBlock rendering as the main app.
 
 ## Improvements
 
-- Direct TCP sidecar connection replaces Unix socket relay
-- Worktree-state and forkedFrom JSONL types fully handled
-- ~5,800 lines of deprecated code removed
+- Direct TCP sidecar connection (port 3001) replaces Unix socket relay
+- Worktree-state and forkedFrom JSONL types fully handled in parser
+- Live session sidebar groups by urgency with source badges
+- Sub-agent block view with WS error surfacing
+- Sidebar project deduplication via real path GROUP BY
+- EventSource auto-retry on transient SSE connection errors
+- Loading indicator while fetching history blocks
+- PII-check pre-commit hook
+- ~5,800 lines of deprecated code removed (RichPane, ActionLogTab, ComparisonGallery)
 - Evidence audit baseline updated for new Claude CLI fields
 
 ## Getting started
