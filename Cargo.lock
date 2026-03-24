@@ -546,7 +546,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-core"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -595,7 +595,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -622,7 +622,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -641,7 +641,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2164,9 +2164,9 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libredox"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1744e39d1d6a9948f4f388969627434e31128196de472883b39f148769bfe30a"
+checksum = "7ddbf48fd451246b1f8c2610bd3b4ac0cc6e149d89832867093ab69a17194f08"
 dependencies = [
  "libc",
 ]
