@@ -22,6 +22,7 @@ pub struct BlockAccumulator {
     current_assistant: Option<AssistantBlockBuilder>,
     boundary_acc: TurnBoundaryAccumulator,
     forked_from: Option<Value>,
+    entrypoint: Option<String>,
     line_index: usize,
 }
 
@@ -32,12 +33,17 @@ impl BlockAccumulator {
             current_assistant: None,
             boundary_acc: TurnBoundaryAccumulator::new(),
             forked_from: None,
+            entrypoint: None,
             line_index: 0,
         }
     }
 
     pub fn forked_from(&self) -> Option<&Value> {
         self.forked_from.as_ref()
+    }
+
+    pub fn entrypoint(&self) -> Option<&str> {
+        self.entrypoint.as_deref()
     }
 
     /// Reset the accumulator to its initial empty state.
@@ -47,6 +53,7 @@ impl BlockAccumulator {
         self.current_assistant = None;
         self.boundary_acc = TurnBoundaryAccumulator::new();
         self.forked_from = None;
+        self.entrypoint = None;
         self.line_index = 0;
     }
 
@@ -58,6 +65,13 @@ impl BlockAccumulator {
         if self.forked_from.is_none() {
             if let Some(fk) = entry.get("forkedFrom") {
                 self.forked_from = Some(fk.clone());
+            }
+        }
+
+        // Extract entrypoint from first entry that has it
+        if self.entrypoint.is_none() {
+            if let Some(ep) = entry.get("entrypoint").and_then(|e| e.as_str()) {
+                self.entrypoint = Some(ep.to_string());
             }
         }
 
@@ -73,6 +87,8 @@ impl BlockAccumulator {
             "ai-title" => self.handle_ai_title(entry),
             "last-prompt" => self.handle_last_prompt(entry),
             "worktree-state" => self.handle_worktree_state(entry),
+            "pr-link" => self.handle_pr_link(entry),
+            "custom-title" => self.handle_custom_title(entry),
             _ => {} // unknown entry type — skip silently
         }
     }
@@ -190,6 +206,12 @@ impl BlockAccumulator {
                 .get("parentUuid")
                 .and_then(|p| p.as_str())
                 .map(String::from),
+            is_sidechain: entry.get("isSidechain").and_then(|v| v.as_bool()),
+            agent_id: entry
+                .get("agentId")
+                .and_then(|a| a.as_str())
+                .map(String::from),
+            images: blocks.images,
             raw_json: None,
         }));
     }
@@ -236,6 +258,12 @@ impl BlockAccumulator {
             let mut builder = AssistantBlockBuilder::new(message_id.to_string(), ts);
             if let Some(pu) = entry.get("parentUuid").and_then(|p| p.as_str()) {
                 builder.set_parent_uuid(pu.to_string());
+            }
+            if let Some(sc) = entry.get("isSidechain").and_then(|v| v.as_bool()) {
+                builder.set_is_sidechain(sc);
+            }
+            if let Some(aid) = entry.get("agentId").and_then(|a| a.as_str()) {
+                builder.set_agent_id(aid.to_string());
             }
             self.current_assistant = Some(builder);
         }
@@ -376,15 +404,74 @@ impl BlockAccumulator {
     }
 
     fn handle_system(&mut self, entry: &Value) {
+        let subtype = entry.get("subtype").and_then(|s| s.as_str()).unwrap_or("");
+
+        match subtype {
+            "turn_duration" => {
+                let duration = entry
+                    .get("durationMs")
+                    .and_then(|d| d.as_u64())
+                    .unwrap_or(0);
+                self.boundary_acc.set_duration(duration);
+            }
+            "stop_hook_summary" => {
+                self.boundary_acc.set_hook_summary(entry);
+                if let Some(block) = self.boundary_acc.build(self.make_id("tb")) {
+                    self.blocks.push(ConversationBlock::TurnBoundary(block));
+                }
+                self.boundary_acc.reset();
+            }
+            "compact_boundary" => {
+                if let Some(notice) = detect_notice_from_system("compact_boundary", entry) {
+                    self.blocks.push(ConversationBlock::Notice(notice));
+                }
+            }
+            "microcompact_boundary" => {
+                if let Some(notice) = detect_notice_from_system("microcompact_boundary", entry) {
+                    self.blocks.push(ConversationBlock::Notice(notice));
+                }
+            }
+            "api_error" => {
+                self.blocks.push(ConversationBlock::Notice(NoticeBlock {
+                    id: self.make_id("notice"),
+                    variant: NoticeVariant::Error,
+                    data: entry.clone(),
+                    retry_in_ms: None,
+                    retry_attempt: None,
+                    max_retries: None,
+                }));
+            }
+            "local_command" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::LocalCommand,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
+            "informational" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::Informational,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
+            // Fallback: field-sniffing for entries without subtype (older JSONL files)
+            _ => self.handle_system_by_fields(entry),
+        }
+    }
+
+    /// Fallback system handler that uses field-sniffing for older JSONL files
+    /// that don't have a `subtype` field.
+    fn handle_system_by_fields(&mut self, entry: &Value) {
         if entry.get("durationMs").is_some() {
-            // turn_duration
             let duration = entry
                 .get("durationMs")
                 .and_then(|d| d.as_u64())
                 .unwrap_or(0);
             self.boundary_acc.set_duration(duration);
         } else if entry.get("stopReason").is_some() && entry.get("hookInfos").is_some() {
-            // stop_hook_summary — build and emit TurnBoundaryBlock
             self.boundary_acc.set_hook_summary(entry);
             if let Some(block) = self.boundary_acc.build(self.make_id("tb")) {
                 self.blocks.push(ConversationBlock::TurnBoundary(block));
@@ -403,9 +490,18 @@ impl BlockAccumulator {
                 id: self.make_id("notice"),
                 variant: NoticeVariant::Error,
                 data: entry.clone(),
+                retry_in_ms: None,
+                retry_attempt: None,
+                max_retries: None,
+            }));
+        } else if entry.get("planContent").is_some() {
+            self.blocks.push(ConversationBlock::System(SystemBlock {
+                id: self.make_id("sys"),
+                variant: SystemVariant::PlanContent,
+                data: entry.clone(),
+                raw_json: None,
             }));
         } else {
-            // Other system entries
             let variant = SystemVariant::Informational;
             self.blocks.push(ConversationBlock::System(SystemBlock {
                 id: self.make_id("sys"),
@@ -414,6 +510,24 @@ impl BlockAccumulator {
                 raw_json: None,
             }));
         }
+    }
+
+    fn handle_pr_link(&mut self, entry: &Value) {
+        self.blocks.push(ConversationBlock::System(SystemBlock {
+            id: self.make_id("sys"),
+            variant: SystemVariant::PrLink,
+            data: entry.clone(),
+            raw_json: None,
+        }));
+    }
+
+    fn handle_custom_title(&mut self, entry: &Value) {
+        self.blocks.push(ConversationBlock::System(SystemBlock {
+            id: self.make_id("sys"),
+            variant: SystemVariant::CustomTitle,
+            data: entry.clone(),
+            raw_json: None,
+        }));
     }
 
     fn handle_queue_operation(&mut self, entry: &Value) {
@@ -497,6 +611,7 @@ impl Default for BlockAccumulator {
 pub struct ParsedSession {
     pub blocks: Vec<ConversationBlock>,
     pub forked_from: Option<Value>,
+    pub entrypoint: Option<String>,
 }
 
 /// Convenience function for batch processing — returns blocks + session metadata.
@@ -504,10 +619,12 @@ pub fn parse_session(content: &str) -> ParsedSession {
     let mut acc = BlockAccumulator::new();
     acc.process_all(content);
     let forked_from = acc.forked_from().cloned();
+    let entrypoint = acc.entrypoint().map(String::from);
     let blocks = acc.finalize();
     ParsedSession {
         blocks,
         forked_from,
+        entrypoint,
     }
 }
 

@@ -45,3 +45,11 @@ export const WithToolError: Story = {
 export const RichMarkdown: Story = {
   args: { block: assistantBlocks.markdown },
 }
+
+export const SidechainReply: Story = {
+  args: { block: assistantBlocks.sidechainReply },
+}
+
+export const FromAgent: Story = {
+  args: { block: assistantBlocks.fromAgent },
+}

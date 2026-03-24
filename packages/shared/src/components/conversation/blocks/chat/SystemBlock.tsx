@@ -5,7 +5,8 @@ import type {
   TaskProgressEvent,
   TaskStarted,
 } from '../../../../types/sidecar-protocol'
-import { Activity, Bell, Clock, Play } from 'lucide-react'
+import { Activity, Bell, Clock, ExternalLink, FileText, Play, Tag } from 'lucide-react'
+import { Markdown } from '../shared/Markdown'
 
 /** Variants that ChatSystemBlock actually renders — used to filter items before Virtuoso. */
 export const CHAT_SYSTEM_VARIANTS = new Set([
@@ -13,6 +14,9 @@ export const CHAT_SYSTEM_VARIANTS = new Set([
   'task_progress',
   'task_notification',
   'queue_operation',
+  'pr_link',
+  'custom_title',
+  'plan_content',
 ])
 
 /** Returns true if a queue_operation system block should render in chat mode. */
@@ -70,6 +74,51 @@ export function ChatSystemBlock({ block }: SystemBlockProps) {
               <Clock className="w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
               <span className="text-[10px] text-gray-400 dark:text-gray-500">Queued</span>
             </div>
+          </div>
+        </div>
+      )
+    }
+    case 'pr_link': {
+      const data = block.data as Record<string, unknown>
+      const prUrl = data.prUrl as string | undefined
+      const prNumber = data.prNumber as number | undefined
+      const prRepo = data.prRepository as string | undefined
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+          <ExternalLink className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+          <a
+            href={prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-blue-600 dark:text-blue-400 hover:underline truncate"
+          >
+            {prRepo ? `${prRepo}#${prNumber}` : `PR #${prNumber}`}
+          </a>
+        </div>
+      )
+    }
+    case 'custom_title': {
+      const data = block.data as Record<string, unknown>
+      return (
+        <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400">
+          <Tag className="w-3 h-3 flex-shrink-0" />
+          <span className="font-medium truncate">{data.customTitle as string}</span>
+        </div>
+      )
+    }
+    case 'plan_content': {
+      const data = block.data as Record<string, unknown>
+      const content = (data.planContent as string) || ''
+      return (
+        <div className="px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/15 border border-violet-200 dark:border-violet-800/40">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <FileText className="w-3 h-3 text-violet-500 dark:text-violet-400" />
+            <span className="text-[10px] font-medium uppercase tracking-wider text-violet-500 dark:text-violet-400">
+              Plan
+            </span>
+          </div>
+          <div className="text-xs">
+            <Markdown content={content} />
           </div>
         </div>
       )

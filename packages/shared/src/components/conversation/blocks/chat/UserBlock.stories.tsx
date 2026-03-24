@@ -35,3 +35,15 @@ export const Failed: Story = {
 export const LongMessage: Story = {
   args: { block: userBlocks.long },
 }
+
+export const WithImage: Story = {
+  args: { block: userBlocks.withImage },
+}
+
+export const Sidechain: Story = {
+  args: { block: userBlocks.sidechain },
+}
+
+export const FromAgent: Story = {
+  args: { block: userBlocks.fromAgent },
+}

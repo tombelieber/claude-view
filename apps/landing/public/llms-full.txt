@@ -2183,26 +2183,6 @@ npx claude-view@latest
 ```
 
 
---- changelog/v0.24.1.md ---
-
----
-title: v0.24.1 — Share Viewer Developer Mode
-date: 2026-03-24
-version: v0.24.1
----
-
-## Fixes
-
-**Share viewer developer mode** — The share viewer now has a proper Chat/Developer toggle matching the main app's design. Developer mode shows the full execution trace with filter chips (User, Assistant, MCP, Tool, etc.), so shared conversations can be inspected in detail.
-
-**Share blob raw data** — Share blobs now include raw JSON data from the session, enabling accurate developer mode rendering with proper tool cards, system events, and metadata.
-
-## Getting started
-
-```bash
-npx claude-view@latest
-```
-
 --- changelog/v0.24.0.md ---
 
 ---
@@ -2239,6 +2219,27 @@ version: v0.24.0
 - PII-check pre-commit hook
 - ~5,800 lines of deprecated code removed (RichPane, ActionLogTab, ComparisonGallery)
 - Evidence audit baseline updated for new Claude CLI fields
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.24.1.md ---
+
+---
+title: "v0.24.1 — Share Viewer Developer Mode"
+date: 2026-03-24
+version: v0.24.1
+---
+
+## Fixes
+
+**Share viewer developer mode** — The share viewer now has a proper Chat/Developer toggle matching the main app's design. Developer mode shows the full execution trace with filter chips (User, Assistant, MCP, Tool, etc.), so shared conversations can be inspected in detail.
+
+**Share blob raw data** — Share blobs now include raw JSON data from the session, enabling accurate developer mode rendering with proper tool cards, system events, and metadata.
 
 ## Getting started
 

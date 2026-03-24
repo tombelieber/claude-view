@@ -245,6 +245,8 @@ pub struct PaginatedBlocks {
     pub has_more: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub forked_from: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entrypoint: Option<String>,
 }
 
 // ============================================================================
@@ -499,6 +501,7 @@ pub async fn get_session_messages_by_id(
             limit,
             has_more: end < total,
             forked_from: parsed.forked_from,
+            entrypoint: parsed.entrypoint,
         };
         Ok(Json(serde_json::to_value(result).unwrap()))
     } else {

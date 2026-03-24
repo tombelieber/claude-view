@@ -41,6 +41,15 @@ import type {
 
 export type { ActionCategory } from './generated/ActionCategory'
 
+// ── ImageContent ────────────────────────────────────────────────────────────
+
+export type ImageContent = {
+  sourceType: string
+  mediaType: string
+  url?: string
+  data?: string
+}
+
 // ── UserBlock ───────────────────────────────────────────────────────────────
 
 export type UserBlock = {
@@ -51,6 +60,9 @@ export type UserBlock = {
   status?: 'optimistic' | 'sending' | 'sent' | 'failed'
   localId?: string
   parentUuid?: string | null
+  isSidechain?: boolean
+  agentId?: string
+  images?: ImageContent[]
   rawJson?: Record<string, unknown> | null
 }
 
@@ -65,6 +77,8 @@ export type AssistantBlock = {
   /** Unix seconds — populated from JSONL timestamp or Date.now() for live blocks */
   timestamp?: number
   parentUuid?: string | null
+  isSidechain?: boolean
+  agentId?: string
   rawJson?: Record<string, unknown> | null
 }
 
@@ -122,6 +136,10 @@ export type TurnBoundaryBlock = {
       | 'error_max_structured_output_retries'
     messages: string[]
   }
+  hookInfos?: unknown[]
+  hookErrors?: string[]
+  hookCount?: number
+  preventedContinuation?: boolean
 }
 
 // ── NoticeBlock ─────────────────────────────────────────────────────────────
@@ -147,6 +165,9 @@ export type NoticeBlock = {
     | ErrorEvent
     | PromptSuggestion
     | null
+  retryInMs?: number
+  retryAttempt?: number
+  maxRetries?: number
 }
 
 // ── SystemBlock ─────────────────────────────────────────────────────────────
@@ -171,6 +192,9 @@ export type SystemBlock = {
     | 'ai_title'
     | 'last_prompt'
     | 'worktree_state'
+    | 'pr_link'
+    | 'custom_title'
+    | 'plan_content'
     | 'informational'
     | 'unknown'
   data:
@@ -192,6 +216,7 @@ export type SystemBlock = {
     | WorktreeState
     | Informational
     | UnknownSdkEvent
+    | Record<string, unknown>
   rawJson?: Record<string, unknown> | null
 }
 
