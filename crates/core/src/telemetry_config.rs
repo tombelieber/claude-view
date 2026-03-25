@@ -33,9 +33,15 @@ impl TelemetryConfig {
     }
 }
 
-/// Always returns ~/.claude-view/telemetry.json regardless of CLAUDE_VIEW_DATA_DIR.
-/// Telemetry consent is user-scoped, not project-scoped.
+/// Returns the telemetry config path.
+///
+/// When `CLAUDE_VIEW_DATA_DIR` is set (e.g., enterprise/DACS sandbox where
+/// `~/.claude-view/` is read-only), uses `$CLAUDE_VIEW_DATA_DIR/telemetry.json`.
+/// Otherwise defaults to `~/.claude-view/telemetry.json` (user-scoped).
 pub fn telemetry_config_path() -> PathBuf {
+    if let Ok(dir) = std::env::var("CLAUDE_VIEW_DATA_DIR") {
+        return PathBuf::from(dir).join("telemetry.json");
+    }
     dirs::home_dir()
         .expect("home directory must exist")
         .join(".claude-view")

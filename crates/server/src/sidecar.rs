@@ -122,6 +122,10 @@ impl SidecarManager {
             return Ok(self.base_url.clone());
         }
 
+        // Kill any stale process occupying the sidecar port (zombie from a
+        // previous crash). Without this, node's listen() fails with EADDRINUSE.
+        Self::kill_port_holder(self.port);
+
         // Spawn new sidecar process
         {
             let mut guard = self
@@ -303,6 +307,46 @@ impl SidecarManager {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| SidecarError::RequestError("No controlId in response".into()))
+    }
+
+    /// Kill stale node/sidecar processes holding a TCP port.
+    ///
+    /// Only kills processes whose command name contains "node" (sidecar runs
+    /// via `node dist/index.js`). Leaves other apps alone.
+    fn kill_port_holder(port: u16) {
+        let output = Command::new("lsof")
+            .args(["-ti", &format!(":{port}")])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output();
+
+        let pids = match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+            _ => return,
+        };
+
+        let my_pid = std::process::id().to_string();
+        for pid in pids.split_whitespace() {
+            if pid == my_pid {
+                continue;
+            }
+            // Only kill node processes (sidecar runs as `node dist/index.js`)
+            let is_node = Command::new("ps")
+                .args(["-p", pid, "-o", "comm="])
+                .output()
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout)
+                        .to_lowercase()
+                        .contains("node")
+                })
+                .unwrap_or(false);
+            if is_node {
+                tracing::info!(pid, port, "Killing stale node process on sidecar port");
+                let _ = Command::new("kill").args(["-9", pid]).status();
+            } else {
+                tracing::warn!(pid, port, "Non-node process on sidecar port, skipping");
+            }
+        }
     }
 
     /// Locate the sidecar directory.

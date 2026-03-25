@@ -260,13 +260,8 @@ pub fn create_app_full(
             oracle_rx.clone(),
         );
 
-    // Register hooks AFTER manager starts, BEFORE building AppState
-    let server_port = std::env::var("CLAUDE_VIEW_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(47892u16);
-    live::hook_registrar::register(server_port);
-    live::statusline_injector::register(server_port);
+    // Hook registration deferred — caller must invoke register_hooks()
+    // AFTER binding the actual port (which may auto-increment on conflict).
 
     // Detect installed IDEs (runs `which` for each known command).
     let available_ides = routes::ide::detect_installed_ides();
@@ -380,6 +375,23 @@ pub fn create_app_full(
     }
 
     app
+}
+
+/// Register Claude Code hooks for the given port.
+///
+/// Must be called AFTER binding the actual port (which may differ from the
+/// requested port due to auto-increment on conflict).
+///
+/// Skipped when `CLAUDE_VIEW_SKIP_HOOKS=1` — for enterprise/DACS sandboxes
+/// where `~/.claude/settings.json` and `~/.cache/` are read-only.
+/// In that case, hooks must be pre-configured by an install script.
+pub fn register_hooks(port: u16) {
+    if std::env::var("CLAUDE_VIEW_SKIP_HOOKS").as_deref() == Ok("1") {
+        tracing::info!("CLAUDE_VIEW_SKIP_HOOKS=1 — skipping hook/statusline registration");
+        return;
+    }
+    live::hook_registrar::register(port);
+    live::statusline_injector::register(port);
 }
 
 async fn refresh_pricing(
