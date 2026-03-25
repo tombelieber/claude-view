@@ -15,6 +15,11 @@ import { TabBarActions } from './TabBarActions'
 const chatComponents = { chat: ChatPanel }
 const chatTabComponents = { chat: ChatTabRenderer }
 
+// Custom dockview theme — must be passed via `theme` prop to prevent dockview
+// from defaulting to themeAbyss (which adds .dockview-theme-abyss and overrides
+// our light-mode CSS variables in dockview-theme.css).
+const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
+
 const STORAGE_KEY = 'claude-view:chat-layout'
 
 /** Read saved dockview layout from localStorage. */
@@ -48,7 +53,7 @@ function ChatWatermark(_props: IWatermarkPanelProps) {
   return (
     <div className="flex items-center justify-center h-full">
       <div className="w-full max-w-2xl px-4">
-        <p className="text-center text-sm text-gray-400 dark:text-[#8B949E] mb-4">
+        <p className="text-center text-sm text-gray-400 dark:text-gray-500 mb-4">
           Select a session from the sidebar, or start a new conversation.
         </p>
       </div>
@@ -105,7 +110,8 @@ export function ChatDockLayout({ initialLayout, onReady }: ChatDockLayoutProps) 
 
   return (
     <DockviewReact
-      className="dockview-theme-cv flex-1 min-w-0"
+      className="flex-1 min-w-0"
+      theme={cvTheme}
       components={chatComponents}
       tabComponents={chatTabComponents}
       defaultTabComponent={ChatTabRenderer}

@@ -7,6 +7,11 @@ import {
   type IWatermarkPanelProps,
   type SerializedDockview,
 } from 'dockview-react'
+
+// Custom dockview theme — must be passed via `theme` prop to prevent dockview
+// from defaulting to themeAbyss (which adds .dockview-theme-abyss and overrides
+// our light-mode CSS variables in dockview-theme.css).
+const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
@@ -299,7 +304,7 @@ export function DockLayout({
     <DockPaneContext.Provider value={contextValue}>
       <div className="absolute inset-0">
         <DockviewReact
-          className="dockview-theme-cv"
+          theme={cvTheme}
           components={components}
           tabComponents={{ session: SessionTabRenderer }}
           defaultTabComponent={SessionTabRenderer}
