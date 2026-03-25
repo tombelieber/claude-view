@@ -34,6 +34,59 @@ fn get_port() -> u16 {
         .unwrap_or(DEFAULT_PORT)
 }
 
+/// Check if a process holding a port is a stale claude-view instance.
+///
+/// Returns true if the process name contains "claude-view" or "claude_view".
+/// If we can't determine the process name, returns false (don't kill unknowns).
+fn is_claude_view_process(pid: &str) -> bool {
+    // macOS: `ps -p <pid> -o comm=` gives the binary name
+    let output = std::process::Command::new("ps")
+        .args(["-p", pid, "-o", "comm="])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let name = String::from_utf8_lossy(&o.stdout).to_lowercase();
+            name.contains("claude-view") || name.contains("claude_view")
+        }
+        _ => false,
+    }
+}
+
+/// Try to reclaim a port from a stale claude-view process.
+///
+/// Returns true if the port was freed (stale process killed).
+/// Returns false if the port is held by a non-claude-view process.
+fn try_reclaim_port(port: u16) -> bool {
+    let output = std::process::Command::new("lsof")
+        .args(["-ti", &format!(":{port}")])
+        .output();
+
+    let pids = match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+        _ => return false,
+    };
+
+    let my_pid = std::process::id().to_string();
+    let mut killed_any = false;
+
+    for pid in pids.split_whitespace() {
+        if pid == my_pid {
+            continue;
+        }
+        if is_claude_view_process(pid) {
+            eprintln!("  killing stale claude-view (PID {pid}) on port {port}");
+            let _ = std::process::Command::new("kill")
+                .args(["-9", pid])
+                .status();
+            killed_any = true;
+        } else {
+            eprintln!("  port {port} held by another app (PID {pid}), skipping");
+        }
+    }
+    killed_any
+}
+
 /// Get the static directory for serving frontend files.
 ///
 /// Priority:
@@ -390,8 +443,58 @@ async fn main() -> Result<()> {
                 .ok()
         })
         .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
-    let addr = SocketAddr::from((bind_addr, port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    // Bind with smart port resolution:
+    // 1. Try the requested port
+    // 2. If EADDRINUSE and it's a stale claude-view → kill it, retry same port
+    // 3. If EADDRINUSE and it's another app → auto-increment port (up to +10)
+    //
+    // When CLAUDE_VIEW_SKIP_HOOKS=1 (sandbox mode), auto-increment is DISABLED
+    // because hooks are pre-configured for a fixed port. Silently starting on a
+    // different port would break hooks. Fail fast instead.
+    let skip_hooks = std::env::var("CLAUDE_VIEW_SKIP_HOOKS").as_deref() == Ok("1");
+    let (listener, port) = {
+        let mut try_port = port;
+        let max_port = if skip_hooks { port } else { port + 10 };
+        loop {
+            let addr = SocketAddr::from((bind_addr, try_port));
+            match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => break (l, try_port),
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                    if !skip_hooks && try_reclaim_port(try_port) {
+                        // Killed a stale claude-view — retry same port
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                        match tokio::net::TcpListener::bind(addr).await {
+                            Ok(l) => break (l, try_port),
+                            Err(_) => {} // still in use, fall through to increment
+                        }
+                    }
+                    // Port held by another app — try next (or fail in sandbox)
+                    try_port += 1;
+                    if try_port > max_port {
+                        if skip_hooks {
+                            anyhow::bail!(
+                                "Port {port} in use. In sandbox mode, the port must match \
+                                 pre-configured hooks. Free the port or change CLAUDE_VIEW_PORT."
+                            );
+                        }
+                        anyhow::bail!(
+                            "Ports {port}–{max_port} all in use. Set CLAUDE_VIEW_PORT to override."
+                        );
+                    }
+                    eprintln!(
+                        "Port {} in use by another app, trying {}…",
+                        try_port - 1,
+                        try_port
+                    );
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+    };
+
+    // Register Claude Code hooks with the ACTUAL bound port (may differ
+    // from requested port due to auto-increment on conflict).
+    claude_view_server::register_hooks(port);
 
     // Fire server_started telemetry event (fire-and-forget, non-blocking)
     if let Some(ref client) = telemetry_for_server_started {
@@ -968,9 +1071,11 @@ async fn main() -> Result<()> {
             // SSE connections to close, and the process never exits.
             let _ = shutdown_tx.send(true);
 
-            // Clean up hooks from ~/.claude/settings.json
-            claude_view_server::live::hook_registrar::cleanup(shutdown_port);
-            claude_view_server::live::statusline_injector::cleanup();
+            // Clean up hooks from ~/.claude/settings.json (skip in sandbox mode)
+            if std::env::var("CLAUDE_VIEW_SKIP_HOOKS").as_deref() != Ok("1") {
+                claude_view_server::live::hook_registrar::cleanup(shutdown_port);
+                claude_view_server::live::statusline_injector::cleanup();
+            }
 
             // Shut down Node.js sidecar if running
             sidecar_for_shutdown.shutdown();

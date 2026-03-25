@@ -17,6 +17,9 @@ claude-view.db-*
 claude_view.db
 claude_view.db-*
 
+# Sandbox install output
+install-claude-view/
+
 # Environment files
 .env
 .env.local
