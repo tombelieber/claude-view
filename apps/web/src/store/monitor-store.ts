@@ -17,6 +17,16 @@ export type VerboseFilter = ActionCategory[] | 'all'
 
 export type DisplayMode = 'chat' | 'developer'
 
+export type DetailTabId =
+  | 'overview'
+  | 'chat'
+  | 'sub-agents'
+  | 'teams'
+  | 'cost'
+  | 'tasks'
+  | 'changes'
+  | 'plan'
+
 interface MonitorState {
   // Grid layout
   gridOverride: { cols: number; rows: number } | null
@@ -32,6 +42,8 @@ interface MonitorState {
   verboseFilter: VerboseFilter
   richRenderMode: 'rich' | 'json'
   displayMode: DisplayMode
+  /** Last tab the user clicked in the session detail panel — persisted across sessions. */
+  preferredDetailTab: DetailTabId
 
   // Actions
   setGridOverride: (override: { cols: number; rows: number } | null) => void
@@ -47,6 +59,7 @@ interface MonitorState {
   setVerboseFilter: (category: ActionCategory | 'all') => void
   setRichRenderMode: (mode: 'rich' | 'json') => void
   setDisplayMode: (mode: DisplayMode) => void
+  setPreferredDetailTab: (tab: DetailTabId) => void
 }
 
 export const useMonitorStore = create<MonitorState>()(
@@ -62,6 +75,7 @@ export const useMonitorStore = create<MonitorState>()(
       verboseFilter: 'all' as VerboseFilter,
       richRenderMode: 'rich',
       displayMode: 'chat' as DisplayMode,
+      preferredDetailTab: 'overview' as DetailTabId,
 
       setGridOverride: (override) => set({ gridOverride: override }),
       setCompactHeaders: (compact) => set({ compactHeaders: compact }),
@@ -122,6 +136,7 @@ export const useMonitorStore = create<MonitorState>()(
         set({ verboseFilter: next.length === 0 ? 'all' : next })
       },
       setRichRenderMode: (mode) => set({ richRenderMode: mode }),
+      setPreferredDetailTab: (tab) => set({ preferredDetailTab: tab }),
     }),
     {
       name: 'claude-view:monitor-grid-prefs',
@@ -134,6 +149,7 @@ export const useMonitorStore = create<MonitorState>()(
         verboseFilter: state.verboseFilter,
         richRenderMode: state.richRenderMode,
         displayMode: state.displayMode,
+        preferredDetailTab: state.preferredDetailTab,
       }),
       storage: {
         getItem: (name: string): StorageValue<Partial<MonitorState>> | null => {
