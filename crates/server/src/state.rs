@@ -152,6 +152,9 @@ pub struct AppState {
     /// Number of active SSE subscribers to the system monitor.
     /// When 0→1, the polling task starts. When 1→0, it stops.
     pub monitor_subscribers: Arc<AtomicUsize>,
+    /// Unified process oracle receiver (latest-value semantics via tokio::watch).
+    /// Both the monitor SSE and manager reconciliation loop read from this.
+    pub oracle_rx: crate::live::process_oracle::OracleReceiver,
     /// Queued plugin operations (replaces the old try_lock/409 mutex pattern).
     pub plugin_op_queue: Arc<PluginOpQueue>,
     /// Notify channel to wake the plugin op worker when new ops are enqueued.
@@ -212,6 +215,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            oracle_rx: crate::live::process_oracle::stub(),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
@@ -263,6 +267,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            oracle_rx: crate::live::process_oracle::stub(),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
@@ -317,6 +322,7 @@ impl AppState {
             available_ides: Vec::new(),
             monitor_tx: broadcast::channel(64).0,
             monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            oracle_rx: crate::live::process_oracle::stub(),
             plugin_op_queue: Arc::new(PluginOpQueue::new()),
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),

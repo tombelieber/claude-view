@@ -12,7 +12,7 @@
 //! `get_cwd_via_lsof` in `process.rs`).
 
 mod classifier;
-mod helpers;
+pub mod helpers;
 pub mod types;
 
 use sysinfo::System;

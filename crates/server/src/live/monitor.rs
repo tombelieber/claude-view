@@ -297,30 +297,23 @@ pub fn should_classify_on_tick(tick: u32) -> bool {
     tick > 0 && tick.is_multiple_of(5)
 }
 
-/// Start the polling task that collects snapshots every 2 seconds.
+/// Start the polling task that reads from the ProcessOracle every 2 seconds.
 ///
 /// Returns immediately. The task runs until the subscriber count drops to 0.
+/// Instead of owning its own `sysinfo::System`, reads pre-computed snapshots
+/// from the oracle (zero duplicate process table scans).
 pub fn start_polling_task(
     tx: broadcast::Sender<MonitorEvent>,
     subscriber_count: Arc<AtomicUsize>,
     live_sessions: LiveSessionMap,
+    mut oracle_rx: crate::live::process_oracle::OracleReceiver,
 ) {
     tokio::task::spawn(async move {
-        tracing::info!("monitor: polling task started");
-
-        // sysinfo::System must be reused across calls for CPU delta tracking
-        let mut sys = System::new_all();
-        // Initial CPU measurement baseline — first reading is always 0.
-        // Use async sleep to avoid blocking the tokio worker thread.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        sys.refresh_cpu_usage();
+        tracing::info!("monitor: polling task started (oracle-backed)");
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
-        let mut tick_count: u32 = 0;
         loop {
             interval.tick().await;
-            tick_count = tick_count.wrapping_add(1);
-            let should_classify = should_classify_on_tick(tick_count);
 
             // Stop polling when no subscribers remain
             if subscriber_count.load(Ordering::Relaxed) == 0 {
@@ -328,49 +321,24 @@ pub fn start_polling_task(
                 break;
             }
 
-            // Snapshot on blocking thread (sysinfo does syscalls)
+            // Read latest oracle snapshot (non-blocking, latest-value semantics).
+            let oracle_snap = oracle_rx.borrow_and_update().clone();
+
+            // Build the resource snapshot by joining oracle data with live sessions.
             let sessions_clone = {
                 let map = live_sessions.read().await;
                 map.clone()
             };
+            let resource_snap = crate::live::process_oracle::build_resource_snapshot(
+                &oracle_snap.resource,
+                &sessions_clone,
+            );
 
-            let mut sys_moved = std::mem::take(&mut sys);
-            let (snapshot, maybe_tree, sys_back) = tokio::task::spawn_blocking(move || {
-                // collect_snapshot refreshes sys.processes() — must run first
-                let snap = collect_snapshot(&mut sys_moved, &sessions_clone);
-                // classify_processes reads the already-refreshed process table (read-only)
-                // INVARIANT: classify_processes MUST run after collect_snapshot in the same tick
-                let tree = if should_classify {
-                    Some(crate::live::process_tree::classify_processes(&sys_moved))
-                } else {
-                    None
-                };
-                (snap, tree, sys_moved)
-            })
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!("monitor: blocking task panicked: {e}");
-                (
-                    ResourceSnapshot {
-                        timestamp: chrono::Utc::now().timestamp(),
-                        cpu_percent: 0.0,
-                        memory_used_bytes: 0,
-                        memory_total_bytes: 0,
-                        disk_used_bytes: 0,
-                        disk_total_bytes: 0,
-                        top_processes: Vec::new(),
-                        session_resources: Vec::new(),
-                    },
-                    None,
-                    System::new(),
-                )
-            });
-            sys = sys_back;
+            let _ = tx.send(MonitorEvent::Snapshot(resource_snap));
 
-            // Broadcast — ignore error (no receivers is fine, count will hit 0 next tick)
-            let _ = tx.send(MonitorEvent::Snapshot(snapshot));
-            if let Some(tree) = maybe_tree {
-                let _ = tx.send(MonitorEvent::ProcessTree(tree));
+            // Forward process tree if available on this tick
+            if let Some(ref tree) = oracle_snap.process_tree {
+                let _ = tx.send(MonitorEvent::ProcessTree(tree.clone()));
             }
         }
     });

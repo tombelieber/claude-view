@@ -97,6 +97,27 @@ fn group_name_from_agent_group(group: &AgentStateGroup) -> &'static str {
     }
 }
 
+/// Set agent_state on a session with timestamp guard.
+/// Hooks are the highest authority for agent_state — always wins.
+fn set_agent_state(
+    session: &mut crate::live::state::LiveSession,
+    state: AgentState,
+    timestamp_ms: i64,
+) {
+    session.agent_state = state.clone();
+    session.status = status_from_agent_state(&state);
+    session.current_activity = state.label.clone();
+    session.agent_state_set_at = timestamp_ms;
+}
+
+/// Current monotonic timestamp in milliseconds.
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
 async fn buffer_unresolved_hook_event(session_id: &str, event: HookEvent) {
     let mut map = unresolved_hook_events().lock().await;
     let entry = map.entry(session_id.to_string()).or_default();
@@ -240,6 +261,8 @@ async fn handle_hook(
                         exceeds_200k_tokens: None,
                         statusline_transcript_path: None,
                         statusline_raw: None,
+                        model_set_at: now_ms(),
+                        agent_state_set_at: now_ms(),
                         source: None,
                         hook_events: Vec::new(),
                     };
@@ -475,6 +498,8 @@ async fn handle_hook(
                     statusline_transcript_path: None,
                     source: None,
                     statusline_raw: None,
+                    model_set_at: now_ms(),
+                    agent_state_set_at: now_ms(),
                     hook_events: Vec::new(),
                 };
                 append_capped_hook_events(
@@ -567,9 +592,7 @@ async fn handle_hook(
                 }
                 session.current_turn_started_at = Some(now);
                 session.turn_count += 1;
-                session.agent_state = agent_state.clone();
-                session.status = status_from_agent_state(&agent_state);
-                session.current_activity = agent_state.label.clone();
+                set_agent_state(session, agent_state.clone(), now_ms());
                 session.last_activity_at = now;
                 state_changed = true;
                 if session.pid.is_none() {
@@ -586,9 +609,7 @@ async fn handle_hook(
         "Stop" => {
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
-                session.agent_state = agent_state.clone();
-                session.status = status_from_agent_state(&agent_state);
-                session.current_activity = agent_state.label.clone();
+                set_agent_state(session, agent_state.clone(), now_ms());
                 session.last_activity_at = now;
                 state_changed = true;
                 if session.pid.is_none() {
@@ -1375,6 +1396,8 @@ mod tests {
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
             statusline_raw: None,
+            model_set_at: 0,
+            agent_state_set_at: 0,
             source: None,
             hook_events: Vec::new(),
         }

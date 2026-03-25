@@ -130,6 +130,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         available_ides: Vec::new(),
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        oracle_rx: live::process_oracle::stub(),
         plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
@@ -206,6 +207,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         available_ides: Vec::new(),
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        oracle_rx: live::process_oracle::stub(),
         plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
@@ -244,6 +246,9 @@ pub fn create_app_full(
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
+    // Start the unified process oracle BEFORE the manager (both share the same receiver).
+    let oracle_rx = live::process_oracle::start_oracle();
+
     let (manager, live_sessions, transcript_to_session, live_tx) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
@@ -252,6 +257,7 @@ pub fn create_app_full(
             registry.clone(),
             Some(sidecar.clone()),
             teams.clone(),
+            oracle_rx.clone(),
         );
 
     // Register hooks AFTER manager starts, BEFORE building AppState
@@ -308,6 +314,7 @@ pub fn create_app_full(
         available_ides,
         monitor_tx: tokio::sync::broadcast::channel(64).0,
         monitor_subscribers: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        oracle_rx: oracle_rx.clone(),
         plugin_op_queue: Arc::new(routes::plugin_ops::PluginOpQueue::new()),
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),

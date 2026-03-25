@@ -306,6 +306,16 @@ pub struct LiveSession {
     /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
     #[serde(skip)]
     pub statusline_raw: Option<serde_json::Value>,
+    /// Monotonic timestamp when `model` was last set. Writers only overwrite
+    /// when their timestamp > this value, preventing stale statusline updates
+    /// from clobbering newer hook values. NOT serialized.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub model_set_at: i64,
+    /// Monotonic timestamp when `agent_state` was last set. Same semantics.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub agent_state_set_at: i64,
     /// Hook lifecycle events captured for the event log.
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]
@@ -522,6 +532,8 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         exceeds_200k_tokens: None,
         statusline_transcript_path: None,
         statusline_raw: None,
+        model_set_at: 0,
+        agent_state_set_at: 0,
         source: None,
         hook_events: Vec::new(),
     }
