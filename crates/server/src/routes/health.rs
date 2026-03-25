@@ -10,7 +10,7 @@ use ts_rs::TS;
 use crate::state::AppState;
 
 /// Response for the health check endpoint.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct HealthResponse {
@@ -23,6 +23,14 @@ pub struct HealthResponse {
 /// GET /api/health - Health check endpoint.
 ///
 /// Returns server status, version, and uptime.
+#[utoipa::path(
+    get,
+    path = "/api/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "Server is healthy", body = HealthResponse),
+    )
+)]
 pub async fn health_check(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),

@@ -8,8 +8,265 @@
     },
     "version": "0.26.1"
   },
-  "paths": {},
-  "components": {},
+  "paths": {
+    "/api/config": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "config",
+        "responses": {
+          "200": {
+            "description": "Runtime capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "GET /api/health - Health check endpoint.",
+        "description": "Returns server status, version, and uptime.",
+        "operationId": "health_check",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/git-sync-interval": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "PUT /api/settings/git-sync-interval - Update the git sync interval.",
+        "description": "Body: { \"intervalSecs\": 60 }\nReturns the updated IndexMetadata.",
+        "operationId": "update_git_sync_interval",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGitSyncIntervalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexMetadata"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid interval"
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "GET /api/status - Get index metadata and data freshness info.",
+        "description": "Returns:\n- last_indexed_at: When indexing last completed\n- last_index_duration_ms: How long the last index took\n- sessions_indexed: Number of sessions in last index\n- projects_indexed: Number of projects in last index\n- last_git_sync_at: When git sync last completed\n- commits_found: Commits found in last git sync\n- links_created: Session-commit links created in last git sync\n- updated_at: When metadata was last updated",
+        "operationId": "get_status",
+        "responses": {
+          "200": {
+            "description": "Index metadata and data freshness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexMetadata"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ConfigResponse": {
+        "type": "object",
+        "required": [
+          "auth",
+          "sharing",
+          "version",
+          "telemetry"
+        ],
+        "properties": {
+          "anonymousId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Anonymous device ID for telemetry — null when running self-hosted."
+          },
+          "auth": {
+            "type": "boolean",
+            "description": "Whether Supabase auth is configured (JWKS loaded)."
+          },
+          "posthogKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "PostHog project API key — null when running self-hosted (no compiled key)."
+          },
+          "sharing": {
+            "type": "boolean",
+            "description": "Whether conversation sharing is configured (Worker + Viewer URLs set)."
+          },
+          "telemetry": {
+            "$ref": "#/components/schemas/TelemetryStatus",
+            "description": "Current telemetry opt-in status (disabled when no PostHog key compiled in)."
+          },
+          "version": {
+            "type": "string",
+            "description": "Server version."
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "description": "Response for the health check endpoint.",
+        "required": [
+          "status",
+          "version",
+          "uptime_secs"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "uptime_secs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "IndexMetadata": {
+        "type": "object",
+        "description": "Index metadata for data freshness tracking.",
+        "required": [
+          "sessionsIndexed",
+          "projectsIndexed",
+          "commitsFound",
+          "linksCreated",
+          "updatedAt",
+          "gitSyncIntervalSecs"
+        ],
+        "properties": {
+          "commitsFound": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of commits found in last git sync."
+          },
+          "gitSyncIntervalSecs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "User-configurable git sync interval in seconds (default 60)."
+          },
+          "lastGitSyncAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix timestamp of last successful git sync."
+          },
+          "lastIndexDurationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of last successful index in milliseconds."
+          },
+          "lastIndexedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Unix timestamp of last successful index completion."
+          },
+          "linksCreated": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of session-commit links created in last git sync."
+          },
+          "projectsIndexed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of projects indexed in last run."
+          },
+          "sessionsIndexed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of sessions indexed in last run."
+          },
+          "updatedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix timestamp of last metadata update."
+          }
+        }
+      },
+      "TelemetryStatus": {
+        "type": "string",
+        "enum": [
+          "undecided",
+          "enabled",
+          "disabled"
+        ]
+      },
+      "UpdateGitSyncIntervalRequest": {
+        "type": "object",
+        "description": "Request body for updating the git sync interval.",
+        "required": [
+          "intervalSecs"
+        ],
+        "properties": {
+          "intervalSecs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Interval in seconds. Must be between 10 and 3600.",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
   "tags": [
     {
       "name": "health",
