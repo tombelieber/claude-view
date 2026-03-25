@@ -22,6 +22,7 @@ pub mod live_parser;
 pub mod llm;
 pub mod metrics;
 pub mod parser;
+pub mod phase;
 pub mod paths;
 pub mod patterns;
 pub mod pipeline_checks;
