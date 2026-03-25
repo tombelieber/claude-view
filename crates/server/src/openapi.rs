@@ -8,6 +8,19 @@ use utoipa::OpenApi;
         version = env!("CARGO_PKG_VERSION"),
         license(name = "MIT"),
     ),
+    paths(
+        crate::routes::health::health_check,
+        crate::routes::config::config,
+        crate::routes::status::get_status,
+        crate::routes::status::update_git_sync_interval,
+    ),
+    components(schemas(
+        crate::routes::health::HealthResponse,
+        crate::routes::config::ConfigResponse,
+        claude_view_core::telemetry_config::TelemetryStatus,
+        claude_view_db::trends::IndexMetadata,
+        crate::routes::status::UpdateGitSyncIntervalRequest,
+    )),
     tags(
         (name = "health", description = "Health checks and server status"),
         (name = "sessions", description = "Session CRUD, filtering, and export"),

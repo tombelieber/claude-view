@@ -126,7 +126,7 @@ pub struct WeekTrends {
 }
 
 /// Index metadata for data freshness tracking.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {
