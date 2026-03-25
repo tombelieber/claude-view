@@ -2173,6 +2173,11 @@ impl LiveSessionManager {
                     completed_at: None,
                     duration_ms: None,
                     tool_use_count: None,
+                    model: spawn.model.clone(),
+                    input_tokens: None,
+                    output_tokens: None,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
                     cost_usd: None,
                     current_activity: None,
                 });
@@ -2205,8 +2210,25 @@ impl LiveSessionManager {
                         agent.tool_use_count = result.total_tool_use_count;
                         agent.current_activity = None;
 
-                        // Compute cost from token usage via pricing table
-                        if let Some(model) = acc.model.as_deref() {
+                        // Store token usage breakdown for transparency
+                        agent.input_tokens = result.usage_input_tokens;
+                        agent.output_tokens = result.usage_output_tokens;
+                        agent.cache_read_tokens = result.usage_cache_read_tokens;
+                        agent.cache_creation_tokens = result.usage_cache_creation_tokens;
+
+                        // Update model from toolUseResult if present (authoritative)
+                        if result.model.is_some() {
+                            agent.model = result.model.clone();
+                        }
+
+                        // Compute cost from token usage via pricing table.
+                        // Use the sub-agent's own model for pricing (from spawn input or
+                        // toolUseResult). Fall back to parent session model if unknown.
+                        let pricing_model = agent
+                            .model
+                            .as_deref()
+                            .or(acc.model.as_deref());
+                        if let Some(model) = pricing_model {
                             let sub_tokens = TokenUsage {
                                 input_tokens: result.usage_input_tokens.unwrap_or(0),
                                 output_tokens: result.usage_output_tokens.unwrap_or(0),

@@ -723,4 +723,33 @@ mod tests {
             "output_above_200k derived",
         );
     }
+
+    #[test]
+    fn test_resolve_model_alias() {
+        assert_eq!(resolve_model_alias("haiku"), Some("claude-haiku-4-5-20251001"));
+        assert_eq!(resolve_model_alias("sonnet"), Some("claude-sonnet-4-6"));
+        assert_eq!(resolve_model_alias("opus"), Some("claude-opus-4-6"));
+        // Full model IDs pass through (return None so caller uses as-is)
+        assert_eq!(resolve_model_alias("claude-opus-4-6"), None);
+        // Unknown aliases return None (caller falls back to parent model)
+        assert_eq!(resolve_model_alias("inherit"), None);
+        assert_eq!(resolve_model_alias("unknown"), None);
+    }
+
+    #[test]
+    fn test_lookup_pricing_resolves_alias() {
+        let pricing = default_pricing();
+        // "haiku" alias should resolve to claude-haiku-4-5-20251001 pricing
+        let haiku_pricing = lookup_pricing("haiku", &pricing);
+        assert!(haiku_pricing.is_some(), "haiku alias should resolve to pricing");
+        let haiku_direct = pricing.get("claude-haiku-4-5-20251001").unwrap();
+        assert_eq!(
+            haiku_pricing.unwrap().input_cost_per_token,
+            haiku_direct.input_cost_per_token,
+        );
+        // "sonnet" alias
+        assert!(lookup_pricing("sonnet", &pricing).is_some());
+        // "opus" alias
+        assert!(lookup_pricing("opus", &pricing).is_some());
+    }
 }
