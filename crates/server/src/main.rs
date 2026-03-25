@@ -463,10 +463,10 @@ async fn main() -> Result<()> {
                     if !skip_hooks && try_reclaim_port(try_port) {
                         // Killed a stale claude-view — retry same port
                         tokio::time::sleep(Duration::from_millis(300)).await;
-                        match tokio::net::TcpListener::bind(addr).await {
-                            Ok(l) => break (l, try_port),
-                            Err(_) => {} // still in use, fall through to increment
+                        if let Ok(l) = tokio::net::TcpListener::bind(addr).await {
+                            break (l, try_port);
                         }
+                        // still in use, fall through to increment
                     }
                     // Port held by another app — try next (or fail in sandbox)
                     try_port += 1;
