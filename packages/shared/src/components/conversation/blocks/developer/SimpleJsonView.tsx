@@ -7,7 +7,7 @@ import type { JsonTreeProps } from '../../../../contexts/DeveloperToolsContext'
 export function SimpleJsonView({ data }: JsonTreeProps) {
   const json = JSON.stringify(data, null, 2)
   return (
-    <pre className="text-[11px] font-mono leading-relaxed text-gray-700 dark:text-gray-400 overflow-auto max-h-96 whitespace-pre-wrap break-all">
+    <pre className="text-[10px] font-mono leading-relaxed text-gray-700 dark:text-gray-400 overflow-auto max-h-96 whitespace-pre-wrap break-all">
       {json}
     </pre>
   )

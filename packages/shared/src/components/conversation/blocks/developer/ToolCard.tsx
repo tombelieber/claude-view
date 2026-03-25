@@ -1,10 +1,12 @@
-import type { ToolExecution } from '../../../../types/blocks'
-import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
 import { useDeveloperTools } from '../../../../contexts/DeveloperToolsContext'
-import { shortenToolName, toolChipColor } from '../../../../utils/content-detection'
+import type { ToolExecution } from '../../../../types/blocks'
 import { cn } from '../../../../utils/cn'
+import { shortenToolName, toolChipColor } from '../../../../utils/content-detection'
+import { CopyButton } from '../shared/CopyButton'
 import { ContentRenderer } from './ContentRenderer'
+import { DurationBadge } from './DurationBadge'
 import { SimpleJsonView } from './SimpleJsonView'
 import { useJsonMode } from './json-mode-context'
 
@@ -22,25 +24,6 @@ function StatusDot({ status }: { status: ToolExecution['status'] }) {
       data-testid={`status-${status}`}
       className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', color)}
     />
-  )
-}
-
-// ── Color-coded duration (ActionLog pattern) ────────────────────────────────
-
-function Duration({ ms }: { ms: number | undefined }) {
-  if (ms == null) return null
-  const secs = ms / 1000
-  const text = secs >= 60 ? `${(secs / 60).toFixed(1)}m` : `${secs.toFixed(1)}s`
-  const color =
-    secs > 30
-      ? 'text-red-600 dark:text-red-400 bg-red-500/10'
-      : secs > 5
-        ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
-        : 'text-gray-500 dark:text-gray-400 bg-gray-500/10'
-  return (
-    <span className={cn('text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded', color)}>
-      {text}
-    </span>
   )
 }
 
@@ -67,31 +50,6 @@ function extractLabel(toolName: string, toolInput: Record<string, unknown>): str
   return null
 }
 
-// ── Copy button ─────────────────────────────────────────────────────────────
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }, [text])
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        handleCopy()
-      }}
-      className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors duration-200 p-0.5 cursor-pointer"
-      title="Copy to clipboard"
-    >
-      {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-    </button>
-  )
-}
-
 // ── Main ToolCard ───────────────────────────────────────────────────────────
 
 interface ToolCardProps {
@@ -114,7 +72,7 @@ export function ToolCard({ execution }: ToolCardProps) {
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-lg border transition-colors duration-200',
+        'overflow-hidden rounded-lg border transition-colors duration-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.2)]',
         execution.status === 'error'
           ? 'border-red-300/25 dark:border-red-800/40 bg-red-500/5 dark:bg-red-950/20'
           : 'border-gray-200/30 dark:border-gray-700/30',
@@ -126,10 +84,15 @@ export function ToolCard({ execution }: ToolCardProps) {
         role="button"
         tabIndex={0}
         onClick={() => hasContent && setExpanded(!expanded)}
-        onKeyDown={(e) => e.key === 'Enter' && hasContent && setExpanded(!expanded)}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ' ') && hasContent) {
+            e.preventDefault()
+            setExpanded(!expanded)
+          }
+        }}
         className={cn(
           'flex w-full items-center gap-2 px-3 py-2',
-          hasContent && 'cursor-pointer hover:bg-gray-50/5 transition-colors duration-200',
+          hasContent && 'cursor-pointer hover:bg-gray-500/5 transition-colors duration-200',
         )}
       >
         <StatusDot status={execution.status} />
@@ -145,13 +108,13 @@ export function ToolCard({ execution }: ToolCardProps) {
         </span>
 
         {server && (
-          <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600 flex-shrink-0">
+          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 flex-shrink-0">
             {server}
           </span>
         )}
 
         {execution.category && (
-          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-500 dark:text-gray-400">
+          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400">
             {execution.category}
           </span>
         )}
@@ -159,7 +122,7 @@ export function ToolCard({ execution }: ToolCardProps) {
         {/* Smart label */}
         {smartLabel && (
           <span
-            className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate"
+            className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate"
             title={smartLabel}
           >
             {smartLabel}
@@ -171,12 +134,12 @@ export function ToolCard({ execution }: ToolCardProps) {
 
         {/* Running elapsed */}
         {execution.status === 'running' && execution.progress && (
-          <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 tabular-nums animate-pulse flex-shrink-0">
+          <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 tabular-nums flex-shrink-0">
             {execution.progress.elapsedSeconds.toFixed(1)}s
           </span>
         )}
 
-        <Duration ms={execution.duration} />
+        {execution.duration != null && <DurationBadge ms={execution.duration} />}
 
         <button
           type="button"
@@ -186,6 +149,8 @@ export function ToolCard({ execution }: ToolCardProps) {
           }}
           className={cn(
             'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+            'min-w-[28px] min-h-[28px] inline-flex items-center justify-center',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50',
             jsonMode
               ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20'
               : 'text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400',
@@ -207,66 +172,71 @@ export function ToolCard({ execution }: ToolCardProps) {
       </div>
 
       {/* ── Body ────────────────────────────────────────────────── */}
-      {expanded && (
-        <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2.5 space-y-2.5">
-          {jsonMode ? (
-            JsonTree ? (
-              <JsonTree data={execution} defaultExpandDepth={3} verboseMode />
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2.5 space-y-2.5">
+            {jsonMode ? (
+              JsonTree ? (
+                <JsonTree data={execution} defaultExpandDepth={3} verboseMode />
+              ) : (
+                <SimpleJsonView data={execution} />
+              )
             ) : (
-              <SimpleJsonView data={execution} />
-            )
-          ) : (
-            <>
-              {/* Input: rich renderer if available, else raw JSON */}
-              {Object.keys(execution.toolInput ?? {}).length > 0 && (
-                <div>
-                  {RichRenderer ? (
-                    <RichRenderer
-                      inputData={execution.toolInput as Record<string, unknown>}
-                      name={execution.toolName}
-                      blockIdPrefix={`dev-${execution.toolUseId}-`}
-                    />
-                  ) : (
-                    <>
-                      <div className="mb-1 text-[9px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
-                        Input
-                      </div>
-                      <ContentRenderer content={JSON.stringify(execution.toolInput, null, 2)} />
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Result */}
-              {execution.result && (
-                <div>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span
-                      className={cn(
-                        'text-[9px] font-medium uppercase tracking-wider',
-                        execution.result.isError
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-gray-500 dark:text-gray-500',
-                      )}
-                    >
-                      {execution.result.isError ? 'Error' : 'Output'}
-                    </span>
-                    <CopyButton text={execution.result.output} />
+              <>
+                {/* Input: rich renderer if available, else raw JSON */}
+                {Object.keys(execution.toolInput ?? {}).length > 0 && (
+                  <div>
+                    {RichRenderer ? (
+                      <RichRenderer
+                        inputData={execution.toolInput as Record<string, unknown>}
+                        name={execution.toolName}
+                        blockIdPrefix={`dev-${execution.toolUseId}-`}
+                      />
+                    ) : (
+                      <>
+                        <div className="mb-1 text-[9px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                          Input
+                        </div>
+                        <ContentRenderer content={JSON.stringify(execution.toolInput, null, 2)} />
+                      </>
+                    )}
                   </div>
-                  <ContentRenderer content={execution.result.output} />
-                </div>
-              )}
+                )}
 
-              {/* Summary */}
-              {execution.summary && (
-                <p className="text-[10px] italic text-gray-500 dark:text-gray-400">
-                  {execution.summary}
-                </p>
-              )}
-            </>
-          )}
+                {/* Result */}
+                {execution.result && (
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={cn(
+                          'text-[9px] font-medium uppercase tracking-wider',
+                          execution.result.isError
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-gray-500 dark:text-gray-500',
+                        )}
+                      >
+                        {execution.result.isError ? 'Error' : 'Output'}
+                      </span>
+                      <CopyButton text={execution.result.output} />
+                    </div>
+                    <ContentRenderer content={execution.result.output} />
+                  </div>
+                )}
+
+                {/* Summary */}
+                {execution.summary && (
+                  <p className="text-[10px] italic text-gray-500 dark:text-gray-400">
+                    {execution.summary}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

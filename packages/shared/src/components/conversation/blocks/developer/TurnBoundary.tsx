@@ -1,5 +1,5 @@
-import { TurnDurationCard } from '../../../TurnDurationCard'
 import type { TurnBoundaryBlock } from '../../../../types/blocks'
+import { TurnDurationCard } from '../../../TurnDurationCard'
 import { EventCard } from './EventCard'
 
 interface TurnBoundaryProps {
@@ -36,64 +36,66 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
       error={!block.success}
       rawData={block}
     >
-      <div className="space-y-1">
+      <div className="space-y-2">
         <TurnDurationCard durationMs={block.durationMs} />
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-          <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Cost</span>
-            <span className="font-mono text-gray-700 dark:text-gray-300">
-              {formatCost(block.totalCostUsd)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500 dark:text-gray-400">Duration</span>
-            <span className="font-mono text-gray-700 dark:text-gray-300">
-              {formatDuration(block.durationMs)}
-            </span>
-          </div>
+        {/* Compact stat bar */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-gray-600 dark:text-gray-300">
+          <span>
+            <span className="text-gray-500 dark:text-gray-400">Cost</span>{' '}
+            {formatCost(block.totalCostUsd)}
+          </span>
+          <span className="text-gray-300 dark:text-gray-600">|</span>
+          <span>
+            <span className="text-gray-500 dark:text-gray-400">Duration</span>{' '}
+            {formatDuration(block.durationMs)}
+          </span>
           {tokens && (
-            <div className="flex justify-between col-span-2">
-              <span className="text-gray-500 dark:text-gray-400">Tokens</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">{tokens}</span>
-            </div>
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span>
+                <span className="text-gray-500 dark:text-gray-400">Tokens</span> {tokens}
+              </span>
+            </>
           )}
           {models.length > 0 && (
-            <div className="flex justify-between col-span-2">
-              <span className="text-gray-500 dark:text-gray-400">Model</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[200px]">
-                {models.join(', ')}
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span className="truncate max-w-[200px]">
+                <span className="text-gray-500 dark:text-gray-400">Model</span> {models.join(', ')}
               </span>
-            </div>
+            </>
           )}
           {block.stopReason && (
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Stop</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">{block.stopReason}</span>
-            </div>
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span>
+                <span className="text-gray-500 dark:text-gray-400">Stop</span> {block.stopReason}
+              </span>
+            </>
           )}
           {block.fastModeState && (
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Fast</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">
-                {block.fastModeState}
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span>
+                <span className="text-gray-500 dark:text-gray-400">Fast</span> {block.fastModeState}
               </span>
-            </div>
+            </>
           )}
           {block.durationApiMs != null && block.durationApiMs > 0 && (
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">API</span>
-              <span className="font-mono text-gray-700 dark:text-gray-300">
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <span>
+                <span className="text-gray-500 dark:text-gray-400">API</span>{' '}
                 {formatDuration(block.durationApiMs)}
               </span>
-            </div>
+            </>
           )}
         </div>
 
         {/* Permission denials */}
         {block.permissionDenials.length > 0 && (
-          <div className="pt-1 border-t border-gray-200/30 dark:border-gray-700/30">
+          <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
             <div className="text-[10px] font-medium text-red-600 dark:text-red-400 mb-1">
               Permission Denials
             </div>
@@ -110,7 +112,7 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
 
         {/* Error messages */}
         {block.error && (
-          <div className="pt-1 border-t border-red-200/30 dark:border-red-800/30">
+          <div className="pt-1.5 border-t border-red-200/30 dark:border-red-800/30">
             {block.error.messages.map((msg) => (
               <p key={msg} className="text-[10px] text-red-600 dark:text-red-400">
                 {msg}

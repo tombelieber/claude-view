@@ -1,6 +1,5 @@
-import { FileSnapshotCard } from '../../../FileSnapshotCard'
-import { LocalCommandEventCard } from '../../../LocalCommandEventCard'
-import { MessageQueueEventCard } from '../../../MessageQueueEventCard'
+import { StopCircle } from 'lucide-react'
+import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import type { SystemBlock as SystemBlockType } from '../../../../types/blocks'
 import type {
   AiTitle,
@@ -22,10 +21,12 @@ import type {
   UnknownSdkEvent,
   WorktreeState,
 } from '../../../../types/sidecar-protocol'
-import { StopCircle } from 'lucide-react'
-import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import { cn } from '../../../../utils/cn'
+import { FileSnapshotCard } from '../../../FileSnapshotCard'
+import { LocalCommandEventCard } from '../../../LocalCommandEventCard'
+import { MessageQueueEventCard } from '../../../MessageQueueEventCard'
 import { Markdown } from '../shared/Markdown'
+import { DurationBadge } from './DurationBadge'
 import { EventCard } from './EventCard'
 import { RENDERED_KEYS as API_ERROR_KEYS, ApiErrorDetail } from './details/ApiErrorDetail'
 import { RENDERED_KEYS as HOOK_KEYS, HookMetadataDetail } from './details/HookMetadataDetail'
@@ -151,7 +152,7 @@ function TaskStartedDetail({ data }: { data: TaskStarted }) {
   const convActions = useConversationActions()
   return (
     <EventCard
-      dot="blue"
+      dot="indigo"
       chip="Task"
       chipColor="bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
       label={data.description}
@@ -181,7 +182,7 @@ function TaskStartedDetail({ data }: { data: TaskStarted }) {
 function TaskProgressDetail({ data }: { data: TaskProgressEvent }) {
   return (
     <EventCard
-      dot="blue"
+      dot="indigo"
       chip="Task"
       chipColor="bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300"
       label={data.summary ?? data.description}
@@ -412,25 +413,14 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
     <>
       {variantContent}
       {block.rawJson && (
-        <div className="mt-1 space-y-1">
+        <div className="ml-4 pl-3 border-l-2 border-gray-200/30 dark:border-gray-700/30 mt-1 space-y-1">
           {block.rawJson.permissionMode != null && (
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}
             </span>
           )}
           {block.rawJson.durationMs != null && (
-            <span
-              className={cn(
-                'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
-                Number(block.rawJson.durationMs) > 30000
-                  ? 'text-red-600 dark:text-red-400 bg-red-500/10'
-                  : Number(block.rawJson.durationMs) > 5000
-                    ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10'
-                    : 'text-gray-500 dark:text-gray-400 bg-gray-500/10',
-              )}
-            >
-              {Number(block.rawJson.durationMs).toLocaleString()}ms
-            </span>
+            <DurationBadge ms={Number(block.rawJson.durationMs)} />
           )}
           {typeof block.rawJson.planContent === 'string' && block.rawJson.planContent && (
             <details className="mt-1">
