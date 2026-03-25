@@ -164,7 +164,7 @@ export function PermissionCard({
       <div className="space-y-2">
         {/* Tool name badge */}
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-mono font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded">
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded">
             {permission.toolName}
           </span>
         </div>
@@ -177,11 +177,11 @@ export function PermissionCard({
         {/* Tool-specific preview */}
         <div className="rounded border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
           {toolDisplay.label && (
-            <div className="px-2 py-1 text-[10px] font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200/50 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/30">
+            <div className="px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-200/50 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/30">
               {toolDisplay.label}
             </div>
           )}
-          <pre className="px-2 py-1.5 text-[11px] text-gray-800 dark:text-gray-200 overflow-x-auto max-h-32 whitespace-pre-wrap font-mono">
+          <pre className="px-2 py-1.5 text-xs text-gray-800 dark:text-gray-200 overflow-x-auto max-h-32 whitespace-pre-wrap font-mono">
             {toolDisplay.content}
           </pre>
         </div>
@@ -202,7 +202,7 @@ export function PermissionCard({
             </div>
             <span
               className={cn(
-                'text-[10px] font-mono tabular-nums w-6 text-right',
+                'text-xs font-mono tabular-nums w-6 text-right',
                 countdown < 10
                   ? 'text-red-500 dark:text-red-400 font-bold'
                   : 'text-gray-500 dark:text-gray-400',

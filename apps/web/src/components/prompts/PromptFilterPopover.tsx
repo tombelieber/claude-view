@@ -85,9 +85,7 @@ export function PromptFilterPopover({
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
-            {hasAnyFiltersSet && (
-              <span className="text-[10px] text-gray-400 tabular-nums">active</span>
-            )}
+            {hasAnyFiltersSet && <span className="text-xs text-gray-400 tabular-nums">active</span>}
           </div>
 
           {/* Filter options */}

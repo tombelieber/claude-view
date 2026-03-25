@@ -81,7 +81,7 @@ function TierRow({ tier }: { tier: UsageTier }) {
         </span>
       </div>
       <ProgressBar percentage={tier.percentage} />
-      <div className="text-[10px] text-gray-500 dark:text-gray-400">
+      <div className="text-xs text-gray-500 dark:text-gray-400">
         {tier.spent && <span>{tier.spent} &middot; </span>}
         {formatResetLabel(tier.resetAt)}
       </div>
@@ -167,18 +167,18 @@ export function OAuthUsagePill() {
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                     Usage
                   </span>
                   {data.plan && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
                       {data.plan}
                     </span>
                   )}
                 </div>
                 <div className="rounded bg-amber-500/10 px-2.5 py-2 text-amber-600 dark:text-amber-400">
                   <div className="font-medium">{parsed.status}</div>
-                  <div className="mt-0.5 text-[11px] text-amber-500 dark:text-amber-500/80">
+                  <div className="mt-0.5 text-xs text-amber-500 dark:text-amber-500/80">
                     {parsed.message}
                   </div>
                 </div>
@@ -223,22 +223,22 @@ export function OAuthUsagePill() {
             {/* Header */}
             <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                   Usage
                 </span>
                 {data.plan && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
                     {data.plan}
                   </span>
                 )}
               </div>
               {identity?.hasAuth && identity.email && (
                 <div className="mt-1.5 space-y-0.5">
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {identity.email}
                   </div>
                   {identity.orgName && !isRedundantOrgName(identity.orgName, identity.email) && (
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                    <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
                       {identity.orgName}
                     </div>
                   )}
@@ -256,7 +256,7 @@ export function OAuthUsagePill() {
             {/* Last refreshed + force refresh */}
             {dataUpdatedAt > 0 && (
               <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                <span className="text-xs text-gray-400 dark:text-gray-500">
                   {forceRefresh.isError
                     ? (forceRefresh.error?.message ?? 'Try again later')
                     : formatUpdatedAgo(dataUpdatedAt)}

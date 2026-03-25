@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react'
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useCallback, useEffect, useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from 'recharts'
 import { toast } from 'sonner'
@@ -50,7 +51,7 @@ function renderActiveShape(props: any) {
         y={cy - 8}
         textAnchor="middle"
         className="fill-gray-800 dark:fill-gray-200"
-        fontSize={14}
+        fontSize={chartFontSize.tooltip}
         fontWeight={600}
       >
         {payload.label}
@@ -60,7 +61,7 @@ function renderActiveShape(props: any) {
         y={cy + 12}
         textAnchor="middle"
         className="fill-gray-500 dark:fill-gray-400"
-        fontSize={12}
+        fontSize={chartFontSize.axisLabel}
       >
         {payload.formattedBytes} ({(percent * 100).toFixed(1)}%)
       </text>
@@ -333,7 +334,7 @@ export function StorageOverview() {
                     </span>
                     <span
                       className={cn(
-                        'text-[10px] px-1.5 py-0.5 rounded-full font-medium leading-none',
+                        'text-xs px-1.5 py-0.5 rounded-full font-medium leading-none',
                         item.source === 'Claude Code'
                           ? 'text-[#D97757] bg-[#D97757]/10 dark:bg-[#D97757]/20'
                           : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
@@ -346,7 +347,7 @@ export function StorageOverview() {
                     {item.formattedBytes} · {pct}%
                   </span>
                   {item.path && (
-                    <code className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">
+                    <code className="text-xs text-gray-400 dark:text-gray-500 font-mono">
                       {item.path}
                     </code>
                   )}
@@ -364,11 +365,11 @@ export function StorageOverview() {
               </span>
               <span className="text-gray-400 dark:text-gray-500">
                 {' '}
-                — JSONL data is read-only from <code className="text-[11px]">~/.claude/</code>
+                — JSONL data is read-only from <code className="text-xs">~/.claude/</code>
               </span>
             </p>
             {stats?.appDataPath && (
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-gray-400 dark:text-gray-500">
                 App data: <code className="font-mono">{stats.appDataPath}</code> — safe to delete,
                 rebuilt on next launch
               </p>
@@ -393,7 +394,7 @@ export function StorageOverview() {
       </div>
 
       {/* Timestamps — compact inline metadata */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] text-gray-500 dark:text-gray-400">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-500 dark:text-gray-400">
         <span className="inline-flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
           <span>Oldest Session</span>

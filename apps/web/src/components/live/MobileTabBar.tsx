@@ -30,7 +30,7 @@ export function MobileTabBar({ activeTab, onTabChange }: MobileTabBarProps) {
           )}
         >
           <Icon className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5">{label}</span>
+          <span className="text-xs mt-0.5">{label}</span>
         </button>
       ))}
     </nav>

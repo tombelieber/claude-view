@@ -96,13 +96,13 @@ export function ThenVsNow({ progress, className }: ThenVsNowProps) {
             </div>
             <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
               Then
-              <span className="block text-[10px] normal-case tracking-normal font-normal">
+              <span className="block text-xs normal-case tracking-normal font-normal">
                 (First Month)
               </span>
             </div>
             <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider text-center">
               Now
-              <span className="block text-[10px] normal-case tracking-normal font-normal">
+              <span className="block text-xs normal-case tracking-normal font-normal">
                 (Last 30 Days)
               </span>
             </div>

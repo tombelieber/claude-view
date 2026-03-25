@@ -55,7 +55,7 @@ export function ClassificationStatus({ onConfigure }: ClassificationStatusProps)
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
               Classification
             </h2>
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-xs font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
               <FlaskConical className="w-2.5 h-2.5" />
               Experimental
             </span>

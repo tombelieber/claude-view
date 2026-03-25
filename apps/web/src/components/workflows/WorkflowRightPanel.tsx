@@ -56,11 +56,11 @@ export function WorkflowRightPanel({
           </button>
 
           <div className="flex-1 min-w-0">
-            <h2 className="text-[15px] font-semibold text-[#1D1D1F] dark:text-white truncate leading-tight">
+            <h2 className="text-base font-semibold text-[#1D1D1F] dark:text-white truncate leading-tight">
               {workflow?.definition.name ?? 'Workflow'}
             </h2>
             {workflow && (
-              <p className="text-[12px] text-[#6E6E73] dark:text-[#98989D] truncate mt-0.5">
+              <p className="text-xs text-[#6E6E73] dark:text-[#98989D] truncate mt-0.5">
                 {workflow.definition.author} · v{workflow.definition.version} ·{' '}
                 {workflow.definition.category}
               </p>
@@ -76,7 +76,7 @@ export function WorkflowRightPanel({
               type="button"
               onClick={() => onTabChange(tab)}
               className={cn(
-                'relative px-1 mr-5 pb-2.5 pt-0.5 text-[13px] font-medium',
+                'relative px-1 mr-5 pb-2.5 pt-0.5 text-xs font-medium',
                 'transition-colors duration-150 cursor-pointer',
                 'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:rounded-full after:transition-all after:duration-150',
                 activeTab === tab

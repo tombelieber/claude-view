@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useState } from 'react'
 import {
   CartesianGrid,
@@ -97,7 +98,7 @@ export function TrendChart({ data, insight }: TrendChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #e5e7eb)" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10, fill: 'var(--chart-text, #6b7280)' }}
+                tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
                 interval="preserveStartEnd"
@@ -107,7 +108,7 @@ export function TrendChart({ data, insight }: TrendChartProps) {
               />
               <YAxis
                 domain={[0, Math.ceil(maxValue * 1.1)]}
-                tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
                 tickFormatter={formatYAxisValue}
@@ -117,14 +118,17 @@ export function TrendChart({ data, insight }: TrendChartProps) {
                   backgroundColor: 'var(--tooltip-bg, #fff)',
                   border: '1px solid var(--tooltip-border, #e5e7eb)',
                   borderRadius: '8px',
-                  fontSize: '12px',
+                  fontSize: chartFontSize.tooltip,
                 }}
                 labelFormatter={(label) => {
                   const point = chartData.find((d) => d.date === label)
                   return point?.fullDate || label
                 }}
               />
-              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} iconType="line" />
+              <Legend
+                wrapperStyle={{ fontSize: chartFontSize.legend, paddingTop: '10px' }}
+                iconType="line"
+              />
 
               {metric === 'lines' && (
                 <>

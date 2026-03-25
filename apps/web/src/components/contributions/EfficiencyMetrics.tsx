@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { ArrowRight, DollarSign } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -252,12 +253,12 @@ function CostTrendChart({
             <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #e5e7eb)" />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
               tickLine={false}
               axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
               tickLine={false}
               axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
               tickFormatter={(v) => formatCostUsd(v as number)}
@@ -267,7 +268,7 @@ function CostTrendChart({
                 backgroundColor: 'var(--tooltip-bg, #fff)',
                 border: '1px solid var(--tooltip-border, #e5e7eb)',
                 borderRadius: '8px',
-                fontSize: '12px',
+                fontSize: chartFontSize.tooltip,
               }}
               formatter={(value) => [formatCostUsd(value as number), chartLabel]}
             />

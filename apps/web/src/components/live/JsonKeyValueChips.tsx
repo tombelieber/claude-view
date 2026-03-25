@@ -50,7 +50,7 @@ export function JsonKeyValueChips({
           const chip = (
             <span
               key={key}
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono max-w-[200px]"
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-mono max-w-[200px]"
             >
               <span className="text-sky-600 dark:text-sky-400 flex-shrink-0">{key}:</span>
               <span className="text-gray-500 dark:text-gray-400 truncate">{shortVal}</span>
@@ -66,7 +66,7 @@ export function JsonKeyValueChips({
                 <Tooltip.Content
                   side="bottom"
                   align="start"
-                  className="z-50 max-w-sm px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-[10px] font-mono whitespace-pre-wrap break-all shadow-lg"
+                  className="z-50 max-w-sm px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-xs font-mono whitespace-pre-wrap break-all shadow-lg"
                   sideOffset={4}
                 >
                   <span className="text-sky-300 dark:text-sky-600">{key}:</span> {fullVal}
@@ -79,7 +79,7 @@ export function JsonKeyValueChips({
         {remaining > 0 && (
           <button
             onClick={onExpand}
-            className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px] font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             +{remaining} more
           </button>

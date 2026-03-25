@@ -436,7 +436,7 @@ export function ChatPalette({ sections, filter, onClose }: ChatPaletteProps) {
     >
       {filteredSections.map((section) => (
         <div key={section.label}>
-          <div className="sticky top-0 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50">
+          <div className="sticky top-0 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-800/50">
             {section.label}
           </div>
           {section.items.map((item) => {

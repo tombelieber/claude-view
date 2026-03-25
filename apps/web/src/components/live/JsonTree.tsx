@@ -64,7 +64,7 @@ function JsonValue({
           <Tooltip.Content
             side="bottom"
             align="start"
-            className="z-50 max-w-md max-h-48 overflow-auto px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-[10px] font-mono whitespace-pre-wrap break-all shadow-lg"
+            className="z-50 max-w-md max-h-48 overflow-auto px-2 py-1.5 rounded bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 text-xs font-mono whitespace-pre-wrap break-all shadow-lg"
             sideOffset={4}
           >
             {value}
@@ -178,9 +178,7 @@ function JsonCollapsible({
           <ChevronRight className="w-3 h-3" />
           <span>{bracketOpen}</span>
         </button>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 italic px-1">
-          {summaryLabel}
-        </span>
+        <span className="text-xs text-gray-400 dark:text-gray-500 italic px-1">{summaryLabel}</span>
         <span className="text-gray-400 dark:text-gray-500">{bracketClose}</span>
       </span>
     )
@@ -201,7 +199,7 @@ function JsonCollapsible({
             {!isArray && <span className="text-sky-600 dark:text-sky-400">{key}</span>}
             {!isArray && <span className="text-gray-400 dark:text-gray-500">: </span>}
             {isArray && (
-              <span className="text-gray-400 dark:text-gray-500 text-[9px] mr-1 select-none">
+              <span className="text-gray-400 dark:text-gray-500 text-xs mr-1 select-none">
                 {key}
               </span>
             )}
@@ -267,7 +265,7 @@ export function JsonTree({
 
   if (isLarge && !showFallback) {
     return (
-      <div className="text-[11px] font-mono">
+      <div className="text-xs font-mono">
         <span className="text-gray-500 dark:text-gray-400">
           Large object ({nodeCount} nodes) —{' '}
         </span>
@@ -286,7 +284,7 @@ export function JsonTree({
       <div>
         <button
           onClick={() => setShowFallback(false)}
-          className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors"
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors"
         >
           [ Show tree view ]
         </button>
@@ -297,7 +295,7 @@ export function JsonTree({
 
   return (
     <Tooltip.Provider delayDuration={200}>
-      <div className="text-[11px] font-mono leading-relaxed relative">
+      <div className="text-xs font-mono leading-relaxed relative">
         <button
           onClick={handleCopy}
           className="absolute top-0 right-0 p-1 rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors z-10"

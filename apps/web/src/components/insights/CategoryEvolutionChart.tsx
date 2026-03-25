@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { Layers } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -138,13 +139,13 @@ export function CategoryEvolutionChart({
             dataKey="date"
             tickFormatter={formatDateLabel}
             stroke="#9CA3AF"
-            fontSize={12}
+            fontSize={chartFontSize.axisTick}
             tickLine={false}
           />
           <YAxis
             tickFormatter={(value) => `${(value * 100).toFixed(0)}%`}
             stroke="#9CA3AF"
-            fontSize={12}
+            fontSize={chartFontSize.axisTick}
             tickLine={false}
             domain={[0, 1]}
           />
@@ -163,7 +164,7 @@ export function CategoryEvolutionChart({
               border: 'none',
               borderRadius: '8px',
               color: '#F9FAFB',
-              fontSize: '13px',
+              fontSize: chartFontSize.tooltip,
             }}
             itemStyle={{ color: '#F9FAFB' }}
             labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}

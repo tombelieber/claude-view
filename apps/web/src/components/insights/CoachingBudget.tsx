@@ -28,7 +28,7 @@ export function CoachingBudget() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'text-[11px] px-2 py-0.5 rounded-full transition-colors duration-150',
+          'text-xs px-2 py-0.5 rounded-full transition-colors duration-150',
           isFull
             ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
             : isWarning

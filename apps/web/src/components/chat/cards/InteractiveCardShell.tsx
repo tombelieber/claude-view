@@ -77,7 +77,7 @@ export function InteractiveCardShell({
         </div>
         {resolved && (
           <span
-            className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${RESOLVED_BADGE_COLORS[resolved.variant]}`}
+            className={`text-xs font-medium px-2 py-0.5 rounded-full ${RESOLVED_BADGE_COLORS[resolved.variant]}`}
           >
             {resolved.label}
           </span>

@@ -209,7 +209,7 @@ export function PromptToolbar({ filters, onFiltersChange, totalCount }: PromptTo
             <Filter className="w-3.5 h-3.5" />
             <span>Filters</span>
             {activeFilterCount > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-semibold rounded-full bg-blue-600 dark:bg-blue-500 text-white">
+              <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-xs font-semibold rounded-full bg-blue-600 dark:bg-blue-500 text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -232,7 +232,7 @@ export function PromptToolbar({ filters, onFiltersChange, totalCount }: PromptTo
             type="button"
             onClick={handleClearFilters}
             className={cn(
-              'inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-md',
+              'inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-md',
               'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
               'hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',

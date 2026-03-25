@@ -96,7 +96,7 @@ export function FilterPopover({
         <Filter className="w-3.5 h-3.5" />
         <span>Filters</span>
         {activeCount > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-[10px] font-semibold rounded-full bg-blue-600 dark:bg-blue-500 text-white">
+          <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 text-xs font-semibold rounded-full bg-blue-600 dark:bg-blue-500 text-white">
             {activeCount}
           </span>
         )}
@@ -112,7 +112,7 @@ export function FilterPopover({
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Filters</h3>
             {hasAnyFiltersSet && (
-              <span className="text-[10px] text-gray-400 tabular-nums">{activeCount} active</span>
+              <span className="text-xs text-gray-400 tabular-nums">{activeCount} active</span>
             )}
           </div>
 

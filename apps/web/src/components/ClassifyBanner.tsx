@@ -65,10 +65,10 @@ export function ClassifyBanner({ unclassifiedCount }: ClassifyBannerProps) {
       <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
         <Sparkles className="w-4 h-4 flex-shrink-0" />
         <span>
-          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all (cost is
-          recorded from real usage after completion)
+          <strong>{unclassifiedCount}</strong> sessions unclassified. Classify all (cost is recorded
+          from real usage after completion)
         </span>
-        <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-xs font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 flex-shrink-0">
           <FlaskConical className="w-2.5 h-2.5" />
           Experimental
         </span>

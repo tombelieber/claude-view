@@ -121,7 +121,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
             AI Provider
           </h2>
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-[10px] font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-xs font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
             <FlaskConical className="w-2.5 h-2.5" />
             Experimental
           </span>
@@ -164,7 +164,7 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
                     {provider.label}
                   </span>
                   {!provider.available && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                    <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
                       Coming Soon
                     </span>
                   )}

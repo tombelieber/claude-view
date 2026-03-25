@@ -41,7 +41,7 @@ export function WeightIndicator({ tier, inline }: WeightIndicatorProps) {
             sideOffset={6}
             className="z-50 rounded-lg px-3 py-2.5 bg-gray-900 dark:bg-gray-100 text-gray-100 dark:text-gray-900 shadow-lg animate-in fade-in-0 zoom-in-95"
           >
-            <p className="text-[11px] font-medium mb-2 text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            <p className="text-xs font-medium mb-2 text-gray-400 dark:text-gray-500 uppercase tracking-wider">
               Session weight
             </p>
             <div className="flex flex-col gap-1.5">
@@ -58,7 +58,7 @@ export function WeightIndicator({ tier, inline }: WeightIndicatorProps) {
                   />
                   <span
                     className={cn(
-                      'text-[11px] font-medium w-14',
+                      'text-xs font-medium w-14',
                       t.tier === tier
                         ? 'text-white dark:text-gray-900'
                         : 'text-gray-400 dark:text-gray-500',
@@ -68,7 +68,7 @@ export function WeightIndicator({ tier, inline }: WeightIndicatorProps) {
                   </span>
                   <span
                     className={cn(
-                      'text-[10px] tabular-nums',
+                      'text-xs tabular-nums',
                       t.tier === tier
                         ? 'text-gray-200 dark:text-gray-700'
                         : 'text-gray-500 dark:text-gray-400',

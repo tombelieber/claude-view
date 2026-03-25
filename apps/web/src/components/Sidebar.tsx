@@ -336,12 +336,12 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               )}
 
               {/* Group name */}
-              <span className="flex-1 truncate font-medium text-[13px] ml-1 text-gray-600 dark:text-gray-400">
+              <span className="flex-1 truncate font-medium text-xs ml-1 text-gray-600 dark:text-gray-400">
                 {node.displayName}
               </span>
 
               {/* Session count */}
-              <span className="text-[11px] tabular-nums flex-shrink-0 text-gray-400 dark:text-gray-500">
+              <span className="text-xs tabular-nums flex-shrink-0 text-gray-400 dark:text-gray-500">
                 {node.sessionCount}
               </span>
             </div>
@@ -411,14 +411,12 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
               )}
 
               {/* Project name */}
-              <span className="flex-1 truncate font-medium text-[13px] ml-1">
-                {node.displayName}
-              </span>
+              <span className="flex-1 truncate font-medium text-xs ml-1">{node.displayName}</span>
 
               {/* Session count */}
               <span
                 className={cn(
-                  'text-[11px] tabular-nums flex-shrink-0',
+                  'text-xs tabular-nums flex-shrink-0',
                   isSelected ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500',
                 )}
               >
@@ -819,7 +817,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <Cpu className="w-4 h-4" />
                         <span className="font-medium">Agent SDK Studio</span>
-                        <span className="text-[9px] font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                        <span className="text-xs font-semibold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">
                           Coming Soon
                         </span>
                       </span>
@@ -848,7 +846,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                     newParams.delete('branch')
                     setSearchParams(newParams)
                   }}
-                  className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                  className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                   aria-label="Clear scope"
                 >
                   <X className="w-3 h-3" />
@@ -1042,14 +1040,14 @@ function BranchList({ projectName }: BranchListProps) {
   if (error) {
     return (
       <div className="pl-10 pr-3 py-2">
-        <div className="flex items-center gap-2 text-[11px] text-red-600 dark:text-red-400">
+        <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>Failed to load branches</span>
         </div>
         <button
           type="button"
           onClick={() => refetch()}
-          className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          className="mt-1 text-xs text-blue-600 dark:text-blue-400 hover:underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         >
           Retry
         </button>
@@ -1060,7 +1058,7 @@ function BranchList({ projectName }: BranchListProps) {
   if (!data || data.branches.length === 0) {
     return (
       <div className="pl-10 pr-3 py-1">
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">No branches</span>
+        <span className="text-xs text-gray-400 dark:text-gray-500">No branches</span>
       </div>
     )
   }
@@ -1096,7 +1094,7 @@ function BranchList({ projectName }: BranchListProps) {
             />
             <span
               className={cn(
-                'flex-1 truncate text-[11px] text-left',
+                'flex-1 truncate text-xs text-left',
                 isNoBranch && 'italic',
                 isActive
                   ? 'text-blue-700 dark:text-blue-300 font-medium'
@@ -1107,7 +1105,7 @@ function BranchList({ projectName }: BranchListProps) {
             </span>
             <span
               className={cn(
-                'text-[10px] tabular-nums flex-shrink-0',
+                'text-xs tabular-nums flex-shrink-0',
                 isActive ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500',
               )}
             >
@@ -1146,7 +1144,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
       <div className="flex items-center justify-between mb-1.5">
         <Link
           to={`/sessions?project=${encodeURIComponent(project)}${branch ? `&branch=${encodeURIComponent(branch)}` : ''}`}
-          className="text-[10px] text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ml-auto"
+          className="text-xs text-gray-400 hover:text-blue-500 transition-colors flex items-center gap-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ml-auto"
         >
           All <ArrowRight className="w-2.5 h-2.5" />
         </Link>
@@ -1157,7 +1155,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
             key={session.id}
             to={buildSessionUrl(session.id, searchParams)}
             className={cn(
-              'flex items-center gap-2 px-2 py-1 h-6 rounded text-[11px] transition-colors',
+              'flex items-center gap-2 px-2 py-1 h-6 rounded text-xs transition-colors',
               'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
               'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 focus-visible:outline-none',
             )}
@@ -1167,7 +1165,7 @@ function QuickJumpZone({ project, branch }: { project: string; branch: string | 
             <span className="truncate flex-1">
               {getSessionTitle(session.preview, session.summary)}
             </span>
-            <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
+            <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
               {formatRelativeTimeShort(session.modifiedAt)}
             </span>
           </Link>

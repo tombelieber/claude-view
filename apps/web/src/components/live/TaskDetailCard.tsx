@@ -24,7 +24,7 @@ export function TaskDetailCard({ task, onScrollTo }: TaskDetailCardProps) {
       {/* Header */}
       <div className="flex items-start gap-2">
         <span className={`flex-shrink-0 font-mono mt-0.5 ${colorClass}`}>{icon}</span>
-        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 mt-0.5 flex-shrink-0">
+        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 mt-0.5 flex-shrink-0">
           #{task.id}
         </span>
         <span
@@ -43,7 +43,7 @@ export function TaskDetailCard({ task, onScrollTo }: TaskDetailCardProps) {
 
       {/* ActiveForm */}
       {task.status === 'in_progress' && task.activeForm && (
-        <div className="ml-[calc(1em+0.5rem+1.5rem+0.5rem)] mt-0.5 text-[11px] text-blue-600 dark:text-blue-400">
+        <div className="ml-[calc(1em+0.5rem+1.5rem+0.5rem)] mt-0.5 text-xs text-blue-600 dark:text-blue-400">
           {task.activeForm}
         </div>
       )}
@@ -56,7 +56,7 @@ export function TaskDetailCard({ task, onScrollTo }: TaskDetailCardProps) {
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
-              className="text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline mt-0.5 cursor-pointer"
+              className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline mt-0.5 cursor-pointer"
             >
               {expanded ? 'Show less' : 'Show more'}
             </button>

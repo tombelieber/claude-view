@@ -112,16 +112,16 @@ export function ChildProcessRow({
           {processLabel(proc.name, proc.command)}
         </span>
         {proc.ecosystemTag === 'sidecar' && (
-          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
+          <span className="text-xs font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 shrink-0">
             Agent SDK
           </span>
         )}
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
+        <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums shrink-0">
           {proc.pid}
         </span>
 
         {hasChildren && !expanded && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
             +{proc.descendants.length}
           </span>
         )}

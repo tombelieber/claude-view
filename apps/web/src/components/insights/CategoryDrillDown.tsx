@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import {
   ArrowLeft,
   Clock,
@@ -136,7 +137,12 @@ export function CategoryDrillDown({
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={subcategoryData} layout="vertical">
                 <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={120}
+                  tick={{ fontSize: chartFontSize.axisTick }}
+                />
                 <Tooltip
                   content={({ payload }) => {
                     if (!payload?.[0]) return null

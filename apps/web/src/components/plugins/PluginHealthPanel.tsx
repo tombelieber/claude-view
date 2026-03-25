@@ -27,7 +27,7 @@ export function PluginHealthPanel({
     return (
       <div className="mx-7 mt-4 rounded-xl border border-apple-sep2 bg-white px-4 py-3 flex items-center gap-2 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
         <WifiOff className="w-4 h-4 text-apple-red flex-shrink-0" />
-        <span className="text-[13px] text-apple-text2">CLI unavailable: {cliError}</span>
+        <span className="text-xs text-apple-text2">CLI unavailable: {cliError}</span>
       </div>
     )
   }
@@ -56,12 +56,12 @@ export function PluginHealthPanel({
               )}
             />
           )}
-          <span className="text-[13px] font-semibold text-apple-text1">Plugin health</span>
-          <span className="text-[12px] text-apple-text3 ml-1">
+          <span className="text-xs font-semibold text-apple-text1">Plugin health</span>
+          <span className="text-xs text-apple-text3 ml-1">
             — {issueCount} issue{issueCount !== 1 ? 's' : ''}
           </span>
         </div>
-        <span className="text-[11px] text-apple-text3">{open ? '▾' : '▸'}</span>
+        <span className="text-xs text-apple-text3">{open ? '▾' : '▸'}</span>
       </button>
 
       {/* Body */}
@@ -127,10 +127,10 @@ function HealthRow({
     <>
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
         <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', color)} />
-        <span className="text-[13px] text-apple-text2">{label}</span>
+        <span className="text-xs text-apple-text2">{label}</span>
       </div>
       {onShow && (
-        <span className="text-[13px] text-apple-blue font-medium whitespace-nowrap flex-shrink-0">
+        <span className="text-xs text-apple-blue font-medium whitespace-nowrap flex-shrink-0">
           Show →
         </span>
       )}

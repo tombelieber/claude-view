@@ -60,7 +60,7 @@ export function BulkRuleActions({ patterns }: BulkRuleActionsProps) {
           onClick={handleApplyAll}
           disabled={isLoading}
           className={cn(
-            'text-[11px] px-2 py-0.5 rounded-md transition-colors duration-150',
+            'text-xs px-2 py-0.5 rounded-md transition-colors duration-150',
             'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30',
             isLoading && 'opacity-50 cursor-wait',
           )}
@@ -73,7 +73,7 @@ export function BulkRuleActions({ patterns }: BulkRuleActionsProps) {
           onClick={handleRemoveAll}
           disabled={isLoading}
           className={cn(
-            'text-[11px] px-2 py-0.5 rounded-md transition-colors duration-150',
+            'text-xs px-2 py-0.5 rounded-md transition-colors duration-150',
             'text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400',
             isLoading && 'opacity-50 cursor-wait',
           )}

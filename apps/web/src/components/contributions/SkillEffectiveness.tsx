@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { AlertTriangle, Check, ChevronRight, Zap } from 'lucide-react'
 import { useMemo } from 'react'
 import {
@@ -111,11 +112,14 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
             layout="vertical"
             margin={{ top: 5, right: 80, left: 0, bottom: 5 }}
           >
-            <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }} />
+            <XAxis
+              type="number"
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
+            />
             <YAxis
               type="category"
               dataKey="skill"
-              tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
               width={180}
             />
             <RechartsTooltip
@@ -123,7 +127,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                 backgroundColor: 'var(--tooltip-bg, #fff)',
                 border: '1px solid var(--tooltip-border, #e5e7eb)',
                 borderRadius: '8px',
-                fontSize: '12px',
+                fontSize: chartFontSize.tooltip,
               }}
               formatter={(value, _name, props) => {
                 const item = (props as any).payload
@@ -142,7 +146,7 @@ export function SkillEffectiveness({ bySkill, skillInsight }: SkillEffectiveness
                 dataKey="sessions"
                 position="right"
                 formatter={(v) => `${v} sessions`}
-                style={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                style={{ fontSize: chartFontSize.annotation, fill: 'var(--chart-text, #6b7280)' }}
               />
             </Bar>
           </BarChart>

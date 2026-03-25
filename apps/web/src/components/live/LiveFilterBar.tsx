@@ -317,7 +317,7 @@ export function LiveFilterBar({
             <Square className="h-3 w-3" />
             <span className="hidden sm:inline">Closed</span>
             {!showClosed && closedCount > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-zinc-500/20 text-zinc-400 leading-none">
+              <span className="ml-0.5 px-1.5 py-0.5 text-xs rounded-full bg-zinc-500/20 text-zinc-400 leading-none">
                 {closedCount}
               </span>
             )}
@@ -415,7 +415,7 @@ function FilterDropdownButton({
       >
         {label}
         {count > 0 && (
-          <span className="ml-0.5 px-1.5 py-0.5 text-[10px] rounded-full bg-indigo-500/20 text-indigo-400 leading-none">
+          <span className="ml-0.5 px-1.5 py-0.5 text-xs rounded-full bg-indigo-500/20 text-indigo-400 leading-none">
             {count}
           </span>
         )}

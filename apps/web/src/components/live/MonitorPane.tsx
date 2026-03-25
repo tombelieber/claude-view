@@ -233,7 +233,7 @@ function FullHeader({
       {/* Branch */}
       {session.effectiveBranch && (
         <span
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded truncate max-w-[15ch]"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded truncate max-w-[15ch]"
           title={session.effectiveBranch}
         >
           <GitBranch className="w-2.5 h-2.5 shrink-0" />
@@ -245,12 +245,12 @@ function FullHeader({
       <div className="flex-1" />
 
       {/* Metrics */}
-      <span className="text-[10px] font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
+      <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
         {cost}
       </span>
       <span
         className={cn(
-          'text-[10px] font-mono tabular-nums flex-shrink-0',
+          'text-xs font-mono tabular-nums flex-shrink-0',
           ctxPct != null ? contextColor(ctxPct) : 'text-zinc-400 dark:text-zinc-500',
         )}
       >
@@ -347,20 +347,20 @@ function CompactHeader({
       role="button"
     >
       {/* Project name (shorter truncation) */}
-      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-[#C9D1D9] truncate max-w-[14ch]">
         <FolderOpen className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400 shrink-0" />
         {name}
       </span>
 
       {/* Cost */}
-      <span className="text-[10px] font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
+      <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums flex-shrink-0">
         {cost}
       </span>
 
       {/* Context % */}
       <span
         className={cn(
-          'text-[10px] font-mono tabular-nums flex-shrink-0',
+          'text-xs font-mono tabular-nums flex-shrink-0',
           ctxPct != null ? contextColor(ctxPct) : 'text-zinc-400 dark:text-zinc-500',
         )}
       >
@@ -368,7 +368,7 @@ function CompactHeader({
       </span>
 
       {/* Turn count */}
-      <span className="text-[10px] font-mono text-gray-400 dark:text-[#6E7681] tabular-nums flex-shrink-0">
+      <span className="text-xs font-mono text-gray-400 dark:text-[#6E7681] tabular-nums flex-shrink-0">
         T{session.turnCount}
       </span>
 
@@ -404,7 +404,7 @@ function Footer({ session, onExpand }: { session: LiveSession; onExpand?: () => 
   const truncatedActivity = activity.length > 40 ? `${activity.slice(0, 37)}...` : activity
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] text-[10px] text-gray-400 dark:text-[#6E7681]">
+    <div className="flex items-center gap-2 px-3 py-1 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] text-xs text-gray-400 dark:text-[#6E7681]">
       {/* Current activity */}
       <span className="truncate flex-1 min-w-0" title={activity}>
         {truncatedActivity || 'Idle'}

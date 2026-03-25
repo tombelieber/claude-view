@@ -54,7 +54,7 @@ export function OpenInIdeButton({ projectPath, filePath, compact }: OpenInIdeBut
         className={cn(
           'inline-flex items-center gap-1 transition-colors cursor-pointer',
           'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400',
-          compact ? 'p-0.5 rounded' : 'px-1.5 py-0.5 rounded text-[10px] font-medium',
+          compact ? 'p-0.5 rounded' : 'px-1.5 py-0.5 rounded text-xs font-medium',
           isOpening && 'opacity-50 cursor-wait',
         )}
       >

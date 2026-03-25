@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useTheme } from '../hooks/use-theme'
 
 interface ActivityPoint {
@@ -76,7 +77,7 @@ export function ActivitySparkline() {
     return ticks
   })()
   const yDomain: [number, number] = [0, yTicks[yTicks.length - 1]]
-  // Size Y-axis width to fit the widest tick label (~7px per digit at fontSize 10)
+  // Size Y-axis width to fit the widest tick label (~7px per digit at axisTick size)
   const yAxisWidth = Math.max(28, String(yTicks[yTicks.length - 1]).length * 8 + 8)
 
   // Compute smart X-axis ticks
@@ -124,7 +125,7 @@ export function ActivitySparkline() {
               domain={['dataMin', 'dataMax']}
               ticks={xTicks}
               tickFormatter={formatXTick}
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: '#9ca3af' }}
               axisLine={{ stroke: isDark ? '#4b5563' : '#e5e7eb' }}
               tickLine={{ stroke: isDark ? '#4b5563' : '#e5e7eb', strokeWidth: 1 }}
               tickMargin={6}
@@ -133,7 +134,7 @@ export function ActivitySparkline() {
             <YAxis
               domain={yDomain}
               ticks={yTicks}
-              tick={{ fontSize: 10, fill: '#9ca3af' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: '#9ca3af' }}
               axisLine={false}
               tickLine={false}
               tickMargin={4}
@@ -164,13 +165,13 @@ export function ActivitySparkline() {
           <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {totalSessions}
           </p>
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">sessions</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wider mt-0.5">sessions</p>
         </div>
         <div className="text-right">
           <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 tabular-nums leading-tight">
             {activeDays}
           </p>
-          <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
+          <p className="text-xs text-gray-400 uppercase tracking-wider mt-0.5">
             {data?.bucket === 'week'
               ? 'active weeks'
               : data?.bucket === 'month'
@@ -207,7 +208,7 @@ function CustomTooltip({
   if (!active || !payload?.[0]) return null
   const datum = payload[0].payload
   return (
-    <div className="px-2.5 py-1.5 bg-gray-900 text-white text-[11px] rounded-md shadow-lg whitespace-nowrap tabular-nums">
+    <div className="px-2.5 py-1.5 bg-gray-900 text-white text-xs rounded-md shadow-lg whitespace-nowrap tabular-nums">
       {datum.label}
       {' — '}
       <span className="font-semibold">{datum.count}</span>

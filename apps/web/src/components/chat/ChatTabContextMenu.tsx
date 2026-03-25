@@ -122,7 +122,7 @@ function MenuItem({
     >
       <span>{label}</span>
       {shortcut && (
-        <span className="ml-4 text-[10px] text-gray-400 dark:text-gray-500">{shortcut}</span>
+        <span className="ml-4 text-xs text-gray-400 dark:text-gray-500">{shortcut}</span>
       )}
     </ContextMenu.Item>
   )
