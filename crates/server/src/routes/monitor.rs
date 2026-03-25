@@ -69,7 +69,12 @@ struct MonitorInit {
 /// | `init`      | On connect: system info + snapshot  |
 /// | `snapshot`  | Every 2s: resource snapshot          |
 /// | `heartbeat` | Every 15s: keepalive                 |
-async fn monitor_stream(
+#[utoipa::path(get, path = "/api/monitor/stream", tag = "monitor",
+    responses(
+        (status = 200, description = "SSE stream of resource snapshots (CPU, memory, disk)", content_type = "text/event-stream"),
+    )
+)]
+pub async fn monitor_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let tx = state.monitor_tx.clone();
@@ -183,7 +188,12 @@ async fn monitor_stream(
 }
 
 /// GET /api/monitor/snapshot -- One-shot JSON snapshot of current resources.
-async fn monitor_snapshot(State(state): State<Arc<AppState>>) -> Json<ResourceSnapshot> {
+#[utoipa::path(get, path = "/api/monitor/snapshot", tag = "monitor",
+    responses(
+        (status = 200, description = "Current resource snapshot (CPU, memory, disk, processes)", body = crate::live::monitor::ResourceSnapshot),
+    )
+)]
+pub async fn monitor_snapshot(State(state): State<Arc<AppState>>) -> Json<ResourceSnapshot> {
     let sessions = {
         let map = state.live_sessions.read().await;
         map.clone()

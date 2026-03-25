@@ -81,6 +81,11 @@ pub fn router() -> Router<Arc<AppState>> {
 /// On initial connection, the server sends the current summary followed by
 /// all active sessions so the client can hydrate immediately without a
 /// separate REST call.
+#[utoipa::path(get, path = "/api/live/stream", tag = "live",
+    responses(
+        (status = 200, description = "SSE stream of live session events", content_type = "text/event-stream"),
+    )
+)]
 pub async fn live_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
@@ -178,7 +183,12 @@ pub async fn live_stream(
 // =============================================================================
 
 /// GET /api/live/sessions -- List all live sessions, sorted by most recent activity.
-async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+#[utoipa::path(get, path = "/api/live/sessions", tag = "live",
+    responses(
+        (status = 200, description = "Active and recently closed live sessions", body = serde_json::Value),
+    )
+)]
+pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
     let mut all_sessions: Vec<_> = map.values().cloned().collect();
     all_sessions.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
@@ -199,7 +209,14 @@ async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_js
 }
 
 /// GET /api/live/sessions/:id -- Get a single live session by ID.
-async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
+#[utoipa::path(get, path = "/api/live/sessions/{id}", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Single live session data", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
     let map = state.live_sessions.read().await;
     match map.get(&id) {
         Some(session) => Json(serde_json::json!({ "session": session })).into_response(),
@@ -212,7 +229,7 @@ async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path<Str
 }
 
 /// Query parameters for the messages endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 struct MessagesQuery {
     /// Maximum number of messages to return (default: 20).
     #[serde(default = "default_limit")]
@@ -228,7 +245,17 @@ fn default_limit() -> usize {
 ///
 /// Looks up the session in the live_sessions map to find its JSONL file path,
 /// then parses the file and returns the last N messages (most recent).
-async fn get_live_session_messages(
+#[utoipa::path(get, path = "/api/live/sessions/{id}/messages", tag = "live",
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        MessagesQuery,
+    ),
+    responses(
+        (status = 200, description = "Recent messages from a live session", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn get_live_session_messages(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Query(params): Query<MessagesQuery>,
@@ -286,7 +313,14 @@ async fn get_live_session_messages(
 }
 
 /// GET /api/live/sessions/{id}/statusline -- debug endpoint returning raw statusline JSON.
-async fn get_session_statusline_debug(
+#[utoipa::path(get, path = "/api/live/sessions/{id}/statusline", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Raw statusline JSON for a live session", body = serde_json::Value),
+        (status = 404, description = "Session not found or no statusline data"),
+    )
+)]
+pub async fn get_session_statusline_debug(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> Response {
@@ -306,7 +340,15 @@ async fn get_session_statusline_debug(
 /// Returns 500 with `{ "error": "...", "pid": <pid> }` if SIGTERM fails.
 /// Returns 404 with `{ "canDismiss": true }` if the session has no PID (already exited).
 /// Returns 404 with `{ "error": "Session not found" }` if the session ID is unknown.
-async fn kill_session(
+#[utoipa::path(post, path = "/api/live/sessions/{id}/kill", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "SIGTERM sent to session process", body = serde_json::Value),
+        (status = 404, description = "Session not found or already exited"),
+        (status = 500, description = "Failed to send SIGTERM"),
+    )
+)]
+pub async fn kill_session(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> Response {
@@ -348,7 +390,7 @@ async fn kill_session(
 // Control Binding (sidecar → Rust server notification)
 // =============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct BindControlRequest {
     control_id: String,
@@ -358,7 +400,14 @@ struct BindControlRequest {
 ///
 /// Sets the `control` field on the LiveSession, which flows to SSE clients.
 /// Idempotent: re-binding with the same controlId is a no-op success.
-async fn bind_control(
+#[utoipa::path(post, path = "/api/live/sessions/{id}/bind-control", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Control binding registered", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn bind_control(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Json(body): Json<BindControlRequest>,
@@ -402,7 +451,7 @@ async fn bind_control(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct UnbindControlRequest {
     control_id: String,
@@ -411,7 +460,14 @@ struct UnbindControlRequest {
 /// POST /api/live/sessions/:id/unbind-control -- Sidecar notifies it released control.
 ///
 /// Only unbinds if the current controlId matches (CAS semantics).
-async fn unbind_control(
+#[utoipa::path(post, path = "/api/live/sessions/{id}/unbind-control", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Control binding released", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn unbind_control(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
     Json(body): Json<UnbindControlRequest>,
@@ -444,6 +500,13 @@ async fn unbind_control(
 }
 
 /// DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.
+#[utoipa::path(delete, path = "/api/live/sessions/{id}/dismiss", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session dismissed from recently closed list", body = serde_json::Value),
+        (status = 404, description = "Session not found or still active"),
+    )
+)]
 ///
 /// Removes the session from the live map and marks it as dismissed in SQLite.
 /// Sends `SessionCompleted` to notify the frontend to remove from `recentlyClosed`.
@@ -451,7 +514,7 @@ async fn unbind_control(
 /// Note: There is a narrow race window between removing from the map and persisting
 /// to SQLite. If the server crashes in that window, the session reappears on restart
 /// (user clicks dismiss again). This is accept-and-retry tolerant by design.
-async fn dismiss_session(
+pub async fn dismiss_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
@@ -500,7 +563,12 @@ async fn dismiss_session(
 }
 
 /// DELETE /api/live/recently-closed -- Dismiss all recently closed sessions.
-async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+#[utoipa::path(delete, path = "/api/live/recently-closed", tag = "live",
+    responses(
+        (status = 200, description = "All recently closed sessions dismissed", body = serde_json::Value),
+    )
+)]
+pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let dismissed_ids: Vec<String> = {
         let mut sessions = state.live_sessions.write().await;
         let ids: Vec<String> = sessions
@@ -543,7 +611,12 @@ async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResp
 }
 
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
-async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+#[utoipa::path(get, path = "/api/live/summary", tag = "live",
+    responses(
+        (status = 200, description = "Aggregated live session statistics", body = serde_json::Value),
+    )
+)]
+pub async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
     let process_count = state
         .live_manager
@@ -563,7 +636,12 @@ async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json
 /// GET /api/live/pricing -- Return the model pricing table.
 ///
 /// Exposes per-model costs in a frontend-friendly format (cost per million tokens).
-async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+#[utoipa::path(get, path = "/api/live/pricing", tag = "live",
+    responses(
+        (status = 200, description = "Model pricing table with per-token costs", body = serde_json::Value),
+    )
+)]
+pub async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let pricing = state.pricing.read().expect("pricing lock poisoned");
     let models: HashMap<String, serde_json::Value> = pricing
         .iter()

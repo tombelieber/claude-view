@@ -34,6 +34,23 @@ use utoipa::OpenApi;
         // Batch 1: File History
         crate::routes::file_history::get_file_history,
         crate::routes::file_history::get_file_diff,
+        // Batch 2: Live Monitoring
+        crate::routes::live::live_stream,
+        crate::routes::live::list_live_sessions,
+        crate::routes::live::get_live_session,
+        crate::routes::live::get_live_session_messages,
+        crate::routes::live::get_session_statusline_debug,
+        crate::routes::live::kill_session,
+        crate::routes::live::bind_control,
+        crate::routes::live::unbind_control,
+        crate::routes::live::dismiss_session,
+        crate::routes::live::dismiss_all_closed,
+        crate::routes::live::get_live_summary,
+        crate::routes::live::get_pricing,
+        crate::routes::hooks::handle_hook,
+        crate::routes::statusline::handle_statusline,
+        crate::routes::monitor::monitor_stream,
+        crate::routes::monitor::monitor_snapshot,
     ),
     components(schemas(
         crate::routes::health::HealthResponse,
@@ -68,6 +85,13 @@ use utoipa::OpenApi;
         claude_view_core::file_history::DiffLine,
         claude_view_core::file_history::DiffLineKind,
         claude_view_db::ActivityPoint,
+        // Batch 2: Live/Monitor schemas
+        crate::routes::hooks::HookPayload,
+        crate::routes::statusline::StatuslinePayload,
+        crate::live::monitor::ResourceSnapshot,
+        crate::live::monitor::SystemInfo,
+        crate::live::monitor::ProcessGroup,
+        crate::live::monitor::SessionResource,
     )),
     tags(
         (name = "health", description = "Health checks and server status"),
