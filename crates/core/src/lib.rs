@@ -57,4 +57,8 @@ pub use registry::*;
 pub use session_index::*;
 pub use time_range_contract::*;
 pub use types::*;
+pub use phase::{
+    classify_window, dominant_phase, PhaseClassifierConfig, PhaseHistory, PhaseLabel, SessionPhase,
+    StepSignals,
+};
 pub use work_type::*;

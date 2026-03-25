@@ -142,9 +142,9 @@ fn test_phase_parse_roundtrip() {
 #[test]
 fn test_dominant_phase() {
     let labels = vec![
-        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.8, secondary: None, step_index: 10 },
-        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.9, secondary: None, step_index: 20 },
-        PhaseLabel { phase: SessionPhase::Testing, confidence: 0.7, secondary: None, step_index: 30 },
+        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.8, secondary: None, window_size: 10 },
+        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.9, secondary: None, window_size: 20 },
+        PhaseLabel { phase: SessionPhase::Testing, confidence: 0.7, secondary: None, window_size: 30 },
     ];
     assert_eq!(dominant_phase(&labels), Some(SessionPhase::Implementing));
 }
