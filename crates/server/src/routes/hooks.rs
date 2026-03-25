@@ -318,7 +318,77 @@ async fn handle_hook(
             };
             let mut sessions = state.live_sessions.write().await;
 
-            if let Some(existing) = sessions.get_mut(&payload.session_id) {
+            // ── PID uniqueness: one PID = one active session ──
+            // If this PID already belongs to a different session, close the old one.
+            // This is the structural fix for VSCode double-counting: when a new
+            // session starts on the same PID (e.g. session resume), the old entry
+            // is immediately evicted — no 10s reconciliation delay.
+            // (session_id, transcript_path, is_ghost)
+            let mut pid_evicted: Vec<(String, Option<std::path::PathBuf>, bool)> = Vec::new();
+            if let Some(pid) = claude_pid {
+                for (id, session) in sessions.iter_mut() {
+                    if *id == payload.session_id {
+                        continue;
+                    }
+                    if session.pid != Some(pid) {
+                        continue;
+                    }
+                    if session.status == SessionStatus::Done {
+                        continue;
+                    }
+                    // Sidecar sessions: lifecycle managed by SDK, never evict
+                    if session.control.is_some() {
+                        continue;
+                    }
+                    // Same PID, different session_id → stale. Close it.
+                    session.status = SessionStatus::Done;
+                    session.closed_at = Some(now);
+                    session.agent_state = AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "session_ended".into(),
+                        label: "Session ended".into(),
+                        context: None,
+                    };
+                    session.hook_events.clear();
+                    let is_ghost = session.file_path.is_empty() && session.turn_count == 0;
+                    let tp = session
+                        .statusline_transcript_path
+                        .as_ref()
+                        .map(std::path::PathBuf::from);
+                    pid_evicted.push((id.clone(), tp, is_ghost));
+                    tracing::info!(
+                        evicted_id = %id,
+                        new_id = %payload.session_id,
+                        pid = pid,
+                        "PID uniqueness: closed stale session (same PID, new session_id)"
+                    );
+                }
+            }
+            // Collect evicted session data while lock is held (clones only).
+            // Ghost sessions (no JSONL, zero turns) are removed entirely; real
+            // sessions move to "recently closed".
+            let mut evicted_real: Vec<LiveSession> = Vec::new();
+            let mut evicted_ghost_ids: Vec<String> = Vec::new();
+            for (id, _, is_ghost) in &pid_evicted {
+                if *is_ghost {
+                    sessions.remove(id);
+                    evicted_ghost_ids.push(id.clone());
+                } else if let Some(s) = sessions.get(id) {
+                    evicted_real.push(s.clone());
+                }
+            }
+            let evicted_transcript_paths: Vec<std::path::PathBuf> = pid_evicted
+                .into_iter()
+                .filter_map(|(_, tp, _)| tp)
+                .collect();
+
+            // ── Session create / update (all inside sessions write-lock) ──
+            enum SessionAction {
+                Updated(LiveSession),
+                Created(LiveSession),
+                Skipped,
+            }
+            let action = if let Some(existing) = sessions.get_mut(&payload.session_id) {
                 // Session already exists (file watcher got there first, OR resume)
                 existing.agent_state = agent_state.clone();
                 existing.status = status_from_agent_state(&agent_state);
@@ -342,13 +412,9 @@ async fn handle_hook(
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
                 }
-                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
-                    session: existing.clone(),
-                });
+                SessionAction::Updated(existing.clone())
             } else if should_create {
                 // Session doesn't exist — create skeleton.
-                // Resolve branch eagerly from cwd to avoid "(no branch)" flash
-                // before the file watcher processes the JSONL.
                 let (branch, wt_branch, is_wt) = resolve_branch_from_cwd(payload.cwd.as_deref());
                 let effective = wt_branch.clone().or(branch.clone());
                 let mut session = LiveSession {
@@ -418,23 +484,76 @@ async fn handle_hook(
                 );
                 sessions.insert(session.id.clone(), session.clone());
                 state_changed = true;
-                drop(sessions); // release lock before async manager call
-                if let Some(mgr) = &state.live_manager {
-                    mgr.create_accumulator_for_hook(&payload.session_id).await;
-                    // Enrich from pre-existing accumulator (initial scan may have
-                    // already parsed this JSONL). Without this, resumed sessions
-                    // show "(no branch)" until the next file modification.
-                    mgr.enrich_session_from_accumulator(&payload.session_id)
-                        .await;
-                }
-                let _ = state
-                    .live_tx
-                    .send(SessionEvent::SessionDiscovered { session });
+                SessionAction::Created(session)
             } else {
                 tracing::debug!(
                     session_id = %payload.session_id,
                     "Skipped SessionStart live session creation: missing cwd (buffering unresolved hook events)"
                 );
+                SessionAction::Skipped
+            };
+
+            // ── Drop sessions lock BEFORE any other lock or async work ──
+            drop(sessions);
+
+            // Side-effects (live_sessions lock released above).
+            // Order: cleanup first → broadcast second, so consumers see clean state.
+
+            // 1. Clean transcript map for evicted sessions
+            //    (lock ordering: transcript_to_session acquired AFTER live_sessions released —
+            //     matches statusline.rs which also never holds both simultaneously)
+            if !evicted_transcript_paths.is_empty() {
+                let mut tmap = state.transcript_to_session.write().await;
+                for tp in &evicted_transcript_paths {
+                    tmap.remove(tp);
+                }
+            }
+            // 2. Clean accumulators for evicted sessions (real + ghost)
+            if let Some(mgr) = &state.live_manager {
+                for s in &evicted_real {
+                    mgr.remove_accumulator(&s.id).await;
+                }
+                for id in &evicted_ghost_ids {
+                    mgr.remove_accumulator(id).await;
+                }
+            }
+            // 3. Broadcast evictions (after cleanup, so consumers see clean state)
+            let total_evicted = evicted_real.len() + evicted_ghost_ids.len();
+            if total_evicted > 1 {
+                tracing::warn!(
+                    count = total_evicted,
+                    pid = ?claude_pid,
+                    "Multiple sessions evicted for same PID — unexpected (possible rapid PID reuse)"
+                );
+            }
+            // Real sessions → SessionClosed (moves to "recently closed" in UI)
+            for evicted in &evicted_real {
+                let _ = state.live_tx.send(SessionEvent::SessionClosed {
+                    session: evicted.clone(),
+                });
+            }
+            // Ghost sessions → SessionCompleted (removes from UI entirely)
+            for id in &evicted_ghost_ids {
+                let _ = state.live_tx.send(SessionEvent::SessionCompleted {
+                    session_id: id.clone(),
+                });
+            }
+            // 4. Broadcast session action
+            match action {
+                SessionAction::Updated(session) => {
+                    let _ = state.live_tx.send(SessionEvent::SessionUpdated { session });
+                }
+                SessionAction::Created(session) => {
+                    if let Some(mgr) = &state.live_manager {
+                        mgr.create_accumulator_for_hook(&payload.session_id).await;
+                        mgr.enrich_session_from_accumulator(&payload.session_id)
+                            .await;
+                    }
+                    let _ = state
+                        .live_tx
+                        .send(SessionEvent::SessionDiscovered { session });
+                }
+                SessionAction::Skipped => {}
             }
         }
         "UserPromptSubmit" => {
@@ -2084,5 +2203,290 @@ mod tests {
             "PostToolUse must not overwrite current_activity during compaction"
         );
         assert_eq!(session.status, SessionStatus::Working);
+    }
+
+    // =========================================================================
+    // PID uniqueness + ghost session tests
+    // =========================================================================
+
+    /// Helper: send a SessionStart hook with a PID header.
+    async fn send_session_start(
+        app: &axum::Router,
+        session_id: &str,
+        cwd: &str,
+        pid: Option<u32>,
+    ) -> axum::http::StatusCode {
+        let body = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "SessionStart",
+            "cwd": cwd,
+        });
+        let mut req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/live/hook")
+            .header("content-type", "application/json");
+        if let Some(pid) = pid {
+            req = req.header("x-claude-pid", pid.to_string());
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                req.body(axum::body::Body::from(
+                    serde_json::to_string(&body).unwrap(),
+                ))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    /// Helper: send a SessionEnd hook.
+    async fn send_session_end(
+        app: &axum::Router,
+        session_id: &str,
+        pid: Option<u32>,
+    ) -> axum::http::StatusCode {
+        let body = serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "SessionEnd",
+        });
+        let mut req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/api/live/hook")
+            .header("content-type", "application/json");
+        if let Some(pid) = pid {
+            req = req.header("x-claude-pid", pid.to_string());
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                req.body(axum::body::Body::from(
+                    serde_json::to_string(&body).unwrap(),
+                ))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    #[tokio::test]
+    async fn test_pid_uniqueness_evicts_ghost_session_on_same_pid() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Session A starts with PID 99999 (hook skeleton: no JSONL, 0 turns → ghost)
+        let status = send_session_start(&app, "session-a", "/tmp/proj", Some(99999)).await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        {
+            let sessions = state.live_sessions.read().await;
+            let a = sessions.get("session-a").expect("session-a must exist");
+            assert_eq!(a.pid, Some(99999));
+        }
+
+        // Session B starts with SAME PID 99999 → ghost session A must be REMOVED entirely
+        let status = send_session_start(&app, "session-b", "/tmp/proj2", Some(99999)).await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        {
+            let sessions = state.live_sessions.read().await;
+            let b = sessions.get("session-b").expect("session-b must exist");
+            assert_eq!(b.pid, Some(99999));
+            assert_ne!(b.status, SessionStatus::Done);
+            // Ghost session A is fully removed (not recently closed)
+            assert!(
+                sessions.get("session-a").is_none(),
+                "ghost session-a (no JSONL, 0 turns) must be removed from map entirely"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pid_uniqueness_evicts_real_session_to_recently_closed() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Insert a REAL session (has file_path + turns) with PID 99998
+        {
+            let mut sessions = state.live_sessions.write().await;
+            let mut real = make_autonomous_session("real-old");
+            real.pid = Some(99998);
+            real.file_path = "/tmp/real.jsonl".into();
+            real.turn_count = 5;
+            sessions.insert("real-old".into(), real);
+        }
+
+        // New session with same PID → real session must move to recently closed (not removed)
+        send_session_start(&app, "real-new", "/tmp/proj", Some(99998)).await;
+
+        let sessions = state.live_sessions.read().await;
+        let old = sessions
+            .get("real-old")
+            .expect("real session must stay in map as recently closed");
+        assert_eq!(old.status, SessionStatus::Done);
+        assert!(old.closed_at.is_some());
+        assert!(sessions.get("real-new").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_pid_uniqueness_does_not_evict_different_pid() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Two sessions with different PIDs → both stay active
+        send_session_start(&app, "session-x", "/tmp/proj-x", Some(10001)).await;
+        send_session_start(&app, "session-y", "/tmp/proj-y", Some(10002)).await;
+
+        let sessions = state.live_sessions.read().await;
+        assert!(
+            sessions.get("session-x").is_some(),
+            "session-x must survive"
+        );
+        assert!(
+            sessions.get("session-y").is_some(),
+            "session-y must survive"
+        );
+        assert_ne!(sessions["session-x"].status, SessionStatus::Done);
+        assert_ne!(sessions["session-y"].status, SessionStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn test_pid_uniqueness_skips_done_sessions() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Session A starts and ends
+        send_session_start(&app, "done-a", "/tmp/done", Some(20001)).await;
+        send_session_end(&app, "done-a", Some(20001)).await;
+
+        // Verify A is Done
+        {
+            let sessions = state.live_sessions.read().await;
+            let a = sessions.get("done-a").expect("done-a must exist");
+            assert_eq!(a.status, SessionStatus::Done);
+        }
+
+        // Session B starts with same PID → should NOT try to re-evict A (already Done)
+        send_session_start(&app, "done-b", "/tmp/done2", Some(20001)).await;
+
+        let sessions = state.live_sessions.read().await;
+        assert!(sessions.get("done-b").is_some(), "done-b must be created");
+        // A should still be in map, unchanged (already Done, not double-evicted)
+        let a = sessions.get("done-a").expect("done-a must still exist");
+        assert_eq!(a.status, SessionStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn test_pid_uniqueness_skips_sidecar_sessions() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Insert a sidecar-controlled session with PID 30001
+        {
+            let mut sessions = state.live_sessions.write().await;
+            let mut session = make_autonomous_session("sidecar-session");
+            session.pid = Some(30001);
+            session.control = Some(crate::live::state::ControlBinding {
+                control_id: "ctrl-123".into(),
+                bound_at: 1000,
+                cancel: tokio_util::sync::CancellationToken::new(),
+            });
+            sessions.insert("sidecar-session".into(), session);
+        }
+
+        // New session with same PID → sidecar must NOT be evicted
+        send_session_start(&app, "new-session", "/tmp/proj", Some(30001)).await;
+
+        let sessions = state.live_sessions.read().await;
+        let sidecar = sessions
+            .get("sidecar-session")
+            .expect("sidecar must survive");
+        assert_ne!(
+            sidecar.status,
+            SessionStatus::Done,
+            "sidecar must not be evicted"
+        );
+        assert!(
+            sidecar.control.is_some(),
+            "sidecar control binding must remain"
+        );
+        assert!(
+            sessions.get("new-session").is_some(),
+            "new session must also be created"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ghost_session_evicted_by_pid_is_removed_not_recently_closed() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Insert a ghost session: has PID but no file_path and zero turns
+        {
+            let mut sessions = state.live_sessions.write().await;
+            let mut ghost = make_autonomous_session("ghost-session");
+            ghost.pid = Some(40001);
+            ghost.file_path = String::new(); // no JSONL
+            ghost.turn_count = 0; // zero turns
+            sessions.insert("ghost-session".into(), ghost);
+        }
+
+        // New session with same PID → ghost must be REMOVED (not recently closed)
+        send_session_start(&app, "real-session", "/tmp/proj", Some(40001)).await;
+
+        let sessions = state.live_sessions.read().await;
+        assert!(
+            sessions.get("ghost-session").is_none(),
+            "ghost session must be fully removed from map, not kept as recently closed"
+        );
+        assert!(
+            sessions.get("real-session").is_some(),
+            "real session must be created"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_no_pid_means_no_eviction() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Session A with PID
+        send_session_start(&app, "with-pid", "/tmp/proj1", Some(50001)).await;
+
+        // Session B without PID → must not evict A
+        send_session_start(&app, "no-pid", "/tmp/proj2", None).await;
+
+        let sessions = state.live_sessions.read().await;
+        assert!(sessions.get("with-pid").is_some());
+        assert!(sessions.get("no-pid").is_some());
+        assert_ne!(sessions["with-pid"].status, SessionStatus::Done);
+    }
+
+    #[tokio::test]
+    async fn test_same_session_id_same_pid_is_update_not_eviction() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        let app = crate::api_routes(state.clone());
+
+        // Start session, then start again with same ID + PID (resume)
+        send_session_start(&app, "resume-me", "/tmp/proj", Some(60001)).await;
+        send_session_start(&app, "resume-me", "/tmp/proj", Some(60001)).await;
+
+        let sessions = state.live_sessions.read().await;
+        // Should still be 1 session, not evicted
+        let s = sessions.get("resume-me").expect("session must exist");
+        assert_ne!(
+            s.status,
+            SessionStatus::Done,
+            "resume must not mark session as Done"
+        );
+        assert_eq!(s.pid, Some(60001));
     }
 }
