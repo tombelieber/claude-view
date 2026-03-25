@@ -73,8 +73,30 @@ pub struct SubAgentInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_use_count: Option<u32>,
 
+    /// Model used by this sub-agent (alias or full ID, e.g., "haiku", "claude-haiku-4-5-20251001").
+    /// Populated from spawn input `model` field; overridden by `toolUseResult.model` if present.
+    /// None means the sub-agent inherited the parent session's model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+
+    /// Token usage breakdown from `toolUseResult.usage`.
+    /// None while status is Running.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<u64>,
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_tokens: Option<u64>,
+
     /// Cost in USD attributed to this sub-agent's execution.
-    /// Computed from `toolUseResult.usage` token counts via the pricing table.
+    /// Computed from `toolUseResult.usage` token counts via the pricing table,
+    /// using the sub-agent's own model for pricing (falls back to parent model if unknown).
     /// None while status is Running or if pricing data unavailable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_usd: Option<f64>,
@@ -102,6 +124,11 @@ mod tests {
             completed_at: None,
             duration_ms: None,
             tool_use_count: None,
+            model: Some("haiku".to_string()),
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
             cost_usd: None,
             current_activity: Some("Read".to_string()),
         };
@@ -121,6 +148,11 @@ mod tests {
             completed_at: None,
             duration_ms: None,
             tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
             cost_usd: None,
             current_activity: None,
         };

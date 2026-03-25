@@ -304,6 +304,11 @@ impl SessionAccumulator {
                 completed_at: None,
                 duration_ms: None,
                 tool_use_count: None,
+                model: spawn.model.clone(),
+                input_tokens: None,
+                output_tokens: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
                 cost_usd: None,
                 current_activity: None,
             });
@@ -995,6 +1000,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1015,6 +1021,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1041,6 +1048,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1058,6 +1066,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1085,6 +1094,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1101,6 +1111,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1136,6 +1147,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Failing work".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1151,6 +1163,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1181,6 +1194,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Killed work".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1196,6 +1210,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1228,6 +1243,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "landing-sync".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1245,6 +1261,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1275,6 +1292,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "future-agent".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1291,6 +1309,7 @@ mod tests {
                 usage_output_tokens: None,
                 usage_cache_read_tokens: None,
                 usage_cache_creation_tokens: None,
+                    model: None,
             });
             acc.process_line(&result_line, 0, &pricing);
 
@@ -1326,6 +1345,7 @@ mod tests {
                     agent_type: "general-purpose".to_string(),
                     description: format!("{status}-agent"),
                     team_name: None,
+                    model: None,
                 });
             acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1342,6 +1362,7 @@ mod tests {
                 usage_output_tokens: None,
                 usage_cache_read_tokens: None,
                 usage_cache_creation_tokens: None,
+                model: None,
             });
             acc.process_line(&result_line, 0, &pricing);
 
@@ -1375,6 +1396,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "notif-agent".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1391,6 +1413,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+                    model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1420,6 +1443,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
                 team_name: None,
+                    model: None,
             });
 
         // Process same spawn twice (replay resilience)
@@ -1444,6 +1468,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1773,6 +1798,7 @@ mod tests {
                 agent_type: "code".to_string(),
                 description: "Write code".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1789,6 +1815,7 @@ mod tests {
             usage_output_tokens: Some(10_000),
             usage_cache_read_tokens: Some(50_000),
             usage_cache_creation_tokens: Some(5_000),
+                    model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1818,6 +1845,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "agent-sysinfo".to_string(),
                 team_name: Some("demo-team".to_string()),
+                    model: None,
             });
         acc.process_line(&line, 0, &pricing);
 
@@ -1846,6 +1874,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "researcher".to_string(),
                 team_name: Some("nvda-demo".to_string()),
+                    model: None,
             });
         acc.process_line(&team_line, 0, &pricing);
 
@@ -1860,6 +1889,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "analyst".to_string(),
                 team_name: Some("nvda-demo".to_string()),
+                    model: None,
             });
         acc.process_line(&team_line2, 0, &pricing);
 
@@ -1874,6 +1904,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
                 team_name: None, // no team_name on spawn = regular sub-agent
+                model: None,
             });
         acc.process_line(&regular_line, 0, &pricing);
 
@@ -1899,6 +1930,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
                 team_name: None,
+                    model: None,
             });
         acc.process_line(&reg_line, 0, &pricing);
 
