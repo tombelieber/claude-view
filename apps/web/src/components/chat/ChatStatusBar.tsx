@@ -20,9 +20,9 @@ export function ChatStatusBar({
   return (
     <div
       className="flex items-center justify-between px-3 py-1 text-xs
-        bg-[#f6f8fa] dark:bg-[#161B22]
-        border-t border-gray-200 dark:border-[#30363D]
-        text-gray-500 dark:text-[#8B949E]"
+        bg-gray-50 dark:bg-gray-900
+        border-t border-gray-200 dark:border-gray-700
+        text-gray-500 dark:text-gray-400"
     >
       <span>{model}</span>
       <span>

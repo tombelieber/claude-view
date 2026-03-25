@@ -62,7 +62,7 @@ export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHea
         onClick={handleClose}
         className={cn(
           'ml-auto w-4 h-4 flex items-center justify-center rounded-sm',
-          'text-[#8B949E] hover:text-[#F0F6FC] hover:bg-[#30363D]',
+          'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700',
           'opacity-0 group-hover:opacity-100',
           api.isActive && 'opacity-100',
         )}
