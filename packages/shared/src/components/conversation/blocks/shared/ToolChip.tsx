@@ -223,19 +223,19 @@ export function ToolChip({ execution }: ToolChipProps) {
         )}
         <StatusIcon status={execution.status} />
         {resultHint && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate max-w-[120px]">
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[120px]">
             {resultHint}
           </span>
         )}
         {durationLabel && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono tabular-nums">
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums">
             {durationLabel}
           </span>
         )}
       </div>
 
       {errorReason && (
-        <div className="px-2 text-[11px] font-mono text-red-500 dark:text-red-400 truncate max-w-md">
+        <div className="px-2 text-xs font-mono text-red-500 dark:text-red-400 truncate max-w-md">
           {errorReason}
         </div>
       )}

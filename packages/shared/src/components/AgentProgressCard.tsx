@@ -30,9 +30,7 @@ export function AgentProgressCard({ agentId, prompt, message, blockId }: AgentPr
       {/* Header: icon + agent ID */}
       <div className="flex items-center gap-1.5">
         <Bot className="w-3 h-3 text-indigo-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-indigo-700 dark:text-indigo-300">
-          #{agentId}
-        </span>
+        <span className="text-xs font-mono text-indigo-700 dark:text-indigo-300">#{agentId}</span>
       </div>
 
       {/* Prompt — always visible */}

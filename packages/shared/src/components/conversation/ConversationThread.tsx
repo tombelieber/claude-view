@@ -1,4 +1,4 @@
-import type { ConversationBlock } from '../../types/blocks'
+import type { ConversationBlock, ProgressBlock } from '../../types/blocks'
 import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
@@ -6,6 +6,8 @@ import { cn } from '../../utils/cn'
 import { buildThreadMap } from '../../utils/thread-map'
 import { type ChipDefinition, FilterChips } from './FilterChips'
 import { DayDivider, formatDayLabel } from './DayDivider'
+import { ChatAgentGroupRow } from './blocks/chat/AgentGroupRow'
+import { DevAgentGroupRow } from './blocks/developer/AgentGroupRow'
 import { DefaultExpandedProvider } from './blocks/developer/default-expanded-context'
 import { JsonModeProvider } from './blocks/developer/json-mode-context'
 import type { BlockRenderers } from './types'
@@ -199,6 +201,7 @@ function computeFineCounts(blocks: ConversationBlock[]): Record<FineCategory, nu
 type ThreadItem =
   | { kind: 'block'; block: ConversationBlock }
   | { kind: 'divider'; label: string; key: string }
+  | { kind: 'agent_group'; blocks: ProgressBlock[]; key: string }
 
 function getBlockTimestamp(block: ConversationBlock): number | undefined {
   if (block.type === 'user') return block.timestamp
@@ -211,11 +214,23 @@ function dayKey(unixSeconds: number): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
+/** Check if a block is an agent progress block. */
+function isAgentProgress(block: ConversationBlock): block is ProgressBlock {
+  return block.type === 'progress' && 'variant' in block && block.variant === 'agent'
+}
+
+/** Get the agentId from an agent progress block's data. */
+function getAgentId(block: ProgressBlock): string {
+  return block.data.type === 'agent' ? block.data.agentId : ''
+}
+
 function buildThreadItems(blocks: ConversationBlock[]): ThreadItem[] {
   const items: ThreadItem[] = []
   let lastDay: string | null = null
+  let i = 0
 
-  for (const block of blocks) {
+  while (i < blocks.length) {
+    const block = blocks[i]
     const ts = getBlockTimestamp(block)
     if (ts && ts > 0) {
       const day = dayKey(ts)
@@ -224,7 +239,30 @@ function buildThreadItems(blocks: ConversationBlock[]): ThreadItem[] {
         items.push({ kind: 'divider', label: formatDayLabel(new Date(ts * 1000)), key: day })
       }
     }
+
+    // Collapse consecutive agent progress blocks by agentId
+    if (isAgentProgress(block)) {
+      const agentId = getAgentId(block)
+      const group: ProgressBlock[] = [block]
+      let j = i + 1
+      while (
+        j < blocks.length &&
+        isAgentProgress(blocks[j]) &&
+        getAgentId(blocks[j] as ProgressBlock) === agentId
+      ) {
+        group.push(blocks[j] as ProgressBlock)
+        j++
+      }
+      // Only collapse if there are 3+ consecutive blocks (otherwise show individually)
+      if (group.length >= 3) {
+        items.push({ kind: 'agent_group', blocks: group, key: `ag-${block.id}` })
+        i = j
+        continue
+      }
+    }
+
     items.push({ kind: 'block', block })
+    i++
   }
 
   return items
@@ -291,6 +329,7 @@ export function ConversationThread({
     () =>
       allItems.filter((item) => {
         if (item.kind === 'divider') return true
+        if (item.kind === 'agent_group') return true
         if (!renderers[item.block.type]) return false
         return renderers.canRender ? renderers.canRender(item.block) : true
       }),
@@ -419,7 +458,12 @@ export function ConversationThread({
   // show "new messages" badge for everything else when scrolled up.
   const prevLastBlockIdRef = useRef<string | null>(null)
   const lastItem = items[items.length - 1]
-  const lastBlockId = lastItem?.kind === 'block' ? lastItem.block.id : null
+  const lastBlockId =
+    lastItem?.kind === 'block'
+      ? lastItem.block.id
+      : lastItem?.kind === 'agent_group'
+        ? lastItem.key
+        : null
   const lastBlockIsUser = lastItem?.kind === 'block' && lastItem.block.type === 'user'
   const itemCount = items.length
   useEffect(() => {
@@ -502,12 +546,26 @@ export function ConversationThread({
 
   // ── Stable render callback ──────────────────────────────────────────────
 
+  // Detect whether we're in developer mode (renderers have the dev progress block)
+  const isDeveloperMode = filterBar
+
   const renderItem = useCallback(
     (_index: number, item: ThreadItem) => {
       if (item.kind === 'divider') {
         return (
           <div className={compact ? 'py-0.5' : 'py-1 max-w-3xl mx-auto px-4'}>
             <DayDivider label={item.label} />
+          </div>
+        )
+      }
+      if (item.kind === 'agent_group') {
+        return (
+          <div className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}>
+            {isDeveloperMode ? (
+              <DevAgentGroupRow blocks={item.blocks} />
+            ) : (
+              <ChatAgentGroupRow blocks={item.blocks} />
+            )}
           </div>
         )
       }
@@ -524,14 +582,14 @@ export function ConversationThread({
         </div>
       )
     },
-    [renderers, compact, threadMap],
+    [renderers, compact, threadMap, isDeveloperMode],
   )
 
-  const itemKey = useCallback(
-    (_index: number, item: ThreadItem) =>
-      item.kind === 'divider' ? `day-${item.key}` : item.block.id,
-    [],
-  )
+  const itemKey = useCallback((_index: number, item: ThreadItem) => {
+    if (item.kind === 'divider') return `day-${item.key}`
+    if (item.kind === 'agent_group') return item.key
+    return item.block.id
+  }, [])
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -557,7 +615,7 @@ export function ConversationThread({
                 <button
                   onClick={() => setGlobalJsonMode((v) => !v)}
                   className={cn(
-                    'ml-auto mr-3 text-[10px] font-mono px-2 py-1 rounded-full border transition-colors duration-200 cursor-pointer flex-shrink-0',
+                    'ml-auto mr-3 text-xs font-mono px-2 py-1 rounded-full border transition-colors duration-200 cursor-pointer flex-shrink-0',
                     globalJsonMode
                       ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30'
                       : 'text-gray-500 dark:text-gray-400 bg-transparent border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600',

@@ -40,7 +40,7 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
         <TurnDurationCard durationMs={block.durationMs} />
 
         {/* Compact stat bar */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-gray-600 dark:text-gray-300">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-mono text-gray-600 dark:text-gray-300">
           <span>
             <span className="text-gray-500 dark:text-gray-400">Cost</span>{' '}
             {formatCost(block.totalCostUsd)}
@@ -96,14 +96,11 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
         {/* Permission denials */}
         {block.permissionDenials.length > 0 && (
           <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
-            <div className="text-[10px] font-medium text-red-600 dark:text-red-400 mb-1">
+            <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">
               Permission Denials
             </div>
             {block.permissionDenials.map((d) => (
-              <div
-                key={d.toolUseId}
-                className="text-[10px] font-mono text-gray-600 dark:text-gray-400"
-              >
+              <div key={d.toolUseId} className="text-xs font-mono text-gray-600 dark:text-gray-400">
                 {d.toolName}
               </div>
             ))}
@@ -114,7 +111,7 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
         {block.error && (
           <div className="pt-1.5 border-t border-red-200/30 dark:border-red-800/30">
             {block.error.messages.map((msg) => (
-              <p key={msg} className="text-[10px] text-red-600 dark:text-red-400">
+              <p key={msg} className="text-xs text-red-600 dark:text-red-400">
                 {msg}
               </p>
             ))}

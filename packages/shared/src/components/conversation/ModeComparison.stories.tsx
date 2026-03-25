@@ -9,11 +9,12 @@
  * Covers ALL block types × representative variants so mode differences
  * can be compared one-by-one.
  */
-import type { ConversationBlock } from '../../types/blocks'
+import type { ConversationBlock, ProgressBlock } from '../../types/blocks'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import type { ComponentType } from 'react'
 import { withConversationActions } from '../../stories/decorators'
 import {
+  agentGroupBlocks,
   assistantBlocks,
   interactionBlocks,
   noticeBlocks,
@@ -29,7 +30,9 @@ import {
   devTurnBoundaryBlocks,
   devUserBlocks,
 } from '../../stories/fixtures-developer'
+import { ChatAgentGroupRow } from './blocks/chat/AgentGroupRow'
 import { chatRegistry } from './blocks/chat/registry'
+import { DevAgentGroupRow } from './blocks/developer/AgentGroupRow'
 import { DefaultExpandedProvider } from './blocks/developer/default-expanded-context'
 import { JsonModeProvider } from './blocks/developer/json-mode-context'
 import { developerRegistry } from './blocks/developer/registry'
@@ -41,6 +44,12 @@ interface ModeComparison {
   label: string
   description: string
   blocks: ConversationBlock[]
+  /** Optional custom renderer per column — used for agent groups that aren't single blocks. */
+  customRender?: {
+    chat?: React.ReactNode
+    developer?: React.ReactNode
+    json?: React.ReactNode
+  }
 }
 
 const comparisons: ModeComparison[] = [
@@ -370,6 +379,18 @@ const comparisons: ModeComparison[] = [
     ],
   },
 
+  // ── 31b. Agent Group (collapsed) ──
+  {
+    label: 'agent group (collapsed)',
+    description:
+      'NEW: 10 consecutive agent progress messages collapsed into one row. Shows description + tool summary (Glob ×1, Grep ×1, Read ×3, Bash ×1). Expandable to see individual operations.',
+    blocks: agentGroupBlocks as ConversationBlock[],
+    customRender: {
+      chat: <ChatAgentGroupRow blocks={agentGroupBlocks as ProgressBlock[]} />,
+      developer: <DevAgentGroupRow blocks={agentGroupBlocks as ProgressBlock[]} />,
+    },
+  },
+
   // ── 31. Developer-enriched: rawJson extras ──
   {
     label: 'developer-enriched: rawJson + imagePastes',
@@ -433,45 +454,47 @@ function BlockList({
 
 // ── Comparison Row ──────────────────────────────────────────────────────────
 
-function ModeComparisonRow({ label, description, blocks }: ModeComparison) {
+function ModeComparisonRow({ label, description, blocks, customRender }: ModeComparison) {
   return (
     <section className="border border-gray-700 rounded-lg overflow-hidden">
       {/* Row header */}
       <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
         <h2 className="text-sm font-bold text-white font-mono">{label}</h2>
-        <p className="text-[11px] text-gray-400 mt-0.5">{description}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
       </div>
 
       {/* Three-column comparison — grid stretches all columns to tallest */}
       <div className="grid grid-cols-3 divide-x divide-gray-700 items-start">
         {/* Chat mode */}
         <div className="p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-sky-400 mb-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-sky-400 mb-2">
             Chat Mode
           </div>
-          <BlockList blocks={blocks} renderers={chatRegistry} />
+          {customRender?.chat ?? <BlockList blocks={blocks} renderers={chatRegistry} />}
         </div>
 
         {/* Developer Rich (expanded) */}
         <div className="p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-indigo-400 mb-2">
             Developer — Rich
           </div>
           <DefaultExpandedProvider value={true}>
             <JsonModeProvider value={false}>
-              <BlockList blocks={blocks} renderers={developerRegistry} />
+              {customRender?.developer ?? (
+                <BlockList blocks={blocks} renderers={developerRegistry} />
+              )}
             </JsonModeProvider>
           </DefaultExpandedProvider>
         </div>
 
         {/* Developer JSON (same as Rich but JSON toggle = on) */}
         <div className="p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
             Developer — JSON
           </div>
           <DefaultExpandedProvider value={true}>
             <JsonModeProvider value={true}>
-              <BlockList blocks={blocks} renderers={developerRegistry} />
+              {customRender?.json ?? <BlockList blocks={blocks} renderers={developerRegistry} />}
             </JsonModeProvider>
           </DefaultExpandedProvider>
         </div>

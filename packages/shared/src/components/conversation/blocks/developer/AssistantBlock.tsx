@@ -65,7 +65,7 @@ export function DevAssistantBlock({ block }: AssistantBlockProps) {
       meta={
         <div className="flex items-center gap-1.5">
           {block.rawJson?.permissionMode != null && (
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
+            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}
             </span>
           )}

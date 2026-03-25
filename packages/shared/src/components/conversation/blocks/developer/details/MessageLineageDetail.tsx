@@ -36,14 +36,14 @@ export function MessageLineageDetail({ rawJson }: MessageLineageDetailProps) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+        className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
       >
         <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         <Network className="w-3 h-3" />
         <span>Message lineage ({entries.length})</span>
       </button>
       {expanded && (
-        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-[10px] rounded border border-gray-200/50 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/40">
+        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-xs rounded border border-gray-200/50 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-800/40">
           {entries.map(([key, val]) => (
             <div key={key} className="contents">
               <div className="text-gray-500 dark:text-gray-400">{key}</div>

@@ -18,7 +18,7 @@ export function Markdown({ content }: MarkdownProps) {
         components={{
           pre({ children }) {
             return (
-              <pre className="text-[11px] font-mono overflow-x-auto rounded bg-gray-50 dark:bg-gray-900/80 p-2 my-1">
+              <pre className="text-xs font-mono overflow-x-auto rounded bg-gray-50 dark:bg-gray-900/80 p-2 my-1">
                 {children}
               </pre>
             )
@@ -26,7 +26,7 @@ export function Markdown({ content }: MarkdownProps) {
           code({ children, ...rest }) {
             return (
               <code
-                className="px-1 py-0.5 rounded text-[11px] font-mono bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400"
+                className="px-1 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400"
                 {...rest}
               >
                 {children}

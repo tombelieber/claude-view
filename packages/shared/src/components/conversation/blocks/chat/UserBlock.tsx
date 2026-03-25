@@ -38,13 +38,13 @@ export function ChatUserBlock({ block }: UserBlockProps) {
         {(block.agentId || isSidechain) && (
           <div className="flex items-center justify-end gap-1.5 mb-1 px-1">
             {isSidechain && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-purple-500 dark:text-purple-400">
+              <span className="inline-flex items-center gap-0.5 text-xs text-purple-500 dark:text-purple-400">
                 <GitBranch className="w-2.5 h-2.5" />
                 sidechain
               </span>
             )}
             {block.agentId && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-full">
+              <span className="inline-flex items-center gap-0.5 text-xs font-mono text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-full">
                 <Bot className="w-2.5 h-2.5" />
                 {block.agentId}
               </span>
@@ -94,7 +94,7 @@ export function ChatUserBlock({ block }: UserBlockProps) {
           <MessageTimestamp timestamp={block.timestamp} align="right" />
           <StatusDot status={block.status} />
           {block.status === 'failed' && (
-            <span className="text-[10px] text-red-500 dark:text-red-400">
+            <span className="text-xs text-red-500 dark:text-red-400">
               Failed
               {convActions && block.localId && (
                 <>
