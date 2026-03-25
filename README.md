@@ -351,6 +351,58 @@ This keeps the database, search index, and lock files in `.data/` inside the rep
 
 ---
 
+## FAQ
+
+<details>
+<summary><strong>"Not signed in" banner showing even though I'm logged in</strong></summary>
+<br>
+
+claude-view checks your Claude credentials by reading `~/.claude/.credentials.json` (with macOS Keychain fallback). If it can't find or parse valid credentials, the warning banner appears. Try these steps in order:
+
+**1. Verify Claude CLI auth works**
+
+```bash
+claude auth status
+```
+
+If this says "Logged in", your credentials are valid. If not, run `claude auth login` first.
+
+**2. Check the credentials file exists**
+
+```bash
+cat ~/.claude/.credentials.json
+```
+
+You should see JSON with a `claudeAiOauth` section containing an `accessToken`. If the file is missing, your credentials may be stored only in the OS Keychain (see step 3).
+
+**3. Check macOS Keychain access**
+
+```bash
+security find-generic-password -s "Claude Code-credentials" -w
+```
+
+If this returns JSON or hex-encoded data, credentials are in Keychain. If it returns an error, or you're on a corporate machine with security tools (DataCloak, CrowdStrike, etc.) that block Keychain access, this is likely the issue — run `claude auth login` to regenerate the file.
+
+**4. Check for token expiry**
+
+Inside the credentials JSON, look at the `expiresAt` field (Unix milliseconds). If it's in the past, your token has expired. Run `claude auth login` to refresh.
+
+**5. Check HOME environment**
+
+claude-view reads credentials from `$HOME/.claude/.credentials.json`. If the server process has a different `$HOME` than your shell, it won't find your credentials.
+
+```bash
+echo $HOME
+```
+
+---
+
+If all the above checks pass and the banner still shows, please report it on our [Discord](https://discord.gg/G7wdZTpRfu) with the output of `claude auth status` and we'll help debug it.
+
+</details>
+
+---
+
 ## Community
 
 - **Website:** [claudeview.ai](https://claudeview.ai) — docs, changelog, blog
