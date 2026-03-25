@@ -179,10 +179,8 @@ jobs:
         run: npm publish --access public || echo "Already published, skipping"
         working-directory: npx-cli
 
-      - name: Build MCP + plugin
-        run: |
-          cd packages/mcp && bun install && bunx tsc
-          cd ../plugin && node scripts/bundle-mcp.mjs
+      - name: Build plugin
+        run: cd packages/plugin && bun install && bunx tsc
 
       - name: Publish @claude-view/plugin
         run: npm publish --access public || echo "Already published, skipping"

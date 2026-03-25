@@ -4,14 +4,14 @@ set -euo pipefail
 # Contract test: ensures SKILL.md and MCP tools stay in sync with the Rust API routes.
 # Three checks:
 #   1. Every MCP tool endpoint appears in SKILL.md
-#   2. Version triple-match: plugin.json = packages/mcp/package.json = root package.json
+#   2. Version triple-match: plugin.json = packages/plugin/package.json = root package.json
 #   3. Every tool name in MCP code appears in SKILL.md
 
 SKILL="claude-view/SKILL.md"
 PLUGIN="plugin.json"
-MCP_PKG="packages/mcp/package.json"
+MCP_PKG="packages/plugin/package.json"
 ROOT_PKG="package.json"
-TOOLS_DIR="packages/mcp/src/tools"
+TOOLS_DIR="packages/plugin/src/tools"
 
 errors=0
 
@@ -45,7 +45,7 @@ mcp_version=$(grep '"version"' "$MCP_PKG" | head -1 | sed 's/.*: *"\(.*\)".*/\1/
 root_version=$(grep '"version"' "$ROOT_PKG" | head -1 | sed 's/.*: *"\(.*\)".*/\1/')
 
 if [ "$mcp_version" != "$root_version" ]; then
-  echo "VERSION MISMATCH: mcp/package.json=$mcp_version root=$root_version"
+  echo "VERSION MISMATCH: plugin/package.json=$mcp_version root=$root_version"
   ((errors++)) || true
 fi
 
