@@ -13,6 +13,7 @@ describe('useMonitorStore', () => {
       hiddenPaneIds: new Set<string>(),
       verboseMode: false,
       displayMode: 'chat',
+      preferredDetailTab: 'overview',
     })
   })
 
@@ -227,6 +228,41 @@ describe('useMonitorStore', () => {
       expect(useMonitorStore.getState().displayMode).toBe('developer')
       useMonitorStore.getState().toggleVerbose()
       expect(useMonitorStore.getState().displayMode).toBe('chat')
+    })
+  })
+
+  describe('preferredDetailTab', () => {
+    it('defaults to overview', () => {
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('overview')
+    })
+
+    it('setPreferredDetailTab updates to an always-available tab', () => {
+      useMonitorStore.getState().setPreferredDetailTab('chat')
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('chat')
+    })
+
+    it('setPreferredDetailTab updates to a conditional tab', () => {
+      useMonitorStore.getState().setPreferredDetailTab('plan')
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('plan')
+    })
+
+    it('can cycle through multiple tabs', () => {
+      useMonitorStore.getState().setPreferredDetailTab('cost')
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('cost')
+
+      useMonitorStore.getState().setPreferredDetailTab('tasks')
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('tasks')
+
+      useMonitorStore.getState().setPreferredDetailTab('overview')
+      expect(useMonitorStore.getState().preferredDetailTab).toBe('overview')
+    })
+
+    it('does not affect other state fields', () => {
+      useMonitorStore.getState().setPreferredDetailTab('cost')
+
+      expect(useMonitorStore.getState().displayMode).toBe('chat')
+      expect(useMonitorStore.getState().verboseMode).toBe(false)
+      expect(useMonitorStore.getState().gridOverride).toBeNull()
     })
   })
 })
