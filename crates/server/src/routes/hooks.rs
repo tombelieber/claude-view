@@ -14,7 +14,7 @@ use crate::state::AppState;
 use claude_view_core::discovery::resolve_git_branch;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct HookPayload {
     pub session_id: String,
     pub hook_event_name: String,
@@ -138,7 +138,13 @@ async fn put_back_unresolved_hook_events(session_id: &str, events: Vec<HookEvent
     append_capped_hook_events(entry, events, MAX_UNRESOLVED_HOOK_EVENTS_PER_SESSION);
 }
 
-async fn handle_hook(
+#[utoipa::path(post, path = "/api/live/hook", tag = "live",
+    request_body = HookPayload,
+    responses(
+        (status = 200, description = "Hook event accepted and processed", body = serde_json::Value),
+    )
+)]
+pub async fn handle_hook(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<HookPayload>,
