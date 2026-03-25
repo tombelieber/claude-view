@@ -61,7 +61,9 @@ import type { LiveSession } from './use-live-sessions'
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'chat' | 'sub-agents' | 'teams' | 'cost' | 'tasks' | 'changes' | 'plan'
+import type { DetailTabId } from '../../store/monitor-store'
+
+type TabId = DetailTabId
 
 interface SessionDetailPanelProps {
   /** Live session (existing callers) */
@@ -157,7 +159,11 @@ export function SessionDetailPanel({
   const detailLiveStatus = deriveLiveStatus(session)
 
   // ---- Unified conversation hook — handles WS lifecycle + blocks + actions ----
-  const { blocks: convBlocks, actions: convActions } = useConversation(data.id, {
+  const {
+    blocks: convBlocks,
+    actions: convActions,
+    history: convHistory,
+  } = useConversation(data.id, {
     liveStatus: detailLiveStatus,
   })
 
@@ -167,12 +173,25 @@ export function SessionDetailPanel({
   // ---- URL param: ?tab= (with backward compat for removed terminal/log tabs) ----
   const [searchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
+  const preferredDetailTab = useMonitorStore((s) => s.preferredDetailTab)
+  const setPreferredDetailTab = useMonitorStore((s) => s.setPreferredDetailTab)
   const resolvedTab: TabId =
-    rawTab === 'terminal' || rawTab === 'log' ? 'chat' : ((rawTab as TabId) ?? 'overview')
+    rawTab === 'terminal' || rawTab === 'log'
+      ? 'chat'
+      : ((rawTab as TabId) ?? preferredDetailTab ?? 'overview')
 
   // ---- Local state ----
-  const [activeTab, setActiveTab] = useState<TabId>(resolvedTab)
+  const [activeTab, setActiveTabRaw] = useState<TabId>(resolvedTab)
   const displayMode = useMonitorStore((s) => s.displayMode)
+
+  // Wrap setActiveTab to also persist the preference
+  const setActiveTab = useCallback(
+    (tab: TabId) => {
+      setActiveTabRaw(tab)
+      setPreferredDetailTab(tab)
+    },
+    [setPreferredDetailTab],
+  )
 
   // Historical hook events (REST fetch for non-live sessions)
   useHookEvents(data.id, !isLive)
@@ -198,15 +217,24 @@ export function SessionDetailPanel({
     return () => cancelAnimationFrame(raf)
   }, [inline])
 
-  // Reset tab and drill-down when session changes (skip initial mount to preserve ?tab= URL param)
+  // Always-available tabs (not dependent on async data)
+  const ALWAYS_AVAILABLE: Set<TabId> = new Set(['overview', 'chat', 'sub-agents', 'cost'])
+  if (hasTeam) ALWAYS_AVAILABLE.add('teams')
+
+  // Reset tab and drill-down when session changes — use preferred tab with graceful fallback.
+  // Conditional tabs (tasks, changes, plan) load async, so we can't know availability at t=0.
+  // Only resolve to preferred if it's always-available; otherwise fall back to overview.
+  // This avoids content-jumping (UX anti-pattern) when async tabs load later.
   const prevDataIdRef = useRef(data.id)
   useEffect(() => {
     if (prevDataIdRef.current !== data.id) {
-      setActiveTab('overview')
+      const target = ALWAYS_AVAILABLE.has(preferredDetailTab) ? preferredDetailTab : 'overview'
+      setActiveTabRaw(target)
       setDrillDownAgent(null)
       prevDataIdRef.current = data.id
     }
-  }, [data.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.id, preferredDetailTab])
 
   // ESC key handling: drill-down first, then close
   useEffect(() => {
@@ -360,7 +388,7 @@ export function SessionDetailPanel({
             if (!branch) return null
             return (
               <span
-                className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500 dark:text-gray-500"
+                className="inline-flex items-center gap-1 text-xs font-mono text-gray-500 dark:text-gray-500"
                 title={branch}
               >
                 <GitBranch className="w-3 h-3 flex-shrink-0" />
@@ -369,7 +397,7 @@ export function SessionDetailPanel({
                   <TreePine className="w-3 h-3 flex-shrink-0 text-green-600 dark:text-green-400" />
                 )}
                 {driftOrigin && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-0.5">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 ml-0.5">
                     {'↗'}
                     {driftOrigin}
                   </span>
@@ -382,7 +410,7 @@ export function SessionDetailPanel({
             type="button"
             onClick={copySessionId}
             title={`Copy session ID: ${data.id}`}
-            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
             {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
             {data.id.slice(0, 8)}
@@ -390,10 +418,10 @@ export function SessionDetailPanel({
 
           <div className="flex-1" />
 
-          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums">
             {totalCostLabel}
           </span>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums">
+          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
             Turn {data.turnCount}
           </span>
         </div>
@@ -549,35 +577,33 @@ export function SessionDetailPanel({
               >
                 <div className="flex items-center gap-1.5 mb-2">
                   <DollarSign className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                     Cost
                   </span>
                 </div>
                 <div className="text-xl font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
                   {totalCostLabel}
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[10px] font-mono text-gray-500 dark:text-gray-500 tabular-nums">
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-xs font-mono text-gray-500 dark:text-gray-500 tabular-nums">
                   <span>In: ${(data.cost?.inputCostUsd ?? 0).toFixed(2)}</span>
                   <span>Out: ${(data.cost?.outputCostUsd ?? 0).toFixed(2)}</span>
                   <span>CacheR: ${(data.cost?.cacheReadCostUsd ?? 0).toFixed(2)}</span>
                   <span>CacheW: ${(data.cost?.cacheCreationCostUsd ?? 0).toFixed(2)}</span>
                 </div>
                 {hasSubAgents && (
-                  <div className="mt-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                  <div className="mt-0.5 text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
                     + {data.subAgents?.length ?? 0} sub-agent
                     {(data.subAgents?.length ?? 0) !== 1 ? 's' : ''}: ${subAgentCostUsd.toFixed(2)}
                   </div>
                 )}
                 {hasCacheCreationSplit && (
-                  <div className="mt-0.5 text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+                  <div className="mt-0.5 text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
                     CacheW tokens: 5m {cacheCreation5mTokens.toLocaleString()} · 1h{' '}
                     {cacheCreation1hrTokens.toLocaleString()}
                   </div>
                 )}
                 {(data.cost?.cacheSavingsUsd ?? 0) > 0 && (
-                  <div
-                    className={`text-[10px] font-mono ${COST_CATEGORY_COLORS.savings.text} mt-0.5`}
-                  >
+                  <div className={`text-xs font-mono ${COST_CATEGORY_COLORS.savings.text} mt-0.5`}>
                     Saved: ${(data.cost?.cacheSavingsUsd ?? 0).toFixed(2)}
                   </div>
                 )}
@@ -588,7 +614,7 @@ export function SessionDetailPanel({
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-1.5 mb-2">
                     <Timer className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                    <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                       Prompt Cache
                     </span>
                   </div>
@@ -604,7 +630,7 @@ export function SessionDetailPanel({
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
               <div className="flex items-center gap-1.5 mb-2">
                 <Zap className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                   Context Window
                 </span>
               </div>
@@ -657,7 +683,7 @@ export function SessionDetailPanel({
               >
                 <div className="flex items-center gap-1.5 mb-2">
                   <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                     Sub-Agents ({(data.subAgents ?? []).length})
                   </span>
                 </div>
@@ -674,7 +700,7 @@ export function SessionDetailPanel({
               >
                 <div className="flex items-center gap-1.5 mb-2">
                   <Clock className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-                  <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                     Timeline
                   </span>
                 </div>
@@ -693,7 +719,7 @@ export function SessionDetailPanel({
             {/* ── Last user message ── */}
             {data.lastUserMessage && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3">
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
                   Last Prompt
                 </span>
                 <p className="text-xs text-gray-700 dark:text-gray-300 mt-1.5 line-clamp-3">
@@ -721,7 +747,7 @@ export function SessionDetailPanel({
 
         {/* ---- Chat tab (conversation thread with mode toggle) ---- */}
         {activeTab === 'chat' && (
-          <div className="flex flex-col h-full overflow-hidden">
+          <div className="flex flex-col h-full overflow-hidden min-h-0">
             <ConversationActionsProvider
               actions={{
                 retryMessage: convActions.retryMessage,
@@ -736,6 +762,9 @@ export function SessionDetailPanel({
                 renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
                 filterBar={displayMode === 'developer'}
                 compact
+                onStartReached={convHistory.fetchOlderMessages}
+                isFetchingOlder={convHistory.isFetchingOlder}
+                hasOlderMessages={convHistory.hasOlderMessages}
               />
             </ConversationActionsProvider>
           </div>
