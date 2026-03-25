@@ -21,6 +21,7 @@ memmap2 = { workspace = true }
 memchr = { workspace = true }
 ts-rs = { workspace = true }
 reqwest = { workspace = true }
+utoipa = { version = "5" }
 
 [features]
 codegen = ["claude-view-core/codegen", "claude-view-search/codegen"]
