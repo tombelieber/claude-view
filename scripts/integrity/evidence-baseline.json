@@ -222,7 +222,10 @@
       "worktreeSession.originalBranch",
       "worktreeSession.originalHeadCommit",
       "worktreeSession.sessionId",
-      "aiTitle"
+      "aiTitle",
+      "origin",
+      "origin.kind",
+      "messageCount"
     ],
     "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Not needed by our parser for session display, cost tracking, or live monitoring."
   }
