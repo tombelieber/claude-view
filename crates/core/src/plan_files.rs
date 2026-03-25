@@ -8,7 +8,7 @@ use std::path::Path;
 use ts_rs::TS;
 
 /// A plan document from ~/.claude/plans/{slug}[-variant].md.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDocument {
