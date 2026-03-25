@@ -1,0 +1,139 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "claude-view API",
+    "description": "Mission Control for Claude Code",
+    "license": {
+      "name": "MIT"
+    },
+    "version": "0.26.1"
+  },
+  "paths": {},
+  "components": {},
+  "tags": [
+    {
+      "name": "health",
+      "description": "Health checks and server status"
+    },
+    {
+      "name": "sessions",
+      "description": "Session CRUD, filtering, and export"
+    },
+    {
+      "name": "projects",
+      "description": "Project summaries and branches"
+    },
+    {
+      "name": "live",
+      "description": "Live session monitoring and control"
+    },
+    {
+      "name": "monitor",
+      "description": "System resource monitoring"
+    },
+    {
+      "name": "insights",
+      "description": "Behavioral insights and patterns"
+    },
+    {
+      "name": "contributions",
+      "description": "Contribution metrics"
+    },
+    {
+      "name": "stats",
+      "description": "Dashboard statistics and trends"
+    },
+    {
+      "name": "search",
+      "description": "Full-text search"
+    },
+    {
+      "name": "turns",
+      "description": "Per-turn session breakdown"
+    },
+    {
+      "name": "plans",
+      "description": "Session plans"
+    },
+    {
+      "name": "coaching",
+      "description": "Coaching rules management"
+    },
+    {
+      "name": "facets",
+      "description": "Session quality facets"
+    },
+    {
+      "name": "classify",
+      "description": "Session classification"
+    },
+    {
+      "name": "models",
+      "description": "Observed model usage"
+    },
+    {
+      "name": "export",
+      "description": "Data export (JSON/CSV)"
+    },
+    {
+      "name": "share",
+      "description": "Session sharing"
+    },
+    {
+      "name": "teams",
+      "description": "Team management"
+    },
+    {
+      "name": "plugins",
+      "description": "Plugin management"
+    },
+    {
+      "name": "oauth",
+      "description": "OAuth usage and identity"
+    },
+    {
+      "name": "settings",
+      "description": "App settings"
+    },
+    {
+      "name": "system",
+      "description": "System operations"
+    },
+    {
+      "name": "sync",
+      "description": "Git sync and indexing"
+    },
+    {
+      "name": "reports",
+      "description": "Generated reports"
+    },
+    {
+      "name": "prompts",
+      "description": "Prompt history and templates"
+    },
+    {
+      "name": "workflows",
+      "description": "Workflow management"
+    },
+    {
+      "name": "ide",
+      "description": "IDE integration"
+    },
+    {
+      "name": "pairing",
+      "description": "Device pairing"
+    },
+    {
+      "name": "jobs",
+      "description": "Background job tracking"
+    },
+    {
+      "name": "telemetry",
+      "description": "Telemetry consent"
+    },
+    {
+      "name": "processes",
+      "description": "Process management"
+    }
+  ]
+}
