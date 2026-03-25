@@ -87,6 +87,9 @@ bytes = { workspace = true }
 aes-gcm = "0.10.3"
 flate2 = "1.1.9"
 serde_yaml = "0.9"
+utoipa = { workspace = true }
+utoipa-axum = { workspace = true }
+utoipa-swagger-ui = { workspace = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 
 [dev-dependencies]
