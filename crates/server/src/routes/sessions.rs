@@ -46,19 +46,19 @@ async fn resolve_session_file_path(
 // Archive request/response types
 // ============================================================================
 
-#[derive(Deserialize)]
-struct BulkArchiveRequest {
-    ids: Vec<String>,
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct BulkArchiveRequest {
+    pub ids: Vec<String>,
 }
 
-#[derive(Serialize)]
-struct ArchiveResponse {
-    archived: bool,
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct ArchiveResponse {
+    pub archived: bool,
 }
 
-#[derive(Serialize)]
-struct BulkArchiveResponse {
-    archived_count: usize,
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct BulkArchiveResponse {
+    pub archived_count: usize,
 }
 
 // ============================================================================
@@ -72,7 +72,7 @@ const VALID_FILTERS: &[&str] = &["all", "has_commits", "high_reedit", "long_sess
 const VALID_SORTS: &[&str] = &["recent", "tokens", "prompts", "files_edited", "duration"];
 
 /// Query parameters for GET /api/sessions
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
 #[serde(default)]
 pub struct SessionsListQuery {
     /// Filter: all (default), has_commits, high_reedit, long_session (kept for backward compat)
@@ -113,7 +113,7 @@ pub struct SessionsListQuery {
 }
 
 /// Response for GET /api/sessions with pagination
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsListResponse {
@@ -125,7 +125,7 @@ pub struct SessionsListResponse {
 }
 
 /// Response for GET /api/sessions/activity
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionActivityResponse {
     pub activity: Vec<claude_view_db::ActivityPoint>,
@@ -140,7 +140,7 @@ pub struct SessionActivityResponse {
 // ============================================================================
 
 /// Extended session detail with commits (for GET /api/sessions/:id)
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDetail {
@@ -156,7 +156,7 @@ pub struct SessionDetail {
 }
 
 /// A commit linked to a session with its confidence tier
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CommitWithTier {
@@ -186,7 +186,7 @@ impl From<(GitCommit, i32, String)> for CommitWithTier {
 }
 
 /// Derived metrics calculated from atomic units
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DerivedMetrics {
@@ -224,7 +224,7 @@ impl From<&SessionInfo> for DerivedMetrics {
 // ============================================================================
 
 /// Query parameters for GET /api/sessions/:id/messages
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
 #[serde(default)]
 pub struct SessionMessagesQuery {
     pub limit: Option<usize>,
@@ -269,6 +269,13 @@ pub struct PaginatedBlocks {
 /// - `duration`: duration_seconds DESC
 ///
 /// Returns 400 with valid options list for invalid filter/sort.
+#[utoipa::path(get, path = "/api/sessions", tag = "sessions",
+    params(SessionsListQuery),
+    responses(
+        (status = 200, description = "Paginated session list", body = SessionsListResponse),
+        (status = 400, description = "Invalid filter or sort parameter"),
+    )
+)]
 pub async fn list_sessions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SessionsListQuery>,
@@ -413,6 +420,13 @@ pub async fn list_sessions(
 /// - All atomic units (files_read, files_edited arrays)
 /// - Derived metrics (tokens_per_prompt, reedit_rate, etc.)
 /// - Linked commits with tier
+#[utoipa::path(get, path = "/api/sessions/{id}", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session detail with commits and derived metrics", body = SessionDetail),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_detail(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -457,6 +471,13 @@ pub async fn get_session_detail(
 ///
 /// Resolves the JSONL file path from the DB's `file_path` column.
 /// No `project_dir` parameter needed — the server owns path resolution.
+#[utoipa::path(get, path = "/api/sessions/{id}/parsed", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Full parsed session messages", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_parsed(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -470,6 +491,16 @@ pub async fn get_session_parsed(
 ///
 /// Resolves the JSONL file path from the DB's `file_path` column.
 /// No `project_dir` parameter needed — the server owns path resolution.
+#[utoipa::path(get, path = "/api/sessions/{id}/messages", tag = "sessions",
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        SessionMessagesQuery,
+    ),
+    responses(
+        (status = 200, description = "Paginated session messages (block or legacy format)", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_messages_by_id(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -521,6 +552,13 @@ pub async fn get_session_messages_by_id(
 ///
 /// This endpoint bridges historical sessions with the same rich data shape used by
 /// Live Monitor, enabling a unified session detail view.
+#[utoipa::path(get, path = "/api/sessions/{id}/rich", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Rich parsed session data with tokens, cost, and sub-agents", body = serde_json::Value),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_rich(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -545,6 +583,11 @@ pub async fn get_session_rich(
 ///
 /// Returns a sorted array of unique branch names found in the database.
 /// Excludes sessions without a branch (NULL git_branch).
+#[utoipa::path(get, path = "/api/branches", tag = "sessions",
+    responses(
+        (status = 200, description = "Sorted list of unique branch names", body = Vec<String>),
+    )
+)]
 pub async fn list_branches(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<String>>> {
     // Fetch all projects with sessions
     let projects = state.db.list_projects().await?;
@@ -567,7 +610,13 @@ pub async fn list_branches(State(state): State<Arc<AppState>>) -> ApiResult<Json
 ///
 /// For live sessions, hook events are in memory (not flushed to SQLite until
 /// SessionEnd). Check the live state first, then fall back to SQLite.
-async fn get_session_hook_events(
+#[utoipa::path(get, path = "/api/sessions/{id}/hook-events", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Hook events for the session", body = serde_json::Value),
+    )
+)]
+pub async fn get_session_hook_events(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> Json<serde_json::Value> {
@@ -622,6 +671,11 @@ async fn get_session_hook_events(
 }
 
 /// GET /api/sessions/activity — Activity histogram for sparkline chart.
+#[utoipa::path(get, path = "/api/sessions/activity", tag = "sessions",
+    responses(
+        (status = 200, description = "Activity histogram with date buckets and session count", body = SessionActivityResponse),
+    )
+)]
 pub async fn session_activity(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<SessionActivityResponse>> {
@@ -643,7 +697,14 @@ fn archive_base_dir() -> std::path::PathBuf {
     claude_view_core::paths::archive_dir()
 }
 
-async fn archive_session_handler(
+#[utoipa::path(post, path = "/api/sessions/{id}/archive", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session archived successfully", body = ArchiveResponse),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn archive_session_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ArchiveResponse>> {
@@ -690,7 +751,14 @@ async fn archive_session_handler(
     Ok(Json(ArchiveResponse { archived: true }))
 }
 
-async fn unarchive_session_handler(
+#[utoipa::path(post, path = "/api/sessions/{id}/unarchive", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session unarchived successfully", body = ArchiveResponse),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn unarchive_session_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ArchiveResponse>> {
@@ -746,7 +814,13 @@ async fn unarchive_session_handler(
     Ok(Json(ArchiveResponse { archived: false }))
 }
 
-async fn bulk_archive_handler(
+#[utoipa::path(post, path = "/api/sessions/archive", tag = "sessions",
+    request_body = BulkArchiveRequest,
+    responses(
+        (status = 200, description = "Sessions archived in bulk", body = BulkArchiveResponse),
+    )
+)]
+pub async fn bulk_archive_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkArchiveRequest>,
 ) -> ApiResult<Json<BulkArchiveResponse>> {
@@ -785,7 +859,13 @@ async fn bulk_archive_handler(
     }))
 }
 
-async fn bulk_unarchive_handler(
+#[utoipa::path(post, path = "/api/sessions/unarchive", tag = "sessions",
+    request_body = BulkArchiveRequest,
+    responses(
+        (status = 200, description = "Sessions unarchived in bulk", body = BulkArchiveResponse),
+    )
+)]
+pub async fn bulk_unarchive_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<BulkArchiveRequest>,
 ) -> ApiResult<Json<BulkArchiveResponse>> {
@@ -854,14 +934,14 @@ async fn bulk_unarchive_handler(
 // ============================================================================
 
 /// Request body for cost estimation.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct EstimateRequest {
     pub session_id: String,
     pub model: Option<String>,
 }
 
 /// Cost estimation response.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct CostEstimate {
     pub session_id: String,
     pub history_tokens: u64,
@@ -879,7 +959,14 @@ pub struct CostEstimate {
 }
 
 /// POST /api/estimate — cost estimation (Rust-only, no sidecar).
-async fn estimate_cost(
+#[utoipa::path(post, path = "/api/estimate", tag = "sessions",
+    request_body = EstimateRequest,
+    responses(
+        (status = 200, description = "Cost estimate for resuming a session", body = CostEstimate),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn estimate_cost(
     State(state): State<Arc<AppState>>,
     Json(req): Json<EstimateRequest>,
 ) -> Result<Json<CostEstimate>, ApiError> {
