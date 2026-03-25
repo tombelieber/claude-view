@@ -1,0 +1,34 @@
+---
+title: "See What Your Agents Actually Cost"
+description: "v0.27.0 adds per-agent cost breakdowns, collapsible agent groups, Geist fonts, and Apple HIG typography across the entire app."
+date: 2026-03-26
+author: claude-view team
+---
+
+When you run a Claude Code session with multiple subagents, the total cost is a single number. But which agent used the most tokens? Did the research agent burn through cache reads while the code agent racked up output tokens? Until now, you couldn't tell.
+
+## Per-agent cost breakdown
+
+The cost tooltip in the session header now expands into a full breakdown. Each subagent gets its own row showing the model it used, input tokens, output tokens, cache reads, and cache creation. If your session spawned eight agents across two models, you see all eight lines with their individual costs.
+
+For sessions with many agents, the tooltip scrolls rather than overflowing off-screen. The model name sits next to each agent so you can immediately see whether a subagent ran on Opus or Sonnet.
+
+This data comes from the Rust parser, which now tracks per-agent model and token usage on `SubAgentInfo` structs. The TypeScript types are auto-generated from Rust via ts-rs, so the frontend always stays in sync with the parser's capabilities.
+
+## Collapsible agent groups
+
+Conversations with nested agents can get long. A session that spawns an exploration agent, which spawns three sub-explorers, which each produce tool results — that's a lot of vertical space.
+
+Agent groups are now collapsible. Click the group header to fold the entire subtree. The header shows a summary — agent name, model, and a content preview with JSON syntax coloring — so you can scan collapsed groups without expanding them. This makes it practical to review sessions with deep agent hierarchies without losing your scroll position.
+
+## Geist fonts and Apple HIG type scale
+
+We replaced Fira Sans and Fira Code with Geist Sans and Geist Mono. Geist was designed by Vercel specifically for developer tools — it's optimized for UI text at small sizes, with a monospace variant that has the same x-height as the proportional face.
+
+Alongside the font swap, every font size in the app was normalized to the Apple Human Interface Guidelines type scale. This means consistent sizing from sidebar labels (13px) through body text (15px) to section headings (20px). The result is a calmer, more uniform visual hierarchy that reduces the feeling of information overload when scanning long sessions.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
