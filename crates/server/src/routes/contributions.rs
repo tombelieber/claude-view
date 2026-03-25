@@ -44,7 +44,7 @@ use crate::state::AppState;
 // ============================================================================
 
 /// Query parameters for GET /api/contributions.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionsQuery {
     /// Time range: today, week, month, 90days, all, custom
@@ -65,7 +65,7 @@ fn default_range() -> String {
 }
 
 /// Query parameters for GET /api/contributions/branches/:name/sessions.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSessionsQuery {
     /// Time range: today, week, month, 90days, all, custom
@@ -86,7 +86,7 @@ pub struct BranchSessionsQuery {
 // ============================================================================
 
 /// Fluency metrics for the overview card.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FluencyMetrics {
@@ -98,7 +98,7 @@ pub struct FluencyMetrics {
 }
 
 /// Output metrics for the overview card.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OutputMetrics {
@@ -114,7 +114,7 @@ pub struct OutputMetrics {
 }
 
 /// Effectiveness metrics for the overview card.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EffectivenessMetrics {
@@ -124,7 +124,7 @@ pub struct EffectivenessMetrics {
 }
 
 /// Overview section combining all three metric cards.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OverviewMetrics {
@@ -134,7 +134,7 @@ pub struct OverviewMetrics {
 }
 
 /// Efficiency metrics section.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyMetrics {
@@ -168,7 +168,7 @@ pub struct EfficiencyMetrics {
 }
 
 /// Warning attached to response when data is incomplete.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionWarning {
@@ -177,7 +177,7 @@ pub struct ContributionWarning {
 }
 
 /// Main response for GET /api/contributions.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionsResponse {
@@ -208,7 +208,7 @@ pub struct ContributionsResponse {
 }
 
 /// Response for GET /api/contributions/sessions/:id.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContributionResponse {
@@ -246,7 +246,7 @@ pub struct SessionContributionResponse {
 }
 
 /// Response for GET /api/contributions/branches/:name/sessions.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSessionsResponse {
@@ -451,6 +451,12 @@ async fn fetch_branch_sessions_scope_meta(
 // ============================================================================
 
 /// GET /api/contributions - Main contributions page data.
+#[utoipa::path(get, path = "/api/contributions", tag = "contributions",
+    params(ContributionsQuery),
+    responses(
+        (status = 200, description = "Contribution metrics for the specified period", body = ContributionsResponse),
+    )
+)]
 pub async fn get_contributions(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ContributionsQuery>,
@@ -762,6 +768,16 @@ pub async fn get_contributions(
 }
 
 /// GET /api/contributions/sessions/:id - Session contribution detail.
+#[utoipa::path(get, path = "/api/contributions/sessions/{id}", tag = "contributions",
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        ContributionsQuery,
+    ),
+    responses(
+        (status = 200, description = "Contribution metrics for a single session", body = SessionContributionResponse),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_contribution(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -823,6 +839,15 @@ pub async fn get_session_contribution(
 }
 
 /// GET /api/contributions/branches/:name/sessions - Sessions for a branch.
+#[utoipa::path(get, path = "/api/contributions/branches/{name}/sessions", tag = "contributions",
+    params(
+        ("name" = String, Path, description = "Branch name"),
+        BranchSessionsQuery,
+    ),
+    responses(
+        (status = 200, description = "Sessions for a specific branch", body = BranchSessionsResponse),
+    )
+)]
 pub async fn get_branch_sessions(
     State(state): State<Arc<AppState>>,
     Path(branch_name): Path<String>,
