@@ -16,7 +16,7 @@ use std::sync::Arc;
 use crate::live::state::LiveSession;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslinePayload {
     pub session_id: String,
     pub model: Option<StatuslineModel>,
@@ -32,16 +32,17 @@ pub struct StatuslinePayload {
     pub agent: Option<StatuslineAgent>,
     pub worktree: Option<StatuslineWorktree>,
     #[serde(flatten)]
+    #[schema(value_type = Object)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineModel {
     pub id: Option<String>,
     pub display_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineContextWindow {
     /// The real context window limit in tokens (200_000 or 1_000_000).
     /// This is the authoritative value — no guessing needed.
@@ -59,7 +60,7 @@ pub struct StatuslineContextWindow {
     pub total_output_tokens: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineCurrentUsage {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
@@ -67,7 +68,7 @@ pub struct StatuslineCurrentUsage {
     pub cache_read_input_tokens: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineCost {
     /// Claude Code's own total cost calculation in USD.
     pub total_cost_usd: Option<f64>,
@@ -81,28 +82,28 @@ pub struct StatuslineCost {
     pub total_lines_removed: Option<u64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineWorkspace {
     pub current_dir: Option<String>,
     pub project_dir: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineOutputStyle {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineVim {
     pub mode: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineAgent {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 pub struct StatuslineWorktree {
     pub name: Option<String>,
     pub path: Option<String>,
@@ -194,7 +195,13 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/live/statusline", post(handle_statusline))
 }
 
-async fn handle_statusline(
+#[utoipa::path(post, path = "/api/live/statusline", tag = "live",
+    request_body = StatuslinePayload,
+    responses(
+        (status = 200, description = "Statusline data accepted and applied to live session", body = serde_json::Value),
+    )
+)]
+pub async fn handle_statusline(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<StatuslinePayload>,
