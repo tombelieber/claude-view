@@ -24,7 +24,7 @@ use crate::state::AppState;
 // ============================================================================
 
 /// A single turn in the session breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TurnInfo {
@@ -287,6 +287,13 @@ fn scan_turns(data: &[u8]) -> Vec<TurnInfo> {
 // ============================================================================
 
 /// GET /api/sessions/{id}/turns — Per-turn breakdown for a historical session.
+#[utoipa::path(get, path = "/api/sessions/{id}/turns", tag = "turns",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Per-turn breakdown with wall-clock and CC durations", body = Vec<crate::routes::turns::TurnInfo>),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_session_turns(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,

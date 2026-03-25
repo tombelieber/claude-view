@@ -16,6 +16,11 @@ use crate::state::AppState;
 /// 2. Pricing map keys (from LiteLLM + hardcoded defaults) — all known Claude models
 ///
 /// Models from the pricing map that the user hasn't used appear with zero usage stats.
+#[utoipa::path(get, path = "/api/models", tag = "models",
+    responses(
+        (status = 200, description = "All known models with usage stats, sorted by usage", body = Vec<claude_view_db::ModelWithStats>),
+    )
+)]
 pub async fn list_models(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<ModelWithStats>>> {

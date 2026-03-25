@@ -17,7 +17,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 /// Export format query parameter.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
 #[serde(default)]
 pub struct ExportQuery {
     /// Export format: "json" (default) or "csv"
@@ -25,7 +25,7 @@ pub struct ExportQuery {
 }
 
 /// Exported session data for JSON format (A5.2 schema).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedSession {
@@ -78,7 +78,7 @@ impl From<&SessionInfo> for ExportedSession {
 }
 
 /// JSON export response wrapper.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExportResponse {
@@ -95,6 +95,12 @@ pub struct ExportResponse {
 ///
 /// JSON format returns structured data per A5.2 spec.
 /// CSV format returns RFC 4180 compliant CSV with proper escaping.
+#[utoipa::path(get, path = "/api/export/sessions", tag = "export",
+    params(ExportQuery),
+    responses(
+        (status = 200, description = "Session export (JSON or CSV)", body = crate::routes::export::ExportResponse),
+    )
+)]
 pub async fn export_sessions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ExportQuery>,
