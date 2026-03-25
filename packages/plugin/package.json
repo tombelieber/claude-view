@@ -5,19 +5,22 @@
   "private": false,
   "type": "module",
   "files": [".claude-plugin/", ".mcp.json", "skills/", "hooks/", "dist/", "README.md"],
+  "main": "./dist/index.js",
   "scripts": {
-    "build": "node scripts/bundle-mcp.mjs",
-    "prepublishOnly": "node scripts/bundle-mcp.mjs",
-    "typecheck": "echo 'no TS in plugin'",
-    "lint": "echo 'markdown + json only'",
-    "test": "node scripts/bundle-mcp.mjs && bash scripts/validate-plugin.sh"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "bun test src/__tests__/ && bash scripts/validate-plugin.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "zod": "^3.24"
   },
   "devDependencies": {
-    "@claude-view/mcp": "workspace:*"
+    "typescript": "^5.7",
+    "@types/node": "^22"
   },
   "engines": {
     "node": ">=18"
