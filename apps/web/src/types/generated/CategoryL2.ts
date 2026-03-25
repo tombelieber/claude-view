@@ -3,14 +3,4 @@
 /**
  * Second-level category (L2).
  */
-export type CategoryL2 =
-  | 'feature'
-  | 'bugfix'
-  | 'refactor'
-  | 'testing'
-  | 'docs'
-  | 'config'
-  | 'ops'
-  | 'planning'
-  | 'explanation'
-  | 'architecture'
+export type CategoryL2 = "feature" | "bugfix" | "refactor" | "testing" | "docs" | "config" | "ops" | "planning" | "explanation" | "architecture";

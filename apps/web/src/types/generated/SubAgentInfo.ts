@@ -52,8 +52,23 @@ export type SubAgentInfo = {
    */
   toolUseCount?: number | null
   /**
+   * Model used by this sub-agent (alias or full ID, e.g., "haiku", "claude-haiku-4-5-20251001").
+   * Populated from spawn input `model` field; overridden by `toolUseResult.model` if present.
+   * None means the sub-agent inherited the parent session's model.
+   */
+  model?: string | null
+  /**
+   * Token usage breakdown from `toolUseResult.usage`.
+   * None while status is Running.
+   */
+  inputTokens?: number | null
+  outputTokens?: number | null
+  cacheReadTokens?: number | null
+  cacheCreationTokens?: number | null
+  /**
    * Cost in USD attributed to this sub-agent's execution.
-   * Computed from `toolUseResult.usage` token counts via the pricing table.
+   * Computed from `toolUseResult.usage` token counts via the pricing table,
+   * using the sub-agent's own model for pricing (falls back to parent model if unknown).
    * None while status is Running or if pricing data unavailable.
    */
   costUsd?: number | null

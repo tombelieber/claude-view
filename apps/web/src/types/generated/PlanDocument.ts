@@ -3,29 +3,28 @@
 /**
  * A plan document from ~/.claude/plans/{slug}[-variant].md.
  */
-export type PlanDocument = {
-  /**
-   * Base slug (e.g. "sparkling-bouncing-glacier")
-   */
-  slug: string
-  /**
-   * Variant suffix if any (e.g. "IMPROVEMENTS", "gaps"), None for the base plan
-   */
-  variant: string | null
-  /**
-   * Full filename (e.g. "sparkling-bouncing-glacier-IMPROVEMENTS.md")
-   */
-  filename: string
-  /**
-   * Raw markdown content
-   */
-  content: string
-  /**
-   * File size in bytes
-   */
-  sizeBytes: number
-  /**
-   * Last modified timestamp (unix seconds)
-   */
-  modifiedAt: number
-}
+export type PlanDocument = { 
+/**
+ * Base slug (e.g. "sparkling-bouncing-glacier")
+ */
+slug: string, 
+/**
+ * Variant suffix if any (e.g. "IMPROVEMENTS", "gaps"), None for the base plan
+ */
+variant: string | null, 
+/**
+ * Full filename (e.g. "sparkling-bouncing-glacier-IMPROVEMENTS.md")
+ */
+filename: string, 
+/**
+ * Raw markdown content
+ */
+content: string, 
+/**
+ * File size in bytes
+ */
+sizeBytes: number, 
+/**
+ * Last modified timestamp (unix seconds)
+ */
+modifiedAt: number, };
