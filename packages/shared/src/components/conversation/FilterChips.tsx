@@ -40,7 +40,7 @@ export function FilterChips<T extends string>({
             key={cat.id}
             onClick={() => onFilterChange(cat.id as T | 'all')}
             className={cn(
-              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border transition-colors cursor-pointer whitespace-nowrap',
+              'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap',
               isActive
                 ? cat.color
                 : 'bg-transparent text-gray-500 border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600',

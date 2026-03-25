@@ -41,7 +41,7 @@ export function McpProgressCard({ serverName, toolName, status }: McpProgressCar
   const ss = STATUS_STYLE[status] ?? FALLBACK_STATUS
 
   return (
-    <div className="flex items-center gap-3 text-[10px] font-mono" aria-label="MCP tool call">
+    <div className="flex items-center gap-3 text-xs font-mono" aria-label="MCP tool call">
       <Plug className="w-3 h-3 text-blue-500 flex-shrink-0" aria-hidden="true" />
       <span className="text-gray-700 dark:text-gray-300">{serverName}</span>
       <span className="text-gray-700 dark:text-gray-300">{toolName}</span>

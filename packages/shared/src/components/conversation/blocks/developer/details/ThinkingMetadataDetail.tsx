@@ -18,11 +18,11 @@ export function ThinkingMetadataDetail({ rawJson }: ThinkingMetadataDetailProps)
     <div className="rounded border border-indigo-200/50 dark:border-indigo-700/50 overflow-hidden">
       <div className="flex items-center gap-2 px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-200/50 dark:border-indigo-700/50">
         <Brain className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-        <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-300">
+        <span className="text-xs font-medium text-indigo-600 dark:text-indigo-300">
           Thinking Metadata
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-[10px]">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 px-2.5 py-1.5 text-xs">
         {Object.entries(obj).map(([key, val]) => (
           <div key={key} className="contents">
             <div className="text-gray-500 dark:text-gray-400">{key}</div>

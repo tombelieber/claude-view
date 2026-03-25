@@ -36,11 +36,11 @@ export function ApiErrorCard({
         aria-expanded={expanded}
       >
         <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-red-600 dark:text-red-400 truncate flex-1">
+        <span className="text-xs font-mono text-red-600 dark:text-red-400 truncate flex-1">
           {summaryText}
         </span>
         {retriesExhausted && (
-          <span className="text-[9px] font-mono text-red-600 dark:text-red-400 bg-red-500/10 dark:bg-red-500/20 px-1 py-0.5 rounded flex-shrink-0">
+          <span className="text-xs font-mono text-red-600 dark:text-red-400 bg-red-500/10 dark:bg-red-500/20 px-1 py-0.5 rounded flex-shrink-0">
             Retries exhausted
           </span>
         )}
@@ -54,20 +54,20 @@ export function ApiErrorCard({
       {expanded && (
         <div className="ml-4 mt-0.5 space-y-0.5">
           {errorCode !== null && (
-            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+            <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
               Code: {String(errorCode)}
             </div>
           )}
           {errorMessage !== null && (
-            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+            <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
               Message: {String(errorMessage)}
             </div>
           )}
-          <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
             Retry: {retryAttempt}/{maxRetries}
           </div>
           {retryInMs !== undefined && (
-            <div className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+            <div className="text-xs font-mono text-gray-500 dark:text-gray-400">
               Backoff: {retryInMs}ms
             </div>
           )}

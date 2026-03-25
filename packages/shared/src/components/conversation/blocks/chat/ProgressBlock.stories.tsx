@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { progressBlocks } from '../../../../stories/fixtures'
+import { agentGroupBlocks, progressBlocks } from '../../../../stories/fixtures'
 import { ChatProgressBlock } from './ProgressBlock'
 
 const meta = {
@@ -13,6 +13,10 @@ type Story = StoryObj<typeof meta>
 
 export const Bash: Story = { args: { block: progressBlocks.bash } }
 export const Agent: Story = { args: { block: progressBlocks.agent } }
+/** Agent with tool_use message — shows "Agent -> Glob, Grep" instead of "Agent running..." */
+export const AgentWithToolUse: Story = { args: { block: agentGroupBlocks[1] } }
+/** Agent with tool_result message — shows "Agent <- 1 result" */
+export const AgentWithResult: Story = { args: { block: agentGroupBlocks[2] } }
 export const Hook: Story = { args: { block: progressBlocks.hook } }
 export const Mcp: Story = { args: { block: progressBlocks.mcp } }
 export const TaskQueue: Story = { args: { block: progressBlocks.taskQueue } }

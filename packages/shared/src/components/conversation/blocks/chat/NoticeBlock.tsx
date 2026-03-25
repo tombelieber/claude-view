@@ -73,7 +73,7 @@ function RateLimitNotice({
           : ''}
       </span>
       {hasRetry && (
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 ml-auto tabular-nums">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 ml-auto tabular-nums">
           retry {retryAttempt ?? '?'}/{maxRetries ?? '?'} in {(retryInMs / 1000).toFixed(0)}s
         </span>
       )}
@@ -85,7 +85,7 @@ function ContextCompactedNotice({ data }: { data: ContextCompacted }) {
   return (
     <div className="flex items-center gap-3 py-1">
       <div className="flex-1 h-px bg-gray-300/50 dark:bg-gray-600/50" />
-      <span className="inline-flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-gray-500">
+      <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
         <Info className="w-3 h-3 flex-shrink-0" />
         Context compacted{data.trigger === 'manual' ? ' (manual)' : ''}
       </span>
@@ -178,7 +178,7 @@ function SessionResumedNotice() {
   return (
     <div className="flex items-center gap-3 py-1">
       <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600 border-dashed" />
-      <span className="text-[10px] text-gray-400 dark:text-gray-500">Resumed session</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500">Resumed session</span>
       <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600 border-dashed" />
     </div>
   )

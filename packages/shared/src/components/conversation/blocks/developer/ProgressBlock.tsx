@@ -144,14 +144,14 @@ export function DevProgressBlock({ block }: ProgressBlockProps) {
   const meta = (
     <div className="flex items-center gap-2 flex-shrink-0">
       {block.parentToolUseId && (
-        <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-500/20 px-1.5 py-0.5 rounded">
+        <span className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-500/10 dark:bg-blue-500/20 px-1.5 py-0.5 rounded">
           {block.parentToolUseId.slice(0, 12)}
         </span>
       )}
       {elapsed != null && (
         <span
           className={cn(
-            'text-[9px] font-mono tabular-nums px-1.5 py-0.5 rounded',
+            'text-xs font-mono tabular-nums px-1.5 py-0.5 rounded',
             elapsed > 30
               ? 'text-red-600 dark:text-red-400 bg-red-500/10'
               : elapsed > 5

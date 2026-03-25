@@ -51,6 +51,65 @@ const FALLBACK_STYLE = {
   dotColor: 'bg-gray-400',
 }
 
+/** Extract a human-readable activity label from an agent_progress message payload. */
+function extractAgentActivity(message: unknown): { label: string; detail?: string } | null {
+  if (!message || typeof message !== 'object') return null
+  const msg = message as Record<string, unknown>
+  const inner = msg.message as Record<string, unknown> | undefined
+  if (!inner) return null
+
+  const content = inner.content
+  if (!Array.isArray(content)) return null
+
+  // Assistant messages → tool_use calls (agent is calling a tool)
+  if (msg.type === 'assistant') {
+    const toolNames: string[] = []
+    for (const c of content) {
+      if (c && typeof c === 'object' && (c as Record<string, unknown>).type === 'tool_use') {
+        const name = (c as Record<string, unknown>).name
+        if (typeof name === 'string') toolNames.push(name)
+      }
+    }
+    if (toolNames.length > 0) {
+      return {
+        label: `Agent → ${toolNames.join(', ')}`,
+      }
+    }
+  }
+
+  // User messages with tool_result → agent received results
+  if (msg.type === 'user') {
+    const resultIds: string[] = []
+    let hasText = false
+    for (const c of content) {
+      if (!c || typeof c !== 'object') continue
+      const ct = (c as Record<string, unknown>).type
+      if (ct === 'tool_result') resultIds.push('result')
+      if (ct === 'text') hasText = true
+    }
+    if (resultIds.length > 0) {
+      return {
+        label: `Agent ← ${resultIds.length} result${resultIds.length > 1 ? 's' : ''}`,
+      }
+    }
+    // First user message with text = the agent's prompt
+    if (hasText) {
+      const textBlock = content.find(
+        (c: unknown) =>
+          c && typeof c === 'object' && (c as Record<string, unknown>).type === 'text',
+      ) as Record<string, unknown> | undefined
+      const text = typeof textBlock?.text === 'string' ? textBlock.text : ''
+      if (text) {
+        return {
+          label: `Agent: ${text.slice(0, 80)}${text.length > 80 ? '…' : ''}`,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 /** Type-safe extraction via discriminated union — every schema field accessible. */
 function extractInfo(block: ProgressBlockType): {
   label: string
@@ -68,10 +127,18 @@ function extractInfo(block: ProgressBlockType): {
         detail: lastLine || undefined,
       }
     }
-    case 'agent':
+    case 'agent': {
+      const activity = extractAgentActivity(data.message)
+      if (activity) {
+        return {
+          label: activity.label,
+          detail: activity.detail,
+        }
+      }
       return {
         label: data.prompt ? `Agent: ${data.prompt}` : 'Agent running\u2026',
       }
+    }
     case 'hook':
       return {
         label: data.statusMessage || data.hookName || 'Hook running\u2026',
@@ -128,7 +195,7 @@ export function ChatProgressBlock({ block }: ProgressBlockProps) {
       {detail && (
         <span
           className={cn(
-            'font-mono text-[10px] truncate flex-shrink-0 ml-auto',
+            'font-mono text-xs truncate flex-shrink-0 ml-auto',
             isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-600',
           )}
         >

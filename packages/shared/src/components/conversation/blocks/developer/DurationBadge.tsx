@@ -25,9 +25,7 @@ export function DurationBadge({ ms, className }: DurationBadgeProps) {
         : 'text-gray-500 dark:text-gray-400 bg-gray-500/10 dark:bg-gray-500/20'
 
   return (
-    <span
-      className={cn('text-[10px] font-mono tabular-nums px-1.5 py-0.5 rounded', color, className)}
-    >
+    <span className={cn('text-xs font-mono tabular-nums px-1.5 py-0.5 rounded', color, className)}>
       {text}
     </span>
   )

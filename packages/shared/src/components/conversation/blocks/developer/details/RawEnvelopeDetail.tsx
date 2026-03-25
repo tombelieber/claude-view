@@ -21,13 +21,13 @@ export function RawEnvelopeDetail({ rawJson, renderedKeys = [] }: RawEnvelopeDet
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+        className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
       >
         <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         <span>Raw envelope ({count} fields)</span>
       </button>
       {expanded && (
-        <pre className="mt-1 font-mono text-[10px] text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto rounded border border-gray-200/50 dark:border-gray-700/50 p-2 bg-gray-50 dark:bg-gray-800/40">
+        <pre className="mt-1 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto rounded border border-gray-200/50 dark:border-gray-700/50 p-2 bg-gray-50 dark:bg-gray-800/40">
           {JSON.stringify(filtered, null, 2)}
         </pre>
       )}

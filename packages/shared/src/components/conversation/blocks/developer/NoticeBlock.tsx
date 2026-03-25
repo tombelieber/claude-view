@@ -19,7 +19,7 @@ interface NoticeBlockProps {
 function AssistantErrorDetail({ data }: { data: AssistantError }) {
   return (
     <EventCard dot="red" chip="Error" label={data.error} error rawData={data}>
-      <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+      <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
         messageId: {data.messageId}
       </span>
     </EventCard>
@@ -40,7 +40,7 @@ function RateLimitDetail({ data }: { data: RateLimit }) {
       error={isRejected}
       rawData={data}
     >
-      <div className="text-[10px] space-y-0.5 text-gray-500 dark:text-gray-400">
+      <div className="text-xs space-y-0.5 text-gray-500 dark:text-gray-400">
         {data.rateLimitType && <div>Type: {data.rateLimitType}</div>}
         {data.utilization != null && <div>Utilization: {(data.utilization * 100).toFixed(0)}%</div>}
         {data.resetsAt && data.resetsAt > 0 && (
@@ -75,7 +75,7 @@ function AuthStatusDetail({ data }: { data: AuthStatus }) {
       rawData={data}
     >
       {data.output.length > 0 && (
-        <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
+        <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap">
           {data.output.join('\n')}
         </pre>
       )}
@@ -124,7 +124,7 @@ function SessionResumedDetail() {
     <EventCard dot="gray" chip="Session" label="Resumed">
       <div className="flex items-center gap-3 py-0.5">
         <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600" />
-        <span className="text-[10px] text-gray-500 dark:text-gray-400">Resumed session</span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">Resumed session</span>
         <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600" />
       </div>
     </EventCard>
