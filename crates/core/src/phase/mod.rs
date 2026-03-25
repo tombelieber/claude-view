@@ -121,7 +121,7 @@ pub struct PhaseLabel {
     pub phase: SessionPhase,
     pub confidence: f64,
     pub secondary: Option<SessionPhase>,
-    pub step_index: u32,
+    pub window_size: u32,
 }
 
 /// Full phase history for a session.
@@ -198,10 +198,12 @@ pub struct StepSignals {
 
 /// Tunable classifier parameters.
 pub struct PhaseClassifierConfig {
+    /// Exponential decay factor per step age (0.85 = 20% weight at age 10).
     pub decay_factor: f64,
+    /// Minimum confidence to emit a phase (below this → Unknown).
     pub min_confidence: f64,
+    /// Number of steps in the sliding window.
     pub window_size: usize,
-    pub stability_threshold: usize,
 }
 
 impl Default for PhaseClassifierConfig {
@@ -210,7 +212,6 @@ impl Default for PhaseClassifierConfig {
             decay_factor: 0.85,
             min_confidence: 0.25,
             window_size: 10,
-            stability_threshold: 3,
         }
     }
 }
@@ -223,7 +224,7 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
             phase: SessionPhase::Unknown,
             confidence: 0.0,
             secondary: None,
-            step_index: 0,
+            window_size: 0,
         };
     }
 
@@ -310,10 +311,14 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
             let cfg_pct = step.config_files_edited as f64 / edit_w.max(1) as f64;
             let tst_pct = step.test_files_edited as f64 / edit_w.max(1) as f64;
 
+            let doc_pct = step.doc_files_edited as f64 / edit_w.max(1) as f64;
+
             if cfg_pct > 0.7 {
                 scores[SessionPhase::Configuring.index()] += w * 1.5;
             } else if tst_pct > 0.5 {
                 scores[SessionPhase::Testing.index()] += w * 1.5;
+            } else if doc_pct > 0.5 {
+                scores[SessionPhase::Configuring.index()] += w * 0.5;
             } else {
                 scores[SessionPhase::Implementing.index()] += w * 1.2;
             }
@@ -392,6 +397,9 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
         if step.has_impl_skill {
             scores[SessionPhase::Implementing.index()] += skill_bonus * 0.8;
         }
+        if step.has_explore_skill {
+            scores[SessionPhase::Exploring.index()] += skill_bonus * 0.5;
+        }
     }
 
     // Context adjustment: explore agents inside impl sessions → impl
@@ -418,18 +426,19 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
     sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     let (winner_idx, winner_score) = sorted[0];
-    let (runner_idx, runner_score) = if sorted.len() > 1 {
-        sorted[1]
+    let runner: Option<(usize, f64)> = if sorted.len() > 1 {
+        Some(sorted[1])
     } else {
-        (8, 0.0)
+        None
     };
+    let runner_score = runner.map_or(0.0, |(_, s)| s);
 
     if winner_score == 0.0 {
         return PhaseLabel {
             phase: SessionPhase::Unknown,
             confidence: 0.0,
             secondary: None,
-            step_index: n as u32,
+            window_size: n as u32,
         };
     }
 
@@ -441,11 +450,9 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
     let confidence = (base_conf * density * agreement).min(1.0);
 
     // Secondary phase if runner > 60% of winner
-    let secondary = if runner_score > 0.6 * winner_score {
-        SessionPhase::ALL.get(runner_idx).copied()
-    } else {
-        None
-    };
+    let secondary = runner
+        .filter(|(_, s)| *s > 0.6 * winner_score)
+        .and_then(|(idx, _)| SessionPhase::ALL.get(idx).copied());
 
     let phase = if confidence < config.min_confidence {
         SessionPhase::Unknown
@@ -457,7 +464,7 @@ pub fn classify_window(steps: &[StepSignals], config: &PhaseClassifierConfig) ->
         phase,
         confidence,
         secondary,
-        step_index: n as u32,
+        window_size: n as u32,
     }
 }
 
