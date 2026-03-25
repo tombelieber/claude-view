@@ -5,10 +5,67 @@
 @import './styles/dockview-theme.css';
 @plugin "@tailwindcss/typography";
 
+/* ─── Self-hosted Geist variable fonts ─── */
+
+/* Geist Sans — UI text (variable weight 100–900) */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-sans-variable.woff2') format('woff2');
+}
+
+/* Geist Mono — code, metrics, tabular data (variable weight 100–900) */
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono-variable.woff2') format('woff2');
+}
+
+/* Metric-matched fallback fonts — prevents CLS during font swap */
+@font-face {
+  font-family: 'Geist Fallback';
+  src: local('Arial');
+  size-adjust: 100%;
+  ascent-override: 95%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Geist Mono Fallback';
+  src: local('Courier New');
+  size-adjust: 105%;
+  ascent-override: 85%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
 /* Dark mode: class-based (not media query) */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  /* ─── Apple HIG Type Scale ─── */
+  /* Redefine Tailwind's text-* to create clear visual hierarchy */
+  /* Scale: 11 → 13 → 14 → 15 → 17 → 20 → 24 → 32 */
+  --text-xs: 0.8125rem;           /* 13px — caption */
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.875rem;            /* 14px — callout */
+  --text-sm--line-height: 1.45;
+  --text-base: 0.9375rem;         /* 15px — body */
+  --text-base--line-height: 1.5;
+  --text-lg: 1.0625rem;           /* 17px — title-3 */
+  --text-lg--line-height: 1.3;
+  --text-xl: 1.25rem;             /* 20px — title-2 */
+  --text-xl--line-height: 1.25;
+  --text-2xl: 1.5rem;             /* 24px — title-1 */
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 2rem;               /* 32px — display */
+  --text-3xl--line-height: 1.1;
+
+  /* ─── Apple Color System ─── */
   --color-apple-bg: #F5F5F7;
   --color-apple-surface: #FFFFFF;
   --color-apple-text1: #1D1D1F;
@@ -25,13 +82,80 @@
 
 /* Design System Fonts */
 :root {
-  --font-mono: "Fira Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --font-sans: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: "Geist", "Geist Fallback", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 body {
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Apple HIG-inspired type scale utilities ─── */
+/* Tighter letter-spacing at large sizes, open at small sizes */
+
+.type-display {
+  font-size: 2rem;      /* 32px */
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+.type-title-1 {
+  font-size: 1.5rem;    /* 24px */
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.type-title-2 {
+  font-size: 1.25rem;   /* 20px */
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+.type-title-3 {
+  font-size: 1.0625rem; /* 17px */
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.type-body {
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.5;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.type-body-em {
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.5;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.type-callout {
+  font-size: 0.875rem;  /* 14px */
+  line-height: 1.45;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.type-caption-1 {
+  font-size: 0.8125rem; /* 13px */
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  font-weight: 400;
+}
+
+.type-caption-2 {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  font-weight: 500;
 }
 
 /* ── Custom Scrollbars ── */
