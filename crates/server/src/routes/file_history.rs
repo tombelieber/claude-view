@@ -14,7 +14,7 @@ use serde::Deserialize;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct DiffQuery {
     pub from: u32,
     pub to: u32,
@@ -24,6 +24,13 @@ pub struct DiffQuery {
 }
 
 /// GET /api/sessions/:id/file-history — List all file changes for a session.
+#[utoipa::path(get, path = "/api/sessions/{id}/file-history", tag = "sessions",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "File change history for the session", body = claude_view_core::file_history::FileHistoryResponse),
+        (status = 404, description = "Session not found"),
+    )
+)]
 pub async fn get_file_history(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -52,6 +59,18 @@ pub async fn get_file_history(
 }
 
 /// GET /api/sessions/:id/file-history/:file_hash/diff?from=N&to=M
+#[utoipa::path(get, path = "/api/sessions/{id}/file-history/{file_hash}/diff", tag = "sessions",
+    params(
+        ("id" = String, Path, description = "Session ID"),
+        ("file_hash" = String, Path, description = "File hash identifier"),
+        DiffQuery,
+    ),
+    responses(
+        (status = 200, description = "Diff between two file versions", body = claude_view_core::file_history::FileDiffResponse),
+        (status = 404, description = "Session not found"),
+        (status = 400, description = "Invalid file hash or version numbers"),
+    )
+)]
 pub async fn get_file_diff(
     State(state): State<Arc<AppState>>,
     Path((session_id, file_hash)): Path<(String, String)>,
