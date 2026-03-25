@@ -122,7 +122,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
               <th
                 key={col.key}
                 className={cn(
-                  'px-2 py-2 text-left text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500',
+                  'px-2 py-2 text-left text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500',
                   col.width === 'flex-1' ? '' : col.width,
                   col.sortable &&
                     'cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-300 transition-colors',
@@ -248,7 +248,7 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                   {contextPercent != null ? (
                     <ContextBar percent={contextPercent} />
                   ) : (
-                    <span className="text-[10px] text-zinc-400 dark:text-zinc-500">&mdash;</span>
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500">&mdash;</span>
                   )}
                 </td>
 

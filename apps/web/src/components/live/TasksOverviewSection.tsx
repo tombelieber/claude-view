@@ -15,10 +15,10 @@ export function TasksOverviewSection({ items }: TasksOverviewSectionProps) {
       {/* Header */}
       <div className="flex items-center gap-1.5 mb-2">
         <ListChecks className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
-        <span className="text-[10px] font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
           Tasks
         </span>
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 tabular-nums ml-auto">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums ml-auto">
           {completed}/{total}
         </span>
       </div>
@@ -50,7 +50,7 @@ export function TasksOverviewSection({ items }: TasksOverviewSectionProps) {
                   {item.title}
                 </span>
                 {item.status === 'in_progress' && item.activeForm && (
-                  <div className="flex items-center gap-1.5 mt-0.5 text-blue-600 dark:text-blue-400 text-[11px]">
+                  <div className="flex items-center gap-1.5 mt-0.5 text-blue-600 dark:text-blue-400 text-xs">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse flex-shrink-0" />
                     {item.activeForm}
                   </div>

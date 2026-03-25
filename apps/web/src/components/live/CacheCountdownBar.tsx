@@ -89,7 +89,7 @@ export function CacheCountdownBar({ lastCacheHitAt, cacheStatus }: CacheCountdow
       {/* Hint */}
       <p
         className={cn(
-          'text-[11px] leading-relaxed',
+          'text-xs leading-relaxed',
           isExpired ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400',
         )}
       >

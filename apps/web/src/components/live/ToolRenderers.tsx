@@ -78,7 +78,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
         className,
       )}
     >
@@ -97,11 +97,9 @@ export function FilePathHeader({ path }: { path: string }) {
   return (
     <div className="flex items-center gap-1.5 mb-1">
       <FileText className="w-3 h-3 text-gray-400 dark:text-gray-600 flex-shrink-0" />
-      <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300 truncate">
-        {path}
-      </span>
+      <span className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">{path}</span>
       {ext && (
-        <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500 flex-shrink-0">
+        <span className="text-xs font-mono px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-500 flex-shrink-0">
           .{ext}
         </span>
       )}
@@ -115,7 +113,7 @@ export function FilePathHeader({ path }: { path: string }) {
 
 export function InlineMarkdown({ text }: { text: string }) {
   return (
-    <div className="text-[11px] text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_p]:leading-snug [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+    <div className="text-xs text-gray-700 dark:text-gray-300 prose prose-sm dark:prose-invert max-w-none [&_p]:m-0 [&_p]:leading-snug [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
       <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
         {text}
       </Markdown>
@@ -141,7 +139,7 @@ function EditRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProps) {
       {filePath && <FilePathHeader path={filePath} />}
       <div className="flex items-center gap-1 flex-wrap">
         {replaceAll && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
             replace_all
           </span>
         )}
@@ -212,7 +210,7 @@ function GrepRenderer({ inputData }: ToolRendererProps) {
       {pattern && (
         <div className="flex items-center gap-1.5">
           <Search className="w-3 h-3 text-amber-500 dark:text-amber-400 flex-shrink-0" />
-          <span className="text-[11px] font-mono bg-amber-500/10 dark:bg-amber-500/20 rounded px-1.5 py-0.5 text-amber-800 dark:text-amber-200">
+          <span className="text-xs font-mono bg-amber-500/10 dark:bg-amber-500/20 rounded px-1.5 py-0.5 text-amber-800 dark:text-amber-200">
             {pattern}
           </span>
         </div>
@@ -223,17 +221,17 @@ function GrepRenderer({ inputData }: ToolRendererProps) {
         {type && <Chip label="type" value={type} />}
         {outputMode && <Chip label="mode" value={outputMode} />}
         {contextA != null && (
-          <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
             -A {contextA}
           </span>
         )}
         {contextB != null && (
-          <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
             -B {contextB}
           </span>
         )}
         {contextC != null && (
-          <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
             -C {contextC}
           </span>
         )}
@@ -249,9 +247,9 @@ function GlobRenderer({ inputData }: ToolRendererProps) {
   return (
     <div className="space-y-1">
       {pattern && (
-        <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300">{pattern}</span>
+        <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{pattern}</span>
       )}
-      {path && <div className="text-[10px] font-mono text-gray-500 dark:text-gray-500">{path}</div>}
+      {path && <div className="text-xs font-mono text-gray-500 dark:text-gray-500">{path}</div>}
     </div>
   )
 }
@@ -270,7 +268,7 @@ function BashRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProps) {
       {description && (
         <div className="flex items-center gap-1.5">
           <Terminal className="w-3 h-3 text-gray-400 dark:text-gray-600 flex-shrink-0" />
-          <span className="text-[10px] text-gray-500 dark:text-gray-400">{description}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{description}</span>
         </div>
       )}
       {command && (
@@ -305,19 +303,17 @@ function TaskRenderer({ inputData }: ToolRendererProps) {
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap">
         {subagentType && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
             {subagentType}
           </span>
         )}
         {name && (
-          <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-200">{name}</span>
+          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{name}</span>
         )}
         {model && <Chip label="model" value={model} />}
         {mode && <Chip label="mode" value={mode} />}
       </div>
-      {description && (
-        <div className="text-[10px] text-gray-500 dark:text-gray-400">{description}</div>
-      )}
+      {description && <div className="text-xs text-gray-500 dark:text-gray-400">{description}</div>}
       {prompt && <InlineMarkdown text={prompt} />}
     </div>
   )
@@ -330,7 +326,7 @@ function SkillRenderer({ inputData }: ToolRendererProps) {
   return (
     <div className="space-y-1">
       {skill && (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300">
           {skill}
         </span>
       )}
@@ -348,7 +344,7 @@ function SendMessageRenderer({ inputData }: ToolRendererProps) {
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap">
         {recipient && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
             {recipient}
           </span>
         )}
@@ -367,10 +363,10 @@ function TaskCreateRenderer({ inputData }: ToolRendererProps) {
   return (
     <div className="space-y-1">
       {subject && (
-        <div className="text-[11px] font-semibold text-gray-800 dark:text-gray-200">{subject}</div>
+        <div className="text-xs font-semibold text-gray-800 dark:text-gray-200">{subject}</div>
       )}
       {activeForm && (
-        <div className="text-[10px] italic text-gray-500 dark:text-gray-400">{activeForm}</div>
+        <div className="text-xs italic text-gray-500 dark:text-gray-400">{activeForm}</div>
       )}
       {description && <InlineMarkdown text={description} />}
     </div>
@@ -396,14 +392,14 @@ function TaskUpdateRenderer({ inputData }: ToolRendererProps) {
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 flex-wrap">
         {taskId && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
             #{taskId}
           </span>
         )}
         {status && (
           <span
             className={cn(
-              'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono',
+              'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono',
               STATUS_COLORS[status] || STATUS_COLORS.pending,
             )}
           >
@@ -436,7 +432,7 @@ function WebFetchRenderer({ inputData }: ToolRendererProps) {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer transition-colors duration-200 truncate"
+            className="text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer transition-colors duration-200 truncate"
           >
             {url}
           </a>
@@ -457,7 +453,7 @@ function WebSearchRenderer({ inputData }: ToolRendererProps) {
       {query && (
         <div className="flex items-center gap-1.5 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
           <Search className="w-3 h-3 text-gray-400 dark:text-gray-500 flex-shrink-0" />
-          <span className="text-[11px] text-gray-800 dark:text-gray-200">{query}</span>
+          <span className="text-xs text-gray-800 dark:text-gray-200">{query}</span>
         </div>
       )}
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -501,12 +497,12 @@ function NotebookEditRenderer({ inputData, blockIdPrefix: p = '' }: ToolRenderer
       {notebookPath && <FilePathHeader path={notebookPath} />}
       <div className="flex items-center gap-1.5 flex-wrap">
         {cellNumber != null && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
             cell #{cellNumber}
           </span>
         )}
         {cellId && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
             {cellId}
           </span>
         )}
@@ -542,12 +538,12 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
           return (
             <div key={key} className="flex items-center gap-1.5">
               <Link className="w-3 h-3 text-blue-500 dark:text-blue-400 flex-shrink-0" />
-              <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{key}:</span>
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-600">{key}:</span>
               <a
                 href={value}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer truncate"
+                className="text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer truncate"
               >
                 {value}
               </a>
@@ -568,8 +564,8 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
         if (['uid', 'selector', 'xpath', 'css'].includes(key) && typeof value === 'string') {
           return (
             <div key={key} className="flex items-center gap-1.5">
-              <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{key}:</span>
-              <span className="text-[11px] font-mono bg-amber-500/10 dark:bg-amber-500/20 rounded px-1.5 py-0.5 text-amber-800 dark:text-amber-200">
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-600">{key}:</span>
+              <span className="text-xs font-mono bg-amber-500/10 dark:bg-amber-500/20 rounded px-1.5 py-0.5 text-amber-800 dark:text-amber-200">
                 {strVal}
               </span>
             </div>
@@ -580,7 +576,7 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
         if (typeof value === 'string' && (value.match(/\n/g) || []).length > 1) {
           return (
             <div key={key} className="space-y-0.5">
-              <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{key}:</span>
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-600">{key}:</span>
               <CompactCodeBlock code={value} language="text" blockId={`${p}mcp-${key}`} />
             </div>
           )
@@ -611,7 +607,7 @@ function SmartMcpRenderer({ inputData, blockIdPrefix: p = '' }: ToolRendererProp
         if (typeof value === 'object') {
           return (
             <div key={key} className="space-y-0.5">
-              <span className="text-[9px] font-mono text-gray-400 dark:text-gray-600">{key}:</span>
+              <span className="text-xs font-mono text-gray-400 dark:text-gray-600">{key}:</span>
               <CompactCodeBlock
                 code={JSON.stringify(value, null, 2)}
                 language="json"

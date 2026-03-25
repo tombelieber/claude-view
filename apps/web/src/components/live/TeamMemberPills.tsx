@@ -39,7 +39,7 @@ function MemberPill({ member }: { member: TeamMember }) {
         <span className={PILL_CLASS}>
           <span className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
           <span className="truncate max-w-24">{member.name}</span>
-          <span className="text-[9px] opacity-60">{member.agentType}</span>
+          <span className="text-xs opacity-60">{member.agentType}</span>
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
@@ -47,10 +47,10 @@ function MemberPill({ member }: { member: TeamMember }) {
           <div className="space-y-1">
             <p className="font-medium text-gray-900 dark:text-gray-100">{member.name}</p>
             <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <span className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px]">
+              <span className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs">
                 {member.model}
               </span>
-              <span className="text-[10px]">{member.agentType}</span>
+              <span className="text-xs">{member.agentType}</span>
             </div>
             {member.prompt && (
               <p className="text-gray-400 dark:text-gray-500 line-clamp-3 mt-1">{member.prompt}</p>
@@ -76,7 +76,7 @@ function OverflowPill({ members }: { members: TeamMember[] }) {
               <div key={m.agentId} className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
                 <span className="font-medium text-gray-900 dark:text-gray-100">{m.name}</span>
-                <span className="text-gray-400 text-[10px]">{m.model}</span>
+                <span className="text-gray-400 text-xs">{m.model}</span>
               </div>
             ))}
           </div>

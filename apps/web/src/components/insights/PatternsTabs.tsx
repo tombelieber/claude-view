@@ -35,7 +35,7 @@ export function PatternsTabs({ activeTab, onTabChange, disabledTabs = [] }: Patt
           >
             {tab.label}
             {isDisabled && (
-              <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500">Soon</span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">Soon</span>
             )}
           </button>
         )

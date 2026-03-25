@@ -83,7 +83,7 @@ function Dropdown({
 
       {/* Styled tooltip for disabled state */}
       {disabled && disabledTitle && (
-        <div className="absolute left-0 top-full mt-1.5 w-52 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-lg shadow-lg z-50 pointer-events-none opacity-0 group-hover/dropdown:opacity-100 transition-opacity duration-150">
+        <div className="absolute left-0 top-full mt-1.5 w-52 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-lg shadow-lg z-50 pointer-events-none opacity-0 group-hover/dropdown:opacity-100 transition-opacity duration-150">
           {disabledTitle}
         </div>
       )}
@@ -251,7 +251,7 @@ export function SessionToolbar({
             type="button"
             onClick={onClearFilters}
             className={cn(
-              'inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium rounded-md',
+              'inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium rounded-md',
               'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
               'hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',

@@ -125,7 +125,7 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
           <div className="flex">
             {/* Presets sidebar */}
             <div className="flex flex-col gap-1 p-3 border-r border-gray-100 dark:border-gray-700 min-w-[140px]">
-              <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-1">
+              <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-1">
                 Quick select
               </span>
               {PRESETS.map((preset) => (

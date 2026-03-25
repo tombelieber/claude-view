@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import type { TrendsGranularity, TrendsMetric } from '../../hooks/use-trends-data'
 import { GRANULARITY_OPTIONS, METRIC_OPTIONS } from '../../hooks/use-trends-data'
+import { chartFontSize } from '@claude-view/design-tokens'
 import { cn } from '../../lib/utils'
 import type { MetricDataPoint } from '../../types/generated/MetricDataPoint'
 
@@ -194,13 +195,13 @@ export function TrendsChart({
             dataKey="date"
             tickFormatter={formatDateLabel}
             stroke="#9CA3AF"
-            fontSize={12}
+            fontSize={chartFontSize.axisTick}
             tickLine={false}
           />
           <YAxis
             tickFormatter={(v) => formatValue(v, metric)}
             stroke="#9CA3AF"
-            fontSize={12}
+            fontSize={chartFontSize.axisTick}
             tickLine={false}
             width={55}
           />
@@ -219,7 +220,7 @@ export function TrendsChart({
               border: 'none',
               borderRadius: '8px',
               color: '#F9FAFB',
-              fontSize: '13px',
+              fontSize: chartFontSize.tooltip,
             }}
             itemStyle={{ color: '#F9FAFB' }}
             labelStyle={{ color: '#9CA3AF', marginBottom: '4px' }}
@@ -232,7 +233,7 @@ export function TrendsChart({
               value: `Avg: ${formatValue(average, metric)}`,
               position: 'right',
               fill: '#9CA3AF',
-              fontSize: 11,
+              fontSize: chartFontSize.annotation,
             }}
           />
           <Line

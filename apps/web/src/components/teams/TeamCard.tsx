@@ -37,7 +37,7 @@ export function TeamCard({ team, onClick }: TeamCardProps) {
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
           {team.name}
         </h3>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap ml-2">
+        <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap ml-2">
           {formatDate(team.createdAt)}
         </span>
       </div>
@@ -49,12 +49,10 @@ export function TeamCard({ team, onClick }: TeamCardProps) {
       <div className="flex items-center gap-1.5 mb-2">
         <Crown className="w-3 h-3 text-yellow-500" />
         <Users className="w-3 h-3 text-gray-400" />
-        <span className="text-[11px] text-gray-500 dark:text-gray-400">
-          {team.memberCount} members
-        </span>
+        <span className="text-xs text-gray-500 dark:text-gray-400">{team.memberCount} members</span>
       </div>
 
-      <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
         <span className="flex items-center gap-1">
           <MessageSquare className="w-3 h-3" />
           {team.messageCount} msgs
@@ -63,7 +61,7 @@ export function TeamCard({ team, onClick }: TeamCardProps) {
           <Clock className="w-3 h-3" />
           {formatDuration(team.durationEstimateSecs)}
         </span>
-        <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
+        <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">
           {team.models.join(' + ')}
         </span>
       </div>

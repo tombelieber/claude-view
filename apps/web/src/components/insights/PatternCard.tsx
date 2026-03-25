@@ -26,7 +26,7 @@ function ImpactBar({ score }: { score: number }) {
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums w-8 text-right">
+      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums w-8 text-right">
         {percentage}%
       </span>
     </div>
@@ -49,7 +49,7 @@ function ComparisonBar({ value, comparison }: { value: number; comparison: numbe
         <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${valuePct}%` }} />
         </div>
-        <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums w-10 text-right">
+        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums w-10 text-right">
           {value.toFixed(2)}
         </span>
       </div>
@@ -60,7 +60,7 @@ function ComparisonBar({ value, comparison }: { value: number; comparison: numbe
             style={{ width: `${comparisonPct}%` }}
           />
         </div>
-        <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums w-10 text-right">
+        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums w-10 text-right">
           {comparison.toFixed(2)}
         </span>
       </div>
@@ -80,7 +80,7 @@ function ConfidenceBadge({ sampleSize }: { sampleSize: number }) {
         ? 'text-amber-600 dark:text-amber-400'
         : 'text-gray-400 dark:text-gray-500'
 
-  return <span className={cn('text-[10px] font-medium capitalize', color)}>{level} confidence</span>
+  return <span className={cn('text-xs font-medium capitalize', color)}>{level} confidence</span>
 }
 
 export function PatternCard({ pattern }: PatternCardProps) {
@@ -92,7 +92,7 @@ export function PatternCard({ pattern }: PatternCardProps) {
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 transition-colors duration-150 hover:border-gray-300 dark:hover:border-gray-600">
       {/* Header row: category + impact */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+        <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
           {pattern.category}
         </span>
         <div className="w-24">
@@ -127,7 +127,7 @@ export function PatternCard({ pattern }: PatternCardProps) {
 
       {/* Footer: sample size + confidence */}
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="text-xs text-gray-400 dark:text-gray-500">
           Based on {pattern.evidence.sampleSize} sessions
         </span>
         <ConfidenceBadge sampleSize={pattern.evidence.sampleSize} />

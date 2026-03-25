@@ -21,7 +21,7 @@ export function DisplayModeToggle({ className }: DisplayModeToggleProps) {
         type="button"
         onClick={() => setDisplayMode('chat')}
         className={cn(
-          'px-2 py-0.5 text-[10px] font-medium rounded-l-md transition-colors',
+          'px-2 py-0.5 text-xs font-medium rounded-l-md transition-colors',
           displayMode === 'chat'
             ? 'bg-blue-500/10 text-blue-400 border-r border-blue-500/30'
             : 'text-gray-400 hover:text-gray-300 border-r border-gray-200 dark:border-gray-700',
@@ -34,7 +34,7 @@ export function DisplayModeToggle({ className }: DisplayModeToggleProps) {
         type="button"
         onClick={() => setDisplayMode('developer')}
         className={cn(
-          'px-2 py-0.5 text-[10px] font-medium rounded-r-md transition-colors',
+          'px-2 py-0.5 text-xs font-medium rounded-r-md transition-colors',
           displayMode === 'developer'
             ? 'bg-purple-500/10 text-purple-400'
             : 'text-gray-400 hover:text-gray-300',

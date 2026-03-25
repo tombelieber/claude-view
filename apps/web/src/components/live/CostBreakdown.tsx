@@ -39,7 +39,7 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
         </span>
       </div>
       {cost.hasUnpricedUsage && (
-        <div className="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-2 text-[11px] text-amber-700 dark:text-amber-300">
+        <div className="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/20 p-2 text-xs text-amber-700 dark:text-amber-300">
           Partial pricing: {formatTokenCount(unpricedTokens)} unpriced tokens are excluded from USD
           totals ({pricedCoverage}% priced coverage).
         </div>
@@ -48,7 +48,7 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
       {/* Breakdown table with tokens + cost columns */}
       <div className="space-y-1">
         {/* Column header */}
-        <div className="flex items-center text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">
+        <div className="flex items-center text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1">
           <span className="flex-1" />
           <span className="w-20 text-right">Tokens</span>
           <span className="w-20 text-right">Cost</span>

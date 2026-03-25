@@ -35,10 +35,10 @@ export function SubAgentBlockView({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex-shrink-0">
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wide flex-shrink-0">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 uppercase tracking-wide flex-shrink-0">
           {agentType}
         </span>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
+        <span className="text-xs text-gray-400 dark:text-gray-500 font-mono flex-shrink-0">
           {agentId}
         </span>
         <span className="text-xs text-gray-700 dark:text-gray-300 truncate min-w-0">
@@ -47,7 +47,7 @@ export function SubAgentBlockView({
         <div className="flex-1" />
         <span
           className={cn(
-            'text-[10px] font-mono flex-shrink-0',
+            'text-xs font-mono flex-shrink-0',
             connectionState === 'connected' && 'text-green-600 dark:text-green-400',
             connectionState === 'connecting' && 'text-yellow-600 dark:text-yellow-400',
             connectionState === 'disconnected' && 'text-gray-400 dark:text-gray-500',

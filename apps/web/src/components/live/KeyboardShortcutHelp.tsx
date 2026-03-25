@@ -36,7 +36,7 @@ const actionShortcuts: ShortcutEntry[] = [
 
 function Kbd({ children }: { children: string }) {
   return (
-    <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-[11px] font-mono text-gray-700 dark:text-gray-300">
+    <kbd className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded text-xs font-mono text-gray-700 dark:text-gray-300">
       {children}
     </kbd>
   )

@@ -82,11 +82,11 @@ export function ChatContextGauge({ percent, tokens, limit, source }: ChatContext
 
             {/* Token count / limit + percentage */}
             {hasTokenInfo ? (
-              <span className={`text-[10px] font-medium tabular-nums leading-none ${textColor}`}>
+              <span className={`text-xs font-medium tabular-nums leading-none ${textColor}`}>
                 {formatTokens(tokens)}/{formatLimit(limit)}
               </span>
             ) : (
-              <span className={`text-[10px] font-medium tabular-nums leading-none ${textColor}`}>
+              <span className={`text-xs font-medium tabular-nums leading-none ${textColor}`}>
                 {Math.round(clamped)}%
               </span>
             )}
@@ -111,7 +111,7 @@ export function ChatContextGauge({ percent, tokens, limit, source }: ChatContext
                 </div>
               )}
               {source && (
-                <div className="text-gray-500 dark:text-gray-500 text-[10px] pt-0.5 border-t border-gray-700 dark:border-gray-400">
+                <div className="text-gray-500 dark:text-gray-500 text-xs pt-0.5 border-t border-gray-700 dark:border-gray-400">
                   {source === 'statusline' && 'Live (statusline)'}
                   {source === 'sidecar' && 'Live (sidecar)'}
                   {source === 'history' && 'From session history'}

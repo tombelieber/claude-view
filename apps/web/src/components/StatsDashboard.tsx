@@ -294,7 +294,7 @@ export function StatsDashboard() {
                   ))}
                 </div>
                 {/* Hint: items are interactive */}
-                <p className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400 flex items-center gap-1">
+                <p className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400 flex items-center gap-1">
                   <Search className="w-3 h-3" />
                   Click any item to find matching sessions
                 </p>

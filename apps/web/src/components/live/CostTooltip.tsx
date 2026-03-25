@@ -186,7 +186,7 @@ export function CostTooltip({
                 </div>
               )}
               {cost.hasUnpricedUsage && (
-                <div className={`pt-1 text-[10px] ${COST_CATEGORY_COLORS.warning.text}`}>
+                <div className={`pt-1 text-xs ${COST_CATEGORY_COLORS.warning.text}`}>
                   Partial pricing: {formatTokenCount(unpricedTokens)} unpriced tokens excluded from
                   USD totals ({pricedCoverage}% priced coverage).
                 </div>

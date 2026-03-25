@@ -88,7 +88,7 @@ function NeedsYouSubCount({ sessions }: { sessions: LiveSession[] }) {
     (s) => s.agentState.state === 'awaiting_input' || s.agentState.state === 'needs_permission',
   ).length
   if (urgent === 0) return null
-  return <span className="ml-1.5 text-[10px] text-amber-500 font-normal">{urgent} urgent</span>
+  return <span className="ml-1.5 text-xs text-amber-500 font-normal">{urgent} urgent</span>
 }
 
 // --- Column headers ---
@@ -140,7 +140,7 @@ function ColumnHeaders({
                 <button
                   type="button"
                   onClick={onDismissAll}
-                  className="ml-auto text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
+                  className="ml-auto text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer transition-colors"
                 >
                   Dismiss All
                 </button>
@@ -254,7 +254,7 @@ function ClosedCardSlot({
               e.stopPropagation()
               navigator.clipboard.writeText(`claude --resume ${session.id}`).catch(() => {})
             }}
-            className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             title="Copy resume command"
           >
             <Copy className="w-3 h-3" />
@@ -262,7 +262,7 @@ function ClosedCardSlot({
           </button>
           {/* Closed-time label */}
           {session.closedAt && (
-            <div className="absolute bottom-2 right-2 z-10 text-[10px] text-zinc-400">
+            <div className="absolute bottom-2 right-2 z-10 text-xs text-zinc-400">
               closed {formatRelativeTime(session.closedAt)}
             </div>
           )}

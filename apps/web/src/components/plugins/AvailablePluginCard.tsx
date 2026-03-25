@@ -54,7 +54,7 @@ export function AvailablePluginCard({
             {plugin.alreadyInstalled ? (
               <span
                 onClick={(e) => e.stopPropagation()}
-                className="text-[10px] font-bold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]"
+                className="text-xs font-bold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]"
               >
                 INSTALLED
               </span>
@@ -67,7 +67,7 @@ export function AvailablePluginCard({
                   onInstall(plugin.name, 'user')
                 }}
                 className={cn(
-                  'inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-[7px]',
+                  'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-[7px]',
                   'bg-[rgba(0,122,255,0.1)] text-apple-blue border border-[rgba(0,122,255,0.18)]',
                   'hover:bg-[rgba(0,122,255,0.18)] transition-colors',
                   'disabled:opacity-50 cursor-pointer',
@@ -80,7 +80,7 @@ export function AvailablePluginCard({
         </div>
 
         {/* Marketplace + version + installs */}
-        <div className="flex items-center gap-2 mt-1 text-[10px] text-apple-text3">
+        <div className="flex items-center gap-2 mt-1 text-xs text-apple-text3">
           <span className="flex items-center gap-1">
             <span
               className={cn(
@@ -105,7 +105,7 @@ export function AvailablePluginCard({
         </div>
 
         {/* Description */}
-        <p className="text-[13px] text-apple-text2 mt-1.5 line-clamp-2">{plugin.description}</p>
+        <p className="text-xs text-apple-text2 mt-1.5 line-clamp-2">{plugin.description}</p>
       </div>
 
       <PluginDetailDialog

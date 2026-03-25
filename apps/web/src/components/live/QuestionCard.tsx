@@ -34,11 +34,11 @@ export function QuestionCard({ context }: QuestionCardProps) {
       {/* Header */}
       <div className="flex items-center gap-1.5 mb-1.5">
         <MessageCircle className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
-        <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
           Question
         </span>
         {isMulti && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 font-medium">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-800/40 text-amber-700 dark:text-amber-300 font-medium">
             1 of {questions.length}
           </span>
         )}
@@ -66,7 +66,7 @@ export function QuestionCard({ context }: QuestionCardProps) {
       )}
 
       {/* Footer */}
-      <div className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
         <Keyboard className="h-2.5 w-2.5" />
         <span>Answer in terminal</span>
       </div>

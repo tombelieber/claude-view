@@ -27,7 +27,7 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
         >
           {/* Cost breakdown */}
           <div className="mb-3">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
               Cost
             </h4>
             <div className="space-y-1">
@@ -70,7 +70,7 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
 
           {/* Token breakdown */}
           <div>
-            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
               Tokens
             </h4>
             <div className="space-y-1">

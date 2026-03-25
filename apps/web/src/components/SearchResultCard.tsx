@@ -70,7 +70,7 @@ export function SearchResultCard({ hit, isSelected, onSelect }: SearchResultCard
             {hit.project}
           </span>
           {hit.branch && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded">
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded">
               <GitBranch className="w-2.5 h-2.5 shrink-0" />
               {hit.branch}
             </span>

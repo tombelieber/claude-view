@@ -147,7 +147,7 @@ export function ModeSwitch({ mode, onModeChange, disabled }: ModeSwitchProps) {
                     <ModeIcon className="w-4 h-4 shrink-0" aria-hidden="true" />
                     <div className="text-left">
                       <div>{mc.label}</div>
-                      <div className="text-[10px] opacity-70">{mc.description}</div>
+                      <div className="text-xs opacity-70">{mc.description}</div>
                     </div>
                   </button>
                 </Popover.Close>

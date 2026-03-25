@@ -15,7 +15,7 @@ export function WorkflowsPage() {
       <div className="flex items-center justify-center h-full bg-[#F5F5F7] dark:bg-[#000000]">
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 rounded-full border-2 border-[#1D1D1F]/20 dark:border-white/20 border-t-[#1D1D1F] dark:border-t-white animate-spin" />
-          <span className="text-[13px] text-[#6E6E73] dark:text-[#98989D]">Loading…</span>
+          <span className="text-xs text-[#6E6E73] dark:text-[#98989D]">Loading…</span>
         </div>
       </div>
     )
@@ -33,7 +33,7 @@ export function WorkflowsPage() {
             />
           </svg>
         </span>
-        <p className="text-[13px] text-[#9A3412] dark:text-[#FB923C] leading-snug">
+        <p className="text-xs text-[#9A3412] dark:text-[#FB923C] leading-snug">
           <span className="font-semibold">Work in progress.</span> Workflow execution is not yet
           available — you can browse and preview workflows, but running them requires the execution
           engine (coming in a future release).
@@ -42,10 +42,10 @@ export function WorkflowsPage() {
 
       {/* Page header */}
       <div className="px-8 pt-6 pb-6">
-        <h1 className="text-[28px] font-bold text-[#1D1D1F] dark:text-white tracking-tight">
+        <h1 className="text-3xl font-bold text-[#1D1D1F] dark:text-white tracking-tight">
           Workflows
         </h1>
-        <p className="mt-1 text-[15px] text-[#6E6E73] dark:text-[#98989D]">
+        <p className="mt-1 text-base text-[#6E6E73] dark:text-[#98989D]">
           Automated pipelines for your Claude sessions.
         </p>
       </div>
@@ -55,12 +55,10 @@ export function WorkflowsPage() {
         {official.length > 0 && (
           <section>
             <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-[13px] font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
+              <h2 className="text-xs font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
                 Official
               </h2>
-              <span className="text-[12px] text-[#AEAEB2] dark:text-[#636366]">
-                {official.length}
-              </span>
+              <span className="text-xs text-[#AEAEB2] dark:text-[#636366]">{official.length}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {official.map((wf) => (
@@ -79,10 +77,10 @@ export function WorkflowsPage() {
         {user.length > 0 && (
           <section>
             <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-[13px] font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
+              <h2 className="text-xs font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
                 Custom
               </h2>
-              <span className="text-[12px] text-[#AEAEB2] dark:text-[#636366]">{user.length}</span>
+              <span className="text-xs text-[#AEAEB2] dark:text-[#636366]">{user.length}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {user.map((wf) => (
@@ -102,15 +100,15 @@ export function WorkflowsPage() {
         {user.length === 0 && (
           <section>
             <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-[13px] font-semibold text-[#AEAEB2] dark:text-[#636366] tracking-wide uppercase">
+              <h2 className="text-xs font-semibold text-[#AEAEB2] dark:text-[#636366] tracking-wide uppercase">
                 Custom
               </h2>
             </div>
             <div className="rounded-2xl border border-dashed border-[#D1D1D6] dark:border-[#3A3A3C] p-8 flex flex-col items-center gap-2 text-center">
-              <p className="text-[14px] font-medium text-[#AEAEB2] dark:text-[#636366]">
+              <p className="text-sm font-medium text-[#AEAEB2] dark:text-[#636366]">
                 Custom Workflows
               </p>
-              <p className="text-[12px] text-[#C7C7CC] dark:text-[#48484A]">Coming soon</p>
+              <p className="text-xs text-[#C7C7CC] dark:text-[#48484A]">Coming soon</p>
             </div>
           </section>
         )}

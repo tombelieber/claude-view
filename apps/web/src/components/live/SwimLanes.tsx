@@ -123,7 +123,7 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
                 {agent.description}
               </span>
               {agent.status === 'error' && (
-                <span className="text-[10px] font-semibold text-red-500 dark:text-red-400 uppercase flex-shrink-0">
+                <span className="text-xs font-semibold text-red-500 dark:text-red-400 uppercase flex-shrink-0">
                   ERR
                 </span>
               )}
@@ -141,7 +141,7 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
                   <ProgressBar />
                 )}
                 {!agent.agentId && onDrillDown && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 italic">
                     awaiting agent ID...
                   </span>
                 )}

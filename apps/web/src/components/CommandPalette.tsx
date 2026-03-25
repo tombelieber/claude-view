@@ -517,7 +517,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
                       </span>
                     )}
                     {item.shortcut && (
-                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/[0.08]">
+                      <span className="text-xs font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-white/[0.06] px-1.5 py-0.5 rounded border border-slate-200 dark:border-white/[0.08]">
                         {item.shortcut}
                       </span>
                     )}

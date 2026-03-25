@@ -282,7 +282,7 @@ export function LayoutPresets({
           className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 min-w-[200px] z-50"
         >
           {/* Built-in presets */}
-          <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+          <div className="px-2 py-1 text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
             Built-in
           </div>
           {BUILT_IN_PRESETS.map((name) => {
@@ -311,7 +311,7 @@ export function LayoutPresets({
           {hasCustomPresets && (
             <>
               <div className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
+              <div className="px-2 py-1 text-xs uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">
                 Saved
               </div>
               {customPresetNames.map((name) => {

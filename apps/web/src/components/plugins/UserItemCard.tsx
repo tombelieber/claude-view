@@ -36,13 +36,13 @@ export function UserItemCard({ item }: UserItemCardProps) {
         <span
           className={cn(
             'font-semibold text-apple-text1 truncate min-w-0',
-            isLongName ? 'text-[12px]' : 'text-[14px]',
+            isLongName ? 'text-xs' : 'text-sm',
           )}
         >
           {item.name}
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span className="text-[10px] font-bold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-[5px] bg-apple-bg text-apple-text3 border border-apple-sep2">
+          <span className="text-xs font-bold uppercase tracking-[0.05em] px-1.5 py-0.5 rounded-[5px] bg-apple-bg text-apple-text3 border border-apple-sep2">
             {kindLabel}
           </span>
           <span
@@ -54,7 +54,7 @@ export function UserItemCard({ item }: UserItemCardProps) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') e.stopPropagation()
             }}
-            className="text-apple-text3 text-[15px] cursor-pointer px-0.5 rounded hover:text-apple-text2 hover:bg-apple-bg transition-colors leading-none"
+            className="text-apple-text3 text-base cursor-pointer px-0.5 rounded hover:text-apple-text2 hover:bg-apple-bg transition-colors leading-none"
           >
             ···
           </span>
@@ -62,10 +62,10 @@ export function UserItemCard({ item }: UserItemCardProps) {
       </div>
 
       {/* Row 2: path */}
-      <div className="mt-1 text-[11px] text-apple-text3 font-mono truncate">{item.path}</div>
+      <div className="mt-1 text-xs text-apple-text3 font-mono truncate">{item.path}</div>
 
       {/* Row 3: usage */}
-      <div className={cn('mt-1.5 text-[12px] text-apple-text3', invocations === 0 && 'italic')}>
+      <div className={cn('mt-1.5 text-xs text-apple-text3', invocations === 0 && 'italic')}>
         {invocations > 0
           ? `${invocations.toLocaleString()}× · ${sessions} session${sessions !== 1 ? 's' : ''}${lastUsed ? ` · ${lastUsed}` : ''}`
           : 'No usage in 30 days'}

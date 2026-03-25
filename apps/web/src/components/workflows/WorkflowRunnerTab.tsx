@@ -66,10 +66,10 @@ export function WorkflowRunnerTab({
     return (
       <div className="flex items-center justify-center h-full bg-[#F5F5F7] dark:bg-[#000000]">
         <div className="text-center">
-          <p className="text-[15px] font-medium text-[#1D1D1F] dark:text-white mb-1">
+          <p className="text-base font-medium text-[#1D1D1F] dark:text-white mb-1">
             No workflow selected
           </p>
-          <p className="text-[13px] text-[#6E6E73] dark:text-[#98989D]">
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D]">
             Go back and click Run on a workflow.
           </p>
         </div>
@@ -92,9 +92,9 @@ export function WorkflowRunnerTab({
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
             <div className={cn('w-2 h-2 rounded-full shrink-0', cfg.dot)} />
-            <span className={cn('text-[13px] font-medium', cfg.text)}>{cfg.label}</span>
+            <span className={cn('text-xs font-medium', cfg.text)}>{cfg.label}</span>
           </div>
-          <div className="flex items-center gap-3 text-[12px] text-[#AEAEB2] dark:text-[#636366]">
+          <div className="flex items-center gap-3 text-xs text-[#AEAEB2] dark:text-[#636366]">
             <span>
               {currentStageIndex} / {totalStages}
             </span>
@@ -131,7 +131,7 @@ export function WorkflowRunnerTab({
         ).map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={cn('w-2 h-2 rounded-sm shrink-0', color)} />
-            <span className="text-[11px] text-[#AEAEB2] dark:text-[#636366]">{label}</span>
+            <span className="text-xs text-[#AEAEB2] dark:text-[#636366]">{label}</span>
           </div>
         ))}
       </div>

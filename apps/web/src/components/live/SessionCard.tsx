@@ -149,7 +149,7 @@ export function SessionCard({
           {!hideProjectBranch && (
             <>
               <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-300 rounded truncate max-w-30"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded truncate max-w-30"
                 title={session.projectPath || session.projectDisplayName || session.project}
               >
                 <FolderOpen className="w-2.5 h-2.5 shrink-0 text-amber-500 dark:text-amber-400" />
@@ -164,7 +164,7 @@ export function SessionCard({
                 if (!branch) return null
                 return (
                   <span
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded"
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded"
                     title={driftOrigin ? `${branch} (worktree, started on ${driftOrigin})` : branch}
                   >
                     <GitBranch className="w-2.5 h-2.5 shrink-0" />
@@ -173,7 +173,7 @@ export function SessionCard({
                       <TreePine className="w-2.5 h-2.5 shrink-0 text-green-600 dark:text-green-400" />
                     )}
                     {driftOrigin && (
-                      <span className="text-[9px] text-violet-400 dark:text-violet-500 ml-0.5">
+                      <span className="text-xs text-violet-400 dark:text-violet-500 ml-0.5">
                         {'↗'}
                         {driftOrigin}
                       </span>
@@ -224,7 +224,7 @@ export function SessionCard({
             bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
             icon: <span className="shrink-0 font-semibold">@</span>,
             tooltipIcon: (
-              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
                 @
               </span>
             ),
@@ -252,7 +252,7 @@ export function SessionCard({
                   <Tooltip.Root key={`${file.kind}-${file.path}`}>
                     <Tooltip.Trigger asChild>
                       <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono rounded border max-w-[160px] truncate cursor-default ${style.bg}`}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono rounded border max-w-[160px] truncate cursor-default ${style.bg}`}
                       >
                         {style.icon}
                         <span className="truncate">{file.displayName}</span>
@@ -272,7 +272,7 @@ export function SessionCard({
               {overflow.length > 0 && (
                 <Tooltip.Root>
                   <Tooltip.Trigger asChild>
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 cursor-default">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 cursor-default">
                       +{overflow.length} more
                     </span>
                   </Tooltip.Trigger>
@@ -336,13 +336,13 @@ export function SessionCard({
       {session.teamName && (
         <div className="mb-2 -mx-1 px-1">
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+            <span className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
               Team
             </span>
             <Tooltip.Provider delayDuration={200}>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 cursor-default">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 cursor-default">
                     <TreePine className="h-3 w-3 shrink-0" />
                     {session.teamName}
                   </span>
@@ -374,7 +374,7 @@ export function SessionCard({
       {/* Sub-agents section — with label when present */}
       {session.subAgents && session.subAgents.length > 0 && (
         <div className="mb-2 -mx-1 px-1">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
+          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
             Sub-Agents
           </span>
           <SubAgentPills subAgents={session.subAgents} />

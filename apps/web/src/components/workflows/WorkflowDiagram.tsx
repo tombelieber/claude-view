@@ -11,6 +11,7 @@ import {
   useNodesState,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useEffect } from 'react'
 import type { WorkflowDefinition } from '../../types/generated/WorkflowDefinition'
 import type { StageStatus } from './WorkflowStageColumn'
@@ -117,7 +118,11 @@ export function buildFlow(
       source: stage.name,
       target: targetId,
       label: stage.gate ? 'pass' : undefined,
-      labelStyle: { fontSize: 10, fill: '#AEAEB2', fontFamily: 'var(--font-sans)' },
+      labelStyle: {
+        fontSize: chartFontSize.annotation,
+        fill: '#AEAEB2',
+        fontFamily: 'var(--font-sans)',
+      },
       labelBgPadding: [4, 2] as [number, number],
       labelBgStyle: { fill: 'transparent' },
     })
@@ -130,7 +135,11 @@ export function buildFlow(
         sourceHandle: null,
         targetHandle: null,
         label: 'retry',
-        labelStyle: { fontSize: 10, fill: '#EF4444', fontFamily: 'var(--font-sans)' },
+        labelStyle: {
+          fontSize: chartFontSize.annotation,
+          fill: '#EF4444',
+          fontFamily: 'var(--font-sans)',
+        },
         labelBgPadding: [4, 2] as [number, number],
         labelBgStyle: { fill: 'transparent' },
         type: 'default',
@@ -190,7 +199,7 @@ function WorkflowNodeComponent({ data }: { data: StageNodeData }) {
     return (
       <div className="relative flex items-center justify-center px-4 py-2.5 rounded-full bg-white dark:bg-[#1C1C1E] border border-[#D1D1D6] dark:border-[#3A3A3C] shadow-sm">
         <Handle type="source" position={Position.Right} style={handleStyle} />
-        <span className="text-[12px] font-semibold text-[#1D1D1F] dark:text-white whitespace-nowrap">
+        <span className="text-xs font-semibold text-[#1D1D1F] dark:text-white whitespace-nowrap">
           {label}
         </span>
       </div>
@@ -201,7 +210,7 @@ function WorkflowNodeComponent({ data }: { data: StageNodeData }) {
     return (
       <div className="relative flex items-center justify-center px-4 py-2.5 rounded-full bg-[#F5F5F7] dark:bg-[#2C2C2E] border border-[#D1D1D6] dark:border-[#3A3A3C]">
         <Handle type="target" position={Position.Left} style={handleStyle} />
-        <span className="text-[12px] font-medium text-[#6E6E73] dark:text-[#98989D] whitespace-nowrap">
+        <span className="text-xs font-medium text-[#6E6E73] dark:text-[#98989D] whitespace-nowrap">
           {label}
         </span>
       </div>
@@ -225,12 +234,12 @@ function WorkflowNodeComponent({ data }: { data: StageNodeData }) {
       {/* Header */}
       <div className="px-3 pt-3 pb-2">
         <div className="flex items-start justify-between gap-1.5">
-          <span className="text-[13px] font-semibold text-[#1D1D1F] dark:text-white leading-tight">
+          <span className="text-xs font-semibold text-[#1D1D1F] dark:text-white leading-tight">
             {label}
           </span>
           <div className="flex items-center gap-1 shrink-0 mt-0.5">
             {parallel && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-[#22C55E]/10 text-[#22C55E] font-semibold">
+              <span className="text-xs px-1 py-0.5 rounded bg-[#22C55E]/10 text-[#22C55E] font-semibold">
                 ⇉
               </span>
             )}
@@ -238,15 +247,15 @@ function WorkflowNodeComponent({ data }: { data: StageNodeData }) {
               <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] animate-pulse shrink-0" />
             )}
             {effectiveStatus === 'passed' && (
-              <span className="text-[#22C55E] text-[12px] font-bold leading-none">✓</span>
+              <span className="text-[#22C55E] text-xs font-bold leading-none">✓</span>
             )}
             {effectiveStatus === 'failed' && (
-              <span className="text-[#EF4444] text-[12px] font-bold leading-none">✕</span>
+              <span className="text-[#EF4444] text-xs font-bold leading-none">✕</span>
             )}
           </div>
         </div>
         {gate && (
-          <p className="text-[10px] text-[#6E6E73] dark:text-[#98989D] mt-0.5 truncate leading-tight">
+          <p className="text-xs text-[#6E6E73] dark:text-[#98989D] mt-0.5 truncate leading-tight">
             {gate}
           </p>
         )}
@@ -258,7 +267,7 @@ function WorkflowNodeComponent({ data }: { data: StageNodeData }) {
           {skills.map((skill) => (
             <div
               key={skill}
-              className="text-[11px] px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] text-[#6E6E73] dark:text-[#98989D] truncate"
+              className="text-xs px-1.5 py-0.5 rounded-md bg-black/[0.04] dark:bg-white/[0.06] text-[#6E6E73] dark:text-[#98989D] truncate"
             >
               {skill}
             </div>

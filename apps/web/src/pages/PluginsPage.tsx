@@ -112,8 +112,8 @@ export function PluginsPage() {
       {/* Header */}
       <div className="px-7 pt-6 pb-0 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[28px] font-bold tracking-[-0.4px] text-apple-text1">Plugins</h1>
-          <p className="text-[13px] text-apple-text3 mt-0.5">
+          <h1 className="text-3xl font-bold tracking-[-0.4px] text-apple-text1">Plugins</h1>
+          <p className="text-xs text-apple-text3 mt-0.5">
             {totalCount} items — skills, commands, agents &amp; installed plugins
           </p>
         </div>
@@ -123,7 +123,7 @@ export function PluginsPage() {
             type="button"
             onClick={handleUpdateAll}
             disabled={data.updatableCount === 0 || mutations.isPending}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3.5 py-1.5 rounded-lg bg-apple-blue text-white hover:opacity-85 transition-opacity disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-lg bg-apple-blue text-white hover:opacity-85 transition-opacity disabled:opacity-40"
           >
             <TrendingUp className="w-3 h-3" />
             {data.updatableCount > 0 ? `Update All (${data.updatableCount})` : 'Update All'}

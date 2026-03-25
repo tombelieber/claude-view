@@ -67,14 +67,14 @@ export function PluginToolbar({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search plugins..."
-            className="w-full pl-8 pr-3 py-2 text-[13px] rounded-[10px] border border-apple-sep bg-white text-apple-text1 placeholder:text-apple-text3 focus:border-apple-blue focus:outline-none focus:ring-[3px] focus:ring-[rgba(0,122,255,0.12)]"
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-[10px] border border-apple-sep bg-white text-apple-text1 placeholder:text-apple-text3 focus:border-apple-blue focus:outline-none focus:ring-[3px] focus:ring-[rgba(0,122,255,0.12)]"
           />
         </div>
 
         <select
           value={scope ?? ''}
           onChange={(e) => onScopeChange(e.target.value || undefined)}
-          className="text-[13px] px-2.5 py-1.5 rounded-lg border border-apple-sep bg-white text-apple-text2 cursor-pointer outline-none"
+          className="text-xs px-2.5 py-1.5 rounded-lg border border-apple-sep bg-white text-apple-text2 cursor-pointer outline-none"
         >
           {SCOPE_OPTIONS.map((opt) => (
             <option key={opt.label} value={opt.value ?? ''}>
@@ -86,7 +86,7 @@ export function PluginToolbar({
         <select
           value={source ?? ''}
           onChange={(e) => onSourceChange(e.target.value || undefined)}
-          className="text-[13px] px-2.5 py-1.5 rounded-lg border border-apple-sep bg-white text-apple-text2 cursor-pointer outline-none"
+          className="text-xs px-2.5 py-1.5 rounded-lg border border-apple-sep bg-white text-apple-text2 cursor-pointer outline-none"
         >
           <option value="">All Sources</option>
           {marketplaces.map((m) => (
@@ -108,7 +108,7 @@ export function PluginToolbar({
               type="button"
               onClick={() => onKindChange(tab.value)}
               className={cn(
-                'text-[12px] font-medium px-3 py-1.5 rounded-[7px] border-none cursor-pointer',
+                'text-xs font-medium px-3 py-1.5 rounded-[7px] border-none cursor-pointer',
                 'bg-transparent transition-all duration-150',
                 isActive
                   ? cn(

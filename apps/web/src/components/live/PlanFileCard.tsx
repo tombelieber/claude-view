@@ -48,11 +48,11 @@ export function PlanFileCard({ plan, defaultExpanded = false }: PlanFileCardProp
           {plan.filename}
         </span>
         {plan.variant && (
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
             {plan.variant}
           </span>
         )}
-        <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 flex-shrink-0">
+        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 flex-shrink-0">
           {formatBytes(plan.sizeBytes)}
         </span>
       </button>

@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { Minus, TrendingDown, TrendingUp } from 'lucide-react'
 import {
   Bar,
@@ -98,13 +99,13 @@ export function LearningCurve({ data }: LearningCurveProps) {
               />
               <XAxis
                 dataKey="period"
-                tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
               />
               <YAxis
                 domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.2 * 10) / 10]}
-                tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--chart-axis, #d1d5db)' }}
                 tickFormatter={(value) => value.toFixed(1)}
@@ -114,7 +115,7 @@ export function LearningCurve({ data }: LearningCurveProps) {
                   backgroundColor: 'var(--tooltip-bg, #fff)',
                   border: '1px solid var(--tooltip-border, #e5e7eb)',
                   borderRadius: '8px',
-                  fontSize: '12px',
+                  fontSize: chartFontSize.tooltip,
                 }}
                 formatter={(value) => [(value as number).toFixed(2), 'Re-edit Rate']}
                 labelFormatter={(label) => {
@@ -132,7 +133,7 @@ export function LearningCurve({ data }: LearningCurveProps) {
                   value: `Avg: ${currentAvg.toFixed(2)}`,
                   position: 'right',
                   fill: '#3b82f6',
-                  fontSize: 10,
+                  fontSize: chartFontSize.annotation,
                 }}
               />
 

@@ -492,7 +492,7 @@ export function ConversationView() {
                   <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
                   <span className="flex flex-col items-start">
                     <span>Resume Command</span>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
+                    <span className="text-xs text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
                       {sessionDetail?.projectPath ?? ''}
                     </span>
                   </span>
