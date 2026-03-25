@@ -16,7 +16,7 @@ use claude_view_search::types::SearchResponse;
 use serde::Deserialize;
 use std::sync::Arc;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
 #[serde(default)]
 pub struct SearchQuery {
     pub q: Option<String>,
@@ -33,7 +33,15 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/search", get(search_handler))
 }
 
-async fn search_handler(
+/// GET /api/search - Full-text search across sessions.
+#[utoipa::path(get, path = "/api/search", tag = "search",
+    params(SearchQuery),
+    responses(
+        (status = 200, description = "Search results", body = serde_json::Value),
+        (status = 400, description = "Missing or empty query"),
+    )
+)]
+pub async fn search_handler(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> ApiResult<Json<SearchResponse>> {

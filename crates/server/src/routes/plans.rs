@@ -14,6 +14,13 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 /// GET /api/sessions/:id/plans -- returns plan documents for the session's slug.
+#[utoipa::path(get, path = "/api/sessions/{id}/plans", tag = "plans",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Plan documents associated with the session", body = Vec<claude_view_core::plan_files::PlanDocument>),
+        (status = 404, description = "Session not found or has no plan slug"),
+    )
+)]
 pub async fn get_session_plans(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,

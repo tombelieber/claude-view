@@ -24,7 +24,7 @@ pub struct IndexerEntry {
 }
 
 /// An invocable (tool/skill/MCP) with its aggregated invocation count.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InvocableWithCount {
@@ -55,7 +55,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for InvocableWithCount {
 }
 
 /// A model record with aggregated usage stats (for GET /api/models).
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelWithStats {
@@ -102,7 +102,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
 }
 
 /// Aggregate token usage statistics (for GET /api/stats/tokens).
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStats {
@@ -300,7 +300,7 @@ pub struct IndexRunIntegrityCounters {
 }
 
 /// Aggregate statistics overview for the API.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
