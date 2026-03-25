@@ -72,6 +72,11 @@ export interface ChatInputBarProps {
   model?: string
   onModelChange?: (model: string) => void
   contextPercent?: number
+  contextInfo?: {
+    tokens: number
+    limit: number
+    source: 'statusline' | 'sidecar' | 'history'
+  } | null
   commands?: SlashCommand[]
   onCommand?: (command: string) => void
   // NEW: Session capabilities for command palette
@@ -110,6 +115,7 @@ export function ChatInputBar({
   model = 'claude-sonnet-4-6',
   onModelChange,
   contextPercent,
+  contextInfo,
   commands: commandsProp,
   onCommand,
   capabilities,
@@ -380,7 +386,14 @@ export function ChatInputBar({
           <div className="flex items-center gap-2">
             <AttachButton onAttach={handleAttach} disabled={isDisabled} />
 
-            {contextPercent != null && <ChatContextGauge percent={contextPercent} />}
+            {contextPercent != null && (
+              <ChatContextGauge
+                percent={contextPercent}
+                tokens={contextInfo?.tokens}
+                limit={contextInfo?.limit}
+                source={contextInfo?.source}
+              />
+            )}
           </div>
 
           {/* Send / Stop button */}

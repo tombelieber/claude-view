@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
@@ -14,6 +14,7 @@ import { useChatPanel } from '../hooks/use-chat-panel'
 import { useCommandExecutor } from '../hooks/use-command-executor'
 import { useContextPercent } from '../hooks/use-context-percent'
 import type { LiveContextData } from '../hooks/use-context-percent'
+import { getContextLimit } from '../lib/model-context-windows'
 import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 
@@ -175,7 +176,59 @@ export function ChatSession({
     }
   })
 
-  const contextPercent = useContextPercent(liveContextData, richData?.contextWindowTokens)
+  // Unified context data: merge 3 sources with priority chain.
+  // 1. CC-owned (statusline SSE) — authoritative, knows 1M from turn 1
+  // 2. SDK-owned (sidecar WS) — from turn_complete modelUsage[model].contextWindow
+  // 3. History (JSONL accumulator) — richData.contextWindowTokens, infer limit
+  // Track which source won the priority chain — explicit flag, not reference identity.
+  const contextResolution = useMemo(() => {
+    // Priority 1: Live Monitor statusline (CC-owned) — authoritative
+    if (liveContextData) {
+      return { data: liveContextData, source: 'statusline' as const }
+    }
+
+    // Priority 2: SDK sidecar — FSM store.meta has contextWindowSize + totalInputTokens
+    // Note: contextWindowSize=0 and totalInputTokens=0 are initial state (no turns yet),
+    // intentionally treated as "no data" to avoid showing 0/0.
+    const meta = store.meta
+    if (meta && meta.contextWindowSize > 0 && meta.totalInputTokens > 0) {
+      return {
+        data: {
+          contextWindowTokens: meta.totalInputTokens,
+          statuslineContextWindowSize: meta.contextWindowSize,
+          statuslineUsedPct: null, // SDK doesn't pre-compute percentage
+        } satisfies LiveContextData,
+        source: 'sidecar' as const,
+      }
+    }
+
+    // Priority 3: fall through to history path in useContextPercent
+    return null
+  }, [liveContextData, store.meta])
+
+  const mergedContextData = contextResolution?.data
+  const contextPercent = useContextPercent(mergedContextData, richData?.contextWindowTokens)
+
+  // Derive context limit and tokens for the enhanced gauge display
+  const contextInfo = useMemo(() => {
+    if (mergedContextData && contextResolution) {
+      const limit = getContextLimit(
+        null,
+        mergedContextData.contextWindowTokens,
+        mergedContextData.statuslineContextWindowSize,
+      )
+      return {
+        tokens: mergedContextData.contextWindowTokens,
+        limit,
+        source: contextResolution.source,
+      }
+    }
+    if (richData?.contextWindowTokens != null && richData.contextWindowTokens > 0) {
+      const limit = getContextLimit(null, richData.contextWindowTokens)
+      return { tokens: richData.contextWindowTokens, limit, source: 'history' as const }
+    }
+    return null
+  }, [mergedContextData, contextResolution, richData?.contextWindowTokens])
 
   // Pagination: load older messages on scroll-up
   const handleLoadOlderHistory = useCallback(() => {
@@ -376,6 +429,7 @@ export function ChatSession({
             mode={permMode}
             onModeChange={handleModeChangePermission}
             contextPercent={contextPercent}
+            contextInfo={contextInfo}
             model={selectedModel}
             onModelChange={handleModelChange}
             effortValue={thinkingBudget}
