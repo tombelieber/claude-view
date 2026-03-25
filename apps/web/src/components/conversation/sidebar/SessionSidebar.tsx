@@ -357,14 +357,14 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
                   className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-sm transition-colors"
                 >
                   <span
-                    className={`text-[10px] text-amber-500 transition-transform duration-200 ${chatNeedsYouCollapsed ? '' : 'rotate-90'}`}
+                    className={`text-xs text-amber-500 transition-transform duration-200 ${chatNeedsYouCollapsed ? '' : 'rotate-90'}`}
                   >
                     ▶
                   </span>
                   <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
                     Needs You
                   </span>
-                  <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 rounded-full px-1.5 leading-4">
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 rounded-full px-1.5 leading-4">
                     {needsYou.length}
                   </span>
                 </button>
@@ -406,14 +406,14 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
                   className="flex items-center gap-1.5 w-full px-3 py-1 select-none hover:bg-green-50 dark:hover:bg-green-900/10 rounded-sm transition-colors"
                 >
                   <span
-                    className={`text-[10px] text-green-500 transition-transform duration-200 ${chatWorkingCollapsed ? '' : 'rotate-90'}`}
+                    className={`text-xs text-green-500 transition-transform duration-200 ${chatWorkingCollapsed ? '' : 'rotate-90'}`}
                   >
                     ▶
                   </span>
                   <span className="text-xs font-semibold text-green-600 dark:text-green-400 uppercase tracking-wide">
                     Working
                   </span>
-                  <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-1.5 leading-4">
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-1.5 leading-4">
                     {working.length}
                   </span>
                 </button>

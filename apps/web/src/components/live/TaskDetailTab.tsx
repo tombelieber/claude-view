@@ -30,7 +30,7 @@ export function TaskDetailTab({ tasks }: TaskDetailTabProps) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 tabular-nums">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums">
             {completed}/{total} completed ({pct}%)
           </span>
         </div>

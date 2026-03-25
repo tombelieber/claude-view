@@ -51,13 +51,13 @@ export function SelfAppRow({
             claude-view
           </span>
 
-          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shrink-0">
+          <span className="text-xs font-semibold uppercase px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shrink-0">
             This App
           </span>
         </div>
 
         {descendantCount > 0 && (
-          <span className="text-[10px] tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full shrink-0">
+          <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full shrink-0">
             {descendantCount} proc{descendantCount !== 1 ? 's' : ''}
           </span>
         )}

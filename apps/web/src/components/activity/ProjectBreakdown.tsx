@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ProjectActivity } from '../../lib/activity-utils'
 import { formatHumanDuration } from '../../lib/format-utils'
@@ -67,7 +68,7 @@ export function ProjectBreakdown({
               type="category"
               dataKey="name"
               width={120}
-              tick={{ fontSize: 12, fill: 'currentColor' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'currentColor' }}
               tickLine={false}
               axisLine={false}
               className="text-gray-600 dark:text-gray-300"

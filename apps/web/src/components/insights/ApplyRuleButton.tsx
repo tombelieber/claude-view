@@ -58,7 +58,7 @@ export function ApplyRuleButton({
     return (
       <button
         disabled
-        className="text-[11px] px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+        className="text-xs px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
         title={`Remove a rule first — maximum ${maxRules} coaching rules`}
       >
         Apply Rule
@@ -71,7 +71,7 @@ export function ApplyRuleButton({
       onClick={handleClick}
       disabled={isLoading}
       className={cn(
-        'text-[11px] px-2.5 py-1 rounded-md transition-colors duration-150',
+        'text-xs px-2.5 py-1 rounded-md transition-colors duration-150',
         isApplied
           ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400'
           : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30',

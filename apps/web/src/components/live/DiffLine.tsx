@@ -35,7 +35,7 @@ export function DiffLineRow({ line }: DiffLineProps) {
     <div className={cn('flex', LINE_BG[line.kind])}>
       <span
         className={cn(
-          'w-10 text-right pr-2 text-[10px] font-mono select-none border-r border-gray-200 dark:border-gray-800 shrink-0',
+          'w-10 text-right pr-2 text-xs font-mono select-none border-r border-gray-200 dark:border-gray-800 shrink-0',
           GUTTER_TEXT[line.kind],
         )}
       >
@@ -43,7 +43,7 @@ export function DiffLineRow({ line }: DiffLineProps) {
       </span>
       <span
         className={cn(
-          'w-10 text-right pr-2 text-[10px] font-mono select-none border-r border-gray-200 dark:border-gray-800 shrink-0',
+          'w-10 text-right pr-2 text-xs font-mono select-none border-r border-gray-200 dark:border-gray-800 shrink-0',
           GUTTER_TEXT[line.kind],
         )}
       >
@@ -51,7 +51,7 @@ export function DiffLineRow({ line }: DiffLineProps) {
       </span>
       <span
         className={cn(
-          'w-4 text-center text-[11px] font-mono select-none shrink-0',
+          'w-4 text-center text-xs font-mono select-none shrink-0',
           GUTTER_TEXT[line.kind],
         )}
       >

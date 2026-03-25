@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { Check, ChevronRight, Cpu } from 'lucide-react'
 import { useMemo } from 'react'
 import {
@@ -83,13 +84,13 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
           >
             <XAxis
               type="number"
-              tick={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
               tickFormatter={(v) => formatNumber(v as number)}
             />
             <YAxis
               type="category"
               dataKey="displayName"
-              tick={{ fontSize: 12, fill: 'var(--chart-text, #6b7280)' }}
+              tick={{ fontSize: chartFontSize.axisTick, fill: 'var(--chart-text, #6b7280)' }}
               width={70}
             />
             <RechartsTooltip
@@ -97,7 +98,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                 backgroundColor: 'var(--tooltip-bg, #fff)',
                 border: '1px solid var(--tooltip-border, #e5e7eb)',
                 borderRadius: '8px',
-                fontSize: '12px',
+                fontSize: chartFontSize.tooltip,
               }}
               formatter={(value, _name, props) => {
                 const item = (props as any).payload
@@ -116,7 +117,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
                 dataKey="lines"
                 position="right"
                 formatter={(v) => formatNumber(v as number)}
-                style={{ fontSize: 11, fill: 'var(--chart-text, #6b7280)' }}
+                style={{ fontSize: chartFontSize.annotation, fill: 'var(--chart-text, #6b7280)' }}
               />
             </Bar>
           </BarChart>

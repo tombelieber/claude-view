@@ -128,7 +128,7 @@ export function AskUserQuestionCard({
           <div key={q.question}>
             {/* Question header */}
             {q.header && (
-              <div className="text-[10px] font-mono text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-0.5">
+              <div className="text-xs font-mono text-purple-600 dark:text-purple-400 uppercase tracking-wide mb-0.5">
                 {q.header}
               </div>
             )}
@@ -175,11 +175,11 @@ export function AskUserQuestionCard({
                         />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
                           {opt.label}
                         </div>
                         {opt.description && (
-                          <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-0.5 leading-relaxed">
+                          <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 leading-relaxed">
                             {opt.description}
                           </div>
                         )}
@@ -205,7 +205,7 @@ export function AskUserQuestionCard({
                         : 'text-gray-400 dark:text-gray-500'
                     }`}
                   />
-                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 italic">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 italic">
                     Other...
                   </span>
                 </button>
@@ -220,7 +220,7 @@ export function AskUserQuestionCard({
                   />
                 )}
 
-                <div className="text-[9px] text-gray-400 dark:text-gray-500 italic px-2 pt-1">
+                <div className="text-xs text-gray-400 dark:text-gray-500 italic px-2 pt-1">
                   {q.multiple ? 'Multiple selections allowed' : 'Single selection only'}
                 </div>
               </div>
@@ -228,7 +228,7 @@ export function AskUserQuestionCard({
 
             {/* Display selected answers when resolved */}
             {answered && selectedAnswers?.[q.question] && (
-              <div className="mt-1 text-[11px] text-green-600 dark:text-green-400 font-medium">
+              <div className="mt-1 text-xs text-green-600 dark:text-green-400 font-medium">
                 Answer: {selectedAnswers[q.question]}
               </div>
             )}

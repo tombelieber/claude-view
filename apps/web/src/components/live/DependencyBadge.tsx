@@ -14,7 +14,7 @@ export function DependencyBadge({ task, onScrollTo }: DependencyBadgeProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
       {hasBlocks && (
-        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-400 dark:text-gray-500">
+        <span className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-gray-500">
           <span aria-hidden>→</span>
           <span>blocks</span>
           {task.blocks.map((id) => (
@@ -30,7 +30,7 @@ export function DependencyBadge({ task, onScrollTo }: DependencyBadgeProps) {
         </span>
       )}
       {hasBlockedBy && (
-        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-gray-400 dark:text-gray-500">
+        <span className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-gray-500">
           <span aria-hidden>←</span>
           <span>blocked by</span>
           {task.blockedBy.map((id) => (

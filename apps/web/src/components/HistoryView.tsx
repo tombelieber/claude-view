@@ -626,12 +626,12 @@ export function HistoryView() {
                             isCollapsed && '-rotate-90',
                           )}
                         />
-                        <span className="text-[13px] font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
+                        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-tight whitespace-nowrap group-hover/header:text-gray-700 dark:group-hover/header:text-gray-300 transition-colors">
                           {group.label}
                         </span>
                         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
                         <span
-                          className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap"
+                          className="text-xs text-gray-400 tabular-nums whitespace-nowrap"
                           aria-label={`${group.sessions.length} sessions`}
                         >
                           {group.sessions.length}
@@ -651,7 +651,7 @@ export function HistoryView() {
                                 {/* Rank badge for non-default sorts */}
                                 {filters.sort !== 'recent' && (
                                   <div className="absolute -left-1 top-3 z-10 w-5 h-5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center">
-                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 tabular-nums">
+                                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 tabular-nums">
                                       {idx + 1}
                                     </span>
                                   </div>
@@ -674,7 +674,7 @@ export function HistoryView() {
                                 </Link>
                                 {/* Sort metric badge overlay */}
                                 {metric && (
-                                  <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                                  <div className="absolute right-3 top-3 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">
                                     {metric}
                                   </div>
                                 )}

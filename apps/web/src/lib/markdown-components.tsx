@@ -23,12 +23,12 @@ export const markdownComponents: Components = {
       const id = `md-code-${mdBlockCounter++}`
       return <CompactCodeBlock code={text} language={lang} blockId={id} />
     }
-    return <pre className="text-[11px] font-mono overflow-x-auto">{children}</pre>
+    return <pre className="text-xs font-mono overflow-x-auto">{children}</pre>
   },
   code({ children, ...rest }) {
     return (
       <code
-        className="px-1 py-0.5 rounded text-[11px] font-mono bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400"
+        className="px-1 py-0.5 rounded text-xs font-mono bg-gray-100 dark:bg-gray-800 text-pink-600 dark:text-pink-400"
         {...rest}
       >
         {children}

@@ -19,8 +19,8 @@ export interface MetricCardProps {
  * MetricCard displays a single metric with optional trend indicator.
  *
  * Design system:
- * - Value: Fira Code, text-2xl font-semibold text-blue-900
- * - Label: Fira Sans
+ * - Value: Geist Mono, text-2xl font-semibold text-blue-900
+ * - Label: Geist
  * - Trend: Lucide TrendingUp/TrendingDown icon + percent (no color coding, icon direction sufficient)
  */
 export function MetricCard({ label, value, trend, className }: MetricCardProps) {

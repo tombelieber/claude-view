@@ -78,18 +78,18 @@ export function CoachingRulesPanel({ onClose }: CoachingRulesPanelProps) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+                      <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
                         {rule.id}
                       </span>
                       <span className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
                         {rule.title}
                       </span>
                     </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
                       {rule.body}
                     </p>
                     {rule.appliedAt && (
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 block">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 mt-1 block">
                         Applied {rule.appliedAt}
                       </span>
                     )}
@@ -98,7 +98,7 @@ export function CoachingRulesPanel({ onClose }: CoachingRulesPanelProps) {
                     onClick={() => handleRemove(rule.id)}
                     disabled={isRemoving}
                     className={cn(
-                      'text-[10px] px-1.5 py-0.5 rounded text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0',
+                      'text-xs px-1.5 py-0.5 rounded text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0',
                       isRemoving && 'opacity-50 cursor-wait',
                     )}
                   >
@@ -113,7 +113,7 @@ export function CoachingRulesPanel({ onClose }: CoachingRulesPanelProps) {
 
       {/* Footer */}
       <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-        <p className="text-[10px] text-gray-400 dark:text-gray-500">
+        <p className="text-xs text-gray-400 dark:text-gray-500">
           Claude reads these rules at session start. Fewer, focused rules work better than many.
         </p>
       </div>

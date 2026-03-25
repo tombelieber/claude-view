@@ -121,7 +121,7 @@ export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHea
                     setToVersion(t)
                   }}
                   className={cn(
-                    'text-[10px] font-mono px-1.5 py-0.5 rounded-full transition-colors cursor-pointer',
+                    'text-xs font-mono px-1.5 py-0.5 rounded-full transition-colors cursor-pointer',
                     isActive
                       ? 'bg-indigo-500 text-white'
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700',
@@ -136,19 +136,19 @@ export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHea
 
         {/* NEW badge for single-version files */}
         {maxVersion === 1 && (
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 shrink-0">
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 shrink-0">
             NEW
           </span>
         )}
 
         {/* Stats */}
         {file.stats.added > 0 && (
-          <span className="text-[10px] font-mono text-green-600 dark:text-green-400 shrink-0">
+          <span className="text-xs font-mono text-green-600 dark:text-green-400 shrink-0">
             +{file.stats.added}
           </span>
         )}
         {file.stats.removed > 0 && (
-          <span className="text-[10px] font-mono text-red-500 dark:text-red-400 shrink-0">
+          <span className="text-xs font-mono text-red-500 dark:text-red-400 shrink-0">
             −{file.stats.removed}
           </span>
         )}
@@ -183,7 +183,7 @@ export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHea
             <div className="p-3 text-xs text-gray-500 dark:text-gray-400 italic flex items-center gap-2">
               <span>Initial version</span>
               {file.stats.added > 0 && (
-                <span className="text-[10px] font-mono text-green-600 dark:text-green-400 not-italic">
+                <span className="text-xs font-mono text-green-600 dark:text-green-400 not-italic">
                   {file.stats.added} lines
                 </span>
               )}

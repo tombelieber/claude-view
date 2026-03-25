@@ -34,7 +34,7 @@ export function ContextBar({ percent }: ContextBarProps) {
           title="~auto-compact threshold"
         />
       </div>
-      <span className="text-[10px] tabular-nums text-gray-500 dark:text-gray-400">{clamped}%</span>
+      <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400">{clamped}%</span>
     </div>
   )
 }

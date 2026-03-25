@@ -110,7 +110,7 @@ export function MarketplacesDialog() {
                         <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
                           {m.name}
                         </div>
-                        <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+                        <div className="text-xs text-gray-400 dark:text-gray-500 truncate">
                           {m.source}
                         </div>
                       </div>
@@ -140,7 +140,7 @@ export function MarketplacesDialog() {
                     </div>
                   </div>
                   {/* Status / Counts row */}
-                  <div className="flex items-center gap-3 mt-1 ml-4 text-[10px]">
+                  <div className="flex items-center gap-3 mt-1 ml-4 text-xs">
                     {(() => {
                       const status = getStatus(m.name)
                       if (!status || status === 'completed') {

@@ -437,7 +437,7 @@ function renderMessage(message: Message, thread?: ThreadInfo): string {
 // ---------------------------------------------------------------------------
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
+/* Geist is self-hosted in-app; exported HTML falls back to system fonts */
 
 * {
   box-sizing: border-box;
@@ -531,7 +531,7 @@ html {
 }
 
 body {
-  font-family: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   color: var(--text-primary);
@@ -582,7 +582,7 @@ body {
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Fira Code', monospace;
+  font-family: 'Geist Mono', ui-monospace, monospace;
   background: var(--branch-bg);
   color: var(--branch-text);
   border: 1px solid var(--branch-border);
@@ -591,7 +591,7 @@ body {
 .doc-path {
   font-size: 12px;
   color: var(--text-muted);
-  font-family: 'Fira Code', monospace;
+  font-family: 'Geist Mono', ui-monospace, monospace;
   margin-bottom: 16px;
 }
 
@@ -779,7 +779,7 @@ body {
   background-color: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: 'Fira Code', 'SF Mono', Monaco, 'Courier New', monospace;
+  font-family: 'Geist Mono', 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 0.85em;
   color: var(--text-primary);
 }
@@ -798,7 +798,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: #a6adc8;
-  font-family: 'Fira Code', monospace;
+  font-family: 'Geist Mono', ui-monospace, monospace;
   border-bottom: 1px solid var(--code-border);
   text-transform: lowercase;
 }
@@ -810,7 +810,7 @@ body {
 }
 
 .code-block code {
-  font-family: 'Fira Code', 'SF Mono', Monaco, 'Courier New', monospace;
+  font-family: 'Geist Mono', 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.5;
   color: var(--code-text);
@@ -888,7 +888,7 @@ body {
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Fira Code', monospace;
+  font-family: 'Geist Mono', ui-monospace, monospace;
   margin-right: 6px;
   white-space: nowrap;
 }

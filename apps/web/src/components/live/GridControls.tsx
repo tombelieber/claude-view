@@ -71,7 +71,7 @@ export function GridControls({
       <div className="flex items-center gap-1.5">
         <label
           htmlFor="grid-cols"
-          className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500"
+          className="text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500"
         >
           Cols
         </label>
@@ -100,7 +100,7 @@ export function GridControls({
       <div className="flex items-center gap-1.5">
         <label
           htmlFor="grid-rows"
-          className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500"
+          className="text-xs uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500"
         >
           Rows
         </label>

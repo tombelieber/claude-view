@@ -290,15 +290,15 @@ function LearningCurveChart({
       </svg>
 
       {/* Y-axis labels */}
-      <div className="absolute left-0 top-1 text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+      <div className="absolute left-0 top-1 text-xs text-gray-500 dark:text-gray-400 font-mono">
         {maxRate.toFixed(2)}
       </div>
-      <div className="absolute left-0 bottom-1 text-[10px] text-gray-500 dark:text-gray-400 font-mono">
+      <div className="absolute left-0 bottom-1 text-xs text-gray-500 dark:text-gray-400 font-mono">
         {minRate.toFixed(2)}
       </div>
 
       {/* X-axis label */}
-      <div className="absolute right-0 bottom-0 text-[10px] text-gray-500 dark:text-gray-400">
+      <div className="absolute right-0 bottom-0 text-xs text-gray-500 dark:text-gray-400">
         sessions
       </div>
     </div>

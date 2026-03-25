@@ -238,7 +238,7 @@ export function ContextGauge({
         </div>
 
         {/* Legend row */}
-        <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-500">
+        <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
           <span className="flex items-center gap-1">
             <span className={`inline-block w-2 h-2 rounded-sm ${SEGMENT_COLORS.system}`} />
             System
@@ -260,7 +260,7 @@ export function ContextGauge({
         </div>
 
         {/* Breakdown rows */}
-        <div className="space-y-1 text-[11px]">
+        <div className="space-y-1 text-xs">
           <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
             <span>Used</span>
             <span className="tabular-nums font-mono">
@@ -284,7 +284,7 @@ export function ContextGauge({
             limit={contextLimit}
           />
           <div className="border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
-            <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100 text-[11px]">
+            <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100 text-xs">
               <span>Available</span>
               <span className="tabular-nums font-mono">
                 {formatTokens(freeSpace)}{' '}
@@ -298,8 +298,8 @@ export function ContextGauge({
 
         {/* Session totals */}
         {tokens && (
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1 text-[11px]">
-            <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1 text-xs">
+            <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
               Session totals
             </div>
             <div className="flex justify-between text-gray-500 dark:text-gray-400">
@@ -350,7 +350,7 @@ export function ContextGauge({
         )}
 
         {/* Hint */}
-        <div className="text-[10px] text-gray-400 dark:text-gray-500 italic">
+        <div className="text-xs text-gray-400 dark:text-gray-500 italic">
           Run{' '}
           <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">/context</span> in
           session for full breakdown
@@ -391,7 +391,7 @@ export function ContextGauge({
           />
         )}
       </div>
-      <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+      <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
         <span className="flex items-center gap-1">
           {formatTokens(contextWindowTokens)}/{formatTokens(contextLimit)} tokens
           {isCompacting && (
@@ -431,8 +431,8 @@ export function ContextGauge({
             </div>
 
             {/* Estimated context breakdown */}
-            <div className="space-y-0.5 text-[11px]">
-              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+            <div className="space-y-0.5 text-xs">
+              <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
                 Estimated breakdown
               </div>
               <div className="flex items-center justify-between font-medium text-gray-900 dark:text-gray-100">
@@ -472,8 +472,8 @@ export function ContextGauge({
 
             {/* Cumulative session tokens */}
             {tokens && (
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-0.5 text-[11px]">
-                <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-0.5 text-xs">
+                <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
                   Session totals
                 </div>
                 <div className="flex justify-between text-gray-500 dark:text-gray-400">
@@ -526,7 +526,7 @@ export function ContextGauge({
             )}
 
             {/* Hint */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-[10px] text-gray-400 dark:text-gray-500 italic">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-xs text-gray-400 dark:text-gray-500 italic">
               Run{' '}
               <span className="font-mono text-gray-500 dark:text-gray-400 not-italic">
                 /context

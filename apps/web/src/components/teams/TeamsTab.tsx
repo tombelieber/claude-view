@@ -37,17 +37,17 @@ function MemberRow({ member, isLead }: { member: TeamMember; isLead: boolean }) 
         <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
           {member.name}
         </span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
           {member.model}
         </span>
-        <span className="text-[10px] text-gray-400">{member.agentType}</span>
+        <span className="text-xs text-gray-400">{member.agentType}</span>
       </div>
       {member.prompt && (
         <div className="ml-5 mt-1">
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             task prompt
@@ -81,7 +81,7 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
           ? 'shutdown request'
           : 'shutdown approved'
     return (
-      <div className="flex items-center gap-2 py-1 text-[11px] text-gray-300 dark:text-gray-600">
+      <div className="flex items-center gap-2 py-1 text-xs text-gray-300 dark:text-gray-600">
         <span
           className={cn('w-1.5 h-1.5 rounded-full', COLOR_MAP[msg.color ?? ''] || 'bg-gray-300')}
         />
@@ -97,7 +97,7 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
       <div className="flex items-center gap-2 mb-1">
         <span className={cn('w-2 h-2 rounded-full', COLOR_MAP[msg.color ?? ''] || 'bg-gray-400')} />
         <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{msg.from}</span>
-        <span className="ml-auto text-[10px] text-gray-400">{msg.timestamp.slice(11, 16)}</span>
+        <span className="ml-auto text-xs text-gray-400">{msg.timestamp.slice(11, 16)}</span>
       </div>
       <div
         className={cn(
@@ -112,7 +112,7 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="text-[11px] text-blue-500 hover:text-blue-600 mt-1"
+          className="text-xs text-blue-500 hover:text-blue-600 mt-1"
         >
           {expanded ? 'collapse' : `expand (${msg.text.length.toLocaleString()} chars)`}
         </button>
@@ -159,7 +159,7 @@ export function TeamsTab({ teamName, inboxVersion }: TeamsTabProps) {
       <div>
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{team.name}</h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{team.description}</p>
-        <p className="text-[10px] text-gray-400 mt-1">
+        <p className="text-xs text-gray-400 mt-1">
           Created {team.createdAt > 0 ? new Date(team.createdAt).toLocaleString() : '—'}
         </p>
       </div>

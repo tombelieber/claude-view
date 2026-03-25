@@ -309,8 +309,8 @@ function CacheCountdownTooltip({
             </div>
 
             {/* Breakdown */}
-            <div className="space-y-0.5 text-[11px]">
-              <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wide mb-1">
+            <div className="space-y-0.5 text-xs">
+              <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
                 How it works
               </div>
               <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
@@ -328,7 +328,7 @@ function CacheCountdownTooltip({
             </div>
 
             {/* Explainer */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
               {isWarm
                 ? 'Cache is warm — the next turn reuses cached tokens (faster + cheaper). Respond before it expires to keep the savings.'
                 : 'Cache expired — the next turn will re-cache the system prompt and conversation prefix. First turn back costs more.'}
@@ -340,7 +340,7 @@ function CacheCountdownTooltip({
                 href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[10px] text-sky-500 dark:text-sky-400 hover:underline"
+                className="text-xs text-sky-500 dark:text-sky-400 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 Learn about prompt caching →

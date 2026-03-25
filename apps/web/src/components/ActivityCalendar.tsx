@@ -272,7 +272,7 @@ export function ActivityCalendar({
           </div>
 
           {/* Heatmap legend */}
-          <div id={legendId} className="flex items-center gap-1.5 text-[10px] text-gray-400">
+          <div id={legendId} className="flex items-center gap-1.5 text-xs text-gray-400">
             <span>Less</span>
             <div
               className="flex gap-0.5"

@@ -67,7 +67,7 @@ export function SourceBadge({ source, size = 'sm' }: SourceBadgeProps) {
     )
   }
 
-  const textClass = size === 'sm' ? 'text-[9px]' : 'text-[10px]'
+  const textClass = 'text-xs'
 
   if (source.category === 'agent_sdk') {
     return (

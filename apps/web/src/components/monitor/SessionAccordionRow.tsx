@@ -103,7 +103,7 @@ export function SessionAccordionRow({
         </span>
 
         {descendantCount > 0 ? (
-          <span className="text-[10px] tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full shrink-0">
+          <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full shrink-0">
             {descendantCount} proc{descendantCount !== 1 ? 's' : ''}
           </span>
         ) : processTreePending ? (

@@ -33,7 +33,7 @@ export function TaskProgressList({ items }: TaskProgressListProps) {
         <Tooltip.Trigger asChild>
           <div className="mb-2 cursor-default">
             <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 Tasks {completed}/{total}
               </span>
               {/* Mini progress bar */}
@@ -65,7 +65,7 @@ export function TaskProgressList({ items }: TaskProgressListProps) {
                 )
               })}
               {items.length > 5 && (
-                <li className="text-[10px] text-gray-400 dark:text-gray-500 pl-4">
+                <li className="text-xs text-gray-400 dark:text-gray-500 pl-4">
                   +{items.length - 5} more
                 </li>
               )}

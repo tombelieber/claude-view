@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useCallback, useMemo, useState } from 'react'
 import { ResponsiveContainer, Tooltip, Treemap } from 'recharts'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
@@ -94,7 +95,7 @@ export function CategoryTreemap({ data, onCategoryClick, selectedCategory }: Tre
                 y={y + height / 2 - (height > 50 ? 8 : 0)}
                 textAnchor="middle"
                 fill="#FFF"
-                fontSize={width > 100 ? 13 : 11}
+                fontSize={width > 100 ? chartFontSize.tooltip : chartFontSize.annotation}
                 fontWeight={600}
                 style={{ pointerEvents: 'none' }}
               >
@@ -106,7 +107,7 @@ export function CategoryTreemap({ data, onCategoryClick, selectedCategory }: Tre
                   y={y + height / 2 + 12}
                   textAnchor="middle"
                   fill="#FFF"
-                  fontSize={11}
+                  fontSize={chartFontSize.annotation}
                   opacity={0.8}
                   style={{ pointerEvents: 'none' }}
                 >

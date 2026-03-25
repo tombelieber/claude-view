@@ -17,7 +17,7 @@ function ScopeBadge({ scope }: { scope: string }) {
   return (
     <span
       className={cn(
-        'text-[10px] px-1.5 py-0.5 rounded font-medium uppercase',
+        'text-xs px-1.5 py-0.5 rounded font-medium uppercase',
         isProject ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-600',
       )}
     >
@@ -59,13 +59,13 @@ function DuplicateWarning({ marketplaces }: { marketplaces: string[] }) {
   return (
     <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,149,0,0.07)] border border-[rgba(255,149,0,0.2)]">
       <div className="flex items-start gap-1.5">
-        <span className="text-[12px] flex-shrink-0 mt-px">⚑</span>
+        <span className="text-xs flex-shrink-0 mt-px">⚑</span>
         <div>
-          <span className="text-[12px] text-apple-text2 leading-relaxed">
+          <span className="text-xs text-apple-text2 leading-relaxed">
             <strong className="text-[#B45309] font-semibold">Conflict:</strong> also in{' '}
             {marketplaces.join(', ')}. This version runs; marketplace updates won't apply.
           </span>
-          <span className="block mt-1 text-[12px] text-apple-blue font-medium cursor-pointer">
+          <span className="block mt-1 text-xs text-apple-blue font-medium cursor-pointer">
             Resolve →
           </span>
         </div>
@@ -121,7 +121,7 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
             <h3 className="text-sm font-semibold text-apple-text truncate">{plugin.name}</h3>
             <ScopeBadge scope={plugin.scope} />
             {!optimisticEnabled && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
+              <span className="text-xs px-1.5 py-0.5 rounded font-medium uppercase bg-apple-fill2 text-apple-text2 flex-shrink-0">
                 Disabled
               </span>
             )}
@@ -162,7 +162,7 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
         </div>
 
         {/* Row 2: marketplace + version + install count */}
-        <div className="flex items-center gap-2 mt-1 text-[10px] text-apple-text2">
+        <div className="flex items-center gap-2 mt-1 text-xs text-apple-text2">
           <span className="flex items-center gap-1">
             <span
               className={cn(
@@ -210,17 +210,17 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
           <div className="mt-2.5 p-2.5 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
             {plugin.sourceExists ? (
               <>
-                <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">
+                <div className="text-xs font-bold text-[#C0392B] mb-0.5">
                   CLI verification issue
                 </div>
-                <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                <div className="text-xs text-apple-text2 mb-2 leading-relaxed">
                   Plugin files are intact. The CLI can't verify it against a marketplace catalog.
                 </div>
               </>
             ) : (
               <>
-                <div className="text-[12px] font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
-                <div className="text-[12px] text-apple-text2 mb-2 leading-relaxed">
+                <div className="text-xs font-bold text-[#C0392B] mb-0.5">Orphaned install</div>
+                <div className="text-xs text-apple-text2 mb-2 leading-relaxed">
                   Source directory missing. Can't update or run.
                 </div>
               </>
@@ -234,7 +234,7 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
                     onAction('install', plugin.name, plugin.scope)
                   }}
                   disabled={isPending}
-                  className="text-[11px] font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
+                  className="text-xs font-medium px-3 py-1 rounded-[7px] border border-[rgba(255,59,48,0.3)] bg-transparent text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] transition-colors disabled:opacity-50"
                 >
                   Reinstall
                 </button>
@@ -246,7 +246,7 @@ export function PluginCard({ plugin, onAction, isPending, githubUrl }: PluginCar
                   onAction('uninstall', plugin.name, plugin.scope, plugin.projectPath)
                 }}
                 disabled={isPending}
-                className="text-[11px] font-medium px-3 py-1 rounded-[7px] border-none bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] transition-colors disabled:opacity-50"
+                className="text-xs font-medium px-3 py-1 rounded-[7px] border-none bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] transition-colors disabled:opacity-50"
               >
                 Remove
               </button>

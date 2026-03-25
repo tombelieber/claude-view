@@ -1,3 +1,4 @@
+import { chartFontSize } from '@claude-view/design-tokens'
 import { useCallback, useMemo } from 'react'
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
@@ -71,7 +72,12 @@ export function CategoryBarChart({ data, onCategoryClick, selectedCategory }: Ba
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={flatData} layout="vertical" margin={{ left: 20 }}>
           <XAxis type="number" hide />
-          <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 12 }} />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={160}
+            tick={{ fontSize: chartFontSize.axisTick }}
+          />
           <Tooltip
             content={({ payload }) => {
               if (!payload?.[0]) return null

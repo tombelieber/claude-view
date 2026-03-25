@@ -26,23 +26,23 @@ export function WorkflowCard({ workflow, onRun, onView }: WorkflowCardProps) {
     >
       {/* Category tag */}
       <div className="flex items-center justify-between mb-4">
-        <span className="text-[11px] font-medium tracking-wide text-[#6E6E73] dark:text-[#98989D] uppercase">
+        <span className="text-xs font-medium tracking-wide text-[#6E6E73] dark:text-[#98989D] uppercase">
           {workflow.category}
         </span>
         {isOfficial && (
-          <span className="text-[10px] font-semibold tracking-wider text-[#22C55E] uppercase">
+          <span className="text-xs font-semibold tracking-wider text-[#22C55E] uppercase">
             Official
           </span>
         )}
       </div>
 
       {/* Title */}
-      <h3 className="text-[15px] font-semibold text-[#1D1D1F] dark:text-white leading-snug mb-1.5">
+      <h3 className="text-base font-semibold text-[#1D1D1F] dark:text-white leading-snug mb-1.5">
         {workflow.name}
       </h3>
 
       {/* Description */}
-      <p className="text-[13px] text-[#6E6E73] dark:text-[#98989D] leading-relaxed line-clamp-2 mb-5">
+      <p className="text-xs text-[#6E6E73] dark:text-[#98989D] leading-relaxed line-clamp-2 mb-5">
         {workflow.description}
       </p>
 
@@ -61,11 +61,11 @@ export function WorkflowCard({ workflow, onRun, onView }: WorkflowCardProps) {
           />
         ))}
         {workflow.stageCount > 6 && (
-          <span className="text-[11px] text-[#AEAEB2] dark:text-[#636366] ml-0.5">
+          <span className="text-xs text-[#AEAEB2] dark:text-[#636366] ml-0.5">
             +{workflow.stageCount - 6}
           </span>
         )}
-        <span className="ml-auto text-[12px] text-[#AEAEB2] dark:text-[#636366]">
+        <span className="ml-auto text-xs text-[#AEAEB2] dark:text-[#636366]">
           {workflow.stageCount} {workflow.stageCount === 1 ? 'stage' : 'stages'}
         </span>
       </div>
@@ -79,7 +79,7 @@ export function WorkflowCard({ workflow, onRun, onView }: WorkflowCardProps) {
             onRun(workflow.id)
           }}
           className={cn(
-            'flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[13px] font-semibold',
+            'flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold',
             'transition-all duration-150 cursor-pointer',
             isOfficial
               ? 'bg-[#22C55E] text-white hover:bg-[#16A34A] active:scale-95'
@@ -95,7 +95,7 @@ export function WorkflowCard({ workflow, onRun, onView }: WorkflowCardProps) {
             e.stopPropagation()
             onView(workflow.id)
           }}
-          className="px-4 py-1.5 rounded-full text-[13px] font-medium
+          className="px-4 py-1.5 rounded-full text-xs font-medium
                      text-[#6E6E73] dark:text-[#98989D]
                      hover:bg-black/[0.06] dark:hover:bg-white/[0.08]
                      transition-all duration-150 cursor-pointer active:scale-95"

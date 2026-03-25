@@ -74,13 +74,11 @@ function DialogHeader({
     <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-apple-sep2 flex-shrink-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <Dialog.Title className="text-[14px] font-bold text-apple-text1">
-            {plugin.name}
-          </Dialog.Title>
+          <Dialog.Title className="text-sm font-bold text-apple-text1">{plugin.name}</Dialog.Title>
           {scope && (
             <span
               className={cn(
-                'text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-[0.05em]',
+                'text-xs px-1.5 py-0.5 rounded font-bold uppercase tracking-[0.05em]',
                 scopeIsProject ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-600',
               )}
             >
@@ -88,12 +86,12 @@ function DialogHeader({
             </span>
           )}
           {!installed && (plugin as AvailablePlugin).alreadyInstalled && (
-            <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]">
+            <span className="text-xs font-bold uppercase px-1.5 py-0.5 rounded-[5px] bg-[rgba(52,199,89,0.1)] text-[#248A3D] border border-[rgba(52,199,89,0.2)]">
               INSTALLED
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-apple-text3">
+        <div className="flex items-center gap-1 mt-0.5 text-xs text-apple-text3">
           <span
             className={cn(
               'w-1.5 h-1.5 rounded-full flex-shrink-0',
@@ -131,7 +129,7 @@ function DialogHeader({
               }}
               disabled={isPending}
             />
-            <span className="text-[9px] text-apple-text3 leading-none select-none">
+            <span className="text-xs text-apple-text3 leading-none select-none">
               {(plugin as PluginInfo).enabled ? 'Enabled' : 'Disabled'}
             </span>
           </div>
@@ -181,21 +179,21 @@ function LeftPanel({
       {/* Meta section — tight spacing, zero waste */}
       <div className="px-4 pt-3 pb-3 space-y-1.5 flex-shrink-0">
         {plugin.description ? (
-          <p className="text-[12px] text-apple-text2 leading-relaxed">{plugin.description}</p>
+          <p className="text-xs text-apple-text2 leading-relaxed">{plugin.description}</p>
         ) : (
-          <p className="text-[12px] text-apple-text3 italic">No description.</p>
+          <p className="text-xs text-apple-text3 italic">No description.</p>
         )}
 
-        <div className="flex flex-wrap gap-x-2 text-[11px] text-apple-text3">
+        <div className="flex flex-wrap gap-x-2 text-xs text-apple-text3">
           <span>Installed {plugin.installedAt.split('T')[0]}</span>
           {plugin.lastUpdated && <span>· Updated {plugin.lastUpdated.split('T')[0]}</span>}
           {plugin.gitSha && (
-            <span className="font-mono text-[10px]">SHA {plugin.gitSha.slice(0, 8)}</span>
+            <span className="font-mono text-xs">SHA {plugin.gitSha.slice(0, 8)}</span>
           )}
         </div>
 
         {invocations > 0 && (
-          <div className="text-[11px] text-apple-text3">
+          <div className="text-xs text-apple-text3">
             {invocations.toLocaleString()}× · {sessions} session{sessions !== 1 ? 's' : ''}
             {plugin.lastUsedAt && ` · ${formatRelativeTime(Number(plugin.lastUsedAt))}`}
           </div>
@@ -203,7 +201,7 @@ function LeftPanel({
 
         {plugin.duplicateMarketplaces.length > 0 && (
           <div className="px-2.5 py-1.5 rounded-lg bg-[rgba(255,149,0,0.07)] border border-[rgba(255,149,0,0.2)]">
-            <span className="text-[11px] text-apple-text2">
+            <span className="text-xs text-apple-text2">
               <strong className="text-[#B45309]">Conflict:</strong> also in{' '}
               {plugin.duplicateMarketplaces.join(', ')}
             </span>
@@ -212,7 +210,7 @@ function LeftPanel({
 
         {plugin.errors.length > 0 && (
           <div className="px-2.5 py-2 rounded-lg bg-[rgba(255,59,48,0.05)] border border-[rgba(255,59,48,0.18)]">
-            <div className="text-[11px] font-bold text-[#C0392B]">
+            <div className="text-xs font-bold text-[#C0392B]">
               {plugin.sourceExists ? 'CLI verification issue' : 'Orphaned install'}
             </div>
             <div className="flex gap-1.5 mt-1.5">
@@ -224,7 +222,7 @@ function LeftPanel({
                     e.stopPropagation()
                     onAction?.('install', plugin.name, plugin.scope)
                   }}
-                  className="text-[11px] px-2.5 py-0.5 rounded-[6px] border border-[rgba(255,59,48,0.3)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] disabled:opacity-50"
+                  className="text-xs px-2.5 py-0.5 rounded-[6px] border border-[rgba(255,59,48,0.3)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.07)] disabled:opacity-50"
                 >
                   Reinstall
                 </button>
@@ -236,7 +234,7 @@ function LeftPanel({
                   e.stopPropagation()
                   onAction?.('uninstall', plugin.name, plugin.scope, plugin.projectPath)
                 }}
-                className="text-[11px] px-2.5 py-0.5 rounded-[6px] bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] disabled:opacity-50"
+                className="text-xs px-2.5 py-0.5 rounded-[6px] bg-[rgba(255,59,48,0.1)] text-[#C0392B] hover:bg-[rgba(255,59,48,0.18)] disabled:opacity-50"
               >
                 Remove
               </button>
@@ -249,7 +247,7 @@ function LeftPanel({
       {plugin.items.length > 0 && (
         <>
           <div className="px-4 py-1.5 border-t border-apple-sep2 flex-shrink-0">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-apple-text3">
+            <span className="text-xs font-bold uppercase tracking-wide text-apple-text3">
               Contents ({plugin.items.length})
             </span>
           </div>
@@ -276,7 +274,7 @@ function LeftPanel({
                   className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', kindDotColor(item.kind))}
                 />
                 <ItemIcon kind={item.kind} />
-                <span className="text-[12px] font-mono truncate">{itemFileName(item)}</span>
+                <span className="text-xs font-mono truncate">{itemFileName(item)}</span>
               </button>
             ))}
           </div>
@@ -292,24 +290,24 @@ function LeftPanel({
 
 const mdComponents = {
   h1: ({ children }: { children?: React.ReactNode }) => (
-    <h1 className="text-[14px] font-bold text-apple-text1 mt-3 mb-1.5">{children}</h1>
+    <h1 className="text-sm font-bold text-apple-text1 mt-3 mb-1.5">{children}</h1>
   ),
   h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="text-[13px] font-semibold text-apple-text1 mt-2.5 mb-1">{children}</h2>
+    <h2 className="text-xs font-semibold text-apple-text1 mt-2.5 mb-1">{children}</h2>
   ),
   h3: ({ children }: { children?: React.ReactNode }) => (
-    <h3 className="text-[12px] font-semibold text-apple-text2 mt-2 mb-0.5">{children}</h3>
+    <h3 className="text-xs font-semibold text-apple-text2 mt-2 mb-0.5">{children}</h3>
   ),
   p: ({ children }: { children?: React.ReactNode }) => (
-    <p className="text-[12px] text-apple-text2 leading-relaxed mb-2">{children}</p>
+    <p className="text-xs text-apple-text2 leading-relaxed mb-2">{children}</p>
   ),
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="list-disc list-inside text-[12px] text-apple-text2 space-y-0.5 mb-2 pl-1">
+    <ul className="list-disc list-inside text-xs text-apple-text2 space-y-0.5 mb-2 pl-1">
       {children}
     </ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="list-decimal list-inside text-[12px] text-apple-text2 space-y-0.5 mb-2 pl-1">
+    <ol className="list-decimal list-inside text-xs text-apple-text2 space-y-0.5 mb-2 pl-1">
       {children}
     </ol>
   ),
@@ -319,18 +317,18 @@ const mdComponents = {
   code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
     const isBlock = className?.startsWith('language-')
     return isBlock ? (
-      <code className="block bg-[#f0f2f5] border border-apple-sep2 rounded-lg p-3 text-[11px] font-mono text-apple-text1 whitespace-pre-wrap overflow-x-auto mb-2">
+      <code className="block bg-[#f0f2f5] border border-apple-sep2 rounded-lg p-3 text-xs font-mono text-apple-text1 whitespace-pre-wrap overflow-x-auto mb-2">
         {children}
       </code>
     ) : (
-      <code className="bg-apple-sep2 text-apple-text1 rounded px-1 py-0.5 text-[11px] font-mono">
+      <code className="bg-apple-sep2 text-apple-text1 rounded px-1 py-0.5 text-xs font-mono">
         {children}
       </code>
     )
   },
   pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-2 border-apple-sep pl-3 text-[12px] text-apple-text3 italic my-2">
+    <blockquote className="border-l-2 border-apple-sep pl-3 text-xs text-apple-text3 italic my-2">
       {children}
     </blockquote>
   ),
@@ -367,19 +365,17 @@ function FileContentViewer({ item }: { item: PluginItem | null }) {
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Breadcrumb bar */}
       <div className="px-4 py-2 border-b border-apple-sep2 flex-shrink-0 flex items-center gap-2">
-        <span className="text-[12px] font-mono text-apple-text2 truncate">
-          {itemFileName(item)}
-        </span>
+        <span className="text-xs font-mono text-apple-text2 truncate">{itemFileName(item)}</span>
         <span
           className={cn(
-            'text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0',
+            'text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0',
             kindBadgeClass(item.kind),
           )}
         >
           {item.kind.replace('_', ' ')}
         </span>
         {invocations > 0 && (
-          <span className="text-[10px] text-apple-text3 tabular-nums flex-shrink-0">
+          <span className="text-xs text-apple-text3 tabular-nums flex-shrink-0">
             {invocations}×{lastUsed && ` · ${lastUsed}`}
           </span>
         )}
@@ -392,7 +388,7 @@ function FileContentViewer({ item }: { item: PluginItem | null }) {
             {content}
           </Markdown>
         ) : (
-          <p className="text-[12px] text-apple-text3 italic">No content available.</p>
+          <p className="text-xs text-apple-text3 italic">No content available.</p>
         )}
       </div>
     </div>
@@ -440,12 +436,12 @@ function McpServerViewer({
       {/* Header bar */}
       <div className="px-4 py-2 border-b border-apple-sep2 flex-shrink-0 flex items-center gap-2">
         <Server className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-        <span className="text-[12px] font-mono text-apple-text2 truncate">{item.name}</span>
-        <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 bg-amber-50 text-amber-600">
+        <span className="text-xs font-mono text-apple-text2 truncate">{item.name}</span>
+        <span className="text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded flex-shrink-0 bg-amber-50 text-amber-600">
           {isHttp ? (config?.type ?? 'http') : 'stdio'}
         </span>
         {invocations > 0 && (
-          <span className="text-[10px] text-apple-text3 tabular-nums flex-shrink-0">
+          <span className="text-xs text-apple-text3 tabular-nums flex-shrink-0">
             {invocations}×{lastUsed && ` · ${lastUsed}`}
           </span>
         )}
@@ -454,16 +450,16 @@ function McpServerViewer({
       {/* Config body */}
       <div className="flex-1 overflow-y-auto bg-[#fafafa] px-4 py-3 space-y-3">
         {!config ? (
-          <p className="text-[12px] text-apple-text3 italic">No server configuration available.</p>
+          <p className="text-xs text-apple-text3 italic">No server configuration available.</p>
         ) : (
           <>
             {/* Command */}
             {cmdParts && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                <div className="text-xs font-bold uppercase tracking-wide text-apple-text3 mb-1">
                   Command
                 </div>
-                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-[11px] text-apple-text1 whitespace-pre-wrap break-all">
+                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-xs text-apple-text1 whitespace-pre-wrap break-all">
                   {cmdParts}
                 </div>
               </div>
@@ -472,10 +468,10 @@ function McpServerViewer({
             {/* URL */}
             {config.url && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                <div className="text-xs font-bold uppercase tracking-wide text-apple-text3 mb-1">
                   URL
                 </div>
-                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-[11px] text-apple-text1 break-all">
+                <div className="bg-[#f0f2f5] border border-apple-sep2 rounded-lg px-3 py-2 font-mono text-xs text-apple-text1 break-all">
                   {config.url}
                 </div>
               </div>
@@ -484,7 +480,7 @@ function McpServerViewer({
             {/* Environment variables */}
             {envVars.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                <div className="text-xs font-bold uppercase tracking-wide text-apple-text3 mb-1">
                   Environment ({envVars.length})
                 </div>
                 <div className="border border-apple-sep2 rounded-lg overflow-hidden">
@@ -492,7 +488,7 @@ function McpServerViewer({
                     <div
                       key={key}
                       className={cn(
-                        'flex items-start gap-3 px-3 py-1.5 text-[11px]',
+                        'flex items-start gap-3 px-3 py-1.5 text-xs',
                         i > 0 && 'border-t border-apple-sep2',
                       )}
                     >
@@ -509,7 +505,7 @@ function McpServerViewer({
             {/* Other top-level keys */}
             {otherKeys.length > 0 && (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide text-apple-text3 mb-1">
+                <div className="text-xs font-bold uppercase tracking-wide text-apple-text3 mb-1">
                   Config
                 </div>
                 <div className="border border-apple-sep2 rounded-lg overflow-hidden">
@@ -517,7 +513,7 @@ function McpServerViewer({
                     <div
                       key={key}
                       className={cn(
-                        'flex items-start gap-3 px-3 py-1.5 text-[11px]',
+                        'flex items-start gap-3 px-3 py-1.5 text-xs',
                         i > 0 && 'border-t border-apple-sep2',
                       )}
                     >
@@ -558,9 +554,9 @@ function AvailableBody({
     <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
       <Dialog.Description className="sr-only">{plugin.name} plugin details</Dialog.Description>
       {plugin.description ? (
-        <p className="text-[13px] text-apple-text2 leading-relaxed">{plugin.description}</p>
+        <p className="text-xs text-apple-text2 leading-relaxed">{plugin.description}</p>
       ) : (
-        <p className="text-[13px] text-apple-text3 italic">No description provided.</p>
+        <p className="text-xs text-apple-text3 italic">No description provided.</p>
       )}
       {!plugin.alreadyInstalled && (
         <button

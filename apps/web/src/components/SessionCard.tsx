@@ -284,14 +284,14 @@ export function SessionCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <WeightIndicator tier={weightTier} />
               {projectLabel && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">
                   <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />
                   {projectLabel}
                 </span>
               )}
               {gitBranch && (
                 <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded shrink-0 max-w-40"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded shrink-0 max-w-40"
                   title={gitBranch}
                 >
                   <GitBranch className="w-3 h-3 shrink-0" />
@@ -299,7 +299,7 @@ export function SessionCard({
                 </span>
               )}
               {isLive && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 rounded flex-shrink-0 border border-green-200 dark:border-green-800/60">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-semibold bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 rounded flex-shrink-0 border border-green-200 dark:border-green-800/60">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
@@ -311,7 +311,7 @@ export function SessionCard({
                 <Tooltip.Provider delayDuration={200}>
                   <Tooltip.Root>
                     <Tooltip.Trigger asChild>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 cursor-default">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 cursor-default">
                         <UsersRound className="w-3 h-3" />
                         Teams &middot; {teamMatch.memberCount} agents
                       </span>
@@ -335,7 +335,7 @@ export function SessionCard({
                 </Tooltip.Provider>
               )}
             </div>
-            <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
+            <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap flex-shrink-0">
               {durationSeconds > 0 ? (
                 <>
                   <span>{formatTimeRange(startTimestamp, endTimestamp)}</span>
@@ -367,7 +367,7 @@ export function SessionCard({
 
             {/* Last message if different from first */}
             {cleanLast && cleanLast !== cleanPreview && (
-              <p className="text-[13px] text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">
                 <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>
                 {cleanLast}
               </p>
@@ -389,7 +389,7 @@ export function SessionCard({
           {/* Team member pills — with label */}
           {teamDetail && teamDetail.members.length > 0 && (
             <div className="mt-2 -mx-1 px-1">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
+              <span className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
                 Team Members
               </span>
               <TeamMemberPills members={teamDetail.members} />

@@ -122,7 +122,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
         <div>
           <div className="grid grid-cols-7 gap-1 mb-1">
             {DAY_LABELS.map((label) => (
-              <div key={label} className="text-[10px] text-center text-gray-400 dark:text-gray-500">
+              <div key={label} className="text-xs text-center text-gray-400 dark:text-gray-500">
                 {label}
               </div>
             ))}
@@ -153,7 +153,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
                     >
                       {/* Tooltip */}
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-10 pointer-events-none">
-                        <div className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[10px] px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                        <div className="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
                           {cell.activity
                             ? `${cell.date}: ${formatHumanDuration(cell.activity.totalSeconds)} (${cell.activity.sessionCount} sessions)`
                             : `${cell.date}: No activity`}
@@ -170,7 +170,7 @@ export function CalendarHeatmap({ days, onDayClick, selectedDate }: CalendarHeat
       {/* end overflow-x-auto */}
 
       {/* Legend */}
-      <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-2 mt-3 text-xs text-gray-400 dark:text-gray-500">
         <span>Less</span>
         {INTENSITY_CLASSES.map((cls, i) => (
           <div key={i} className={cn('w-4 h-4 rounded', cls)} />

@@ -1090,6 +1090,233 @@ export const progressBlocks = {
   } satisfies ProgressBlock,
 }
 
+// ── Agent Group Fixtures ──────────────────────────────────────────────────
+// Realistic agent_progress blocks with `message` payloads matching real JSONL.
+// Used to demo the collapsed AgentGroupRow in both Chat and Developer modes.
+
+function agentProgressBlock(
+  id: string,
+  agentId: string,
+  prompt: string,
+  message: unknown,
+  tsOffset = 0,
+): ProgressBlock {
+  return {
+    type: 'progress',
+    id,
+    variant: 'agent',
+    category: 'agent',
+    data: { type: 'agent', agentId, prompt, message },
+    ts: FIVE_MIN_AGO + tsOffset,
+  }
+}
+
+export const agentGroupBlocks: ProgressBlock[] = [
+  // 1. Agent receives its prompt (user text)
+  agentProgressBlock('ag_001', 'ae2ba22b94ed6b826', 'Explore DB schema and Lark webhook config', {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: 'In /Users/dev/trending-radar, explore:\n\n1. All SQL migration files — find the existing database schema\n2. How LARK_WEBHOOK_URL is referenced in the env config',
+        },
+      ],
+    },
+  }),
+  // 2. Agent calls Glob + Grep (parallel tool_use)
+  agentProgressBlock(
+    'ag_002',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'toolu_01a', name: 'Glob', input: { pattern: '**/*.sql' } },
+          {
+            type: 'tool_use',
+            id: 'toolu_01b',
+            name: 'Grep',
+            input: { pattern: 'LARK_WEBHOOK', path: 'src/' },
+          },
+        ],
+      },
+    },
+    1,
+  ),
+  // 3. Agent receives Glob result
+  agentProgressBlock(
+    'ag_003',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_01a',
+            content: 'migrations/001_init.sql\nmigrations/002_add_topics.sql',
+          },
+        ],
+      },
+    },
+    2,
+  ),
+  // 4. Agent receives Grep result
+  agentProgressBlock(
+    'ag_004',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_01b',
+            content: 'Found 7 files\nsrc/env.ts\nsrc/scripts/notify.ts',
+          },
+        ],
+      },
+    },
+    3,
+  ),
+  // 5. Agent calls Read on multiple files
+  agentProgressBlock(
+    'ag_005',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_02a',
+            name: 'Read',
+            input: { file_path: 'migrations/001_init.sql' },
+          },
+          { type: 'tool_use', id: 'toolu_02b', name: 'Read', input: { file_path: 'src/env.ts' } },
+          {
+            type: 'tool_use',
+            id: 'toolu_02c',
+            name: 'Read',
+            input: { file_path: 'src/scripts/notify.ts' },
+          },
+        ],
+      },
+    },
+    4,
+  ),
+  // 6-8. Three Read results
+  agentProgressBlock(
+    'ag_006',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_02a',
+            content: 'CREATE TABLE topics (id SERIAL PRIMARY KEY, name TEXT NOT NULL);',
+          },
+        ],
+      },
+    },
+    5,
+  ),
+  agentProgressBlock(
+    'ag_007',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_02b',
+            content: 'export const env = { LARK_WEBHOOK_URL: process.env.LARK_WEBHOOK_URL }',
+          },
+        ],
+      },
+    },
+    6,
+  ),
+  agentProgressBlock(
+    'ag_008',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_02c',
+            content:
+              'import { env } from "../env"; await fetch(env.LARK_WEBHOOK_URL, { method: "POST" })',
+          },
+        ],
+      },
+    },
+    7,
+  ),
+  // 9. Agent calls Bash
+  agentProgressBlock(
+    'ag_009',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_03',
+            name: 'Bash',
+            input: { command: 'cat .env.example | grep LARK' },
+          },
+        ],
+      },
+    },
+    8,
+  ),
+  // 10. Bash result
+  agentProgressBlock(
+    'ag_010',
+    'ae2ba22b94ed6b826',
+    '',
+    {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_03',
+            content: 'LARK_WEBHOOK_URL=\nLARK_WEBHOOK_SECRET=',
+          },
+        ],
+      },
+    },
+    9,
+  ),
+]
+
 // ── Full Conversation ───────────────────────────────────────────────────────
 
 export const fullConversation: ConversationBlock[] = [

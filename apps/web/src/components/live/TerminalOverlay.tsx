@@ -130,7 +130,7 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
             type="button"
             onClick={copySessionId}
             title={`Copy session ID: ${session.id}`}
-            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-mono text-gray-400 dark:text-[#6E7681] hover:text-gray-600 dark:hover:text-[#C9D1D9] transition-colors"
           >
             {copied ? (
               <Check className="w-3 h-3 text-green-500 dark:text-[#56D364]" />
@@ -178,15 +178,15 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
 
         {/* Footer hint */}
         <div className="flex items-center px-4 py-1.5 bg-gray-50 dark:bg-[#161B22] border-t border-gray-200 dark:border-[#21262D] rounded-b-xl flex-shrink-0">
-          <span className="text-[10px] text-gray-400 dark:text-[#484F58]">
-            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-[#21262D] text-gray-500 dark:text-[#8B949E] font-mono text-[9px] border border-gray-200 dark:border-[#30363D]">
+          <span className="text-xs text-gray-400 dark:text-[#484F58]">
+            <kbd className="px-1 py-0.5 rounded bg-gray-100 dark:bg-[#21262D] text-gray-500 dark:text-[#8B949E] font-mono text-xs border border-gray-200 dark:border-[#30363D]">
               ESC
             </kbd>
             <span className="ml-1.5">to close</span>
           </span>
           <div className="flex-1" />
           {session.currentActivity && (
-            <span className="text-[10px] text-gray-400 dark:text-[#6E7681] truncate max-w-[400px]">
+            <span className="text-xs text-gray-400 dark:text-[#6E7681] truncate max-w-[400px]">
               {session.currentActivity}
             </span>
           )}

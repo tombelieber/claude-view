@@ -61,7 +61,7 @@ export function AskUserQuestionDisplay({
               <div className="min-w-0 flex-1">
                 {q.header && (
                   <div
-                    className={`text-[10px] font-mono ${c.headerText} uppercase tracking-wide mb-0.5`}
+                    className={`text-xs font-mono ${c.headerText} uppercase tracking-wide mb-0.5`}
                   >
                     {q.header}
                   </div>
@@ -86,18 +86,18 @@ export function AskUserQuestionDisplay({
                     <Circle className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0 mt-0.5" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                    <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
                       {opt.label}
                     </div>
                     {opt.description && (
-                      <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-0.5 leading-relaxed">
+                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 leading-relaxed">
                         {opt.description}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
-              <div className="text-[9px] text-gray-400 dark:text-gray-500 italic px-2 pt-1">
+              <div className="text-xs text-gray-400 dark:text-gray-500 italic px-2 pt-1">
                 {q.multiple ? 'Multiple selections allowed' : 'Single selection only'}
               </div>
             </div>

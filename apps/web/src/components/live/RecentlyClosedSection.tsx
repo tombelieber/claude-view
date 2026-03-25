@@ -88,7 +88,7 @@ export function RecentlyClosedSection({
                   e.stopPropagation()
                   navigator.clipboard.writeText(`claude --resume ${session.id}`).catch(() => {})
                 }}
-                className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                className="absolute bottom-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                 title="Copy resume command"
               >
                 <Copy className="w-3 h-3" />
@@ -96,7 +96,7 @@ export function RecentlyClosedSection({
               </button>
               {/* Closed-time label */}
               {session.closedAt && (
-                <div className="absolute bottom-2 right-2 z-10 text-[10px] text-zinc-400">
+                <div className="absolute bottom-2 right-2 z-10 text-xs text-zinc-400">
                   closed {formatRelativeTime(session.closedAt)}
                 </div>
               )}

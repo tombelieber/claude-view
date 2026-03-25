@@ -754,14 +754,14 @@ export function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" />
-                    <span className="text-[10px]">Shift</span>E
+                    <span className="text-xs">Shift</span>E
                   </kbd>
                   <span className="text-gray-600 dark:text-gray-400">Export HTML</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
                     <Command className="w-3 h-3" />
-                    <span className="text-[10px]">Shift</span>P
+                    <span className="text-xs">Shift</span>P
                   </kbd>
                   <span className="text-gray-600 dark:text-gray-400">Export PDF</span>
                 </div>
