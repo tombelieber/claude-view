@@ -18,6 +18,11 @@ use crate::state::AppState;
 /// GET /api/projects - List all projects as lightweight summaries.
 ///
 /// Returns ProjectSummary[] (no sessions array). ~2 KB for 10 projects.
+#[utoipa::path(get, path = "/api/projects", tag = "projects",
+    responses(
+        (status = 200, description = "List of project summaries", body = Vec<claude_view_core::ProjectSummary>),
+    )
+)]
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<ProjectSummary>>> {
@@ -26,7 +31,7 @@ pub async fn list_projects(
 }
 
 /// Query parameters for paginated sessions endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsQuery {
     #[serde(default = "default_limit")]
@@ -48,13 +53,22 @@ fn default_sort() -> String {
 }
 
 /// Response from GET /api/projects/:id/branches
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct BranchesResponse {
     pub branches: Vec<BranchCount>,
 }
 
 /// GET /api/projects/:id/sessions - Paginated sessions for a project.
+#[utoipa::path(get, path = "/api/projects/{id}/sessions", tag = "projects",
+    params(
+        ("id" = String, Path, description = "Project ID or git root path (URL-encoded)"),
+        SessionsQuery,
+    ),
+    responses(
+        (status = 200, description = "Paginated sessions for a project", body = claude_view_core::SessionsPage),
+    )
+)]
 pub async fn list_project_sessions(
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
@@ -79,6 +93,12 @@ pub async fn list_project_sessions(
 ///
 /// Returns all unique git_branch values for sessions in this project,
 /// sorted by session count descending.
+#[utoipa::path(get, path = "/api/projects/{id}/branches", tag = "projects",
+    params(("id" = String, Path, description = "Project ID or git root path (URL-encoded)")),
+    responses(
+        (status = 200, description = "Distinct branches with session counts", body = BranchesResponse),
+    )
+)]
 pub async fn list_project_branches(
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,

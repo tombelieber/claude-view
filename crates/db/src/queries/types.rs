@@ -5,7 +5,7 @@ use serde::Serialize;
 use ts_rs::TS;
 
 /// Branch count for a project.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchCount {
