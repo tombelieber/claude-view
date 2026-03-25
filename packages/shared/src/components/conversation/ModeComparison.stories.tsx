@@ -381,9 +381,9 @@ const comparisons: ModeComparison[] = [
 
   // ── 31b. Agent Group (collapsed) ──
   {
-    label: 'agent group (collapsed)',
+    label: 'agent group',
     description:
-      'NEW: 10 consecutive agent progress messages collapsed into one row. Shows description + tool summary (Glob ×1, Grep ×1, Read ×3, Bash ×1). Expandable to see individual operations.',
+      'Agent progress group: Chat collapsed by default, Developer expanded. Shows description + tool summary (Glob ×1, Grep ×1, Read ×3, Bash ×1).',
     blocks: agentGroupBlocks as ConversationBlock[],
     customRender: {
       chat: <ChatAgentGroupRow blocks={agentGroupBlocks as ProgressBlock[]} />,
