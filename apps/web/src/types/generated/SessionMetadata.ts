@@ -3,4 +3,4 @@
 /**
  * Session metadata extracted from parsing
  */
-export type SessionMetadata = { totalMessages: number; toolCallCount: number }
+export type SessionMetadata = { totalMessages: number, toolCallCount: number, };

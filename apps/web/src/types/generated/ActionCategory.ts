@@ -3,12 +3,4 @@
 /**
  * Action category — 8 values.
  */
-export type ActionCategory =
-  | 'skill'
-  | 'mcp'
-  | 'builtin'
-  | 'agent'
-  | 'hook'
-  | 'system'
-  | 'snapshot'
-  | 'queue'
+export type ActionCategory = "skill" | "mcp" | "builtin" | "agent" | "hook" | "system" | "snapshot" | "queue";

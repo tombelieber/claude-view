@@ -3,4 +3,4 @@
 /**
  * Message role in a conversation
  */
-export type Role = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'
+export type Role = "user" | "assistant" | "tool_use" | "tool_result" | "system" | "progress";

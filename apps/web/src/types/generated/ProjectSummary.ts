@@ -3,11 +3,4 @@
 /**
  * Lightweight project summary for sidebar — no sessions array.
  */
-export type ProjectSummary = {
-  name: string
-  displayName: string
-  path: string
-  sessionCount: number
-  activeCount: number
-  lastActivityAt?: number | null
-}
+export type ProjectSummary = { name: string, displayName: string, path: string, sessionCount: number, activeCount: number, lastActivityAt?: number | null, };

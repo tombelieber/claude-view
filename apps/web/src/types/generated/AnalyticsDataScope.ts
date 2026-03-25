@@ -3,4 +3,4 @@
 /**
  * Canonical analytics data-scope vocabulary.
  */
-export type AnalyticsDataScope = 'primary_sessions_only' | 'primary_plus_subagent_work'
+export type AnalyticsDataScope = "primary_sessions_only" | "primary_plus_subagent_work";
