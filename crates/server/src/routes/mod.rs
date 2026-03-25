@@ -35,6 +35,7 @@ pub mod search;
 pub mod sessions;
 pub mod settings;
 pub mod share;
+pub mod sidecar_proxy;
 pub mod stats;
 pub mod status;
 pub mod statusline;
@@ -162,6 +163,10 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", telemetry::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
+        // Sidecar reverse proxy (HTTP + WS) — mounted at root level because
+        // /ws/chat/* sits outside the /api prefix. In dev, Vite handles this;
+        // in production, the Rust server proxies to sidecar on :3001.
+        .merge(sidecar_proxy::router())
         .with_state(state)
 }
 

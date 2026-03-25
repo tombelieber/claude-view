@@ -13,11 +13,13 @@ fn telemetry_config_path_is_under_home_claude_view() {
 
 #[test]
 #[serial]
-fn telemetry_config_path_ignores_claude_view_data_dir() {
+fn telemetry_config_path_respects_claude_view_data_dir() {
     std::env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/custom-data");
     let path = claude_view_core::telemetry_config::telemetry_config_path();
-    let home = dirs::home_dir().unwrap();
-    assert_eq!(path, home.join(".claude-view").join("telemetry.json"));
+    assert_eq!(
+        path,
+        std::path::PathBuf::from("/tmp/custom-data").join("telemetry.json")
+    );
     std::env::remove_var("CLAUDE_VIEW_DATA_DIR");
 }
 
