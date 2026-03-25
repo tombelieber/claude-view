@@ -14,7 +14,7 @@ export function RetryDetail({ rawJson }: RetryDetailProps) {
   if (retryInMs == null && retryAttempt == null) return null
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px] rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/40">
+    <div className="flex items-center gap-2 px-3 py-1 text-xs rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800/40">
       <RefreshCw className="w-3 h-3 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
       <span className="text-yellow-700 dark:text-yellow-300">
         Retry{retryAttempt != null && maxRetries != null ? ` ${retryAttempt}/${maxRetries}` : ''}

@@ -47,7 +47,7 @@ export function DevUserBlock({ block }: UserBlockProps) {
         {block.rawJson != null && (
           <div className="space-y-1">
             {Array.isArray(block.rawJson.imagePasteIds) && (
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
                 {(block.rawJson.imagePasteIds as unknown[]).length} image(s) pasted
               </span>
             )}

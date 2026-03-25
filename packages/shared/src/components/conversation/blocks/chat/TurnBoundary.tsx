@@ -70,12 +70,12 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
       <div className="flex items-center gap-2 py-1">
         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
         {infoSegments.length > 0 && (
-          <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
+          <span className="text-xs font-mono text-gray-400 dark:text-gray-500 tabular-nums">
             {infoSegments.join(' · ')}
           </span>
         )}
         {!block.success && !hasHookErrors && !block.preventedContinuation && (
-          <span className="text-[10px] font-medium text-red-500 dark:text-red-400 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20">
+          <span className="text-xs font-medium text-red-500 dark:text-red-400 px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20">
             {block.error?.subtype === 'error_max_turns'
               ? `Max turns (${block.numTurns})`
               : block.error?.subtype === 'error_max_budget_usd'
@@ -92,7 +92,7 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
           <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="space-y-0.5">
             {block.hookErrors!.map((err, i) => (
-              <p key={i} className="text-[11px] text-amber-700 dark:text-amber-300/90">
+              <p key={i} className="text-xs text-amber-700 dark:text-amber-300/90">
                 {err}
               </p>
             ))}
@@ -104,11 +104,11 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
       {block.preventedContinuation && (
         <div className="flex items-center gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-orange-50 dark:bg-gray-800 border border-orange-200 dark:border-orange-500/30">
           <ShieldOff className="w-3 h-3 text-orange-600 dark:text-orange-400 flex-shrink-0" />
-          <span className="text-[11px] text-orange-700 dark:text-orange-300/90">
+          <span className="text-xs text-orange-700 dark:text-orange-300/90">
             Hook blocked continuation
           </span>
           {block.hookCount != null && (
-            <span className="text-[10px] font-mono text-orange-600 dark:text-orange-400 ml-auto tabular-nums">
+            <span className="text-xs font-mono text-orange-600 dark:text-orange-400 ml-auto tabular-nums">
               {block.hookCount} hook{block.hookCount !== 1 ? 's' : ''} ran
             </span>
           )}

@@ -44,11 +44,11 @@ export function HookSummaryCard({
         aria-expanded={expanded}
       >
         <GitBranch className="w-3 h-3 text-amber-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate flex-1">
           {summaryParts.join(' ')}
         </span>
         {preventedContinuation && (
-          <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20 px-1 py-0.5 rounded flex-shrink-0">
+          <span className="text-xs font-mono text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-500/20 px-1 py-0.5 rounded flex-shrink-0">
             prevented
           </span>
         )}
@@ -64,7 +64,7 @@ export function HookSummaryCard({
           {hookInfos.length > 0 && (
             <ul className="space-y-0.5">
               {hookInfos.map((hook, i) => (
-                <li key={i} className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+                <li key={i} className="text-xs font-mono text-gray-500 dark:text-gray-400">
                   {hook}
                 </li>
               ))}
@@ -73,7 +73,7 @@ export function HookSummaryCard({
           {hookErrors && hookErrors.length > 0 && (
             <ul className="space-y-0.5">
               {hookErrors.map((err, i) => (
-                <li key={i} className="text-[10px] font-mono text-red-500 dark:text-red-400">
+                <li key={i} className="text-xs font-mono text-red-500 dark:text-red-400">
                   {err}
                 </li>
               ))}

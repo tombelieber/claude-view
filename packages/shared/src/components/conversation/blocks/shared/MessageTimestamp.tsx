@@ -33,7 +33,7 @@ export function MessageTimestamp({ timestamp, align = 'left' }: MessageTimestamp
         <Tooltip.Trigger asChild>
           <span
             className={[
-              'text-[10px] text-gray-400 dark:text-gray-500 tabular-nums cursor-default',
+              'text-xs text-gray-400 dark:text-gray-500 tabular-nums cursor-default',
               align === 'right' ? 'text-right' : 'text-left',
             ].join(' ')}
           >

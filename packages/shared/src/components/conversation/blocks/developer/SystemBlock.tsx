@@ -65,7 +65,7 @@ function SessionInitDetail({ data }: { data: SessionInit }) {
       label={`${data.model} — ${data.tools.length} tools`}
       rawData={data}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
         <span className="text-gray-500 dark:text-gray-400">Model</span>
         <span className="font-mono text-gray-700 dark:text-gray-300 truncate">{data.model}</span>
         <span className="text-gray-500 dark:text-gray-400">Mode</span>
@@ -95,7 +95,7 @@ function SessionStatusDetail({ data }: { data: SidecarSessionStatus }) {
       rawData={data}
       meta={
         data.permissionMode ? (
-          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
             {data.permissionMode}
           </span>
         ) : undefined
@@ -128,7 +128,7 @@ function HookEventDetail({ data }: { data: SidecarHookEvent }) {
         data.outcome ? (
           <span
             className={cn(
-              'text-[9px] font-mono px-1.5 py-0.5 rounded',
+              'text-xs font-mono px-1.5 py-0.5 rounded',
               isError
                 ? 'text-red-600 dark:text-red-400 bg-red-500/10'
                 : 'text-green-600 dark:text-green-400 bg-green-500/10',
@@ -140,7 +140,7 @@ function HookEventDetail({ data }: { data: SidecarHookEvent }) {
       }
     >
       {(data.stdout || data.stderr) && (
-        <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+        <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
           {(data.stdout || data.stderr || '').slice(0, 200)}
         </pre>
       )}
@@ -160,7 +160,7 @@ function TaskStartedDetail({ data }: { data: TaskStarted }) {
       rawData={data}
       meta={
         <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
             {data.taskId.slice(0, 8)}
           </span>
           {convActions?.stopTask && (
@@ -188,7 +188,7 @@ function TaskProgressDetail({ data }: { data: TaskProgressEvent }) {
       label={data.summary ?? data.description}
       rawData={data}
     >
-      <div className="flex items-center gap-3 text-[10px] font-mono text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-3 text-xs font-mono text-gray-500 dark:text-gray-400">
         <span>{data.usage.totalTokens.toLocaleString()} tok</span>
         <span>{data.usage.toolUses} tools</span>
         <span>{(data.usage.durationMs / 1000).toFixed(1)}s</span>
@@ -230,7 +230,7 @@ function CommandOutputDetail({ data }: { data: CommandOutput }) {
       chipColor="bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300"
       rawData={data}
     >
-      <pre className="text-[10px] font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+      <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
         {data.content.slice(0, 500)}
       </pre>
     </EventCard>
@@ -309,7 +309,7 @@ function AiTitleDetail({ data }: { data: AiTitle }) {
       label={data.aiTitle}
       rawData={data}
       meta={
-        <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded">
           {data.sessionId?.slice(0, 8)}
         </span>
       }
@@ -327,7 +327,7 @@ function WorktreeStateDetail({ data }: { data: WorktreeState }) {
       label={`${wt.worktreeName} (${wt.worktreeBranch})`}
       rawData={data}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px]">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
         <span className="text-gray-500 dark:text-gray-400">Worktree</span>
         <span className="font-mono text-gray-700 dark:text-gray-300 truncate">
           {wt.worktreeName}
@@ -415,7 +415,7 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
       {block.rawJson && (
         <div className="ml-4 pl-3 border-l-2 border-gray-200/30 dark:border-gray-700/30 mt-1 space-y-1">
           {block.rawJson.permissionMode != null && (
-            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
+            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}
             </span>
           )}
@@ -424,7 +424,7 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
           )}
           {typeof block.rawJson.planContent === 'string' && block.rawJson.planContent && (
             <details className="mt-1">
-              <summary className="text-[10px] text-gray-500 dark:text-gray-400 cursor-pointer">
+              <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                 Plan content
               </summary>
               <Markdown content={block.rawJson.planContent} />
@@ -435,7 +435,7 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
               href={String(block.rawJson.prUrl)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center text-[10px] font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+              className="inline-flex items-center text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
             >
               PR #{String(block.rawJson.prNumber ?? '')}
             </a>

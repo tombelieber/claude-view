@@ -44,7 +44,7 @@ export function CompactCodeBlock({ code, language: _language, blockId }: Compact
       </button>
 
       {/* Code — plain text (no syntax highlighting) */}
-      <pre className="px-2 py-1.5 text-[11px] overflow-x-auto bg-gray-50 dark:bg-gray-900/80 m-0">
+      <pre className="px-2 py-1.5 text-xs overflow-x-auto bg-gray-50 dark:bg-gray-900/80 m-0">
         <code>{displayCode}</code>
       </pre>
 
@@ -53,7 +53,7 @@ export function CompactCodeBlock({ code, language: _language, blockId }: Compact
         <div className="border-t border-gray-200 dark:border-gray-700/60">
           <button
             onClick={() => blockId && toggleBlock(blockId)}
-            className="w-full px-2 py-1 text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-center"
+            className="w-full px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-center"
           >
             {isExpanded ? '[ Collapse ]' : `[ Show ${remainingLines} more lines ]`}
           </button>

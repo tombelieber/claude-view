@@ -16,7 +16,7 @@ export function StopReasonDetail({ rawJson }: StopReasonDetailProps) {
   const isPrevented = prevented === true
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1 text-[10px]">
+    <div className="flex items-center gap-2 px-3 py-1 text-xs">
       <Square
         className={`w-3 h-3 ${isPrevented ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}
       />

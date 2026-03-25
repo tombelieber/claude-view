@@ -53,23 +53,23 @@ export function BashProgressCard({
       {/* Stats bar — elapsed, lines, bytes, taskId */}
       <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
         <Terminal className="w-3 h-3 text-gray-500 flex-shrink-0" aria-hidden="true" />
-        <span className="text-[10px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
           {elapsedTimeSeconds.toFixed(1)}s
         </span>
-        <span className="text-[10px] text-gray-600 dark:text-gray-600" aria-hidden="true">
+        <span className="text-xs text-gray-600 dark:text-gray-600" aria-hidden="true">
           &middot;
         </span>
-        <span className="text-[10px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
           {totalLines.toLocaleString()} {totalLines === 1 ? 'line' : 'lines'}
         </span>
-        <span className="text-[10px] text-gray-600 dark:text-gray-600" aria-hidden="true">
+        <span className="text-xs text-gray-600 dark:text-gray-600" aria-hidden="true">
           &middot;
         </span>
-        <span className="text-[10px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+        <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
           {formatBytes(bytesNum)}
         </span>
         {taskId && (
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-500 dark:text-gray-400 flex-shrink-0">
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-500 dark:text-gray-400 flex-shrink-0">
             task:{taskId}
           </span>
         )}
@@ -83,7 +83,7 @@ export function BashProgressCard({
           blockId={blockId ? `${blockId}-out` : undefined}
         />
       ) : (
-        <div className="px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+        <div className="px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 font-mono">
           No output
         </div>
       )}
@@ -92,7 +92,7 @@ export function BashProgressCard({
       {canExpand && (
         <button
           onClick={() => setShowFull(!showFull)}
-          className="text-[10px] font-mono text-gray-400 hover:text-gray-300 dark:hover:text-gray-300 mt-0.5 cursor-pointer"
+          className="text-xs font-mono text-gray-400 hover:text-gray-300 dark:hover:text-gray-300 mt-0.5 cursor-pointer"
         >
           {showFull
             ? '\u25BE recent output'

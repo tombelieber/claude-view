@@ -45,7 +45,7 @@ function DiffBlock({
   return (
     <div className="relative group">
       <pre
-        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-[10px] font-mono"
+        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-xs font-mono"
         style={{ maxHeight }}
       >
         {lines.map((line, i) => {
@@ -82,7 +82,7 @@ export function ContentRenderer({ content, maxHeight = 200 }: ContentRendererPro
     return (
       <PreBlock
         content={jsonText}
-        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-[10px] font-mono text-gray-700 dark:text-gray-300"
+        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-xs font-mono text-gray-700 dark:text-gray-300"
         maxHeight={maxHeight}
       />
     )
@@ -105,7 +105,7 @@ export function ContentRenderer({ content, maxHeight = 200 }: ContentRendererPro
     return (
       <PreBlock
         content={codeText}
-        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-[10px] font-mono text-gray-700 dark:text-gray-300"
+        className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-xs font-mono text-gray-700 dark:text-gray-300"
         maxHeight={maxHeight}
       />
     )
@@ -116,7 +116,7 @@ export function ContentRenderer({ content, maxHeight = 200 }: ContentRendererPro
   return (
     <PreBlock
       content={plainText}
-      className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-[10px] font-mono text-gray-700 dark:text-gray-300"
+      className="overflow-auto whitespace-pre-wrap rounded bg-gray-100 dark:bg-gray-900 p-2 text-xs font-mono text-gray-700 dark:text-gray-300"
       maxHeight={maxHeight}
     />
   )

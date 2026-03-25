@@ -53,7 +53,7 @@ export function HookEventRow({ event }: HookEventRowProps) {
       >
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-amber-400" />
 
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded flex-shrink-0 min-w-[40px] text-center bg-amber-500/10 text-amber-400">
+        <span className="text-xs font-mono px-1.5 py-0.5 rounded flex-shrink-0 min-w-[40px] text-center bg-amber-500/10 text-amber-400">
           {shortBadge(event.eventName)}
         </span>
 
@@ -62,13 +62,11 @@ export function HookEventRow({ event }: HookEventRowProps) {
         </span>
 
         {event.toolName && (
-          <span className="text-[10px] font-mono text-gray-500 flex-shrink-0">
-            {event.toolName}
-          </span>
+          <span className="text-xs font-mono text-gray-500 flex-shrink-0">{event.toolName}</span>
         )}
 
         {event.timestamp > 0 && (
-          <span className="text-[10px] font-mono tabular-nums text-gray-600 flex-shrink-0">
+          <span className="text-xs font-mono tabular-nums text-gray-600 flex-shrink-0">
             {new Date(event.timestamp * 1000).toLocaleTimeString()}
           </span>
         )}
@@ -83,7 +81,7 @@ export function HookEventRow({ event }: HookEventRowProps) {
 
       {expanded && event.context && (
         <div className="px-3 pb-3">
-          <pre className="text-[10px] font-mono text-amber-300/80 bg-gray-900 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
+          <pre className="text-xs font-mono text-amber-300/80 bg-gray-900 rounded p-2 overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all">
             {formatContext(event.context)}
           </pre>
         </div>

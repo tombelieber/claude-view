@@ -100,7 +100,7 @@ export function ToolCard({ execution }: ToolCardProps) {
         {/* Tool name chip */}
         <span
           className={cn(
-            'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0',
+            'inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold flex-shrink-0',
             chipColor,
           )}
         >
@@ -108,13 +108,13 @@ export function ToolCard({ execution }: ToolCardProps) {
         </span>
 
         {server && (
-          <span className="text-[9px] font-mono text-gray-500 dark:text-gray-400 flex-shrink-0">
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400 flex-shrink-0">
             {server}
           </span>
         )}
 
         {execution.category && (
-          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400">
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-400">
             {execution.category}
           </span>
         )}
@@ -134,7 +134,7 @@ export function ToolCard({ execution }: ToolCardProps) {
 
         {/* Running elapsed */}
         {execution.status === 'running' && execution.progress && (
-          <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 tabular-nums flex-shrink-0">
+          <span className="text-xs font-mono text-blue-600 dark:text-blue-400 tabular-nums flex-shrink-0">
             {execution.progress.elapsedSeconds.toFixed(1)}s
           </span>
         )}
@@ -148,7 +148,7 @@ export function ToolCard({ execution }: ToolCardProps) {
             setLocalOverride((v) => !(v ?? globalJsonMode))
           }}
           className={cn(
-            'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+            'text-xs font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
             'min-w-[28px] min-h-[28px] inline-flex items-center justify-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50',
             jsonMode
@@ -197,7 +197,7 @@ export function ToolCard({ execution }: ToolCardProps) {
                       />
                     ) : (
                       <>
-                        <div className="mb-1 text-[9px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
+                        <div className="mb-1 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-500">
                           Input
                         </div>
                         <ContentRenderer content={JSON.stringify(execution.toolInput, null, 2)} />
@@ -212,7 +212,7 @@ export function ToolCard({ execution }: ToolCardProps) {
                     <div className="flex items-center gap-1.5 mb-1">
                       <span
                         className={cn(
-                          'text-[9px] font-medium uppercase tracking-wider',
+                          'text-xs font-medium uppercase tracking-wider',
                           execution.result.isError
                             ? 'text-red-600 dark:text-red-400'
                             : 'text-gray-500 dark:text-gray-500',
@@ -228,7 +228,7 @@ export function ToolCard({ execution }: ToolCardProps) {
 
                 {/* Summary */}
                 {execution.summary && (
-                  <p className="text-[10px] italic text-gray-500 dark:text-gray-400">
+                  <p className="text-xs italic text-gray-500 dark:text-gray-400">
                     {execution.summary}
                   </p>
                 )}

@@ -28,7 +28,7 @@ export function HookProgressCard({
   return (
     <div className="space-y-1">
       {/* Header: event → name + status */}
-      <div className="flex items-center gap-2 text-[10px] font-mono">
+      <div className="flex items-center gap-2 text-xs font-mono">
         <GitBranch className="w-3 h-3 text-amber-500 flex-shrink-0" aria-hidden="true" />
         <span className="text-amber-700 dark:text-amber-300">{hookEvent}</span>
         <span className="text-gray-500 dark:text-gray-500" aria-hidden="true">

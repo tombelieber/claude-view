@@ -22,7 +22,7 @@ function ThinkingIndicator({ thinking }: { thinking: string }) {
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
+        className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
       >
         <Brain className="w-3 h-3 text-violet-400 dark:text-violet-500" />
         <span>Reasoned for {estimatedSeconds}s</span>
@@ -51,13 +51,13 @@ export function ChatAssistantBlock({ block }: AssistantBlockProps) {
       {(block.agentId || isSidechain) && (
         <div className="flex items-center gap-1.5">
           {isSidechain && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] text-purple-500 dark:text-purple-400">
+            <span className="inline-flex items-center gap-0.5 text-xs text-purple-500 dark:text-purple-400">
               <GitBranch className="w-2.5 h-2.5" />
               sidechain
             </span>
           )}
           {block.agentId && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-mono text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-0.5 text-xs font-mono text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded-full">
               <Bot className="w-2.5 h-2.5" />
               {block.agentId}
             </span>

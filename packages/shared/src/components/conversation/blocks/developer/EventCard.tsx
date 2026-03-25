@@ -126,7 +126,7 @@ export function EventCard({
         />
         <span
           className={cn(
-            'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-semibold flex-shrink-0',
+            'inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold flex-shrink-0',
             resolvedChipColor,
           )}
         >
@@ -146,7 +146,7 @@ export function EventCard({
             type="button"
             onClick={() => setLocalOverride((v) => !(v ?? globalJsonMode))}
             className={cn(
-              'text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
+              'text-xs font-mono px-1.5 py-0.5 rounded transition-colors duration-200 cursor-pointer flex-shrink-0',
               'min-w-[28px] min-h-[28px] inline-flex items-center justify-center',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50',
               jsonMode
