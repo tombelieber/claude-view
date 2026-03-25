@@ -3,30 +3,20 @@
 /**
  * Itemized cost breakdown in USD.
  */
-export type CostBreakdown = {
-  totalUsd: number
-  inputCostUsd: number
-  outputCostUsd: number
-  cacheReadCostUsd: number
-  cacheCreationCostUsd: number
-  cacheSavingsUsd: number
-  /**
-   * True when any tokens were excluded from USD due to missing model pricing.
-   */
-  hasUnpricedUsage: boolean
-  /**
-   * Tokens excluded from USD totals (no pricing match).
-   */
-  unpricedInputTokens: number
-  unpricedOutputTokens: number
-  unpricedCacheReadTokens: number
-  unpricedCacheCreationTokens: number
-  /**
-   * Fraction of all tokens priced with real model rates [0.0, 1.0].
-   */
-  pricedTokenCoverage: number
-  /**
-   * `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
-   */
-  totalCostSource: string
-}
+export type CostBreakdown = { totalUsd: number, inputCostUsd: number, outputCostUsd: number, cacheReadCostUsd: number, cacheCreationCostUsd: number, cacheSavingsUsd: number, 
+/**
+ * True when any tokens were excluded from USD due to missing model pricing.
+ */
+hasUnpricedUsage: boolean, 
+/**
+ * Tokens excluded from USD totals (no pricing match).
+ */
+unpricedInputTokens: number, unpricedOutputTokens: number, unpricedCacheReadTokens: number, unpricedCacheCreationTokens: number, 
+/**
+ * Fraction of all tokens priced with real model rates [0.0, 1.0].
+ */
+pricedTokenCoverage: number, 
+/**
+ * `computed_priced_tokens_full` | `computed_priced_tokens_partial`.
+ */
+totalCostSource: string, };

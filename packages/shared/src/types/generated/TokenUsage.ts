@@ -3,18 +3,12 @@
 /**
  * Accumulated token counts for a live session.
  */
-export type TokenUsage = {
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  /**
-   * Cache creation tokens with 5-minute TTL (from JSONL ephemeral_5m_input_tokens).
-   */
-  cacheCreation5mTokens: number
-  /**
-   * Cache creation tokens with 1-hour TTL (from JSONL ephemeral_1h_input_tokens).
-   */
-  cacheCreation1hrTokens: number
-  totalTokens: number
-}
+export type TokenUsage = { inputTokens: number, outputTokens: number, cacheReadTokens: number, cacheCreationTokens: number, 
+/**
+ * Cache creation tokens with 5-minute TTL (from JSONL ephemeral_5m_input_tokens).
+ */
+cacheCreation5mTokens: number, 
+/**
+ * Cache creation tokens with 1-hour TTL (from JSONL ephemeral_1h_input_tokens).
+ */
+cacheCreation1hrTokens: number, totalTokens: number, };

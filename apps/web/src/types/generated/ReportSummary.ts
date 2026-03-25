@@ -3,17 +3,8 @@
 /**
  * Monthly report summary.
  */
-export type ReportSummary = {
-  month: string
-  sessionCount: number
-  linesAdded: number
-  linesRemoved: number
-  commitCount: number
-  totalCostUsd: number | null
-  /**
-   * True when some sessions in this period had unpriced usage (NULL total_cost_usd).
-   */
-  hasUnpricedUsage: boolean
-  topWins: Array<string>
-  focusAreas: Array<string>
-}
+export type ReportSummary = { month: string, sessionCount: number, linesAdded: number, linesRemoved: number, commitCount: number, totalCostUsd: number | null, 
+/**
+ * True when some sessions in this period had unpriced usage (NULL total_cost_usd).
+ */
+hasUnpricedUsage: boolean, topWins: Array<string>, focusAreas: Array<string>, };
