@@ -3,6 +3,7 @@
 pub mod classify;
 pub mod coaching;
 pub mod config;
+pub mod docs;
 pub mod contributions;
 pub mod control;
 pub mod export;
@@ -161,6 +162,8 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", monitor::router())
         .nest("/api", processes::router())
         .nest("/api", telemetry::router())
+        // Swagger UI + OpenAPI spec
+        .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
         // Sidecar reverse proxy (HTTP + WS) — mounted at root level because
