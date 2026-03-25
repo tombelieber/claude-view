@@ -8,6 +8,11 @@ use axum::{extract::State, routing::get, Json, Router};
 use crate::state::AppState;
 
 /// GET /api/score - Get the current AI Fluency Score.
+#[utoipa::path(get, path = "/api/score", tag = "insights",
+    responses(
+        (status = 200, description = "Composite AI fluency score with sub-metric breakdown", body = serde_json::Value),
+    )
+)]
 ///
 /// Returns a composite score (0-100) plus sub-metric breakdown
 /// computed from session facets.
