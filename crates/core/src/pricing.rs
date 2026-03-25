@@ -340,22 +340,41 @@ pub fn tiered_cost(tokens: i64, base_rate: f64, above_200k_rate: Option<f64>) ->
 
 /// Look up pricing for a model ID.
 ///
-/// Fallback chain:
-/// 1. Exact match (e.g. "claude-opus-4-6")
-/// 2. Key is prefix of model_id (e.g. key "claude-opus-4-6" matches "claude-opus-4-6-20260201")
-/// 3. model_id is prefix of key (e.g. "claude-opus" matches "claude-opus-4-6")
+/// Resolve model aliases ("haiku", "sonnet", "opus") to current-gen full model IDs.
+/// Full model IDs pass through unchanged. Returns `None` for "inherit" or unknown aliases.
+pub fn resolve_model_alias(alias: &str) -> Option<&'static str> {
+    match alias {
+        "haiku" => Some("claude-haiku-4-5-20251001"),
+        "sonnet" => Some("claude-sonnet-4-6"),
+        "opus" => Some("claude-opus-4-6"),
+        // Already a full model ID — pass through (caller will use as-is)
+        _ if alias.starts_with("claude-") => None,
+        // "inherit" or unknown — caller should fall back to parent model
+        _ => None,
+    }
+}
+
 pub fn lookup_pricing<'a>(
     model_id: &str,
     pricing: &'a HashMap<String, ModelPricing>,
 ) -> Option<&'a ModelPricing> {
+    // Try exact match first
     if let Some(p) = pricing.get(model_id) {
         return Some(p);
     }
+    // Try resolving alias (e.g. "haiku" → "claude-haiku-4-5-20251001")
+    if let Some(resolved) = resolve_model_alias(model_id) {
+        if let Some(p) = pricing.get(resolved) {
+            return Some(p);
+        }
+    }
+    // Prefix matching: key is prefix of model_id
     for (key, p) in pricing {
         if model_id.starts_with(key.as_str()) {
             return Some(p);
         }
     }
+    // Reverse prefix: model_id is prefix of key
     for (key, p) in pricing {
         if key.starts_with(model_id) {
             return Some(p);
