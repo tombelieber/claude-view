@@ -17,24 +17,61 @@ function formatDuration(ms: number): string {
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
 }
 
-export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return `${n}`
+}
+
+/** Extract short model label from model key (e.g. "claude-sonnet-4-5-20250514" → "sonnet-4.5") */
+function shortModelName(key: string): string {
+  // Match common patterns: claude-{family}-{major}-{minor}
+  const m = key.match(/claude-(\w+)-(\d+)-(\d+)/)
+  if (m) return `${m[1]}-${m[2]}.${m[3]}`
+  // Fallback: strip "claude-" prefix and date suffix
+  return key.replace(/^claude-/, '').replace(/-\d{8}$/, '')
+}
+
+/** Build the compact info segments for the divider line. */
+function buildInfoSegments(block: TurnBoundaryBlock): string[] {
+  const segments: string[] = []
+
+  // Model name — pick the first (usually only) model from modelUsage
+  const modelKeys = Object.keys(block.modelUsage ?? {})
+  if (modelKeys.length > 0) {
+    segments.push(shortModelName(modelKeys[0]))
+  }
+
+  // Token flow — aggregate input→output across all models
+  const usage = Object.values(block.modelUsage ?? {})
+  if (usage.length > 0) {
+    const totalIn = usage.reduce((sum, u) => sum + u.inputTokens, 0)
+    const totalOut = usage.reduce((sum, u) => sum + u.outputTokens, 0)
+    if (totalIn > 0 || totalOut > 0) {
+      segments.push(`${formatTokens(totalIn)}→${formatTokens(totalOut)}`)
+    }
+  }
+
   const costLabel = formatCost(block.totalCostUsd)
-  const durationLabel = block.durationMs > 0 ? formatDuration(block.durationMs) : ''
+  if (costLabel) segments.push(costLabel)
+
+  if (block.durationMs > 0) segments.push(formatDuration(block.durationMs))
+
+  return segments
+}
+
+export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
+  const infoSegments = buildInfoSegments(block)
   const hasHookErrors = block.hookErrors && block.hookErrors.length > 0
 
   return (
     <div className="space-y-0">
-      {/* Main divider line with cost + duration */}
+      {/* Main divider line with model · tokens · cost · duration */}
       <div className="flex items-center gap-2 py-1">
         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-        {durationLabel && (
+        {infoSegments.length > 0 && (
           <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
-            {durationLabel}
-          </span>
-        )}
-        {costLabel && (
-          <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 tabular-nums">
-            {costLabel}
+            {infoSegments.join(' · ')}
           </span>
         )}
         {!block.success && !hasHookErrors && !block.preventedContinuation && (
