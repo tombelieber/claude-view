@@ -47,6 +47,9 @@ pub struct SubAgentSpawn {
     /// Present when this spawn is a team member (from `input.team_name`).
     /// Used by accumulator/manager to skip adding to sub_agents[].
     pub team_name: Option<String>,
+    /// Model alias or full ID from `input.model` (e.g., "haiku", "sonnet", "claude-haiku-4-5-20251001").
+    /// None when omitted (sub-agent inherits parent model).
+    pub model: Option<String>,
 }
 
 /// Extracted from a `type: "progress"` line with `data.type: "agent_progress"`.
@@ -84,6 +87,9 @@ pub struct SubAgentResult {
     pub usage_output_tokens: Option<u64>,
     pub usage_cache_read_tokens: Option<u64>,
     pub usage_cache_creation_tokens: Option<u64>,
+    /// Model used by the sub-agent, from `toolUseResult.model`.
+    /// None if not present in the result payload.
+    pub model: Option<String>,
 }
 
 /// Extracted from a `type: "progress"` line with `data.type: "hook_progress"`.
@@ -295,6 +301,7 @@ struct ToolUseResultPayload {
     usage_output_tokens: Option<u64>,
     usage_cache_read_tokens: Option<u64>,
     usage_cache_creation_tokens: Option<u64>,
+    model: Option<String>,
 }
 
 impl ToolUseResultPayload {
@@ -307,6 +314,7 @@ impl ToolUseResultPayload {
             || self.usage_output_tokens.is_some()
             || self.usage_cache_read_tokens.is_some()
             || self.usage_cache_creation_tokens.is_some()
+            || self.model.is_some()
     }
 
     fn merge(&mut self, other: ToolUseResultPayload) {
@@ -335,6 +343,9 @@ impl ToolUseResultPayload {
         {
             self.usage_cache_creation_tokens = other.usage_cache_creation_tokens;
         }
+        if other.model.is_some() && self.model.is_none() {
+            self.model = other.model;
+        }
     }
 }
 
@@ -345,7 +356,8 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
                 || obj.contains_key("agentId")
                 || obj.contains_key("totalDurationMs")
                 || obj.contains_key("totalToolUseCount")
-                || obj.contains_key("usage");
+                || obj.contains_key("usage")
+                || obj.contains_key("model");
             if !has_known_key {
                 return None;
             }
@@ -383,6 +395,10 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
                 usage_cache_creation_tokens: usage
                     .and_then(|u| u.get("cache_creation_input_tokens"))
                     .and_then(|v| v.as_u64()),
+                model: obj
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             })
         }
         serde_json::Value::String(status) => {
@@ -681,12 +697,17 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                         .and_then(|i| i.get("team_name"))
                         .and_then(|v| v.as_str())
                         .map(String::from);
+                    let spawn_model = input
+                        .and_then(|i| i.get("model"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
                     if !tool_use_id.is_empty() {
                         sub_agent_spawns.push(SubAgentSpawn {
                             tool_use_id,
                             agent_type,
                             description,
                             team_name: spawn_team_name,
+                            model: spawn_model,
                         });
                     }
                 }
@@ -735,6 +756,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                     usage_output_tokens: parsed_tur.usage_output_tokens,
                     usage_cache_read_tokens: parsed_tur.usage_cache_read_tokens,
                     usage_cache_creation_tokens: parsed_tur.usage_cache_creation_tokens,
+                    model: parsed_tur.model,
                 })
             })
         } else {
