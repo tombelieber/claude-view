@@ -23,7 +23,7 @@ export function CostTokenPopover({ summary }: CostTokenPopoverProps) {
           side="bottom"
           align="end"
           sideOffset={8}
-          className="z-50 w-72 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-4 text-xs animate-in fade-in-0 zoom-in-95"
+          className="z-50 w-72 max-h-[calc(100vh-112px)] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl p-4 text-xs animate-in fade-in-0 zoom-in-95"
         >
           {/* Cost breakdown */}
           <div className="mb-3">

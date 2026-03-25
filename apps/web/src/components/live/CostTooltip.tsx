@@ -49,14 +49,16 @@ export function CostTooltip({
     } else if (rect.top - tipH - MARGIN >= topBoundary) {
       top = rect.top - tipH - MARGIN
     } else {
-      // Not enough room above or below — prefer below, clamp to viewport
-      top = rect.bottom + MARGIN
+      // Not enough room above or below — clamp to topBoundary
+      top = topBoundary
     }
 
     // Anchor right edge to trigger's right edge
     const left = Math.max(MARGIN, rect.right - TOOLTIP_W)
+    // Dynamic max height: remaining viewport space below `top`
+    const maxHeight = window.innerHeight - top - MARGIN
 
-    setTooltipStyle({ position: 'fixed', top, left, zIndex: 9999 })
+    setTooltipStyle({ position: 'fixed', top, left, zIndex: 9999, maxHeight })
   }, [])
 
   useLayoutEffect(() => {
@@ -114,7 +116,7 @@ export function CostTooltip({
           <div
             ref={tooltipRef}
             style={tooltipStyle}
-            className="w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs"
+            className="w-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg p-3 text-xs"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
@@ -156,8 +158,12 @@ export function CostTooltip({
                     {subAgentsWithCost.map((sa, idx) => (
                       <AgentCostRow
                         key={sa.toolUseId}
-                        label={sa.agentType}
+                        label={`${sa.agentType}${sa.model ? ` (${sa.model})` : ''}`}
+                        description={sa.description}
                         cost={sa.costUsd ?? 0}
+                        inputTokens={sa.inputTokens}
+                        outputTokens={sa.outputTokens}
+                        cacheReadTokens={sa.cacheReadTokens}
                         isLast={idx === subAgentsWithCost.length - 1}
                       />
                     ))}
@@ -220,14 +226,52 @@ function CostRow({
   )
 }
 
-function AgentCostRow({ label, cost, isLast }: { label: string; cost: number; isLast: boolean }) {
+function AgentCostRow({
+  label,
+  description,
+  cost,
+  inputTokens,
+  outputTokens,
+  cacheReadTokens,
+  isLast,
+}: {
+  label: string
+  description?: string
+  cost: number
+  inputTokens?: number | null
+  outputTokens?: number | null
+  cacheReadTokens?: number | null
+  isLast: boolean
+}) {
   const treeChar = isLast ? '└──' : '├──'
+  const hasTokens =
+    (inputTokens != null && inputTokens > 0) ||
+    (outputTokens != null && outputTokens > 0) ||
+    (cacheReadTokens != null && cacheReadTokens > 0)
   return (
-    <div className="flex items-center justify-between">
-      <span>
-        {treeChar} {label}:
-      </span>
-      <span className="tabular-nums">{formatCostUsd(cost)}</span>
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="truncate mr-1">
+          {treeChar} {label}:
+          {description && (
+            <span className="text-gray-400 dark:text-gray-500 ml-0.5 text-[10px]">
+              {description}
+            </span>
+          )}
+        </span>
+        <span className="tabular-nums shrink-0">{formatCostUsd(cost)}</span>
+      </div>
+      {hasTokens && (
+        <div className="ml-6 text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
+          {[
+            inputTokens ? `${formatTokenCount(inputTokens)} in` : null,
+            outputTokens ? `${formatTokenCount(outputTokens)} out` : null,
+            cacheReadTokens ? `${formatTokenCount(cacheReadTokens)} cache` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      )}
     </div>
   )
 }
