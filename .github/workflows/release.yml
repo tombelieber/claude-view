@@ -95,6 +95,7 @@ jobs:
           RELAY_URL: wss://claude-view-relay.fly.dev/ws
           SHARE_WORKER_URL: https://api-share.claudeview.ai
           SHARE_VIEWER_URL: https://share.claudeview.ai
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
 
       - name: Stage sidecar
         run: |
