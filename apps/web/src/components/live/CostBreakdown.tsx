@@ -159,13 +159,38 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
           />
           {subAgents
             .filter((a) => a.costUsd != null && a.costUsd > 0)
-            .map((a) => (
-              <CostRow
-                key={a.toolUseId}
-                label={`${a.agentType}: ${a.description}`}
-                value={a.costUsd!}
-              />
-            ))}
+            .map((a) => {
+              const modelHint = a.model ? ` (${a.model})` : ''
+              const hasTokens =
+                a.inputTokens != null ||
+                a.outputTokens != null ||
+                a.cacheReadTokens != null ||
+                a.cacheCreationTokens != null
+              const totalTokens =
+                (a.inputTokens ?? 0) +
+                (a.outputTokens ?? 0) +
+                (a.cacheReadTokens ?? 0) +
+                (a.cacheCreationTokens ?? 0)
+              return (
+                <div key={a.toolUseId} className="space-y-0.5">
+                  <CostRow
+                    label={`${a.agentType}${modelHint}: ${a.description}`}
+                    value={a.costUsd!}
+                  />
+                  {hasTokens && totalTokens > 0 && (
+                    <div className="ml-4 text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums">
+                      {[
+                        a.inputTokens ? `${formatTokenCount(a.inputTokens)} in` : null,
+                        a.outputTokens ? `${formatTokenCount(a.outputTokens)} out` : null,
+                        a.cacheReadTokens ? `${formatTokenCount(a.cacheReadTokens)} cache` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
         </div>
       )}
     </div>
