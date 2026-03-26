@@ -230,7 +230,7 @@ pub async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path
 
 /// Query parameters for the messages endpoint.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
-struct MessagesQuery {
+pub struct MessagesQuery {
     /// Maximum number of messages to return (default: 20).
     #[serde(default = "default_limit")]
     limit: usize,
@@ -392,8 +392,8 @@ pub async fn kill_session(
 
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct BindControlRequest {
-    control_id: String,
+pub struct BindControlRequest {
+    pub control_id: String,
 }
 
 /// POST /api/live/sessions/:id/bind-control -- Sidecar notifies that it now controls this session.
@@ -453,8 +453,8 @@ pub async fn bind_control(
 
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct UnbindControlRequest {
-    control_id: String,
+pub struct UnbindControlRequest {
+    pub control_id: String,
 }
 
 /// POST /api/live/sessions/:id/unbind-control -- Sidecar notifies it released control.
