@@ -112,7 +112,7 @@ export function ChatInputBar({
   placeholder: placeholderProp,
   mode = 'default',
   onModeChange,
-  model = 'claude-sonnet-4-6',
+  model = 'sonnet',
   onModelChange,
   contextPercent,
   contextInfo,
