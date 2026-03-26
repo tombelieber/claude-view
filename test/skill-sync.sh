@@ -17,9 +17,9 @@ errors=0
 
 echo "=== Skill Sync Check ==="
 
-# --- Check 1: MCP tool endpoints appear in SKILL.md ---
-# Extract API paths from tool handler files
-endpoints=$(grep -rohe "'/api/[^']*'" -e '"/api/[^"]*"' "$TOOLS_DIR" | tr -d "\"'" | sed 's|/\${[^}]*}|/{id}|g' | sort -u)
+# --- Check 1: Hand-written MCP tool endpoints appear in SKILL.md ---
+# Only check hand-written tools (not generated/ — those are validated by codegen tests)
+endpoints=$(grep -rohe "'/api/[^']*'" -e '"/api/[^"]*"' "$TOOLS_DIR" --exclude-dir=generated | tr -d "\"'" | sed 's|/\${[^}]*}|/{id}|g' | sort -u)
 for ep in $endpoints; do
   # Normalize: /api/sessions/${args.session_id} → /api/sessions/{id}
   normalized=$(echo "$ep" | sed 's|/\$.*||')
