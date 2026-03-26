@@ -31,6 +31,7 @@ pub struct StatuslinePayload {
     pub vim: Option<StatuslineVim>,
     pub agent: Option<StatuslineAgent>,
     pub worktree: Option<StatuslineWorktree>,
+    pub rate_limits: Option<StatuslineRateLimits>,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -111,6 +112,18 @@ pub struct StatuslineWorktree {
     pub original_branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StatuslineRateLimits {
+    pub five_hour: Option<StatuslineRateLimitWindow>,
+    pub seven_day: Option<StatuslineRateLimitWindow>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StatuslineRateLimitWindow {
+    pub used_percentage: Option<f64>,
+    pub resets_at: Option<i64>,
+}
+
 /// Apply statusline payload fields to a live session.
 /// Pure function — no IO, no branching, just field mapping.
 /// Testable independently of the Axum handler.
@@ -123,6 +136,9 @@ pub fn apply_statusline(session: &mut LiveSession, payload: &StatuslinePayload) 
         if let Some(pct) = cw.used_percentage {
             session.statusline_used_pct = Some(pct as f32);
         }
+        session.statusline_remaining_pct = cw.remaining_percentage.map(|p| p as f32);
+        session.statusline_total_input_tokens = cw.total_input_tokens;
+        session.statusline_total_output_tokens = cw.total_output_tokens;
         if let Some(ref usage) = cw.current_usage {
             let fill = usage.input_tokens.unwrap_or(0)
                 + usage.cache_creation_input_tokens.unwrap_or(0)
@@ -185,6 +201,37 @@ pub fn apply_statusline(session: &mut LiveSession, payload: &StatuslinePayload) 
     session.statusline_version = payload.version.clone();
     session.exceeds_200k_tokens = payload.exceeds_200k_tokens;
     session.statusline_transcript_path = payload.transcript_path.clone();
+
+    // Transient fields — unconditional assignment so stale values clear when
+    // Claude Code stops sending them (e.g. user exits vim mode, subagent ends).
+    session.statusline_output_style = payload
+        .output_style
+        .as_ref()
+        .and_then(|os| os.name.clone());
+    session.statusline_vim_mode = payload.vim.as_ref().and_then(|v| v.mode.clone());
+    session.statusline_agent_name = payload.agent.as_ref().and_then(|a| a.name.clone());
+
+    // Worktree — unconditional so fields clear if user exits worktree mid-session.
+    let wt = payload.worktree.as_ref();
+    session.statusline_worktree_name = wt.and_then(|w| w.name.clone());
+    session.statusline_worktree_path = wt.and_then(|w| w.path.clone());
+    session.statusline_worktree_branch = wt.and_then(|w| w.branch.clone());
+    session.statusline_worktree_original_cwd = wt.and_then(|w| w.original_cwd.clone());
+    session.statusline_worktree_original_branch = wt.and_then(|w| w.original_branch.clone());
+
+    // Rate limits — unconditional. Frontend uses resets_at to detect staleness.
+    let fh = payload
+        .rate_limits
+        .as_ref()
+        .and_then(|rl| rl.five_hour.as_ref());
+    let sd = payload
+        .rate_limits
+        .as_ref()
+        .and_then(|rl| rl.seven_day.as_ref());
+    session.statusline_rate_limit_5h_pct = fh.and_then(|w| w.used_percentage);
+    session.statusline_rate_limit_5h_resets_at = fh.and_then(|w| w.resets_at);
+    session.statusline_rate_limit_7d_pct = sd.and_then(|w| w.used_percentage);
+    session.statusline_rate_limit_7d_resets_at = sd.and_then(|w| w.resets_at);
 
     // Raw blob for debug endpoint
     session.statusline_raw = serde_json::to_value(payload).ok();
@@ -463,6 +510,10 @@ mod tests {
                 "branch": "feature/x",
                 "original_cwd": "/Users/dev/project",
                 "original_branch": "main"
+            },
+            "rate_limits": {
+                "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },
+                "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 }
             }
         });
         let payload: StatuslinePayload = serde_json::from_value(json).unwrap();
@@ -504,6 +555,13 @@ mod tests {
         let wt = payload.worktree.as_ref().unwrap();
         assert_eq!(wt.name.as_deref(), Some("feature-x"));
         assert_eq!(wt.original_branch.as_deref(), Some("main"));
+        let rl = payload.rate_limits.as_ref().unwrap();
+        let fh = rl.five_hour.as_ref().unwrap();
+        assert_eq!(fh.used_percentage, Some(23.5));
+        assert_eq!(fh.resets_at, Some(1738425600));
+        let sd = rl.seven_day.as_ref().unwrap();
+        assert_eq!(sd.used_percentage, Some(41.2));
+        assert_eq!(sd.resets_at, Some(1738857600));
     }
 
     #[test]
@@ -572,7 +630,14 @@ mod tests {
                     "cache_read_input_tokens": 2000
                 }
             },
-            "cost": { "total_cost_usd": 1.23 }
+            "cost": { "total_cost_usd": 1.23 },
+            "output_style": { "name": "concise" },
+            "vim": { "mode": "NORMAL" },
+            "agent": { "name": "code-reviewer" },
+            "rate_limits": {
+                "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },
+                "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 }
+            }
         });
 
         let parsed: StatuslinePayload = serde_json::from_value(payload).unwrap();
@@ -592,11 +657,20 @@ mod tests {
         assert_eq!(session.statusline_cache_read_tokens, Some(2000));
         assert_eq!(session.statusline_cache_creation_tokens, Some(5000));
 
-        // Verify SSE serialization shape
+        // Verify SSE serialization shape (camelCase)
         let json = serde_json::to_value(session.clone()).unwrap();
         assert_eq!(json["modelDisplayName"], "Opus");
         assert_eq!(json["statuslineContextWindowSize"], 1_000_000);
         assert_eq!(json["statuslineCostUsd"], 1.23);
+        assert_eq!(json["statuslineOutputStyle"], "concise");
+        assert_eq!(json["statuslineVimMode"], "NORMAL");
+        assert_eq!(json["statuslineAgentName"], "code-reviewer");
+        assert_eq!(json["statuslineRemainingPct"], 57.5);
+        assert_eq!(json["statuslineTotalInputTokens"], 425000);
+        assert_eq!(json["statuslineRateLimit5hPct"], 23.5);
+        assert_eq!(json["statuslineRateLimit5hResetsAt"], 1738425600);
+        assert_eq!(json["statuslineRateLimit7dPct"], 41.2);
+        assert_eq!(json["statuslineRateLimit7dResetsAt"], 1738857600);
         assert!(
             json["statuslineRaw"].is_null(),
             "statusline_raw has #[serde(skip)] — must not appear in SSE"
@@ -713,11 +787,22 @@ mod tests {
                 original_cwd: Some("/Users/dev".into()),
                 original_branch: Some("main".into()),
             }),
+            rate_limits: Some(StatuslineRateLimits {
+                five_hour: Some(StatuslineRateLimitWindow {
+                    used_percentage: Some(23.5),
+                    resets_at: Some(1738425600),
+                }),
+                seven_day: Some(StatuslineRateLimitWindow {
+                    used_percentage: Some(41.2),
+                    resets_at: Some(1738857600),
+                }),
+            }),
             extra: std::collections::HashMap::new(),
         };
 
         apply_statusline(&mut session, &payload);
 
+        // Existing fields
         assert_eq!(session.model_display_name.as_deref(), Some("Opus"));
         assert_eq!(session.statusline_context_window_size, Some(1_000_000));
         assert_eq!(session.statusline_used_pct, Some(42.5f32));
@@ -744,5 +829,118 @@ mod tests {
             session.statusline_transcript_path.as_deref(),
             Some("/path/to/transcript.jsonl")
         );
+
+        // New fields: output style, vim, agent
+        assert_eq!(session.statusline_output_style.as_deref(), Some("concise"));
+        assert_eq!(session.statusline_vim_mode.as_deref(), Some("normal"));
+        assert_eq!(
+            session.statusline_agent_name.as_deref(),
+            Some("code-reviewer")
+        );
+
+        // New fields: worktree
+        assert_eq!(
+            session.statusline_worktree_name.as_deref(),
+            Some("feature-x")
+        );
+        assert_eq!(session.statusline_worktree_path.as_deref(), Some("/tmp/wt"));
+        assert_eq!(
+            session.statusline_worktree_branch.as_deref(),
+            Some("feature/x")
+        );
+        assert_eq!(
+            session.statusline_worktree_original_cwd.as_deref(),
+            Some("/Users/dev")
+        );
+        assert_eq!(
+            session.statusline_worktree_original_branch.as_deref(),
+            Some("main")
+        );
+
+        // New fields: context window extras
+        assert_eq!(session.statusline_remaining_pct, Some(57.5f32));
+        assert_eq!(session.statusline_total_input_tokens, Some(425000));
+        assert_eq!(session.statusline_total_output_tokens, Some(12000));
+
+        // New fields: rate limits
+        assert_eq!(session.statusline_rate_limit_5h_pct, Some(23.5));
+        assert_eq!(session.statusline_rate_limit_5h_resets_at, Some(1738425600));
+        assert_eq!(session.statusline_rate_limit_7d_pct, Some(41.2));
+        assert_eq!(session.statusline_rate_limit_7d_resets_at, Some(1738857600));
+    }
+
+    #[test]
+    fn apply_statusline_clears_transient_fields_when_absent() {
+        use crate::live::state::test_live_session;
+        let mut session = test_live_session("test-1");
+
+        // First update: set transient fields
+        let full = StatuslinePayload {
+            session_id: "test-1".into(),
+            model: None,
+            cwd: None,
+            workspace: None,
+            cost: None,
+            context_window: None,
+            exceeds_200k_tokens: None,
+            transcript_path: None,
+            version: None,
+            output_style: Some(StatuslineOutputStyle {
+                name: Some("concise".into()),
+            }),
+            vim: Some(StatuslineVim {
+                mode: Some("NORMAL".into()),
+            }),
+            agent: Some(StatuslineAgent {
+                name: Some("code-reviewer".into()),
+            }),
+            worktree: Some(StatuslineWorktree {
+                name: Some("feat-x".into()),
+                path: None,
+                branch: None,
+                original_cwd: None,
+                original_branch: None,
+            }),
+            rate_limits: Some(StatuslineRateLimits {
+                five_hour: Some(StatuslineRateLimitWindow {
+                    used_percentage: Some(10.0),
+                    resets_at: Some(9999),
+                }),
+                seven_day: None,
+            }),
+            extra: std::collections::HashMap::new(),
+        };
+        apply_statusline(&mut session, &full);
+        assert_eq!(session.statusline_vim_mode.as_deref(), Some("NORMAL"));
+        assert_eq!(session.statusline_agent_name.as_deref(), Some("code-reviewer"));
+        assert_eq!(session.statusline_rate_limit_5h_pct, Some(10.0));
+
+        // Second update: all transient fields absent — must clear to None
+        let empty = StatuslinePayload {
+            session_id: "test-1".into(),
+            model: None,
+            cwd: None,
+            workspace: None,
+            cost: None,
+            context_window: None,
+            exceeds_200k_tokens: None,
+            transcript_path: None,
+            version: None,
+            output_style: None,
+            vim: None,
+            agent: None,
+            worktree: None,
+            rate_limits: None,
+            extra: std::collections::HashMap::new(),
+        };
+        apply_statusline(&mut session, &empty);
+
+        // All transient fields must be None, not stale
+        assert_eq!(session.statusline_output_style, None, "output_style must clear");
+        assert_eq!(session.statusline_vim_mode, None, "vim_mode must clear");
+        assert_eq!(session.statusline_agent_name, None, "agent_name must clear");
+        assert_eq!(session.statusline_worktree_name, None, "worktree must clear");
+        assert_eq!(session.statusline_rate_limit_5h_pct, None, "rate_limit must clear");
+        assert_eq!(session.statusline_rate_limit_5h_resets_at, None, "resets_at must clear");
     }
 }

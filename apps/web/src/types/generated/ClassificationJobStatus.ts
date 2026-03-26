@@ -3,4 +3,4 @@
 /**
  * Status of a classification job.
  */
-export type ClassificationJobStatus = "running" | "completed" | "cancelled" | "failed";
+export type ClassificationJobStatus = 'running' | 'completed' | 'cancelled' | 'failed'
