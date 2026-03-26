@@ -15,7 +15,12 @@ use crate::state::AppState;
 use crate::teams::{InboxMessage, TeamDetail, TeamSummary};
 
 /// GET /api/teams — List all teams.
-async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<TeamSummary>>> {
+#[utoipa::path(get, path = "/api/teams", tag = "teams",
+    responses(
+        (status = 200, description = "All team summaries", body = serde_json::Value),
+    )
+)]
+pub async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<TeamSummary>>> {
     Ok(Json(state.teams.summaries()))
 }
 

@@ -12,11 +12,18 @@ pub struct ConsentRequest {
     enabled: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ConsentResponse {
     status: TelemetryStatus,
 }
 
+/// POST /api/telemetry/consent — Set telemetry consent preference.
+#[utoipa::path(post, path = "/api/telemetry/consent", tag = "telemetry",
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Telemetry consent updated", body = crate::routes::telemetry::ConsentResponse),
+    )
+)]
 pub async fn set_consent(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ConsentRequest>,

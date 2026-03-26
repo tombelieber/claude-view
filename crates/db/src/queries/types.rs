@@ -122,7 +122,7 @@ pub struct TokenStats {
 }
 
 /// Token usage breakdown by model.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByModel {
@@ -134,7 +134,7 @@ pub struct TokensByModel {
 }
 
 /// Token usage breakdown by project.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TokensByProject {
@@ -146,7 +146,7 @@ pub struct TokensByProject {
 }
 
 /// Aggregate cost breakdown in USD (computed from per-model token data + pricing engine).
-#[derive(Debug, Clone, Default, serde::Serialize, TS)]
+#[derive(Debug, Clone, Default, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AggregateCostBreakdown {
@@ -182,7 +182,7 @@ pub struct AggregateCostBreakdown {
 }
 
 /// AI Generation statistics (for GET /api/stats/ai-generation).
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AIGenerationStats {
@@ -209,7 +209,7 @@ pub struct AIGenerationStats {
 /// Storage statistics for the system page (raw DB layer).
 /// Named SystemStorageStats to avoid ts-rs export collision with the richer
 /// StorageStats in routes/stats.rs (which is the user-facing settings version).
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemStorageStats {
@@ -226,7 +226,7 @@ pub struct SystemStorageStats {
 }
 
 /// Health status enum for the system page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
@@ -236,7 +236,7 @@ pub enum HealthStatus {
 }
 
 /// Health statistics for the system page.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthStats {
@@ -254,7 +254,7 @@ pub struct HealthStats {
 }
 
 /// Classification status summary for the system page.
-#[derive(Debug, Clone, serde::Serialize, TS)]
+#[derive(Debug, Clone, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationStatus {
