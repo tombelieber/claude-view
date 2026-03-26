@@ -253,7 +253,13 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
   let desc = endpoint.summary || endpoint.description || `${endpoint.method.toUpperCase()} ${endpoint.path}`
   // Strip the method prefix pattern like "GET /api/foo — " that the spec often includes
   desc = desc.replace(/^(GET|POST|PUT|DELETE|PATCH)\s+\/api\/\S+\s*[-—]\s*/i, '').trim()
-  if (!desc) desc = `${endpoint.method.toUpperCase()} ${endpoint.path}`
+  // If description is still just a raw HTTP method+path, synthesize from operationId
+  if (!desc || /^(GET|POST|PUT|DELETE|PATCH)\s+\/api\//i.test(desc)) {
+    desc = endpoint.operationId
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+      .replace(/^(.)/,  c => c.toUpperCase())
+  }
   desc = desc.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'").trim()
 
   // Schema properties
