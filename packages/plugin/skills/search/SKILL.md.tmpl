@@ -1,0 +1,39 @@
+---
+name: search
+description: "Use when the user wants to find something across their Claude Code history — e.g. 'find where I discussed X', 'search for Y', 'when did I work on Z'"
+---
+
+{{PREAMBLE}}
+
+# Session Search
+
+Find sessions across the user's Claude Code history using full-text search.
+
+## Steps
+
+1. **Search sessions.** Call `mcp__claude-view__search_sessions` with the user's query as the `q` parameter.
+
+2. **If results are sparse**, try `mcp__claude-view__list_sessions` with the `q` filter parameter and `limit: 20` to catch sessions matched by metadata (project name, branch, model).
+
+3. **For the most relevant results** (top 3-5), call `mcp__claude-view__get_session` to get full details including commits and summary.
+
+4. **Present results:**
+
+```
+## Search Results — "[query]"
+
+**Found:** N sessions
+
+### Top Matches
+1. **[project] / [branch]** — [date]
+   [summary or relevant snippet]
+   Session: [session_id] | Duration: Xm | Commits: N
+
+2. **[project] / [branch]** — [date]
+   [summary or relevant snippet]
+   Session: [session_id] | Duration: Xm | Commits: N
+```
+
+5. **If no results found**, suggest alternative search terms or broader filters. Mention that search covers session summaries, commit messages, and project/branch names.
+
+{{AVAILABLE_TOOLS}}

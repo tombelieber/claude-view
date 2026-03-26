@@ -1,0 +1,46 @@
+---
+name: coaching
+description: "Use when the user asks about improving their Claude Code usage, coaching rules, or best practices — e.g. 'how can I improve', 'coaching tips', 'my coaching rules', 'add a coaching rule'"
+---
+
+{{PREAMBLE}}
+
+# Coaching & Improvement
+
+Help the user improve their Claude Code workflow through coaching rules and personalized recommendations.
+
+## Steps
+
+1. **Get current coaching rules.** Call `mcp__claude-view__coaching_list_rules` to see what rules are already configured.
+
+2. **Get fluency score.** Call `mcp__claude-view__get_fluency_score` to get the user's current AI Fluency Score.
+
+3. **Get behavioral insights.** Call `mcp__claude-view__insights_get_insights` to identify areas for improvement.
+
+4. **Present coaching status:**
+
+```
+## Coaching Dashboard
+
+**AI Fluency Score:** [score]/100
+
+### Active Coaching Rules
+- [rule name]: [description]
+(from coaching_list_rules)
+
+### Improvement Areas
+- [area]: [current behavior] -> [recommended behavior]
+(derived from insights)
+
+### Recommendations
+- [specific, actionable tip based on score and insights]
+- [specific, actionable tip]
+```
+
+5. **If the user wants to add a rule**, call `mcp__claude-view__coaching_apply_rule` with the rule content.
+
+6. **If the user wants to remove a rule**, call `mcp__claude-view__coaching_remove_rule` with the rule identifier.
+
+7. **If no coaching rules exist**, suggest starting with 1-2 rules based on the insights data — e.g. rules about commit frequency, session length, or prompt specificity.
+
+{{AVAILABLE_TOOLS}}
