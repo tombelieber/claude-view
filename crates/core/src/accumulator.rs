@@ -8,11 +8,17 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::live_parser::{parse_tail, LineType, TailFinders};
+use crate::phase::{
+    classify_window, dominant_phase, extract_step_signals, PhaseHistory, PhaseLabel, StepSignals,
+};
 use crate::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
 use crate::progress::{ProgressItem, ProgressSource, ProgressStatus};
 use crate::subagent::{SubAgentInfo, SubAgentStatus};
+
+/// Sliding window size for phase classification (number of steps).
+const PHASE_WINDOW_SIZE: usize = 10;
 
 /// Accumulated per-session state -- shared between live monitoring and history batch parsing.
 ///
@@ -43,6 +49,10 @@ pub struct SessionAccumulator {
     /// tokens/cost multiple times when Claude Code splits one API response into
     /// multiple JSONL lines (one per content block: thinking, text, tool_use).
     seen_api_calls: std::collections::HashSet<String>,
+    /// Sliding window of recent step signals for phase classification.
+    step_signals: Vec<StepSignals>,
+    /// Phase labels emitted so far (one per classification).
+    phase_labels: Vec<PhaseLabel>,
 }
 
 /// Rich session data -- output of accumulation. Same shape for live and history.
@@ -66,6 +76,8 @@ pub struct RichSessionData {
     #[ts(type = "number | null")]
     pub last_cache_hit_at: Option<i64>,
     pub slug: Option<String>,
+    /// SDLC phase classification: current phase, label history, and dominant phase.
+    pub phase: PhaseHistory,
 }
 
 impl SessionAccumulator {
@@ -88,6 +100,8 @@ impl SessionAccumulator {
             slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
+            step_signals: Vec::with_capacity(PHASE_WINDOW_SIZE),
+            phase_labels: Vec::new(),
         }
     }
 
@@ -492,6 +506,19 @@ impl SessionAccumulator {
                 }
             }
         }
+
+        // -----------------------------------------------------------------
+        // Phase classification: extract signals, maintain sliding window,
+        // and classify after each new step.
+        // -----------------------------------------------------------------
+        if let Some(signals) = extract_step_signals(line) {
+            if self.step_signals.len() >= PHASE_WINDOW_SIZE {
+                self.step_signals.remove(0);
+            }
+            self.step_signals.push(signals);
+            let label = classify_window(&self.step_signals);
+            self.phase_labels.push(label);
+        }
     }
 
     /// Finalize accumulation: return per-turn accumulated cost, derive cache
@@ -530,6 +557,11 @@ impl SessionAccumulator {
             },
             last_cache_hit_at: self.last_cache_hit_at,
             slug: self.slug.clone(),
+            phase: PhaseHistory {
+                current: self.phase_labels.last().cloned(),
+                dominant: dominant_phase(&self.phase_labels),
+                labels: self.phase_labels.clone(),
+            },
         }
     }
 
@@ -644,6 +676,8 @@ mod tests {
             task_updates: Vec::new(),
             task_id_assignments: Vec::new(),
             skill_names: Vec::new(),
+            bash_commands: Vec::new(),
+            edited_files: Vec::new(),
             is_compact_boundary: false,
             ide_file: None,
             message_id: None,
@@ -1000,7 +1034,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1021,7 +1055,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1048,7 +1082,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1066,7 +1100,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1094,7 +1128,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Backend work".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1111,7 +1145,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1147,7 +1181,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Failing work".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1163,7 +1197,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1194,7 +1228,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "Killed work".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1210,7 +1244,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1243,7 +1277,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "landing-sync".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
@@ -1261,7 +1295,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1292,7 +1326,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "future-agent".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1309,7 +1343,7 @@ mod tests {
                 usage_output_tokens: None,
                 usage_cache_read_tokens: None,
                 usage_cache_creation_tokens: None,
-                    model: None,
+                model: None,
             });
             acc.process_line(&result_line, 0, &pricing);
 
@@ -1396,7 +1430,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "notif-agent".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1413,7 +1447,7 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
-                    model: None,
+            model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
 
@@ -1443,7 +1477,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
 
         // Process same spawn twice (replay resilience)
@@ -1468,7 +1502,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1798,7 +1832,7 @@ mod tests {
                 agent_type: "code".to_string(),
                 description: "Write code".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&spawn_line, 0, &pricing);
 
@@ -1815,7 +1849,7 @@ mod tests {
             usage_output_tokens: Some(10_000),
             usage_cache_read_tokens: Some(50_000),
             usage_cache_creation_tokens: Some(5_000),
-                    model: None,
+            model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
 
@@ -1845,7 +1879,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "agent-sysinfo".to_string(),
                 team_name: Some("demo-team".to_string()),
-                    model: None,
+                model: None,
             });
         acc.process_line(&line, 0, &pricing);
 
@@ -1874,7 +1908,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "researcher".to_string(),
                 team_name: Some("nvda-demo".to_string()),
-                    model: None,
+                model: None,
             });
         acc.process_line(&team_line, 0, &pricing);
 
@@ -1889,7 +1923,7 @@ mod tests {
                 agent_type: "general-purpose".to_string(),
                 description: "analyst".to_string(),
                 team_name: Some("nvda-demo".to_string()),
-                    model: None,
+                model: None,
             });
         acc.process_line(&team_line2, 0, &pricing);
 
@@ -1930,7 +1964,7 @@ mod tests {
                 agent_type: "Explore".to_string(),
                 description: "Search codebase".to_string(),
                 team_name: None,
-                    model: None,
+                model: None,
             });
         acc.process_line(&reg_line, 0, &pricing);
 
