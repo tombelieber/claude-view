@@ -15,10 +15,16 @@ use tracing::{error, info, warn};
 
 use claude_view_core::discovery::resolve_worktree_branch;
 use claude_view_core::live_parser::{parse_tail, HookProgressData, LineType, TailFinders};
+use claude_view_core::phase::{
+    classify_window, dominant_phase, extract_step_signals, PhaseHistory, PhaseLabel, StepSignals,
+};
 use claude_view_core::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
+
+/// Sliding window size for phase classification (number of steps).
+const PHASE_WINDOW_SIZE: usize = 10;
 
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
@@ -153,6 +159,10 @@ struct SessionAccumulator {
     /// Dedup guard for split assistant content blocks.
     /// Keyed by `message.id:requestId` so one API response is counted once.
     seen_api_calls: std::collections::HashSet<String>,
+    /// Sliding window of recent step signals for phase classification.
+    step_signals: Vec<StepSignals>,
+    /// Phase labels emitted so far (one per classification).
+    phase_labels: Vec<PhaseLabel>,
 }
 
 impl SessionAccumulator {
@@ -190,6 +200,8 @@ impl SessionAccumulator {
             slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
+            step_signals: Vec::with_capacity(PHASE_WINDOW_SIZE),
+            phase_labels: Vec::new(),
         }
     }
 }
@@ -221,6 +233,7 @@ struct JsonlMetadata {
     slug: Option<String>,
     user_files: Option<Vec<super::state::VerifiedFile>>,
     edit_count: u32,
+    phase: PhaseHistory,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -315,6 +328,7 @@ fn build_recovered_session(
         agent_state_set_at: 0,
         hook_events: Vec::new(),
         user_files: None,
+        phase: PhaseHistory::default(),
     }
 }
 
@@ -476,6 +490,7 @@ fn apply_jsonl_metadata(
         session.user_files = m.user_files.clone();
     }
     session.edit_count = m.edit_count;
+    session.phase = m.phase.clone();
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -698,6 +713,11 @@ impl LiveSessionManager {
                 acc.project_path.as_deref(),
             ),
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
+            phase: PhaseHistory {
+                current: acc.phase_labels.last().cloned(),
+                dominant: dominant_phase(&acc.phase_labels),
+                labels: acc.phase_labels.clone(),
+            },
         };
         drop(accumulators);
 
@@ -1064,6 +1084,11 @@ impl LiveSessionManager {
                                         acc.project_path.as_deref(),
                                     ),
                                     edit_count: acc.tool_counts_edit + acc.tool_counts_write,
+                                    phase: PhaseHistory {
+                                        current: acc.phase_labels.last().cloned(),
+                                        dominant: dominant_phase(&acc.phase_labels),
+                                        labels: acc.phase_labels.clone(),
+                                    },
                                 };
                                 drop(accumulators);
 
@@ -1957,6 +1982,8 @@ impl LiveSessionManager {
             acc.compact_count = 0;
             acc.accumulated_cost = CostBreakdown::default();
             acc.seen_api_calls.clear();
+            acc.step_signals.clear();
+            acc.phase_labels.clear();
         }
 
         let mut channel_a_events: Vec<HookEvent> = Vec::new();
@@ -2459,6 +2486,16 @@ impl LiveSessionManager {
                     ));
                 }
             }
+
+            // Phase classification: extract signals, maintain sliding window, classify.
+            if let Some(signals) = extract_step_signals(line) {
+                if acc.step_signals.len() >= PHASE_WINDOW_SIZE {
+                    acc.step_signals.remove(0);
+                }
+                acc.step_signals.push(signals);
+                let label = classify_window(&acc.step_signals);
+                acc.phase_labels.push(label);
+            }
         }
 
         // Use per-turn accumulated cost (computed in the line processing loop above).
@@ -2538,6 +2575,11 @@ impl LiveSessionManager {
                 acc.project_path.as_deref(),
             ),
             edit_count: acc.tool_counts_edit + acc.tool_counts_write,
+            phase: PhaseHistory {
+                current: acc.phase_labels.last().cloned(),
+                dominant: dominant_phase(&acc.phase_labels),
+                labels: acc.phase_labels.clone(),
+            },
         };
 
         // After accumulator update, persist partial state to DB (fire-and-forget).
@@ -3958,6 +4000,7 @@ mod hook_event_tests {
             agent_state_set_at: 0,
             source: None,
             hook_events: Vec::new(),
+            phase: PhaseHistory::default(),
         }
     }
 
@@ -3988,6 +4031,7 @@ mod hook_event_tests {
             slug: None,
             user_files: None,
             edit_count: 0,
+            phase: PhaseHistory::default(),
         }
     }
 

@@ -4,6 +4,7 @@
 //! file modification time, and process presence.
 
 use crate::live::process::SessionSourceInfo;
+use claude_view_core::phase::PhaseHistory;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -355,6 +356,8 @@ pub struct LiveSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
     pub statusline_rate_limit_7d_resets_at: Option<i64>,
+    /// SDLC phase classification (current phase, label history, dominant phase).
+    pub phase: PhaseHistory,
     /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
     #[serde(skip)]
     pub statusline_raw: Option<serde_json::Value>,
@@ -603,6 +606,7 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         agent_state_set_at: 0,
         source: None,
         hook_events: Vec::new(),
+        phase: PhaseHistory::default(),
     }
 }
 

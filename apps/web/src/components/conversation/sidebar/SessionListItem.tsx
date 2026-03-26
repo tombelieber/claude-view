@@ -7,6 +7,7 @@ import { SourceBadge } from '../../shared/SourceBadge'
 import { deriveDropdownActions, getStatusDotColor } from './session-list-helpers'
 
 import type { LiveStatus } from '../../../lib/live-status'
+import { PhaseBadge } from '../../PhaseBadge'
 
 interface Props {
   session: SessionInfo & {
@@ -106,6 +107,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           {session.liveData && <SourceBadge source={session.liveData.source} />}
+          <PhaseBadge phase={session.liveData?.phase?.current?.phase} />
           <p className="text-sm font-medium truncate">{title}</p>
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
