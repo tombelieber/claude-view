@@ -230,8 +230,7 @@ impl TurnBoundaryAccumulator {
 
     /// Calculate cost from accumulated model_usage using default pricing.
     fn calculate_cost(&self) -> f64 {
-        let mut pricing_table = pricing::default_pricing();
-        pricing::fill_tiering_gaps(&mut pricing_table);
+        let pricing_table = pricing::load_pricing();
 
         let mut total_cost = 0.0;
         for (model, usage_val) in &self.model_usage {

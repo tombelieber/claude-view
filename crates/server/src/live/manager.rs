@@ -2224,10 +2224,7 @@ impl LiveSessionManager {
                         // Compute cost from token usage via pricing table.
                         // Use the sub-agent's own model for pricing (from spawn input or
                         // toolUseResult). Fall back to parent session model if unknown.
-                        let pricing_model = agent
-                            .model
-                            .as_deref()
-                            .or(acc.model.as_deref());
+                        let pricing_model = agent.model.as_deref().or(acc.model.as_deref());
                         if let Some(model) = pricing_model {
                             let sub_tokens = TokenUsage {
                                 input_tokens: result.usage_input_tokens.unwrap_or(0),

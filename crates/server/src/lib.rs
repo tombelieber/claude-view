@@ -42,7 +42,6 @@ pub use state::{
     RegistryHolder, SearchIndexHolder, ShareConfig,
 };
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -74,7 +73,7 @@ fn cors_layer() -> CorsLayer {
         .allow_methods(Any)
         .allow_headers(Any)
 }
-use claude_view_db::{Database, ModelPricing};
+use claude_view_db::Database;
 
 /// Create the Axum application with all routes and middleware (API-only mode).
 ///
@@ -101,11 +100,9 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: Arc::new(std::sync::RwLock::new({
-            let mut p = claude_view_db::default_pricing();
-            claude_view_core::pricing::fill_tiering_gaps(&mut p);
-            p
-        })),
+        pricing: Arc::new(std::sync::RwLock::new(
+            claude_view_core::pricing::load_pricing(),
+        )),
         live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -178,11 +175,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: Arc::new(std::sync::RwLock::new({
-            let mut p = claude_view_db::default_pricing();
-            claude_view_core::pricing::fill_tiering_gaps(&mut p);
-            p
-        })),
+        pricing: Arc::new(std::sync::RwLock::new(
+            claude_view_core::pricing::load_pricing(),
+        )),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -240,9 +235,9 @@ pub fn create_app_full(
     telemetry: Option<telemetry::TelemetryClient>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
-    let mut initial_pricing = claude_view_db::default_pricing();
-    claude_view_core::pricing::fill_tiering_gaps(&mut initial_pricing);
-    let pricing = Arc::new(std::sync::RwLock::new(initial_pricing));
+    let pricing = Arc::new(std::sync::RwLock::new(
+        claude_view_core::pricing::load_pricing(),
+    ));
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
@@ -332,34 +327,18 @@ pub fn create_app_full(
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
 
-    // Refresh pricing table from litellm on startup and every 24h.
-    // Also eagerly start the sidecar to fetch SDK model list on startup.
+    // Start sidecar eagerly for SDK model fetch.
     {
-        let pricing = state.pricing.clone();
-        let db = state.db.clone();
         let sidecar = state.sidecar.clone();
         tokio::spawn(async move {
-            // Start sidecar eagerly so SDK models are available on first page load.
-            // The sidecar's model-cache.ts refreshes on startup via V1 query().
-            let sidecar_url = match sidecar.ensure_running().await {
-                Ok(url) => {
+            match sidecar.ensure_running().await {
+                Ok(_url) => {
                     tracing::info!("Sidecar started eagerly for SDK model fetch");
-                    Some(url)
                 }
                 Err(e) => {
                     tracing::debug!("Sidecar eager start skipped: {e}");
-                    None
                 }
             };
-
-            refresh_pricing(&pricing, &db, sidecar_url.as_deref()).await;
-
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(86_400));
-            interval.tick().await;
-            loop {
-                interval.tick().await;
-                refresh_pricing(&pricing, &db, sidecar_url.as_deref()).await;
-            }
         });
     }
 
@@ -392,62 +371,6 @@ pub fn register_hooks(port: u16) {
     }
     live::hook_registrar::register(port);
     live::statusline_injector::register(port);
-}
-
-async fn refresh_pricing(
-    pricing: &Arc<std::sync::RwLock<HashMap<String, ModelPricing>>>,
-    db: &Database,
-    sidecar_url: Option<&str>,
-) {
-    // Tier 1: Try litellm fetch
-    match claude_view_db::fetch_litellm_pricing().await {
-        Ok((litellm, context_data)) => {
-            let defaults = claude_view_db::default_pricing();
-            let mut merged = claude_view_db::merge_pricing(&defaults, &litellm);
-            claude_view_core::pricing::fill_tiering_gaps(&mut merged);
-            let count = merged.len();
-
-            // Persist to SQLite for cross-restart durability
-            if let Err(e) = claude_view_db::save_pricing_cache(db, &merged).await {
-                tracing::warn!("Failed to cache pricing to SQLite: {e}");
-            }
-
-            *pricing.write().expect("pricing lock poisoned") = merged;
-            tracing::info!(
-                models = count,
-                "Pricing refreshed from litellm + cached to SQLite"
-            );
-
-            // Upsert model context data (max_input_tokens, max_output_tokens) into models table
-            if let Err(e) = db.upsert_litellm_context(&context_data).await {
-                tracing::warn!("Failed to upsert LiteLLM model context: {e}");
-            }
-        }
-        Err(e) => {
-            tracing::warn!("litellm fetch failed: {e}");
-
-            // Tier 2: Try SQLite cache
-            match claude_view_db::load_pricing_cache(db).await {
-                Ok(Some(mut cached)) => {
-                    claude_view_core::pricing::fill_tiering_gaps(&mut cached);
-                    let count = cached.len();
-                    *pricing.write().expect("pricing lock poisoned") = cached;
-                    tracing::info!(models = count, "Pricing loaded from SQLite cache");
-                }
-                Ok(None) => {
-                    // Tier 3: Keep defaults (already gap-filled at startup)
-                    tracing::info!("No SQLite pricing cache, using defaults");
-                }
-                Err(e2) => {
-                    tracing::warn!("Failed to load pricing cache: {e2}, using defaults");
-                }
-            }
-        }
-    }
-
-    // Model selection is now handled directly by the frontend via sidecar's
-    // /sessions/models endpoint — no DB roundtrip or alias resolution needed.
-    let _ = sidecar_url; // suppress unused warning
 }
 
 /// Create the Axum application with an external `IndexingState` and optional
