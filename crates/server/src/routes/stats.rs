@@ -726,7 +726,7 @@ pub async fn ai_generation_stats(
         )
         .await
     {
-        let pricing = state.pricing.read().unwrap_or_else(|e| e.into_inner());
+        let pricing = &*state.pricing;
         let mut cost = AggregateCostBreakdown::default();
 
         let mut priced_tokens_total: i64 = 0;

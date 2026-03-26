@@ -554,7 +554,7 @@ CREATE TABLE IF NOT EXISTS fluency_scores (
     r#"ALTER TABLE sessions ADD COLUMN total_task_time_seconds INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN longest_task_seconds INTEGER;"#,
     r#"ALTER TABLE sessions ADD COLUMN longest_task_preview TEXT;"#,
-    // Migration 23: Pricing cache for three-tier resolution (litellm → SQLite → defaults)
+    // Migration 23: Pricing cache (DEAD — pricing now embedded via data/anthropic-pricing.json)
     r#"CREATE TABLE IF NOT EXISTS pricing_cache (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     data TEXT NOT NULL,
@@ -734,7 +734,7 @@ COMMIT;"#,
     r#"ALTER TABLE sessions ADD COLUMN closed_at INTEGER;"#,
     // Migration 56: dismissed_at — set when user explicitly dismisses from recently-closed list.
     r#"ALTER TABLE sessions ADD COLUMN dismissed_at INTEGER;"#,
-    // Migration 57: model catalog columns — display metadata + context window from LiteLLM/SDK.
+    // Migration 57: model catalog columns — display metadata + context window.
     r#"BEGIN;
 ALTER TABLE models ADD COLUMN display_name TEXT;
 ALTER TABLE models ADD COLUMN description TEXT;

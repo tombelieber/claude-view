@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use super::types::ModelPricing;
 
 const PRICING_JSON: &str = include_str!("../../../../data/anthropic-pricing.json");
 const PER_MTOK: f64 = 1_000_000.0;
+
+static PRICING_CACHE: OnceLock<HashMap<String, ModelPricing>> = OnceLock::new();
 
 /// JSON schema types (deserialization only).
 #[derive(serde::Deserialize)]
@@ -34,27 +37,30 @@ struct LongContextPricing {
 
 /// Load pricing from the embedded `data/anthropic-pricing.json`.
 ///
-/// Converts per-million-token USD rates to per-token rates.
-/// Aliases are flattened into the HashMap for direct key lookup.
-///
-/// Panics at startup if the embedded JSON is malformed (compile-time guarantee).
+/// Parsed once on first call (via `OnceLock`), then cloned from cache.
+/// Panics if the embedded JSON is malformed (compile-time guarantee).
 pub fn load_pricing() -> HashMap<String, ModelPricing> {
-    let file: PricingFile = serde_json::from_str(PRICING_JSON)
-        .expect("embedded anthropic-pricing.json is invalid — fix data/anthropic-pricing.json");
+    PRICING_CACHE
+        .get_or_init(|| {
+            let file: PricingFile = serde_json::from_str(PRICING_JSON).expect(
+                "embedded anthropic-pricing.json is invalid — fix data/anthropic-pricing.json",
+            );
 
-    let mut map = HashMap::with_capacity(file.models.len() + file.aliases.len());
+            let mut map = HashMap::with_capacity(file.models.len() + file.aliases.len());
 
-    for (model_id, jm) in &file.models {
-        map.insert(model_id.clone(), convert_model(jm));
-    }
+            for (model_id, jm) in &file.models {
+                map.insert(model_id.clone(), convert_model(jm));
+            }
 
-    for (alias, target) in &file.aliases {
-        if let Some(mp) = map.get(target) {
-            map.insert(alias.clone(), mp.clone());
-        }
-    }
+            for (alias, target) in &file.aliases {
+                if let Some(mp) = map.get(target) {
+                    map.insert(alias.clone(), mp.clone());
+                }
+            }
 
-    map
+            map
+        })
+        .clone()
 }
 
 fn convert_model(jm: &JsonModel) -> ModelPricing {

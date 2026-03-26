@@ -295,6 +295,21 @@ fn build_recovered_session(
         statusline_version: None,
         exceeds_200k_tokens: None,
         statusline_transcript_path: None,
+        statusline_output_style: None,
+        statusline_vim_mode: None,
+        statusline_agent_name: None,
+        statusline_worktree_name: None,
+        statusline_worktree_path: None,
+        statusline_worktree_branch: None,
+        statusline_worktree_original_cwd: None,
+        statusline_worktree_original_branch: None,
+        statusline_remaining_pct: None,
+        statusline_total_input_tokens: None,
+        statusline_total_output_tokens: None,
+        statusline_rate_limit_5h_pct: None,
+        statusline_rate_limit_5h_resets_at: None,
+        statusline_rate_limit_7d_pct: None,
+        statusline_rate_limit_7d_resets_at: None,
         statusline_raw: None,
         model_set_at: 0,
         agent_state_set_at: 0,
@@ -477,8 +492,8 @@ pub struct LiveSessionManager {
     /// Total number of Claude processes detected (not deduplicated by cwd).
     /// Updated by the eager scan and periodic detector.
     process_count: Arc<AtomicU32>,
-    /// Per-model pricing table for cost calculation.
-    pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+    /// Per-model pricing table for cost calculation (immutable after init).
+    pricing: Arc<HashMap<String, ModelPricing>>,
     /// Database handle for batched writes.
     db: Database,
     /// Search index holder for passing to scan_and_index_all on overflow reconciliation.
@@ -506,7 +521,7 @@ impl LiveSessionManager {
     /// Returns the manager, a shared session map, the transcript dedup map,
     /// and the broadcast sender for SSE event streaming.
     pub fn start(
-        pricing: Arc<StdRwLock<HashMap<String, ModelPricing>>>,
+        pricing: Arc<HashMap<String, ModelPricing>>,
         db: Database,
         search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
@@ -2050,8 +2065,9 @@ impl LiveSessionManager {
                     cache_creation_1hr_tokens: line.cache_creation_1hr_tokens.unwrap_or(0),
                     total_tokens: 0,
                 };
-                if let Ok(p) = self.pricing.read() {
-                    let turn_cost = calculate_cost(&turn_tokens, acc.model.as_deref(), &p);
+                {
+                    let turn_cost =
+                        calculate_cost(&turn_tokens, acc.model.as_deref(), &self.pricing);
                     acc.accumulated_cost.input_cost_usd += turn_cost.input_cost_usd;
                     acc.accumulated_cost.output_cost_usd += turn_cost.output_cost_usd;
                     acc.accumulated_cost.cache_read_cost_usd += turn_cost.cache_read_cost_usd;
@@ -2237,12 +2253,7 @@ impl LiveSessionManager {
                                 cache_creation_1hr_tokens: 0,
                                 total_tokens: 0, // not used by calculate_cost
                             };
-                            let sub_cost = self
-                                .pricing
-                                .read()
-                                .ok()
-                                .map(|p| calculate_cost(&sub_tokens, Some(model), &p))
-                                .unwrap_or_default();
+                            let sub_cost = calculate_cost(&sub_tokens, Some(model), &self.pricing);
                             if sub_cost.total_usd > 0.0 {
                                 agent.cost_usd = Some(sub_cost.total_usd);
                             }
@@ -3927,6 +3938,21 @@ mod hook_event_tests {
             statusline_version: None,
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
+            statusline_output_style: None,
+            statusline_vim_mode: None,
+            statusline_agent_name: None,
+            statusline_worktree_name: None,
+            statusline_worktree_path: None,
+            statusline_worktree_branch: None,
+            statusline_worktree_original_cwd: None,
+            statusline_worktree_original_branch: None,
+            statusline_remaining_pct: None,
+            statusline_total_input_tokens: None,
+            statusline_total_output_tokens: None,
+            statusline_rate_limit_5h_pct: None,
+            statusline_rate_limit_5h_resets_at: None,
+            statusline_rate_limit_7d_pct: None,
+            statusline_rate_limit_7d_resets_at: None,
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,

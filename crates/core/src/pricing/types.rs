@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 use ts_rs::TS;
+
+/// Model ID → pricing rates. The canonical pricing table type.
+pub type PricingTable = HashMap<String, ModelPricing>;
 
 /// Per-model pricing in USD per token.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

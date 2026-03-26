@@ -1,9 +1,9 @@
-use crate::{pricing::LiteLlmModelContext, Database, DbResult};
+use crate::{pricing::ModelContext, Database, DbResult};
 
 impl Database {
-    /// Upsert model context data from LiteLLM into the models table.
+    /// Upsert model context data into the models table.
     /// Uses COALESCE to preserve existing values from other sources (indexer).
-    pub async fn upsert_litellm_context(&self, models: &[LiteLlmModelContext]) -> DbResult<usize> {
+    pub async fn upsert_model_context(&self, models: &[ModelContext]) -> DbResult<usize> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

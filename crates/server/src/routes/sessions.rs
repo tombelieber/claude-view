@@ -528,8 +528,8 @@ pub async fn get_session_rich(
     // 1. Resolve JSONL file path (DB → live session fallback)
     let path = resolve_session_file_path(&state, &session_id).await?;
 
-    // 2. Snapshot the current pricing table (clone inside read lock, then drop lock)
-    let pricing = state.pricing.read().expect("pricing lock poisoned").clone();
+    // 2. Arc-clone the pricing table (cheap, no lock needed — pricing is immutable)
+    let pricing = state.pricing.clone();
 
     // 3. Parse JSONL through SessionAccumulator (blocking I/O → spawn_blocking)
     let rich_data =
@@ -905,7 +905,7 @@ async fn estimate_cost(
     let cache_warm = last_activity > 0 && (now - last_activity) < 300; // 5 min TTL
 
     // Look up model pricing
-    let pricing = state.pricing.read().expect("pricing lock poisoned");
+    let pricing = &*state.pricing;
     let model_pricing = claude_view_core::pricing::lookup_pricing(&model, &pricing);
 
     let per_million =
@@ -2040,6 +2040,21 @@ mod tests {
             statusline_version: None,
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
+            statusline_output_style: None,
+            statusline_vim_mode: None,
+            statusline_agent_name: None,
+            statusline_worktree_name: None,
+            statusline_worktree_path: None,
+            statusline_worktree_branch: None,
+            statusline_worktree_original_cwd: None,
+            statusline_worktree_original_branch: None,
+            statusline_remaining_pct: None,
+            statusline_total_input_tokens: None,
+            statusline_total_output_tokens: None,
+            statusline_rate_limit_5h_pct: None,
+            statusline_rate_limit_5h_resets_at: None,
+            statusline_rate_limit_7d_pct: None,
+            statusline_rate_limit_7d_resets_at: None,
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,
@@ -2271,6 +2286,21 @@ mod tests {
             statusline_version: None,
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
+            statusline_output_style: None,
+            statusline_vim_mode: None,
+            statusline_agent_name: None,
+            statusline_worktree_name: None,
+            statusline_worktree_path: None,
+            statusline_worktree_branch: None,
+            statusline_worktree_original_cwd: None,
+            statusline_worktree_original_branch: None,
+            statusline_remaining_pct: None,
+            statusline_total_input_tokens: None,
+            statusline_total_output_tokens: None,
+            statusline_rate_limit_5h_pct: None,
+            statusline_rate_limit_5h_resets_at: None,
+            statusline_rate_limit_7d_pct: None,
+            statusline_rate_limit_7d_resets_at: None,
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,

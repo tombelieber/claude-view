@@ -100,9 +100,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: Arc::new(std::sync::RwLock::new(
-            claude_view_core::pricing::load_pricing(),
-        )),
+        pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -175,9 +173,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         jobs: Arc::new(jobs::JobRunner::new()),
         classify: Arc::new(classify_state::ClassifyState::new()),
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
-        pricing: Arc::new(std::sync::RwLock::new(
-            claude_view_core::pricing::load_pricing(),
-        )),
+        pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -235,9 +231,7 @@ pub fn create_app_full(
     telemetry: Option<telemetry::TelemetryClient>,
 ) -> Router {
     // Start live session monitoring (file watcher, process detector, cleanup).
-    let pricing = Arc::new(std::sync::RwLock::new(
-        claude_view_core::pricing::load_pricing(),
-    ));
+    let pricing = Arc::new(claude_view_core::pricing::load_pricing());
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
