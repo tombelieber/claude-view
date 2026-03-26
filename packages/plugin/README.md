@@ -6,7 +6,7 @@
   <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 8 session/cost/fluency MCP tools, and adds `/session-recap`, `/daily-cost`, `/standup` skills.
+Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 90 MCP tools across 30 categories, and adds 9 skills for common workflows.
 
 ## Install
 
@@ -34,24 +34,76 @@ Every time you start a Claude Code session, the plugin checks if the claude-view
 is running. If not, it starts it in the background. Web dashboard appears at
 `http://localhost:47892`.
 
-### 8 MCP Tools (available to Claude)
-| Tool | Purpose |
-|------|---------|
-| `list_sessions` | List/filter/paginate sessions |
-| `get_session` | Full session detail + commits |
-| `search_sessions` | Full-text search across sessions |
-| `get_stats` | Dashboard overview: projects, skills, trends |
-| `get_fluency_score` | AI Fluency Score (0-100) |
-| `get_token_stats` | Token usage breakdown |
-| `list_live_sessions` | Currently running sessions |
-| `get_live_summary` | Aggregate: cost today, attention count |
+## Tools (90)
 
-### 3 Skills
+### Hand-written (curated output) — 8 tools
+
+These tools have hand-crafted response shaping for optimal Claude consumption.
+
+| Tool | Description |
+|------|-------------|
+| `list_sessions` | List/filter/paginate sessions with summaries |
+| `get_session` | Full session detail + commits + derived metrics |
+| `search_sessions` | Full-text search across all sessions |
+| `get_stats` | Dashboard overview: projects, skills, trends |
+| `get_fluency_score` | AI Fluency Score (0-100 composite) |
+| `get_token_stats` | Token usage breakdown (input/output/cache) |
+| `list_live_sessions` | Currently running sessions with real-time state |
+| `get_live_summary` | Aggregate: cost today, attention count, tokens |
+
+### Auto-generated (JSON passthrough) — 82 tools
+
+Generated from the OpenAPI spec. 82 tools across 28 categories.
+
+<details>
+<summary>Show all generated tools</summary>
+
+| Tag | Tools | Example |
+|-----|-------|---------|
+| classify | 4 | `classify_start_classification` |
+| coaching | 3 | `coaching_list_rules` |
+| contributions | 4 | `contributions_get_contributions` |
+| export | 1 | `export_sessions` |
+| facets | 4 | `facets_facet_badges` |
+| health | 3 | `health_config` |
+| ide | 2 | `ide_get_detect` |
+| insights | 6 | `insights_get_insights` |
+| jobs | 1 | `jobs_list_jobs` |
+| models | 1 | `models_list_models` |
+| monitor | 1 | `monitor_snapshot` |
+| oauth | 3 | `oauth_get_auth_identity` |
+| pairing | 3 | `pairing_list_devices` |
+| plans | 1 | `plans_get_session_plans` |
+| plugins | 7 | `plugins_list_plugins` |
+| processes | 2 | `processes_cleanup_processes` |
+| projects | 3 | `projects_list_projects` |
+| prompts | 3 | `prompts_list_prompts` |
+| reports | 4 | `reports_list_reports` |
+| search | 1 | `search_handler` |
+| settings | 1 | `settings_update_git_sync_interval` |
+| share | 3 | `share_create_share` |
+| sync | 3 | `sync_indexing_status` |
+| system | 6 | `system_check_path` |
+| teams | 5 | `teams_list_teams` |
+| telemetry | 1 | `telemetry_set_consent` |
+| turns | 1 | `turns_get_session_turns` |
+| workflows | 5 | `workflows_list_workflows` |
+
+</details>
+
+### 9 Skills
+
 | Skill | Trigger |
 |-------|---------|
-| `/session-recap` | "recap my last session", "summarize session" |
+| `/session-recap` | "recap my last session", "session summary" |
 | `/daily-cost` | "how much did I spend today", "cost report" |
-| `/standup` | "standup update", "what did I work on" |
+| `/standup` | "standup update", "what did I work on today" |
+| `/coaching` | "how can I improve", "coaching tips", "add a coaching rule" |
+| `/insights` | "what patterns do you see", "behavioral analysis" |
+| `/project-overview` | "show me project X", "project summary" |
+| `/search` | "find where I discussed X", "search for Y" |
+| `/export-data` | "export my sessions", "download data", "export to CSV" |
+| `/team-status` | "team status", "what's the team doing", "who's active" |
 
 ## Configuration
 
