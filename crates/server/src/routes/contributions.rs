@@ -599,7 +599,7 @@ pub async fn get_contributions(
                 + ms.cache_creation_tokens;
             all_tokens_total += model_token_total;
 
-            match lookup_pricing(&ms.model, &pricing) {
+            match lookup_pricing(&ms.model, pricing) {
                 Some(p) => {
                     let model_cost = calculate_cost_usd(&tokens, p);
                     total_cost_usd += model_cost;
