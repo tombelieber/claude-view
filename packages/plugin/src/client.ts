@@ -38,4 +38,47 @@ export class ClaudeViewClient {
 
     return response.json() as Promise<T>
   }
+
+  async request<T = unknown>(
+    method: string,
+    path: string,
+    options?: {
+      params?: Record<string, string | number | undefined>
+      body?: unknown
+      timeout?: number
+    },
+  ): Promise<T> {
+    const url = new URL(path, this.baseUrl)
+    if (options?.params) {
+      for (const [key, value] of Object.entries(options.params)) {
+        if (value !== undefined) {
+          url.searchParams.set(key, String(value))
+        }
+      }
+    }
+
+    let response: Response
+    try {
+      const fetchOpts: RequestInit = {
+        method,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(options?.timeout ?? 10_000),
+      }
+      if (options?.body !== undefined) {
+        fetchOpts.body = JSON.stringify(options.body)
+      }
+      response = await fetch(url.toString(), fetchOpts)
+    } catch {
+      throw new Error(
+        `claude-view server not detected at ${this.baseUrl}. Start it with: npx claude-view`,
+      )
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`claude-view API error ${response.status}: ${body}`)
+    }
+
+    return response.json() as Promise<T>
+  }
 }

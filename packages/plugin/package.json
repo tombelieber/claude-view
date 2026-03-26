@@ -7,9 +7,10 @@
   "files": [".claude-plugin/", ".mcp.json", "skills/", "hooks/", "dist/", "README.md"],
   "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "codegen": "bun run scripts/codegen-from-openapi.ts",
+    "build": "bun run codegen && tsc",
     "dev": "tsc --watch",
-    "prepublishOnly": "tsc",
+    "prepublishOnly": "bun run codegen && tsc",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "bun test src/__tests__/ && bash scripts/validate-plugin.sh"
