@@ -44,6 +44,7 @@ import { ChangesTab } from './ChangesTab'
 import { DisplayModeToggle } from './DisplayModeToggle'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
+import { SessionBadges } from './SessionBadges'
 import { PlanTab } from './PlanTab'
 import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
@@ -562,6 +563,19 @@ export function SessionDetailPanel({
               </span>
             </div>
 
+            {/* ── Session metadata badges (vim, agent, output style, worktree) ── */}
+            <SessionBadges
+              vimMode={data.statuslineVimMode}
+              agentName={data.statuslineAgentName}
+              agentContext={data.currentActivity}
+              outputStyle={data.statuslineOutputStyle}
+              worktreeName={data.statuslineWorktreeName}
+              worktreePath={data.statuslineWorktreePath}
+              worktreeBranch={data.statuslineWorktreeBranch}
+              worktreeOriginalCwd={data.statuslineWorktreeOriginalCwd}
+              worktreeOriginalBranch={data.statuslineWorktreeOriginalBranch}
+            />
+
             {/* ── Tasks (first section — primary monitoring concern) ── */}
             {data.progressItems && data.progressItems.length > 0 && (
               <TasksOverviewSection items={data.progressItems} />
@@ -643,6 +657,9 @@ export function SessionDetailPanel({
                 compactCount={data.compactCount}
                 statuslineContextWindowSize={data.statuslineContextWindowSize}
                 statuslineUsedPct={data.statuslineUsedPct}
+                statuslineRemainingPct={data.statuslineRemainingPct}
+                statuslineTotalInputTokens={data.statuslineTotalInputTokens}
+                statuslineTotalOutputTokens={data.statuslineTotalOutputTokens}
                 expanded
               />
             </div>

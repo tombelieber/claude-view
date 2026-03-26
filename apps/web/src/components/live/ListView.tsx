@@ -41,7 +41,7 @@ function formatCost(session: LiveSession): string {
 }
 
 const COLUMNS: {
-  key: SortColumn | 'activity' | 'source'
+  key: SortColumn | 'activity' | 'source' | 'lines'
   label: string
   width: string
   sortable: boolean
@@ -53,6 +53,7 @@ const COLUMNS: {
   { key: 'activity', label: 'Activity', width: 'flex-1', sortable: false },
   { key: 'turns', label: 'Turns', width: 'w-[60px]', sortable: true },
   { key: 'cost', label: 'Cost', width: 'w-[70px]', sortable: true },
+  { key: 'lines', label: 'Lines', width: 'w-[80px]', sortable: false },
   { key: 'context', label: 'Context%', width: 'w-[65px]', sortable: true },
   { key: 'lastActive', label: 'Last Active', width: 'w-[90px]', sortable: true },
 ]
@@ -241,6 +242,30 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
                   <span className="text-xs text-gray-700 dark:text-gray-300 tabular-nums">
                     {formatCost(session)}
                   </span>
+                </td>
+
+                {/* Lines */}
+                <td className="px-2 py-2 w-[80px]">
+                  {session.statuslineLinesAdded != null ||
+                  session.statuslineLinesRemoved != null ? (
+                    <span className="text-xs font-mono tabular-nums">
+                      {session.statuslineLinesAdded != null && (
+                        <span className="text-green-600 dark:text-green-400">
+                          +{Number(session.statuslineLinesAdded)}
+                        </span>
+                      )}
+                      {session.statuslineLinesAdded != null &&
+                        session.statuslineLinesRemoved != null &&
+                        ' '}
+                      {session.statuslineLinesRemoved != null && (
+                        <span className="text-red-500 dark:text-red-400">
+                          -{Number(session.statuslineLinesRemoved)}
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500">&mdash;</span>
+                  )}
                 </td>
 
                 {/* Context% */}
