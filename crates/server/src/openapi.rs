@@ -13,6 +13,8 @@ use utoipa::OpenApi;
         crate::routes::config::config,
         crate::routes::status::get_status,
         crate::routes::status::update_git_sync_interval,
+        crate::routes::settings::get_settings,
+        crate::routes::settings::update_settings,
         // Batch 1: Sessions
         crate::routes::sessions::list_sessions,
         crate::routes::sessions::get_session_detail,
@@ -144,6 +146,8 @@ use utoipa::OpenApi;
         claude_view_core::telemetry_config::TelemetryStatus,
         claude_view_db::trends::IndexMetadata,
         crate::routes::status::UpdateGitSyncIntervalRequest,
+        claude_view_db::AppSettings,
+        crate::routes::settings::UpdateSettingsRequest,
         // Batch 1: Sessions schemas
         crate::routes::sessions::SessionsListResponse,
         crate::routes::sessions::SessionActivityResponse,

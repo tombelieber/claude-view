@@ -6,6 +6,29 @@ import type { ToolDef } from '../types.js'
 
 export const settingsGeneratedTools: ToolDef[] = [
   {
+    name: 'settings_get_settings',
+    description: 'Read current app settings.',
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request('GET', '/api/settings')
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
+    name: 'settings_update_settings',
+    description: 'Update app settings (partial).',
+    inputSchema: z.object({
+    llmModel: z.string().optional(),
+    llmTimeoutSecs: z.number().optional(),
+  }),
+    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request('PUT', '/api/settings', { body: { llmModel: args.llmModel, llmTimeoutSecs: args.llmTimeoutSecs } })
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
     name: 'settings_update_git_sync_interval',
     description: 'Update the git sync interval.',
     inputSchema: z.object({
