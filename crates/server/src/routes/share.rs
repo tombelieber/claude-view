@@ -23,7 +23,7 @@ fn extract_raw_jwt(headers: &HeaderMap) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct ShareResponse {
     pub token: String,
     pub url: String,
@@ -64,6 +64,12 @@ async fn require_auth(headers: &HeaderMap, state: &AppState) -> ApiResult<AuthUs
     }
 }
 
+#[utoipa::path(post, path = "/api/sessions/{session_id}/share", tag = "share",
+    params(("session_id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Share link created", body = ShareResponse),
+    )
+)]
 pub async fn create_share(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -205,6 +211,12 @@ pub async fn create_share(
     Ok(Json(ShareResponse { token, url }))
 }
 
+#[utoipa::path(delete, path = "/api/sessions/{session_id}/share", tag = "share",
+    params(("session_id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Share revoked", body = serde_json::Value),
+    )
+)]
 pub async fn revoke_share(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -239,6 +251,11 @@ pub async fn revoke_share(
     Ok(Json(serde_json::json!({ "status": "ok" })))
 }
 
+#[utoipa::path(get, path = "/api/shares", tag = "share",
+    responses(
+        (status = 200, description = "All active shares", body = serde_json::Value),
+    )
+)]
 pub async fn list_shares(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

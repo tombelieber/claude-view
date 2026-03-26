@@ -560,12 +560,12 @@ fn calculate_dir_size(dir: &std::path::Path) -> u64 {
 // Check Path
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct CheckPathQuery {
     path: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct CheckPathResponse {
     exists: bool,
 }
@@ -574,7 +574,11 @@ pub struct CheckPathResponse {
 ///
 /// Used by the frontend to validate project paths before offering "resume session".
 /// Worktree directories can be removed, making the session un-resumable.
-async fn check_path(Query(q): Query<CheckPathQuery>) -> Json<CheckPathResponse> {
+#[utoipa::path(get, path = "/api/check-path", tag = "system",
+    params(CheckPathQuery),
+    responses((status = 200, description = "Path existence check", body = CheckPathResponse))
+)]
+pub async fn check_path(Query(q): Query<CheckPathQuery>) -> Json<CheckPathResponse> {
     let exists = std::path::Path::new(&q.path).exists();
     Json(CheckPathResponse { exists })
 }

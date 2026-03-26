@@ -42,7 +42,7 @@ impl JobHandle {
 }
 
 /// Progress update sent via SSE.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct JobProgress {
     pub job_id: JobId,
