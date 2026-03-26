@@ -228,7 +228,9 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRuleRequest"
+              }
             }
           },
           "required": true
@@ -4103,7 +4105,9 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "$ref": "#/components/schemas/ConsentRequest"
+              }
             }
           },
           "required": true
@@ -4603,6 +4607,40 @@
           "llmTimeoutSecs": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ApplyRuleRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/coaching/rules.",
+        "required": [
+          "patternId",
+          "recommendation",
+          "title",
+          "impactScore",
+          "sampleSize",
+          "scope"
+        ],
+        "properties": {
+          "impactScore": {
+            "type": "number",
+            "format": "double"
+          },
+          "patternId": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "sampleSize": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "scope": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
           }
         }
       },
