@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const healthGeneratedTools: ToolDef[] = [
   {
     name: 'health_config',
-    description: 'Config',
+    description: 'Get config',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {

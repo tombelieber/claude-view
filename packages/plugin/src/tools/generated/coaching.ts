@@ -33,7 +33,7 @@ export const coachingGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('DELETE', `/api/coaching/rules/${args.id}`)
+      const result = await client.request('DELETE', `/api/coaching/rules/${encodeURIComponent(String(args.id))}`)
       return JSON.stringify(result, null, 2)
     },
   }

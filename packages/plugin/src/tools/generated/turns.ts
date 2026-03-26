@@ -13,7 +13,7 @@ export const turnsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/sessions/${args.id}/turns`)
+      const result = await client.request('GET', `/api/sessions/${encodeURIComponent(String(args.id))}/turns`)
       return JSON.stringify(result, null, 2)
     },
   }

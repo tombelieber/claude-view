@@ -23,7 +23,7 @@ export const pairingGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('DELETE', `/api/pairing/devices/${args.id}`)
+      const result = await client.request('DELETE', `/api/pairing/devices/${encodeURIComponent(String(args.id))}`)
       return JSON.stringify(result, null, 2)
     },
   },
