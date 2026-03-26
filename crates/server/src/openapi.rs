@@ -148,6 +148,8 @@ use utoipa::OpenApi;
         crate::routes::status::UpdateGitSyncIntervalRequest,
         claude_view_db::AppSettings,
         crate::routes::settings::UpdateSettingsRequest,
+        crate::routes::coaching::ApplyRuleRequest,
+        crate::routes::telemetry::ConsentRequest,
         // Batch 1: Sessions schemas
         crate::routes::sessions::SessionsListResponse,
         crate::routes::sessions::SessionActivityResponse,
