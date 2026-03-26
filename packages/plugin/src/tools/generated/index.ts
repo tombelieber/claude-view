@@ -21,7 +21,6 @@ import { processesGeneratedTools } from './processes.js'
 import { projectsGeneratedTools } from './projects.js'
 import { promptsGeneratedTools } from './prompts.js'
 import { reportsGeneratedTools } from './reports.js'
-import { searchGeneratedTools } from './search.js'
 import { settingsGeneratedTools } from './settings.js'
 import { shareGeneratedTools } from './share.js'
 import { syncGeneratedTools } from './sync.js'
@@ -51,7 +50,6 @@ export const allGeneratedTools: ToolDef[] = [
   ...projectsGeneratedTools,
   ...promptsGeneratedTools,
   ...reportsGeneratedTools,
-  ...searchGeneratedTools,
   ...settingsGeneratedTools,
   ...shareGeneratedTools,
   ...syncGeneratedTools,

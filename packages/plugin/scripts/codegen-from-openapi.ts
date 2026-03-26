@@ -23,6 +23,22 @@ const GEN_DIR = join(ROOT, 'src', 'tools', 'generated')
 // Tags with hand-written tool files — skip generation for these
 const HAND_WRITTEN_TAGS = new Set(['sessions', 'stats', 'live'])
 
+// operationIds that duplicate hand-written tools — skip generation
+const SKIP_OPERATION_IDS = new Set([
+  'get_fluency_score', // duplicates hand-written get_fluency_score in stats.ts
+  'search_handler', // duplicates hand-written search_sessions in sessions.ts
+])
+
+// POST/PUT operations that are destructive despite not being DELETE
+const FORCE_DESTRUCTIVE_OPS = new Set([
+  'reset_all',
+  'clear_cache',
+  'git_resync',
+  'trigger_reindex',
+  'kill_process',
+  'cleanup_processes',
+])
+
 // SSE operationIds — cannot be called via simple HTTP request/response
 const SSE_OPERATION_IDS = new Set([
   'stream_classification',
@@ -180,6 +196,10 @@ function parseOperation(
       info.zodType = schemaToZod(param.schema, true)
       pathParams.push(info)
     } else {
+      // Query params are always optional at the MCP level — backends must
+      // handle their absence even if OpenAPI marks them required
+      info.required = false
+      info.zodType = schemaToZod(param.schema, false)
       queryParams.push(info)
     }
   }
@@ -260,6 +280,12 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
       .replace(/\b\w/g, c => c.toUpperCase())
       .replace(/^(.)/,  c => c.toUpperCase())
   }
+  // If description is a single word or very short, synthesize from path + method
+  if (desc.split(/\s+/).length <= 2) {
+    const pathParts = endpoint.path.replace('/api/', '').split('/').filter(p => !p.startsWith('{'))
+    const verb = endpoint.method === 'get' ? 'Get' : endpoint.method === 'post' ? 'Trigger' : endpoint.method === 'delete' ? 'Delete' : 'Update'
+    desc = `${verb} ${pathParts.join(' ')}`
+  }
   desc = desc.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'").trim()
 
   // Schema properties
@@ -274,14 +300,15 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
 
   // Annotations
   const isReadOnly = endpoint.method === 'get'
-  const isDestructive = endpoint.method === 'delete'
+  const isDestructive = endpoint.method === 'delete' || FORCE_DESTRUCTIVE_OPS.has(endpoint.operationId)
 
   // Handler body — build the path with interpolation for path params
+  // Wrap each path param with encodeURIComponent to prevent path traversal
   let pathExpr: string
   if (endpoint.pathParams.length > 0) {
     let interpolated = endpoint.path
     for (const p of endpoint.pathParams) {
-      interpolated = interpolated.replace(`{${p.name}}`, `\${args.${p.name}}`)
+      interpolated = interpolated.replace(`{${p.name}}`, `\${encodeURIComponent(String(args.${p.name}))}`)
     }
     pathExpr = `\`${interpolated}\``
   } else {
@@ -374,6 +401,12 @@ function main() {
       // Skip SSE endpoints
       if (SSE_OPERATION_IDS.has(operationId)) {
         console.log(`  skip SSE: ${method.toUpperCase()} ${path}`)
+        continue
+      }
+
+      // Skip operationIds that duplicate hand-written tools
+      if (SKIP_OPERATION_IDS.has(operationId)) {
+        console.log(`  skip duplicate: ${operationId} (hand-written equivalent exists)`)
         continue
       }
 

@@ -23,7 +23,7 @@ export const teamsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/teams/${args.name}`)
+      const result = await client.request('GET', `/api/teams/${encodeURIComponent(String(args.name))}`)
       return JSON.stringify(result, null, 2)
     },
   },
@@ -35,7 +35,7 @@ export const teamsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/teams/${args.name}/inbox`)
+      const result = await client.request('GET', `/api/teams/${encodeURIComponent(String(args.name))}/inbox`)
       return JSON.stringify(result, null, 2)
     },
   }

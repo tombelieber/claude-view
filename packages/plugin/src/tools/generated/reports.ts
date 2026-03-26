@@ -19,8 +19,8 @@ export const reportsGeneratedTools: ToolDef[] = [
     name: 'reports_get_preview',
     description: 'Aggregate preview stats for a date range.',
     inputSchema: z.object({
-    startTs: z.number(),
-    endTs: z.number(),
+    startTs: z.number().optional(),
+    endTs: z.number().optional(),
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
@@ -36,7 +36,7 @@ export const reportsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/reports/${args.id}`)
+      const result = await client.request('GET', `/api/reports/${encodeURIComponent(String(args.id))}`)
       return JSON.stringify(result, null, 2)
     },
   },
@@ -48,7 +48,7 @@ export const reportsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('DELETE', `/api/reports/${args.id}`)
+      const result = await client.request('DELETE', `/api/reports/${encodeURIComponent(String(args.id))}`)
       return JSON.stringify(result, null, 2)
     },
   }

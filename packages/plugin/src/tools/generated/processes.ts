@@ -7,11 +7,11 @@ import type { ToolDef } from '../types.js'
 export const processesGeneratedTools: ToolDef[] = [
   {
     name: 'processes_cleanup_processes',
-    description: 'Cleanup Processes',
+    description: 'Trigger processes cleanup',
     inputSchema: z.object({
     targets: z.array(z.unknown()),
   }),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('POST', '/api/processes/cleanup', { body: { targets: args.targets } })
       return JSON.stringify(result, null, 2)
@@ -19,15 +19,15 @@ export const processesGeneratedTools: ToolDef[] = [
   },
   {
     name: 'processes_kill_process',
-    description: 'Kill Process',
+    description: 'Trigger processes kill',
     inputSchema: z.object({
     pid: z.number(),
     force: z.boolean(),
     start_time: z.number(),
   }),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', `/api/processes/${args.pid}/kill`, { body: { force: args.force, start_time: args.start_time } })
+      const result = await client.request('POST', `/api/processes/${encodeURIComponent(String(args.pid))}/kill`, { body: { force: args.force, start_time: args.start_time } })
       return JSON.stringify(result, null, 2)
     },
   }

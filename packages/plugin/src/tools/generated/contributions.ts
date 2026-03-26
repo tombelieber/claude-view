@@ -34,7 +34,7 @@ export const contributionsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/contributions/branches/${args.name}/sessions`, { params: { range: args.range, from: args.from, to: args.to, projectId: args.projectId, limit: args.limit } })
+      const result = await client.request('GET', `/api/contributions/branches/${encodeURIComponent(String(args.name))}/sessions`, { params: { range: args.range, from: args.from, to: args.to, projectId: args.projectId, limit: args.limit } })
       return JSON.stringify(result, null, 2)
     },
   },
@@ -51,7 +51,7 @@ export const contributionsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/contributions/sessions/${args.id}`)
+      const result = await client.request('GET', `/api/contributions/sessions/${encodeURIComponent(String(args.id))}`)
       return JSON.stringify(result, null, 2)
     },
   }

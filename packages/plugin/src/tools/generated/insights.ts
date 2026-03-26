@@ -71,15 +71,5 @@ export const insightsGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/invocables')
       return JSON.stringify(result, null, 2)
     },
-  },
-  {
-    name: 'insights_get_fluency_score',
-    description: 'Get the current AI Fluency Score.',
-    inputSchema: z.object({}),
-    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
-      const result = await client.request('GET', '/api/score')
-      return JSON.stringify(result, null, 2)
-    },
   }
 ]
