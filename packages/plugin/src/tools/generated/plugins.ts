@@ -17,7 +17,7 @@ export const pluginsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'plugins_list_marketplaces',
-    description: 'GET /api/plugins/marketplaces',
+    description: 'List Marketplaces',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {

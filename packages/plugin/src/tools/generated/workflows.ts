@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const workflowsGeneratedTools: ToolDef[] = [
   {
     name: 'workflows_list_workflows',
-    description: 'GET /api/workflows',
+    description: 'List Workflows',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
@@ -17,7 +17,7 @@ export const workflowsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'workflows_create_workflow',
-    description: 'POST /api/workflows',
+    description: 'Create Workflow',
     inputSchema: z.object({
     yaml: z.string(),
   }),
@@ -29,7 +29,7 @@ export const workflowsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'workflows_control_run',
-    description: 'POST /api/workflows/run/{run_id}/control',
+    description: 'Control Run',
     inputSchema: z.object({
     run_id: z.string(),
   }),
@@ -41,7 +41,7 @@ export const workflowsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'workflows_get_workflow',
-    description: 'GET /api/workflows/{id}',
+    description: 'Get Workflow',
     inputSchema: z.object({
     id: z.string(),
   }),
@@ -53,7 +53,7 @@ export const workflowsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'workflows_delete_workflow',
-    description: 'DELETE /api/workflows/{id}',
+    description: 'Delete Workflow',
     inputSchema: z.object({
     id: z.string(),
   }),
