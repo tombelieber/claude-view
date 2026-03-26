@@ -133,8 +133,9 @@ jobs:
           git diff --exit-code packages/plugin/scripts/openapi.json \
             packages/plugin/src/tools/generated/ \
             packages/plugin/skills/*/SKILL.md || {
-            echo "ERROR: Generated files are out of date."
-            echo "Run: cargo test -p claude-view-server --lib -- export_openapi && cd packages/plugin && bun run build"
+            echo "ERROR: Generated files are out of date. To fix:"
+            echo "  1. cargo test -p claude-view-server --lib -- export_openapi --nocapture"
+            echo "  2. cd packages/plugin && bun run build"
             exit 1
           }
 

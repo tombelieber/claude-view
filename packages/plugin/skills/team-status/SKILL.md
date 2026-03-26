@@ -136,6 +136,8 @@ Show team activity, members, and currently active sessions.
 | **Search Tools** | |
 | `search_handler` | Full-text search across sessions. |
 | **Settings Tools** | |
+| `settings_get_settings` | Read current app settings. |
+| `settings_update_settings` | Update app settings (partial). |
 | `settings_update_git_sync_interval` | Update the git sync interval. |
 | **Share Tools** | |
 | `share_create_share` | sessions {session_id} share |

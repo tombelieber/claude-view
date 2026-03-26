@@ -3491,6 +3491,59 @@
         }
       }
     },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "GET /api/settings - Read current app settings.",
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "description": "Current app settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "PUT /api/settings - Update app settings (partial).",
+        "operationId": "update_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid model or timeout"
+          }
+        }
+      }
+    },
     "/api/settings/git-sync-interval": {
       "put": {
         "tags": [
@@ -4531,6 +4584,23 @@
             "format": "int64"
           },
           "totalObservedSessions": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AppSettings": {
+        "type": "object",
+        "description": "Application settings (single-row table).",
+        "required": [
+          "llmModel",
+          "llmTimeoutSecs"
+        ],
+        "properties": {
+          "llmModel": {
+            "type": "string"
+          },
+          "llmTimeoutSecs": {
             "type": "integer",
             "format": "int64"
           }
@@ -11541,6 +11611,24 @@
             "format": "int64",
             "description": "Interval in seconds. Must be between 10 and 3600.",
             "minimum": 0
+          }
+        }
+      },
+      "UpdateSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "llmModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "llmTimeoutSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         }
       },

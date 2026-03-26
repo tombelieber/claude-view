@@ -11,15 +11,17 @@ use claude_view_db::AppSettings;
 /// Allowed model values for Claude CLI.
 const VALID_MODELS: &[&str] = &["haiku", "sonnet", "opus"];
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct UpdateSettingsRequest {
+pub struct UpdateSettingsRequest {
     llm_model: Option<String>,
     llm_timeout_secs: Option<i64>,
 }
 
 /// GET /api/settings - Read current app settings.
-async fn get_settings(State(state): State<Arc<AppState>>) -> Result<Json<AppSettings>, ApiError> {
+#[utoipa::path(get, path = "/api/settings", tag = "settings",
+    responses((status = 200, description = "Current app settings", body = AppSettings)))]
+pub async fn get_settings(State(state): State<Arc<AppState>>) -> Result<Json<AppSettings>, ApiError> {
     let settings = state
         .db
         .get_app_settings()
@@ -29,7 +31,13 @@ async fn get_settings(State(state): State<Arc<AppState>>) -> Result<Json<AppSett
 }
 
 /// PUT /api/settings - Update app settings (partial).
-async fn update_settings(
+#[utoipa::path(put, path = "/api/settings", tag = "settings",
+    request_body = UpdateSettingsRequest,
+    responses(
+        (status = 200, description = "Updated settings", body = AppSettings),
+        (status = 400, description = "Invalid model or timeout"),
+    ))]
+pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(body): Json<UpdateSettingsRequest>,
 ) -> Result<Json<AppSettings>, ApiError> {

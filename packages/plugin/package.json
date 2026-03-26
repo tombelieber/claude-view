@@ -11,7 +11,7 @@
     "gen:skills": "bun run scripts/gen-skill-docs.ts",
     "build": "bun run codegen && bun run gen:skills && tsc",
     "dev": "tsc --watch",
-    "prepublishOnly": "bun run codegen && tsc",
+    "prepublishOnly": "bun run codegen && bun run gen:skills && tsc",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "bun test src/__tests__/ && bash scripts/validate-plugin.sh"
