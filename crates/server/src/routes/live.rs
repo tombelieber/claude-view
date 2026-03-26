@@ -564,7 +564,7 @@ async fn get_live_summary(State(state): State<Arc<AppState>>) -> Json<serde_json
 ///
 /// Exposes per-model costs in a frontend-friendly format (cost per million tokens).
 async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let pricing = state.pricing.read().expect("pricing lock poisoned");
+    let pricing = &*state.pricing;
     let models: HashMap<String, serde_json::Value> = pricing
         .iter()
         .map(|(name, p)| {
@@ -586,7 +586,7 @@ async fn get_pricing(State(state): State<Arc<AppState>>) -> Json<serde_json::Val
     Json(serde_json::json!({
         "models": models,
         "modelCount": models.len(),
-        "source": "litellm+defaults",
+        "source": "anthropic-pricing",
     }))
 }
 
@@ -693,6 +693,21 @@ mod tests {
             statusline_version: None,
             exceeds_200k_tokens: None,
             statusline_transcript_path: None,
+            statusline_output_style: None,
+            statusline_vim_mode: None,
+            statusline_agent_name: None,
+            statusline_worktree_name: None,
+            statusline_worktree_path: None,
+            statusline_worktree_branch: None,
+            statusline_worktree_original_cwd: None,
+            statusline_worktree_original_branch: None,
+            statusline_remaining_pct: None,
+            statusline_total_input_tokens: None,
+            statusline_total_output_tokens: None,
+            statusline_rate_limit_5h_pct: None,
+            statusline_rate_limit_5h_resets_at: None,
+            statusline_rate_limit_7d_pct: None,
+            statusline_rate_limit_7d_resets_at: None,
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,

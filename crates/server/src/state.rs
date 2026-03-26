@@ -18,7 +18,7 @@ use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
 use claude_view_core::prompt_history::PromptStats;
 use claude_view_core::Registry;
-use claude_view_db::{Database, ModelPricing};
+use claude_view_db::{Database, PricingTable};
 use claude_view_search::prompt_index::PromptSearchIndex;
 use claude_view_search::SearchIndex;
 use std::collections::HashMap;
@@ -96,8 +96,8 @@ pub struct AppState {
     pub classify: Arc<ClassifyState>,
     /// Facet ingest progress state (lock-free atomics for SSE streaming).
     pub facet_ingest: Arc<FacetIngestState>,
-    /// Per-model pricing table for accurate cost calculation.
-    pub pricing: Arc<RwLock<HashMap<String, ModelPricing>>>,
+    /// Per-model pricing table for accurate cost calculation (immutable after init).
+    pub pricing: Arc<PricingTable>,
     /// Live session state for Live Monitor (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
@@ -185,7 +185,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(claude_view_core::pricing::load_pricing())),
+            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -233,7 +233,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(claude_view_core::pricing::load_pricing())),
+            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
@@ -284,7 +284,7 @@ impl AppState {
             jobs: Arc::new(JobRunner::new()),
             classify: Arc::new(ClassifyState::new()),
             facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(RwLock::new(claude_view_core::pricing::load_pricing())),
+            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
