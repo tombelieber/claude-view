@@ -45,7 +45,7 @@ impl Drop for GeneratingGuard {
 // ============================================================================
 
 /// Request body for POST /api/reports/generate.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateRequest {
     pub report_type: String,
@@ -58,7 +58,7 @@ pub struct GenerateRequest {
 }
 
 /// Query params for GET /api/reports/preview.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewQuery {
     pub start_ts: i64,
@@ -70,13 +70,24 @@ pub struct PreviewQuery {
 // ============================================================================
 
 /// GET /api/reports — List all saved reports.
-async fn list_reports(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<ReportRow>>> {
+#[utoipa::path(get, path = "/api/reports", tag = "reports",
+    responses(
+        (status = 200, description = "All saved reports", body = Vec<claude_view_db::ReportRow>),
+    )
+)]
+pub async fn list_reports(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<ReportRow>>> {
     let reports = state.db.list_reports().await?;
     Ok(Json(reports))
 }
 
 /// GET /api/reports/preview — Aggregate preview stats for a date range.
-async fn get_preview(
+#[utoipa::path(get, path = "/api/reports/preview", tag = "reports",
+    params(PreviewQuery),
+    responses(
+        (status = 200, description = "Preview stats for date range", body = claude_view_db::ReportPreview),
+    )
+)]
+pub async fn get_preview(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PreviewQuery>,
 ) -> ApiResult<Json<ReportPreview>> {
@@ -88,7 +99,14 @@ async fn get_preview(
 }
 
 /// GET /api/reports/:id — Get a single report.
-async fn get_report(
+#[utoipa::path(get, path = "/api/reports/{id}", tag = "reports",
+    params(("id" = i64, Path, description = "Report ID")),
+    responses(
+        (status = 200, description = "Single report", body = claude_view_db::ReportRow),
+        (status = 404, description = "Report not found"),
+    )
+)]
+pub async fn get_report(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -99,7 +117,14 @@ async fn get_report(
 }
 
 /// DELETE /api/reports/:id — Delete a report.
-async fn delete_report(
+#[utoipa::path(delete, path = "/api/reports/{id}", tag = "reports",
+    params(("id" = i64, Path, description = "Report ID")),
+    responses(
+        (status = 204, description = "Report deleted"),
+        (status = 404, description = "Report not found"),
+    )
+)]
+pub async fn delete_report(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> ApiResult<impl IntoResponse> {
@@ -116,7 +141,14 @@ async fn delete_report(
 /// - `chunk` — text chunk from Claude CLI stdout
 /// - `done`  — generation complete, includes `{ reportId }` JSON
 /// - `error` — generation failed, includes `{ message }` JSON
-async fn generate_report(
+#[utoipa::path(post, path = "/api/reports/generate", tag = "reports",
+    request_body = GenerateRequest,
+    responses(
+        (status = 200, description = "SSE stream of report generation", content_type = "text/event-stream"),
+        (status = 409, description = "Report generation already in progress"),
+    )
+)]
+pub async fn generate_report(
     State(state): State<Arc<AppState>>,
     Json(body): Json<GenerateRequest>,
 ) -> ApiResult<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>> {

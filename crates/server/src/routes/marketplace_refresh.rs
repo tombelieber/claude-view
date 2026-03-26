@@ -12,7 +12,7 @@ use ts_rs::TS;
 const STALENESS_TTL: Duration = Duration::from_secs(5 * 60);
 const EVICTION_TTL: Duration = Duration::from_secs(30);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub enum RefreshStatus {
@@ -22,7 +22,7 @@ pub enum RefreshStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshOp {
@@ -31,21 +31,21 @@ pub struct RefreshOp {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshAllRequest {
     pub names: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshAllResponse {
     pub count: usize,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshStatusResponse {
@@ -209,7 +209,14 @@ async fn fetch_marketplace_names() -> Result<Vec<String>, ApiError> {
 ///
 /// Starts a batch refresh of all (or specified) marketplaces.
 /// Returns 409 if a batch is already active.
-async fn refresh_all(
+#[utoipa::path(post, path = "/api/plugins/marketplaces/refresh-all", tag = "plugins",
+    request_body = RefreshAllRequest,
+    responses(
+        (status = 200, description = "Refresh started", body = RefreshAllResponse),
+        (status = 409, description = "Already refreshing"),
+    )
+)]
+pub async fn refresh_all(
     State(state): State<Arc<AppState>>,
     Json(req): Json<RefreshAllRequest>,
 ) -> ApiResult<Json<RefreshAllResponse>> {
@@ -266,7 +273,12 @@ async fn refresh_all(
 }
 
 /// GET /api/plugins/marketplaces/refresh-status
-async fn refresh_status(State(state): State<Arc<AppState>>) -> Json<RefreshStatusResponse> {
+#[utoipa::path(get, path = "/api/plugins/marketplaces/refresh-status", tag = "plugins",
+    responses(
+        (status = 200, description = "Current refresh status", body = RefreshStatusResponse),
+    )
+)]
+pub async fn refresh_status(State(state): State<Arc<AppState>>) -> Json<RefreshStatusResponse> {
     Json(state.marketplace_refresh.status_snapshot())
 }
 

@@ -25,7 +25,14 @@ pub async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Ve
 }
 
 /// GET /api/teams/:name — Get team detail.
-async fn get_team(
+#[utoipa::path(get, path = "/api/teams/{name}", tag = "teams",
+    params(("name" = String, Path, description = "Team name")),
+    responses(
+        (status = 200, description = "Team detail", body = serde_json::Value),
+        (status = 404, description = "Team not found"),
+    )
+)]
+pub async fn get_team(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<TeamDetail>> {
@@ -37,7 +44,14 @@ async fn get_team(
 }
 
 /// GET /api/teams/:name/inbox — Get team inbox messages.
-async fn get_team_inbox(
+#[utoipa::path(get, path = "/api/teams/{name}/inbox", tag = "teams",
+    params(("name" = String, Path, description = "Team name")),
+    responses(
+        (status = 200, description = "Inbox messages", body = serde_json::Value),
+        (status = 404, description = "Team not found"),
+    )
+)]
+pub async fn get_team_inbox(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<Vec<InboxMessage>>> {
