@@ -108,6 +108,36 @@ jobs:
       - name: cargo deny
         run: cargo deny check
 
+  openapi-drift:
+    name: OpenAPI Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+
+      - uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7  # stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+
+      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3  # v2.1.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Export OpenAPI spec from Rust
+        run: cargo test -p claude-view-server --lib -- export_openapi --nocapture
+
+      - name: Run codegen + skill gen
+        run: cd packages/plugin && bun run codegen && bun run gen:skills
+
+      - name: Check for uncommitted drift
+        run: |
+          git diff --exit-code packages/plugin/scripts/openapi.json \
+            packages/plugin/src/tools/generated/ \
+            packages/plugin/skills/*/SKILL.md || {
+            echo "ERROR: Generated files are out of date."
+            echo "Run: cargo test -p claude-view-server --lib -- export_openapi && cd packages/plugin && bun run build"
+            exit 1
+          }
+
   web-e2e:
     name: Web E2E (macOS)
     runs-on: macos-latest

@@ -311,7 +311,7 @@ pub async fn delete_workflow(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatRequest {
+pub struct ChatRequest {
     messages: Vec<ChatMessage>,
     #[allow(dead_code)]
     workflow_id: Option<String>,
@@ -349,7 +349,7 @@ pub async fn chat_workflow(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RunControlRequest {
+pub struct RunControlRequest {
     command: String, // "pause" | "skip" | "abort"
 }
 
