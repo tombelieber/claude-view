@@ -15,6 +15,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { SSE_OPERATION_IDS, HAND_WRITTEN_TAGS, toSnakeCase, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -24,22 +25,6 @@ const ROOT = dirname(dirname(new URL(import.meta.url).pathname))
 const SPEC_PATH = join(ROOT, 'scripts', 'openapi.json')
 const PREAMBLE_PATH = join(ROOT, 'scripts', 'preamble.md')
 const SKILLS_DIR = join(ROOT, 'skills')
-
-// ---------------------------------------------------------------------------
-// SSE operationIds — cannot be called via simple HTTP request/response
-// ---------------------------------------------------------------------------
-
-const SSE_OPERATION_IDS = new Set([
-  'stream_classification',
-  'facet_ingest_stream',
-  'indexing_progress',
-  'stream_jobs',
-  'live_stream',
-  'monitor_stream',
-  'generate_report',
-  'git_sync_progress',
-  'chat_workflow',
-])
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,28 +85,11 @@ const HAND_WRITTEN_GROUPS: ToolGroup[] = [
   },
 ]
 
-// Tags that have hand-written tools — skip these in OpenAPI scan
-const HAND_WRITTEN_TAGS = new Set(['sessions', 'stats', 'live'])
+// HAND_WRITTEN_TAGS, toSnakeCase, makeToolName imported from ./shared.js
 
 // ---------------------------------------------------------------------------
 // OpenAPI tool extraction
 // ---------------------------------------------------------------------------
-
-function toSnakeCase(s: string): string {
-  return s
-    .replace(/([a-z])([A-Z])/g, '$1_$2')
-    .replace(/[^a-zA-Z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .toLowerCase()
-}
-
-function makeToolName(tag: string, operationId: string): string {
-  const snakeOp = toSnakeCase(operationId)
-  const snakeTag = toSnakeCase(tag)
-  if (snakeOp.startsWith(`${snakeTag}_`)) return snakeOp
-  return `${snakeTag}_${snakeOp}`
-}
 
 function cleanDescription(summary: string, description: string, path: string, method: string): string {
   let desc = summary || description || `${method.toUpperCase()} ${path}`
