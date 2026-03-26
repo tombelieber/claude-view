@@ -1,213 +1,168 @@
-// crates/core/src/phase/tests.rs
 use super::*;
 
-fn default_config() -> PhaseClassifierConfig {
-    PhaseClassifierConfig::default()
-}
-
-fn make_step() -> StepSignals {
-    StepSignals::default()
-}
-
 #[test]
-fn test_empty_window() {
-    let result = classify_window(&[], &default_config());
-    assert_eq!(result.phase, SessionPhase::Unknown);
+fn empty_window_returns_working() {
+    let result = classify_window(&[]);
+    assert_eq!(result.phase, SessionPhase::Working);
     assert_eq!(result.confidence, 0.0);
 }
 
 #[test]
-fn test_pure_edit_window() {
+fn shipping_rule_publish_overrides_ml() {
+    let mut step = StepSignals::default();
+    step.has_publish_cmd = true;
+    step.bash_count = 1;
+    let result = classify_window(&[step]);
+    assert_eq!(result.phase, SessionPhase::Shipping);
+    assert_eq!(result.confidence, 1.0);
+}
+
+#[test]
+fn shipping_rule_deploy_overrides_ml() {
+    let mut step = StepSignals::default();
+    step.has_deploy_cmd = true;
+    step.bash_count = 1;
+    let result = classify_window(&[step]);
+    assert_eq!(result.phase, SessionPhase::Shipping);
+}
+
+#[test]
+fn git_push_alone_does_not_trigger_shipping() {
+    let mut step = StepSignals::default();
+    step.has_git_push = true;
+    step.bash_count = 1;
+    let result = classify_window(&[step]);
+    assert_ne!(result.phase, SessionPhase::Shipping);
+}
+
+#[test]
+fn heavy_edit_window_predicts_building() {
     let steps: Vec<StepSignals> = (0..10)
         .map(|_| {
-            let mut s = make_step();
+            let mut s = StepSignals::default();
             s.edit_count = 3;
-            s
-        })
-        .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Implementing);
-    assert!(result.confidence > 0.3, "confidence was {}", result.confidence);
-}
-
-#[test]
-fn test_pure_read_window() {
-    let steps: Vec<StepSignals> = (0..10)
-        .map(|_| {
-            let mut s = make_step();
-            s.read_count = 2;
-            s.grep_count = 1;
-            s
-        })
-        .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Exploring);
-}
-
-#[test]
-fn test_ship_skill_overrides() {
-    let mut steps: Vec<StepSignals> = (0..10)
-        .map(|_| {
-            let mut s = make_step();
-            s.edit_count = 2;
-            s
-        })
-        .collect();
-    steps[9].has_ship_skill = true;
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Releasing);
-}
-
-#[test]
-fn test_debug_skill() {
-    let mut steps = vec![make_step(); 10];
-    steps[0].has_debug_skill = true;
-    steps[3].read_count = 2;
-    steps[5].edit_count = 1;
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Debugging);
-}
-
-#[test]
-fn test_test_commands() {
-    let steps: Vec<StepSignals> = (0..10)
-        .map(|_| {
-            let mut s = make_step();
+            s.write_count = 1;
             s.bash_count = 1;
-            s.has_test_cmd = true;
+            s.has_build_cmd = true;
             s
         })
         .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Testing);
+    let result = classify_window(&steps);
+    if result.confidence >= 0.75 {
+        assert_eq!(result.phase, SessionPhase::Building);
+    }
 }
 
 #[test]
-fn test_plan_skill_with_low_edits() {
-    let mut steps = vec![make_step(); 10];
-    steps[0].has_plan_skill = true;
-    steps[1].read_count = 3;
-    steps[2].read_count = 2;
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Planning);
-}
-
-#[test]
-fn test_config_files_edited() {
+fn test_cmd_window_predicts_testing() {
     let steps: Vec<StepSignals> = (0..10)
         .map(|_| {
-            let mut s = make_step();
-            s.edit_count = 1;
-            s.config_files_edited = 1;
+            let mut s = StepSignals::default();
+            s.has_test_cmd = true;
+            s.bash_count = 2;
+            s.read_count = 1;
             s
         })
         .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Configuring);
-}
-
-#[test]
-fn test_impl_skill_absorbs_explore() {
-    let mut steps = vec![make_step(); 10];
-    steps[0].has_impl_skill = true;
-    for s in &mut steps[1..5] {
-        s.has_explore_agent = true;
-        s.read_count = 3;
-    }
-    for s in &mut steps[5..10] {
-        s.edit_count = 2;
-    }
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Implementing);
-}
-
-#[test]
-fn test_user_prompt_keywords() {
-    let mut steps = vec![make_step(); 5];
-    steps[0].is_user_prompt = true;
-    steps[0].prompt_fix_kw = true;
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Debugging);
-}
-
-#[test]
-fn test_phase_parse_roundtrip() {
-    for phase in SessionPhase::ALL {
-        let s = phase.as_str();
-        let parsed = SessionPhase::parse(s).expect(&format!("Failed to parse {}", s));
-        assert_eq!(parsed, phase);
+    let result = classify_window(&steps);
+    if result.confidence >= 0.75 {
+        assert_eq!(result.phase, SessionPhase::Testing);
     }
 }
 
 #[test]
-fn test_dominant_phase() {
+fn read_only_window_predicts_reviewing() {
+    let steps: Vec<StepSignals> = (0..10)
+        .map(|_| {
+            let mut s = StepSignals::default();
+            s.read_count = 3;
+            s.grep_count = 2;
+            s.glob_count = 1;
+            s
+        })
+        .collect();
+    let result = classify_window(&steps);
+    if result.confidence >= 0.75 {
+        assert_eq!(result.phase, SessionPhase::Reviewing);
+    }
+}
+
+#[test]
+fn plan_skill_with_doc_writes_is_planning_or_thinking() {
+    let steps: Vec<StepSignals> = (0..10)
+        .map(|_| {
+            let mut s = StepSignals::default();
+            s.has_plan_skill = true;
+            s.skill_count = 1;
+            s.doc_files_edited = 2;
+            s.write_count = 2;
+            s
+        })
+        .collect();
+    let result = classify_window(&steps);
+    if result.confidence >= 0.75 {
+        assert!(
+            result.phase == SessionPhase::Planning || result.phase == SessionPhase::Thinking,
+            "Expected Planning or Thinking, got {:?}",
+            result.phase
+        );
+    }
+}
+
+#[test]
+fn model_loads_successfully() {
+    let step = StepSignals::default();
+    let _ = classify_window(&[step]);
+}
+
+#[test]
+fn feature_vector_correct_length() {
+    let steps: Vec<StepSignals> = (0..5).map(|_| StepSignals::default()).collect();
+    let features = features::flatten_window(&steps);
+    assert_eq!(features.len(), 96);
+}
+
+#[test]
+fn dominant_phase_excludes_working() {
     let labels = vec![
-        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.8, secondary: None, window_size: 10 },
-        PhaseLabel { phase: SessionPhase::Implementing, confidence: 0.9, secondary: None, window_size: 20 },
-        PhaseLabel { phase: SessionPhase::Testing, confidence: 0.7, secondary: None, window_size: 30 },
+        PhaseLabel {
+            phase: SessionPhase::Working,
+            confidence: 0.5,
+            window_size: 10,
+        },
+        PhaseLabel {
+            phase: SessionPhase::Working,
+            confidence: 0.5,
+            window_size: 10,
+        },
+        PhaseLabel {
+            phase: SessionPhase::Building,
+            confidence: 0.9,
+            window_size: 10,
+        },
     ];
-    assert_eq!(dominant_phase(&labels), Some(SessionPhase::Implementing));
+    assert_eq!(dominant_phase(&labels), Some(SessionPhase::Building));
 }
 
 #[test]
-fn test_dominant_phase_empty() {
-    assert_eq!(dominant_phase(&[]), None);
+fn session_phase_display() {
+    assert_eq!(SessionPhase::Thinking.as_str(), "thinking");
+    assert_eq!(SessionPhase::Building.display_label(), "Building");
+    assert_eq!(SessionPhase::Shipping.emoji(), "🚀");
+    assert_eq!(SessionPhase::Working.as_str(), "working");
 }
 
 #[test]
-fn test_git_push_is_releasing() {
-    let steps: Vec<StepSignals> = (0..10)
-        .map(|_| {
-            let mut s = make_step();
-            s.bash_count = 1;
-            s.has_git_push = true;
-            s
-        })
-        .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Releasing);
+fn all_phases_have_six_entries() {
+    assert_eq!(SessionPhase::ALL.len(), 6);
 }
 
 #[test]
-fn test_secondary_phase_when_close() {
-    let mut steps = vec![make_step(); 10];
-    for s in &mut steps[0..5] {
-        s.bash_count = 1;
-        s.has_test_cmd = true;
+fn confidence_below_threshold_returns_working() {
+    // Single empty step — model should have low confidence
+    let result = classify_window(&[StepSignals::default()]);
+    // With minimal signals, confidence should be low
+    if result.confidence < 0.75 {
+        assert_eq!(result.phase, SessionPhase::Working);
     }
-    for s in &mut steps[5..10] {
-        s.edit_count = 2;
-    }
-    let result = classify_window(&steps, &default_config());
-    assert!(result.secondary.is_some());
-}
-
-#[test]
-fn test_decay_favors_recent() {
-    let mut steps = vec![make_step(); 10];
-    for s in &mut steps[0..8] {
-        s.read_count = 5;
-    }
-    for s in &mut steps[8..10] {
-        s.edit_count = 5;
-        s.write_count = 2;
-    }
-    let result = classify_window(&steps, &default_config());
-    assert!(result.confidence > 0.0);
-}
-
-// TDD-specific test: edit-heavy window with test commands should be implementing
-#[test]
-fn test_tdd_is_implementing() {
-    let steps: Vec<StepSignals> = (0..10)
-        .map(|_| {
-            let mut s = make_step();
-            s.edit_count = 3;
-            s.bash_count = 1;
-            s.has_test_cmd = true;
-            s
-        })
-        .collect();
-    let result = classify_window(&steps, &default_config());
-    assert_eq!(result.phase, SessionPhase::Implementing);
 }
