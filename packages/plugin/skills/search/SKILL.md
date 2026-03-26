@@ -1,6 +1,10 @@
 ---
 name: search
 description: "Use when the user wants to find something across their Claude Code history — e.g. 'find where I discussed X', 'search for Y', 'when did I work on Z'"
+allowed-tools:
+  - mcp__claude-view__search_sessions
+  - mcp__claude-view__list_sessions
+  - mcp__claude-view__get_session
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).

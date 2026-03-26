@@ -1,6 +1,12 @@
 ---
 name: insights
 description: "Use when the user asks about patterns, insights, or behavioral analysis — e.g. 'what patterns do you see', 'insights', 'how am I doing', 'behavioral analysis'"
+allowed-tools:
+  - mcp__claude-view__insights_get_insights
+  - mcp__claude-view__insights_get_categories
+  - mcp__claude-view__insights_get_insights_trends
+  - mcp__claude-view__insights_get_benchmarks
+  - mcp__claude-view__classify_start_classification
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).

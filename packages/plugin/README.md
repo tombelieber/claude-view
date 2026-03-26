@@ -6,7 +6,7 @@
   <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 90 MCP tools across 30 categories, and adds 9 skills for common workflows.
+Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 86 MCP tools across 30 categories, and adds 9 skills for common workflows.
 
 ## Install
 
@@ -34,7 +34,7 @@ Every time you start a Claude Code session, the plugin checks if the claude-view
 is running. If not, it starts it in the background. Web dashboard appears at
 `http://localhost:47892`.
 
-## Tools (90)
+## Tools (86)
 
 ### Hand-written (curated output) — 8 tools
 
@@ -51,9 +51,9 @@ These tools have hand-crafted response shaping for optimal Claude consumption.
 | `list_live_sessions` | Currently running sessions with real-time state |
 | `get_live_summary` | Aggregate: cost today, attention count, tokens |
 
-### Auto-generated (JSON passthrough) — 82 tools
+### Auto-generated (JSON passthrough) — 78 tools
 
-Generated from the OpenAPI spec. 82 tools across 28 categories.
+Generated from the OpenAPI spec. 78 tools across 27 categories.
 
 <details>
 <summary>Show all generated tools</summary>
@@ -62,29 +62,28 @@ Generated from the OpenAPI spec. 82 tools across 28 categories.
 |-----|-------|---------|
 | classify | 4 | `classify_start_classification` |
 | coaching | 3 | `coaching_list_rules` |
-| contributions | 4 | `contributions_get_contributions` |
+| contributions | 3 | `contributions_get_contributions` |
 | export | 1 | `export_sessions` |
 | facets | 4 | `facets_facet_badges` |
 | health | 3 | `health_config` |
 | ide | 2 | `ide_get_detect` |
-| insights | 6 | `insights_get_insights` |
+| insights | 5 | `insights_get_insights` |
 | jobs | 1 | `jobs_list_jobs` |
 | models | 1 | `models_list_models` |
 | monitor | 1 | `monitor_snapshot` |
 | oauth | 3 | `oauth_get_auth_identity` |
 | pairing | 3 | `pairing_list_devices` |
 | plans | 1 | `plans_get_session_plans` |
-| plugins | 7 | `plugins_list_plugins` |
+| plugins | 6 | `plugins_list_plugins` |
 | processes | 2 | `processes_cleanup_processes` |
 | projects | 3 | `projects_list_projects` |
 | prompts | 3 | `prompts_list_prompts` |
 | reports | 4 | `reports_list_reports` |
-| search | 1 | `search_handler` |
-| settings | 1 | `settings_update_git_sync_interval` |
+| settings | 3 | `settings_get_settings` |
 | share | 3 | `share_create_share` |
 | sync | 3 | `sync_indexing_status` |
 | system | 6 | `system_check_path` |
-| teams | 5 | `teams_list_teams` |
+| teams | 3 | `teams_list_teams` |
 | telemetry | 1 | `telemetry_set_consent` |
 | turns | 1 | `turns_get_session_turns` |
 | workflows | 5 | `workflows_list_workflows` |

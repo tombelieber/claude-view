@@ -1,6 +1,11 @@
 ---
 name: project-overview
 description: "Use when the user asks about a specific project or all projects — e.g. 'show me project X', 'project overview', 'what projects do I have', 'project summary'"
+allowed-tools:
+  - mcp__claude-view__projects_list_projects
+  - mcp__claude-view__projects_list_project_sessions
+  - mcp__claude-view__projects_list_project_branches
+  - mcp__claude-view__contributions_get_contributions
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).
