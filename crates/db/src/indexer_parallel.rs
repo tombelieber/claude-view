@@ -4,7 +4,7 @@
 
 use claude_view_core::{
     classify_work_type, count_ai_lines, discover_orphan_sessions,
-    pricing::{calculate_cost, default_pricing, fill_tiering_gaps, ModelPricing, TokenUsage},
+    pricing::{calculate_cost, load_pricing, ModelPricing, TokenUsage},
     read_all_session_indexes, resolve_cwd_for_project, resolve_project_path_with_cwd,
     resolve_worktree_parent, ClassificationInput, ClassifyResult, Registry, ToolCounts,
 };
@@ -202,25 +202,8 @@ fn calculate_per_turn_cost(
     }
 }
 
-/// Resolve pricing map for indexing cost computation.
-///
-/// Uses cached pricing from SQLite when available, merged over defaults, then
-/// fills any missing tier fields.
-async fn load_indexing_pricing(db: &Database) -> HashMap<String, ModelPricing> {
-    let defaults = default_pricing();
-    let mut pricing = match crate::pricing::load_pricing_cache(db).await {
-        Ok(Some(cached)) => crate::pricing::merge_pricing(&defaults, &cached),
-        Ok(None) => defaults,
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                "Failed to load cached pricing for indexing; using default pricing table"
-            );
-            defaults
-        }
-    };
-    fill_tiering_gaps(&mut pricing);
-    pricing
+fn load_indexing_pricing() -> HashMap<String, ModelPricing> {
+    load_pricing()
 }
 
 /// Extended metadata extracted from JSONL deep parsing (Pass 2 only).
@@ -2993,7 +2976,7 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
         .map_err(|e| format!("Failed to begin write transaction: {}", e))?;
 
     let seen_at = chrono::Utc::now().timestamp();
-    let pricing = load_indexing_pricing(db).await;
+    let pricing = load_indexing_pricing();
 
     for result in results {
         let meta = &result.parse_result.deep;
@@ -3311,7 +3294,7 @@ where
             .collect();
 
     // Use one merged pricing map for this full indexing run.
-    let pricing = Arc::new(load_indexing_pricing(db).await);
+    let pricing = Arc::new(load_indexing_pricing());
 
     let semaphore = Arc::new(tokio::sync::Semaphore::new(
         std::thread::available_parallelism()

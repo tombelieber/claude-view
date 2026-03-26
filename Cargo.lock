@@ -579,7 +579,6 @@ dependencies = [
  "dirs",
  "memchr",
  "memmap2",
- "reqwest",
  "rusqlite",
  "serde",
  "serde_json",

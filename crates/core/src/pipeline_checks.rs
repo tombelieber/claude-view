@@ -195,7 +195,7 @@ impl PipelineSignals {
 
 use crate::accumulator::SessionAccumulator;
 use crate::live_parser::{LineType, LiveLine};
-use crate::pricing::default_pricing;
+use crate::pricing::load_pricing;
 use std::collections::HashSet;
 
 /// Check 7: Every assistant line with `usage` in raw JSON -> parsed tokens are non-zero.
@@ -576,7 +576,7 @@ pub fn run_per_session_checks(
     file: &str,
     signals: &mut PipelineSignals,
 ) {
-    let pricing = default_pricing();
+    let pricing = load_pricing();
     let mut accumulator = SessionAccumulator::new();
     let mut prev_input_total: u64 = 0;
     let mut prev_output_total: u64 = 0;
