@@ -1,9 +1,13 @@
+import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ClaudeViewClient } from './client.js'
 import { allGeneratedTools } from './tools/generated/index.js'
 import { liveTools } from './tools/live.js'
 import { sessionTools } from './tools/sessions.js'
 import { statsTools } from './tools/stats.js'
+
+const require = createRequire(import.meta.url)
+const { version } = require('../package.json') as { version: string }
 
 // Hand-written tools take precedence — dedup by name
 const HAND_WRITTEN = [...sessionTools, ...statsTools, ...liveTools]
@@ -17,7 +21,7 @@ export function createServer(port?: number) {
 
   const server = new McpServer({
     name: 'claude-view',
-    version: '0.8.0',
+    version,
   })
 
   for (const tool of ALL_TOOLS) {
