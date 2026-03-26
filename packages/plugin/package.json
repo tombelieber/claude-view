@@ -8,7 +8,8 @@
   "main": "./dist/index.js",
   "scripts": {
     "codegen": "bun run scripts/codegen-from-openapi.ts",
-    "build": "bun run codegen && tsc",
+    "gen:skills": "bun run scripts/gen-skill-docs.ts",
+    "build": "bun run codegen && bun run gen:skills && tsc",
     "dev": "tsc --watch",
     "prepublishOnly": "bun run codegen && tsc",
     "typecheck": "tsc --noEmit",
