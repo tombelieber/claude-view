@@ -81,6 +81,7 @@ pub struct CategoryNode {
     pub insight: Option<String>,
     /// Child categories (empty for L3)
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[schema(no_recursion)]
     pub children: Vec<CategoryNode>,
 }
 

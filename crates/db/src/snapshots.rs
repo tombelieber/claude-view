@@ -135,7 +135,7 @@ impl TimeRange {
 }
 
 /// A single contribution snapshot row.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ContributionSnapshot {
@@ -197,7 +197,7 @@ pub struct AggregatedContributions {
 }
 
 /// Daily trend data point for charts.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyTrendPoint {
@@ -217,7 +217,7 @@ pub struct DailyTrendPoint {
 }
 
 /// Model usage breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelBreakdown {
@@ -234,7 +234,7 @@ pub struct ModelBreakdown {
 }
 
 /// Branch contribution breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchBreakdown {
@@ -255,7 +255,7 @@ pub struct BranchBreakdown {
 }
 
 /// Session contribution detail for the drill-down view.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionContribution {
@@ -278,7 +278,7 @@ pub struct SessionContribution {
 }
 
 /// Linked commit for session drill-down.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LinkedCommit {
@@ -293,7 +293,7 @@ pub struct LinkedCommit {
 }
 
 /// Model statistics for the byModel breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ModelStats {
@@ -316,7 +316,7 @@ pub struct ModelStats {
 }
 
 /// Learning curve data point.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurvePeriod {
@@ -325,7 +325,7 @@ pub struct LearningCurvePeriod {
 }
 
 /// Learning curve metrics.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurve {
@@ -336,7 +336,7 @@ pub struct LearningCurve {
 }
 
 /// Skill effectiveness statistics.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillStats {
@@ -350,7 +350,7 @@ pub struct SkillStats {
 }
 
 /// Uncommitted work tracker entry.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UncommittedWork {
@@ -369,7 +369,7 @@ pub struct UncommittedWork {
 }
 
 /// File impact for session detail view.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FileImpact {
@@ -382,7 +382,7 @@ pub struct FileImpact {
 }
 
 /// Lightweight session summary for branch expansion.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSession {
