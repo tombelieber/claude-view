@@ -18,10 +18,17 @@ export const coachingGeneratedTools: ToolDef[] = [
   {
     name: 'coaching_apply_rule',
     description: 'Create a new coaching rule file.',
-    inputSchema: z.object({}),
+    inputSchema: z.object({
+    impactScore: z.number(),
+    patternId: z.string(),
+    recommendation: z.string(),
+    sampleSize: z.number(),
+    scope: z.string(),
+    title: z.string(),
+  }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', '/api/coaching/rules')
+      const result = await client.request('POST', '/api/coaching/rules', { body: { impactScore: args.impactScore, patternId: args.patternId, recommendation: args.recommendation, sampleSize: args.sampleSize, scope: args.scope, title: args.title } })
       return JSON.stringify(result, null, 2)
     },
   },

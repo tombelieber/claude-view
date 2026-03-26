@@ -36,7 +36,7 @@ const MAX_RULES: usize = 8;
 // ============================================================================
 
 /// Request body for POST /api/coaching/rules.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyRuleRequest {
     pub pattern_id: String,
@@ -141,7 +141,7 @@ pub async fn list_rules(State(state): State<Arc<AppState>>) -> ApiResult<Json<Li
 
 /// POST /api/coaching/rules — Create a new coaching rule file.
 #[utoipa::path(post, path = "/api/coaching/rules", tag = "coaching",
-    request_body = serde_json::Value,
+    request_body = ApplyRuleRequest,
     responses(
         (status = 200, description = "Coaching rule created or updated", body = crate::routes::coaching::CoachingRule),
         (status = 409, description = "Rule budget exceeded (max 8 rules)"),

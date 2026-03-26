@@ -19,7 +19,7 @@ pub struct ConsentResponse {
 
 /// POST /api/telemetry/consent — Set telemetry consent preference.
 #[utoipa::path(post, path = "/api/telemetry/consent", tag = "telemetry",
-    request_body = serde_json::Value,
+    request_body = ConsentRequest,
     responses(
         (status = 200, description = "Telemetry consent updated", body = crate::routes::telemetry::ConsentResponse),
     )
