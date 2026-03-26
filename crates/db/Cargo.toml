@@ -20,7 +20,7 @@ chrono = { workspace = true }
 memmap2 = { workspace = true }
 memchr = { workspace = true }
 ts-rs = { workspace = true }
-reqwest = { workspace = true }
+
 
 [features]
 codegen = ["claude-view-core/codegen", "claude-view-search/codegen"]
