@@ -7,7 +7,7 @@ describe('createServer', () => {
     expect(server).toBeDefined()
   })
 
-  it('exports correct tool count', () => {
-    expect(TOOL_COUNT).toBe(8)
+  it('exports correct tool count (hand-written + generated)', () => {
+    expect(TOOL_COUNT).toBeGreaterThanOrEqual(80)
   })
 })

@@ -1,10 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ClaudeViewClient } from './client.js'
+import { allGeneratedTools } from './tools/generated/index.js'
 import { liveTools } from './tools/live.js'
 import { sessionTools } from './tools/sessions.js'
 import { statsTools } from './tools/stats.js'
 
-const ALL_TOOLS = [...sessionTools, ...statsTools, ...liveTools]
+// Hand-written tools take precedence — dedup by name
+const HAND_WRITTEN = [...sessionTools, ...statsTools, ...liveTools]
+const handWrittenNames = new Set(HAND_WRITTEN.map(t => t.name))
+const dedupedGenerated = allGeneratedTools.filter(t => !handWrittenNames.has(t.name))
+const ALL_TOOLS = [...HAND_WRITTEN, ...dedupedGenerated]
 export const TOOL_COUNT = ALL_TOOLS.length
 
 export function createServer(port?: number) {
