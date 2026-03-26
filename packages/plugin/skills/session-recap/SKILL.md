@@ -1,6 +1,9 @@
 ---
 name: session-recap
 description: "Use when the user asks to recap, summarize, or review a Claude Code session — e.g. 'recap my last session', 'what happened in that session', 'session summary'"
+allowed-tools:
+  - mcp__claude-view__list_sessions
+  - mcp__claude-view__get_session
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).

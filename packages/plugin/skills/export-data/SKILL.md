@@ -1,6 +1,8 @@
 ---
 name: export-data
 description: "Use when the user wants to export session data — e.g. 'export my sessions', 'download data', 'export to CSV', 'get my data'"
+allowed-tools:
+  - mcp__claude-view__export_sessions
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).
