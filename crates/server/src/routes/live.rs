@@ -626,6 +626,7 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
 mod tests {
     use super::*;
     use crate::live::state::{AgentState, AgentStateGroup, LiveSession, SessionStatus};
+    use claude_view_core::phase::PhaseHistory;
     use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
     /// Minimal LiveSession for tests with optional closed flag.
@@ -696,6 +697,7 @@ mod tests {
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,
+            phase: PhaseHistory::default(),
         };
         if closed {
             s.status = SessionStatus::Done;

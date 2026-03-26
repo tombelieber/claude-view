@@ -62,6 +62,7 @@ function makeSession(overrides: Partial<LiveSession> & { id: string }): LiveSess
     hookEvents: [],
     currentTurnStartedAt: null,
     lastTurnTaskSeconds: null,
+    phase: { current: null, labels: [], dominant: null },
     ...overrides,
   }
 }

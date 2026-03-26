@@ -147,6 +147,10 @@ pub struct LiveLine {
     pub task_id_assignments: Vec<RawTaskIdAssignment>,
     /// Skill names extracted from Skill tool_use blocks (from `input.skill`).
     pub skill_names: Vec<String>,
+    /// Bash commands extracted from Bash tool_use blocks (from `input.command`, truncated to 200 chars).
+    pub bash_commands: Vec<String>,
+    /// File paths extracted from Edit/Write tool_use blocks (from `input.file_path`).
+    pub edited_files: Vec<String>,
     /// Whether this is a system message with subtype "compact_boundary".
     pub is_compact_boundary: bool,
     /// Filename extracted from `<ide_opened_file>` tag, if present.
@@ -395,10 +399,7 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
                 usage_cache_creation_tokens: usage
                     .and_then(|u| u.get("cache_creation_input_tokens"))
                     .and_then(|v| v.as_u64()),
-                model: obj
-                    .get("model")
-                    .and_then(|v| v.as_str())
-                    .map(String::from),
+                model: obj.get("model").and_then(|v| v.as_str()).map(String::from),
             })
         }
         serde_json::Value::String(status) => {
@@ -498,6 +499,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 task_updates: Vec::new(),
                 task_id_assignments: Vec::new(),
                 skill_names: Vec::new(),
+                bash_commands: Vec::new(),
+                edited_files: Vec::new(),
                 is_compact_boundary: false,
                 ide_file: None,
                 message_id: None,
@@ -538,8 +541,16 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     } else {
         &parsed
     };
-    let (content_preview, tool_names, skill_names, is_tool_result, ide_file, at_files) =
-        extract_content_and_tools(content_source, finders);
+    let (
+        content_preview,
+        tool_names,
+        skill_names,
+        bash_commands,
+        edited_files,
+        is_tool_result,
+        ide_file,
+        at_files,
+    ) = extract_content_and_tools(content_source, finders);
 
     // Detect system-injected prefixes from RAW content (before stripping).
     // NOTE: .as_str() returns None for array content, defaulting to "" (false).
@@ -1037,6 +1048,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         task_updates,
         task_id_assignments,
         skill_names,
+        bash_commands,
+        edited_files,
         is_compact_boundary,
         ide_file,
         message_id,
@@ -1117,17 +1130,22 @@ pub(crate) fn strip_noise_tags(content: &str) -> (String, Option<String>) {
 /// Extract content preview (truncated to 200 chars), tool_use names,
 /// skill names (from Skill tool_use `input.skill`), and whether the
 /// content array contains a `tool_result` block.
+/// Content extraction result from `extract_content_and_tools`.
+type ContentExtraction = (
+    String,       // content_preview
+    Vec<String>,  // tool_names
+    Vec<String>,  // skill_names
+    Vec<String>,  // bash_commands
+    Vec<String>,  // edited_files
+    bool,         // has_tool_result
+    Option<String>, // ide_file
+    Vec<String>,  // at_files
+);
+
 fn extract_content_and_tools(
     parsed: &serde_json::Value,
     finders: &TailFinders,
-) -> (
-    String,
-    Vec<String>,
-    Vec<String>,
-    bool,
-    Option<String>,
-    Vec<String>,
-) {
+) -> ContentExtraction {
     use std::sync::OnceLock;
     static AT_FILE_RE: OnceLock<regex_lite::Regex> = OnceLock::new();
     let at_file_re = AT_FILE_RE
@@ -1136,6 +1154,8 @@ fn extract_content_and_tools(
     let mut preview = String::new();
     let mut tool_names = Vec::new();
     let mut skill_names = Vec::new();
+    let mut bash_commands = Vec::new();
+    let mut edited_files = Vec::new();
     let mut has_tool_result = false;
     let mut ide_file: Option<String> = None;
     let mut at_files: Vec<String> = Vec::new();
@@ -1179,17 +1199,40 @@ fn extract_content_and_tools(
                     Some("tool_use") => {
                         if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
                             tool_names.push(name.to_string());
-                            // Extract skill name from Skill tool_use input
-                            if name == "Skill" {
-                                if let Some(skill) = block
-                                    .get("input")
-                                    .and_then(|i| i.get("skill"))
-                                    .and_then(|s| s.as_str())
-                                {
-                                    if !skill.is_empty() {
-                                        skill_names.push(skill.to_string());
+                            let input = block.get("input");
+                            match name {
+                                "Skill" => {
+                                    if let Some(skill) = input
+                                        .and_then(|i| i.get("skill"))
+                                        .and_then(|s| s.as_str())
+                                    {
+                                        if !skill.is_empty() {
+                                            skill_names.push(skill.to_string());
+                                        }
                                     }
                                 }
+                                "Bash" => {
+                                    if let Some(cmd) = input
+                                        .and_then(|i| i.get("command"))
+                                        .and_then(|s| s.as_str())
+                                    {
+                                        if !cmd.is_empty() {
+                                            bash_commands
+                                                .push(truncate_str(cmd, 200).to_string());
+                                        }
+                                    }
+                                }
+                                "Edit" | "Write" => {
+                                    if let Some(fp) = input
+                                        .and_then(|i| i.get("file_path"))
+                                        .and_then(|s| s.as_str())
+                                    {
+                                        if !fp.is_empty() {
+                                            edited_files.push(fp.to_string());
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -1207,6 +1250,8 @@ fn extract_content_and_tools(
         preview,
         tool_names,
         skill_names,
+        bash_commands,
+        edited_files,
         has_tool_result,
         ide_file,
         at_files,
