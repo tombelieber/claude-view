@@ -22,9 +22,9 @@ pub mod live_parser;
 pub mod llm;
 pub mod metrics;
 pub mod parser;
-pub mod phase;
 pub mod paths;
 pub mod patterns;
+pub mod phase;
 pub mod pipeline_checks;
 pub mod plan_files;
 pub mod pricing;
@@ -53,12 +53,12 @@ pub use error::*;
 pub use invocation::*;
 pub use metrics::*;
 pub use parser::*;
+pub use phase::{
+    classify_window, dominant_phase, PhaseClassifier, PhaseHistory, PhaseLabel, SessionPhase,
+    StepSignals,
+};
 pub use registry::*;
 pub use session_index::*;
 pub use time_range_contract::*;
 pub use types::*;
-pub use phase::{
-    classify_window, dominant_phase, PhaseClassifierConfig, PhaseHistory, PhaseLabel, SessionPhase,
-    StepSignals,
-};
 pub use work_type::*;
