@@ -16,8 +16,6 @@ const formatTokens = (n: number) => {
   return String(n)
 }
 
-const formatLimit = (n: number) => formatTokens(n)
-
 /** Auto-compaction fires around 80% — shown as threshold marker. */
 const AUTOCOMPACT_PCT = 80
 
@@ -80,16 +78,10 @@ export function ChatContextGauge({ percent, tokens, limit, source }: ChatContext
               />
             </div>
 
-            {/* Token count / limit + percentage */}
-            {hasTokenInfo ? (
-              <span className={`text-xs font-medium tabular-nums leading-none ${textColor}`}>
-                {formatTokens(tokens)}/{formatLimit(limit)}
-              </span>
-            ) : (
-              <span className={`text-xs font-medium tabular-nums leading-none ${textColor}`}>
-                {Math.round(clamped)}%
-              </span>
-            )}
+            {/* Percentage label */}
+            <span className={`text-xs font-medium tabular-nums leading-none ${textColor}`}>
+              {Math.round(clamped)}%
+            </span>
           </div>
         </Tooltip.Trigger>
         <Tooltip.Portal>

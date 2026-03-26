@@ -31,6 +31,12 @@ interface ContextGaugeProps {
   statuslineContextWindowSize?: number | null
   /** Authoritative used percentage from statusline (0–100). Preferred over computed value. */
   statuslineUsedPct?: number | null
+  /** Authoritative remaining percentage from statusline (0–100). */
+  statuslineRemainingPct?: number | null
+  /** Cumulative session-lifetime input tokens from statusline. */
+  statuslineTotalInputTokens?: number | null
+  /** Cumulative session-lifetime output tokens from statusline. */
+  statuslineTotalOutputTokens?: number | null
 }
 
 const formatTokens = (n: number) => {
@@ -64,6 +70,9 @@ export function ContextGauge({
   compactCount,
   statuslineContextWindowSize,
   statuslineUsedPct,
+  statuslineRemainingPct,
+  statuslineTotalInputTokens,
+  statuslineTotalOutputTokens,
 }: ContextGaugeProps) {
   const contextLimit = getContextLimit(model, contextWindowTokens, statuslineContextWindowSize)
   // Prefer authoritative statusline percentage; fall back to computed from tokens
@@ -296,17 +305,34 @@ export function ContextGauge({
           </div>
         </div>
 
-        {/* Session totals */}
-        {tokens && (
+        {/* Session totals — prefer authoritative statusline data when available */}
+        {(tokens || statuslineTotalInputTokens != null) && (
           <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1 text-xs">
             <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
               Session totals
             </div>
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
-              <span>Total tokens</span>
-              <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
-            </div>
-            {tokens.cacheReadTokens > 0 && (
+            {statuslineTotalInputTokens != null && statuslineTotalOutputTokens != null ? (
+              <>
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>Total input</span>
+                  <span className="tabular-nums font-mono">
+                    {formatTokens(statuslineTotalInputTokens)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                  <span>Total output</span>
+                  <span className="tabular-nums font-mono">
+                    {formatTokens(statuslineTotalOutputTokens)}
+                  </span>
+                </div>
+              </>
+            ) : tokens ? (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                <span>Total tokens</span>
+                <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
+              </div>
+            ) : null}
+            {tokens && tokens.cacheReadTokens > 0 && (
               <div className="flex justify-between text-green-600 dark:text-green-400">
                 <span>Cache read</span>
                 <span className="tabular-nums font-mono">
@@ -314,7 +340,7 @@ export function ContextGauge({
                 </span>
               </div>
             )}
-            {tokens.cacheCreationTokens > 0 && (
+            {tokens && tokens.cacheCreationTokens > 0 && (
               <div className="flex justify-between text-gray-500 dark:text-gray-400">
                 <span>Cache written</span>
                 <span className="tabular-nums font-mono">
@@ -322,10 +348,12 @@ export function ContextGauge({
                 </span>
               </div>
             )}
-            <div className="flex justify-between text-gray-500 dark:text-gray-400">
-              <span>Output</span>
-              <span className="tabular-nums font-mono">{formatTokens(tokens.outputTokens)}</span>
-            </div>
+            {tokens && (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                <span>Output</span>
+                <span className="tabular-nums font-mono">{formatTokens(tokens.outputTokens)}</span>
+              </div>
+            )}
             {turnCount != null && turnCount > 0 && (
               <div className="flex justify-between text-gray-500 dark:text-gray-400">
                 <span>Turns</span>
@@ -344,6 +372,20 @@ export function ContextGauge({
               >
                 <span>Compactions</span>
                 <span className="tabular-nums font-mono">{compactCount}</span>
+              </div>
+            )}
+            {statuslineRemainingPct != null && (
+              <div
+                className={`flex justify-between ${
+                  statuslineRemainingPct < 15
+                    ? 'text-red-500'
+                    : statuslineRemainingPct < 30
+                      ? 'text-amber-500 dark:text-amber-400'
+                      : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                <span>Remaining</span>
+                <span className="tabular-nums font-mono">{statuslineRemainingPct}%</span>
               </div>
             )}
           </div>
@@ -470,17 +512,36 @@ export function ContextGauge({
               </div>
             </div>
 
-            {/* Cumulative session tokens */}
-            {tokens && (
+            {/* Cumulative session tokens — prefer authoritative statusline data */}
+            {(tokens || statuslineTotalInputTokens != null) && (
               <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-0.5 text-xs">
                 <div className="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wide mb-1">
                   Session totals
                 </div>
-                <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Total tokens</span>
-                  <span className="tabular-nums font-mono">{formatTokens(tokens.totalTokens)}</span>
-                </div>
-                {tokens.cacheReadTokens > 0 && (
+                {statuslineTotalInputTokens != null && statuslineTotalOutputTokens != null ? (
+                  <>
+                    <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                      <span>Total input</span>
+                      <span className="tabular-nums font-mono">
+                        {formatTokens(statuslineTotalInputTokens)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                      <span>Total output</span>
+                      <span className="tabular-nums font-mono">
+                        {formatTokens(statuslineTotalOutputTokens)}
+                      </span>
+                    </div>
+                  </>
+                ) : tokens ? (
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                    <span>Total tokens</span>
+                    <span className="tabular-nums font-mono">
+                      {formatTokens(tokens.totalTokens)}
+                    </span>
+                  </div>
+                ) : null}
+                {tokens && tokens.cacheReadTokens > 0 && (
                   <div className="flex justify-between text-green-600 dark:text-green-400">
                     <span>Cache read</span>
                     <span className="tabular-nums font-mono">
@@ -488,7 +549,7 @@ export function ContextGauge({
                     </span>
                   </div>
                 )}
-                {tokens.cacheCreationTokens > 0 && (
+                {tokens && tokens.cacheCreationTokens > 0 && (
                   <div className="flex justify-between text-gray-500 dark:text-gray-400">
                     <span>Cache written</span>
                     <span className="tabular-nums font-mono">
@@ -496,12 +557,14 @@ export function ContextGauge({
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between text-gray-500 dark:text-gray-400">
-                  <span>Output</span>
-                  <span className="tabular-nums font-mono">
-                    {formatTokens(tokens.outputTokens)}
-                  </span>
-                </div>
+                {tokens && (
+                  <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                    <span>Output</span>
+                    <span className="tabular-nums font-mono">
+                      {formatTokens(tokens.outputTokens)}
+                    </span>
+                  </div>
+                )}
                 {turnCount != null && turnCount > 0 && (
                   <div className="flex justify-between text-gray-500 dark:text-gray-400">
                     <span>Turns</span>
@@ -520,6 +583,20 @@ export function ContextGauge({
                   >
                     <span>Compactions</span>
                     <span className="tabular-nums font-mono">{compactCount}</span>
+                  </div>
+                )}
+                {statuslineRemainingPct != null && (
+                  <div
+                    className={`flex justify-between ${
+                      statuslineRemainingPct < 15
+                        ? 'text-red-500'
+                        : statuslineRemainingPct < 30
+                          ? 'text-amber-500 dark:text-amber-400'
+                          : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    <span>Remaining</span>
+                    <span className="tabular-nums font-mono">{statuslineRemainingPct}%</span>
                   </div>
                 )}
               </div>

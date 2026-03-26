@@ -94,6 +94,55 @@ function getSessionTier(tiers: UsageTier[]): UsageTier | undefined {
   return tiers.find((t) => t.id === 'session') ?? tiers[0]
 }
 
+/** Convert Unix seconds to ISO-8601 string for tier resetAt. */
+function unixSecsToIso(secs: number): string {
+  return new Date(secs * 1000).toISOString()
+}
+
+/**
+ * Overlay real-time statusline rate limit data onto API-polled tiers.
+ * Statusline is the primary source for percentage; API tiers provide
+ * labels, spent amounts, and tiers statusline doesn't cover (extra).
+ */
+function applyStatuslineOverrides(
+  apiTiers: UsageTier[],
+  statusline: StatuslineRateLimit | null | undefined,
+): UsageTier[] {
+  if (!statusline) return apiTiers
+
+  const tiers = apiTiers.map((tier) => {
+    // 5-hour session tier
+    if (tier.id === 'session') {
+      return {
+        ...tier,
+        percentage: statusline.pct5h,
+        resetAt: unixSecsToIso(statusline.reset5h),
+      }
+    }
+    // 7-day tier (weekly)
+    if ((tier.id === 'weekly' || tier.id === 'weekly_sonnet') && statusline.pct7d != null) {
+      return {
+        ...tier,
+        percentage: statusline.pct7d,
+        resetAt: statusline.reset7d != null ? unixSecsToIso(statusline.reset7d) : tier.resetAt,
+      }
+    }
+    return tier
+  })
+
+  // If API returned no tiers but statusline has data, synthesize a session tier
+  if (tiers.length === 0) {
+    tiers.push({
+      id: 'session',
+      label: 'Session (5hr)',
+      percentage: statusline.pct5h,
+      resetAt: unixSecsToIso(statusline.reset5h),
+    })
+  }
+
+  return tiers
+}
+
 /** Try to extract a human-readable message from the backend error string.
  *  Backend format: `"API error 429 Too Many Requests: {\"error\":{\"message\":\"...\"}}"` */
 function parseApiError(raw: string): { status: string; message: string } {
@@ -123,7 +172,24 @@ function isRedundantOrgName(orgName: string, email: string | null): boolean {
   )
 }
 
-export function OAuthUsagePill() {
+/** Real-time rate limit data derived from statusline SSE events. */
+export interface StatuslineRateLimit {
+  /** 5-hour session usage percentage (0–100). */
+  pct5h: number
+  /** 5-hour reset timestamp (Unix seconds). */
+  reset5h: number
+  /** 7-day usage percentage (0–100), if available. */
+  pct7d?: number
+  /** 7-day reset timestamp (Unix seconds), if available. */
+  reset7d?: number
+}
+
+interface OAuthUsagePillProps {
+  /** Live rate limit from statusline — overlays onto API-polled tiers for real-time updates. */
+  statuslineRateLimit?: StatuslineRateLimit | null
+}
+
+export function OAuthUsagePill({ statuslineRateLimit }: OAuthUsagePillProps) {
   const { data, isLoading, error, dataUpdatedAt, forceRefresh } = useOAuthUsage()
   const [tooltipOpen, setTooltipOpen] = useState(false)
   const { data: identity } = useAuthIdentity(tooltipOpen)
@@ -191,12 +257,17 @@ export function OAuthUsagePill() {
     )
   }
 
-  if (data.tiers.length === 0) {
+  if (data.tiers.length === 0 && !statuslineRateLimit) {
     return null
   }
 
-  const sessionTier = getSessionTier(data.tiers)
+  // Apply real-time statusline overrides onto API-polled tiers
+  const effectiveTiers = applyStatuslineOverrides(data.tiers, statuslineRateLimit)
+
+  const sessionTier = getSessionTier(effectiveTiers)
   if (!sessionTier) return null
+
+  const isLive = statuslineRateLimit != null
 
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -207,6 +278,12 @@ export function OAuthUsagePill() {
       >
         <Tooltip.Trigger asChild>
           <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums cursor-default">
+            {isLive && (
+              <span className="relative inline-flex w-1.5 h-1.5 flex-shrink-0">
+                <span className="absolute inset-0 rounded-full bg-green-400/60 motion-safe:animate-ping" />
+                <span className="relative inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
+              </span>
+            )}
             <MiniBar percentage={sessionTier.percentage} />
             <span>{Math.round(sessionTier.percentage)}%</span>
             <span className="text-gray-400 dark:text-gray-500">&middot;</span>
@@ -248,7 +325,7 @@ export function OAuthUsagePill() {
 
             {/* Tier rows */}
             <div className="space-y-3">
-              {data.tiers.map((tier) => (
+              {effectiveTiers.map((tier) => (
                 <TierRow key={tier.id} tier={tier} />
               ))}
             </div>
