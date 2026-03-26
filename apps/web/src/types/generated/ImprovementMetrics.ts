@@ -3,20 +3,21 @@
 /**
  * Improvement percentages between two periods.
  */
-export type ImprovementMetrics = { 
-/**
- * Re-edit rate change (negative = improvement)
- */
-reeditRate: number, 
-/**
- * Edits per file change (negative = improvement)
- */
-editsPerFile: number, 
-/**
- * Prompts per task change (negative = improvement)
- */
-promptsPerTask: number, 
-/**
- * Commit rate change (positive = improvement)
- */
-commitRate: number, };
+export type ImprovementMetrics = {
+  /**
+   * Re-edit rate change (negative = improvement)
+   */
+  reeditRate: number
+  /**
+   * Edits per file change (negative = improvement)
+   */
+  editsPerFile: number
+  /**
+   * Prompts per task change (negative = improvement)
+   */
+  promptsPerTask: number
+  /**
+   * Commit rate change (positive = improvement)
+   */
+  commitRate: number
+}

@@ -3,20 +3,21 @@
 /**
  * Scored pattern result with individual component scores.
  */
-export type PatternScore = { 
-/**
- * Effect size score (0.0-1.0).
- */
-effectSize: number, 
-/**
- * Sample confidence score (0.0-1.0).
- */
-sampleConfidence: number, 
-/**
- * Actionability score (0.0-1.0).
- */
-actionability: number, 
-/**
- * Weighted combination of all three scores (0.0-1.0).
- */
-combined: number, };
+export type PatternScore = {
+  /**
+   * Effect size score (0.0-1.0).
+   */
+  effectSize: number
+  /**
+   * Sample confidence score (0.0-1.0).
+   */
+  sampleConfidence: number
+  /**
+   * Actionability score (0.0-1.0).
+   */
+  actionability: number
+  /**
+   * Weighted combination of all three scores (0.0-1.0).
+   */
+  combined: number
+}

@@ -69,6 +69,7 @@ function createMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     control: null,
     editCount: 0,
     hookEvents: [],
+    phase: { current: null, labels: [], dominant: null },
     ...overrides,
   }
 }

@@ -7,10 +7,12 @@
 pub mod classifier;
 pub mod features;
 pub mod matchers;
+pub mod signals;
 
 pub use classifier::{classify_window, PhaseClassifier};
 pub use features::flatten_window;
 pub use matchers::*;
+pub use signals::extract_step_signals;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

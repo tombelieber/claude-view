@@ -12,6 +12,7 @@ use crate::live::state::{
 };
 use crate::state::AppState;
 use claude_view_core::discovery::resolve_git_branch;
+use claude_view_core::phase::PhaseHistory;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 #[derive(Debug, Deserialize)]
@@ -265,6 +266,7 @@ async fn handle_hook(
                         agent_state_set_at: now_ms(),
                         source: None,
                         hook_events: Vec::new(),
+                        phase: PhaseHistory::default(),
                     };
                     append_capped_hook_events(
                         &mut session.hook_events,
@@ -501,6 +503,7 @@ async fn handle_hook(
                     model_set_at: now_ms(),
                     agent_state_set_at: now_ms(),
                     hook_events: Vec::new(),
+                    phase: PhaseHistory::default(),
                 };
                 append_capped_hook_events(
                     &mut session.hook_events,
@@ -1400,6 +1403,7 @@ mod tests {
             agent_state_set_at: 0,
             source: None,
             hook_events: Vec::new(),
+            phase: claude_view_core::phase::PhaseHistory::default(),
         }
     }
 
