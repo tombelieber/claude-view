@@ -1,0 +1,44 @@
+---
+name: team-status
+description: "Use when the user asks about team activity, team status, or what the team is doing — e.g. 'team status', 'what's the team doing', 'team activity', 'who's active'"
+---
+
+{{PREAMBLE}}
+
+# Team Status Dashboard
+
+Show team activity, members, and currently active sessions.
+
+## Steps
+
+1. **List teams.** Call `mcp__claude-view__teams_list_teams` to get all teams. If the user specified a team name, find the matching team.
+
+2. **Get team details.** For the target team (or each team if showing all), call `mcp__claude-view__teams_get_team` with the team ID.
+
+3. **Get team inbox.** Call `mcp__claude-view__teams_get_team_inbox` with the team ID to see recent messages and activity.
+
+4. **Check live sessions.** Call `mcp__claude-view__list_live_sessions` to see who is currently active and what they're working on.
+
+5. **Present the team dashboard:**
+
+```
+## Team Status — [team name]
+
+**Members:** N | **Active now:** M
+
+### Currently Active
+- [member] — [project] — [model] — [agent_state]
+(from list_live_sessions, matched to team members)
+
+### Recent Inbox
+- [timestamp] — [sender]: [message preview]
+(from team inbox)
+
+### Team Summary
+- Total sessions today: N
+- Projects touched: [list]
+```
+
+6. **If no teams exist**, tell the user they can create teams in the claude-view dashboard.
+
+{{AVAILABLE_TOOLS}}

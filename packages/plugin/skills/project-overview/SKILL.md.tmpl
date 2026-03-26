@@ -1,0 +1,52 @@
+---
+name: project-overview
+description: "Use when the user asks about a specific project or all projects — e.g. 'show me project X', 'project overview', 'what projects do I have', 'project summary'"
+---
+
+{{PREAMBLE}}
+
+# Project Overview
+
+Show project details, sessions, branches, and contribution data.
+
+## Steps
+
+1. **List projects.** Call `mcp__claude-view__projects_list_projects` to get all projects. If the user asked about a specific project, find the match.
+
+2. **Get project sessions.** For the target project, call `mcp__claude-view__projects_list_project_sessions` with the project slug to get session history.
+
+3. **Get branches.** Call `mcp__claude-view__projects_list_project_branches` with the project slug to see branch activity.
+
+4. **Get contributions.** Call `mcp__claude-view__contributions_get_contributions` to get commit and contribution data.
+
+5. **Present the project dashboard:**
+
+```
+## Project Overview — [project name]
+
+**Path:** [project path]
+**Sessions:** N total | **Branches:** M active
+
+### Recent Sessions
+- [date] — [branch] — [summary] (Xm, $X.XX)
+- [date] — [branch] — [summary] (Xm, $X.XX)
+
+### Active Branches
+- `[branch]` — N sessions, last active [date]
+- `[branch]` — N sessions, last active [date]
+
+### Contributions
+- Commits: N | Lines changed: +X / -Y
+```
+
+6. **If showing all projects**, present a summary table instead of full details:
+
+```
+## All Projects
+
+| Project | Sessions | Last Active | Branches |
+|---------|----------|-------------|----------|
+| [name]  | N        | [date]      | M        |
+```
+
+{{AVAILABLE_TOOLS}}

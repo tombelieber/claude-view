@@ -1,0 +1,43 @@
+---
+name: export-data
+description: "Use when the user wants to export session data — e.g. 'export my sessions', 'download data', 'export to CSV', 'get my data'"
+---
+
+{{PREAMBLE}}
+
+# Export Session Data
+
+Export the user's Claude Code session data for external analysis or backup.
+
+## Steps
+
+1. **Clarify scope.** Ask the user what they want to export if not specified:
+   - All sessions (default)
+   - A specific date range (use `from`/`to` parameters)
+   - A specific project (filter by project name)
+
+2. **Export sessions.** Call `mcp__claude-view__export_sessions` with the appropriate filters.
+
+3. **Present the export summary:**
+
+```
+## Data Export
+
+**Sessions exported:** N
+**Date range:** [from] to [to]
+**Format:** JSON
+
+### Summary
+- Total sessions: N
+- Projects covered: [list]
+- Date range: [earliest] — [latest]
+- Total cost: $X.XX
+
+[Download link or file path if provided by the export tool]
+```
+
+4. **If the user wants CSV format**, note that the export tool returns JSON and suggest using `jq` or a spreadsheet import to convert.
+
+5. **If the export is empty**, suggest checking the date range or confirming that the claude-view server has indexed sessions.
+
+{{AVAILABLE_TOOLS}}
