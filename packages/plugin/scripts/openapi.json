@@ -34,6 +34,38 @@
         }
       }
     },
+    "/api/check-path": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "GET /api/check-path?path=... — Check whether a filesystem path still exists.",
+        "description": "Used by the frontend to validate project paths before offering \"resume session\".\nWorktree directories can be removed, making the session un-resumable.",
+        "operationId": "check_path",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Path existence check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckPathResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/classify": {
       "post": {
         "tags": [
@@ -737,6 +769,98 @@
         }
       }
     },
+    "/api/ide/detect": {
+      "get": {
+        "tags": [
+          "ide"
+        ],
+        "summary": "`GET /api/ide/detect` — return cached list of installed IDEs.",
+        "operationId": "get_detect",
+        "responses": {
+          "200": {
+            "description": "Detected IDEs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdeDetectResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ide/open": {
+      "post": {
+        "tags": [
+          "ide"
+        ],
+        "summary": "`POST /api/ide/open` — open a file in the requested IDE.",
+        "operationId": "post_open",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenInIdeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "IDE opened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenInIdeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/indexing/progress": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "SSE handler that streams indexing progress events.",
+        "description": "# Events\n\n| Event name       | When emitted                              |\n|------------------|-------------------------------------------|\n| `status`         | Indexer enters `ReadingIndexes` phase      |\n| `ready`          | Projects/sessions discovered, UI can load  |\n| `deep-progress`  | Each batch of deep-indexed sessions        |\n| `done`           | Indexing complete                          |\n| `error`          | Indexing failed                            |\n\nThe stream terminates after `done` or `error`.",
+        "operationId": "indexing_progress",
+        "responses": {
+          "200": {
+            "description": "SSE stream of indexing progress events",
+            "content": {
+              "text/event-stream": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/indexing/status": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "GET /api/indexing/status — lightweight JSON snapshot of indexing progress.",
+        "description": "Returns the current phase, indexed count, and total count.\nDesigned for polling (every 200–300 ms) from the frontend during rebuilds.",
+        "operationId": "indexing_status",
+        "responses": {
+          "200": {
+            "description": "Current indexing phase and progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexingStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/insights": {
       "get": {
         "tags": [
@@ -1001,6 +1125,47 @@
                   }
                 }
               }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "GET /api/jobs — List all active jobs.",
+        "operationId": "list_jobs",
+        "responses": {
+          "200": {
+            "description": "Active jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/JobProgress"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/stream": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "GET /api/jobs/stream — SSE stream of all job progress updates.",
+        "operationId": "stream_jobs",
+        "responses": {
+          "200": {
+            "description": "SSE stream of job progress",
+            "content": {
+              "text/event-stream": {}
             }
           }
         }
@@ -1490,6 +1655,375 @@
         }
       }
     },
+    "/api/oauth/identity": {
+      "get": {
+        "tags": [
+          "oauth"
+        ],
+        "summary": "GET /api/oauth/identity",
+        "description": "Returns cached auth identity (email, org, plan).\nCalls `claude auth status` on first request only, caches forever.",
+        "operationId": "get_auth_identity",
+        "responses": {
+          "200": {
+            "description": "Auth identity (email, org, plan)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthIdentityResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/usage": {
+      "get": {
+        "tags": [
+          "oauth"
+        ],
+        "summary": "GET /api/oauth/usage",
+        "description": "Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.\nSets `Cache-Control: max-age=<remaining_ttl>` so the frontend respects the\nserver's TTL without hardcoding its own polling interval.",
+        "operationId": "get_oauth_usage",
+        "responses": {
+          "200": {
+            "description": "OAuth usage tiers with cache headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/oauth/usage/refresh": {
+      "post": {
+        "tags": [
+          "oauth"
+        ],
+        "summary": "POST /api/oauth/usage/refresh",
+        "description": "Bypass TTL cache and fetch fresh data from Anthropic.\nReturns 429 + Retry-After header if called within 60s of the last attempt.",
+        "operationId": "post_oauth_usage_refresh",
+        "responses": {
+          "200": {
+            "description": "Refreshed usage data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthUsageResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited, retry after header set"
+          }
+        }
+      }
+    },
+    "/api/pairing/devices": {
+      "get": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "GET /pairing/devices — List paired devices.",
+        "operationId": "list_devices",
+        "responses": {
+          "200": {
+            "description": "All paired devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PairedDeviceResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pairing/devices/{id}": {
+      "delete": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "DELETE /pairing/devices/:id — Unpair a device.",
+        "operationId": "unpair_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Device unpaired"
+          }
+        }
+      }
+    },
+    "/api/pairing/qr": {
+      "get": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "GET /pairing/qr — Generate QR payload for mobile pairing.",
+        "operationId": "generate_qr",
+        "responses": {
+          "200": {
+            "description": "QR payload for mobile pairing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QrPayload"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Relay not configured"
+          }
+        }
+      }
+    },
+    "/api/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /api/plugins — Unified view of installed + available plugins.",
+        "operationId": "list_plugins",
+        "responses": {
+          "200": {
+            "description": "Unified plugin list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins/marketplaces": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /api/plugins/marketplaces",
+        "operationId": "list_marketplaces",
+        "responses": {
+          "200": {
+            "description": "Configured marketplaces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketplaceInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins/marketplaces/refresh-all": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /api/plugins/marketplaces/refresh-all",
+        "description": "Starts a batch refresh of all (or specified) marketplaces.\nReturns 409 if a batch is already active.",
+        "operationId": "refresh_all",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshAllRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Refresh started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAllResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already refreshing"
+          }
+        }
+      }
+    },
+    "/api/plugins/marketplaces/refresh-status": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /api/plugins/marketplaces/refresh-status",
+        "operationId": "refresh_status",
+        "responses": {
+          "200": {
+            "description": "Current refresh status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/plugins/ops": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /api/plugins/ops — List all queued/running/completed ops.",
+        "operationId": "list_ops_handler",
+        "responses": {
+          "200": {
+            "description": "All plugin operations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PluginOp"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /api/plugins/ops — Enqueue a plugin mutation, return immediately.",
+        "operationId": "enqueue_op",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Operation enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginOp"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/processes/cleanup": {
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "cleanup_processes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Cleanup result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/processes/{pid}/kill": {
+      "post": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "kill_process",
+        "parameters": [
+          {
+            "name": "pid",
+            "in": "path",
+            "description": "Process ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KillProcessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Kill result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KillProcessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "get": {
         "tags": [
@@ -1812,6 +2346,165 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "GET /api/reports — List all saved reports.",
+        "operationId": "list_reports",
+        "responses": {
+          "200": {
+            "description": "All saved reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportRow"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/generate": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "POST /api/reports/generate — Stream-generate a report via Claude CLI.",
+        "description": "Returns SSE with events:\n- `chunk` — text chunk from Claude CLI stdout\n- `done`  — generation complete, includes `{ reportId }` JSON\n- `error` — generation failed, includes `{ message }` JSON",
+        "operationId": "generate_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of report generation",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "409": {
+            "description": "Report generation already in progress"
+          }
+        }
+      }
+    },
+    "/api/reports/preview": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "GET /api/reports/preview — Aggregate preview stats for a date range.",
+        "operationId": "get_preview",
+        "parameters": [
+          {
+            "name": "startTs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "endTs",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preview stats for date range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPreview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/{id}": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "GET /api/reports/:id — Get a single report.",
+        "operationId": "get_report",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Report ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Single report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRow"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Report not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "DELETE /api/reports/:id — Delete a report.",
+        "operationId": "delete_report",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Report ID",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Report deleted"
+          },
+          "404": {
+            "description": "Report not found"
           }
         }
       }
@@ -2740,6 +3433,64 @@
         }
       }
     },
+    "/api/sessions/{session_id}/share": {
+      "post": {
+        "tags": [
+          "share"
+        ],
+        "operationId": "create_share",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share link created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "share"
+        ],
+        "operationId": "revoke_share",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Share revoked",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/git-sync-interval": {
       "put": {
         "tags": [
@@ -2771,6 +3522,24 @@
           },
           "400": {
             "description": "Invalid interval"
+          }
+        }
+      }
+    },
+    "/api/shares": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "operationId": "list_shares",
+        "responses": {
+          "200": {
+            "description": "All active shares",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           }
         }
       }
@@ -3006,6 +3775,300 @@
         }
       }
     },
+    "/api/sync/deep-index": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "POST /api/sync/deep - Trigger a full deep index rebuild.",
+        "description": "This endpoint:\n1. Marks all sessions for re-indexing (clears deep_indexed_at)\n2. Runs Pass 2 deep indexing on all sessions\n\nReturns:\n- 202 Accepted: Deep index rebuild started\n- 409 Conflict: A rebuild is already in progress\n\nThe rebuild runs in the background. Poll /api/status or /api/indexing/progress for completion.\nPOST /api/sync/deep-index — Trigger a full deep index rebuild.",
+        "operationId": "trigger_deep_index",
+        "responses": {
+          "202": {
+            "description": "Deep index rebuild started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncAcceptedResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Deep index already running"
+          }
+        }
+      }
+    },
+    "/api/sync/git": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "POST /api/sync/git - Trigger git commit scanning (A8.5).",
+        "description": "Returns:\n- 202 Accepted: Sync started (no sync was running)\n- 409 Conflict: Sync already in progress\n\nThe sync runs in the background. Poll /api/status for completion.",
+        "operationId": "trigger_git_sync",
+        "responses": {
+          "202": {
+            "description": "Git sync started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncAcceptedResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sync already in progress"
+          }
+        }
+      }
+    },
+    "/api/sync/git/progress": {
+      "get": {
+        "tags": [
+          "sync"
+        ],
+        "summary": "GET /api/sync/git/progress - SSE stream of git sync progress.",
+        "description": "# Events\n\n| Event name     | When emitted                     |\n|----------------|----------------------------------|\n| `scanning`     | Repos being scanned              |\n| `correlating`  | Linking commits to sessions      |\n| `done`         | Sync complete                    |\n| `error`        | Sync failed                      |\n\nThe stream terminates after `done` or `error`.\nGET /api/sync/git/progress — SSE stream of git sync progress.",
+        "operationId": "git_sync_progress",
+        "responses": {
+          "200": {
+            "description": "SSE stream of git sync progress events",
+            "content": {
+              "text/event-stream": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/system": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "GET /api/system - Get comprehensive system status.",
+        "description": "Runs storage, health, and classification queries in parallel\nusing tokio::join!, then detects Claude CLI status.",
+        "operationId": "get_system_status",
+        "responses": {
+          "200": {
+            "description": "Comprehensive system status including storage, health, and classification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/clear-cache": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "POST /api/system/clear-cache - Clear search index and cached data.",
+        "description": "Uses a take-drop-recreate pattern:\n1. Write-lock the holder, `.take()` the old `Arc<SearchIndex>` (holder becomes `None`)\n2. Call `clear_all()` on the old index (flushes deletes via Tantivy API)\n3. Drop the old index — releases mmap handles and file locks\n4. `remove_dir_all()` — now safe, no live handles\n5. `SearchIndex::open()` — creates fresh empty index\n6. Write-lock holder, swap in the new `Arc<SearchIndex>`",
+        "operationId": "clear_cache",
+        "responses": {
+          "200": {
+            "description": "Cache cleared, returns bytes freed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/git-resync": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "POST /api/system/git-resync - Trigger full git re-sync.",
+        "operationId": "trigger_git_resync",
+        "responses": {
+          "200": {
+            "description": "Git re-sync triggered (stub)",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/reindex": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "POST /api/system/reindex - Trigger a full re-index.",
+        "description": "This is a lightweight endpoint that signals the server to start\na background re-index. The actual work happens asynchronously.",
+        "operationId": "trigger_reindex",
+        "responses": {
+          "200": {
+            "description": "Re-index triggered",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/reset": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "POST /api/system/reset - Factory reset all data.",
+        "description": "Requires a confirmation string \"RESET_ALL_DATA\" in the request body.",
+        "operationId": "reset_all",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Factory reset completed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid confirmation string"
+          }
+        }
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "GET /api/teams — List all teams.",
+        "operationId": "list_teams",
+        "responses": {
+          "200": {
+            "description": "All team summaries",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/teams/{name}": {
+      "get": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "GET /api/teams/:name — Get team detail.",
+        "operationId": "get_team",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Team name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team detail",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found"
+          }
+        }
+      }
+    },
+    "/api/teams/{name}/inbox": {
+      "get": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "GET /api/teams/:name/inbox — Get team inbox messages.",
+        "operationId": "get_team_inbox",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Team name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inbox messages",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found"
+          }
+        }
+      }
+    },
+    "/api/telemetry/consent": {
+      "post": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "POST /api/telemetry/consent — Set telemetry consent preference.",
+        "operationId": "set_consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Telemetry consent updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/trends": {
       "get": {
         "tags": [
@@ -3022,6 +4085,173 @@
                 "schema": {}
               }
             }
+          }
+        }
+      }
+    },
+    "/api/workflows": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "list_workflows",
+        "responses": {
+          "200": {
+            "description": "All workflows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkflowSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "create_workflow",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkflowRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Created workflow",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/chat": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "POST /api/workflows/chat — direct POST-to-SSE streaming (same pattern as generate_report())",
+        "operationId": "chat_workflow",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of chat messages",
+            "content": {
+              "text/event-stream": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/run/{run_id}/control": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "control_run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Control command accepted"
+          }
+        }
+      }
+    },
+    "/api/workflows/{id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "get_workflow",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Workflow ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workflow detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "delete_workflow",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Workflow ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Workflow deleted"
+          },
+          "404": {
+            "description": "Workflow not found"
           }
         }
       }
@@ -3109,6 +4339,24 @@
           }
         ],
         "description": "AI generation response wrapper with additive metadata."
+      },
+      "ActionResponse": {
+        "type": "object",
+        "description": "Generic action response for POST endpoints.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        }
       },
       "ActivityPoint": {
         "type": "object",
@@ -3296,6 +4544,83 @@
         "properties": {
           "archived": {
             "type": "boolean"
+          }
+        }
+      },
+      "AuthIdentityResponse": {
+        "type": "object",
+        "required": [
+          "hasAuth"
+        ],
+        "properties": {
+          "authMethod": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasAuth": {
+            "type": "boolean"
+          },
+          "orgName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subscriptionType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AvailablePlugin": {
+        "type": "object",
+        "description": "A plugin available for installation (not yet installed).",
+        "required": [
+          "pluginId",
+          "name",
+          "description",
+          "marketplaceName",
+          "alreadyInstalled"
+        ],
+        "properties": {
+          "alreadyInstalled": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "installCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "marketplaceName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -3834,6 +5159,17 @@
           "needs_work"
         ]
       },
+      "CheckPathResponse": {
+        "type": "object",
+        "required": [
+          "exists"
+        ],
+        "properties": {
+          "exists": {
+            "type": "boolean"
+          }
+        }
+      },
       "ClassificationCoverage": {
         "type": "object",
         "description": "Classification coverage status.",
@@ -3862,6 +5198,63 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "ClassificationInfo": {
+        "type": "object",
+        "description": "Classification section of system response.",
+        "required": [
+          "classifiedCount",
+          "unclassifiedCount",
+          "provider",
+          "model",
+          "isRunning"
+        ],
+        "properties": {
+          "classifiedCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "isRunning": {
+            "type": "boolean"
+          },
+          "lastRunAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastRunCostCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "lastRunDurationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "model": {
+            "type": "string"
+          },
+          "progress": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "unclassifiedCount": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -4076,6 +5469,95 @@
           }
         }
       },
+      "ClaudeCliStatus": {
+        "type": "object",
+        "description": "Claude CLI status information.",
+        "required": [
+          "authenticated"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "description": "Whether CLI is authenticated."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path to claude binary, None if not found."
+          },
+          "subscriptionType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Subscription type if authenticated."
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version string, None if not found."
+          }
+        }
+      },
+      "CleanupRequest": {
+        "type": "object",
+        "required": [
+          "targets"
+        ],
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KillTarget"
+            }
+          }
+        }
+      },
+      "CleanupResponse": {
+        "type": "object",
+        "required": [
+          "killed",
+          "failed"
+        ],
+        "properties": {
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KillFailure"
+            }
+          },
+          "killed": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        }
+      },
+      "ClearCacheResponse": {
+        "type": "object",
+        "description": "Clear cache response.",
+        "required": [
+          "status",
+          "clearedBytes"
+        ],
+        "properties": {
+          "clearedBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "CoachingRule": {
         "type": "object",
         "description": "A coaching rule parsed from a `coaching-*.md` file.",
@@ -4189,6 +5671,28 @@
           "version": {
             "type": "string",
             "description": "Server version."
+          }
+        }
+      },
+      "ConsentRequest": {
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ConsentResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TelemetryStatus"
           }
         }
       },
@@ -4368,6 +5872,17 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          }
+        }
+      },
+      "CreateWorkflowRequest": {
+        "type": "object",
+        "required": [
+          "yaml"
+        ],
+        "properties": {
+          "yaml": {
+            "type": "string"
           }
         }
       },
@@ -5374,6 +6889,38 @@
           }
         }
       },
+      "GenerateRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/reports/generate.",
+        "required": [
+          "reportType",
+          "dateStart",
+          "dateEnd",
+          "startTs",
+          "endTs"
+        ],
+        "properties": {
+          "dateEnd": {
+            "type": "string"
+          },
+          "dateStart": {
+            "type": "string"
+          },
+          "endTs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix timestamp for range end (from frontend, uses local midnight + 86399)."
+          },
+          "reportType": {
+            "type": "string"
+          },
+          "startTs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix timestamp for range start (from frontend, uses local midnight)."
+          }
+        }
+      },
       "GeneratedInsight": {
         "type": "object",
         "description": "A generated insight with human-readable text and scoring.",
@@ -5417,6 +6964,44 @@
           }
         }
       },
+      "HealthInfo": {
+        "type": "object",
+        "description": "Health section of system response.",
+        "required": [
+          "sessionsCount",
+          "commitsCount",
+          "projectsCount",
+          "errorsCount",
+          "status"
+        ],
+        "properties": {
+          "commitsCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "errorsCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastSyncAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectsCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessionsCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus"
+          }
+        }
+      },
       "HealthResponse": {
         "type": "object",
         "description": "Response for the health check endpoint.",
@@ -5438,6 +7023,15 @@
             "type": "string"
           }
         }
+      },
+      "HealthStatus": {
+        "type": "string",
+        "description": "Health status enum for the system page.",
+        "enum": [
+          "healthy",
+          "warning",
+          "error"
+        ]
       },
       "HeatmapCell": {
         "type": "object",
@@ -5637,6 +7231,39 @@
           }
         }
       },
+      "IdeDetectResponse": {
+        "type": "object",
+        "description": "Response for `GET /api/ide/detect`.",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IdeInfo"
+            }
+          }
+        }
+      },
+      "IdeInfo": {
+        "type": "object",
+        "description": "Describes a single detected IDE.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Machine-readable identifier (e.g. \"vscode\", \"cursor\")."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable display name (e.g. \"VS Code\", \"Cursor\")."
+          }
+        }
+      },
       "ImprovementMetrics": {
         "type": "object",
         "description": "Improvement percentages between two periods.",
@@ -5668,6 +7295,55 @@
             "description": "Re-edit rate change (negative = improvement)"
           }
         }
+      },
+      "InboxMessage": {
+        "type": "object",
+        "required": [
+          "from",
+          "text",
+          "timestamp",
+          "messageType",
+          "read"
+        ],
+        "properties": {
+          "color": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "type": "string"
+          },
+          "messageType": {
+            "$ref": "#/components/schemas/InboxMessageType"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxMessageType": {
+        "type": "string",
+        "enum": [
+          "plainText",
+          "taskAssignment",
+          "idleNotification",
+          "shutdownRequest",
+          "shutdownApproved"
+        ]
       },
       "IndexMetadata": {
         "type": "object",
@@ -5734,6 +7410,86 @@
             "type": "integer",
             "format": "int64",
             "description": "Unix timestamp of last metadata update."
+          }
+        }
+      },
+      "IndexRunInfo": {
+        "type": "object",
+        "description": "Index history entry in system response.",
+        "required": [
+          "timestamp",
+          "type",
+          "status"
+        ],
+        "properties": {
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessionsCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "IndexingStatusResponse": {
+        "type": "object",
+        "description": "JSON snapshot of current indexing progress (for polling).",
+        "required": [
+          "phase",
+          "indexed",
+          "total",
+          "bytesProcessed",
+          "bytesTotal"
+        ],
+        "properties": {
+          "bytesProcessed": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "bytesTotal": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "errorMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "phase": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -6003,6 +7759,71 @@
           }
         }
       },
+      "IntegrityCounterInfo": {
+        "type": "object",
+        "description": "Integrity counter values from the latest index run.",
+        "required": [
+          "unknownTopLevelTypeCount",
+          "unknownRequiredPathCount",
+          "imaginaryPathAccessCount",
+          "legacyFallbackPathCount",
+          "droppedLineInvalidJsonCount",
+          "schemaMismatchCount",
+          "unknownSourceRoleCount",
+          "derivedSourceMessageDocCount",
+          "sourceMessageNonSourceProvenanceCount"
+        ],
+        "properties": {
+          "derivedSourceMessageDocCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "droppedLineInvalidJsonCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "imaginaryPathAccessCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "legacyFallbackPathCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schemaMismatchCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sourceMessageNonSourceProvenanceCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unknownRequiredPathCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unknownSourceRoleCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unknownTopLevelTypeCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "IntegrityInfo": {
+        "type": "object",
+        "description": "Integrity section of system response.",
+        "required": [
+          "counters"
+        ],
+        "properties": {
+          "counters": {
+            "$ref": "#/components/schemas/IntegrityCounterInfo"
+          }
+        }
+      },
       "InvocableWithCount": {
         "type": "object",
         "description": "An invocable (tool/skill/MCP) with its aggregated invocation count.",
@@ -6042,6 +7863,122 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "JobProgress": {
+        "type": "object",
+        "description": "Progress update sent via SSE.",
+        "required": [
+          "jobId",
+          "jobType",
+          "status",
+          "current",
+          "total",
+          "timestamp"
+        ],
+        "properties": {
+          "current": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "jobId": {
+            "$ref": "#/components/schemas/u64"
+          },
+          "jobType": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "KillFailure": {
+        "type": "object",
+        "required": [
+          "pid",
+          "reason"
+        ],
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "KillProcessRequest": {
+        "type": "object",
+        "required": [
+          "start_time",
+          "force"
+        ],
+        "properties": {
+          "force": {
+            "type": "boolean"
+          },
+          "start_time": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "KillProcessResponse": {
+        "type": "object",
+        "required": [
+          "killed",
+          "pid"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "killed": {
+            "type": "boolean"
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "KillTarget": {
+        "type": "object",
+        "required": [
+          "pid",
+          "start_time"
+        ],
+        "properties": {
+          "pid": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "start_time": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -6167,6 +8104,38 @@
             "items": {
               "$ref": "#/components/schemas/CoachingRule"
             }
+          }
+        }
+      },
+      "MarketplaceInfo": {
+        "type": "object",
+        "description": "A configured marketplace.",
+        "required": [
+          "name",
+          "source",
+          "installedCount",
+          "availableCount"
+        ],
+        "properties": {
+          "availableCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "installedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
           }
         }
       },
@@ -6326,6 +8295,82 @@
           }
         }
       },
+      "OAuthUsageResponse": {
+        "type": "object",
+        "required": [
+          "hasAuth",
+          "tiers"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hasAuth": {
+            "type": "boolean"
+          },
+          "plan": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageTier"
+            }
+          }
+        }
+      },
+      "OpStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "OpenInIdeRequest": {
+        "type": "object",
+        "description": "Request body for `POST /api/ide/open`.",
+        "required": [
+          "ide",
+          "projectPath"
+        ],
+        "properties": {
+          "filePath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Relative path to the file within the project (optional)."
+          },
+          "ide": {
+            "type": "string",
+            "description": "The IDE id to open (must match an id from the detect response)."
+          },
+          "projectPath": {
+            "type": "string",
+            "description": "Absolute path to the project directory."
+          }
+        }
+      },
+      "OpenInIdeResponse": {
+        "type": "object",
+        "description": "Response for `POST /api/ide/open`.",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          }
+        }
+      },
       "OutputMetrics": {
         "type": "object",
         "description": "Output metrics for the overview card.",
@@ -6407,6 +8452,27 @@
           }
         }
       },
+      "PairedDeviceResponse": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "name",
+          "paired_at"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "paired_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "PatternAlertResponse": {
         "type": "object",
         "description": "Response for GET /facets/pattern-alert.",
@@ -6458,6 +8524,37 @@
             "items": {
               "$ref": "#/components/schemas/GeneratedInsight"
             }
+          }
+        }
+      },
+      "PerformanceInfo": {
+        "type": "object",
+        "description": "Performance section of system response.",
+        "properties": {
+          "lastIndexDurationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Duration of last successful index in milliseconds."
+          },
+          "sessionsPerSec": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Sessions indexed per second during last index."
+          },
+          "throughputBytesPerSec": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Throughput: bytes processed per second during last index.",
+            "minimum": 0
           }
         }
       },
@@ -6536,6 +8633,382 @@
           }
         }
       },
+      "PluginActionRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/plugins/action.",
+        "required": [
+          "action",
+          "name"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "\"install\" | \"update\" | \"uninstall\" | \"enable\" | \"disable\""
+          },
+          "name": {
+            "type": "string",
+            "description": "Plugin name or full ID (e.g. \"superpowers\" or \"superpowers@marketplace\")"
+          },
+          "projectPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For project-scoped plugins: the project directory where it was installed.\nRequired for uninstall of project-scoped plugins (CLI needs correct CWD)."
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "\"user\" | \"project\""
+          }
+        }
+      },
+      "PluginActionResponse": {
+        "type": "object",
+        "description": "Response for POST /api/plugins/action.",
+        "required": [
+          "success",
+          "action",
+          "name"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PluginInfo": {
+        "type": "object",
+        "description": "An installed plugin with its metadata, items, and usage stats.",
+        "required": [
+          "id",
+          "name",
+          "marketplace",
+          "scope",
+          "enabled",
+          "installedAt",
+          "items",
+          "skillCount",
+          "commandCount",
+          "agentCount",
+          "mcpCount",
+          "totalInvocations",
+          "sessionCount",
+          "duplicateMarketplaces",
+          "updatable",
+          "errors",
+          "sourceExists"
+        ],
+        "properties": {
+          "agentCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "commandCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Description from the marketplace listing (mirrors AvailablePlugin)."
+          },
+          "duplicateMarketplaces": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "gitSha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "installCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Global install count from the marketplace listing (mirrors AvailablePlugin).",
+            "minimum": 0
+          },
+          "installedAt": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginItem"
+            }
+          },
+          "lastUpdated": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastUsedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "marketplace": {
+            "type": "string"
+          },
+          "mcpCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "skillCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "sourceExists": {
+            "type": "boolean",
+            "description": "True when the plugin's install directory exists on disk.\nFalse = truly orphaned (files deleted/moved).\nTrue + errors = CLI validation failure (catalog mismatch), but files are intact."
+          },
+          "totalInvocations": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatable": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PluginItem": {
+        "type": "object",
+        "description": "A single invocable item within a plugin (skill, command, agent, or MCP tool).",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "description",
+          "content",
+          "invocationCount"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Full file content for the item (markdown for skills/commands/agents; pretty JSON for mcp_tool)"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "invocationCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PluginOp": {
+        "type": "object",
+        "required": [
+          "id",
+          "action",
+          "name",
+          "status"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "projectPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/OpStatus"
+          }
+        }
+      },
+      "PluginsResponse": {
+        "type": "object",
+        "description": "Full response for the plugins endpoint.",
+        "required": [
+          "installed",
+          "available",
+          "totalInstalled",
+          "totalAvailable",
+          "duplicateCount",
+          "unusedCount",
+          "updatableCount",
+          "marketplaces",
+          "orphanCount",
+          "userSkills",
+          "userCommands",
+          "userAgents"
+        ],
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailablePlugin"
+            }
+          },
+          "cliError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Non-empty when the CLI call failed — used by PluginHealthBanner."
+          },
+          "duplicateCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "installed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginInfo"
+            }
+          },
+          "marketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceInfo"
+            }
+          },
+          "orphanCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalAvailable": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalInstalled": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unusedCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updatableCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "userAgents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserItemInfo"
+            }
+          },
+          "userCommands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserItemInfo"
+            }
+          },
+          "userSkills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserItemInfo"
+            }
+          }
+        }
+      },
       "ProcessGroup": {
         "type": "object",
         "description": "A single process group — aggregated by normalized process name.",
@@ -6602,6 +9075,23 @@
           },
           "lastMonth": {
             "$ref": "#/components/schemas/PeriodMetrics"
+          }
+        }
+      },
+      "ProjectPreview": {
+        "type": "object",
+        "description": "Per-project summary in the preview.",
+        "required": [
+          "name",
+          "sessionCount"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -6793,6 +9283,118 @@
           }
         }
       },
+      "QrPayload": {
+        "type": "object",
+        "required": [
+          "url",
+          "r",
+          "k",
+          "t",
+          "s",
+          "v"
+        ],
+        "properties": {
+          "k": {
+            "type": "string",
+            "description": "Mac X25519 public key (base64)."
+          },
+          "r": {
+            "type": "string",
+            "description": "Relay WebSocket URL."
+          },
+          "s": {
+            "type": "string",
+            "description": "Verification secret (base64, 32 bytes). Included in QR URL only,\nnever sent to the relay. Phone uses it to compute HMAC binding."
+          },
+          "t": {
+            "type": "string",
+            "description": "One-time pairing token."
+          },
+          "url": {
+            "type": "string",
+            "description": "Mobile page URL — the QR code encodes this directly."
+          },
+          "v": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Protocol version.",
+            "minimum": 0
+          }
+        }
+      },
+      "RefreshAllRequest": {
+        "type": "object",
+        "properties": {
+          "names": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RefreshAllResponse": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RefreshOp": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RefreshStatus"
+          }
+        }
+      },
+      "RefreshStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "RefreshStatusResponse": {
+        "type": "object",
+        "required": [
+          "active",
+          "ops"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "ops": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RefreshOp"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "RemoveRuleResponse": {
         "type": "object",
         "description": "Response for DELETE /api/coaching/rules/{id}.",
@@ -6806,6 +9408,138 @@
           },
           "removed": {
             "type": "boolean"
+          }
+        }
+      },
+      "ReportPreview": {
+        "type": "object",
+        "description": "Preview stats for a date range (no AI, pure DB aggregation).",
+        "required": [
+          "sessionCount",
+          "projectCount",
+          "totalDurationSecs",
+          "totalCostCents",
+          "hasUnpricedUsage",
+          "unpricedSessionCount",
+          "projects"
+        ],
+        "properties": {
+          "hasUnpricedUsage": {
+            "type": "boolean",
+            "description": "True when one or more sessions in range have unpriced usage."
+          },
+          "projectCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectPreview"
+            }
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalCostCents": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of priced session costs only (sessions with NULL total_cost_usd are excluded)."
+          },
+          "totalDurationSecs": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unpricedSessionCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportRow": {
+        "type": "object",
+        "description": "A saved report row.",
+        "required": [
+          "id",
+          "reportType",
+          "dateStart",
+          "dateEnd",
+          "contentMd",
+          "sessionCount",
+          "projectCount",
+          "totalDurationSecs",
+          "totalCostCents",
+          "createdAt"
+        ],
+        "properties": {
+          "contentMd": {
+            "type": "string"
+          },
+          "contextDigest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dateEnd": {
+            "type": "string"
+          },
+          "dateStart": {
+            "type": "string"
+          },
+          "generationInputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "generationModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "generationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "generationOutputTokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projectCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "reportType": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalCostCents": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalDurationSecs": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -7588,6 +10322,21 @@
           }
         }
       },
+      "ShareResponse": {
+        "type": "object",
+        "required": [
+          "token",
+          "url"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
       "SkillAdoption": {
         "type": "object",
         "description": "Skill adoption with impact metrics.",
@@ -8071,6 +10820,44 @@
           }
         }
       },
+      "StorageInfo": {
+        "type": "object",
+        "description": "Storage section of system response.",
+        "required": [
+          "jsonlBytes",
+          "indexBytes",
+          "dbBytes",
+          "cacheBytes",
+          "totalBytes"
+        ],
+        "properties": {
+          "cacheBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "dbBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "indexBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "jsonlBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "totalBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "StorageStats": {
         "type": "object",
         "description": "Storage statistics for the settings page.",
@@ -8198,6 +10985,29 @@
           }
         }
       },
+      "SyncAcceptedResponse": {
+        "type": "object",
+        "description": "Response for successful sync initiation.",
+        "required": [
+          "message",
+          "status"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SyncStatus"
+          }
+        }
+      },
+      "SyncStatus": {
+        "type": "string",
+        "description": "Status value for accepted sync responses.",
+        "enum": [
+          "accepted"
+        ]
+      },
       "SystemInfo": {
         "type": "object",
         "description": "Static system information that doesn't change between snapshots.",
@@ -8239,6 +11049,45 @@
           }
         }
       },
+      "SystemResponse": {
+        "type": "object",
+        "description": "Full system status response.",
+        "required": [
+          "storage",
+          "performance",
+          "health",
+          "integrity",
+          "indexHistory",
+          "classification",
+          "claudeCli"
+        ],
+        "properties": {
+          "classification": {
+            "$ref": "#/components/schemas/ClassificationInfo"
+          },
+          "claudeCli": {
+            "$ref": "#/components/schemas/ClaudeCliStatus"
+          },
+          "health": {
+            "$ref": "#/components/schemas/HealthInfo"
+          },
+          "indexHistory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexRunInfo"
+            }
+          },
+          "integrity": {
+            "$ref": "#/components/schemas/IntegrityInfo"
+          },
+          "performance": {
+            "$ref": "#/components/schemas/PerformanceInfo"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/StorageInfo"
+          }
+        }
+      },
       "TaskItem": {
         "type": "object",
         "description": "A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.\n\nRicher than ProgressItem — includes description and dependency edges.",
@@ -8275,6 +11124,131 @@
             "type": "string"
           },
           "subject": {
+            "type": "string"
+          }
+        }
+      },
+      "TeamDetail": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "createdAt",
+          "leadSessionId",
+          "members"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "leadSessionId": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamMember"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "TeamMember": {
+        "type": "object",
+        "required": [
+          "agentId",
+          "name",
+          "agentType",
+          "model",
+          "color",
+          "cwd"
+        ],
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "agentType": {
+            "type": "string"
+          },
+          "backendType": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "color": {
+            "type": "string"
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "TeamSummary": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "createdAt",
+          "leadSessionId",
+          "memberCount",
+          "messageCount",
+          "models"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "description": {
+            "type": "string"
+          },
+          "durationEstimateSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "leadSessionId": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -8570,6 +11544,76 @@
           }
         }
       },
+      "UsageTier": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "percentage",
+          "resetAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "percentage": {
+            "type": "number",
+            "format": "double",
+            "description": "0.0–100.0"
+          },
+          "resetAt": {
+            "type": "string",
+            "description": "ISO-8601 reset timestamp"
+          },
+          "spent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dollar description for budget tiers"
+          }
+        }
+      },
+      "UserItemInfo": {
+        "type": "object",
+        "description": "A user-created skill, command, or agent (not from any marketplace).",
+        "required": [
+          "name",
+          "kind",
+          "path",
+          "totalInvocations",
+          "sessionCount"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalInvocations": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "WeekTrends": {
         "type": "object",
         "description": "Collection of all week-over-week trend metrics.",
@@ -8657,6 +11701,203 @@
             "minimum": 0
           }
         }
+      },
+      "WorkflowDefinition": {
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "author",
+          "category"
+        ],
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowInput"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStage"
+            }
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowDetail": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "definition",
+          "yaml"
+        ],
+        "properties": {
+          "definition": {
+            "$ref": "#/components/schemas/WorkflowDefinition"
+          },
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "yaml": {
+            "type": "string",
+            "description": "Raw YAML string (for Preview tab)"
+          }
+        }
+      },
+      "WorkflowInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "description"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowStage": {
+        "type": "object",
+        "required": [
+          "name",
+          "skills"
+        ],
+        "properties": {
+          "agents": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "gate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowStageGate"
+              }
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "parallel": {
+            "type": "boolean"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WorkflowStageGate": {
+        "type": "object",
+        "required": [
+          "condition",
+          "retry"
+        ],
+        "properties": {
+          "condition": {
+            "type": "string"
+          },
+          "retry": {
+            "type": "boolean"
+          }
+        }
+      },
+      "WorkflowSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "category",
+          "author",
+          "version",
+          "stageCount",
+          "source",
+          "runCount"
+        ],
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastRunAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "runCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string",
+            "description": "\"official\" | \"user\""
+          },
+          "stageCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "u64": {
+        "type": "integer",
+        "format": "int64",
+        "minimum": 0
       }
     }
   },
