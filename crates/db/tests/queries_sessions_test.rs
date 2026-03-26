@@ -281,12 +281,12 @@ async fn test_list_project_summaries() {
     let summaries = db.list_project_summaries().await.unwrap();
     assert_eq!(summaries.len(), 2);
 
-    // Sorted by last_activity_at DESC
-    assert_eq!(summaries[0].name, "project-b");
+    // Sorted by last_activity_at DESC — name is effective_id (project_path)
+    assert_eq!(summaries[0].name, "/home/user/project-b");
     assert_eq!(summaries[0].session_count, 1);
     assert_eq!(summaries[0].display_name, "Project B");
 
-    assert_eq!(summaries[1].name, "project-a");
+    assert_eq!(summaries[1].name, "/home/user/project-a");
     assert_eq!(summaries[1].session_count, 2);
 
     // No sessions array on summaries
