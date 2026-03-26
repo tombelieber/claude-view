@@ -87,6 +87,22 @@ export interface SessionPanelData {
   statuslineCwd?: string | null
   statuslineProjectDir?: string | null
 
+  // Cumulative session tokens (authoritative from statusline)
+  statuslineRemainingPct?: number | null
+  statuslineTotalInputTokens?: number | null
+  statuslineTotalOutputTokens?: number | null
+
+  // Session metadata badges (statusline)
+  statuslineVimMode?: string | null
+  statuslineAgentName?: string | null
+  statuslineOutputStyle?: string | null
+  statuslineWorktreeName?: string | null
+  statuslineWorktreePath?: string | null
+  statuslineWorktreeBranch?: string | null
+  statuslineWorktreeOriginalCwd?: string | null
+  statuslineWorktreeOriginalBranch?: string | null
+  statuslineVersion?: string | null
+
   // Live-only fields (optional)
   startedAt?: number | null
   lastActivityAt?: number
@@ -152,6 +168,18 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
         : null,
     statuslineCwd: session.statuslineCwd ?? null,
     statuslineProjectDir: session.statuslineProjectDir ?? null,
+    statuslineRemainingPct: session.statuslineRemainingPct ?? null,
+    statuslineTotalInputTokens: session.statuslineTotalInputTokens ?? null,
+    statuslineTotalOutputTokens: session.statuslineTotalOutputTokens ?? null,
+    statuslineVimMode: session.statuslineVimMode ?? null,
+    statuslineAgentName: session.statuslineAgentName ?? null,
+    statuslineOutputStyle: session.statuslineOutputStyle ?? null,
+    statuslineWorktreeName: session.statuslineWorktreeName ?? null,
+    statuslineWorktreePath: session.statuslineWorktreePath ?? null,
+    statuslineWorktreeBranch: session.statuslineWorktreeBranch ?? null,
+    statuslineWorktreeOriginalCwd: session.statuslineWorktreeOriginalCwd ?? null,
+    statuslineWorktreeOriginalBranch: session.statuslineWorktreeOriginalBranch ?? null,
+    statuslineVersion: session.statuslineVersion ?? null,
     startedAt: session.startedAt,
     lastActivityAt: session.lastActivityAt,
     lastUserMessage: session.lastUserMessage,
@@ -238,6 +266,18 @@ export function historyToPanelData(
     statuslineCacheCreationTokens: null,
     statuslineCwd: null,
     statuslineProjectDir: null,
+    statuslineRemainingPct: null,
+    statuslineTotalInputTokens: null,
+    statuslineTotalOutputTokens: null,
+    statuslineVimMode: null,
+    statuslineAgentName: null,
+    statuslineOutputStyle: null,
+    statuslineWorktreeName: null,
+    statuslineWorktreePath: null,
+    statuslineWorktreeBranch: null,
+    statuslineWorktreeOriginalCwd: null,
+    statuslineWorktreeOriginalBranch: null,
+    statuslineVersion: null,
     historyExtras: {
       sessionDetail,
       sessionInfo,

@@ -13,7 +13,6 @@ import {
   GitBranch,
   Loader,
   MessageCircle,
-  Minimize2,
   Power,
   Shield,
   Sparkles,
@@ -29,6 +28,7 @@ import { SessionSpinner, pickVerb } from '../spinner'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
+import { SessionBadges } from './SessionBadges'
 import { SessionToolChips } from './SessionToolChips'
 import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
@@ -61,6 +61,16 @@ const COLOR_MAP: Record<string, string> = {
   amber: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
   red: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+}
+
+function formatDurationMs(ms: number): string {
+  const secs = Math.round(ms / 1000)
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
 }
 
 const MAX_VISIBLE_FILES = 3
@@ -146,11 +156,28 @@ export function SessionCard({
             </span>
           )}
           <SourceBadge source={session.source} />
+          {session.statuslineVersion && (
+            <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+              v{session.statuslineVersion}
+            </span>
+          )}
           {!hideProjectBranch && (
             <>
               <span
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded truncate max-w-30"
-                title={session.projectPath || session.projectDisplayName || session.project}
+                title={[
+                  session.projectPath || session.projectDisplayName || session.project,
+                  session.statuslineCwd &&
+                    session.statuslineCwd !== session.projectPath &&
+                    `cwd: ${session.statuslineCwd}`,
+                  session.statuslineProjectDir &&
+                    session.statuslineProjectDir !== session.projectPath &&
+                    `project: ${session.statuslineProjectDir}`,
+                  session.statuslineTranscriptPath &&
+                    `transcript: ${session.statuslineTranscriptPath}`,
+                ]
+                  .filter(Boolean)
+                  .join('\n')}
               >
                 <FolderOpen className="w-2.5 h-2.5 shrink-0 text-amber-500 dark:text-amber-400" />
                 {session.projectDisplayName || session.project}
@@ -304,6 +331,19 @@ export function SessionCard({
         )
       })()}
 
+      {/* Session metadata badges: vim mode, agent identity, output style, worktree */}
+      <SessionBadges
+        vimMode={session.statuslineVimMode}
+        agentName={session.statuslineAgentName}
+        agentContext={session.currentActivity}
+        outputStyle={session.statuslineOutputStyle}
+        worktreeName={session.statuslineWorktreeName}
+        worktreePath={session.statuslineWorktreePath}
+        worktreeBranch={session.statuslineWorktreeBranch}
+        worktreeOriginalCwd={session.statuslineWorktreeOriginalCwd}
+        worktreeOriginalBranch={session.statuslineWorktreeOriginalBranch}
+      />
+
       {/* Spinner row */}
       <div className="mb-2">
         <SessionSpinner
@@ -371,12 +411,9 @@ export function SessionCard({
         </div>
       )}
 
-      {/* Sub-agents section — with label when present */}
+      {/* Sub-agents — inline pills matching SessionBadges aesthetic */}
       {session.subAgents && session.subAgents.length > 0 && (
-        <div className="mb-2 -mx-1 px-1">
-          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-0.5 block">
-            Sub-Agents
-          </span>
+        <div className="mb-1">
           <SubAgentPills subAgents={session.subAgents} />
         </div>
       )}
@@ -400,38 +437,53 @@ export function SessionCard({
         compactCount={session.compactCount}
         statuslineContextWindowSize={session.statuslineContextWindowSize}
         statuslineUsedPct={session.statuslineUsedPct}
+        statuslineRemainingPct={session.statuslineRemainingPct}
+        statuslineTotalInputTokens={session.statuslineTotalInputTokens}
+        statuslineTotalOutputTokens={session.statuslineTotalOutputTokens}
       />
 
-      {/* Footer: turns + cost + lines + compactions */}
-      <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
-        <span>{session.turnCount} turns</span>
-        {session.statuslineCostUsd != null && session.statuslineCostUsd > 0 && (
-          <span className="font-mono tabular-nums">${session.statuslineCostUsd.toFixed(2)}</span>
-        )}
-        {(session.statuslineLinesAdded != null || session.statuslineLinesRemoved != null) && (
-          <span className="font-mono tabular-nums">
-            {session.statuslineLinesAdded != null && (
-              <span className="text-green-500 dark:text-green-400">
-                +{Number(session.statuslineLinesAdded)}
-              </span>
-            )}
-            {session.statuslineLinesAdded != null &&
-              session.statuslineLinesRemoved != null &&
-              ' / '}
-            {session.statuslineLinesRemoved != null && (
-              <span className="text-red-500 dark:text-red-400">
-                -{Number(session.statuslineLinesRemoved)}
-              </span>
-            )}
-          </span>
-        )}
-        {(session.compactCount ?? 0) > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-sky-500 dark:text-sky-400">
-            <Minimize2 className="h-3 w-3" />
-            {session.compactCount} {session.compactCount === 1 ? 'compact' : 'compacts'}
-          </span>
-        )}
-      </div>
+      {/* Footer: duration + lines changed */}
+      {(session.statuslineTotalDurationMs != null ||
+        session.statuslineLinesAdded != null ||
+        session.statuslineLinesRemoved != null) && (
+        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
+          {session.statuslineTotalDurationMs != null && (
+            <span
+              className="font-mono tabular-nums"
+              title={
+                session.statuslineApiDurationMs != null
+                  ? `Total: ${formatDurationMs(Number(session.statuslineTotalDurationMs))} · API: ${formatDurationMs(Number(session.statuslineApiDurationMs))}`
+                  : undefined
+              }
+            >
+              {formatDurationMs(Number(session.statuslineTotalDurationMs))}
+              {session.statuslineApiDurationMs != null && (
+                <span className="text-gray-300 dark:text-gray-600">
+                  {' '}
+                  (API {formatDurationMs(Number(session.statuslineApiDurationMs))})
+                </span>
+              )}
+            </span>
+          )}
+          {(session.statuslineLinesAdded != null || session.statuslineLinesRemoved != null) && (
+            <span className="font-mono tabular-nums">
+              {session.statuslineLinesAdded != null && (
+                <span className="text-green-500 dark:text-green-400">
+                  +{Number(session.statuslineLinesAdded)}
+                </span>
+              )}
+              {session.statuslineLinesAdded != null &&
+                session.statuslineLinesRemoved != null &&
+                ' / '}
+              {session.statuslineLinesRemoved != null && (
+                <span className="text-red-500 dark:text-red-400">
+                  -{Number(session.statuslineLinesRemoved)}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+      )}
     </>
   )
 

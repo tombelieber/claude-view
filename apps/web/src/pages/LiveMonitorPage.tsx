@@ -197,6 +197,33 @@ export function LiveMonitorPage() {
     }
   }, [sessions, serverSummary])
 
+  // Derive latest rate limit from all active sessions for OAuthUsagePill real-time feed.
+  // All sessions share one OAuth account, so pick the most recently reported value.
+  const latestRateLimit = useMemo(() => {
+    let best: {
+      pct5h: number
+      reset5h: number
+      pct7d?: number
+      reset7d?: number
+    } | null = null
+    let bestResetAt = 0
+    for (const s of sessions) {
+      if (s.statuslineRateLimit5hPct != null && s.statuslineRateLimit5hResetsAt != null) {
+        const resetAt = s.statuslineRateLimit5hResetsAt
+        if (resetAt >= bestResetAt) {
+          best = {
+            pct5h: s.statuslineRateLimit5hPct,
+            reset5h: resetAt,
+            pct7d: s.statuslineRateLimit7dPct ?? undefined,
+            reset7d: s.statuslineRateLimit7dResetsAt ?? undefined,
+          }
+          bestResetAt = resetAt
+        }
+      }
+    }
+    return best
+  }, [sessions])
+
   // Available filter options from current (unfiltered) sessions
   const availableStatuses = useMemo(() => {
     const set = new Set(sessions.map((s) => s.agentState.group))
@@ -380,7 +407,7 @@ export function LiveMonitorPage() {
 
               {summary && <CostTokenPopover summary={summary} />}
 
-              <OAuthUsagePill />
+              <OAuthUsagePill statuslineRateLimit={latestRateLimit} />
             </div>
           </div>
 
