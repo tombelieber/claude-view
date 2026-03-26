@@ -15,7 +15,7 @@ import { useCommandExecutor } from '../hooks/use-command-executor'
 import { useContextPercent } from '../hooks/use-context-percent'
 import type { LiveContextData } from '../hooks/use-context-percent'
 import { getContextLimit } from '../lib/model-context-windows'
-import { resolveSessionModel, useModelOptions } from '../hooks/use-models'
+import { resolveSessionModel, useAvailableModels } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 
 import { useSessionDetail } from '../hooks/use-session-detail'
@@ -24,7 +24,7 @@ import { useTrackEvent } from '../hooks/use-track-event'
 import type { LiveStatus } from '../lib/live-status'
 import type { PermissionMode } from '../types/control'
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
+const DEFAULT_MODEL = 'sonnet'
 const MODEL_STORAGE_KEY = 'claude-view:last-model'
 const MODE_STORAGE_KEY = 'claude-view:last-mode'
 
@@ -263,7 +263,7 @@ export function ChatSession({
   )
 
   // --- Command palette ---
-  const { options: modelOptions } = useModelOptions()
+  const { options: modelOptions } = useAvailableModels()
 
   // History session: auto-select the session's primary model if SDK-supported,
   // otherwise keep the user's default (from localStorage).

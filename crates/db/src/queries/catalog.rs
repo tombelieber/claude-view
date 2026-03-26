@@ -2,7 +2,7 @@ use crate::{pricing::LiteLlmModelContext, Database, DbResult};
 
 impl Database {
     /// Upsert model context data from LiteLLM into the models table.
-    /// Uses COALESCE to preserve existing values from other sources (SDK, indexer).
+    /// Uses COALESCE to preserve existing values from other sources (indexer).
     pub async fn upsert_litellm_context(&self, models: &[LiteLlmModelContext]) -> DbResult<usize> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -35,52 +35,7 @@ impl Database {
         Ok(count)
     }
 
-    /// Upsert model display metadata from SDK into the models table.
-    /// Uses COALESCE to preserve existing values from other sources (LiteLLM, indexer).
-    pub async fn upsert_sdk_models(
-        &self,
-        models: &[(String, String, String, Option<String>, Option<String>)],
-    ) -> DbResult<usize> {
-        // Tuple: (id, provider, family, display_name, description)
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
-        // Clear sdk_supported for all models first — SDK is source of truth.
-        // Only models in the current SDK list should be marked supported.
-        sqlx::query("UPDATE models SET sdk_supported = 0 WHERE sdk_supported = 1")
-            .execute(self.pool())
-            .await?;
-
-        let mut count = 0;
-        for (id, provider, family, display_name, description) in models {
-            sqlx::query(
-                // display_name and description use direct assignment (not COALESCE)
-                // because SDK is the authoritative source. Passing NULL intentionally
-                // clears stale alias names ("Default (recommended)") so the frontend
-                // falls back to formatModelName(id) → "Claude Opus 4.6".
-                r#"INSERT INTO models (id, provider, family, display_name, description, sdk_supported, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?)
-                   ON CONFLICT(id) DO UPDATE SET
-                       provider = COALESCE(excluded.provider, models.provider),
-                       family = COALESCE(excluded.family, models.family),
-                       display_name = excluded.display_name,
-                       description = excluded.description,
-                       sdk_supported = 1,
-                       updated_at = excluded.updated_at"#,
-            )
-            .bind(id)
-            .bind(provider)
-            .bind(family)
-            .bind(display_name.as_deref())
-            .bind(description.as_deref())
-            .bind(now)
-            .execute(self.pool())
-            .await?;
-            count += 1;
-        }
-
-        Ok(count)
-    }
+    // NOTE: upsert_sdk_models() was removed — model selection now fetches
+    // directly from sidecar's SDK model cache. The sdk_supported column
+    // remains in the schema but is no longer written to.
 }
