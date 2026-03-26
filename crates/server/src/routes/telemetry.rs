@@ -7,7 +7,7 @@ use claude_view_core::telemetry_config::{
     read_telemetry_config, write_telemetry_config, TelemetryStatus,
 };
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ConsentRequest {
     enabled: bool,
 }

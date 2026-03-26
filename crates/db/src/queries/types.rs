@@ -275,7 +275,7 @@ pub struct ClassificationStatus {
 }
 
 /// Integrity counters emitted during indexing.
-#[derive(Debug, Clone, Copy, Default, serde::Serialize, TS)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRunIntegrityCounters {

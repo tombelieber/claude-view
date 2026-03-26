@@ -36,8 +36,8 @@ fn relay_ws_url() -> Option<String> {
         .or_else(|| option_env!("RELAY_URL").map(str::to_string))
 }
 
-#[derive(Serialize)]
-struct QrPayload {
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct QrPayload {
     /// Mobile page URL — the QR code encodes this directly.
     url: String,
     /// Relay WebSocket URL.
@@ -53,15 +53,21 @@ struct QrPayload {
     v: u8,
 }
 
-#[derive(Serialize)]
-struct PairedDeviceResponse {
+#[derive(Serialize, utoipa::ToSchema)]
+pub struct PairedDeviceResponse {
     device_id: String,
     name: String,
     paired_at: u64,
 }
 
 /// GET /pairing/qr — Generate QR payload for mobile pairing.
-async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPayload>, StatusCode> {
+#[utoipa::path(get, path = "/api/pairing/qr", tag = "pairing",
+    responses(
+        (status = 200, description = "QR payload for mobile pairing", body = QrPayload),
+        (status = 503, description = "Relay not configured"),
+    )
+)]
+pub async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPayload>, StatusCode> {
     use rand::Rng;
 
     let identity = load_or_create_identity().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -125,7 +131,12 @@ async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPaylo
 }
 
 /// GET /pairing/devices — List paired devices.
-async fn list_devices() -> Json<Vec<PairedDeviceResponse>> {
+#[utoipa::path(get, path = "/api/pairing/devices", tag = "pairing",
+    responses(
+        (status = 200, description = "All paired devices", body = Vec<PairedDeviceResponse>),
+    )
+)]
+pub async fn list_devices() -> Json<Vec<PairedDeviceResponse>> {
     let devices = load_paired_devices();
     Json(
         devices
@@ -140,7 +151,13 @@ async fn list_devices() -> Json<Vec<PairedDeviceResponse>> {
 }
 
 /// DELETE /pairing/devices/:id — Unpair a device.
-async fn unpair_device(Path(device_id): Path<String>) -> StatusCode {
+#[utoipa::path(delete, path = "/api/pairing/devices/{id}", tag = "pairing",
+    params(("id" = String, Path, description = "Device ID")),
+    responses(
+        (status = 204, description = "Device unpaired"),
+    )
+)]
+pub async fn unpair_device(Path(device_id): Path<String>) -> StatusCode {
     match remove_paired_device(&device_id) {
         Ok(()) => StatusCode::NO_CONTENT,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
