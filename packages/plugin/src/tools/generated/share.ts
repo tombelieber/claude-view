@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const shareGeneratedTools: ToolDef[] = [
   {
     name: 'share_create_share',
-    description: 'Trigger sessions share',
+    description: 'Create Share (POST /api/sessions/share)',
     inputSchema: z.object({
     session_id: z.string(),
   }),
@@ -19,7 +19,7 @@ export const shareGeneratedTools: ToolDef[] = [
   },
   {
     name: 'share_revoke_share',
-    description: 'Delete sessions share',
+    description: 'Revoke Share (DELETE /api/sessions/share)',
     inputSchema: z.object({
     session_id: z.string(),
   }),
@@ -31,7 +31,7 @@ export const shareGeneratedTools: ToolDef[] = [
   },
   {
     name: 'share_list_shares',
-    description: 'Get shares',
+    description: 'List Shares (GET /api/shares)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
