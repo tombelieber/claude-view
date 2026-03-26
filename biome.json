@@ -14,7 +14,8 @@
       ".tmp",
       "apps/landing/dist",
       ".astro",
-      "**/.astro"
+      "**/.astro",
+      "crates/core/src/phase/model/trees.json"
     ]
   },
   "overrides": [
