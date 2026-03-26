@@ -51,10 +51,10 @@ pub use trends::WeekTrends;
 // Re-export unified pricing types (owned by claude_view_core::pricing)
 pub use claude_view_core::pricing::{
     calculate_cost, calculate_cost_usd, load_pricing, lookup_pricing, CacheStatus, CostBreakdown,
-    ModelPricing, TokenBreakdown, TokenUsage,
+    ModelPricing, PricingTable, TokenBreakdown, TokenUsage,
 };
 // Re-export model context struct for catalog upserts.
-pub use pricing::LiteLlmModelContext;
+pub use pricing::ModelContext;
 
 // Re-export snapshots types
 pub use snapshots::AggregatedContributions;

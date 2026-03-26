@@ -584,7 +584,7 @@ pub async fn get_contributions(
         let mut priced_tokens_total: i64 = 0;
         let mut all_tokens_total: i64 = 0;
         let mut unpriced_models: Vec<String> = Vec::new();
-        let pricing = state.pricing.read().expect("pricing lock poisoned");
+        let pricing = &*state.pricing;
 
         for ms in &mut by_model {
             let tokens = TokenBreakdown {

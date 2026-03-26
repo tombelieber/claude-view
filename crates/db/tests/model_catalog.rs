@@ -1,10 +1,6 @@
-//! Integration tests for model catalog — LiteLLM upsert and seed behavior.
-//!
-//! NOTE: upsert_sdk_models() was removed — model selection now fetches
-//! directly from sidecar's SDK model cache. Tests for the old SDK→DB
-//! pipeline have been removed.
+//! Integration tests for model catalog — context upsert and seed behavior.
 
-use claude_view_db::{Database, LiteLlmModelContext};
+use claude_view_db::{Database, ModelContext};
 
 async fn test_db() -> Database {
     Database::new_in_memory().await.unwrap()
@@ -16,7 +12,6 @@ async fn test_db() -> Database {
 async fn legacy_model_appears_with_null_metadata() {
     let db = test_db().await;
 
-    // Simulate indexer inserting a model from user history (no LiteLLM data)
     sqlx::query("INSERT OR REPLACE INTO models (id, provider, family, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)")
         .bind("claude-3-opus-20240229")
         .bind("anthropic")
@@ -49,7 +44,7 @@ async fn seed_runs_during_construction_and_is_idempotent() {
     let initial_count = models.len();
     assert!(
         initial_count > 0,
-        "constructor should have seeded models from default_pricing()"
+        "constructor should have seeded models from pricing JSON"
     );
 
     // Calling seed again should be a no-op (table is not empty)
@@ -62,13 +57,13 @@ async fn seed_runs_during_construction_and_is_idempotent() {
     );
 }
 
-// === LiteLLM upsert behavior ===
+// === Model context upsert behavior ===
 
 #[tokio::test]
-async fn repeated_litellm_upsert_updates_values() {
+async fn repeated_context_upsert_updates_values() {
     let db = test_db().await;
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -78,7 +73,7 @@ async fn repeated_litellm_upsert_updates_values() {
     .await
     .unwrap();
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -95,10 +90,10 @@ async fn repeated_litellm_upsert_updates_values() {
 }
 
 #[tokio::test]
-async fn null_litellm_values_do_not_overwrite_existing() {
+async fn null_context_values_do_not_overwrite_existing() {
     let db = test_db().await;
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -108,7 +103,7 @@ async fn null_litellm_values_do_not_overwrite_existing() {
     .await
     .unwrap();
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -128,10 +123,10 @@ async fn null_litellm_values_do_not_overwrite_existing() {
 }
 
 #[tokio::test]
-async fn new_model_from_litellm_gets_inserted() {
+async fn new_model_from_context_upsert_gets_inserted() {
     let db = test_db().await;
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-5-opus-20260601".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -148,10 +143,10 @@ async fn new_model_from_litellm_gets_inserted() {
 }
 
 #[tokio::test]
-async fn litellm_upsert_does_not_set_display_name() {
+async fn context_upsert_does_not_set_display_name() {
     let db = test_db().await;
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
@@ -166,10 +161,10 @@ async fn litellm_upsert_does_not_set_display_name() {
     assert!(opus.display_name.is_none());
 }
 
-// === Full merge lifecycle (seed → LiteLLM only) ===
+// === Full merge lifecycle (seed → context upsert) ===
 
 #[tokio::test]
-async fn full_merge_lifecycle_seed_then_litellm() {
+async fn full_merge_lifecycle_seed_then_context_upsert() {
     let db = test_db().await;
 
     db.seed_models_if_empty().await.unwrap();
@@ -178,7 +173,7 @@ async fn full_merge_lifecycle_seed_then_litellm() {
     assert!(opus.is_some());
     assert!(opus.unwrap().max_input_tokens.is_none());
 
-    db.upsert_litellm_context(&[LiteLlmModelContext {
+    db.upsert_model_context(&[ModelContext {
         model_id: "claude-opus-4-6".into(),
         provider: "anthropic".into(),
         family: "opus".into(),
