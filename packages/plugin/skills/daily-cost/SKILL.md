@@ -1,6 +1,10 @@
 ---
 name: daily-cost
 description: "Use when the user asks about cost, spending, or budget — e.g. 'how much did I spend today', 'daily cost', 'cost report', 'what's my spend'"
+allowed-tools:
+  - mcp__claude-view__get_live_summary
+  - mcp__claude-view__list_live_sessions
+  - mcp__claude-view__get_stats
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).

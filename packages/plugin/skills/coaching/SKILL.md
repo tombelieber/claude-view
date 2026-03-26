@@ -1,6 +1,12 @@
 ---
 name: coaching
 description: "Use when the user asks about improving their Claude Code usage, coaching rules, or best practices — e.g. 'how can I improve', 'coaching tips', 'my coaching rules', 'add a coaching rule'"
+allowed-tools:
+  - mcp__claude-view__coaching_list_rules
+  - mcp__claude-view__coaching_apply_rule
+  - mcp__claude-view__coaching_remove_rule
+  - mcp__claude-view__get_fluency_score
+  - mcp__claude-view__insights_get_insights
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).

@@ -180,7 +180,7 @@ jobs:
         working-directory: npx-cli
 
       - name: Build plugin
-        run: cd packages/plugin && bun install && bunx tsc
+        run: cd packages/plugin && bun install && bun run build
 
       - name: Publish @claude-view/plugin
         run: npm publish --access public || echo "Already published, skipping"
