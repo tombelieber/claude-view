@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const processesGeneratedTools: ToolDef[] = [
   {
     name: 'processes_cleanup_processes',
-    description: 'Trigger processes cleanup',
+    description: 'Cleanup Processes (POST /api/processes/cleanup)',
     inputSchema: z.object({
     targets: z.array(z.unknown()),
   }),
@@ -19,7 +19,7 @@ export const processesGeneratedTools: ToolDef[] = [
   },
   {
     name: 'processes_kill_process',
-    description: 'Trigger processes kill',
+    description: 'Kill Process (POST /api/processes/kill)',
     inputSchema: z.object({
     pid: z.number(),
     force: z.boolean(),

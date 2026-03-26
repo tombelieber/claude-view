@@ -17,7 +17,7 @@ export const pluginsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'plugins_list_marketplaces',
-    description: 'Get plugins marketplaces',
+    description: 'List Marketplaces (GET /api/plugins/marketplaces)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
@@ -27,7 +27,7 @@ export const pluginsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'plugins_refresh_all',
-    description: 'Trigger plugins marketplaces refresh-all',
+    description: 'Refresh All (POST /api/plugins/marketplaces/refresh-all)',
     inputSchema: z.object({
     names: z.array(z.unknown()).optional(),
   }),
@@ -39,7 +39,7 @@ export const pluginsGeneratedTools: ToolDef[] = [
   },
   {
     name: 'plugins_refresh_status',
-    description: 'Get plugins marketplaces refresh-status',
+    description: 'Refresh Status (GET /api/plugins/marketplaces/refresh-status)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {

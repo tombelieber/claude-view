@@ -10,6 +10,7 @@
 
 import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import { SSE_OPERATION_IDS, HAND_WRITTEN_TAGS, toSnakeCase, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -17,11 +18,7 @@ import { join, dirname } from 'node:path'
 
 const ROOT = dirname(dirname(new URL(import.meta.url).pathname))
 const SPEC_PATH = join(ROOT, 'scripts', 'openapi.json')
-const HAND_WRITTEN_DIR = join(ROOT, 'src', 'tools')
 const GEN_DIR = join(ROOT, 'src', 'tools', 'generated')
-
-// Tags with hand-written tool files — skip generation for these
-const HAND_WRITTEN_TAGS = new Set(['sessions', 'stats', 'live'])
 
 // operationIds that duplicate hand-written tools — skip generation
 const SKIP_OPERATION_IDS = new Set([
@@ -37,19 +34,6 @@ const FORCE_DESTRUCTIVE_OPS = new Set([
   'trigger_reindex',
   'kill_process',
   'cleanup_processes',
-])
-
-// SSE operationIds — cannot be called via simple HTTP request/response
-const SSE_OPERATION_IDS = new Set([
-  'stream_classification',
-  'facet_ingest_stream',
-  'indexing_progress',
-  'stream_jobs',
-  'live_stream',
-  'monitor_stream',
-  'generate_report',
-  'git_sync_progress',
-  'chat_workflow',
 ])
 
 // ---------------------------------------------------------------------------
@@ -240,24 +224,7 @@ function parseOperation(
 // Codegen per file
 // ---------------------------------------------------------------------------
 
-function toSnakeCase(s: string): string {
-  return s
-    .replace(/([a-z])([A-Z])/g, '$1_$2')
-    .replace(/[^a-zA-Z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .toLowerCase()
-}
-
-function makeToolName(tag: string, operationId: string): string {
-  const snakeOp = toSnakeCase(operationId)
-  const snakeTag = toSnakeCase(tag)
-  // If the operationId already starts with the tag prefix, don't double it
-  if (snakeOp.startsWith(`${snakeTag}_`)) {
-    return snakeOp
-  }
-  return `${snakeTag}_${snakeOp}`
-}
+// toSnakeCase and makeToolName imported from ./shared.js
 
 function safePropertyName(name: string): string {
   // If name contains characters invalid for JS identifiers, quote it
@@ -280,11 +247,15 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
       .replace(/\b\w/g, c => c.toUpperCase())
       .replace(/^(.)/,  c => c.toUpperCase())
   }
-  // If description is a single word or very short, synthesize from path + method
+  // If description is very short (≤2 words), synthesize a richer one from operationId + path
   if (desc.split(/\s+/).length <= 2) {
-    const pathParts = endpoint.path.replace('/api/', '').split('/').filter(p => !p.startsWith('{'))
-    const verb = endpoint.method === 'get' ? 'Get' : endpoint.method === 'post' ? 'Trigger' : endpoint.method === 'delete' ? 'Delete' : 'Update'
-    desc = `${verb} ${pathParts.join(' ')}`
+    // Use operationId as the base — it's always meaningful (e.g. "list_workflows", "create_workflow")
+    const fromOpId = endpoint.operationId
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase())
+    // Append the resource path for context (e.g. "via /api/workflows")
+    const resource = endpoint.path.replace('/api/', '').split('/').filter(p => !p.startsWith('{')).join('/')
+    desc = `${fromOpId} (${endpoint.method.toUpperCase()} /api/${resource})`
   }
   desc = desc.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'").trim()
 
