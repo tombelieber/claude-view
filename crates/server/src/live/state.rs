@@ -303,6 +303,58 @@ pub struct LiveSession {
     /// Transcript path from statusline (used for session dedup).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub statusline_transcript_path: Option<String>,
+    /// Output style name from statusline (e.g. "default", "concise").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_output_style: Option<String>,
+    /// Vim mode from statusline (e.g. "NORMAL", "INSERT").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_vim_mode: Option<String>,
+    /// Subagent name from statusline (e.g. "code-reviewer"). Distinct from
+    /// `agent_state` which is the FSM lifecycle state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_agent_name: Option<String>,
+    /// Worktree name from statusline. Distinct from indexer-derived
+    /// `worktree_branch`/`is_worktree` which come from git inspection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_worktree_name: Option<String>,
+    /// Worktree path from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_worktree_path: Option<String>,
+    /// Worktree branch from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_worktree_branch: Option<String>,
+    /// Worktree original cwd from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_worktree_original_cwd: Option<String>,
+    /// Worktree original branch from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_worktree_original_branch: Option<String>,
+    /// Remaining context window percentage from statusline (0.0–100.0).
+    /// f32 to match statusline_used_pct.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_remaining_pct: Option<f32>,
+    /// Cumulative input tokens across the session from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub statusline_total_input_tokens: Option<u64>,
+    /// Cumulative output tokens across the session from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub statusline_total_output_tokens: Option<u64>,
+    /// 5-hour rate limit used percentage from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_rate_limit_5h_pct: Option<f64>,
+    /// 5-hour rate limit reset timestamp (Unix seconds) from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub statusline_rate_limit_5h_resets_at: Option<i64>,
+    /// 7-day rate limit used percentage from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statusline_rate_limit_7d_pct: Option<f64>,
+    /// 7-day rate limit reset timestamp (Unix seconds) from statusline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | null")]
+    pub statusline_rate_limit_7d_resets_at: Option<i64>,
     /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
     #[serde(skip)]
     pub statusline_raw: Option<serde_json::Value>,
@@ -531,6 +583,21 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         statusline_version: None,
         exceeds_200k_tokens: None,
         statusline_transcript_path: None,
+        statusline_output_style: None,
+        statusline_vim_mode: None,
+        statusline_agent_name: None,
+        statusline_worktree_name: None,
+        statusline_worktree_path: None,
+        statusline_worktree_branch: None,
+        statusline_worktree_original_cwd: None,
+        statusline_worktree_original_branch: None,
+        statusline_remaining_pct: None,
+        statusline_total_input_tokens: None,
+        statusline_total_output_tokens: None,
+        statusline_rate_limit_5h_pct: None,
+        statusline_rate_limit_5h_resets_at: None,
+        statusline_rate_limit_7d_pct: None,
+        statusline_rate_limit_7d_resets_at: None,
         statusline_raw: None,
         model_set_at: 0,
         agent_state_set_at: 0,
