@@ -906,7 +906,7 @@ async fn estimate_cost(
 
     // Look up model pricing
     let pricing = &*state.pricing;
-    let model_pricing = claude_view_core::pricing::lookup_pricing(&model, &pricing);
+    let model_pricing = claude_view_core::pricing::lookup_pricing(&model, pricing);
 
     let per_million =
         |tokens: u64, rate_per_m: f64| -> f64 { (tokens as f64 / 1_000_000.0) * rate_per_m };

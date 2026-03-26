@@ -740,7 +740,7 @@ pub async fn ai_generation_stats(
         for (model_id, input, output, cache_read, cache_create) in &model_tokens {
             let model_token_total = *input + *output + *cache_read + *cache_create;
             all_tokens_total += model_token_total;
-            if let Some(mp) = pricing_engine::lookup_pricing(model_id, &pricing) {
+            if let Some(mp) = pricing_engine::lookup_pricing(model_id, pricing) {
                 cost.priced_model_count += 1;
                 priced_tokens_total += model_token_total;
                 cost.input_cost_usd += *input as f64 * mp.input_cost_per_token;
