@@ -228,6 +228,45 @@ pub fn classify_window(steps: &[StepSignals]) -> PhaseLabel {
     classify_window_with_threshold(steps, CONFIDENCE_THRESHOLD)
 }
 
+/// Classify from a raw feature vector (for cross-validation tests).
+#[cfg(test)]
+pub fn classify_from_features(features: &[f32; N_FEATURES]) -> (SessionPhase, f64) {
+    // 1. Shipping rule
+    if is_shipping(features) {
+        return (SessionPhase::Shipping, 1.0);
+    }
+
+    // 2. XGBoost
+    let scores = eval_xgboost(features);
+    let probs = softmax(&scores);
+    let (best_idx, best_prob) = probs
+        .iter()
+        .enumerate()
+        .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+        .unwrap();
+
+    // 3. Confidence gate
+    if *best_prob < CONFIDENCE_THRESHOLD {
+        return (SessionPhase::Working, *best_prob);
+    }
+
+    // 4. Thinking/Planning split
+    let ml_phase = ML_CLASSES[best_idx];
+    let phase = if ml_phase == SessionPhase::Planning {
+        let has_writes = features[TOTAL_EDIT_IDX] + features[SUM_WRITE_IDX] > 0.0
+            || features[SUM_DOC_FILES_IDX] + features[SUM_PLAN_FILES_IDX] > 0.0;
+        if has_writes {
+            SessionPhase::Planning
+        } else {
+            SessionPhase::Thinking
+        }
+    } else {
+        ml_phase
+    };
+
+    (phase, *best_prob)
+}
+
 fn classify_window_with_threshold(steps: &[StepSignals], threshold: f64) -> PhaseLabel {
     let n = steps.len();
     if n == 0 {
