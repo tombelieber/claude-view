@@ -23,7 +23,7 @@ export const projectsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/projects/${args.id}/branches`)
+      const result = await client.request('GET', `/api/projects/${encodeURIComponent(String(args.id))}/branches`)
       return JSON.stringify(result, null, 2)
     },
   },
@@ -40,7 +40,7 @@ export const projectsGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/projects/${args.id}/sessions`, { params: { limit: args.limit, offset: args.offset, sort: args.sort, branch: args.branch, includeSidechains: args.includeSidechains } })
+      const result = await client.request('GET', `/api/projects/${encodeURIComponent(String(args.id))}/sessions`, { params: { limit: args.limit, offset: args.offset, sort: args.sort, branch: args.branch, includeSidechains: args.includeSidechains } })
       return JSON.stringify(result, null, 2)
     },
   }

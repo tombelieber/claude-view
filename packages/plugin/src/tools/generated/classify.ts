@@ -33,7 +33,7 @@ export const classifyGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', `/api/classify/single/${args.session_id}`)
+      const result = await client.request('POST', `/api/classify/single/${encodeURIComponent(String(args.session_id))}`)
       return JSON.stringify(result, null, 2)
     },
   },

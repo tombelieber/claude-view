@@ -13,7 +13,7 @@ export const plansGeneratedTools: ToolDef[] = [
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/sessions/${args.id}/plans`)
+      const result = await client.request('GET', `/api/sessions/${encodeURIComponent(String(args.id))}/plans`)
       return JSON.stringify(result, null, 2)
     },
   }

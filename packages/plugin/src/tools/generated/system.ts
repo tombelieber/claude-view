@@ -9,7 +9,7 @@ export const systemGeneratedTools: ToolDef[] = [
     name: 'system_check_path',
     description: 'Check whether a filesystem path still exists.',
     inputSchema: z.object({
-    path: z.string(),
+    path: z.string().optional(),
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
@@ -31,7 +31,7 @@ export const systemGeneratedTools: ToolDef[] = [
     name: 'system_clear_cache',
     description: 'Clear search index and cached data.',
     inputSchema: z.object({}),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('POST', '/api/system/clear-cache')
       return JSON.stringify(result, null, 2)
@@ -51,7 +51,7 @@ export const systemGeneratedTools: ToolDef[] = [
     name: 'system_trigger_reindex',
     description: 'Trigger a full re-index.',
     inputSchema: z.object({}),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('POST', '/api/system/reindex')
       return JSON.stringify(result, null, 2)
@@ -61,7 +61,7 @@ export const systemGeneratedTools: ToolDef[] = [
     name: 'system_reset_all',
     description: 'Factory reset all data.',
     inputSchema: z.object({}),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('POST', '/api/system/reset')
       return JSON.stringify(result, null, 2)

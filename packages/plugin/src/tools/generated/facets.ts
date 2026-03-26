@@ -9,7 +9,7 @@ export const facetsGeneratedTools: ToolDef[] = [
     name: 'facets_facet_badges',
     description: 'Quality badges (outcome + satisfaction) for the requested session IDs. Returns a JSON map keyed by session ID.',
     inputSchema: z.object({
-    ids: z.string(),
+    ids: z.string().optional(),
   }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
