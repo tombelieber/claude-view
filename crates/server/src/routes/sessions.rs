@@ -1966,6 +1966,7 @@ mod tests {
         use crate::live::state::{
             AgentState, AgentStateGroup, HookEvent, LiveSession, SessionStatus,
         };
+        use claude_view_core::phase::PhaseHistory;
         use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
         let db = test_db().await;
@@ -2058,6 +2059,7 @@ mod tests {
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,
+            phase: PhaseHistory::default(),
         };
         session.hook_events.push(HookEvent {
             timestamp: 1000,
@@ -2221,6 +2223,7 @@ mod tests {
     /// Helper: create a LiveSession with a given file_path (no DB insertion).
     fn make_live_session(id: &str, file_path: &str) -> crate::live::state::LiveSession {
         use crate::live::state::{AgentState, AgentStateGroup, LiveSession, SessionStatus};
+        use claude_view_core::phase::PhaseHistory;
         use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
         LiveSession {
@@ -2304,6 +2307,7 @@ mod tests {
             statusline_raw: None,
             model_set_at: 0,
             agent_state_set_at: 0,
+            phase: PhaseHistory::default(),
         }
     }
 

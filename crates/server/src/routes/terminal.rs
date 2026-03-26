@@ -1287,6 +1287,7 @@ mod tests {
 
         // Register the session in the live sessions map
         {
+            use claude_view_core::phase::PhaseHistory;
             use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
             let mut map = state.live_sessions.write().await;
             let session = crate::live::state::LiveSession {
@@ -1370,6 +1371,7 @@ mod tests {
                 statusline_raw: None,
                 model_set_at: 0,
                 agent_state_set_at: 0,
+                phase: PhaseHistory::default(),
             };
             map.insert(session_id.to_string(), session);
         }
