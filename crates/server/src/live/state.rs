@@ -149,7 +149,6 @@ use crate::live::mutation::merge::{Latest, Monotonic, Transient};
 pub struct StatuslineFields {
     // -- Monotonic: value only goes up within a session --
     // NOTE: All fields use #[ts(type = "...")] to bypass TS trait bounds on newtypes.
-
     /// Claude Code's own total cost in USD, from statusline.
     #[ts(type = "number | null")]
     #[serde(default, skip_serializing_if = "Monotonic::is_none")]
@@ -186,7 +185,6 @@ pub struct StatuslineFields {
     pub statusline_total_output_tokens: Monotonic<u64>,
 
     // -- Latest: newest non-null wins --
-
     /// Authoritative context window size from statusline (200_000 or 1_000_000).
     #[ts(type = "number | null")]
     #[serde(default, skip_serializing_if = "Latest::is_none")]
@@ -243,7 +241,6 @@ pub struct StatuslineFields {
     pub statusline_rate_limit_7d_resets_at: Latest<i64>,
 
     // -- Transient: absence = cleared --
-
     /// Current turn input tokens from statusline current_usage.input_tokens.
     #[ts(type = "bigint | null")]
     #[serde(default, skip_serializing_if = "Transient::is_none")]
@@ -310,11 +307,94 @@ pub struct StatuslineFields {
     pub statusline_worktree_original_branch: Transient<String>,
 
     // -- Raw: always replace (not serialized) --
-
     /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
     #[serde(skip)]
     #[ts(skip)]
     pub statusline_raw: Option<serde_json::Value>,
+}
+
+// ---------------------------------------------------------------------------
+// HookFields — 13 fields sourced from hooks, extracted from LiveSession
+// ---------------------------------------------------------------------------
+
+/// Hook-sourced fields, grouped for merge clarity.
+///
+/// `#[serde(flatten)]` on the parent ensures JSON keys are identical to the old
+/// flat layout. Contains agent_state, PID, title, turn count, activity tracking,
+/// sub-agents, progress items, and hook event log.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct HookFields {
+    /// Universal agent state — replaces pause_classification.
+    /// Always present (never null), with group/state/label/confidence.
+    pub agent_state: AgentState,
+    /// PID of the running Claude process, if any.
+    pub pid: Option<u32>,
+    /// Session title derived from the first non-meta user message.
+    pub title: String,
+    /// The last user message text (truncated for display).
+    pub last_user_message: String,
+    /// Human-readable description of the current activity.
+    pub current_activity: String,
+    /// Number of user/assistant turn pairs.
+    pub turn_count: u32,
+    /// Unix timestamp of the most recent file modification.
+    #[ts(type = "number")]
+    pub last_activity_at: i64,
+    /// Unix timestamp when the current user turn started (real prompt detected).
+    /// Used by frontend to compute live elapsed time for autonomous sessions.
+    #[ts(type = "number | null")]
+    pub current_turn_started_at: Option<i64>,
+    /// Sub-agents spawned via the Task tool in this session.
+    /// Empty vec if no sub-agents have been detected.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
+    /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
+    /// Empty vec if no progress items have been detected.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub progress_items: Vec<claude_view_core::progress::ProgressItem>,
+    /// Number of context compactions in this session (compact_boundary system messages).
+    pub compact_count: u32,
+    /// Monotonic timestamp when `agent_state` was last set. Same semantics.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub agent_state_set_at: i64,
+    /// Hook lifecycle events captured for the event log.
+    /// Skipped in SSE serialization (too large); streamed via WS only.
+    #[serde(skip_serializing)]
+    pub hook_events: Vec<HookEvent>,
+}
+
+impl Default for HookFields {
+    fn default() -> Self {
+        Self {
+            agent_state: AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "unknown".into(),
+                label: "Unknown".into(),
+                context: None,
+            },
+            pid: None,
+            title: String::new(),
+            last_user_message: String::new(),
+            current_activity: String::new(),
+            turn_count: 0,
+            last_activity_at: 0,
+            current_turn_started_at: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            compact_count: 0,
+            agent_state_set_at: 0,
+            hook_events: Vec::new(),
+        }
+    }
 }
 
 /// A live session snapshot broadcast to connected SSE clients.
@@ -340,9 +420,11 @@ pub struct LiveSession {
     pub file_path: String,
     /// Current derived session status.
     pub status: SessionStatus,
-    /// Universal agent state — replaces pause_classification.
-    /// Always present (never null), with group/state/label/confidence.
-    pub agent_state: AgentState,
+    /// All hook-sourced fields (agent_state, pid, title, turn_count, etc.).
+    /// Flattened into JSON for zero wire format change.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub hook: HookFields,
     /// Git branch name, if detected.
     pub git_branch: Option<String>,
     /// Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
@@ -351,22 +433,9 @@ pub struct LiveSession {
     pub is_worktree: bool,
     /// Computed: worktree_branch ?? git_branch. Always use this for display.
     pub effective_branch: Option<String>,
-    /// PID of the running Claude process, if any.
-    pub pid: Option<u32>,
-    /// Session title derived from the first non-meta user message.
-    pub title: String,
-    /// The last user message text (truncated for display).
-    pub last_user_message: String,
-    /// Human-readable description of the current activity.
-    pub current_activity: String,
-    /// Number of user/assistant turn pairs.
-    pub turn_count: u32,
     /// Unix timestamp when the session started, if known.
     #[ts(type = "number | null")]
     pub started_at: Option<i64>,
-    /// Unix timestamp of the most recent file modification.
-    #[ts(type = "number")]
-    pub last_activity_at: i64,
     /// The primary model used in this session.
     pub model: Option<String>,
     /// Accumulated token usage for this session (cumulative, for cost).
@@ -378,17 +447,9 @@ pub struct LiveSession {
     pub cost: CostBreakdown,
     /// Whether the Anthropic prompt cache is likely warm or cold.
     pub cache_status: CacheStatus,
-    /// Unix timestamp when the current user turn started (real prompt detected).
-    /// Used by frontend to compute live elapsed time for autonomous sessions.
-    #[ts(type = "number | null")]
-    pub current_turn_started_at: Option<i64>,
     /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
     /// Used by frontend to show task time for needs_you sessions.
     pub last_turn_task_seconds: Option<u32>,
-    /// Sub-agents spawned via the Task tool in this session.
-    /// Empty vec if no sub-agents have been detected.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub sub_agents: Vec<claude_view_core::subagent::SubAgentInfo>,
     /// Team name if this session is a team lead.
     /// Populated from the top-level `teamName` field in the JSONL (present after TeamCreate).
     /// Frontend uses this to show team badge instead of sub-agent pills.
@@ -407,10 +468,6 @@ pub struct LiveSession {
     /// Used by frontend as a version signal to invalidate file-history and plan queries.
     #[serde(default)]
     pub edit_count: u32,
-    /// Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
-    /// Empty vec if no progress items have been detected.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub progress_items: Vec<claude_view_core::progress::ProgressItem>,
     /// Unique tool integrations detected in this session (MCP servers, skills).
     /// Discovered from actual tool_use invocations -- 100% accuracy.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -420,8 +477,6 @@ pub struct LiveSession {
     /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
     #[ts(type = "number | null")]
     pub last_cache_hit_at: Option<i64>,
-    /// Number of context compactions in this session (compact_boundary system messages).
-    pub compact_count: u32,
     /// Session slug for plan file association.
     pub slug: Option<String>,
     /// Verified file references detected from user messages.
@@ -457,14 +512,6 @@ pub struct LiveSession {
     #[serde(skip)]
     #[ts(skip)]
     pub model_set_at: i64,
-    /// Monotonic timestamp when `agent_state` was last set. Same semantics.
-    #[serde(skip)]
-    #[ts(skip)]
-    pub agent_state_set_at: i64,
-    /// Hook lifecycle events captured for the event log.
-    /// Skipped in SSE serialization (too large); streamed via WS only.
-    #[serde(skip_serializing)]
-    pub hook_events: Vec<HookEvent>,
 }
 
 /// A single hook lifecycle event, captured for the event log.
@@ -622,39 +669,43 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         project_path: "/tmp/test".to_string(),
         file_path: "/tmp/test.jsonl".to_string(),
         status: SessionStatus::Working,
-        agent_state: AgentState {
-            group: AgentStateGroup::Autonomous,
-            state: "acting".into(),
-            label: "Working".into(),
-            context: None,
+        hook: HookFields {
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            pid: None,
+            title: "Test session".into(),
+            last_user_message: String::new(),
+            current_activity: "Working".into(),
+            turn_count: 5,
+            last_activity_at: 1000,
+            current_turn_started_at: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            compact_count: 0,
+            agent_state_set_at: 0,
+            hook_events: Vec::new(),
         },
         git_branch: None,
         worktree_branch: None,
         is_worktree: false,
         effective_branch: None,
-        pid: None,
-        title: "Test session".into(),
-        last_user_message: String::new(),
-        current_activity: "Working".into(),
-        turn_count: 5,
         started_at: Some(1000),
-        last_activity_at: 1000,
         model: None,
         tokens: TokenUsage::default(),
         context_window_tokens: 0,
         cost: CostBreakdown::default(),
         cache_status: CacheStatus::Unknown,
-        current_turn_started_at: None,
         last_turn_task_seconds: None,
-        sub_agents: Vec::new(),
         team_name: None,
         team_members: Vec::new(),
         team_inbox_count: 0,
         edit_count: 0,
-        progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
-        compact_count: 0,
         slug: None,
         user_files: None,
         closed_at: None,
@@ -662,9 +713,7 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         statusline: StatuslineFields::default(),
         model_display_name: None,
         model_set_at: 0,
-        agent_state_set_at: 0,
         source: None,
-        hook_events: Vec::new(),
         phase: PhaseHistory::default(),
     }
 }
@@ -715,7 +764,10 @@ impl PartialEq for LiveSessionAction {
 pub fn classify_live_session(session: Option<&LiveSession>) -> LiveSessionAction {
     match session {
         None => LiveSessionAction::ResumeNew,
-        Some(s) if s.pid.is_none() || !crate::live::process::is_pid_alive(s.pid.unwrap_or(0)) => {
+        Some(s)
+            if s.hook.pid.is_none()
+                || !crate::live::process::is_pid_alive(s.hook.pid.unwrap_or(0)) =>
+        {
             LiveSessionAction::ResumeDeadProcess
         }
         Some(s) if s.control.is_some() => {
@@ -986,7 +1038,7 @@ mod tests {
     #[test]
     fn classify_dead_pid_returns_resume_not_block() {
         let mut session = test_live_session("dead-pid-session");
-        session.pid = Some(999_999);
+        session.hook.pid = Some(999_999);
         let action = classify_live_session(Some(&session));
         assert_eq!(
             action,
@@ -998,7 +1050,7 @@ mod tests {
     #[test]
     fn classify_no_pid_returns_resume_dead() {
         let mut session = test_live_session("no-pid-session");
-        session.pid = None;
+        session.hook.pid = None;
         let action = classify_live_session(Some(&session));
         assert_eq!(action, LiveSessionAction::ResumeDeadProcess);
     }
@@ -1006,7 +1058,7 @@ mod tests {
     #[test]
     fn classify_alive_pid_no_control_returns_resume_alive() {
         let mut session = test_live_session("alive-session");
-        session.pid = Some(std::process::id());
+        session.hook.pid = Some(std::process::id());
         session.control = None;
         let action = classify_live_session(Some(&session));
         assert_eq!(action, LiveSessionAction::ResumeAlive);
@@ -1015,7 +1067,7 @@ mod tests {
     #[test]
     fn classify_already_controlled_returns_reuse() {
         let mut session = test_live_session("controlled-session");
-        session.pid = Some(std::process::id());
+        session.hook.pid = Some(std::process::id());
         session.control = Some(ControlBinding {
             control_id: "ctl-123".to_string(),
             bound_at: 0,
