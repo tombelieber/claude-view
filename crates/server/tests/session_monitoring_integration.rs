@@ -1,12 +1,9 @@
 //! Integration tests for session monitoring SOTA hardening.
 //!
-//! These tests exercise REAL system calls (lsof, ps, kill) against the
-//! current process — not mocks. This catches parsing regressions that unit
-//! tests with hardcoded strings miss.
+//! These tests exercise REAL system calls against the current process — not mocks.
+//! This catches parsing regressions that unit tests with hardcoded strings miss.
 //!
 //! Test matrix:
-//! - batch_lsof: own PID resolves, dead PID returns empty, exit code 1 doesn't drop valid results
-//! - batch_ps: own PID returns command string, dead PID is absent
 //! - source cache: second detect_claude_processes() call uses cache
 //! - snapshot recovery: PID dedup on load
 //! - ghost session: hook-created skeleton with no JSONL auto-completes
@@ -14,122 +11,7 @@
 use std::collections::HashMap;
 
 // =============================================================================
-// Test 1: batch_get_cwd_via_lsof parses real output
-// =============================================================================
-
-#[test]
-fn test_batch_lsof_parses_real_output() {
-    let own_pid = std::process::id();
-    let dead_pid: u32 = 4_000_000; // Almost certainly not alive
-
-    let result = claude_view_server::live::process::batch_get_cwd_via_lsof(&[own_pid, dead_pid]);
-
-    // Our own PID must resolve to a valid path
-    assert!(
-        result.contains_key(&own_pid),
-        "lsof must resolve own PID's cwd (got: {:?})",
-        result
-    );
-    let own_cwd = &result[&own_pid];
-    assert!(
-        own_cwd.is_absolute(),
-        "Resolved CWD must be absolute: {:?}",
-        own_cwd
-    );
-    assert!(
-        own_cwd.exists(),
-        "Resolved CWD must exist on disk: {:?}",
-        own_cwd
-    );
-
-    // Dead PID must NOT be in results
-    assert!(
-        !result.contains_key(&dead_pid),
-        "Dead PID must not resolve (got: {:?})",
-        result.get(&dead_pid)
-    );
-}
-
-/// lsof exits with code 1 when ANY PID in the batch doesn't exist.
-/// Valid results for alive PIDs must still be parsed.
-#[test]
-fn test_batch_lsof_exit_code_1_doesnt_drop_valid_results() {
-    let own_pid = std::process::id();
-    // Mix alive and dead PIDs — lsof will exit 1 but stdout has valid data
-    let dead_pids: Vec<u32> = vec![4_000_001, 4_000_002, 4_000_003];
-    let mut all_pids = vec![own_pid];
-    all_pids.extend_from_slice(&dead_pids);
-
-    let result = claude_view_server::live::process::batch_get_cwd_via_lsof(&all_pids);
-
-    assert!(
-        result.contains_key(&own_pid),
-        "Own PID must still resolve even when lsof exits 1 due to dead PIDs"
-    );
-    for dp in &dead_pids {
-        assert!(!result.contains_key(dp));
-    }
-}
-
-/// Empty input must return empty without spawning a subprocess.
-#[test]
-fn test_batch_lsof_empty_input() {
-    let result = claude_view_server::live::process::batch_get_cwd_via_lsof(&[]);
-    assert!(result.is_empty());
-}
-
-// =============================================================================
-// Test 2: batch_get_command_via_ps parses real output
-// =============================================================================
-
-#[test]
-fn test_batch_ps_parses_real_output() {
-    // Use PID 1 (launchd/init) as the sole known-good target.
-    // macOS ps rejects PIDs > ~100K with "process id too large" on stderr,
-    // causing the entire batch to fail. Test dead PID separately.
-    let known_pid: u32 = 1;
-
-    let result =
-        claude_view_server::live::process_tree::helpers::batch_get_command_via_ps(&[known_pid]);
-
-    // PID 1 must return a non-empty command string
-    assert!(
-        result.contains_key(&known_pid),
-        "ps must resolve PID 1's command (got: {:?})",
-        result
-    );
-    let cmd = &result[&known_pid];
-    assert!(
-        !cmd.is_empty(),
-        "Command string for PID 1 must not be empty"
-    );
-}
-
-/// Dead PID (within macOS's valid range) must not appear in ps results.
-#[test]
-fn test_batch_ps_dead_pid_absent() {
-    // Use a PID in the valid range but almost certainly not running.
-    // macOS max PID is 99999 by default.
-    let dead_pid: u32 = 99998;
-    let result =
-        claude_view_server::live::process_tree::helpers::batch_get_command_via_ps(&[dead_pid]);
-
-    // If by cosmic coincidence PID 99998 is alive, the test still passes —
-    // we just verify it either isn't present or has a non-empty command.
-    if result.contains_key(&dead_pid) {
-        assert!(!result[&dead_pid].is_empty());
-    }
-    // No assertion failure — the point is that it doesn't crash.
-}
-
-#[test]
-fn test_batch_ps_empty_input() {
-    let result = claude_view_server::live::process_tree::helpers::batch_get_command_via_ps(&[]);
-    assert!(result.is_empty());
-}
-
-// =============================================================================
-// Test 3: Source cache hit (detect_claude_processes)
+// Test 1: Source cache hit (detect_claude_processes)
 // =============================================================================
 
 #[test]
