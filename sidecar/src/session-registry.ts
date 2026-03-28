@@ -105,6 +105,7 @@ export class SessionRegistry {
   async closeAll(): Promise<void> {
     for (const cs of this.sessions.values()) {
       cs.closeReason = 'shutdown'
+      cs.abort.abort()
       cs.permissions.drainAll()
       cs.bridge.close()
       cs.query.close()
