@@ -497,6 +497,15 @@ pub struct HookFields {
     /// Skipped in SSE serialization (too large); streamed via WS only.
     #[serde(skip_serializing)]
     pub hook_events: Vec<HookEvent>,
+    /// Truncated preview of last assistant response (~200 chars). From Stop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assistant_preview: Option<String>,
+    /// Last API error type (rate_limit, server_error, etc.). From StopFailure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    /// Last API error details. From StopFailure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error_details: Option<String>,
 }
 
 impl Default for HookFields {
@@ -520,6 +529,9 @@ impl Default for HookFields {
             compact_count: 0,
             agent_state_set_at: 0,
             hook_events: Vec::new(),
+            last_assistant_preview: None,
+            last_error: None,
+            last_error_details: None,
         }
     }
 }
