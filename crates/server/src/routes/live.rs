@@ -329,10 +329,30 @@ pub async fn get_session_statusline_debug(
 ) -> Response {
     let sessions = state.live_sessions.read().await;
     match sessions.get(&id) {
-        Some(session) => match &session.statusline.statusline_raw {
-            Some(raw) => Json(raw.clone()).into_response(),
-            None => (axum::http::StatusCode::NOT_FOUND, "No statusline data yet").into_response(),
-        },
+        Some(session) => {
+            let log = &session.statusline.statusline_debug_log;
+            if log.is_empty() {
+                return (axum::http::StatusCode::NOT_FOUND, "No statusline data yet")
+                    .into_response();
+            }
+            let entries: Vec<serde_json::Value> = log
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "receivedAt": e.received_at,
+                        "blocksPresent": e.blocks_present,
+                        "payload": e.payload,
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({
+                "sessionId": id,
+                "entryCount": entries.len(),
+                "maxEntries": crate::live::state::MAX_STATUSLINE_DEBUG_ENTRIES,
+                "entries": entries,
+            }))
+            .into_response()
+        }
         None => (axum::http::StatusCode::NOT_FOUND, "Session not found").into_response(),
     }
 }

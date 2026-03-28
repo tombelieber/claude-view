@@ -125,8 +125,47 @@ pub fn apply_statusline(state: &mut StatuslineFields, payload: &StatuslinePayloa
         .statusline_rate_limit_7d_resets_at
         .merge(sd.and_then(|w| w.resets_at));
 
-    // Raw blob for debug endpoint
-    state.statusline_raw = serde_json::to_value(payload).ok();
+    // Debug ring buffer — push timestamped raw payload
+    if let Ok(raw) = serde_json::to_value(payload) {
+        use crate::live::state::{StatuslineDebugEntry, MAX_STATUSLINE_DEBUG_ENTRIES};
+        let mut blocks = Vec::new();
+        if payload.context_window.is_some() {
+            blocks.push("context_window".into());
+        }
+        if payload.cost.is_some() {
+            blocks.push("cost".into());
+        }
+        if payload.model.is_some() {
+            blocks.push("model".into());
+        }
+        if payload.workspace.is_some() {
+            blocks.push("workspace".into());
+        }
+        if payload.worktree.is_some() {
+            blocks.push("worktree".into());
+        }
+        if payload.rate_limits.is_some() {
+            blocks.push("rate_limits".into());
+        }
+        if payload.vim.is_some() {
+            blocks.push("vim".into());
+        }
+        if payload.agent.is_some() {
+            blocks.push("agent".into());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        if state.statusline_debug_log.len() >= MAX_STATUSLINE_DEBUG_ENTRIES {
+            state.statusline_debug_log.pop_front();
+        }
+        state.statusline_debug_log.push_back(StatuslineDebugEntry {
+            received_at: now,
+            payload: raw,
+            blocks_present: blocks,
+        });
+    }
 }
 
 #[cfg(test)]
