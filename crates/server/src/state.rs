@@ -174,7 +174,8 @@ pub struct AppState {
     pub pending_statusline: tokio::sync::Mutex<PendingMutations<StatuslinePayload>>,
     /// Single entry point for all session state mutations.
     /// Replaces scattered lock-acquire → mutate → broadcast patterns.
-    pub coordinator: SessionCoordinator,
+    /// Shared with `LiveSessionManager` when the manager is active.
+    pub coordinator: Arc<SessionCoordinator>,
     /// PostHog telemetry client. `None` when no PostHog API key is compiled in.
     pub telemetry: Option<crate::telemetry::TelemetryClient>,
     /// Path to the telemetry config file (allows tests to use temp dirs).
@@ -229,7 +230,7 @@ impl AppState {
             pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
                 std::time::Duration::from_secs(120),
             )),
-            coordinator: SessionCoordinator::new(),
+            coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
@@ -281,7 +282,7 @@ impl AppState {
             pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
                 std::time::Duration::from_secs(120),
             )),
-            coordinator: SessionCoordinator::new(),
+            coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
@@ -336,7 +337,7 @@ impl AppState {
             pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
                 std::time::Duration::from_secs(120),
             )),
-            coordinator: SessionCoordinator::new(),
+            coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })

@@ -31,7 +31,9 @@ use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
+use super::coordinator::{MutationContext, SessionCoordinator};
 use super::file_resolver::resolve_file_path;
+use super::mutation::types::{LifecycleEvent, SessionMutation};
 use super::process::{count_claude_processes, detect_claude_processes, is_pid_alive};
 use super::state::{
     append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
@@ -501,6 +503,12 @@ pub struct LiveSessionManager {
     _death_watcher: super::process_death::ProcessDeathWatcher,
     /// Channel to send classification requests to the oMLX scheduler.
     classify_tx: mpsc::Sender<ClassifyRequest>,
+    /// Per-session broadcast channels for hook events (WebSocket streaming).
+    /// Same instance referenced by AppState.hook_event_channels.
+    hook_event_channels: Arc<tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
+    /// Shared coordinator for routing mutations through the 4-phase pipeline.
+    /// Same instance referenced by AppState.coordinator.
+    coordinator: Arc<SessionCoordinator>,
 }
 
 impl LiveSessionManager {
@@ -516,11 +524,15 @@ impl LiveSessionManager {
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
         oracle_rx: super::process_oracle::OracleReceiver,
+        hook_event_channels: Arc<
+            tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
+        >,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
         TranscriptMap,
         broadcast::Sender<SessionEvent>,
+        Arc<SessionCoordinator>,
     ) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -541,6 +553,9 @@ impl LiveSessionManager {
         let (classify_tx, classify_rx) = mpsc::channel::<ClassifyRequest>(64);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
 
+        // Create shared coordinator — same instance will be stored in AppState
+        let coordinator = Arc::new(SessionCoordinator::new());
+
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
             tx: tx.clone(),
@@ -558,6 +573,8 @@ impl LiveSessionManager {
             oracle_rx,
             _death_watcher: death_watcher,
             classify_tx,
+            hook_event_channels,
+            coordinator: coordinator.clone(),
         });
 
         // Spawn background tasks
@@ -627,7 +644,22 @@ impl LiveSessionManager {
 
         info!("LiveSessionManager started with 6 background tasks (file watcher, reconciliation loop, cleanup, death watcher, relay client, db writer)");
 
-        (manager, sessions, transcript_to_session, tx)
+        (manager, sessions, transcript_to_session, tx, coordinator)
+    }
+
+    /// Build a `MutationContext` from manager fields for coordinator calls.
+    ///
+    /// The `manager_ref` parameter must be the `Arc<Self>` that owns this
+    /// manager — needed because `MutationContext.live_manager` is `Option<&Arc<Self>>`.
+    fn mutation_context<'a>(&'a self, manager_ref: &'a Arc<Self>) -> MutationContext<'a> {
+        MutationContext {
+            sessions: &self.sessions,
+            live_tx: &self.tx,
+            live_manager: Some(manager_ref),
+            db: &self.db,
+            transcript_to_session: &self.transcript_to_session,
+            hook_event_channels: &self.hook_event_channels,
+        }
     }
 
     /// Subscribe to session events for SSE streaming.
@@ -1441,41 +1473,37 @@ impl LiveSessionManager {
                         if already_closed {
                             tracing::debug!(session_id = %session_id, "JSONL file removed for recently-closed session — keeping in map");
                         } else if should_close {
-                            // Active session whose file vanished — treat as closure.
+                            // Active session whose file vanished — route through coordinator.
+                            // End mutation handles: agent_state, status, closed_at,
+                            // hook_events cleanup, accumulator removal, broadcast.
                             let now = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs() as i64;
-                            let closed_session = {
-                                let mut sessions = manager.sessions.write().await;
-                                if let Some(session) = sessions.get_mut(&session_id) {
-                                    session.status = SessionStatus::Done;
-                                    session.closed_at = Some(now);
-                                    session.hook.hook_events.clear();
-                                    Some(session.clone())
-                                } else {
-                                    None
-                                }
-                            }; // write lock dropped here
-
-                            if let Some(session) = closed_session {
-                                let _ = manager.tx.send(SessionEvent::SessionClosed { session });
-                                // Persist closed_at to SQLite for restart recovery
-                                let db = manager.db.clone();
-                                let sid = session_id.clone();
-                                tokio::spawn(async move {
-                                    let _ = sqlx::query(
-                                        "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
-                                    )
-                                    .bind(now)
-                                    .bind(&sid)
-                                    .execute(db.pool())
-                                    .await;
-                                });
-                                // Acquire accumulators lock AFTER sessions lock is dropped
-                                let mut accumulators = manager.accumulators.write().await;
-                                accumulators.remove(&session_id);
-                            }
+                            let ctx = manager.mutation_context(&manager);
+                            manager
+                                .coordinator
+                                .handle(
+                                    &ctx,
+                                    &session_id,
+                                    SessionMutation::Lifecycle(LifecycleEvent::End),
+                                    None,
+                                    now,
+                                    None,
+                                )
+                                .await;
+                            // Persist closed_at to SQLite for restart recovery
+                            let db = manager.db.clone();
+                            let sid = session_id.clone();
+                            tokio::spawn(async move {
+                                let _ = sqlx::query(
+                                    "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
+                                )
+                                .bind(now)
+                                .bind(&sid)
+                                .execute(db.pool())
+                                .await;
+                            });
                         }
                     }
                     FileEvent::Rescan => {
@@ -1554,40 +1582,70 @@ impl LiveSessionManager {
                 // =============================================================
                 // Phase 1: Lightweight liveness check (every tick = 10s)
                 // =============================================================
+                // Collect dead sessions under read lock (no mutation here).
                 let mut dead_sessions: Vec<String> = Vec::new();
                 let mut ghost_sessions: Vec<String> = Vec::new();
-                let mut transcript_paths_to_clean: Vec<PathBuf> = Vec::new();
-                let mut snapshot_dirty = false;
-
                 {
-                    let mut sessions = manager.sessions.write().await;
-
-                    for (session_id, session) in sessions.iter_mut() {
+                    let sessions = manager.sessions.read().await;
+                    for (session_id, session) in sessions.iter() {
                         if session.status == SessionStatus::Done {
                             continue;
                         }
-
-                        // 1a. PID liveness: dead PID → mark session ended
                         if let Some(pid) = session.hook.pid {
                             if !is_pid_alive(pid) {
-                                // Ghost session: hook created skeleton but no JSONL was
-                                // ever written. Auto-complete (remove) instead of keeping
-                                // in "recently closed" — there's nothing to show.
-                                let is_ghost =
-                                    session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
+                                let is_ghost = session.jsonl.file_path.is_empty()
+                                    && session.hook.turn_count == 0;
                                 if is_ghost {
                                     info!(
                                         session_id = %session_id,
                                         pid = pid,
                                         "Ghost session (no JSONL, zero turns) — auto-completing"
                                     );
+                                    ghost_sessions.push(session_id.clone());
                                 } else {
                                     info!(
                                         session_id = %session_id,
                                         pid = pid,
                                         "Bound PID is dead — marking session ended"
                                     );
+                                    dead_sessions.push(session_id.clone());
                                 }
+                            }
+                        }
+                    }
+                } // read lock dropped
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                // Route dead sessions through coordinator (End mutation handles
+                // agent_state, status, closed_at, hook_events, accumulator, broadcast).
+                if !dead_sessions.is_empty() {
+                    let ctx = manager.mutation_context(&manager);
+                    for session_id in &dead_sessions {
+                        manager
+                            .coordinator
+                            .handle(
+                                &ctx,
+                                session_id,
+                                SessionMutation::Lifecycle(LifecycleEvent::End),
+                                None,
+                                now,
+                                None,
+                            )
+                            .await;
+                    }
+                }
+
+                // Ghost sessions: manual removal + SessionCompleted.
+                // Coordinator doesn't support map removal (no "evict" action yet).
+                if !ghost_sessions.is_empty() {
+                    {
+                        let mut sessions = manager.sessions.write().await;
+                        for session_id in &ghost_sessions {
+                            if let Some(session) = sessions.get_mut(session_id) {
                                 session.hook.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
@@ -1595,86 +1653,35 @@ impl LiveSessionManager {
                                     context: None,
                                 };
                                 session.status = SessionStatus::Done;
-                                let now = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs() as i64;
                                 session.closed_at = Some(now);
-                                session.hook.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
-                                                                  // Collect transcript path for dedup map cleanup
-                                if let Some(tp) =
-                                    session.statusline.statusline_transcript_path.get()
-                                {
-                                    transcript_paths_to_clean.push(PathBuf::from(tp));
-                                }
-                                if is_ghost {
-                                    ghost_sessions.push(session_id.clone());
-                                } else {
-                                    dead_sessions.push(session_id.clone());
-                                }
-                                snapshot_dirty = true;
-                                continue;
                             }
+                            sessions.remove(session_id);
                         }
                     }
-
-                    // Dead sessions stay in the map as "recently closed" —
-                    // they are NOT removed here. Users dismiss them manually
-                    // (design: no time-based auto-dismiss, no TTL).
-                }
-
-                // Ghost sessions: remove from map entirely (no "recently closed" UI)
-                if !ghost_sessions.is_empty() {
-                    let mut sessions = manager.sessions.write().await;
                     for session_id in &ghost_sessions {
-                        sessions.remove(session_id);
+                        let _ = manager.tx.send(SessionEvent::SessionCompleted {
+                            session_id: session_id.clone(),
+                        });
                     }
-                }
-                // Broadcast ghost removals so frontend drops them immediately
-                for session_id in &ghost_sessions {
-                    let _ = manager.tx.send(SessionEvent::SessionCompleted {
-                        session_id: session_id.clone(),
-                    });
-                }
-
-                // Remove accumulators for all dead sessions (ghost + real)
-                if !dead_sessions.is_empty() || !ghost_sessions.is_empty() {
                     let mut accumulators = manager.accumulators.write().await;
-                    for session_id in dead_sessions.iter().chain(ghost_sessions.iter()) {
+                    for session_id in &ghost_sessions {
                         accumulators.remove(session_id);
                     }
                 }
 
-                // Clean transcript dedup map for dead sessions
-                // (lock ordering: transcript_to_session acquired AFTER live_sessions released)
-                if !transcript_paths_to_clean.is_empty() {
-                    let mut tmap = manager.transcript_to_session.write().await;
-                    for path in &transcript_paths_to_clean {
-                        tmap.remove(path);
-                    }
-                }
-
-                // Save session snapshot if any bindings changed (outside lock)
-                if snapshot_dirty {
+                // Save session snapshot if any sessions changed
+                if !dead_sessions.is_empty() || !ghost_sessions.is_empty() {
                     manager.save_session_snapshot_from_state().await;
                 }
 
-                // Broadcast closures (outside lock) — frontend moves to recentlyClosed
-                let dead_sessions_for_db = dead_sessions.clone();
-                for session_id in &dead_sessions {
-                    let session = manager.sessions.read().await.get(session_id).cloned();
-                    if let Some(session) = session {
-                        let _ = manager.tx.send(SessionEvent::SessionClosed { session });
-                    }
-                }
-
                 // Persist closed_at to SQLite for restart recovery
-                if !dead_sessions_for_db.is_empty() {
+                let all_closed: Vec<String> = dead_sessions
+                    .iter()
+                    .chain(ghost_sessions.iter())
+                    .cloned()
+                    .collect();
+                if !all_closed.is_empty() {
                     let db = manager.db.clone();
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
                     tokio::spawn(async move {
                         let mut tx = match db.pool().begin().await {
                             Ok(tx) => tx,
@@ -1683,7 +1690,7 @@ impl LiveSessionManager {
                                 return;
                             }
                         };
-                        for session_id in dead_sessions_for_db {
+                        for session_id in all_closed {
                             let _ = sqlx::query(
                                 "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL"
                             )
@@ -1749,6 +1756,9 @@ impl LiveSessionManager {
                         }
                     }
                 }
+
+                // Sweep expired pending mutations from coordinator buffer (every tick)
+                manager.coordinator.sweep_expired().await;
 
                 // =============================================================
                 // Phase 2: Process count + snapshot (every 3rd tick = 30s)
@@ -1874,23 +1884,44 @@ impl LiveSessionManager {
         let manager = self.clone();
         tokio::spawn(async move {
             while let Some((pid, session_id)) = death_rx.recv().await {
-                let mut sessions = manager.sessions.write().await;
-                if let Some(session) = sessions.get_mut(&session_id) {
-                    // Only act if this session is still alive and owns this PID
-                    if session.status != SessionStatus::Done && session.hook.pid == Some(pid) {
-                        let is_ghost = session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs() as i64;
+                // Pre-check: only act if session is alive and owns this PID.
+                // Also detect ghost sessions (no JSONL, zero turns) for special handling.
+                let (should_act, is_ghost) = {
+                    let sessions = manager.sessions.read().await;
+                    match sessions.get(&session_id) {
+                        Some(session)
+                            if session.status != SessionStatus::Done
+                                && session.hook.pid == Some(pid) =>
+                        {
+                            let ghost =
+                                session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
+                            (true, ghost)
+                        }
+                        _ => (false, false),
+                    }
+                };
 
-                        info!(
-                            session_id = %session_id,
-                            pid = pid,
-                            ghost = is_ghost,
-                            "kqueue: PID death → marking session ended"
-                        );
+                if !should_act {
+                    continue;
+                }
 
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                info!(
+                    session_id = %session_id,
+                    pid = pid,
+                    ghost = is_ghost,
+                    "kqueue: PID death → marking session ended"
+                );
+
+                if is_ghost {
+                    // Ghost sessions: manual removal + SessionCompleted.
+                    // Coordinator doesn't support map removal (no "evict" action yet).
+                    let mut sessions = manager.sessions.write().await;
+                    if let Some(session) = sessions.get_mut(&session_id) {
                         session.hook.agent_state = AgentState {
                             group: AgentStateGroup::NeedsYou,
                             state: "session_ended".into(),
@@ -1899,24 +1930,31 @@ impl LiveSessionManager {
                         };
                         session.status = SessionStatus::Done;
                         session.closed_at = Some(now);
-
-                        if is_ghost {
-                            let sid = session_id.clone();
-                            sessions.remove(&sid);
-                            drop(sessions);
-                            let _ = manager
-                                .tx
-                                .send(SessionEvent::SessionCompleted { session_id: sid });
-                        } else {
-                            let session_clone = session.clone();
-                            drop(sessions);
-                            let _ = manager.tx.send(SessionEvent::SessionClosed {
-                                session: session_clone,
-                            });
-                        }
-                        manager.request_snapshot_save();
                     }
+                    let sid = session_id.clone();
+                    sessions.remove(&sid);
+                    drop(sessions);
+                    let _ = manager
+                        .tx
+                        .send(SessionEvent::SessionCompleted { session_id: sid });
+                } else {
+                    // Route through coordinator: End mutation handles agent_state,
+                    // status, closed_at, hook_events cleanup, accumulator removal,
+                    // and broadcasts SessionClosed.
+                    let ctx = manager.mutation_context(&manager);
+                    manager
+                        .coordinator
+                        .handle(
+                            &ctx,
+                            &session_id,
+                            SessionMutation::Lifecycle(LifecycleEvent::End),
+                            None,
+                            now,
+                            None,
+                        )
+                        .await;
                 }
+                manager.request_snapshot_save();
             }
         });
     }
@@ -4236,7 +4274,10 @@ mod hook_event_tests {
             "/tmp",
         );
 
-        assert_eq!(session.jsonl.worktree_branch.as_deref(), Some("feat/my-feature"));
+        assert_eq!(
+            session.jsonl.worktree_branch.as_deref(),
+            Some("feat/my-feature")
+        );
         assert!(session.jsonl.is_worktree);
         assert_eq!(
             session.jsonl.effective_branch.as_deref(),
