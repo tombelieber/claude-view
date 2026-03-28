@@ -28,8 +28,14 @@ export function ComponentDashboard({
   pendingPids,
   expandAll = false,
 }: ComponentDashboardProps) {
-  const rollupCpu = proc.cpuPercent + proc.descendantCpu
-  const rollupMem = proc.memoryBytes + proc.descendantMemory
+  // Single source of truth: header rollup = sum of component rows.
+  // Never mix ClassifiedProcess (process tree) with ComponentSnapshot (collector).
+  const rollupCpu = components
+    ? components.components.reduce((sum, c) => sum + c.cpuPercent, 0)
+    : proc.cpuPercent + proc.descendantCpu
+  const rollupMem = components
+    ? components.components.reduce((sum, c) => sum + c.memoryBytes, 0)
+    : proc.memoryBytes + proc.descendantMemory
   const componentCount = components?.components.length ?? proc.descendantCount
 
   return (

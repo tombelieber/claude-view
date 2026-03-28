@@ -18,6 +18,8 @@ pub enum ComponentKind {
 )]
 #[serde(tag = "type")]
 pub enum ComponentDetails {
+    #[serde(rename = "server")]
+    Server,
     #[serde(rename = "sidecar", rename_all = "camelCase")]
     Sidecar { session_count: Option<u32> },
     #[serde(rename = "omlx", rename_all = "camelCase")]

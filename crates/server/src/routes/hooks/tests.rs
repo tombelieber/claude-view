@@ -4,7 +4,7 @@
 //! separately from the unit tests in each submodule.
 
 use super::*;
-use crate::live::state::{AgentStateGroup, HookFields, SessionStatus};
+use crate::live::state::{AgentState, AgentStateGroup, HookFields, SessionStatus};
 use tower::ServiceExt;
 
 pub(super) fn minimal_payload(event: &str) -> HookPayload {
