@@ -71,7 +71,7 @@ memmap2 = "0.9"
 memchr = "2"
 sysinfo = "0.33"
 similar = "2"
-ts-rs = { version = "11", features = ["serde-compat", "serde-json-impl"] }
+ts-rs = { version = "12", features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Testing
