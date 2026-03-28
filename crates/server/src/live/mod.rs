@@ -2,6 +2,7 @@ pub mod file_resolver;
 pub mod hook_registrar;
 pub mod manager;
 pub mod monitor;
+pub mod omlx_lifecycle;
 pub mod process;
 pub mod process_death;
 pub mod process_oracle;
