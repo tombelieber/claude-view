@@ -6,9 +6,10 @@ import { SessionRollupBar } from './SessionRollupBar'
 interface ComponentRowProps {
   component: ComponentStatus
   systemInfo: SystemInfo
+  totalVramBytes?: number | null
 }
 
-export function ComponentRow({ component: c, systemInfo }: ComponentRowProps) {
+export function ComponentRow({ component: c, systemInfo, totalVramBytes }: ComponentRowProps) {
   const kindLabel = c.kind === 'ExternalService' ? 'external' : 'child process'
 
   const statusDot = c.running
@@ -39,6 +40,13 @@ export function ComponentRow({ component: c, systemInfo }: ComponentRowProps) {
         </span>
       )}
 
+      {/* Session count badge — sidecar only */}
+      {c.details.type === 'sidecar' && c.details.sessionCount != null && (
+        <span className="text-xs tabular-nums px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 shrink-0">
+          {c.details.sessionCount} session{c.details.sessionCount !== 1 ? 's' : ''}
+        </span>
+      )}
+
       <div className="flex items-center gap-4 shrink-0 ml-auto">
         <div className="w-40">
           <SessionRollupBar label="CPU" value={c.cpuPercent} max={systemInfo.cpuCoreCount * 100} />
@@ -52,6 +60,20 @@ export function ComponentRow({ component: c, systemInfo }: ComponentRowProps) {
             formatValue={(v) => formatBytes(v)}
           />
         </div>
+        {c.vramBytes != null && totalVramBytes != null && totalVramBytes > 0 && (
+          <>
+            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
+            <div className="w-40">
+              <SessionRollupBar
+                label="VRAM"
+                value={c.vramBytes}
+                max={totalVramBytes}
+                formatValue={(v) => formatBytes(v)}
+                color="purple"
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
