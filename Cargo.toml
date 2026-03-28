@@ -95,6 +95,12 @@ claude-view-db = { path = "crates/db" }
 claude-view-search = { path = "crates/search" }
 claude-view-server = { path = "crates/server" }
 
+[profile.dev]
+opt-level = 0          # Fastest compile (no optimization)
+debug = 1              # Minimal debug info (2→1 saves ~40% disk + link time)
+incremental = true     # Reuse previous compilation work
+split-debuginfo = "unpacked"  # macOS: faster linking with split DWARF
+
 [profile.release]
 lto = true
 strip = true
