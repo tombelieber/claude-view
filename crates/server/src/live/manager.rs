@@ -15,7 +15,14 @@ use tracing::{error, info, warn};
 
 use claude_view_core::discovery::resolve_worktree_branch;
 use claude_view_core::live_parser::{parse_tail, HookProgressData, LineType, TailFinders};
-use claude_view_core::phase::{dominant_phase, PhaseHistory, PhaseLabel};
+use claude_view_core::phase::client::{ConversationTurn, OmlxClient, Role};
+use claude_view_core::phase::scheduler::{
+    run_scheduler, ClassifyRequest, ClassifyResult, Priority,
+};
+use claude_view_core::phase::stabilizer::ClassificationStabilizer;
+use claude_view_core::phase::{
+    dominant_phase, is_shipping_cmd, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
+};
 use claude_view_core::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
@@ -154,7 +161,16 @@ struct SessionAccumulator {
     /// Dedup guard for split assistant content blocks.
     /// Keyed by `message.id:requestId` so one API response is counted once.
     seen_api_calls: std::collections::HashSet<String>,
-    // Phase fields will be added in Task 8 (oMLX classification wiring)
+    /// Sliding window of recent conversation turns for phase classification.
+    message_buf: std::collections::VecDeque<ConversationTurn>,
+    /// Whether message_buf has new content since last classify request.
+    message_buf_dirty: bool,
+    /// Total messages accumulated (monotonic counter for skip logic).
+    message_buf_total: u32,
+    /// Stabilizer for smoothing noisy LLM classifications.
+    stabilizer: ClassificationStabilizer,
+    /// Monotonic generation counter for classify request dedup.
+    classify_generation: u64,
     /// Phase labels emitted so far (one per classification).
     phase_labels: Vec<PhaseLabel>,
 }
@@ -194,6 +210,11 @@ impl SessionAccumulator {
             slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
+            message_buf: std::collections::VecDeque::new(),
+            message_buf_dirty: false,
+            message_buf_total: 0,
+            stabilizer: ClassificationStabilizer::new(),
+            classify_generation: 0,
             phase_labels: Vec::new(),
         }
     }
@@ -521,6 +542,8 @@ pub struct LiveSessionManager {
     /// Event-driven process death watcher (kqueue on macOS).
     /// Held to prevent drop. Deaths are consumed by the reconciliation loop.
     _death_watcher: super::process_death::ProcessDeathWatcher,
+    /// Channel to send classification requests to the oMLX scheduler.
+    classify_tx: mpsc::Sender<ClassifyRequest>,
 }
 
 impl LiveSessionManager {
@@ -552,6 +575,15 @@ impl LiveSessionManager {
         // Start event-driven process death watcher (kqueue on macOS).
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
+        // oMLX phase classifier infrastructure
+        let omlx_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let omlx_port: u16 = std::env::var("OMLX_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(10710);
+        let (classify_tx, classify_rx) = mpsc::channel::<ClassifyRequest>(64);
+        let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
+
         let manager = Arc::new(Self {
             sessions: sessions.clone(),
             tx: tx.clone(),
@@ -568,6 +600,7 @@ impl LiveSessionManager {
             transcript_to_session: transcript_to_session.clone(),
             oracle_rx,
             _death_watcher: death_watcher,
+            classify_tx,
         });
 
         // Spawn background tasks
@@ -576,6 +609,57 @@ impl LiveSessionManager {
         manager.spawn_reconciliation_loop();
         manager.spawn_cleanup_task();
         manager.spawn_death_consumer(death_rx);
+
+        // Spawn oMLX lifecycle (health check)
+        let omlx_ready_clone = omlx_ready.clone();
+        tokio::spawn(super::omlx_lifecycle::run_lifecycle(
+            omlx_ready_clone,
+            omlx_port,
+        ));
+
+        // Spawn classify scheduler
+        let client = Arc::new(OmlxClient::new(
+            format!("http://localhost:{}", omlx_port),
+            "Qwen3.5-4B-MLX-4bit".into(),
+        ));
+        tokio::spawn(run_scheduler(classify_rx, result_tx, client, omlx_ready, 2));
+
+        // Spawn classify result handler
+        {
+            let accumulators = manager.accumulators.clone();
+            let sessions = manager.sessions.clone();
+            let tx = manager.tx.clone();
+            tokio::spawn(async move {
+                while let Some(result) = result_rx.recv().await {
+                    let mut accs = accumulators.write().await;
+                    if let Some(acc) = accs.get_mut(&result.session_id) {
+                        acc.stabilizer.update(result.phase, result.scope);
+                        if acc.stabilizer.should_emit() {
+                            let label = PhaseLabel {
+                                phase: acc
+                                    .stabilizer
+                                    .displayed_phase()
+                                    .unwrap_or(SessionPhase::Working),
+                                confidence: acc.stabilizer.confidence(),
+                                scope: acc.stabilizer.displayed_scope(),
+                            };
+                            acc.phase_labels.push(label);
+                            if acc.phase_labels.len() > MAX_PHASE_LABELS {
+                                acc.phase_labels.remove(0);
+                            }
+                        }
+                    }
+                    drop(accs);
+                    // Broadcast session update
+                    let sessions = sessions.read().await;
+                    if let Some(session) = sessions.get(&result.session_id) {
+                        let _ = tx.send(SessionEvent::SessionUpdated {
+                            session: session.clone(),
+                        });
+                    }
+                }
+            });
+        }
 
         // Spawn relay client for mobile remote access
         super::relay_client::spawn_relay_client(
@@ -1976,6 +2060,10 @@ impl LiveSessionManager {
             acc.accumulated_cost = CostBreakdown::default();
             acc.seen_api_calls.clear();
             acc.phase_labels.clear();
+            acc.message_buf.clear();
+            acc.message_buf_dirty = false;
+            acc.message_buf_total = 0;
+            acc.stabilizer.reset();
         }
 
         let mut channel_a_events: Vec<HookEvent> = Vec::new();
@@ -2479,7 +2567,66 @@ impl LiveSessionManager {
                 }
             }
 
-            // TODO: wire oMLX classification (Task 8)
+            // Phase classification: check shipping rule, accumulate turns, schedule LLM classify.
+            for cmd in &line.bash_commands {
+                if is_shipping_cmd(cmd) {
+                    acc.stabilizer.lock_shipping();
+                    acc.phase_labels.push(PhaseLabel {
+                        phase: SessionPhase::Shipping,
+                        confidence: 1.0,
+                        scope: None,
+                    });
+                    if acc.phase_labels.len() > MAX_PHASE_LABELS {
+                        acc.phase_labels.remove(0);
+                    }
+                    break;
+                }
+            }
+
+            // Accumulate conversation turn
+            if line.role.as_deref() == Some("assistant") || line.role.as_deref() == Some("user") {
+                let role = if line.role.as_deref() == Some("user") {
+                    Role::User
+                } else {
+                    Role::Assistant
+                };
+                let turn = ConversationTurn {
+                    role,
+                    text: line.content_extended.clone(),
+                    tools: line.tool_names.clone(),
+                };
+                if acc.message_buf.len() >= 15 {
+                    acc.message_buf.pop_front();
+                }
+                acc.message_buf.push_back(turn);
+                acc.message_buf_dirty = true;
+                acc.message_buf_total += 1;
+            }
+
+            // Schedule classification if dirty and not in steady-state skip
+            let should_classify = acc.message_buf_dirty
+                && (acc.message_buf_total <= 2
+                    || acc.stabilizer.displayed_phase().is_none()
+                    || acc.message_buf_total % 5 == 0);
+
+            if should_classify {
+                acc.message_buf_dirty = false;
+                let priority = if acc.phase_labels.is_empty() {
+                    Priority::New
+                } else if acc.stabilizer.displayed_phase().is_none() {
+                    Priority::Transition
+                } else {
+                    Priority::Steady
+                };
+                acc.classify_generation += 1;
+                let _ = self.classify_tx.try_send(ClassifyRequest {
+                    session_id: session_id.clone(),
+                    priority,
+                    turns: acc.message_buf.iter().cloned().collect(),
+                    temperature: acc.stabilizer.next_temperature(),
+                    generation: acc.classify_generation,
+                });
+            }
         }
 
         // Use per-turn accumulated cost (computed in the line processing loop above).
