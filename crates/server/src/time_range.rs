@@ -90,7 +90,7 @@ pub fn resolve_from_to_or_all_time(
     }
 
     match (input.from, input.to) {
-        (Some(from), None) | (None, Some(from)) if !allow_legacy_one_sided_ranges() => {
+        (Some(_from), None) | (None, Some(_from)) if !allow_legacy_one_sided_ranges() => {
             Err(TimeRangeResolutionError::one_sided_input())
         }
         (Some(from), None) => {
@@ -143,7 +143,7 @@ where
     }
 
     match (input.from, input.to) {
-        (Some(from), None) if !allow_legacy_one_sided_ranges() => {
+        (Some(_from), None) if !allow_legacy_one_sided_ranges() => {
             Err(TimeRangeResolutionError::one_sided_input())
         }
         (None, Some(_)) if !allow_legacy_one_sided_ranges() => {
