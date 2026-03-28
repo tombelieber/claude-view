@@ -318,7 +318,7 @@ function runStreamLoop(cs: ControlSession, registry: SessionRegistry): void {
         })
       }
       bridge_close_safe(cs)
-      setTimeout(() => registry.remove(cs.controlId), 5_000)
+      registry.scheduleRemove(cs.controlId, 5_000)
     }
   })()
 }
