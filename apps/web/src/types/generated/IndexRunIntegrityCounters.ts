@@ -3,4 +3,14 @@
 /**
  * Integrity counters emitted during indexing.
  */
-export type IndexRunIntegrityCounters = { unknownTopLevelTypeCount: number, unknownRequiredPathCount: number, imaginaryPathAccessCount: number, legacyFallbackPathCount: number, droppedLineInvalidJsonCount: number, schemaMismatchCount: number, unknownSourceRoleCount: number, derivedSourceMessageDocCount: number, sourceMessageNonSourceProvenanceCount: number, };
+export type IndexRunIntegrityCounters = {
+  unknownTopLevelTypeCount: number
+  unknownRequiredPathCount: number
+  imaginaryPathAccessCount: number
+  legacyFallbackPathCount: number
+  droppedLineInvalidJsonCount: number
+  schemaMismatchCount: number
+  unknownSourceRoleCount: number
+  derivedSourceMessageDocCount: number
+  sourceMessageNonSourceProvenanceCount: number
+}
