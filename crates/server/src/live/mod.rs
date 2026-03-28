@@ -1,4 +1,5 @@
 pub mod buffer;
+pub mod component_collector;
 pub mod coordinator;
 pub mod file_resolver;
 pub mod hook_registrar;
