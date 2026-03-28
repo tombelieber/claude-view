@@ -74,6 +74,7 @@ pub fn classify_processes_cached(
 }
 
 /// Cache state for process tree. Stored in the oracle loop.
+#[derive(Default)]
 pub struct ProcessTreeCache {
     last_hash: u64,
     last_snapshot: Option<ProcessTreeSnapshot>,
@@ -81,10 +82,7 @@ pub struct ProcessTreeCache {
 
 impl ProcessTreeCache {
     pub fn new() -> Self {
-        Self {
-            last_hash: 0,
-            last_snapshot: None,
-        }
+        Self::default()
     }
 }
 
