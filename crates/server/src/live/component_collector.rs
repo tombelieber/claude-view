@@ -1,7 +1,6 @@
 //! Assembles component-level resource metrics from sidecar + oMLX + self.
 
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use sysinfo::System;
 
