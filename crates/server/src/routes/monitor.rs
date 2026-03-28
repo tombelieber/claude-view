@@ -163,6 +163,12 @@ pub async fn monitor_stream(
                                 Err(e) => tracing::error!("failed to serialize process_tree: {e}"),
                             }
                         }
+                        Ok(MonitorEvent::Components(comp)) => {
+                            match serde_json::to_string(&comp) {
+                                Ok(data) => yield Ok(Event::default().event("components").data(data)),
+                                Err(e) => tracing::error!("failed to serialize components: {e}"),
+                            }
+                        }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!("monitor SSE client lagged by {n} events");
                             // Just continue — next snapshot will arrive shortly

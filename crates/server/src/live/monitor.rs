@@ -283,6 +283,8 @@ pub enum MonitorEvent {
     Snapshot(ResourceSnapshot),
     /// Classified process tree — emitted every 10 seconds (every 5th tick).
     ProcessTree(crate::live::process_tree::ProcessTreeSnapshot),
+    /// Component-level resource breakdown — emitted every 10 seconds.
+    Components(crate::live::process_tree::component_types::ComponentSnapshot),
 }
 
 // =============================================================================
@@ -339,6 +341,11 @@ pub fn start_polling_task(
             // Forward process tree if available on this tick
             if let Some(ref tree) = oracle_snap.process_tree {
                 let _ = tx.send(MonitorEvent::ProcessTree(tree.clone()));
+            }
+
+            // Forward component snapshot if available on this tick
+            if let Some(ref comp) = oracle_snap.component_snapshot {
+                let _ = tx.send(MonitorEvent::Components(comp.clone()));
             }
         }
     });

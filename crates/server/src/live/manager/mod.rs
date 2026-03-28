@@ -105,6 +105,7 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
+        omlx_status: Arc<super::omlx_lifecycle::OmlxStatus>,
         oracle_rx: super::process_oracle::OracleReceiver,
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
@@ -126,12 +127,7 @@ impl LiveSessionManager {
         // Start event-driven process death watcher (kqueue on macOS)
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
-        // oMLX phase classifier infrastructure
-        let omlx_ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let omlx_port: u16 = std::env::var("OMLX_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(10710);
+        // oMLX phase classifier infrastructure (omlx_status injected from caller)
         let (classify_tx, classify_rx) = mpsc::channel::<ClassifyRequest>(64);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
 
@@ -167,18 +163,20 @@ impl LiveSessionManager {
         manager.spawn_death_consumer(death_rx);
 
         // Spawn oMLX lifecycle (health check)
-        let omlx_ready_clone = omlx_ready.clone();
-        tokio::spawn(super::omlx_lifecycle::run_lifecycle(
-            omlx_ready_clone,
-            omlx_port,
-        ));
+        tokio::spawn(super::omlx_lifecycle::run_lifecycle(omlx_status.clone()));
 
         // Spawn classify scheduler
         let client = Arc::new(OmlxClient::new(
-            format!("http://localhost:{}", omlx_port),
+            format!("http://localhost:{}", omlx_status.port),
             "Qwen3.5-4B-MLX-4bit".into(),
         ));
-        tokio::spawn(run_scheduler(classify_rx, result_tx, client, omlx_ready, 2));
+        tokio::spawn(run_scheduler(
+            classify_rx,
+            result_tx,
+            client,
+            omlx_status.ready.clone(),
+            2,
+        ));
 
         // Spawn classify result handler
         {
