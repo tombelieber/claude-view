@@ -72,6 +72,8 @@ reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 libc = "0.2"
+core-foundation = { workspace = true }
+core-foundation-sys = { workspace = true }
 crypto_box = "0.9"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
