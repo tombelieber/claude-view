@@ -17,7 +17,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::mutation::types::{LifecycleEvent, SessionMutation, SubEntityEvent};
-use crate::live::state::AgentState;
 use crate::state::AppState;
 
 use eviction::evict_stale_sessions_for_pid;
