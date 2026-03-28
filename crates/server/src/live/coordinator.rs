@@ -56,8 +56,11 @@ pub struct MutationContext<'a> {
 ///
 /// Replaces 25+ scattered `live_tx.send()` calls with one deterministic
 /// pipeline that enforces lock ordering and side-effect separation.
+/// A buffered mutation with its associated hook event.
+type BufferedMutation = (SessionMutation, Option<HookEvent>);
+
 pub struct SessionCoordinator {
-    pending: tokio::sync::Mutex<PendingMutations<SessionMutation>>,
+    pending: tokio::sync::Mutex<PendingMutations<BufferedMutation>>,
 }
 
 /// Default buffer TTL for pending mutations (2 minutes).
@@ -101,9 +104,9 @@ impl SessionCoordinator {
             if mutation.can_create_session() {
                 // Create session, then drain buffered mutations below
             } else {
-                // Buffer and return early
+                // Buffer mutation + hook event together, return early
                 let mut pending = self.pending.lock().await;
-                pending.push(session_id, mutation);
+                pending.push(session_id, (mutation, hook_event));
                 return MutationResult::Buffered;
             }
         }
@@ -132,9 +135,22 @@ impl SessionCoordinator {
                     let mut pending = self.pending.lock().await;
                     pending.drain(session_id)
                 };
-                for buffered_mutation in buffered {
+                for (buffered_mutation, buffered_hook_event) in buffered {
                     if let Some(session) = sessions.get_mut(session_id) {
                         apply_mutation_to_session(session, &buffered_mutation, now);
+                        // Replay buffered hook event with the session's actual group
+                        if let Some(mut event) = buffered_hook_event {
+                            let actual_group = match session.hook.agent_state.group {
+                                crate::live::state::AgentStateGroup::NeedsYou => "needs_you",
+                                crate::live::state::AgentStateGroup::Autonomous => "autonomous",
+                            };
+                            event.group = actual_group.to_string();
+                            append_capped_hook_event(
+                                &mut session.hook.hook_events,
+                                event,
+                                MAX_EVENTS,
+                            );
+                        }
                     }
                 }
             }
@@ -166,8 +182,18 @@ impl SessionCoordinator {
                 session.hook.last_activity_at = activity_at;
             }
 
-            // Append hook event inside lock
-            if let Some(event) = hook_event {
+            // Append hook event inside lock.
+            // Rewrite the group field to match the session's actual agent_state
+            // group AFTER mutation. For sub-entity events (SubagentStop, etc.)
+            // the mutation doesn't change agent_state, so the session's existing
+            // group is preserved. For state-changing events, the mutation updates
+            // agent_state first, so we record the new group.
+            if let Some(mut event) = hook_event {
+                let actual_group = match session.hook.agent_state.group {
+                    crate::live::state::AgentStateGroup::NeedsYou => "needs_you",
+                    crate::live::state::AgentStateGroup::Autonomous => "autonomous",
+                };
+                event.group = actual_group.to_string();
                 append_capped_hook_event(&mut session.hook.hook_events, event, MAX_EVENTS);
                 // Forward to WS channel if listeners exist
                 forward_hook_event_to_ws(
