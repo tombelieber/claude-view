@@ -39,6 +39,33 @@ pub struct HookPayload {
     pub trigger: Option<String>,           // PreCompact: "manual" | "auto"
     pub custom_instructions: Option<String>, // PreCompact
     pub name: Option<String>,              // SubagentStart/Stop name field
+    // ── Fields from Claude Code docs (previously silently dropped) ──
+    pub last_assistant_message: Option<String>, // Stop, SubagentStop, StopFailure
+    pub compact_summary: Option<String>,        // PostCompact
+    pub error_details: Option<String>,          // StopFailure
+    pub title: Option<String>,                  // Notification
+    pub old_cwd: Option<String>,                // CwdChanged
+    pub new_cwd: Option<String>,                // CwdChanged
+    pub file_path: Option<String>,              // FileChanged, InstructionsLoaded, ConfigChange
+    #[serde(rename = "event")]
+    pub file_event: Option<String>, // FileChanged ("change"|"add"|"unlink")
+    pub worktree_path: Option<String>,          // WorktreeRemove
+    pub memory_type: Option<String>,            // InstructionsLoaded
+    pub load_reason: Option<String>,            // InstructionsLoaded
+    pub globs: Option<Vec<String>>,             // InstructionsLoaded
+    pub trigger_file_path: Option<String>,      // InstructionsLoaded
+    pub parent_file_path: Option<String>,       // InstructionsLoaded
+    pub mcp_server_name: Option<String>,        // Elicitation/ElicitationResult
+    pub mode: Option<String>,                   // Elicitation/ElicitationResult
+    pub url: Option<String>,                    // Elicitation
+    pub elicitation_id: Option<String>,         // Elicitation/ElicitationResult
+    pub requested_schema: Option<serde_json::Value>, // Elicitation
+    pub action: Option<String>,                 // ElicitationResult
+    pub content: Option<serde_json::Value>,     // ElicitationResult
+    /// Safety net: capture any fields Claude Code adds in the future.
+    #[serde(flatten)]
+    #[schema(value_type = Object)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -653,6 +680,28 @@ mod tests {
             trigger: None,
             custom_instructions: None,
             name: None,
+            last_assistant_message: None,
+            compact_summary: None,
+            error_details: None,
+            title: None,
+            old_cwd: None,
+            new_cwd: None,
+            file_path: None,
+            file_event: None,
+            worktree_path: None,
+            memory_type: None,
+            load_reason: None,
+            globs: None,
+            trigger_file_path: None,
+            parent_file_path: None,
+            mcp_server_name: None,
+            mode: None,
+            url: None,
+            elicitation_id: None,
+            requested_schema: None,
+            action: None,
+            content: None,
+            extra: std::collections::HashMap::new(),
         }
     }
 
