@@ -171,10 +171,9 @@ function GroupedSidebarCards({
             {!isGroupCollapsed && (
               <div className="space-y-2">
                 {group.sessions.map((session) => (
-                  <div
+                  <button
+                    type="button"
                     key={session.id}
-                    role="button"
-                    tabIndex={0}
                     data-session-id={session.id}
                     onClick={() => onSelect(session.id)}
                     onKeyDown={(e) => {
@@ -197,7 +196,7 @@ function GroupedSidebarCards({
                       showStateBadge
                       hideProjectBranch
                     />
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
