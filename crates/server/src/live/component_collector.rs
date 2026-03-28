@@ -32,6 +32,7 @@ pub fn collect(
         pid: sidecar_pid,
         cpu_percent: sidecar_cpu,
         memory_bytes: sidecar_mem,
+        vram_bytes: None,
         details: ComponentDetails::Sidecar {
             session_count: None, // v2: query sidecar /api/sidecar/sessions count
         },
@@ -54,6 +55,7 @@ pub fn collect(
         pid: omlx_pid,
         cpu_percent: omlx_cpu,
         memory_bytes: omlx_mem,
+        vram_bytes: None,
         details: ComponentDetails::Omlx {
             model_id: super::omlx_lifecycle::EXPECTED_MODEL_SUBSTRING.into(),
             port: omlx_status.port,
@@ -71,6 +73,7 @@ pub fn collect(
     ComponentSnapshot {
         components,
         build_mode,
+        total_vram_bytes: None,
     }
 }
 
