@@ -4,6 +4,7 @@ interface SessionRollupBarProps {
   max: number
   suffix?: string
   formatValue?: (v: number) => string
+  color?: 'default' | 'purple'
 }
 
 function barColor(pct: number): string {
@@ -25,9 +26,16 @@ export function SessionRollupBar({
   max,
   suffix,
   formatValue,
+  color = 'default',
 }: SessionRollupBarProps) {
   const pct = max > 0 ? (value / max) * 100 : 0
   const display = formatValue ? formatValue(value) : `${pct.toFixed(1)}%`
+
+  const fillColor = color === 'purple' ? 'bg-purple-500 dark:bg-purple-400' : barColor(pct)
+  const labelColor =
+    color === 'purple'
+      ? 'text-purple-600 dark:text-purple-400'
+      : textColor(pct)
 
   return (
     <div className="flex items-center gap-2">
@@ -44,11 +52,11 @@ export function SessionRollupBar({
       >
         <div
           data-testid="rollup-fill"
-          className={`h-full rounded-full transition-all duration-200 ${barColor(pct)}`}
+          className={`h-full rounded-full transition-all duration-200 ${fillColor}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
-      <span className={`text-xs tabular-nums font-medium shrink-0 ${textColor(pct)}`}>
+      <span className={`text-xs tabular-nums font-medium shrink-0 ${labelColor}`}>
         {display}
       </span>
       {suffix && (
