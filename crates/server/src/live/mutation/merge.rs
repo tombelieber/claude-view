@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Value that only goes up within a session.
 /// None from sender = "didn't send" = no change.
 /// Inner field is PRIVATE -- can't bypass .merge().
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Monotonic<T>(Option<T>);
 
@@ -33,6 +33,10 @@ impl<T: PartialOrd> Monotonic<T> {
         // None -> no-op (sender didn't include this field)
     }
 
+    pub fn is_none(&self) -> bool {
+        self.0.is_none()
+    }
+
     pub fn get(&self) -> Option<&T> {
         self.0.as_ref()
     }
@@ -44,7 +48,7 @@ impl<T: PartialOrd> Monotonic<T> {
 
 /// Latest non-null value wins.
 /// None from sender = "didn't send" = no change.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Latest<T>(Option<T>);
 
@@ -66,6 +70,10 @@ impl<T> Latest<T> {
         }
     }
 
+    pub fn is_none(&self) -> bool {
+        self.0.is_none()
+    }
+
     pub fn get(&self) -> Option<&T> {
         self.0.as_ref()
     }
@@ -77,7 +85,7 @@ impl<T> Latest<T> {
 
 /// Absence = intentionally cleared (e.g., exited vim mode).
 /// None from sender = "this state ended".
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Transient<T>(Option<T>);
 
@@ -95,6 +103,10 @@ impl<T> Transient<T> {
     #[inline]
     pub fn merge(&mut self, incoming: Option<T>) {
         self.0 = incoming; // always overwrite -- None = cleared
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.0.is_none()
     }
 
     pub fn get(&self) -> Option<&T> {
@@ -216,6 +228,67 @@ mod tests {
         t.merge(Some("vim".into()));
         t.merge(None);
         assert_eq!(t.get(), None);
+    }
+
+    // -- is_none / PartialEq tests --
+
+    #[test]
+    fn monotonic_default_is_none() {
+        let m = Monotonic::<u64>::default();
+        assert!(m.is_none());
+    }
+
+    #[test]
+    fn latest_default_is_none() {
+        let l = Latest::<String>::default();
+        assert!(l.is_none());
+    }
+
+    #[test]
+    fn transient_default_is_none() {
+        let t = Transient::<String>::default();
+        assert!(t.is_none());
+    }
+
+    #[test]
+    fn monotonic_is_none_after_merge() {
+        let mut m = Monotonic::<u64>::new();
+        assert!(m.is_none());
+        m.merge(Some(42));
+        assert!(!m.is_none());
+    }
+
+    #[test]
+    fn monotonic_partialeq() {
+        let mut a = Monotonic::<u64>::new();
+        let mut b = Monotonic::<u64>::new();
+        assert_eq!(a, b);
+        a.merge(Some(1));
+        assert_ne!(a, b);
+        b.merge(Some(1));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn latest_partialeq() {
+        let mut a = Latest::<String>::new();
+        let mut b = Latest::<String>::new();
+        assert_eq!(a, b);
+        a.merge(Some("x".into()));
+        assert_ne!(a, b);
+        b.merge(Some("x".into()));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn transient_partialeq() {
+        let mut a = Transient::<String>::new();
+        let mut b = Transient::<String>::new();
+        assert_eq!(a, b);
+        a.merge(Some("y".into()));
+        assert_ne!(a, b);
+        b.merge(Some("y".into()));
+        assert_eq!(a, b);
     }
 
     // -- Serde tests --
