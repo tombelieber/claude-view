@@ -1,0 +1,14 @@
+Classify this AI coding session. Output ONLY a JSON object, nothing else.
+
+{"phase": "...", "scope": "..."}
+
+phase — exactly one of: thinking, planning, building, testing, reviewing, shipping
+scope — 3-8 word description of the task (e.g. "XGBoost phase classifier", "chat panel refactor")
+
+Definitions:
+- thinking: reading code, exploring, investigating
+- planning: designing architecture, writing specs, brainstorming
+- building: writing/editing code, implementing features
+- testing: running tests, debugging, verifying
+- reviewing: code review, auditing, quality checks
+- shipping: deploying, releasing, publishing, creating PRs

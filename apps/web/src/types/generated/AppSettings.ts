@@ -3,4 +3,4 @@
 /**
  * Application settings (single-row table).
  */
-export type AppSettings = { llmModel: string; llmTimeoutSecs: number }
+export type AppSettings = { llmModel: string, llmTimeoutSecs: number, };

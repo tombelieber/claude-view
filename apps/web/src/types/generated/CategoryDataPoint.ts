@@ -3,9 +3,4 @@
 /**
  * Category evolution data point.
  */
-export type CategoryDataPoint = {
-  date: string
-  codeWork: number
-  supportWork: number
-  thinkingWork: number
-}
+export type CategoryDataPoint = { date: string, codeWork: number, supportWork: number, thinkingWork: number, };

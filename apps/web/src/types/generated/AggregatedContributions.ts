@@ -3,41 +3,40 @@
 /**
  * Aggregated contribution metrics for a time period.
  */
-export type AggregatedContributions = {
-  /**
-   * Total sessions in the period
-   */
-  sessionsCount: number
-  /**
-   * Total AI lines added
-   */
-  aiLinesAdded: number
-  /**
-   * Total AI lines removed
-   */
-  aiLinesRemoved: number
-  /**
-   * Total commits linked
-   */
-  commitsCount: number
-  /**
-   * Total commit insertions
-   */
-  commitInsertions: number
-  /**
-   * Total commit deletions
-   */
-  commitDeletions: number
-  /**
-   * Total tokens used
-   */
-  tokensUsed: number
-  /**
-   * Total cost in cents
-   */
-  costCents: number
-  /**
-   * Total files edited across all sessions
-   */
-  filesEditedCount: number
-}
+export type AggregatedContributions = { 
+/**
+ * Total sessions in the period
+ */
+sessionsCount: number, 
+/**
+ * Total AI lines added
+ */
+aiLinesAdded: number, 
+/**
+ * Total AI lines removed
+ */
+aiLinesRemoved: number, 
+/**
+ * Total commits linked
+ */
+commitsCount: number, 
+/**
+ * Total commit insertions
+ */
+commitInsertions: number, 
+/**
+ * Total commit deletions
+ */
+commitDeletions: number, 
+/**
+ * Total tokens used
+ */
+tokensUsed: number, 
+/**
+ * Total cost in cents
+ */
+costCents: number, 
+/**
+ * Total files edited across all sessions
+ */
+filesEditedCount: number, };

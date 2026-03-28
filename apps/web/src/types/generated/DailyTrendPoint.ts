@@ -3,12 +3,4 @@
 /**
  * Daily trend data point for charts.
  */
-export type DailyTrendPoint = {
-  date: string
-  linesAdded: number
-  linesRemoved: number
-  commits: number
-  sessions: number
-  tokensUsed: number
-  costCents: number
-}
+export type DailyTrendPoint = { date: string, linesAdded: number, linesRemoved: number, commits: number, sessions: number, tokensUsed: number, costCents: number, };

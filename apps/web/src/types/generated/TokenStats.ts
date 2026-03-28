@@ -3,12 +3,4 @@
 /**
  * Aggregate token usage statistics (for GET /api/stats/tokens).
  */
-export type TokenStats = {
-  totalInputTokens: number
-  totalOutputTokens: number
-  totalCacheReadTokens: number
-  totalCacheCreationTokens: number
-  cacheHitRatio: number
-  turnsCount: number
-  sessionsCount: number
-}
+export type TokenStats = { totalInputTokens: number, totalOutputTokens: number, totalCacheReadTokens: number, totalCacheCreationTokens: number, cacheHitRatio: number, turnsCount: number, sessionsCount: number, };
