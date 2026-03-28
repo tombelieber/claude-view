@@ -124,3 +124,36 @@ fn find_port_pid(port: u16) -> Option<u32> {
         .next()
         .and_then(|s| s.parse::<u32>().ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sysinfo::ProcessesToUpdate;
+
+    #[test]
+    fn pid_metrics_returns_zero_for_none() {
+        let sys = System::new_all();
+        let (cpu, mem) = pid_metrics(&sys, None);
+        assert_eq!(cpu, 0.0);
+        assert_eq!(mem, 0);
+    }
+
+    #[test]
+    fn pid_metrics_returns_data_for_self() {
+        let mut sys = System::new_all();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        sys.refresh_processes(ProcessesToUpdate::All, true);
+        let self_pid = std::process::id();
+        let (cpu, mem) = pid_metrics(&sys, Some(self_pid));
+        // We are running, so memory should be > 0
+        assert!(mem > 0, "self process memory should be > 0");
+        // CPU can be 0 on first sample, that's OK
+        let _ = cpu;
+    }
+
+    #[test]
+    fn find_port_pid_returns_none_for_unused_port() {
+        // Port 1 is almost certainly unused
+        assert!(find_port_pid(1).is_none());
+    }
+}

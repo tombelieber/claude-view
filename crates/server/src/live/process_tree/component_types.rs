@@ -56,3 +56,52 @@ pub struct ComponentSnapshot {
     pub components: Vec<ComponentStatus>,
     pub build_mode: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn component_kind_serializes_pascal_case() {
+        assert_eq!(
+            serde_json::to_string(&ComponentKind::ExternalService).unwrap(),
+            "\"ExternalService\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ComponentKind::ChildProcess).unwrap(),
+            "\"ChildProcess\""
+        );
+    }
+
+    #[test]
+    fn component_details_tagged_union() {
+        let details = ComponentDetails::Sidecar {
+            session_count: Some(3),
+        };
+        let json = serde_json::to_value(&details).unwrap();
+        assert_eq!(json["type"], "sidecar");
+        assert_eq!(json["sessionCount"], 3);
+    }
+
+    #[test]
+    fn component_status_camel_case_fields() {
+        let status = ComponentStatus {
+            name: "test".into(),
+            kind: ComponentKind::ChildProcess,
+            enabled: true,
+            running: true,
+            pid: Some(1234),
+            cpu_percent: 5.0,
+            memory_bytes: 1024,
+            details: ComponentDetails::Sidecar {
+                session_count: None,
+            },
+        };
+        let json = serde_json::to_value(&status).unwrap();
+        // Verify camelCase field names
+        assert!(json.get("cpuPercent").is_some());
+        assert!(json.get("memoryBytes").is_some());
+        // Verify PascalCase kind
+        assert_eq!(json["kind"], "ChildProcess");
+    }
+}
