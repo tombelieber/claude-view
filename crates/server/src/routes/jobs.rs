@@ -125,6 +125,9 @@ mod tests {
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            pending_statusline: tokio::sync::Mutex::new(
+                crate::live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
+            ),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         });
