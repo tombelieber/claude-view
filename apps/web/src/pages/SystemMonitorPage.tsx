@@ -12,7 +12,7 @@ import { TopProcessesPanel } from '../components/monitor/TopProcessesPanel'
 import { useSystemMonitor } from '../hooks/use-system-monitor'
 
 export function SystemMonitorPage() {
-  const { status, systemInfo, snapshot, processTree } = useSystemMonitor()
+  const { status, systemInfo, snapshot, processTree, components } = useSystemMonitor()
   const { sessions } = useLiveSessions()
   const hasRevealedRef = useRef(false)
 
@@ -94,6 +94,7 @@ export function SystemMonitorPage() {
               liveSessions={sessions}
               processTree={processTree}
               systemInfo={systemInfo}
+              components={components}
             />
           </div>
 
