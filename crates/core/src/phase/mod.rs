@@ -8,7 +8,13 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
-#[cfg_attr(feature = "codegen", ts(export))]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "lowercase")]
 pub enum SessionPhase {
     Thinking,
@@ -75,7 +81,13 @@ impl std::fmt::Display for SessionPhase {
 
 /// Classification result for a single window.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[cfg_attr(feature = "codegen", ts(export))]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct PhaseLabel {
     pub phase: SessionPhase,
@@ -86,7 +98,13 @@ pub struct PhaseLabel {
 
 /// Full phase history for a session.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
-#[cfg_attr(feature = "codegen", ts(export))]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct PhaseHistory {
     pub current: Option<PhaseLabel>,

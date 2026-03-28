@@ -4,7 +4,7 @@ import type { CostBreakdown } from "../../../../../packages/shared/src/types/gen
 import type { ProgressItem } from "../../../../../packages/shared/src/types/generated/ProgressItem";
 import type { SubAgentInfo } from "../../../../../packages/shared/src/types/generated/SubAgentInfo";
 import type { TokenUsage } from "../../../../../packages/shared/src/types/generated/TokenUsage";
-import type { PhaseHistory } from "./PhaseHistory";
+import type { PhaseHistory } from "../../../../../packages/shared/src/types/generated/PhaseHistory";
 
 /**
  * Rich session data -- output of accumulation. Same shape for live and history.

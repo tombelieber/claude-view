@@ -1,4 +1,4 @@
-import type { SessionPhase } from '../types/generated/SessionPhase'
+import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
 import { cn } from '../lib/utils'
 
 interface PhaseConfig {

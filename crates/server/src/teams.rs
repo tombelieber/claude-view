@@ -45,7 +45,13 @@ pub struct TeamDetail {
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
-#[cfg_attr(feature = "codegen", ts(export))]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamMember {
     pub agent_id: String,
