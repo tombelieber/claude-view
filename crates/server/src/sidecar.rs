@@ -188,12 +188,16 @@ impl SidecarManager {
         Err(SidecarError::HealthCheckTimeout)
     }
 
-    /// Kill the sidecar child process and wait for it to exit.
+    /// Gracefully shut down the sidecar: SIGTERM first, SIGKILL fallback.
     ///
-    /// NOTE: `child.wait()` is a blocking call (std::process::Child::wait).
+    /// Sends SIGTERM so Node.js cleanup handlers (`process.on('SIGTERM')`) can
+    /// run, then polls `try_wait()` for up to 3 seconds. Falls back to SIGKILL
+    /// only if the process refuses to exit.
+    ///
+    /// NOTE: `child.wait()` / `child.try_wait()` are blocking calls.
     /// This is acceptable here because:
     /// 1. It's called from Drop and from the shutdown path (not hot path)
-    /// 2. The child is already killed, so wait() returns almost immediately
+    /// 2. The poll loop uses short sleeps (50ms) with a hard 3s deadline
     /// 3. Making this async would require spawn_blocking and complicate Drop
     pub fn shutdown(&self) {
         let Ok(mut guard) = self.child.lock() else {
@@ -201,9 +205,42 @@ impl SidecarManager {
             return;
         };
         if let Some(ref mut child) = *guard {
-            tracing::info!(pid = child.id(), "Shutting down sidecar");
+            let pid = child.id();
+            tracing::info!(pid, "Shutting down sidecar (SIGTERM)");
+
+            // Send SIGTERM so Node.js cleanup handlers can run.
+            // SAFETY: pid comes from a Child we own; the process exists.
+            let term_result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+            if term_result != 0 {
+                tracing::warn!(pid, errno = term_result, "SIGTERM send failed");
+            }
+
+            // Poll for graceful exit (up to 3s, 50ms intervals).
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        tracing::info!(pid, ?status, "Sidecar exited gracefully");
+                        *guard = None;
+                        return;
+                    }
+                    Ok(None) => {
+                        if std::time::Instant::now() >= deadline {
+                            break; // timed out — fall through to SIGKILL
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(e) => {
+                        tracing::warn!(pid, error = %e, "try_wait failed, falling back to SIGKILL");
+                        break;
+                    }
+                }
+            }
+
+            // Graceful shutdown timed out — force kill.
+            tracing::warn!(pid, "Sidecar did not exit within 3s, sending SIGKILL");
             let _ = child.kill();
-            let _ = child.wait(); // blocking but brief — child already killed
+            let _ = child.wait();
         }
         *guard = None;
     }
