@@ -3,4 +3,4 @@
 /**
  * Time-series data point for metric trends.
  */
-export type MetricDataPoint = { date: string, value: number, };
+export type MetricDataPoint = { date: string; value: number }

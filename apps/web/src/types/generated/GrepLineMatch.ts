@@ -3,4 +3,9 @@
 /**
  * One matching line within a session JSONL file.
  */
-export type GrepLineMatch = { lineNumber: number, content: string, matchStart: number, matchEnd: number, };
+export type GrepLineMatch = {
+  lineNumber: number
+  content: string
+  matchStart: number
+  matchEnd: number
+}

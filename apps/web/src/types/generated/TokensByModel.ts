@@ -3,4 +3,4 @@
 /**
  * Token usage breakdown by model.
  */
-export type TokensByModel = { model: string, inputTokens: number, outputTokens: number, };
+export type TokensByModel = { model: string; inputTokens: number; outputTokens: number }
