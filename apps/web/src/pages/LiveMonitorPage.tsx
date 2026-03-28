@@ -429,10 +429,14 @@ export function LiveMonitorPage() {
             indexingPercent={indexingPercent}
             filteredCount={filteredSessions.length}
             totalCount={sessions.length}
-            groupByValue={viewMode === 'kanban' ? groupBy : undefined}
-            onGroupByChange={viewMode === 'kanban' ? handleGroupByChange : undefined}
-            sortValue={viewMode === 'kanban' ? sort : undefined}
-            onSortChange={viewMode === 'kanban' ? handleSortChange : undefined}
+            groupByValue={viewMode === 'kanban' || viewMode === 'harness' ? groupBy : undefined}
+            onGroupByChange={
+              viewMode === 'kanban' || viewMode === 'harness' ? handleGroupByChange : undefined
+            }
+            sortValue={viewMode === 'kanban' || viewMode === 'harness' ? sort : undefined}
+            onSortChange={
+              viewMode === 'kanban' || viewMode === 'harness' ? handleSortChange : undefined
+            }
             showClosed={viewMode === 'kanban' ? showClosed : undefined}
             onShowClosedChange={viewMode === 'kanban' ? handleShowClosedChange : undefined}
             closedCount={recentlyClosed.length}
@@ -506,6 +510,10 @@ export function LiveMonitorPage() {
               onCardClick={handleSelectSession}
               stalledSessions={stalledSessions}
               currentTime={currentTime}
+              groupBy={groupBy}
+              projectGroups={projectGroups}
+              isCollapsed={isCollapsed}
+              toggleCollapse={toggleCollapse}
             />
           )}
 
