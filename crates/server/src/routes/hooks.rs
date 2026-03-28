@@ -139,16 +139,44 @@ pub async fn handle_hook(
     #[cfg(debug_assertions)]
     let debug_line = serde_json::to_string(&payload).unwrap_or_default();
 
-    // ── Build hook event context (for event log) ────────────────────────
-    let hook_event_context: Option<serde_json::Value> = payload.tool_input.clone().or_else(|| {
-        payload
-            .error
+    // ── Build hook event context (enriched for new events) ───────────────
+    let hook_event_context: Option<serde_json::Value> = match payload.hook_event_name.as_str() {
+        "Stop" | "SubagentStop" => payload
+            .last_assistant_message
             .as_ref()
-            .map(|e| serde_json::json!({"error": e}))
-    });
+            .map(|m| serde_json::json!({"lastAssistantMessage": m.chars().take(200).collect::<String>()}))
+            .or_else(|| payload.tool_input.clone()),
+        "StopFailure" => Some(serde_json::json!({
+            "error": payload.error,
+            "details": payload.error_details,
+        })),
+        "CwdChanged" => Some(serde_json::json!({
+            "oldCwd": payload.old_cwd,
+            "newCwd": payload.new_cwd,
+        })),
+        "PostCompact" => payload
+            .compact_summary
+            .as_ref()
+            .map(|s| serde_json::json!({"summary": s.chars().take(500).collect::<String>()})),
+        "TaskCreated" => Some(serde_json::json!({
+            "taskId": payload.task_id,
+            "subject": payload.task_subject,
+        })),
+        "SubagentStart" => Some(serde_json::json!({
+            "agentType": payload.agent_type,
+            "agentId": payload.agent_id,
+        })),
+        _ => payload.tool_input.clone().or_else(|| {
+            payload
+                .error
+                .as_ref()
+                .map(|e| serde_json::json!({"error": e}))
+        }),
+    };
 
     // ── Construct SessionMutation from hook event name ──────────────────
     let mutation = match payload.hook_event_name.as_str() {
+        // ── Session lifecycle ──
         "SessionStart" => SessionMutation::Lifecycle(LifecycleEvent::Start {
             cwd: payload.cwd.clone(),
             model: payload.model.clone(),
@@ -156,19 +184,43 @@ pub async fn handle_hook(
             pid,
             transcript_path: payload.transcript_path.clone(),
         }),
+        "SessionEnd" => SessionMutation::Lifecycle(LifecycleEvent::End {
+            reason: payload.reason.clone(),
+        }),
+
+        // ── User input ──
         "UserPromptSubmit" => SessionMutation::Lifecycle(LifecycleEvent::Prompt {
             text: payload.prompt.clone().unwrap_or_default(),
             pid,
         }),
-        "Stop" | "PreCompact" | "PostToolUse" => {
+
+        // ── Agent turn end ──
+        "Stop" => SessionMutation::Lifecycle(LifecycleEvent::Stop {
+            agent_state,
+            last_assistant_message: payload.last_assistant_message.clone(),
+            pid,
+        }),
+        "StopFailure" => SessionMutation::Lifecycle(LifecycleEvent::StopFailure {
+            error: payload.error.clone(),
+            error_details: payload.error_details.clone(),
+            pid,
+        }),
+
+        // ── Tool events ──
+        "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "PermissionRequest" => {
             SessionMutation::Lifecycle(LifecycleEvent::StateChange {
                 agent_state,
                 event_name: payload.hook_event_name.clone(),
                 pid,
             })
         }
-        "SessionEnd" => SessionMutation::Lifecycle(LifecycleEvent::End {
-            reason: payload.reason.clone(),
+
+        // ── Sub-entities ──
+        "SubagentStart" => SessionMutation::Lifecycle(LifecycleEvent::SubagentStarted {
+            agent_state,
+            agent_type: payload.agent_type.clone().unwrap_or_default(),
+            agent_id: payload.agent_id.clone(),
+            pid,
         }),
         "SubagentStop" => SessionMutation::Lifecycle(LifecycleEvent::SubEntity(
             SubEntityEvent::SubagentComplete {
@@ -176,6 +228,13 @@ pub async fn handle_hook(
                 agent_id: payload.agent_id.clone(),
             },
         )),
+        "TaskCreated" => {
+            SessionMutation::Lifecycle(LifecycleEvent::SubEntity(SubEntityEvent::TaskCreated {
+                task_id: payload.task_id.clone().unwrap_or_default(),
+                subject: payload.task_subject.clone(),
+                description: payload.task_description.clone(),
+            }))
+        }
         "TaskCompleted" => {
             SessionMutation::Lifecycle(LifecycleEvent::SubEntity(SubEntityEvent::TaskComplete {
                 task_id: payload.task_id.clone().unwrap_or_default(),
@@ -184,13 +243,80 @@ pub async fn handle_hook(
         "TeammateIdle" => {
             SessionMutation::Lifecycle(LifecycleEvent::SubEntity(SubEntityEvent::TeammateIdle))
         }
-        // All other state-changing events: PreToolUse, PostToolUseFailure,
-        // PermissionRequest, Notification, SubagentStart
-        _ => SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+
+        // ── Context management ──
+        "PreCompact" => SessionMutation::Lifecycle(LifecycleEvent::StateChange {
             agent_state,
             event_name: payload.hook_event_name.clone(),
             pid,
         }),
+        "PostCompact" => SessionMutation::Lifecycle(LifecycleEvent::Compacted {
+            trigger: payload.trigger.clone(),
+            summary: payload.compact_summary.clone(),
+            pid,
+        }),
+
+        // ── Notifications ──
+        "Notification" => {
+            // auth_success is already filtered as early return above.
+            // Known interactive types → StateChange (NeedsYou via resolve_state_from_hook).
+            // Unknown types → Observability (preserve current state).
+            match payload.notification_type.as_deref() {
+                Some("permission_prompt") | Some("idle_prompt") | Some("elicitation_dialog") => {
+                    SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+                        agent_state,
+                        event_name: payload.hook_event_name.clone(),
+                        pid,
+                    })
+                }
+                _ => SessionMutation::Lifecycle(LifecycleEvent::Observability {
+                    event_name: payload.hook_event_name.clone(),
+                    pid,
+                }),
+            }
+        }
+
+        // ── Environment / observability (do NOT clobber agent_state) ──
+        "CwdChanged" => SessionMutation::Lifecycle(LifecycleEvent::CwdChanged {
+            old_cwd: payload.old_cwd.clone(),
+            new_cwd: payload.new_cwd.clone(),
+            pid,
+        }),
+        "FileChanged" | "InstructionsLoaded" | "ConfigChange" => {
+            SessionMutation::Lifecycle(LifecycleEvent::Observability {
+                event_name: payload.hook_event_name.clone(),
+                pid,
+            })
+        }
+
+        // ── Worktree ──
+        "WorktreeCreate" | "WorktreeRemove" => {
+            SessionMutation::Lifecycle(LifecycleEvent::Observability {
+                event_name: payload.hook_event_name.clone(),
+                pid,
+            })
+        }
+
+        // ── MCP Elicitation ──
+        "Elicitation" => SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+            agent_state,
+            event_name: payload.hook_event_name.clone(),
+            pid,
+        }),
+        "ElicitationResult" => SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+            agent_state,
+            event_name: payload.hook_event_name.clone(),
+            pid,
+        }),
+
+        // ── Unknown = Claude Code added a new event we haven't handled ──
+        unknown => {
+            tracing::warn!(event = unknown, "Unknown hook event — update handler");
+            SessionMutation::Lifecycle(LifecycleEvent::Observability {
+                event_name: unknown.to_string(),
+                pid,
+            })
+        }
     };
 
     // ── Build hook event BEFORE coordinator call ────────────────────────
@@ -364,26 +490,35 @@ async fn evict_stale_sessions_for_pid(state: &AppState, pid: u32, new_session_id
 
 /// Map a hook event to an `AgentState`.
 ///
-/// This is the SOLE authority for agent state. Every hook maps to exactly one state.
+/// This is the SOLE authority for agent state. All 25 events are explicit.
 fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
     match payload.hook_event_name.as_str() {
-        "SessionStart" => {
-            if payload.source.as_deref() == Some("compact") {
-                AgentState {
-                    group: AgentStateGroup::Autonomous,
-                    state: "thinking".into(),
-                    label: "Compacting context...".into(),
-                    context: None,
-                }
-            } else {
-                AgentState {
-                    group: AgentStateGroup::NeedsYou,
-                    state: "idle".into(),
-                    label: "Waiting for first prompt".into(),
-                    context: None,
-                }
-            }
-        }
+        "SessionStart" => match payload.source.as_deref() {
+            Some("compact") => AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "thinking".into(),
+                label: "Compacting context...".into(),
+                context: None,
+            },
+            Some("resume") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Session resumed".into(),
+                context: None,
+            },
+            Some("clear") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Session cleared".into(),
+                context: None,
+            },
+            _ => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Waiting for first prompt".into(),
+                context: None,
+            },
+        },
         "UserPromptSubmit" => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "thinking".into(),
@@ -437,8 +572,6 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     context: None,
                 }
             } else {
-                // Tool failures are transient — agent usually retries immediately.
-                // Keep as autonomous to avoid false-positive notification dings.
                 AgentState {
                     group: AgentStateGroup::Autonomous,
                     state: "error".into(),
@@ -465,6 +598,18 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             label: "Waiting for your next prompt".into(),
             context: None,
         },
+        "StopFailure" => AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "error".into(),
+            label: format!(
+                "API error: {}",
+                payload.error.as_deref().unwrap_or("unknown")
+            ),
+            context: payload
+                .error_details
+                .as_ref()
+                .map(|d| serde_json::json!({"details": d})),
+        },
         "Notification" => match payload.notification_type.as_deref() {
             Some("permission_prompt") => AgentState {
                 group: AgentStateGroup::NeedsYou,
@@ -488,9 +633,11 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     .unwrap_or_else(|| "Awaiting input".into()),
                 context: None,
             },
+            // Unknown notification types → preserve state (Observability path).
+            // This AgentState is a defensive fallback only.
             _ => AgentState {
-                group: AgentStateGroup::NeedsYou,
-                state: "awaiting_input".into(),
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
                 label: "Notification".into(),
                 context: None,
             },
@@ -513,13 +660,13 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
             ),
             context: None,
         },
-        "TeammateIdle" => AgentState {
+        "TaskCreated" => AgentState {
             group: AgentStateGroup::Autonomous,
-            state: "delegating".into(),
-            label: format!(
-                "Teammate {} idle",
-                payload.teammate_name.as_deref().unwrap_or("unknown")
-            ),
+            state: "acting".into(),
+            label: payload
+                .task_subject
+                .clone()
+                .unwrap_or_else(|| "Task created".into()),
             context: None,
         },
         "TaskCompleted" => AgentState {
@@ -529,6 +676,15 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 .task_subject
                 .clone()
                 .unwrap_or_else(|| "Task completed".into()),
+            context: None,
+        },
+        "TeammateIdle" => AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "delegating".into(),
+            label: format!(
+                "Teammate {} idle",
+                payload.teammate_name.as_deref().unwrap_or("unknown")
+            ),
             context: None,
         },
         "PreCompact" => {
@@ -548,12 +704,37 @@ fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 context: None,
             }
         }
+        "PostCompact" => AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Context compacted".into(),
+            context: None,
+        },
+        "Elicitation" => AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "waiting_mcp_input".into(),
+            label: payload
+                .message
+                .as_deref()
+                .map(|m| m.chars().take(100).collect::<String>())
+                .unwrap_or_else(|| "MCP input requested".into()),
+            context: None,
+        },
+        "ElicitationResult" => AgentState {
+            group: AgentStateGroup::Autonomous,
+            state: "thinking".into(),
+            label: "Processing MCP response".into(),
+            context: None,
+        },
         "SessionEnd" => AgentState {
             group: AgentStateGroup::NeedsYou,
             state: "session_ended".into(),
             label: "Session ended".into(),
             context: None,
         },
+        // Observability events + unknown: resolved state is unused
+        // (Observability variant skips state update), but we need a
+        // fallback for the hook_event label.
         _ => AgentState {
             group: AgentStateGroup::Autonomous,
             state: "acting".into(),
@@ -814,15 +995,15 @@ mod tests {
     }
 
     #[test]
-    fn test_notification_auth_success_is_catchall() {
+    fn test_notification_unknown_type_is_observability() {
         // auth_success is handled by early return in handle_hook, but
-        // resolve_state_from_hook falls through to the catchall Notification arm
+        // resolve_state_from_hook falls through to the Observability fallback.
+        // Unknown notification types no longer set NeedsYou — they preserve state.
         let mut payload = minimal_payload("Notification");
         payload.notification_type = Some("auth_success".into());
         let state = resolve_state_from_hook(&payload);
-        assert_eq!(state.state, "awaiting_input");
-        // Was low-confidence catchall — now just maps to awaiting_input
-        assert_eq!(state.state, "awaiting_input");
+        assert_eq!(state.state, "acting");
+        assert!(matches!(state.group, AgentStateGroup::Autonomous));
     }
 
     #[test]
