@@ -1,9 +1,10 @@
 pub mod buffer;
+pub mod coordinator;
 pub mod file_resolver;
 pub mod hook_registrar;
 pub mod manager;
-pub mod mutation;
 pub mod monitor;
+pub mod mutation;
 pub mod omlx_lifecycle;
 pub mod process;
 pub mod process_death;
