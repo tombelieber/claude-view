@@ -126,6 +126,197 @@ fn is_zero_u32(v: &u32) -> bool {
     *v == 0
 }
 
+// ---------------------------------------------------------------------------
+// StatuslineFields — 32 fields extracted from LiveSession for merge safety
+// ---------------------------------------------------------------------------
+
+use crate::live::mutation::merge::{Latest, Monotonic, Transient};
+
+/// Statusline-derived fields, grouped by merge strategy.
+///
+/// `#[serde(flatten)]` on the parent ensures JSON keys are identical to the old
+/// flat layout. Each field uses `Monotonic<T>`, `Latest<T>`, or `Transient<T>`
+/// to enforce correct merge semantics at compile time.
+#[derive(Debug, Clone, Default, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct StatuslineFields {
+    // -- Monotonic: value only goes up within a session --
+    // NOTE: All fields use #[ts(type = "...")] to bypass TS trait bounds on newtypes.
+
+    /// Claude Code's own total cost in USD, from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_cost_usd: Monotonic<f64>,
+
+    /// Wall-clock session duration from statusline cost.total_duration_ms.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_total_duration_ms: Monotonic<u64>,
+
+    /// API-only duration from statusline cost.total_api_duration_ms.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_api_duration_ms: Monotonic<u64>,
+
+    /// Total lines added from statusline cost.total_lines_added.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_lines_added: Monotonic<u64>,
+
+    /// Total lines removed from statusline cost.total_lines_removed.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_lines_removed: Monotonic<u64>,
+
+    /// Cumulative input tokens across the session from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_total_input_tokens: Monotonic<u64>,
+
+    /// Cumulative output tokens across the session from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+    pub statusline_total_output_tokens: Monotonic<u64>,
+
+    // -- Latest: newest non-null wins --
+
+    /// Authoritative context window size from statusline (200_000 or 1_000_000).
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_context_window_size: Latest<u32>,
+
+    /// Authoritative context used percentage from statusline (0.0-100.0).
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_used_pct: Latest<f32>,
+
+    /// Remaining context window percentage from statusline (0.0-100.0).
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_remaining_pct: Latest<f32>,
+
+    /// Working directory from statusline workspace.current_dir.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_cwd: Latest<String>,
+
+    /// Project directory from statusline workspace.project_dir.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_project_dir: Latest<String>,
+
+    /// Claude Code version from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_version: Latest<String>,
+
+    /// Transcript path from statusline (used for session dedup).
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_transcript_path: Latest<String>,
+
+    /// 5-hour rate limit used percentage from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_rate_limit_5h_pct: Latest<f64>,
+
+    /// 5-hour rate limit reset timestamp (Unix seconds) from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_rate_limit_5h_resets_at: Latest<i64>,
+
+    /// 7-day rate limit used percentage from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_rate_limit_7d_pct: Latest<f64>,
+
+    /// 7-day rate limit reset timestamp (Unix seconds) from statusline.
+    #[ts(type = "number | null")]
+    #[serde(default, skip_serializing_if = "Latest::is_none")]
+    pub statusline_rate_limit_7d_resets_at: Latest<i64>,
+
+    // -- Transient: absence = cleared --
+
+    /// Current turn input tokens from statusline current_usage.input_tokens.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_input_tokens: Transient<u64>,
+
+    /// Current turn output tokens from statusline current_usage.output_tokens.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_output_tokens: Transient<u64>,
+
+    /// Cache read tokens from statusline current_usage.cache_read_input_tokens.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_cache_read_tokens: Transient<u64>,
+
+    /// Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
+    #[ts(type = "bigint | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_cache_creation_tokens: Transient<u64>,
+
+    /// Whether the session exceeds 200K tokens (from statusline).
+    #[ts(type = "boolean | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub exceeds_200k_tokens: Transient<bool>,
+
+    /// Output style name from statusline (e.g. "default", "concise").
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_output_style: Transient<String>,
+
+    /// Vim mode from statusline (e.g. "NORMAL", "INSERT").
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_vim_mode: Transient<String>,
+
+    /// Subagent name from statusline (e.g. "code-reviewer").
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_agent_name: Transient<String>,
+
+    /// Worktree name from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_worktree_name: Transient<String>,
+
+    /// Worktree path from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_worktree_path: Transient<String>,
+
+    /// Worktree branch from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_worktree_branch: Transient<String>,
+
+    /// Worktree original cwd from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_worktree_original_cwd: Transient<String>,
+
+    /// Worktree original branch from statusline.
+    #[ts(type = "string | null")]
+    #[serde(default, skip_serializing_if = "Transient::is_none")]
+    pub statusline_worktree_original_branch: Transient<String>,
+
+    // -- Raw: always replace (not serialized) --
+
+    /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub statusline_raw: Option<serde_json::Value>,
+}
+
 /// A live session snapshot broadcast to connected SSE clients.
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
@@ -249,118 +440,17 @@ pub struct LiveSession {
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
-    /// Authoritative context window size from statusline (200_000 or 1_000_000).
-    /// Set by the statusline wrapper on each turn. Null until first statusline event.
-    /// Frontend prefers this over all heuristics when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_context_window_size: Option<u32>,
-    /// Authoritative context used percentage from statusline (0.0–100.0).
-    /// Pre-computed by Claude Code — no division needed, no wrong denominator.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_used_pct: Option<f32>,
-    /// Claude Code's own total cost in USD, from statusline.
-    /// Cross-check against our token-based pricing engine.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_cost_usd: Option<f64>,
+    /// All statusline-derived fields (32 fields). Flattened into the JSON
+    /// output for zero wire format change.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub statusline: StatuslineFields,
     /// Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
+    /// Cross-source field — NOT moved into StatuslineFields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_display_name: Option<String>,
-    /// Working directory from statusline workspace.current_dir.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_cwd: Option<String>,
-    /// Project directory from statusline workspace.project_dir.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_project_dir: Option<String>,
-    /// Wall-clock session duration from statusline cost.total_duration_ms.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_total_duration_ms: Option<u64>,
-    /// API-only duration from statusline cost.total_api_duration_ms.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_api_duration_ms: Option<u64>,
-    /// Total lines added from statusline cost.total_lines_added.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_lines_added: Option<u64>,
-    /// Total lines removed from statusline cost.total_lines_removed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_lines_removed: Option<u64>,
-    /// Current turn input tokens from statusline current_usage.input_tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_input_tokens: Option<u64>,
-    /// Current turn output tokens from statusline current_usage.output_tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_output_tokens: Option<u64>,
-    /// Cache read tokens from statusline current_usage.cache_read_input_tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_cache_read_tokens: Option<u64>,
-    /// Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_cache_creation_tokens: Option<u64>,
-    /// Claude Code version from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_version: Option<String>,
-    /// Whether the session exceeds 200K tokens (from statusline).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub exceeds_200k_tokens: Option<bool>,
-    /// Transcript path from statusline (used for session dedup).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_transcript_path: Option<String>,
-    /// Output style name from statusline (e.g. "default", "concise").
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_output_style: Option<String>,
-    /// Vim mode from statusline (e.g. "NORMAL", "INSERT").
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_vim_mode: Option<String>,
-    /// Subagent name from statusline (e.g. "code-reviewer"). Distinct from
-    /// `agent_state` which is the FSM lifecycle state.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_agent_name: Option<String>,
-    /// Worktree name from statusline. Distinct from indexer-derived
-    /// `worktree_branch`/`is_worktree` which come from git inspection.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_worktree_name: Option<String>,
-    /// Worktree path from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_worktree_path: Option<String>,
-    /// Worktree branch from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_worktree_branch: Option<String>,
-    /// Worktree original cwd from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_worktree_original_cwd: Option<String>,
-    /// Worktree original branch from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_worktree_original_branch: Option<String>,
-    /// Remaining context window percentage from statusline (0.0–100.0).
-    /// f32 to match statusline_used_pct.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_remaining_pct: Option<f32>,
-    /// Cumulative input tokens across the session from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "number | null")]
-    pub statusline_total_input_tokens: Option<u64>,
-    /// Cumulative output tokens across the session from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "number | null")]
-    pub statusline_total_output_tokens: Option<u64>,
-    /// 5-hour rate limit used percentage from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_rate_limit_5h_pct: Option<f64>,
-    /// 5-hour rate limit reset timestamp (Unix seconds) from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "number | null")]
-    pub statusline_rate_limit_5h_resets_at: Option<i64>,
-    /// 7-day rate limit used percentage from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub statusline_rate_limit_7d_pct: Option<f64>,
-    /// 7-day rate limit reset timestamp (Unix seconds) from statusline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(type = "number | null")]
-    pub statusline_rate_limit_7d_resets_at: Option<i64>,
     /// SDLC phase classification (current phase, label history, dominant phase).
     pub phase: PhaseHistory,
-    /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
-    #[serde(skip)]
-    pub statusline_raw: Option<serde_json::Value>,
     /// Monotonic timestamp when `model` was last set. Writers only overwrite
     /// when their timestamp > this value, preventing stale statusline updates
     /// from clobbering newer hook values. NOT serialized.
@@ -569,39 +659,8 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
         user_files: None,
         closed_at: None,
         control: None,
-        statusline_context_window_size: None,
-        statusline_used_pct: None,
-        statusline_cost_usd: None,
+        statusline: StatuslineFields::default(),
         model_display_name: None,
-        statusline_cwd: None,
-        statusline_project_dir: None,
-        statusline_total_duration_ms: None,
-        statusline_api_duration_ms: None,
-        statusline_lines_added: None,
-        statusline_lines_removed: None,
-        statusline_input_tokens: None,
-        statusline_output_tokens: None,
-        statusline_cache_read_tokens: None,
-        statusline_cache_creation_tokens: None,
-        statusline_version: None,
-        exceeds_200k_tokens: None,
-        statusline_transcript_path: None,
-        statusline_output_style: None,
-        statusline_vim_mode: None,
-        statusline_agent_name: None,
-        statusline_worktree_name: None,
-        statusline_worktree_path: None,
-        statusline_worktree_branch: None,
-        statusline_worktree_original_cwd: None,
-        statusline_worktree_original_branch: None,
-        statusline_remaining_pct: None,
-        statusline_total_input_tokens: None,
-        statusline_total_output_tokens: None,
-        statusline_rate_limit_5h_pct: None,
-        statusline_rate_limit_5h_resets_at: None,
-        statusline_rate_limit_7d_pct: None,
-        statusline_rate_limit_7d_resets_at: None,
-        statusline_raw: None,
         model_set_at: 0,
         agent_state_set_at: 0,
         source: None,
