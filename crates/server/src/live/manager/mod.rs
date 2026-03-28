@@ -97,6 +97,7 @@ impl LiveSessionManager {
     ///
     /// Returns the manager, a shared session map, the transcript dedup map,
     /// and the broadcast sender for SSE event streaming.
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         pricing: Arc<HashMap<String, ModelPricing>>,
         db: Database,
