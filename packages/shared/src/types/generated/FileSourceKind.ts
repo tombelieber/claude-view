@@ -3,4 +3,4 @@
 /**
  * How a file reference was detected in user messages.
  */
-export type FileSourceKind = 'mention' | 'ide' | 'pasted'
+export type FileSourceKind = "mention" | "ide" | "pasted";

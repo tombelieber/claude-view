@@ -6,4 +6,4 @@
  * 3-state model: Working (actively streaming/tool use), Paused (waiting for
  * input, task complete, or idle), Done (session over).
  */
-export type SessionStatus = 'working' | 'paused' | 'done'
+export type SessionStatus = "working" | "paused" | "done";

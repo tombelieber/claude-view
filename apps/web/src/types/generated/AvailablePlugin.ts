@@ -3,12 +3,4 @@
 /**
  * A plugin available for installation (not yet installed).
  */
-export type AvailablePlugin = {
-  pluginId: string
-  name: string
-  description: string
-  marketplaceName: string
-  version: string | null
-  installCount: bigint | null
-  alreadyInstalled: boolean
-}
+export type AvailablePlugin = { pluginId: string, name: string, description: string, marketplaceName: string, version: string | null, installCount: bigint | null, alreadyInstalled: boolean, };

@@ -3,17 +3,16 @@
 /**
  * Request body for `POST /api/ide/open`.
  */
-export type OpenInIdeRequest = {
-  /**
-   * The IDE id to open (must match an id from the detect response).
-   */
-  ide: string
-  /**
-   * Absolute path to the project directory.
-   */
-  projectPath: string
-  /**
-   * Relative path to the file within the project (optional).
-   */
-  filePath: string | null
-}
+export type OpenInIdeRequest = { 
+/**
+ * The IDE id to open (must match an id from the detect response).
+ */
+ide: string, 
+/**
+ * Absolute path to the project directory.
+ */
+projectPath: string, 
+/**
+ * Relative path to the file within the project (optional).
+ */
+filePath: string | null, };

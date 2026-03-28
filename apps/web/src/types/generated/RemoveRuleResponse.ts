@@ -3,4 +3,4 @@
 /**
  * Response for DELETE /api/coaching/rules/{id}.
  */
-export type RemoveRuleResponse = { removed: boolean; id: string }
+export type RemoveRuleResponse = { removed: boolean, id: string, };

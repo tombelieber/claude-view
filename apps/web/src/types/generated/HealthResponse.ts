@@ -3,4 +3,4 @@
 /**
  * Response for the health check endpoint.
  */
-export type HealthResponse = { status: string; version: string; uptime_secs: number }
+export type HealthResponse = { status: string, version: string, uptime_secs: number, };

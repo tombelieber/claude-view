@@ -3,11 +3,4 @@
 /**
  * A user-created skill, command, or agent (not from any marketplace).
  */
-export type UserItemInfo = {
-  name: string
-  kind: string
-  path: string
-  totalInvocations: bigint
-  sessionCount: bigint
-  lastUsedAt: bigint | null
-}
+export type UserItemInfo = { name: string, kind: string, path: string, totalInvocations: bigint, sessionCount: bigint, lastUsedAt: bigint | null, };

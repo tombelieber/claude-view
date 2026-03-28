@@ -3,4 +3,4 @@
 /**
  * Best time of day/week stats.
  */
-export type BestTimeStats = { dayOfWeek: string; timeSlot: string; improvementPct: number }
+export type BestTimeStats = { dayOfWeek: string, timeSlot: string, improvementPct: number, };

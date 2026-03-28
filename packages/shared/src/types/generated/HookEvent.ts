@@ -3,33 +3,32 @@
 /**
  * A single hook lifecycle event, captured for the event log.
  */
-export type HookEvent = {
-  /**
-   * Unix timestamp (seconds).
-   */
-  timestamp: number
-  /**
-   * Hook event name: "PreToolUse", "PostToolUse", "Stop", etc.
-   */
-  eventName: string
-  /**
-   * Tool name, if applicable.
-   */
-  toolName: string | null
-  /**
-   * Human-readable label (from resolve_state_from_hook).
-   */
-  label: string
-  /**
-   * Agent state group: "autonomous" or "needs_you".
-   */
-  group: string
-  /**
-   * Optional context JSON (tool_input, error, prompt snippet, etc.).
-   */
-  context: string | null
-  /**
-   * Origin channel: "hook" (Channel B), "hook_progress" (Channel A), "synthesized".
-   */
-  source: string
-}
+export type HookEvent = { 
+/**
+ * Unix timestamp (seconds).
+ */
+timestamp: number, 
+/**
+ * Hook event name: "PreToolUse", "PostToolUse", "Stop", etc.
+ */
+eventName: string, 
+/**
+ * Tool name, if applicable.
+ */
+toolName: string | null, 
+/**
+ * Human-readable label (from resolve_state_from_hook).
+ */
+label: string, 
+/**
+ * Agent state group: "autonomous" or "needs_you".
+ */
+group: string, 
+/**
+ * Optional context JSON (tool_input, error, prompt snippet, etc.).
+ */
+context: string | null, 
+/**
+ * Origin channel: "hook" (Channel B), "hook_progress" (Channel A), "synthesized".
+ */
+source: string, };

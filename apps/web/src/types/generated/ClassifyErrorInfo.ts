@@ -3,4 +3,4 @@
 /**
  * Error information for failed classification.
  */
-export type ClassifyErrorInfo = { message: string; retryable: boolean }
+export type ClassifyErrorInfo = { message: string, retryable: boolean, };

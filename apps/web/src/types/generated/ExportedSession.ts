@@ -3,21 +3,4 @@
 /**
  * Exported session data for JSON format (A5.2 schema).
  */
-export type ExportedSession = {
-  id: string
-  project: string
-  projectPath: string
-  modifiedAt: number
-  durationSeconds: number
-  userPromptCount: number
-  apiCallCount: number
-  toolCallCount: number
-  filesReadCount: number
-  filesEditedCount: number
-  reeditedFilesCount: number
-  commitCount: number
-  totalInputTokens?: number | null
-  totalOutputTokens?: number | null
-  reeditRate?: number | null
-  tokensPerPrompt?: number | null
-}
+export type ExportedSession = { id: string, project: string, projectPath: string, modifiedAt: number, durationSeconds: number, userPromptCount: number, apiCallCount: number, toolCallCount: number, filesReadCount: number, filesEditedCount: number, reeditedFilesCount: number, commitCount: number, totalInputTokens?: number | null, totalOutputTokens?: number | null, reeditRate?: number | null, tokensPerPrompt?: number | null, };

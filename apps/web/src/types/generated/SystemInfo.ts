@@ -3,29 +3,28 @@
 /**
  * Static system information that doesn't change between snapshots.
  */
-export type SystemInfo = {
-  /**
-   * Machine hostname.
-   */
-  hostname: string
-  /**
-   * Operating system name (e.g. "macOS", "Linux").
-   */
-  os: string
-  /**
-   * OS version string.
-   */
-  osVersion: string
-  /**
-   * CPU architecture (e.g. "aarch64", "x86_64").
-   */
-  arch: string
-  /**
-   * Number of physical CPU cores.
-   */
-  cpuCoreCount: number
-  /**
-   * Total physical memory in bytes.
-   */
-  totalMemoryBytes: number
-}
+export type SystemInfo = { 
+/**
+ * Machine hostname.
+ */
+hostname: string, 
+/**
+ * Operating system name (e.g. "macOS", "Linux").
+ */
+os: string, 
+/**
+ * OS version string.
+ */
+osVersion: string, 
+/**
+ * CPU architecture (e.g. "aarch64", "x86_64").
+ */
+arch: string, 
+/**
+ * Number of physical CPU cores.
+ */
+cpuCoreCount: number, 
+/**
+ * Total physical memory in bytes.
+ */
+totalMemoryBytes: number, };

@@ -3,21 +3,20 @@
 /**
  * Per-session resource snapshot (CPU + memory for the Claude process).
  */
-export type SessionResource = {
-  /**
-   * Session UUID (matches LiveSession.id).
-   */
-  sessionId: string
-  /**
-   * PID of the Claude process.
-   */
-  pid: number
-  /**
-   * CPU usage of this process (0.0–100.0 per core).
-   */
-  cpuPercent: number
-  /**
-   * Resident memory in bytes.
-   */
-  memoryBytes: number
-}
+export type SessionResource = { 
+/**
+ * Session UUID (matches LiveSession.id).
+ */
+sessionId: string, 
+/**
+ * PID of the Claude process.
+ */
+pid: number, 
+/**
+ * CPU usage of this process (0.0–100.0 per core).
+ */
+cpuPercent: number, 
+/**
+ * Resident memory in bytes.
+ */
+memoryBytes: number, };

@@ -4,4 +4,4 @@
  * Staleness heuristic for unparented processes.
  * Serializes as PascalCase intentionally (matches discriminated union convention).
  */
-export type Staleness = 'Active' | 'Idle' | 'LikelyStale'
+export type Staleness = "Active" | "Idle" | "LikelyStale";

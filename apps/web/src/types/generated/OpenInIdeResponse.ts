@@ -3,4 +3,4 @@
 /**
  * Response for `POST /api/ide/open`.
  */
-export type OpenInIdeResponse = { ok: boolean }
+export type OpenInIdeResponse = { ok: boolean, };

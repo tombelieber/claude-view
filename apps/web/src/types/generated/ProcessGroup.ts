@@ -3,21 +3,20 @@
 /**
  * A single process group — aggregated by normalized process name.
  */
-export type ProcessGroup = {
-  /**
-   * Normalized display name (e.g. "Google Chrome", not "Google Chrome Helper (Renderer)").
-   */
-  name: string
-  /**
-   * Number of OS processes in this group.
-   */
-  processCount: number
-  /**
-   * Total CPU usage across all processes in this group (0.0–N cores).
-   */
-  cpuPercent: number
-  /**
-   * Total resident memory in bytes.
-   */
-  memoryBytes: number
-}
+export type ProcessGroup = { 
+/**
+ * Normalized display name (e.g. "Google Chrome", not "Google Chrome Helper (Renderer)").
+ */
+name: string, 
+/**
+ * Number of OS processes in this group.
+ */
+processCount: number, 
+/**
+ * Total CPU usage across all processes in this group (0.0–N cores).
+ */
+cpuPercent: number, 
+/**
+ * Total resident memory in bytes.
+ */
+memoryBytes: number, };

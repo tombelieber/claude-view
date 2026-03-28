@@ -3,15 +3,8 @@
 /**
  * A single invocable item within a plugin (skill, command, agent, or MCP tool).
  */
-export type PluginItem = {
-  id: string
-  name: string
-  kind: string
-  description: string
-  /**
-   * Full file content for the item (markdown for skills/commands/agents; pretty JSON for mcp_tool)
-   */
-  content: string
-  invocationCount: bigint
-  lastUsedAt: bigint | null
-}
+export type PluginItem = { id: string, name: string, kind: string, description: string, 
+/**
+ * Full file content for the item (markdown for skills/commands/agents; pretty JSON for mcp_tool)
+ */
+content: string, invocationCount: bigint, lastUsedAt: bigint | null, };
