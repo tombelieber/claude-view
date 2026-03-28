@@ -3,21 +3,20 @@
 /**
  * Request body for POST /api/plugins/marketplaces/action.
  */
-export type MarketplaceActionRequest = {
-  /**
-   * "add" | "remove" | "update"
-   */
-  action: string
-  /**
-   * For add: GitHub repo URL or owner/repo
-   */
-  source: string | null
-  /**
-   * For remove/update: marketplace name
-   */
-  name: string | null
-  /**
-   * For add: "user" | "project"
-   */
-  scope: string | null
-}
+export type MarketplaceActionRequest = { 
+/**
+ * "add" | "remove" | "update"
+ */
+action: string, 
+/**
+ * For add: GitHub repo URL or owner/repo
+ */
+source: string | null, 
+/**
+ * For remove/update: marketplace name
+ */
+name: string | null, 
+/**
+ * For add: "user" | "project"
+ */
+scope: string | null, };

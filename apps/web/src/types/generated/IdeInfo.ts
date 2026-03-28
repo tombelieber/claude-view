@@ -3,13 +3,12 @@
 /**
  * Describes a single detected IDE.
  */
-export type IdeInfo = {
-  /**
-   * Machine-readable identifier (e.g. "vscode", "cursor").
-   */
-  id: string
-  /**
-   * Human-readable display name (e.g. "VS Code", "Cursor").
-   */
-  name: string
-}
+export type IdeInfo = { 
+/**
+ * Machine-readable identifier (e.g. "vscode", "cursor").
+ */
+id: string, 
+/**
+ * Human-readable display name (e.g. "VS Code", "Cursor").
+ */
+name: string, };

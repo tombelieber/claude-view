@@ -3,14 +3,4 @@
 /**
  * Classification section of system response.
  */
-export type ClassificationInfo = {
-  classifiedCount: number
-  unclassifiedCount: number
-  lastRunAt: string | null
-  lastRunDurationMs: number | null
-  lastRunCostCents: number | null
-  provider: string
-  model: string
-  isRunning: boolean
-  progress: number | null
-}
+export type ClassificationInfo = { classifiedCount: number, unclassifiedCount: number, lastRunAt: string | null, lastRunDurationMs: number | null, lastRunCostCents: number | null, provider: string, model: string, isRunning: boolean, progress: number | null, };

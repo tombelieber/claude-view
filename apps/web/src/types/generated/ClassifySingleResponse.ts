@@ -3,14 +3,8 @@
 /**
  * Response for POST /api/classify/single/:session_id.
  */
-export type ClassifySingleResponse = {
-  sessionId: string
-  categoryL1: string
-  categoryL2: string
-  categoryL3: string
-  confidence: number
-  /**
-   * true if result was already cached (previously classified)
-   */
-  wasCached: boolean
-}
+export type ClassifySingleResponse = { sessionId: string, categoryL1: string, categoryL2: string, categoryL3: string, confidence: number, 
+/**
+ * true if result was already cached (previously classified)
+ */
+wasCached: boolean, };

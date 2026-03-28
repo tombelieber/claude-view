@@ -4,4 +4,4 @@
  * Which top-level section a process belongs to.
  * Serializes as PascalCase to match TypeScript enum convention for discriminated unions.
  */
-export type ProcessCategory = 'ClaudeEcosystem' | 'ChildProcess'
+export type ProcessCategory = "ClaudeEcosystem" | "ChildProcess";

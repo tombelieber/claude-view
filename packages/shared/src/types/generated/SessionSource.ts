@@ -3,4 +3,4 @@
 /**
  * Where a Claude Code process was launched from.
  */
-export type SessionSource = 'terminal' | 'ide' | 'agent_sdk'
+export type SessionSource = "terminal" | "ide" | "agent_sdk";

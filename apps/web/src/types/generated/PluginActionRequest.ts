@@ -3,22 +3,21 @@
 /**
  * Request body for POST /api/plugins/action.
  */
-export type PluginActionRequest = {
-  /**
-   * "install" | "update" | "uninstall" | "enable" | "disable"
-   */
-  action: string
-  /**
-   * Plugin name or full ID (e.g. "superpowers" or "superpowers@marketplace")
-   */
-  name: string
-  /**
-   * "user" | "project"
-   */
-  scope: string | null
-  /**
-   * For project-scoped plugins: the project directory where it was installed.
-   * Required for uninstall of project-scoped plugins (CLI needs correct CWD).
-   */
-  projectPath: string | null
-}
+export type PluginActionRequest = { 
+/**
+ * "install" | "update" | "uninstall" | "enable" | "disable"
+ */
+action: string, 
+/**
+ * Plugin name or full ID (e.g. "superpowers" or "superpowers@marketplace")
+ */
+name: string, 
+/**
+ * "user" | "project"
+ */
+scope: string | null, 
+/**
+ * For project-scoped plugins: the project directory where it was installed.
+ * Required for uninstall of project-scoped plugins (CLI needs correct CWD).
+ */
+projectPath: string | null, };

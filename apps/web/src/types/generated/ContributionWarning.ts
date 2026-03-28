@@ -3,4 +3,4 @@
 /**
  * Warning attached to response when data is incomplete.
  */
-export type ContributionWarning = { code: string; message: string }
+export type ContributionWarning = { code: string, message: string, };
