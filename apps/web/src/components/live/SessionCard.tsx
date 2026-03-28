@@ -107,6 +107,8 @@ interface SessionCardProps {
   onClickOverride?: () => void
   /** When true, hide project + branch badges (shown in swimlane header instead) */
   hideProjectBranch?: boolean
+  /** When true, show StateBadge pill instead of green pulse dot (used by Harness view) */
+  showStateBadge?: boolean
 }
 
 export function SessionCard({
@@ -115,6 +117,7 @@ export function SessionCard({
   currentTime,
   onClickOverride,
   hideProjectBranch,
+  showStateBadge,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
@@ -146,15 +149,19 @@ export function SessionCard({
       {/* Header: badges + cost */}
       <div className="flex items-center gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
-          {isAutonomous && (
-            <span className="relative inline-flex flex-shrink-0 w-2.5 h-2.5" aria-hidden="true">
-              <span className="absolute inset-0 rounded-full bg-green-400/70 motion-safe:animate-live-ring" />
-              <span className="absolute inset-0 rounded-full bg-green-300/50 motion-safe:animate-live-ring2" />
-              <span
-                data-testid="pulse-dot"
-                className="relative inline-block w-2.5 h-2.5 rounded-full bg-green-500 motion-safe:animate-live-breathe"
-              />
-            </span>
+          {showStateBadge ? (
+            <StateBadge agentState={session.agentState} />
+          ) : (
+            isAutonomous && (
+              <span className="relative inline-flex flex-shrink-0 w-2.5 h-2.5" aria-hidden="true">
+                <span className="absolute inset-0 rounded-full bg-green-400/70 motion-safe:animate-live-ring" />
+                <span className="absolute inset-0 rounded-full bg-green-300/50 motion-safe:animate-live-ring2" />
+                <span
+                  data-testid="pulse-dot"
+                  className="relative inline-block w-2.5 h-2.5 rounded-full bg-green-500 motion-safe:animate-live-breathe"
+                />
+              </span>
+            )
           )}
           <SourceBadge source={session.source} />
           <PhaseBadge phase={session.phase?.current?.phase} scope={session.phase?.current?.scope} />

@@ -1,6 +1,6 @@
 // Phase B2: Agent state types and display status mapping
 
-export type LiveViewMode = 'grid' | 'list' | 'kanban' | 'monitor'
+export type LiveViewMode = 'grid' | 'list' | 'kanban' | 'monitor' | 'harness'
 
 /** Agent state group — the operator's mental model */
 export type AgentStateGroup = 'needs_you' | 'autonomous'
@@ -48,6 +48,7 @@ export const LIVE_VIEW_MODES = [
   { id: 'grid' as const, label: 'Grid', icon: 'LayoutGrid', shortcut: '2' },
   { id: 'list' as const, label: 'List', icon: 'List', shortcut: '3' },
   { id: 'monitor' as const, label: 'Monitor', icon: 'Monitor', shortcut: '4' },
+  { id: 'harness' as const, label: 'Harness', icon: 'Workflow', shortcut: '5' },
 ] as const
 
 export const LIVE_VIEW_STORAGE_KEY = 'claude-view:live-view-mode'
