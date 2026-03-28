@@ -37,6 +37,16 @@ if [ -f "$AGENT_STATE" ]; then
   mv "$tmp_file" "$AGENT_STATE"
 fi
 
+# Post-process: fix cross-package imports in shared/LiveSession.ts
+# ts-rs may generate imports that escape shared's rootDir (pointing to apps/web/).
+# PhaseHistory, PhaseLabel, SessionPhase, and TeamMember all live in shared now.
+LIVE_SESSION="packages/shared/src/types/generated/LiveSession.ts"
+if [ -f "$LIVE_SESSION" ]; then
+  tmp_file="$(mktemp)"
+  sed -E "s|import type \{ (PhaseHistory\|TeamMember) \} from '.*/apps/web/[^']*'|import type { \1 } from './\1'|" "$LIVE_SESSION" >"$tmp_file"
+  mv "$tmp_file" "$LIVE_SESSION"
+fi
+
 # Format + organize imports with Biome so output matches project style and pre-commit hook
 # Uses `biome check --write` (not `biome format`) to include organizeImports
 # Linting is disabled for generated dirs via biome.json overrides
