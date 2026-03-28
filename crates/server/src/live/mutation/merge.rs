@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 /// Value that only goes up within a session.
 /// None from sender = "didn't send" = no change.
 /// Inner field is PRIVATE -- can't bypass .merge().
+/// NOTE: Does not derive TS — ts-rs cannot resolve generic `T` in container-level
+/// `#[ts(as)]`. Use `#[ts(as = "Option<ConcreteType>")]` at each usage site.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Monotonic<T>(Option<T>);
@@ -48,6 +50,7 @@ impl<T: PartialOrd> Monotonic<T> {
 
 /// Latest non-null value wins.
 /// None from sender = "didn't send" = no change.
+/// NOTE: No TS derive — see Monotonic for rationale.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Latest<T>(Option<T>);
@@ -85,6 +88,7 @@ impl<T> Latest<T> {
 
 /// Absence = intentionally cleared (e.g., exited vim mode).
 /// None from sender = "this state ended".
+/// NOTE: No TS derive — see Monotonic for rationale.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Transient<T>(Option<T>);
@@ -127,7 +131,7 @@ mod tests {
 
     /// Verifies #[serde(flatten)] + #[ts(flatten)] on a sub-struct
     /// containing Monotonic/Latest/Transient produces flat TypeScript output.
-    /// Uses #[ts(as = "Option<T>")] on fields since newtypes don't derive TS.
+    /// Per-field #[ts(as)] required because generic newtypes can't derive TS.
     #[derive(Debug, Clone, Default, Serialize, TS)]
     #[serde(rename_all = "camelCase")]
     struct SpikeSubStruct {
@@ -154,7 +158,7 @@ mod tests {
     #[test]
     fn ts_rs_flatten_spike_produces_flat_fields() {
         // Verify the TypeScript type has flat fields, not a nested `sub` object
-        let ts = <SpikeParent as TS>::inline();
+        let ts = <SpikeParent as TS>::inline(&ts_rs::Config::default());
         // SpikeParent should contain `spikeDuration`, `spikeVersion`, `spikeVim`
         // as flat fields (not nested under `sub`)
         assert!(
