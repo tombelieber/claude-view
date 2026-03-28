@@ -45,6 +45,12 @@ pub struct ClassificationStabilizer {
     temp_idx: usize,
 }
 
+impl Default for ClassificationStabilizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ClassificationStabilizer {
     pub fn new() -> Self {
         Self {
