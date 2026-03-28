@@ -16,6 +16,7 @@ ignore = [
     { id = "RUSTSEC-2024-0384", reason = "instant is a transitive dep of indicatif; no replacement available yet" },
     { id = "RUSTSEC-2025-0119", reason = "number_prefix is a transitive dep of indicatif; no replacement available yet" },
     { id = "RUSTSEC-2023-0071", reason = "rsa timing sidechannel via jsonwebtoken; no patch available, we only do JWT verification (public key) not decryption" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; transitive dep of utoipa-axum, no alternative yet" },
 ]
 
 # License allow list — covers all current dependencies
