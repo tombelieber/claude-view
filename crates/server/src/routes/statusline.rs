@@ -225,54 +225,9 @@ pub async fn handle_statusline(
         payload.session_id.clone()
     };
 
-    // ── Debug log: extract key fields before payload moves into coordinator ──
+    // ── Debug log: full raw payload before it moves into coordinator ──
     #[cfg(debug_assertions)]
-    let debug_line = {
-        let mut blocks: Vec<&str> = Vec::new();
-        if payload.cost.is_some() {
-            blocks.push("cost");
-        }
-        if payload.context_window.is_some() {
-            blocks.push("context_window");
-        }
-        if payload.model.is_some() {
-            blocks.push("model");
-        }
-        if payload.rate_limits.is_some() {
-            blocks.push("rate_limits");
-        }
-        let used_pct = payload
-            .context_window
-            .as_ref()
-            .and_then(|cw| cw.used_percentage);
-        let remain_pct = payload
-            .context_window
-            .as_ref()
-            .and_then(|cw| cw.remaining_percentage);
-        let ctx_tokens = payload
-            .context_window
-            .as_ref()
-            .and_then(|cw| cw.current_usage.as_ref())
-            .map(|u| u.input_tokens.unwrap_or(0));
-        let ctx_size = payload
-            .context_window
-            .as_ref()
-            .and_then(|cw| cw.context_window_size);
-        let model = payload.model.as_ref().and_then(|m| m.id.as_deref());
-        let cost_usd = payload.cost.as_ref().and_then(|c| c.total_cost_usd);
-        serde_json::json!({
-            "ts": now,
-            "session": &effective_session_id[..8.min(effective_session_id.len())],
-            "blocks": blocks,
-            "usedPct": used_pct,
-            "remainPct": remain_pct,
-            "ctxTokens": ctx_tokens,
-            "ctxSize": ctx_size,
-            "model": model,
-            "costUsd": cost_usd,
-        })
-        .to_string()
-    };
+    let debug_line = serde_json::to_string(&payload).unwrap_or_default();
 
     // Step 2: Delegate to coordinator (parse → buffer-or-apply → broadcast).
     let ctx = state.mutation_context();
