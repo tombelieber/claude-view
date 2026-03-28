@@ -39,6 +39,7 @@ export interface ControlSession {
 
 export class SessionRegistry {
   private sessions = new Map<string, ControlSession>()
+  private pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
   get(controlId: string): ControlSession | undefined {
     return this.sessions.get(controlId)
@@ -60,7 +61,16 @@ export class SessionRegistry {
   }
 
   remove(controlId: string): void {
+    this.pendingTimers.delete(controlId)
     this.sessions.delete(controlId)
+  }
+
+  scheduleRemove(controlId: string, delayMs: number): void {
+    const timer = setTimeout(() => {
+      this.pendingTimers.delete(controlId)
+      this.sessions.delete(controlId)
+    }, delayMs)
+    this.pendingTimers.set(controlId, timer)
   }
 
   list(): ActiveSession[] {
@@ -103,6 +113,11 @@ export class SessionRegistry {
   }
 
   async closeAll(): Promise<void> {
+    for (const timer of this.pendingTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.pendingTimers.clear()
+
     for (const cs of this.sessions.values()) {
       cs.closeReason = 'shutdown'
       cs.abort.abort()
