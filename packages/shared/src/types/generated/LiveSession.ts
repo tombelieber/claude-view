@@ -23,46 +23,165 @@ export type LiveSession = {
  */
 id: string, 
 /**
- * Encoded project directory name (as stored on disk).
- */
-project: string, 
-/**
- * Human-readable project name (last path component, decoded).
- */
-projectDisplayName: string, 
-/**
- * Full decoded project path.
- */
-projectPath: string, 
-/**
- * Absolute path to the JSONL session file.
- */
-filePath: string, 
-/**
  * Current derived session status.
  */
 status: SessionStatus, 
+/**
+ * Unix timestamp when the session started, if known.
+ */
+startedAt: number | null, 
+/**
+ * Unix timestamp when this session's process exited (None = still running).
+ * Set by reconciliation loop or SessionEnd hook. Used by frontend for
+ * "closed Xm ago" display and by recently-closed persistence.
+ */
+closedAt: number | null, 
+/**
+ * If Some, this session is being controlled via the sidecar Agent SDK.
+ */
+control: ControlBinding | null, 
+/**
+ * The primary model used in this session.
+ */
+model: string | null, 
+/**
+ * Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
+ * Cross-source field — NOT moved into any sub-struct.
+ */
+modelDisplayName?: string | null, 
+/**
+ * Current context window fill: total input tokens from the last assistant turn.
+ */
+contextWindowTokens: number, 
+/**
+ * Claude Code's own total cost in USD, from statusline.
+ */
+statuslineCostUsd?: number | null, 
+/**
+ * Wall-clock session duration from statusline cost.total_duration_ms.
+ */
+statuslineTotalDurationMs?: bigint | null, 
+/**
+ * API-only duration from statusline cost.total_api_duration_ms.
+ */
+statuslineApiDurationMs?: bigint | null, 
+/**
+ * Total lines added from statusline cost.total_lines_added.
+ */
+statuslineLinesAdded?: bigint | null, 
+/**
+ * Total lines removed from statusline cost.total_lines_removed.
+ */
+statuslineLinesRemoved?: bigint | null, 
+/**
+ * Cumulative input tokens across the session from statusline.
+ */
+statuslineTotalInputTokens?: number | null, 
+/**
+ * Cumulative output tokens across the session from statusline.
+ */
+statuslineTotalOutputTokens?: number | null, 
+/**
+ * Authoritative context window size from statusline (200_000 or 1_000_000).
+ */
+statuslineContextWindowSize?: number | null, 
+/**
+ * Authoritative context used percentage from statusline (0.0-100.0).
+ */
+statuslineUsedPct?: number | null, 
+/**
+ * Remaining context window percentage from statusline (0.0-100.0).
+ */
+statuslineRemainingPct?: number | null, 
+/**
+ * Working directory from statusline workspace.current_dir.
+ */
+statuslineCwd?: string | null, 
+/**
+ * Project directory from statusline workspace.project_dir.
+ */
+statuslineProjectDir?: string | null, 
+/**
+ * Claude Code version from statusline.
+ */
+statuslineVersion?: string | null, 
+/**
+ * Transcript path from statusline (used for session dedup).
+ */
+statuslineTranscriptPath?: string | null, 
+/**
+ * 5-hour rate limit used percentage from statusline.
+ */
+statuslineRateLimit5hPct?: number | null, 
+/**
+ * 5-hour rate limit reset timestamp (Unix seconds) from statusline.
+ */
+statuslineRateLimit5hResetsAt?: number | null, 
+/**
+ * 7-day rate limit used percentage from statusline.
+ */
+statuslineRateLimit7dPct?: number | null, 
+/**
+ * 7-day rate limit reset timestamp (Unix seconds) from statusline.
+ */
+statuslineRateLimit7dResetsAt?: number | null, 
+/**
+ * Current turn input tokens from statusline current_usage.input_tokens.
+ */
+statuslineInputTokens?: bigint | null, 
+/**
+ * Current turn output tokens from statusline current_usage.output_tokens.
+ */
+statuslineOutputTokens?: bigint | null, 
+/**
+ * Cache read tokens from statusline current_usage.cache_read_input_tokens.
+ */
+statuslineCacheReadTokens?: bigint | null, 
+/**
+ * Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
+ */
+statuslineCacheCreationTokens?: bigint | null, 
+/**
+ * Whether the session exceeds 200K tokens (from statusline).
+ */
+exceeds200kTokens?: boolean | null, 
+/**
+ * Output style name from statusline (e.g. "default", "concise").
+ */
+statuslineOutputStyle?: string | null, 
+/**
+ * Vim mode from statusline (e.g. "NORMAL", "INSERT").
+ */
+statuslineVimMode?: string | null, 
+/**
+ * Subagent name from statusline (e.g. "code-reviewer").
+ */
+statuslineAgentName?: string | null, 
+/**
+ * Worktree name from statusline.
+ */
+statuslineWorktreeName?: string | null, 
+/**
+ * Worktree path from statusline.
+ */
+statuslineWorktreePath?: string | null, 
+/**
+ * Worktree branch from statusline.
+ */
+statuslineWorktreeBranch?: string | null, 
+/**
+ * Worktree original cwd from statusline.
+ */
+statuslineWorktreeOriginalCwd?: string | null, 
+/**
+ * Worktree original branch from statusline.
+ */
+statuslineWorktreeOriginalBranch?: string | null, 
 /**
  * Universal agent state — replaces pause_classification.
  * Always present (never null), with group/state/label/confidence.
  */
 agentState: AgentState, 
-/**
- * Git branch name, if detected.
- */
-gitBranch: string | null, 
-/**
- * Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
- */
-worktreeBranch: string | null, 
-/**
- * Whether this session is running inside a git worktree.
- */
-isWorktree: boolean, 
-/**
- * Computed: worktree_branch ?? git_branch. Always use this for display.
- */
-effectiveBranch: string | null, 
 /**
  * PID of the running Claude process, if any.
  */
@@ -84,25 +203,81 @@ currentActivity: string,
  */
 turnCount: number, 
 /**
- * Unix timestamp when the session started, if known.
- */
-startedAt: number | null, 
-/**
  * Unix timestamp of the most recent file modification.
  */
 lastActivityAt: number, 
 /**
- * The primary model used in this session.
+ * Unix timestamp when the current user turn started (real prompt detected).
+ * Used by frontend to compute live elapsed time for autonomous sessions.
  */
-model: string | null, 
+currentTurnStartedAt: number | null, 
+/**
+ * Sub-agents spawned via the Task tool in this session.
+ * Empty vec if no sub-agents have been detected.
+ */
+subAgents: Array<SubAgentInfo>, 
+/**
+ * Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
+ * Empty vec if no progress items have been detected.
+ */
+progressItems: Array<ProgressItem>, 
+/**
+ * Number of context compactions in this session (compact_boundary system messages).
+ */
+compactCount: number, 
+/**
+ * Hook lifecycle events captured for the event log.
+ * Skipped in SSE serialization (too large); streamed via WS only.
+ */
+hookEvents: Array<HookEvent>, 
+/**
+ * Truncated preview of last assistant response (~200 chars). From Stop.
+ */
+lastAssistantPreview?: string | null, 
+/**
+ * Last API error type (rate_limit, server_error, etc.). From StopFailure.
+ */
+lastError?: string | null, 
+/**
+ * Last API error details. From StopFailure.
+ */
+lastErrorDetails?: string | null, 
+/**
+ * Encoded project directory name (as stored on disk).
+ */
+project: string, 
+/**
+ * Human-readable project name (last path component, decoded).
+ */
+projectDisplayName: string, 
+/**
+ * Full decoded project path.
+ */
+projectPath: string, 
+/**
+ * Absolute path to the JSONL session file.
+ */
+filePath: string, 
+/**
+ * Git branch name, if detected.
+ */
+gitBranch: string | null, 
+/**
+ * Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
+ */
+worktreeBranch: string | null, 
+/**
+ * Whether this session is running inside a git worktree.
+ */
+isWorktree: boolean, 
+/**
+ * Computed: worktree_branch ?? git_branch. Always use this for display.
+ */
+effectiveBranch: string | null, 
 /**
  * Accumulated token usage for this session (cumulative, for cost).
  */
 tokens: TokenUsage, 
-/**
- * Current context window fill: total input tokens from the last assistant turn.
- */
-contextWindowTokens: number, 
 /**
  * Computed cost breakdown in USD.
  */
@@ -112,20 +287,16 @@ cost: CostBreakdown,
  */
 cacheStatus: CacheStatus, 
 /**
- * Unix timestamp when the current user turn started (real prompt detected).
- * Used by frontend to compute live elapsed time for autonomous sessions.
- */
-currentTurnStartedAt: number | null, 
-/**
  * Seconds the agent spent on the last completed turn (frozen on Working->Paused).
  * Used by frontend to show task time for needs_you sessions.
  */
 lastTurnTaskSeconds: number | null, 
 /**
- * Sub-agents spawned via the Task tool in this session.
- * Empty vec if no sub-agents have been detected.
+ * Unix timestamp when the last cache hit or creation occurred.
+ * Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
+ * Null if no cache activity has been detected (e.g., new session or below minimum tokens).
  */
-subAgents: Array<SubAgentInfo>, 
+lastCacheHitAt: number | null, 
 /**
  * Team name if this session is a team lead.
  * Populated from the top-level `teamName` field in the JSONL (present after TeamCreate).
@@ -149,190 +320,25 @@ teamInboxCount?: number,
  */
 editCount: number, 
 /**
- * Task/todo progress items tracked from TodoWrite and TaskCreate/TaskUpdate.
- * Empty vec if no progress items have been detected.
- */
-progressItems: Array<ProgressItem>, 
-/**
  * Unique tool integrations detected in this session (MCP servers, skills).
  * Discovered from actual tool_use invocations -- 100% accuracy.
  */
 toolsUsed: Array<ToolUsed>, 
-/**
- * Unix timestamp when the last cache hit or creation occurred.
- * Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
- * Null if no cache activity has been detected (e.g., new session or below minimum tokens).
- */
-lastCacheHitAt: number | null, 
-/**
- * Number of context compactions in this session (compact_boundary system messages).
- */
-compactCount: number, 
 /**
  * Session slug for plan file association.
  */
 slug: string | null, 
 /**
  * Verified file references detected from user messages.
- * Deduplicated by absolute path across session lifetime (≤10, first-N-wins).
+ * Deduplicated by absolute path across session lifetime (<=10, first-N-wins).
  */
 userFiles?: Array<VerifiedFile> | null, 
-/**
- * Unix timestamp when this session's process exited (None = still running).
- * Set by reconciliation loop or SessionEnd hook. Used by frontend for
- * "closed Xm ago" display and by recently-closed persistence.
- */
-closedAt: number | null, 
 /**
  * Where this session was launched from (terminal, IDE, or Agent SDK).
  * Detected from the parent process at discovery time.
  */
 source?: SessionSourceInfo | null, 
 /**
- * If Some, this session is being controlled via the sidecar Agent SDK.
- */
-control: ControlBinding | null, 
-/**
- * Authoritative context window size from statusline (200_000 or 1_000_000).
- * Set by the statusline wrapper on each turn. Null until first statusline event.
- * Frontend prefers this over all heuristics when present.
- */
-statuslineContextWindowSize?: number | null, 
-/**
- * Authoritative context used percentage from statusline (0.0–100.0).
- * Pre-computed by Claude Code — no division needed, no wrong denominator.
- */
-statuslineUsedPct?: number | null, 
-/**
- * Claude Code's own total cost in USD, from statusline.
- * Cross-check against our token-based pricing engine.
- */
-statuslineCostUsd?: number | null, 
-/**
- * Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
- */
-modelDisplayName?: string | null, 
-/**
- * Working directory from statusline workspace.current_dir.
- */
-statuslineCwd?: string | null, 
-/**
- * Project directory from statusline workspace.project_dir.
- */
-statuslineProjectDir?: string | null, 
-/**
- * Wall-clock session duration from statusline cost.total_duration_ms.
- */
-statuslineTotalDurationMs?: bigint | null, 
-/**
- * API-only duration from statusline cost.total_api_duration_ms.
- */
-statuslineApiDurationMs?: bigint | null, 
-/**
- * Total lines added from statusline cost.total_lines_added.
- */
-statuslineLinesAdded?: bigint | null, 
-/**
- * Total lines removed from statusline cost.total_lines_removed.
- */
-statuslineLinesRemoved?: bigint | null, 
-/**
- * Current turn input tokens from statusline current_usage.input_tokens.
- */
-statuslineInputTokens?: bigint | null, 
-/**
- * Current turn output tokens from statusline current_usage.output_tokens.
- */
-statuslineOutputTokens?: bigint | null, 
-/**
- * Cache read tokens from statusline current_usage.cache_read_input_tokens.
- */
-statuslineCacheReadTokens?: bigint | null, 
-/**
- * Cache creation tokens from statusline current_usage.cache_creation_input_tokens.
- */
-statuslineCacheCreationTokens?: bigint | null, 
-/**
- * Claude Code version from statusline.
- */
-statuslineVersion?: string | null, 
-/**
- * Whether the session exceeds 200K tokens (from statusline).
- */
-exceeds200kTokens?: boolean | null, 
-/**
- * Transcript path from statusline (used for session dedup).
- */
-statuslineTranscriptPath?: string | null, 
-/**
- * Output style name from statusline (e.g. "default", "concise").
- */
-statuslineOutputStyle?: string | null, 
-/**
- * Vim mode from statusline (e.g. "NORMAL", "INSERT").
- */
-statuslineVimMode?: string | null, 
-/**
- * Subagent name from statusline (e.g. "code-reviewer"). Distinct from
- * `agent_state` which is the FSM lifecycle state.
- */
-statuslineAgentName?: string | null, 
-/**
- * Worktree name from statusline. Distinct from indexer-derived
- * `worktree_branch`/`is_worktree` which come from git inspection.
- */
-statuslineWorktreeName?: string | null, 
-/**
- * Worktree path from statusline.
- */
-statuslineWorktreePath?: string | null, 
-/**
- * Worktree branch from statusline.
- */
-statuslineWorktreeBranch?: string | null, 
-/**
- * Worktree original cwd from statusline.
- */
-statuslineWorktreeOriginalCwd?: string | null, 
-/**
- * Worktree original branch from statusline.
- */
-statuslineWorktreeOriginalBranch?: string | null, 
-/**
- * Remaining context window percentage from statusline (0.0–100.0).
- * f32 to match statusline_used_pct.
- */
-statuslineRemainingPct?: number | null, 
-/**
- * Cumulative input tokens across the session from statusline.
- */
-statuslineTotalInputTokens?: number | null, 
-/**
- * Cumulative output tokens across the session from statusline.
- */
-statuslineTotalOutputTokens?: number | null, 
-/**
- * 5-hour rate limit used percentage from statusline.
- */
-statuslineRateLimit5hPct?: number | null, 
-/**
- * 5-hour rate limit reset timestamp (Unix seconds) from statusline.
- */
-statuslineRateLimit5hResetsAt?: number | null, 
-/**
- * 7-day rate limit used percentage from statusline.
- */
-statuslineRateLimit7dPct?: number | null, 
-/**
- * 7-day rate limit reset timestamp (Unix seconds) from statusline.
- */
-statuslineRateLimit7dResetsAt?: number | null, 
-/**
  * SDLC phase classification (current phase, label history, dominant phase).
  */
-phase: PhaseHistory, 
-/**
- * Hook lifecycle events captured for the event log.
- * Skipped in SSE serialization (too large); streamed via WS only.
- */
-hookEvents: Array<HookEvent>, };
+phase: PhaseHistory, };

@@ -3,12 +3,4 @@
 /**
  * Lightweight session summary for branch expansion.
  */
-export type BranchSession = {
-  sessionId: string
-  workType: string | null
-  durationSeconds: number
-  aiLinesAdded: number
-  aiLinesRemoved: number
-  commitCount: number
-  lastMessageAt: number
-}
+export type BranchSession = { sessionId: string, workType: string | null, durationSeconds: number, aiLinesAdded: number, aiLinesRemoved: number, commitCount: number, lastMessageAt: number, };
