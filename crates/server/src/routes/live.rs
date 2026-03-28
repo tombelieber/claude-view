@@ -263,7 +263,7 @@ pub async fn get_live_session_messages(
     let file_path = {
         let map = state.live_sessions.read().await;
         match map.get(&id) {
-            Some(session) => session.file_path.clone(),
+            Some(session) => session.jsonl.file_path.clone(),
             None => {
                 return (
                     axum::http::StatusCode::NOT_FOUND,
@@ -432,7 +432,7 @@ pub async fn bind_control(
             cancel: tokio_util::sync::CancellationToken::new(),
         });
         // Control binding = sidecar Agent SDK — set source immediately
-        session.source = Some(crate::live::process::SessionSourceInfo {
+        session.jsonl.source = Some(crate::live::process::SessionSourceInfo {
             category: crate::live::process::SessionSource::AgentSdk,
             label: None,
         });
@@ -686,8 +686,8 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
             AgentStateGroup::NeedsYou => needs_you_count += 1,
             AgentStateGroup::Autonomous => autonomous_count += 1,
         }
-        total_cost += session.cost.total_usd;
-        total_tokens += session.tokens.total_tokens;
+        total_cost += session.jsonl.cost.total_usd;
+        total_tokens += session.jsonl.tokens.total_tokens;
     }
 
     serde_json::json!({
@@ -703,20 +703,22 @@ fn build_summary(map: &HashMap<String, LiveSession>, process_count: u32) -> serd
 mod tests {
     use super::*;
     use crate::live::state::{
-        AgentState, AgentStateGroup, HookFields, LiveSession, SessionStatus,
+        AgentState, AgentStateGroup, HookFields, JsonlFields, LiveSession, SessionStatus,
     };
-    use claude_view_core::phase::PhaseHistory;
-    use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
     /// Minimal LiveSession for tests with optional closed flag.
     fn test_session(id: &str, closed: bool) -> LiveSession {
         let mut s = LiveSession {
             id: id.to_string(),
-            project: String::new(),
-            project_display_name: "test".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: "/tmp/test.jsonl".to_string(),
             status: SessionStatus::Working,
+            started_at: Some(1000),
+            closed_at: None,
+            control: None,
+            model: None,
+            model_display_name: None,
+            model_set_at: 0,
+            context_window_tokens: 0,
+            statusline: crate::live::state::StatuslineFields::default(),
             hook: HookFields {
                 agent_state: AgentState {
                     group: AgentStateGroup::Autonomous,
@@ -737,32 +739,13 @@ mod tests {
                 agent_state_set_at: 0,
                 hook_events: Vec::new(),
             },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            started_at: Some(1000),
-            model: None,
-            tokens: TokenUsage::default(),
-            context_window_tokens: 0,
-            cost: CostBreakdown::default(),
-            cache_status: CacheStatus::Unknown,
-            last_turn_task_seconds: None,
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            source: None,
-            statusline: crate::live::state::StatuslineFields::default(),
-            model_display_name: None,
-            model_set_at: 0,
-            phase: PhaseHistory::default(),
+            jsonl: JsonlFields {
+                project: String::new(),
+                project_display_name: "test".to_string(),
+                project_path: "/tmp/test".to_string(),
+                file_path: "/tmp/test.jsonl".to_string(),
+                ..JsonlFields::default()
+            },
         };
         if closed {
             s.status = SessionStatus::Done;
