@@ -3,22 +3,21 @@
 /**
  * A single trend metric comparing current vs previous period.
  */
-export type TrendMetric = {
-  /**
-   * Current period value.
-   */
-  current: number
-  /**
-   * Previous period value.
-   */
-  previous: number
-  /**
-   * Absolute change (current - previous).
-   */
-  delta: number
-  /**
-   * Percentage change, rounded to 1 decimal place.
-   * None if previous == 0 (cannot calculate percentage).
-   */
-  deltaPercent: number | null
-}
+export type TrendMetric = { 
+/**
+ * Current period value.
+ */
+current: number, 
+/**
+ * Previous period value.
+ */
+previous: number, 
+/**
+ * Absolute change (current - previous).
+ */
+delta: number, 
+/**
+ * Percentage change, rounded to 1 decimal place.
+ * None if previous == 0 (cannot calculate percentage).
+ */
+deltaPercent: number | null, };

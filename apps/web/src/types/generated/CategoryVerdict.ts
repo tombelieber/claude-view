@@ -3,4 +3,4 @@
 /**
  * Verdict for category performance.
  */
-export type CategoryVerdict = 'excellent' | 'good' | 'average' | 'needs_work'
+export type CategoryVerdict = "excellent" | "good" | "average" | "needs_work";

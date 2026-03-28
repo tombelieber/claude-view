@@ -3,4 +3,4 @@
 /**
  * Per-project summary in the preview.
  */
-export type ProjectPreview = { name: string; sessionCount: number }
+export type ProjectPreview = { name: string, sessionCount: number, };
