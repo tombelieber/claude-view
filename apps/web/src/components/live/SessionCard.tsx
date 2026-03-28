@@ -23,6 +23,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
+import { PhaseBadge } from '../PhaseBadge'
 import { SourceBadge } from '../shared/SourceBadge'
 import { SessionSpinner, pickVerb } from '../spinner'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
@@ -156,6 +157,7 @@ export function SessionCard({
             </span>
           )}
           <SourceBadge source={session.source} />
+          <PhaseBadge phase={session.phase?.current?.phase} scope={session.phase?.current?.scope} />
           {session.statuslineVersion && (
             <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
               v{session.statuslineVersion}

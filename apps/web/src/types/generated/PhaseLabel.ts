@@ -4,4 +4,4 @@ import type { SessionPhase } from './SessionPhase'
 /**
  * Classification result for a single window.
  */
-export type PhaseLabel = { phase: SessionPhase; confidence: number; windowSize: number }
+export type PhaseLabel = { phase: SessionPhase; confidence: number; scope: string | null }

@@ -56,6 +56,7 @@ const PHASE_CONFIG: Record<Exclude<SessionPhase, 'working'>, PhaseConfig> = {
 
 interface PhaseBadgeProps {
   phase: SessionPhase | null | undefined
+  scope?: string | null
   className?: string
 }
 
@@ -64,7 +65,7 @@ interface PhaseBadgeProps {
  * Only shown when the classifier is confident (phase != 'working').
  * Confidence gating happens server-side — if we get a non-working phase, show it.
  */
-export function PhaseBadge({ phase, className }: PhaseBadgeProps) {
+export function PhaseBadge({ phase, scope, className }: PhaseBadgeProps) {
   if (!phase || phase === 'working') return null
 
   const config = PHASE_CONFIG[phase]
@@ -82,6 +83,11 @@ export function PhaseBadge({ phase, className }: PhaseBadgeProps) {
     >
       <span>{config.emoji}</span>
       <span>{config.label}</span>
+      {scope && (
+        <span className="text-muted-foreground ml-1.5">
+          · {scope.length > 30 ? `${scope.slice(0, 30)}…` : scope}
+        </span>
+      )}
     </span>
   )
 }
