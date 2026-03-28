@@ -93,7 +93,14 @@ impl ClassificationStabilizer {
     }
 
     fn compute_display(&mut self) {
-        self.displayed_phase = self.majority_phase();
+        let majority = self.majority_phase();
+        self.displayed_phase = majority;
+
+        // Scope strategy: try stemmed 2/3 majority first; if that fails,
+        // take the scope from the most recent result that agreed with the
+        // majority phase. Free-text scope rarely achieves word-level consensus
+        // across temperature-varied calls, so falling back to the latest
+        // phase-agreeing scope is the practical path.
         if let Some(majority_idx) = self.majority_scope_idx() {
             let raw = self.scope_raw_ring[majority_idx].clone();
             if let Some(ref s) = raw {
@@ -103,6 +110,23 @@ impl ClassificationStabilizer {
                 }
             }
         }
+
+        // Fallback: latest scope from a result that matched the majority phase
+        if let Some(phase) = majority {
+            // Walk ring backwards from most recent write
+            for offset in 1..=RING_SIZE {
+                let idx = (self.ring_idx + RING_SIZE - offset) % RING_SIZE;
+                if self.phase_ring[idx] == Some(phase) {
+                    if let Some(ref s) = self.scope_raw_ring[idx] {
+                        if !is_generic_scope(s) {
+                            self.displayed_scope = Some(s.clone());
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
         self.displayed_scope = None;
     }
 
