@@ -244,7 +244,7 @@ pub fn collect_snapshot(
     let session_resources: Vec<SessionResource> = live_sessions
         .values()
         .filter_map(|session| {
-            let pid = session.pid?;
+            let pid = session.hook.pid?;
             let sysinfo_pid = sysinfo::Pid::from_u32(pid);
             let proc = sys.process(sysinfo_pid)?;
             Some(SessionResource {
