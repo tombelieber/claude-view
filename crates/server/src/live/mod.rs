@@ -1,5 +1,6 @@
 pub mod buffer;
 pub mod component_collector;
+pub mod gpu_memory;
 pub mod coordinator;
 pub mod debug_log;
 pub mod file_resolver;

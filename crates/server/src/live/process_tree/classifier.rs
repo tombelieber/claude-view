@@ -1,9 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use sysinfo::System;
 
-use super::helpers::{
-    aggregate_descendants, batch_get_command_via_ps, compute_staleness, truncate_command,
-};
+use super::helpers::{aggregate_descendants, compute_staleness, truncate_command};
+use super::sysctl_cmd;
 use super::types::{
     ClassifiedProcess, EcosystemTag, ProcessCategory, ProcessTreeSnapshot, ProcessTreeTotals,
     RawProcessInfo,
@@ -59,11 +58,11 @@ pub(super) fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProces
         });
     }
 
-    // Pass 2: batch ps for all PIDs that need it (single subprocess).
+    // Pass 2: resolve commands via sysctl(KERN_PROCARGS2) for all PIDs that need it.
     let ps_results = if need_ps.is_empty() {
         std::collections::HashMap::new()
     } else {
-        batch_get_command_via_ps(&need_ps)
+        sysctl_cmd::batch_get_command(&need_ps)
     };
 
     // Pass 3: assemble with resolved commands.

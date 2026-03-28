@@ -4,7 +4,7 @@
 //! to verify the correct model is loaded. Sets `omlx_ready` AtomicBool
 //! for the classify scheduler.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -18,6 +18,7 @@ pub const EXPECTED_MODEL_SUBSTRING: &str = "Qwen3.5-4B";
 pub struct OmlxStatus {
     pub ready: Arc<AtomicBool>,
     pub port: u16,
+    omlx_pid: Arc<AtomicU32>,
 }
 
 impl OmlxStatus {
@@ -25,7 +26,21 @@ impl OmlxStatus {
         Self {
             ready: Arc::new(AtomicBool::new(false)),
             port,
+            omlx_pid: Arc::new(AtomicU32::new(0)),
         }
+    }
+
+    /// Returns the cached oMLX PID, or `None` if not yet resolved / not running.
+    pub fn pid(&self) -> Option<u32> {
+        match self.omlx_pid.load(Ordering::Acquire) {
+            0 => None,
+            pid => Some(pid),
+        }
+    }
+
+    /// Cache the oMLX PID. Pass `None` to clear (stores 0).
+    pub fn set_pid(&self, pid: Option<u32>) {
+        self.omlx_pid.store(pid.unwrap_or(0), Ordering::Release);
     }
 }
 
@@ -65,6 +80,13 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
                     info!(model_id, "oMLX ready with correct model");
                     state = OmlxState::Running;
                     status.ready.store(true, Ordering::Release);
+
+                    // One-time PID resolution (cold path, not on 10s hot loop)
+                    let pid = find_omlx_pid(status.port);
+                    status.set_pid(pid);
+                    if let Some(p) = pid {
+                        info!("oMLX PID resolved: {p}");
+                    }
                 }
             }
             ModelCheck::WrongModel(model_id) => {
@@ -73,6 +95,7 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
                 }
                 state = OmlxState::Unavailable;
                 status.ready.store(false, Ordering::Release);
+                status.set_pid(None);
                 debug!(
                     model_id,
                     "oMLX has wrong model, expected substring '{}'", EXPECTED_MODEL_SUBSTRING
@@ -84,6 +107,7 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
                 }
                 state = OmlxState::Unavailable;
                 status.ready.store(false, Ordering::Release);
+                status.set_pid(None);
             }
             ModelCheck::Unreachable(err) => {
                 if state == OmlxState::Running {
@@ -93,6 +117,7 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
                     state = OmlxState::Unavailable;
                 }
                 status.ready.store(false, Ordering::Release);
+                status.set_pid(None);
                 debug!(%err, "oMLX not reachable at {}", base_url);
             }
         }
@@ -145,4 +170,42 @@ async fn check_model(client: &reqwest::Client, base_url: &str) -> ModelCheck {
 
     // Models loaded but none match
     ModelCheck::WrongModel(body.data[0].id.clone())
+}
+
+/// One-time PID resolution for oMLX. Only called at startup/rediscovery.
+fn find_omlx_pid(port: u16) -> Option<u32> {
+    let output = std::process::Command::new("lsof")
+        .args(["-ti", &format!(":{port}"), "-sTCP:LISTEN"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout.split_whitespace().next()?.parse::<u32>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn omlx_status_pid_default_zero() {
+        let status = OmlxStatus::new(8080);
+        assert_eq!(status.pid(), None, "no PID before lifecycle discovers it");
+    }
+
+    #[test]
+    fn omlx_status_set_and_get_pid() {
+        let status = OmlxStatus::new(8080);
+        status.set_pid(Some(12345));
+        assert_eq!(status.pid(), Some(12345));
+    }
+
+    #[test]
+    fn omlx_status_clear_pid() {
+        let status = OmlxStatus::new(8080);
+        status.set_pid(Some(12345));
+        status.set_pid(None);
+        assert_eq!(status.pid(), None);
+    }
 }

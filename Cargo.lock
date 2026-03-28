@@ -671,6 +671,8 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-search",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "crypto_box",
  "dirs",
  "ed25519-dalek",

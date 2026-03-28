@@ -14,6 +14,7 @@
 mod classifier;
 pub mod component_types;
 pub mod helpers;
+pub mod sysctl_cmd;
 pub mod types;
 
 use sysinfo::System;
