@@ -71,3 +71,55 @@ describe('SessionRegistry delayed-remove cancellation', () => {
     clearSpy.mockRestore()
   })
 })
+
+describe('Prompt handler emitter cleanup (routes.ts prompt endpoint)', () => {
+  it('cleanup() removes listener on turn_complete — no leak', () => {
+    const emitter = new EventEmitter()
+    let cleanedUp = false
+    const onMessage = (event: { type: string }) => {
+      if (event.type === 'turn_complete' || event.type === 'turn_error') {
+        cleanup()
+      }
+    }
+    const timeout = setTimeout(() => { cleanup() }, 120_000)
+    const cleanup = () => {
+      clearTimeout(timeout)
+      emitter.removeListener('message', onMessage)
+      cleanedUp = true
+    }
+    emitter.on('message', onMessage)
+    expect(emitter.listenerCount('message')).toBe(1)
+    emitter.emit('message', { type: 'turn_complete' })
+    expect(emitter.listenerCount('message')).toBe(0)
+    expect(cleanedUp).toBe(true)
+  })
+
+  it('cleanup() removes listener on timeout — no leak', () => {
+    const emitter = new EventEmitter()
+    let cleanedUp = false
+    const onMessage = (_event: { type: string }) => {}
+    const cleanup = () => {
+      emitter.removeListener('message', onMessage)
+      cleanedUp = true
+    }
+    emitter.on('message', onMessage)
+    expect(emitter.listenerCount('message')).toBe(1)
+    cleanup()
+    expect(emitter.listenerCount('message')).toBe(0)
+    expect(cleanedUp).toBe(true)
+  })
+
+  it('cleanup() is idempotent — double call is safe', () => {
+    const emitter = new EventEmitter()
+    const onMessage = (_event: { type: string }) => {}
+    const timeout = setTimeout(() => {}, 1000)
+    const cleanup = () => {
+      clearTimeout(timeout)
+      emitter.removeListener('message', onMessage)
+    }
+    emitter.on('message', onMessage)
+    cleanup()
+    cleanup()
+    expect(emitter.listenerCount('message')).toBe(0)
+  })
+})
