@@ -577,6 +577,7 @@ dependencies = [
  "ts-rs",
  "utoipa",
  "uuid",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -603,6 +604,7 @@ dependencies = [
  "tracing",
  "ts-rs",
  "utoipa",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -630,6 +632,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -649,6 +652,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "ts-rs",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -711,6 +715,7 @@ dependencies = [
  "utoipa-axum",
  "utoipa-swagger-ui",
  "uuid",
+ "workspace-hack",
  "x25519-dalek",
 ]
 
@@ -5577,6 +5582,75 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "workspace-hack"
+version = "0.1.0"
+dependencies = [
+ "aho-corasick",
+ "bitflags 2.11.0",
+ "cc",
+ "crypto-common",
+ "deranged",
+ "digest",
+ "either",
+ "errno",
+ "flate2",
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+ "generic-array",
+ "getrandom 0.2.17",
+ "hashbrown 0.14.5",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "indexmap",
+ "libc",
+ "log",
+ "memchr",
+ "mime_guess",
+ "miniz_oxide",
+ "num-traits",
+ "percent-encoding",
+ "rand 0.8.5",
+ "rand_core 0.6.4",
+ "regex",
+ "regex-automata",
+ "regex-syntax",
+ "reqwest",
+ "rustls",
+ "rustls-webpki",
+ "security-framework-sys",
+ "serde",
+ "serde_core",
+ "serde_json",
+ "sha2",
+ "simd-adler32",
+ "slab",
+ "smallvec",
+ "spin",
+ "stable_deref_trait",
+ "subtle",
+ "syn",
+ "time",
+ "time-macros",
+ "tokio",
+ "tokio-stream",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-core",
+ "url",
+ "utoipa",
+ "utoipa-gen",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

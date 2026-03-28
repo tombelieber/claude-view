@@ -1,0 +1,138 @@
+#!/bin/bash
+# scripts/cq — cargo-queue: serializes cargo builds across all worktrees
+#
+# Three protections:
+#   1. flock queue — one build gets ALL cores (burst mode), others wait
+#   2. CARGO_INCREMENTAL=0 — one-shot commands (test/check/clippy) skip
+#      incremental cache writes (saves ~52MB/crate, prevents 15GB bloat)
+#   3. Process groups — cargo + all children (rustc, linker, test binaries)
+#      run in a dedicated process group. If cq is killed, the entire group
+#      is cleaned up. No more orphan rustc at 880% CPU.
+#
+# Usage:
+#   cq build                 # queued, incremental ON (interactive dev loop)
+#   cq test -p my-crate      # queued, incremental OFF (one-shot)
+#   cq check                 # queued, incremental OFF
+#   cq sweep                 # prune stale incremental caches (>6h old)
+#   cq metadata              # pass-through, no queue
+#
+set -euo pipefail
+
+LOCK_FILE="/tmp/claude-view-cargo.lock"
+CARGO="/opt/homebrew/bin/cargo"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# --- sweep: prune stale incremental compilation caches ---
+if [[ "${1:-}" == "sweep" ]]; then
+  echo "Sweeping stale incremental caches (>6h old)..."
+  swept=0
+  for target_dir in "$ROOT_DIR/target" "$ROOT_DIR/.worktrees"/*/target; do
+    inc_dir="$target_dir/debug/incremental"
+    [[ -d "$inc_dir" ]] || continue
+    while IFS= read -r -d '' dir; do
+      size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+      echo "  rm $dir ($size)"
+      rm -rf "$dir"
+      ((swept++))
+    done < <(find "$inc_dir" -maxdepth 1 -type d -mmin +360 -not -path "$inc_dir" -print0 2>/dev/null)
+  done
+  echo "Swept $swept stale dirs."
+  exit 0
+fi
+
+# --- pass-through: non-build commands don't need the queue ---
+case "${1:-}" in
+  build|test|check|clippy|run|bench|doc)
+    # CPU-heavy — queue them
+    ;;
+  *)
+    # metadata, version, tree, add, etc. — run immediately
+    exec "$CARGO" "$@"
+    ;;
+esac
+
+# --- incremental: OFF for one-shot, ON for interactive dev loop ---
+case "${1:-}" in
+  test|check|clippy|bench|doc)
+    export CARGO_INCREMENTAL=0
+    ;;
+  # build|run keep incremental ON (interactive dev benefits from cache)
+esac
+
+# --- queued execution with process group isolation ---
+# Uses perl for two things macOS bash can't do natively:
+#   1. flock (macOS has no flock CLI)
+#   2. setpgid (put cargo in its own process group for clean kill)
+#
+# Architecture:
+#   perl (parent) ─── flock ──→ fork ──→ child: setpgid(0,0) + exec cargo
+#                                │                 └─ rustc, linker inherit pgid
+#                                │
+#                          waitpid + SIGTERM/SIGINT handler
+#                          on signal: kill(-TERM, -$child_pgid)
+#
+# The parent stays in the ORIGINAL process group (avoids self-kill footgun).
+# The child becomes its own group leader. kill with negative PID kills the group.
+exec perl -MFcntl=:flock -MPOSIX=:sys_wait_h -e '
+  my $lock_file = shift;
+  my $cargo = shift;
+
+  # --- acquire flock (queue) ---
+  open(my $fh, ">", $lock_file) or die "Cannot open lock $lock_file: $!\n";
+  unless (flock($fh, LOCK_EX | LOCK_NB)) {
+    my $holder = "";
+    if (open(my $pf, "<", $lock_file)) {
+      $holder = <$pf> // "";
+      chomp $holder;
+      close $pf;
+    }
+    my $msg = "⏳ cargo queue: waiting for another build";
+    $msg .= " ($holder)" if $holder;
+    print STDERR "$msg\n";
+    flock($fh, LOCK_EX) or die "flock: $!\n";
+  }
+
+  # Write our identity for other waiters
+  truncate($fh, 0);
+  seek($fh, 0, 0);
+  print $fh join(" ", @ARGV) . "\n";
+
+  # --- fork + process group ---
+  my $child = fork();
+  die "fork failed: $!\n" unless defined $child;
+
+  if ($child == 0) {
+    # Child: new process group, then become cargo
+    POSIX::setpgid(0, 0);
+    exec($cargo, @ARGV) or die "exec $cargo: $!\n";
+  }
+
+  # Parent: forward SIGTERM/SIGINT to child process group
+  my $killed = 0;
+  for my $sig ("TERM", "INT", "HUP") {
+    $SIG{$sig} = sub {
+      return if $killed;
+      $killed = 1;
+      kill("TERM", -$child);  # negative = process group
+    };
+  }
+
+  # Wait for cargo to finish
+  waitpid($child, 0);
+  my $status = $?;
+
+  # Reap any stragglers (rustc that ignored SIGTERM)
+  kill("TERM", -$child) unless $killed;
+  # Brief grace then force-kill
+  my $reaped = waitpid(-$child, WNOHANG);
+  if (defined $reaped && $reaped == 0) {
+    select(undef, undef, undef, 0.5);
+    kill("KILL", -$child);
+  }
+
+  # Exit with cargo exit code
+  if (POSIX::WIFEXITED($status)) {
+    exit(POSIX::WEXITSTATUS($status));
+  }
+  exit(1);
+' "$LOCK_FILE" "$CARGO" "$@"

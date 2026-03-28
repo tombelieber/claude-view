@@ -21,6 +21,7 @@ memmap2 = { workspace = true }
 memchr = { workspace = true }
 ts-rs = { workspace = true }
 utoipa = { version = "5" }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [features]
 codegen = ["claude-view-core/codegen", "claude-view-search/codegen"]
