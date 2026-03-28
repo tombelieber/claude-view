@@ -125,7 +125,7 @@ pub fn apply_lifecycle(
                 } => {
                     for agent in &mut hook.sub_agents {
                         let type_match = !agent_type.is_empty() && agent.agent_type == *agent_type;
-                        let id_match = !agent_id.as_ref().map_or(true, |id| id.is_empty())
+                        let id_match = agent_id.as_ref().is_some_and(|id| !id.is_empty())
                             && agent.agent_id.as_deref() == agent_id.as_deref();
                         if type_match || id_match {
                             agent.status = claude_view_core::subagent::SubAgentStatus::Complete;
