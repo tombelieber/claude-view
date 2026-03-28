@@ -5,12 +5,4 @@
  *
  * Richer than ProgressItem — includes description and dependency edges.
  */
-export type TaskItem = {
-  id: string
-  subject: string
-  description: string
-  activeForm: string
-  status: string
-  blocks: Array<string>
-  blockedBy: Array<string>
-}
+export type TaskItem = { id: string, subject: string, description: string, activeForm: string, status: string, blocks: Array<string>, blockedBy: Array<string>, };
