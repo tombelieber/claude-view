@@ -10,7 +10,12 @@ interface ComponentRowProps {
 }
 
 export function ComponentRow({ component: c, systemInfo, totalVramBytes }: ComponentRowProps) {
-  const kindLabel = c.kind === 'ExternalService' ? 'external' : 'child process'
+  const kindLabel =
+    c.details.type === 'server'
+      ? 'server'
+      : c.kind === 'ExternalService'
+        ? 'external'
+        : 'child process'
 
   const statusDot = c.running
     ? 'bg-green-500 dark:bg-green-400'
