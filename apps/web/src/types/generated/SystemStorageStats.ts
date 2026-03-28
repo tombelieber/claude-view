@@ -5,10 +5,4 @@
  * Named SystemStorageStats to avoid ts-rs export collision with the richer
  * StorageStats in routes/stats.rs (which is the user-facing settings version).
  */
-export type SystemStorageStats = {
-  jsonlBytes: number
-  indexBytes: number
-  dbBytes: number
-  cacheBytes: number
-  totalBytes: number
-}
+export type SystemStorageStats = { jsonlBytes: number, indexBytes: number, dbBytes: number, cacheBytes: number, totalBytes: number, };

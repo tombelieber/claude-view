@@ -3,21 +3,20 @@
 /**
  * A single message-level search match with a highlighted snippet.
  */
-export type MatchHit = {
-  /**
-   * "user", "assistant", or "tool"
-   */
-  role: string
-  /**
-   * 1-based turn number within the conversation.
-   */
-  turnNumber: number
-  /**
-   * Snippet with `<mark>` tags highlighting matched terms.
-   */
-  snippet: string
-  /**
-   * Unix timestamp (seconds) of this message. 0 if unknown.
-   */
-  timestamp: number
-}
+export type MatchHit = { 
+/**
+ * "user", "assistant", or "tool"
+ */
+role: string, 
+/**
+ * 1-based turn number within the conversation.
+ */
+turnNumber: number, 
+/**
+ * Snippet with `<mark>` tags highlighting matched terms.
+ */
+snippet: string, 
+/**
+ * Unix timestamp (seconds) of this message. 0 if unknown.
+ */
+timestamp: number, };

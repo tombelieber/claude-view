@@ -3,41 +3,40 @@
 /**
  * Index metadata for data freshness tracking.
  */
-export type IndexMetadata = {
-  /**
-   * Unix timestamp of last successful index completion.
-   */
-  lastIndexedAt: number | null
-  /**
-   * Duration of last successful index in milliseconds.
-   */
-  lastIndexDurationMs: number | null
-  /**
-   * Number of sessions indexed in last run.
-   */
-  sessionsIndexed: number
-  /**
-   * Number of projects indexed in last run.
-   */
-  projectsIndexed: number
-  /**
-   * Unix timestamp of last successful git sync.
-   */
-  lastGitSyncAt: number | null
-  /**
-   * Number of commits found in last git sync.
-   */
-  commitsFound: number
-  /**
-   * Number of session-commit links created in last git sync.
-   */
-  linksCreated: number
-  /**
-   * Unix timestamp of last metadata update.
-   */
-  updatedAt: number
-  /**
-   * User-configurable git sync interval in seconds (default 60).
-   */
-  gitSyncIntervalSecs: number
-}
+export type IndexMetadata = { 
+/**
+ * Unix timestamp of last successful index completion.
+ */
+lastIndexedAt: number | null, 
+/**
+ * Duration of last successful index in milliseconds.
+ */
+lastIndexDurationMs: number | null, 
+/**
+ * Number of sessions indexed in last run.
+ */
+sessionsIndexed: number, 
+/**
+ * Number of projects indexed in last run.
+ */
+projectsIndexed: number, 
+/**
+ * Unix timestamp of last successful git sync.
+ */
+lastGitSyncAt: number | null, 
+/**
+ * Number of commits found in last git sync.
+ */
+commitsFound: number, 
+/**
+ * Number of session-commit links created in last git sync.
+ */
+linksCreated: number, 
+/**
+ * Unix timestamp of last metadata update.
+ */
+updatedAt: number, 
+/**
+ * User-configurable git sync interval in seconds (default 60).
+ */
+gitSyncIntervalSecs: number, };

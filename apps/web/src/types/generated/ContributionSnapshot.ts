@@ -3,17 +3,4 @@
 /**
  * A single contribution snapshot row.
  */
-export type ContributionSnapshot = {
-  id: number
-  date: string
-  projectId: string | null
-  branch: string | null
-  sessionsCount: number
-  aiLinesAdded: number
-  aiLinesRemoved: number
-  commitsCount: number
-  commitInsertions: number
-  commitDeletions: number
-  tokensUsed: number
-  costCents: number
-}
+export type ContributionSnapshot = { id: number, date: string, projectId: string | null, branch: string | null, sessionsCount: number, aiLinesAdded: number, aiLinesRemoved: number, commitsCount: number, commitInsertions: number, commitDeletions: number, tokensUsed: number, costCents: number, };
