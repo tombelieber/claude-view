@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
     append_capped_hook_event, append_capped_hook_events, status_from_agent_state, AgentState,
-    AgentStateGroup, HookEvent, LiveSession, SessionEvent, SessionStatus,
+    AgentStateGroup, HookEvent, HookFields, LiveSession, SessionEvent, SessionStatus,
     MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::state::AppState;
@@ -105,10 +105,10 @@ fn set_agent_state(
     state: AgentState,
     timestamp_ms: i64,
 ) {
-    session.agent_state = state.clone();
+    session.hook.agent_state = state.clone();
     session.status = status_from_agent_state(&state);
-    session.current_activity = state.label.clone();
-    session.agent_state_set_at = timestamp_ms;
+    session.hook.current_activity = state.label.clone();
+    session.hook.agent_state_set_at = timestamp_ms;
 }
 
 /// Current monotonic timestamp in milliseconds.
@@ -213,39 +213,42 @@ pub async fn handle_hook(
                         project_path: payload.cwd.clone().unwrap_or_default(),
                         file_path: payload.transcript_path.clone().unwrap_or_default(),
                         status: status_from_agent_state(&agent_state),
-                        agent_state: agent_state.clone(),
+                        hook: HookFields {
+                            agent_state: agent_state.clone(),
+                            pid: claude_pid,
+                            title: String::new(),
+                            last_user_message: payload
+                                .prompt
+                                .as_ref()
+                                .map(|p| p.chars().take(500).collect())
+                                .unwrap_or_default(),
+                            current_activity: agent_state.label.clone(),
+                            turn_count: 0,
+                            last_activity_at: now,
+                            current_turn_started_at: None,
+                            sub_agents: Vec::new(),
+                            progress_items: Vec::new(),
+                            compact_count: 0,
+                            agent_state_set_at: now_ms(),
+                            hook_events: Vec::new(),
+                        },
                         git_branch: branch,
                         worktree_branch: wt_branch,
                         is_worktree: is_wt,
                         effective_branch: effective,
-                        pid: claude_pid,
-                        title: String::new(),
-                        last_user_message: payload
-                            .prompt
-                            .as_ref()
-                            .map(|p| p.chars().take(500).collect())
-                            .unwrap_or_default(),
-
-                        current_activity: agent_state.label.clone(),
-                        turn_count: 0,
                         started_at: None,
-                        last_activity_at: now,
                         model: payload.model.clone(),
                         tokens: TokenUsage::default(),
                         context_window_tokens: 0,
                         cost: CostBreakdown::default(),
                         cache_status: CacheStatus::Unknown,
-                        current_turn_started_at: None,
                         last_turn_task_seconds: None,
-                        sub_agents: Vec::new(),
                         team_name: None,
                         team_members: Vec::new(),
                         team_inbox_count: 0,
                         edit_count: 0,
-                        progress_items: Vec::new(),
                         tools_used: Vec::new(),
                         last_cache_hit_at: None,
-                        compact_count: 0,
                         slug: None,
                         user_files: None,
                         closed_at: None,
@@ -253,20 +256,22 @@ pub async fn handle_hook(
                         statusline: crate::live::state::StatuslineFields::default(),
                         model_display_name: None,
                         model_set_at: now_ms(),
-                        agent_state_set_at: now_ms(),
                         source: None,
-                        hook_events: Vec::new(),
                         phase: PhaseHistory::default(),
                     };
                     append_capped_hook_events(
-                        &mut session.hook_events,
+                        &mut session.hook.hook_events,
                         buffered_events,
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
                     sessions.insert(session.id.clone(), session.clone());
                     // Drain pending statusline buffer (lock ordering: sessions → pending_statusline)
                     {
-                        let buffered = state.pending_statusline.lock().await.drain(&payload.session_id);
+                        let buffered = state
+                            .pending_statusline
+                            .lock()
+                            .await
+                            .drain(&payload.session_id);
                         if !buffered.is_empty() {
                             if let Some(s) = sessions.get_mut(&payload.session_id) {
                                 for p in &buffered {
@@ -298,7 +303,7 @@ pub async fn handle_hook(
                 } else if !buffered_events.is_empty() {
                     if let Some(existing) = sessions.get_mut(&payload.session_id) {
                         append_capped_hook_events(
-                            &mut existing.hook_events,
+                            &mut existing.hook.hook_events,
                             buffered_events,
                             MAX_HOOK_EVENTS_PER_SESSION,
                         );
@@ -328,7 +333,7 @@ pub async fn handle_hook(
                 let mut sessions = state.live_sessions.write().await;
                 if let Some(existing) = sessions.get_mut(&payload.session_id) {
                     append_capped_hook_events(
-                        &mut existing.hook_events,
+                        &mut existing.hook.hook_events,
                         buffered_events,
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
@@ -362,7 +367,7 @@ pub async fn handle_hook(
                     if *id == payload.session_id {
                         continue;
                     }
-                    if session.pid != Some(pid) {
+                    if session.hook.pid != Some(pid) {
                         continue;
                     }
                     if session.status == SessionStatus::Done {
@@ -375,14 +380,14 @@ pub async fn handle_hook(
                     // Same PID, different session_id → stale. Close it.
                     session.status = SessionStatus::Done;
                     session.closed_at = Some(now);
-                    session.agent_state = AgentState {
+                    session.hook.agent_state = AgentState {
                         group: AgentStateGroup::NeedsYou,
                         state: "session_ended".into(),
                         label: "Session ended".into(),
                         context: None,
                     };
-                    session.hook_events.clear();
-                    let is_ghost = session.file_path.is_empty() && session.turn_count == 0;
+                    session.hook.hook_events.clear();
+                    let is_ghost = session.file_path.is_empty() && session.hook.turn_count == 0;
                     let tp = session
                         .statusline
                         .statusline_transcript_path
@@ -423,24 +428,24 @@ pub async fn handle_hook(
             }
             let action = if let Some(existing) = sessions.get_mut(&payload.session_id) {
                 // Session already exists (file watcher got there first, OR resume)
-                existing.agent_state = agent_state.clone();
+                existing.hook.agent_state = agent_state.clone();
                 existing.status = status_from_agent_state(&agent_state);
                 state_changed = true;
                 if let Some(m) = &payload.model {
                     existing.model = Some(m.clone());
                 }
                 if payload.source.as_deref() == Some("clear") {
-                    existing.turn_count = 0;
-                    existing.current_turn_started_at = None;
+                    existing.hook.turn_count = 0;
+                    existing.hook.current_turn_started_at = None;
                 }
-                if existing.pid.is_none() {
+                if existing.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        existing.pid = Some(pid);
+                        existing.hook.pid = Some(pid);
                     }
                 }
                 if !buffered_events.is_empty() {
                     append_capped_hook_events(
-                        &mut existing.hook_events,
+                        &mut existing.hook.hook_events,
                         buffered_events,
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
@@ -457,34 +462,38 @@ pub async fn handle_hook(
                     project_path: payload.cwd.clone().unwrap_or_default(),
                     file_path: payload.transcript_path.clone().unwrap_or_default(),
                     status: status_from_agent_state(&agent_state),
-                    agent_state: agent_state.clone(),
+                    hook: HookFields {
+                        agent_state: agent_state.clone(),
+                        pid: claude_pid,
+                        title: String::new(),
+                        last_user_message: String::new(),
+                        current_activity: agent_state.label.clone(),
+                        turn_count: 0,
+                        last_activity_at: now,
+                        current_turn_started_at: None,
+                        sub_agents: Vec::new(),
+                        progress_items: Vec::new(),
+                        compact_count: 0,
+                        agent_state_set_at: now_ms(),
+                        hook_events: Vec::new(),
+                    },
                     git_branch: branch,
                     worktree_branch: wt_branch,
                     is_worktree: is_wt,
                     effective_branch: effective,
-                    pid: claude_pid,
-                    title: String::new(),
-                    last_user_message: String::new(),
-                    current_activity: agent_state.label.clone(),
-                    turn_count: 0,
                     started_at: Some(now),
-                    last_activity_at: now,
                     model: payload.model.clone(),
                     tokens: TokenUsage::default(),
                     context_window_tokens: 0,
                     cost: CostBreakdown::default(),
                     cache_status: CacheStatus::Unknown,
-                    current_turn_started_at: None,
                     last_turn_task_seconds: None,
-                    sub_agents: Vec::new(),
                     team_name: None,
                     team_members: Vec::new(),
                     team_inbox_count: 0,
                     edit_count: 0,
-                    progress_items: Vec::new(),
                     tools_used: Vec::new(),
                     last_cache_hit_at: None,
-                    compact_count: 0,
                     slug: None,
                     user_files: None,
                     closed_at: None,
@@ -493,19 +502,21 @@ pub async fn handle_hook(
                     model_display_name: None,
                     source: None,
                     model_set_at: now_ms(),
-                    agent_state_set_at: now_ms(),
-                    hook_events: Vec::new(),
                     phase: PhaseHistory::default(),
                 };
                 append_capped_hook_events(
-                    &mut session.hook_events,
+                    &mut session.hook.hook_events,
                     buffered_events,
                     MAX_HOOK_EVENTS_PER_SESSION,
                 );
                 sessions.insert(session.id.clone(), session.clone());
                 // Drain pending statusline buffer (lock ordering: sessions → pending_statusline)
                 {
-                    let buffered = state.pending_statusline.lock().await.drain(&payload.session_id);
+                    let buffered = state
+                        .pending_statusline
+                        .lock()
+                        .await
+                        .drain(&payload.session_id);
                     if !buffered.is_empty() {
                         if let Some(s) = sessions.get_mut(&payload.session_id) {
                             for p in &buffered {
@@ -597,19 +608,19 @@ pub async fn handle_hook(
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 if let Some(prompt) = &payload.prompt {
-                    session.last_user_message = prompt.chars().take(500).collect();
-                    if session.title.is_empty() {
-                        session.title = session.last_user_message.clone();
+                    session.hook.last_user_message = prompt.chars().take(500).collect();
+                    if session.hook.title.is_empty() {
+                        session.hook.title = session.hook.last_user_message.clone();
                     }
                 }
-                session.current_turn_started_at = Some(now);
-                session.turn_count += 1;
+                session.hook.current_turn_started_at = Some(now);
+                session.hook.turn_count += 1;
                 set_agent_state(session, agent_state.clone(), now_ms());
-                session.last_activity_at = now;
+                session.hook.last_activity_at = now;
                 state_changed = true;
-                if session.pid.is_none() {
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -622,11 +633,11 @@ pub async fn handle_hook(
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 set_agent_state(session, agent_state.clone(), now_ms());
-                session.last_activity_at = now;
+                session.hook.last_activity_at = now;
                 state_changed = true;
-                if session.pid.is_none() {
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -645,6 +656,7 @@ pub async fn handle_hook(
                 let sessions = state.live_sessions.read().await;
                 if let Some(session) = sessions.get(&session_id) {
                     let mut rows: Vec<claude_view_db::HookEventRow> = session
+                        .hook
                         .hook_events
                         .iter()
                         .map(|e| claude_view_db::HookEventRow {
@@ -752,13 +764,13 @@ pub async fn handle_hook(
                     } else {
                         session.status = SessionStatus::Done;
                         session.closed_at = Some(now);
-                        session.agent_state = AgentState {
+                        session.hook.agent_state = AgentState {
                             group: AgentStateGroup::NeedsYou,
                             state: "session_ended".into(),
                             label: "Session ended".into(),
                             context: None,
                         };
-                        session.hook_events.clear(); // Reclaim memory — already persisted to SQLite above
+                        session.hook.hook_events.clear(); // Reclaim memory — already persisted to SQLite above
                         we_closed_it = true;
                     }
                 } else {
@@ -804,17 +816,17 @@ pub async fn handle_hook(
                 // Mark the sub-agent as complete in the metadata list
                 let match_type = payload.agent_type.as_deref().unwrap_or("");
                 let match_id = payload.agent_id.as_deref().unwrap_or("");
-                for agent in &mut session.sub_agents {
+                for agent in &mut session.hook.sub_agents {
                     if (!match_type.is_empty() && agent.agent_type == match_type)
                         || (!match_id.is_empty() && agent.agent_id.as_deref() == Some(match_id))
                     {
                         agent.status = claude_view_core::subagent::SubAgentStatus::Complete;
                     }
                 }
-                session.last_activity_at = now;
-                if session.pid.is_none() {
+                session.hook.last_activity_at = now;
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -827,10 +839,10 @@ pub async fn handle_hook(
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 // Informational only — teammate status in sub_agents list
-                session.last_activity_at = now;
-                if session.pid.is_none() {
+                session.hook.last_activity_at = now;
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -843,16 +855,16 @@ pub async fn handle_hook(
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 if let Some(task_id) = &payload.task_id {
-                    for item in &mut session.progress_items {
+                    for item in &mut session.hook.progress_items {
                         if item.id.as_deref() == Some(task_id.as_str()) {
                             item.status = claude_view_core::progress::ProgressStatus::Completed;
                         }
                     }
                 }
-                session.last_activity_at = now;
-                if session.pid.is_none() {
+                session.hook.last_activity_at = now;
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -864,14 +876,14 @@ pub async fn handle_hook(
         "PreCompact" => {
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
-                session.agent_state = agent_state.clone();
+                session.hook.agent_state = agent_state.clone();
                 session.status = status_from_agent_state(&agent_state);
-                session.current_activity = agent_state.label.clone();
-                session.last_activity_at = now;
+                session.hook.current_activity = agent_state.label.clone();
+                session.hook.last_activity_at = now;
                 state_changed = true;
-                if session.pid.is_none() {
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -883,11 +895,11 @@ pub async fn handle_hook(
         "PostToolUse" => {
             let mut sessions = state.live_sessions.write().await;
             if let Some(session) = sessions.get_mut(&payload.session_id) {
-                if session.agent_state.state == "compacting" {
-                    session.last_activity_at = now;
-                    if session.pid.is_none() {
+                if session.hook.agent_state.state == "compacting" {
+                    session.hook.last_activity_at = now;
+                    if session.hook.pid.is_none() {
                         if let Some(pid) = claude_pid {
-                            session.pid = Some(pid);
+                            session.hook.pid = Some(pid);
                             pid_newly_bound = true;
                         }
                     }
@@ -895,14 +907,14 @@ pub async fn handle_hook(
                         session: session.clone(),
                     });
                 } else {
-                    session.agent_state = agent_state.clone();
+                    session.hook.agent_state = agent_state.clone();
                     session.status = status_from_agent_state(&agent_state);
-                    session.current_activity = agent_state.label.clone();
-                    session.last_activity_at = now;
+                    session.hook.current_activity = agent_state.label.clone();
+                    session.hook.last_activity_at = now;
                     state_changed = true;
-                    if session.pid.is_none() {
+                    if session.hook.pid.is_none() {
                         if let Some(pid) = claude_pid {
-                            session.pid = Some(pid);
+                            session.hook.pid = Some(pid);
                             pid_newly_bound = true;
                         }
                     }
@@ -920,19 +932,19 @@ pub async fn handle_hook(
             if let Some(session) = sessions.get_mut(&payload.session_id) {
                 let mut new_state = agent_state.clone();
                 if new_state.context.is_none()
-                    && session.agent_state.state == new_state.state
-                    && session.agent_state.context.is_some()
+                    && session.hook.agent_state.state == new_state.state
+                    && session.hook.agent_state.context.is_some()
                 {
-                    new_state.context = session.agent_state.context.clone();
+                    new_state.context = session.hook.agent_state.context.clone();
                 }
-                session.agent_state = new_state;
+                session.hook.agent_state = new_state;
                 session.status = status_from_agent_state(&agent_state);
-                session.current_activity = agent_state.label.clone();
-                session.last_activity_at = now;
+                session.hook.current_activity = agent_state.label.clone();
+                session.hook.last_activity_at = now;
                 state_changed = true;
-                if session.pid.is_none() {
+                if session.hook.pid.is_none() {
                     if let Some(pid) = claude_pid {
-                        session.pid = Some(pid);
+                        session.hook.pid = Some(pid);
                         pid_newly_bound = true;
                     }
                 }
@@ -960,13 +972,13 @@ pub async fn handle_hook(
                 &payload.hook_event_name,
                 payload.tool_name.as_deref(),
                 &agent_state.label,
-                group_name_from_agent_group(&session.agent_state.group),
+                group_name_from_agent_group(&session.hook.agent_state.group),
                 hook_event_context.as_ref(),
                 "hook",
             );
 
             append_capped_hook_event(
-                &mut session.hook_events,
+                &mut session.hook.hook_events,
                 hook_event.clone(),
                 MAX_HOOK_EVENTS_PER_SESSION,
             );
@@ -1354,39 +1366,43 @@ mod tests {
             project_path: "/tmp/test".to_string(),
             file_path: "/tmp/test.jsonl".to_string(),
             status: crate::live::state::SessionStatus::Working,
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working".into(),
-                context: None,
+            hook: HookFields {
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                pid: None,
+                title: "Test session".into(),
+                last_user_message: String::new(),
+                current_activity: "Working".into(),
+                turn_count: 5,
+                last_activity_at: 1000,
+                current_turn_started_at: None,
+                sub_agents: Vec::new(),
+                progress_items: Vec::new(),
+                compact_count: 0,
+                agent_state_set_at: 0,
+                hook_events: Vec::new(),
             },
             git_branch: None,
             worktree_branch: None,
             is_worktree: false,
             effective_branch: None,
-            pid: None,
-            title: "Test session".into(),
-            last_user_message: String::new(),
-            current_activity: "Working".into(),
-            turn_count: 5,
             started_at: Some(1000),
-            last_activity_at: 1000,
             model: None,
             tokens: claude_view_core::pricing::TokenUsage::default(),
             context_window_tokens: 0,
             cost: claude_view_core::pricing::CostBreakdown::default(),
             cache_status: claude_view_core::pricing::CacheStatus::Unknown,
-            current_turn_started_at: None,
             last_turn_task_seconds: None,
-            sub_agents: Vec::new(),
             team_name: None,
             team_members: Vec::new(),
             team_inbox_count: 0,
             edit_count: 0,
-            progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
-            compact_count: 0,
             slug: None,
             user_files: None,
             closed_at: None,
@@ -1394,9 +1410,7 @@ mod tests {
             statusline: crate::live::state::StatuslineFields::default(),
             model_display_name: None,
             model_set_at: 0,
-            agent_state_set_at: 0,
             source: None,
-            hook_events: Vec::new(),
             phase: claude_view_core::phase::PhaseHistory::default(),
         }
     }
@@ -1831,9 +1845,9 @@ mod tests {
             .get(session_id)
             .expect("session should be promoted");
         assert_eq!(session.project_path, "/tmp/promoted-project");
-        assert_eq!(session.hook_events.len(), 2);
-        assert_eq!(session.hook_events[0].event_name, "PreToolUse");
-        assert_eq!(session.hook_events[1].event_name, "UserPromptSubmit");
+        assert_eq!(session.hook.hook_events.len(), 2);
+        assert_eq!(session.hook.hook_events[0].event_name, "PreToolUse");
+        assert_eq!(session.hook.hook_events[1].event_name, "UserPromptSubmit");
         drop(sessions);
 
         let unresolved = take_unresolved_hook_events(session_id).await;
@@ -1966,9 +1980,9 @@ mod tests {
         let session = sessions
             .get(session_id)
             .expect("session should exist after simulated promotion");
-        assert_eq!(session.hook_events.len(), 2);
-        assert_eq!(session.hook_events[0].event_name, "PreToolUse");
-        assert_eq!(session.hook_events[1].event_name, "UserPromptSubmit");
+        assert_eq!(session.hook.hook_events.len(), 2);
+        assert_eq!(session.hook.hook_events[0].event_name, "PreToolUse");
+        assert_eq!(session.hook.hook_events[1].event_name, "UserPromptSubmit");
         drop(sessions);
 
         let unresolved = take_unresolved_hook_events(session_id).await;
@@ -2016,17 +2030,17 @@ mod tests {
         // Verify: hook event should record "autonomous" (actual session group)
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
-        assert_eq!(session.hook_events.len(), 1);
-        let event = &session.hook_events[0];
+        assert_eq!(session.hook.hook_events.len(), 1);
+        let event = &session.hook.hook_events[0];
         assert_eq!(event.event_name, "TaskCompleted");
         assert_eq!(event.label, "Fix login bug"); // label still from resolved state
         assert_eq!(
             event.group, "autonomous",
             "TaskCompleted hook event should record the session's actual group (autonomous)"
         );
-        // Also verify session.agent_state was NOT changed
+        // Also verify session.hook.agent_state was NOT changed
         assert!(matches!(
-            session.agent_state.group,
+            session.hook.agent_state.group,
             AgentStateGroup::Autonomous
         ));
     }
@@ -2069,9 +2083,9 @@ mod tests {
 
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
-        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(session.hook.hook_events.len(), 1);
         assert_eq!(
-            session.hook_events[0].group, "autonomous",
+            session.hook.hook_events[0].group, "autonomous",
             "SubagentStop hook event should record session's actual group"
         );
     }
@@ -2112,9 +2126,9 @@ mod tests {
 
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
-        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(session.hook.hook_events.len(), 1);
         assert_eq!(
-            session.hook_events[0].group, "autonomous",
+            session.hook.hook_events[0].group, "autonomous",
             "TeammateIdle hook event should record session's actual group"
         );
     }
@@ -2158,14 +2172,14 @@ mod tests {
 
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
-        assert_eq!(session.hook_events.len(), 1);
+        assert_eq!(session.hook.hook_events.len(), 1);
         assert_eq!(
-            session.hook_events[0].group, "needs_you",
+            session.hook.hook_events[0].group, "needs_you",
             "AskUserQuestion hook event should record needs_you (state was applied)"
         );
-        // Verify session.agent_state was updated too
+        // Verify session.hook.agent_state was updated too
         assert!(matches!(
-            session.agent_state.group,
+            session.hook.agent_state.group,
             AgentStateGroup::NeedsYou
         ));
     }
@@ -2178,14 +2192,14 @@ mod tests {
         // Pre-populate a session in compacting state (as if PreCompact just fired)
         {
             let mut session = make_autonomous_session("test-session");
-            session.agent_state = AgentState {
+            session.hook.agent_state = AgentState {
                 group: AgentStateGroup::Autonomous,
                 state: "compacting".into(),
                 label: "Auto-compacting context...".into(),
                 context: None,
             };
             session.status = SessionStatus::Working;
-            session.current_activity = "Auto-compacting context...".into();
+            session.hook.current_activity = "Auto-compacting context...".into();
             let mut sessions = state.live_sessions.write().await;
             sessions.insert("test-session".to_string(), session);
         }
@@ -2216,11 +2230,11 @@ mod tests {
         let sessions = state.live_sessions.read().await;
         let session = sessions.get("test-session").unwrap();
         assert_eq!(
-            session.agent_state.state, "compacting",
+            session.hook.agent_state.state, "compacting",
             "PostToolUse must not overwrite compacting state"
         );
         assert_eq!(
-            session.current_activity, "Auto-compacting context...",
+            session.hook.current_activity, "Auto-compacting context...",
             "PostToolUse must not overwrite current_activity during compaction"
         );
         assert_eq!(session.status, SessionStatus::Working);
@@ -2304,7 +2318,7 @@ mod tests {
         {
             let sessions = state.live_sessions.read().await;
             let a = sessions.get("session-a").expect("session-a must exist");
-            assert_eq!(a.pid, Some(99999));
+            assert_eq!(a.hook.pid, Some(99999));
         }
 
         // Session B starts with SAME PID 99999 → ghost session A must be REMOVED entirely
@@ -2313,7 +2327,7 @@ mod tests {
         {
             let sessions = state.live_sessions.read().await;
             let b = sessions.get("session-b").expect("session-b must exist");
-            assert_eq!(b.pid, Some(99999));
+            assert_eq!(b.hook.pid, Some(99999));
             assert_ne!(b.status, SessionStatus::Done);
             // Ghost session A is fully removed (not recently closed)
             assert!(
@@ -2333,9 +2347,9 @@ mod tests {
         {
             let mut sessions = state.live_sessions.write().await;
             let mut real = make_autonomous_session("real-old");
-            real.pid = Some(99998);
+            real.hook.pid = Some(99998);
             real.file_path = "/tmp/real.jsonl".into();
-            real.turn_count = 5;
+            real.hook.turn_count = 5;
             sessions.insert("real-old".into(), real);
         }
 
@@ -2411,7 +2425,7 @@ mod tests {
         {
             let mut sessions = state.live_sessions.write().await;
             let mut session = make_autonomous_session("sidecar-session");
-            session.pid = Some(30001);
+            session.hook.pid = Some(30001);
             session.control = Some(crate::live::state::ControlBinding {
                 control_id: "ctrl-123".into(),
                 bound_at: 1000,
@@ -2452,9 +2466,9 @@ mod tests {
         {
             let mut sessions = state.live_sessions.write().await;
             let mut ghost = make_autonomous_session("ghost-session");
-            ghost.pid = Some(40001);
+            ghost.hook.pid = Some(40001);
             ghost.file_path = String::new(); // no JSONL
-            ghost.turn_count = 0; // zero turns
+            ghost.hook.turn_count = 0; // zero turns
             sessions.insert("ghost-session".into(), ghost);
         }
 
@@ -2508,6 +2522,6 @@ mod tests {
             SessionStatus::Done,
             "resume must not mark session as Done"
         );
-        assert_eq!(s.pid, Some(60001));
+        assert_eq!(s.hook.pid, Some(60001));
     }
 }
