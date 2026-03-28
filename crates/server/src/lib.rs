@@ -134,7 +134,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         pending_statusline: tokio::sync::Mutex::new(live::buffer::PendingMutations::new(
             std::time::Duration::from_secs(120),
         )),
-        coordinator: live::coordinator::SessionCoordinator::new(),
+        coordinator: Arc::new(live::coordinator::SessionCoordinator::new()),
         telemetry: None,
         telemetry_config_path,
     });
@@ -211,7 +211,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         pending_statusline: tokio::sync::Mutex::new(live::buffer::PendingMutations::new(
             std::time::Duration::from_secs(120),
         )),
-        coordinator: live::coordinator::SessionCoordinator::new(),
+        coordinator: Arc::new(live::coordinator::SessionCoordinator::new()),
         telemetry: None,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
@@ -247,7 +247,17 @@ pub fn create_app_full(
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
     let oracle_rx = live::process_oracle::start_oracle();
 
-    let (manager, live_sessions, transcript_to_session, live_tx) =
+    // Create hook event channels before the manager so both manager and AppState share one instance.
+    let hook_event_channels: std::sync::Arc<
+        tokio::sync::RwLock<
+            std::collections::HashMap<
+                String,
+                tokio::sync::broadcast::Sender<live::state::HookEvent>,
+            >,
+        >,
+    > = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
+    let (manager, live_sessions, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
             db.clone(),
@@ -256,6 +266,7 @@ pub fn create_app_full(
             Some(sidecar.clone()),
             teams.clone(),
             oracle_rx.clone(),
+            hook_event_channels.clone(),
         );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -293,7 +304,7 @@ pub fn create_app_full(
         live_manager: Some(manager),
         search_index,
         shutdown,
-        hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        hook_event_channels,
         sidecar,
         jwks,
         share,
@@ -315,7 +326,7 @@ pub fn create_app_full(
         pending_statusline: tokio::sync::Mutex::new(live::buffer::PendingMutations::new(
             std::time::Duration::from_secs(120),
         )),
-        coordinator: live::coordinator::SessionCoordinator::new(),
+        coordinator,
         telemetry,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
