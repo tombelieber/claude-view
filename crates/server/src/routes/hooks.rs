@@ -289,6 +289,23 @@ async fn handle_hook(
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
                     sessions.insert(session.id.clone(), session.clone());
+                    // Drain pending statusline buffer (lock ordering: sessions → pending_statusline)
+                    {
+                        let buffered = state.pending_statusline.lock().await.drain(&payload.session_id);
+                        if !buffered.is_empty() {
+                            if let Some(s) = sessions.get_mut(&payload.session_id) {
+                                for p in &buffered {
+                                    crate::routes::statusline::apply_statusline(s, p);
+                                }
+                                session = s.clone();
+                                tracing::info!(
+                                    session_id = %payload.session_id,
+                                    count = buffered.len(),
+                                    "Applied buffered statusline payloads on session discovery"
+                                );
+                            }
+                        }
+                    }
                     drop(sessions);
                     if let Some(mgr) = &state.live_manager {
                         mgr.create_accumulator_for_hook(&payload.session_id).await;
@@ -541,6 +558,23 @@ async fn handle_hook(
                     MAX_HOOK_EVENTS_PER_SESSION,
                 );
                 sessions.insert(session.id.clone(), session.clone());
+                // Drain pending statusline buffer (lock ordering: sessions → pending_statusline)
+                {
+                    let buffered = state.pending_statusline.lock().await.drain(&payload.session_id);
+                    if !buffered.is_empty() {
+                        if let Some(s) = sessions.get_mut(&payload.session_id) {
+                            for p in &buffered {
+                                crate::routes::statusline::apply_statusline(s, p);
+                            }
+                            session = s.clone();
+                            tracing::info!(
+                                session_id = %payload.session_id,
+                                count = buffered.len(),
+                                "Applied buffered statusline payloads on session discovery"
+                            );
+                        }
+                    }
+                }
                 state_changed = true;
                 SessionAction::Created(session)
             } else {
