@@ -652,6 +652,7 @@ mod tests {
             line_type: LineType::Other,
             role: None,
             content_preview: String::new(),
+            content_extended: String::new(),
             tool_names: Vec::new(),
             model: None,
             input_tokens: None,

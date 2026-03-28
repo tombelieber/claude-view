@@ -75,9 +75,7 @@ fn extract_assistant_signals(line: &LiveLine) -> StepSignals {
         let at = spawn.agent_type.to_lowercase();
         if at == "plan" {
             s.has_plan_agent = true;
-        } else if at.contains("review")
-            || at.contains("analyzer")
-            || at.contains("silent-failure")
+        } else if at.contains("review") || at.contains("analyzer") || at.contains("silent-failure")
         {
             s.has_review_agent = true;
         } else if at.contains("explore") || at.contains("architect") {
@@ -121,6 +119,17 @@ fn extract_assistant_signals(line: &LiveLine) -> StepSignals {
 
     // Detect skill combos
     detect_skill_combos(&line.skill_names, &mut s);
+
+    // Assistant text keyword signals (from content_preview)
+    if !line.content_preview.is_empty() {
+        let text = line.content_preview.to_lowercase();
+        s.assistant_plan_kw = has_plan_keyword(&text);
+        s.assistant_impl_kw = has_impl_keyword(&text);
+        s.assistant_fix_kw = has_fix_keyword(&text);
+        s.assistant_review_kw = has_review_keyword(&text);
+        s.assistant_test_kw = has_test_keyword(&text);
+        s.assistant_explore_kw = has_explore_keyword(&text);
+    }
 
     // Edited file classification
     for fp in &line.edited_files {
@@ -254,11 +263,16 @@ mod tests {
     use super::*;
     use crate::live_parser::{LineType, LiveLine};
 
-    fn make_assistant_line(tool_names: Vec<&str>, bash_commands: Vec<&str>, edited_files: Vec<&str>) -> LiveLine {
+    fn make_assistant_line(
+        tool_names: Vec<&str>,
+        bash_commands: Vec<&str>,
+        edited_files: Vec<&str>,
+    ) -> LiveLine {
         LiveLine {
             line_type: LineType::Assistant,
             role: Some("assistant".to_string()),
             content_preview: String::new(),
+            content_extended: String::new(),
             tool_names: tool_names.into_iter().map(String::from).collect(),
             model: None,
             input_tokens: None,
@@ -349,11 +363,11 @@ mod tests {
             vec!["Edit", "Edit", "Write", "Edit", "Write"],
             vec![],
             vec![
-                "/src/app.rs",              // source
-                "/tests/integration.rs",    // test
+                "/src/app.rs",               // source
+                "/tests/integration.rs",     // test
                 "/.github/workflows/ci.yml", // ci
-                "/docs/plan.md",            // plan (not doc!)
-                "/README.md",               // doc
+                "/docs/plan.md",             // plan (not doc!)
+                "/README.md",                // doc
             ],
         );
         let s = extract_step_signals(&line).unwrap();
