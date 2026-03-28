@@ -131,6 +131,9 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        pending_statusline: tokio::sync::Mutex::new(
+            live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
+        ),
         telemetry: None,
         telemetry_config_path,
     });
@@ -204,6 +207,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        pending_statusline: tokio::sync::Mutex::new(
+            live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
+        ),
         telemetry: None,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
@@ -304,6 +310,9 @@ pub fn create_app_full(
         plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
         marketplace_refresh: Arc::new(routes::marketplace_refresh::MarketplaceRefreshTracker::new()),
         transcript_to_session,
+        pending_statusline: tokio::sync::Mutex::new(
+            live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
+        ),
         telemetry,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
     });
