@@ -35,8 +35,8 @@ use super::file_resolver::resolve_file_path;
 use super::process::{count_claude_processes, detect_claude_processes, is_pid_alive};
 use super::state::{
     append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
-    HookEvent, LiveSession, SessionEvent, SessionSnapshot, SessionStatus, SnapshotEntry,
-    VerifiedFile, MAX_HOOK_EVENTS_PER_SESSION,
+    HookEvent, HookFields, LiveSession, SessionEvent, SessionSnapshot, SessionStatus,
+    SnapshotEntry, VerifiedFile, MAX_HOOK_EVENTS_PER_SESSION,
 };
 use super::watcher::{initial_scan, start_watcher, FileEvent};
 
@@ -273,74 +273,45 @@ fn build_recovered_session(
         project_path,
         file_path: file_path.to_string(),
         status,
-        agent_state: entry.agent_state.clone(),
+        hook: HookFields {
+            agent_state: entry.agent_state.clone(),
+            pid: Some(entry.pid),
+            title: String::new(),
+            last_user_message: String::new(),
+            current_activity: entry.agent_state.label.clone(),
+            turn_count: 0,
+            last_activity_at: entry.last_activity_at,
+            current_turn_started_at: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            compact_count: 0,
+            agent_state_set_at: 0,
+            hook_events: Vec::new(),
+        },
         git_branch: None,
         worktree_branch: None,
         is_worktree: false,
         effective_branch: None,
-        pid: Some(entry.pid),
-        title: String::new(),
-        last_user_message: String::new(),
-        current_activity: entry.agent_state.label.clone(),
-        turn_count: 0,
         started_at: None,
-        last_activity_at: entry.last_activity_at,
         model: None,
         tokens: TokenUsage::default(),
         context_window_tokens: 0,
         cost: CostBreakdown::default(),
         cache_status: CacheStatus::Unknown,
-        current_turn_started_at: None,
         last_turn_task_seconds: None,
-        sub_agents: Vec::new(),
         team_name: None,
         team_members: Vec::new(),
         team_inbox_count: 0,
         edit_count: 0,
-        progress_items: Vec::new(),
         tools_used: Vec::new(),
         last_cache_hit_at: None,
-        compact_count: 0,
         slug: None,
         closed_at: None,
         source: None,
         control: None,
-        statusline_context_window_size: None,
-        statusline_used_pct: None,
-        statusline_cost_usd: None,
+        statusline: crate::live::state::StatuslineFields::default(),
         model_display_name: None,
-        statusline_cwd: None,
-        statusline_project_dir: None,
-        statusline_total_duration_ms: None,
-        statusline_api_duration_ms: None,
-        statusline_lines_added: None,
-        statusline_lines_removed: None,
-        statusline_input_tokens: None,
-        statusline_output_tokens: None,
-        statusline_cache_read_tokens: None,
-        statusline_cache_creation_tokens: None,
-        statusline_version: None,
-        exceeds_200k_tokens: None,
-        statusline_transcript_path: None,
-        statusline_output_style: None,
-        statusline_vim_mode: None,
-        statusline_agent_name: None,
-        statusline_worktree_name: None,
-        statusline_worktree_path: None,
-        statusline_worktree_branch: None,
-        statusline_worktree_original_cwd: None,
-        statusline_worktree_original_branch: None,
-        statusline_remaining_pct: None,
-        statusline_total_input_tokens: None,
-        statusline_total_output_tokens: None,
-        statusline_rate_limit_5h_pct: None,
-        statusline_rate_limit_5h_resets_at: None,
-        statusline_rate_limit_7d_pct: None,
-        statusline_rate_limit_7d_resets_at: None,
-        statusline_raw: None,
         model_set_at: 0,
-        agent_state_set_at: 0,
-        hook_events: Vec::new(),
         user_files: None,
         phase: PhaseHistory::default(),
     }
@@ -459,20 +430,20 @@ fn apply_jsonl_metadata(
     }
     // PID binding: only assign PID on first discovery. Once bound,
     // the process detector owns liveness checks for that specific PID.
-    if session.pid.is_none() {
-        session.pid = m.pid;
+    if session.hook.pid.is_none() {
+        session.hook.pid = m.pid;
     }
     if !m.title.is_empty() {
-        session.title = m.title.clone();
+        session.hook.title = m.title.clone();
     }
     if !m.last_user_message.is_empty() {
-        session.last_user_message = m.last_user_message.clone();
+        session.hook.last_user_message = m.last_user_message.clone();
     }
-    session.turn_count = m.turn_count;
+    session.hook.turn_count = m.turn_count;
     if m.started_at.is_some() {
         session.started_at = m.started_at;
     }
-    session.last_activity_at = m.last_activity_at;
+    session.hook.last_activity_at = m.last_activity_at;
     // Model — timestamp-guarded. JSONL parser has lower authority than statusline
     // for model (statusline reflects mid-session /model switches). Only overwrite
     // if no fresher value has been set. Use strict `>` so same-millisecond
@@ -491,14 +462,14 @@ fn apply_jsonl_metadata(
     session.context_window_tokens = m.context_window_tokens;
     session.cost = m.cost.clone();
     session.cache_status = m.cache_status.clone();
-    session.current_turn_started_at = m.current_turn_started_at;
+    session.hook.current_turn_started_at = m.current_turn_started_at;
     session.last_turn_task_seconds = m.last_turn_task_seconds;
-    session.sub_agents = m.sub_agents.clone();
+    session.hook.sub_agents = m.sub_agents.clone();
     session.team_name = m.team_name.clone();
-    session.progress_items = m.progress_items.clone();
+    session.hook.progress_items = m.progress_items.clone();
     session.tools_used = m.tools_used.clone();
     session.last_cache_hit_at = m.last_cache_hit_at;
-    session.compact_count = m.compact_count;
+    session.hook.compact_count = m.compact_count;
     session.slug = m.slug.clone();
     if m.user_files.is_some() {
         session.user_files = m.user_files.clone();
@@ -803,7 +774,7 @@ impl LiveSessionManager {
             if session.closed_at.is_some() {
                 return; // Don't enrich closed sessions
             }
-            let hook_activity = session.last_activity_at;
+            let hook_activity = session.hook.last_activity_at;
             apply_jsonl_metadata(
                 session,
                 &metadata,
@@ -827,8 +798,8 @@ impl LiveSessionManager {
                 session.team_inbox_count = 0;
             }
             // Preserve the hook's last_activity_at if it's more recent than file mtime
-            if hook_activity > session.last_activity_at {
-                session.last_activity_at = hook_activity;
+            if hook_activity > session.hook.last_activity_at {
+                session.hook.last_activity_at = hook_activity;
             }
             let _ = self.tx.send(SessionEvent::SessionUpdated {
                 session: session.clone(),
@@ -960,7 +931,7 @@ impl LiveSessionManager {
             // They persist via SQLite closed_at/dismissed_at columns instead.
             .filter(|(_, s)| s.status != SessionStatus::Done)
             .filter_map(|(id, s)| {
-                s.pid.map(|pid| {
+                s.hook.pid.map(|pid| {
                     (
                         id.clone(),
                         SnapshotEntry {
@@ -970,8 +941,8 @@ impl LiveSessionManager {
                                 SessionStatus::Paused => "paused".to_string(),
                                 SessionStatus::Done => "done".to_string(),
                             },
-                            agent_state: s.agent_state.clone(),
-                            last_activity_at: s.last_activity_at,
+                            agent_state: s.hook.agent_state.clone(),
+                            last_activity_at: s.hook.last_activity_at,
                             control_id: s.control.as_ref().map(|c| c.control_id.clone()),
                         },
                     )
@@ -1199,22 +1170,22 @@ impl LiveSessionManager {
                             // The snapshot may be stale if the Stop hook fired while
                             // the server was down. The JSONL file is authoritative.
                             if let Some(derived) = derive_agent_state_from_jsonl(path).await {
-                                if derived.group != session.agent_state.group
-                                    || derived.state != session.agent_state.state
+                                if derived.group != session.hook.agent_state.group
+                                    || derived.state != session.hook.agent_state.state
                                 {
                                     info!(
                                         session_id = %session_id,
-                                        snapshot = %session.agent_state.state,
+                                        snapshot = %session.hook.agent_state.state,
                                         derived = %derived.state,
                                         "JSONL ground truth overrides snapshot agent_state"
                                     );
                                 }
                                 session.status = status_from_agent_state(&derived);
-                                session.current_activity = derived.label.clone();
-                                session.agent_state = derived;
+                                session.hook.current_activity = derived.label.clone();
+                                session.hook.agent_state = derived;
                             } else {
                                 // No meaningful JSONL lines — safe default to idle
-                                session.agent_state = AgentState {
+                                session.hook.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "idle".into(),
                                     label: "Waiting for your next prompt".into(),
@@ -1254,23 +1225,26 @@ impl LiveSessionManager {
                             if session.status == SessionStatus::Done {
                                 continue;
                             }
-                            if let Some(pid) = session.pid {
+                            if let Some(pid) = session.hook.pid {
                                 if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
                                     // Collision — evict the older one.
                                     // On equal timestamps, tiebreak by session ID (deterministic
                                     // regardless of HashMap iteration order).
-                                    let new_wins = session.last_activity_at > *existing_ts
-                                        || (session.last_activity_at == *existing_ts
+                                    let new_wins = session.hook.last_activity_at > *existing_ts
+                                        || (session.hook.last_activity_at == *existing_ts
                                             && *id > *existing_id);
                                     if new_wins {
                                         pid_dupes.push(existing_id.clone());
-                                        pid_owners
-                                            .insert(pid, (id.clone(), session.last_activity_at));
+                                        pid_owners.insert(
+                                            pid,
+                                            (id.clone(), session.hook.last_activity_at),
+                                        );
                                     } else {
                                         pid_dupes.push(id.clone());
                                     }
                                 } else {
-                                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                                    pid_owners
+                                        .insert(pid, (id.clone(), session.hook.last_activity_at));
                                 }
                             }
                         }
@@ -1284,12 +1258,12 @@ impl LiveSessionManager {
                                 if let Some(session) = sessions.get_mut(dupe_id) {
                                     info!(
                                         session_id = %dupe_id,
-                                        pid = ?session.pid,
+                                        pid = ?session.hook.pid,
                                         "Snapshot PID dedup: evicting stale entry"
                                     );
                                     session.status = SessionStatus::Done;
                                     session.closed_at = Some(now);
-                                    session.agent_state = AgentState {
+                                    session.hook.agent_state = AgentState {
                                         group: AgentStateGroup::NeedsYou,
                                         state: "session_ended".into(),
                                         label: "Evicted (PID collision)".into(),
@@ -1400,13 +1374,13 @@ impl LiveSessionManager {
                         if session.closed_at.is_none() {
                             session.status = SessionStatus::Done;
                             session.closed_at = Some(*closed_at);
-                            session.agent_state = AgentState {
+                            session.hook.agent_state = AgentState {
                                 group: AgentStateGroup::NeedsYou,
                                 state: "session_ended".into(),
                                 label: "Session ended".into(),
                                 context: None,
                             };
-                            session.hook_events.clear();
+                            session.hook.hook_events.clear();
                             restored += 1;
                         }
                     }
@@ -1491,7 +1465,7 @@ impl LiveSessionManager {
                                 if let Some(session) = sessions.get_mut(&session_id) {
                                     session.status = SessionStatus::Done;
                                     session.closed_at = Some(now);
-                                    session.hook_events.clear();
+                                    session.hook.hook_events.clear();
                                     Some(session.clone())
                                 } else {
                                     None
@@ -1608,13 +1582,13 @@ impl LiveSessionManager {
                         }
 
                         // 1a. PID liveness: dead PID → mark session ended
-                        if let Some(pid) = session.pid {
+                        if let Some(pid) = session.hook.pid {
                             if !is_pid_alive(pid) {
                                 // Ghost session: hook created skeleton but no JSONL was
                                 // ever written. Auto-complete (remove) instead of keeping
                                 // in "recently closed" — there's nothing to show.
                                 let is_ghost =
-                                    session.file_path.is_empty() && session.turn_count == 0;
+                                    session.file_path.is_empty() && session.hook.turn_count == 0;
                                 if is_ghost {
                                     info!(
                                         session_id = %session_id,
@@ -1628,7 +1602,7 @@ impl LiveSessionManager {
                                         "Bound PID is dead — marking session ended"
                                     );
                                 }
-                                session.agent_state = AgentState {
+                                session.hook.agent_state = AgentState {
                                     group: AgentStateGroup::NeedsYou,
                                     state: "session_ended".into(),
                                     label: "Session ended".into(),
@@ -1640,9 +1614,11 @@ impl LiveSessionManager {
                                     .unwrap_or_default()
                                     .as_secs() as i64;
                                 session.closed_at = Some(now);
-                                session.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
-                                                             // Collect transcript path for dedup map cleanup
-                                if let Some(ref tp) = session.statusline_transcript_path {
+                                session.hook.hook_events.clear(); // Reclaim memory — hook_events are already persisted to SQLite
+                                                                  // Collect transcript path for dedup map cleanup
+                                if let Some(tp) =
+                                    session.statusline.statusline_transcript_path.get()
+                                {
                                     transcript_paths_to_clean.push(PathBuf::from(tp));
                                 }
                                 if is_ghost {
@@ -1834,7 +1810,7 @@ impl LiveSessionManager {
                             continue;
                         }
                         // Path 2: PID-based classification from process scan
-                        if let Some(pid) = session.pid {
+                        if let Some(pid) = session.hook.pid {
                             if let Some(cp) = processes.get(&pid) {
                                 let new_source = Some(cp.source.clone());
                                 if session.source != new_source {
@@ -1856,7 +1832,7 @@ impl LiveSessionManager {
                     let sessions = manager.sessions.read().await;
                     for (id, session) in sessions.iter() {
                         if session.status != SessionStatus::Done {
-                            if let Some(pid) = session.pid {
+                            if let Some(pid) = session.hook.pid {
                                 manager._death_watcher.watch(pid, id.clone()).await;
                             }
                         }
@@ -1915,8 +1891,8 @@ impl LiveSessionManager {
                 let mut sessions = manager.sessions.write().await;
                 if let Some(session) = sessions.get_mut(&session_id) {
                     // Only act if this session is still alive and owns this PID
-                    if session.status != SessionStatus::Done && session.pid == Some(pid) {
-                        let is_ghost = session.file_path.is_empty() && session.turn_count == 0;
+                    if session.status != SessionStatus::Done && session.hook.pid == Some(pid) {
+                        let is_ghost = session.file_path.is_empty() && session.hook.turn_count == 0;
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -1929,7 +1905,7 @@ impl LiveSessionManager {
                             "kqueue: PID death → marking session ended"
                         );
 
-                        session.agent_state = AgentState {
+                        session.hook.agent_state = AgentState {
                             group: AgentStateGroup::NeedsYou,
                             state: "session_ended".into(),
                             label: "Session ended".into(),
@@ -2796,7 +2772,7 @@ impl LiveSessionManager {
             if !channel_a_events.is_empty() {
                 for event in channel_a_events {
                     append_capped_hook_event(
-                        &mut session.hook_events,
+                        &mut session.hook.hook_events,
                         event,
                         MAX_HOOK_EVENTS_PER_SESSION,
                     );
@@ -3299,10 +3275,10 @@ mod tests {
         );
 
         assert_eq!(session.id, "session-abc");
-        assert_eq!(session.pid, Some(12345));
+        assert_eq!(session.hook.pid, Some(12345));
         assert_eq!(session.status, SessionStatus::Paused);
-        assert_eq!(session.agent_state.state, "awaiting_input");
-        assert_eq!(session.last_activity_at, 1708500000);
+        assert_eq!(session.hook.agent_state.state, "awaiting_input");
+        assert_eq!(session.hook.last_activity_at, 1708500000);
         assert_eq!(session.project_display_name, "-tmp");
         // Without cwd from JSONL, project_path is the encoded name (not naive decode)
         assert_eq!(session.project_path, "-tmp");
@@ -3515,22 +3491,22 @@ mod tests {
 
         // Session A: older activity, PID 42
         let mut a = test_live_session("session-a");
-        a.pid = Some(42);
-        a.last_activity_at = 1000;
+        a.hook.pid = Some(42);
+        a.hook.last_activity_at = 1000;
         a.status = SessionStatus::Working;
         sessions.insert("session-a".into(), a);
 
         // Session B: newer activity, same PID 42
         let mut b = test_live_session("session-b");
-        b.pid = Some(42);
-        b.last_activity_at = 2000;
+        b.hook.pid = Some(42);
+        b.hook.last_activity_at = 2000;
         b.status = SessionStatus::Working;
         sessions.insert("session-b".into(), b);
 
         // Session C: different PID, should be untouched
         let mut c = test_live_session("session-c");
-        c.pid = Some(99);
-        c.last_activity_at = 500;
+        c.hook.pid = Some(99);
+        c.hook.last_activity_at = 500;
         c.status = SessionStatus::Working;
         sessions.insert("session-c".into(), c);
 
@@ -3542,16 +3518,16 @@ mod tests {
             if session.status == SessionStatus::Done {
                 continue;
             }
-            if let Some(pid) = session.pid {
+            if let Some(pid) = session.hook.pid {
                 if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
-                    if session.last_activity_at > *existing_ts {
+                    if session.hook.last_activity_at > *existing_ts {
                         pid_dupes.push(existing_id.clone());
-                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                        pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                     } else {
                         pid_dupes.push(id.clone());
                     }
                 } else {
-                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                 }
             }
         }
@@ -3594,12 +3570,12 @@ mod tests {
         let mut sessions: HashMap<String, LiveSession> = HashMap::new();
 
         let mut a = test_live_session("session-a");
-        a.pid = Some(10);
+        a.hook.pid = Some(10);
         a.status = SessionStatus::Working;
         sessions.insert("session-a".into(), a);
 
         let mut b = test_live_session("session-b");
-        b.pid = Some(20);
+        b.hook.pid = Some(20);
         b.status = SessionStatus::Working;
         sessions.insert("session-b".into(), b);
 
@@ -3610,16 +3586,16 @@ mod tests {
             if session.status == SessionStatus::Done {
                 continue;
             }
-            if let Some(pid) = session.pid {
+            if let Some(pid) = session.hook.pid {
                 if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
-                    if session.last_activity_at > *existing_ts {
+                    if session.hook.last_activity_at > *existing_ts {
                         pid_dupes.push(existing_id.clone());
-                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                        pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                     } else {
                         pid_dupes.push(id.clone());
                     }
                 } else {
-                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                 }
             }
         }
@@ -3638,15 +3614,15 @@ mod tests {
 
         // Session A: Done, PID 42
         let mut a = test_live_session("session-a");
-        a.pid = Some(42);
-        a.last_activity_at = 1000;
+        a.hook.pid = Some(42);
+        a.hook.last_activity_at = 1000;
         a.status = SessionStatus::Done;
         sessions.insert("session-a".into(), a);
 
         // Session B: Working, same PID 42
         let mut b = test_live_session("session-b");
-        b.pid = Some(42);
-        b.last_activity_at = 2000;
+        b.hook.pid = Some(42);
+        b.hook.last_activity_at = 2000;
         b.status = SessionStatus::Working;
         sessions.insert("session-b".into(), b);
 
@@ -3657,16 +3633,16 @@ mod tests {
             if session.status == SessionStatus::Done {
                 continue;
             }
-            if let Some(pid) = session.pid {
+            if let Some(pid) = session.hook.pid {
                 if let Some((existing_id, existing_ts)) = pid_owners.get(&pid) {
-                    if session.last_activity_at > *existing_ts {
+                    if session.hook.last_activity_at > *existing_ts {
                         pid_dupes.push(existing_id.clone());
-                        pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                        pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                     } else {
                         pid_dupes.push(id.clone());
                     }
                 } else {
-                    pid_owners.insert(pid, (id.clone(), session.last_activity_at));
+                    pid_owners.insert(pid, (id.clone(), session.hook.last_activity_at));
                 }
             }
         }
@@ -4048,7 +4024,7 @@ mod hook_event_tests {
     // only overwrite branch fields when the accumulator has a Some value.
 
     fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
-        use crate::live::state::{AgentState, AgentStateGroup, SessionStatus};
+        use crate::live::state::{AgentState, AgentStateGroup, HookFields, SessionStatus};
         use claude_view_core::pricing::CacheStatus;
         LiveSession {
             id: id.to_string(),
@@ -4057,80 +4033,51 @@ mod hook_event_tests {
             project_path: "/tmp/test".to_string(),
             file_path: "/tmp/test.jsonl".to_string(),
             status: SessionStatus::Working,
-            agent_state: AgentState {
-                group: AgentStateGroup::Autonomous,
-                state: "acting".into(),
-                label: "Working".into(),
-                context: None,
+            hook: HookFields {
+                agent_state: AgentState {
+                    group: AgentStateGroup::Autonomous,
+                    state: "acting".into(),
+                    label: "Working".into(),
+                    context: None,
+                },
+                pid: None,
+                title: "Test".into(),
+                last_user_message: String::new(),
+                current_activity: "Working".into(),
+                turn_count: 0,
+                last_activity_at: 0,
+                current_turn_started_at: None,
+                sub_agents: Vec::new(),
+                progress_items: Vec::new(),
+                compact_count: 0,
+                agent_state_set_at: 0,
+                hook_events: Vec::new(),
             },
             git_branch: None,
             worktree_branch: None,
             is_worktree: false,
             effective_branch: None,
-            pid: None,
-            title: "Test".into(),
-            last_user_message: String::new(),
-            current_activity: "Working".into(),
-            turn_count: 0,
             started_at: None,
-            last_activity_at: 0,
             model: None,
             tokens: TokenUsage::default(),
             context_window_tokens: 0,
             cost: CostBreakdown::default(),
             cache_status: CacheStatus::Unknown,
-            current_turn_started_at: None,
             last_turn_task_seconds: None,
-            sub_agents: Vec::new(),
             team_name: None,
             team_members: Vec::new(),
             team_inbox_count: 0,
             edit_count: 0,
-            progress_items: Vec::new(),
             tools_used: Vec::new(),
             last_cache_hit_at: None,
-            compact_count: 0,
             slug: None,
             user_files: None,
             closed_at: None,
             control: None,
-            statusline_context_window_size: None,
-            statusline_used_pct: None,
-            statusline_cost_usd: None,
+            statusline: crate::live::state::StatuslineFields::default(),
             model_display_name: None,
-            statusline_cwd: None,
-            statusline_project_dir: None,
-            statusline_total_duration_ms: None,
-            statusline_api_duration_ms: None,
-            statusline_lines_added: None,
-            statusline_lines_removed: None,
-            statusline_input_tokens: None,
-            statusline_output_tokens: None,
-            statusline_cache_read_tokens: None,
-            statusline_cache_creation_tokens: None,
-            statusline_version: None,
-            exceeds_200k_tokens: None,
-            statusline_transcript_path: None,
-            statusline_output_style: None,
-            statusline_vim_mode: None,
-            statusline_agent_name: None,
-            statusline_worktree_name: None,
-            statusline_worktree_path: None,
-            statusline_worktree_branch: None,
-            statusline_worktree_original_cwd: None,
-            statusline_worktree_original_branch: None,
-            statusline_remaining_pct: None,
-            statusline_total_input_tokens: None,
-            statusline_total_output_tokens: None,
-            statusline_rate_limit_5h_pct: None,
-            statusline_rate_limit_5h_resets_at: None,
-            statusline_rate_limit_7d_pct: None,
-            statusline_rate_limit_7d_resets_at: None,
-            statusline_raw: None,
             model_set_at: 0,
-            agent_state_set_at: 0,
             source: None,
-            hook_events: Vec::new(),
             phase: PhaseHistory::default(),
         }
     }
