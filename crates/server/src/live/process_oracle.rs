@@ -37,6 +37,8 @@ pub struct OracleSnapshot {
     pub claude_processes: Option<Arc<ClaudeProcesses>>,
     /// Process tree classification. Updated every 5th tick (10s).
     pub process_tree: Option<ProcessTreeSnapshot>,
+    /// Component-level resource breakdown. Updated every 5th tick (10s).
+    pub component_snapshot: Option<super::process_tree::component_types::ComponentSnapshot>,
     /// When this snapshot was taken.
     pub scanned_at: Instant,
     /// Monotonic tick counter.
@@ -93,6 +95,7 @@ pub fn stub() -> OracleReceiver {
         },
         claude_processes: None,
         process_tree: None,
+        component_snapshot: None,
         scanned_at: Instant::now(),
         tick: 0,
     });
@@ -106,7 +109,10 @@ pub fn stub() -> OracleReceiver {
 ///
 /// The oracle runs continuously (not paused when monitor has no subscribers)
 /// because the LiveSessionManager always needs process data for reconciliation.
-pub fn start_oracle() -> OracleReceiver {
+pub fn start_oracle(
+    sidecar: Arc<crate::sidecar::SidecarManager>,
+    omlx_status: Arc<super::omlx_lifecycle::OmlxStatus>,
+) -> OracleReceiver {
     let initial = Arc::new(OracleSnapshot {
         resource: ResourceData {
             timestamp: chrono::Utc::now().timestamp(),
@@ -120,6 +126,7 @@ pub fn start_oracle() -> OracleReceiver {
         },
         claude_processes: None,
         process_tree: None,
+        component_snapshot: None,
         scanned_at: Instant::now(),
         tick: 0,
     });
@@ -144,16 +151,28 @@ pub fn start_oracle() -> OracleReceiver {
             let should_classify = tick > 0 && tick.is_multiple_of(5); // every 10s
 
             // All sysinfo calls happen on a blocking thread.
+            let sidecar_ref = sidecar.clone();
+            let omlx_ref = omlx_status.clone();
             let mut sys_moved = std::mem::take(&mut sys);
             let result = tokio::task::spawn_blocking(move || {
                 let snapshot = collect_oracle_snapshot(&mut sys_moved, tick, should_classify);
-                (snapshot, sys_moved)
+                let component_snapshot = if should_classify {
+                    Some(super::component_collector::collect(
+                        &sys_moved,
+                        &sidecar_ref,
+                        &omlx_ref,
+                    ))
+                } else {
+                    None
+                };
+                (snapshot, component_snapshot, sys_moved)
             })
             .await;
 
             match result {
-                Ok((snapshot, sys_back)) => {
+                Ok((mut snapshot, component_snapshot, sys_back)) => {
                     sys = sys_back;
+                    snapshot.component_snapshot = component_snapshot;
                     let _ = tx.send(Arc::new(snapshot));
                 }
                 Err(e) => {
@@ -262,6 +281,7 @@ fn collect_oracle_snapshot(sys: &mut System, tick: u32, should_classify: bool) -
         },
         claude_processes: claude_procs,
         process_tree,
+        component_snapshot: None, // Filled in by oracle loop after spawn_blocking
         scanned_at: Instant::now(),
         tick,
     }
