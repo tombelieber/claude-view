@@ -59,6 +59,7 @@ pub async fn run_scheduler(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn drain_queue(
     queue: &mut Vec<ClassifyRequest>,
     latest_gen: &HashMap<String, u64>,
