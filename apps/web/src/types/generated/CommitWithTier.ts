@@ -3,14 +3,8 @@
 /**
  * A commit linked to a session with its confidence tier
  */
-export type CommitWithTier = {
-  hash: string
-  message: string
-  author?: string | null
-  timestamp: number
-  branch?: string | null
-  /**
-   * Tier 1 = high confidence (commit skill), Tier 2 = medium (during session)
-   */
-  tier: number
-}
+export type CommitWithTier = { hash: string, message: string, author?: string | null, timestamp: number, branch?: string | null, 
+/**
+ * Tier 1 = high confidence (commit skill), Tier 2 = medium (during session)
+ */
+tier: number, };

@@ -3,9 +3,4 @@
 /**
  * Response for POST /api/plugins/action.
  */
-export type PluginActionResponse = {
-  success: boolean
-  action: string
-  name: string
-  message: string | null
-}
+export type PluginActionResponse = { success: boolean, action: string, name: string, message: string | null, };

@@ -3,9 +3,4 @@
 /**
  * Overall averages across all sessions for comparison.
  */
-export type OverallAverages = {
-  avgReeditRate: number
-  avgDuration: number
-  avgPrompts: number
-  commitRate: number
-}
+export type OverallAverages = { avgReeditRate: number, avgDuration: number, avgPrompts: number, commitRate: number, };

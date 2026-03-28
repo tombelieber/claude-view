@@ -3,9 +3,4 @@
 /**
  * Current period metrics for dashboard (adapts to selected time range).
  */
-export type CurrentPeriodMetrics = {
-  sessionCount: number
-  totalTokens: number
-  totalFilesEdited: number
-  commitCount: number
-}
+export type CurrentPeriodMetrics = { sessionCount: number, totalTokens: number, totalFilesEdited: number, commitCount: number, };

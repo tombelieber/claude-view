@@ -3,14 +3,4 @@
 /**
  * Integrity counter values from the latest index run.
  */
-export type IntegrityCounterInfo = {
-  unknownTopLevelTypeCount: number
-  unknownRequiredPathCount: number
-  imaginaryPathAccessCount: number
-  legacyFallbackPathCount: number
-  droppedLineInvalidJsonCount: number
-  schemaMismatchCount: number
-  unknownSourceRoleCount: number
-  derivedSourceMessageDocCount: number
-  sourceMessageNonSourceProvenanceCount: number
-}
+export type IntegrityCounterInfo = { unknownTopLevelTypeCount: number, unknownRequiredPathCount: number, imaginaryPathAccessCount: number, legacyFallbackPathCount: number, droppedLineInvalidJsonCount: number, schemaMismatchCount: number, unknownSourceRoleCount: number, derivedSourceMessageDocCount: number, sourceMessageNonSourceProvenanceCount: number, };

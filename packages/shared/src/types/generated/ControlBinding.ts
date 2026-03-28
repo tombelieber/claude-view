@@ -4,13 +4,12 @@
  * Binding from observation (LiveSession) → control (sidecar SDK session).
  * Present when the user has taken interactive control of this session.
  */
-export type ControlBinding = {
-  /**
-   * The sidecar's internal control ID (UUID).
-   */
-  controlId: string
-  /**
-   * Unix timestamp when this binding was created.
-   */
-  boundAt: number
-}
+export type ControlBinding = { 
+/**
+ * The sidecar's internal control ID (UUID).
+ */
+controlId: string, 
+/**
+ * Unix timestamp when this binding was created.
+ */
+boundAt: number, };

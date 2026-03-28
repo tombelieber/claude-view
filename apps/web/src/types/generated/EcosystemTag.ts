@@ -3,4 +3,4 @@
 /**
  * Fine-grained tag within `ClaudeEcosystem`.
  */
-export type EcosystemTag = 'cli' | 'ide' | 'desktop' | 'self' | 'sidecar'
+export type EcosystemTag = "cli" | "ide" | "desktop" | "self" | "sidecar";
