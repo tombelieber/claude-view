@@ -554,6 +554,8 @@ dependencies = [
  "memchr",
  "pretty_assertions",
  "regex-lite",
+ "reqwest",
+ "rust-stemmers",
  "serde",
  "serde_json",
  "serial_test",
