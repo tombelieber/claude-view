@@ -351,14 +351,31 @@ fn apply_mutation_to_session(
     match mutation {
         SessionMutation::Statusline(payload) => {
             apply_statusline(&mut session.statusline, payload);
-            // Cross-source: model (statusline wins when present)
-            if let Some(ref m) = payload.model {
-                if let Some(ref id) = m.id {
-                    session.model = Some(id.clone());
-                    session.model_set_at = now;
+            // Cross-source: context_window_tokens (derived from current_usage)
+            if let Some(ref cw) = payload.context_window {
+                if let Some(ref usage) = cw.current_usage {
+                    let fill = usage.input_tokens.unwrap_or(0)
+                        + usage.cache_creation_input_tokens.unwrap_or(0)
+                        + usage.cache_read_input_tokens.unwrap_or(0);
+                    if fill > 0 {
+                        session.context_window_tokens = fill;
+                    }
                 }
-                if m.display_name.is_some() {
-                    session.model_display_name = m.display_name.clone();
+            }
+            // Cross-source: model — timestamp-guarded, empty-string rejected
+            if let Some(ref m) = payload.model {
+                if now >= session.model_set_at {
+                    if let Some(ref id) = m.id {
+                        if !id.is_empty() {
+                            session.model = Some(id.clone());
+                            session.model_set_at = now;
+                        }
+                    }
+                    if let Some(ref dn) = m.display_name {
+                        if !dn.is_empty() {
+                            session.model_display_name = Some(dn.clone());
+                        }
+                    }
                 }
             }
             None
