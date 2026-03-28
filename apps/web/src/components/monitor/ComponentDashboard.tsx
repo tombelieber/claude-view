@@ -45,7 +45,7 @@ export function ComponentDashboard({
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
 
-        <div className="w-2 h-2 rounded-full shrink-0 bg-green-500" />
+        <div className="w-2 h-2 rounded-full shrink-0 bg-green-500 dark:bg-green-400" />
 
         <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
           <span className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
