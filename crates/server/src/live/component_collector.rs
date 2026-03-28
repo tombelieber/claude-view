@@ -8,6 +8,7 @@ use super::omlx_lifecycle::OmlxStatus;
 use super::process_tree::component_types::{
     ComponentDetails, ComponentKind, ComponentSnapshot, ComponentStatus,
 };
+use super::gpu_memory;
 use crate::sidecar::SidecarManager;
 
 /// Collect component status snapshot.
@@ -34,7 +35,11 @@ pub fn collect(
         memory_bytes: sidecar_mem,
         vram_bytes: None,
         details: ComponentDetails::Sidecar {
-            session_count: None, // v2: query sidecar /api/sidecar/sessions count
+            session_count: if sidecar_pid.is_some() {
+                fetch_session_count(sidecar)
+            } else {
+                None
+            },
         },
     });
 
@@ -51,7 +56,7 @@ pub fn collect(
         pid: omlx_pid,
         cpu_percent: omlx_cpu,
         memory_bytes: omlx_mem,
-        vram_bytes: None,
+        vram_bytes: if omlx_healthy { gpu_memory::gpu_alloc_bytes() } else { None },
         details: ComponentDetails::Omlx {
             model_id: super::omlx_lifecycle::EXPECTED_MODEL_SUBSTRING.into(),
             port: omlx_status.port,
@@ -69,8 +74,25 @@ pub fn collect(
     ComponentSnapshot {
         components,
         build_mode,
-        total_vram_bytes: None,
+        total_vram_bytes: gpu_memory::total_gpu_memory_bytes(),
     }
+}
+
+/// Fetch active session count from sidecar HTTP API.
+/// Returns None if sidecar is not running or request fails.
+/// Uses a 1-second timeout — collector must not block the oracle.
+fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
+    let url = format!("{}/api/sidecar/sessions", sidecar.base_url());
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(1))
+        .build()
+        .ok()?;
+    let resp = client.get(&url).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = resp.json().ok()?;
+    body.as_array().map(|arr| arr.len() as u32)
 }
 
 /// Look up CPU and memory for a PID from the already-refreshed System.
