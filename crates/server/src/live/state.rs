@@ -612,6 +612,7 @@ pub(crate) fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEven
 }
 
 /// Append multiple hook events, draining overflow from the front.
+#[allow(dead_code)]
 pub(crate) fn append_capped_hook_events(
     dst: &mut Vec<HookEvent>,
     mut events: Vec<HookEvent>,
