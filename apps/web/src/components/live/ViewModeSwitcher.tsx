@@ -1,4 +1,4 @@
-import { Columns3, LayoutGrid, List, Monitor } from 'lucide-react'
+import { Columns3, LayoutGrid, List, Monitor, Workflow } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { LiveViewMode } from './types'
 import { LIVE_VIEW_MODES } from './types'
@@ -8,6 +8,7 @@ const ICON_MAP = {
   List,
   Columns3,
   Monitor,
+  Workflow,
 } as const
 
 interface ViewModeSwitcherProps {
