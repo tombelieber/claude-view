@@ -1,27 +1,12 @@
-//! Sliding-window SDLC phase classifier for coding sessions.
-//!
-//! 6 product stages: Thinking, Planning, Building, Testing, Reviewing, Shipping.
-//! Architecture: 4-class XGBoost (confidence-gated) + post-ML thinking/planning
-//! split + rule-based shipping detection.
+//! SDLC phase + scope classifier via Qwen3.5-4B on oMLX.
 
-pub mod classifier;
-pub mod features;
-pub mod matchers;
-pub mod signals;
-
-pub use classifier::{classify_window, PhaseClassifier};
-pub use features::flatten_window;
-pub use matchers::*;
-pub use signals::extract_step_signals;
+pub mod client;
+pub mod scheduler;
+pub mod stabilizer;
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/// SDLC session phase (6 product stages + Working fallback).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
@@ -71,13 +56,13 @@ impl SessionPhase {
 
     pub fn emoji(&self) -> &'static str {
         match self {
-            Self::Thinking => "💭",
-            Self::Planning => "📋",
-            Self::Building => "🔨",
-            Self::Testing => "🧪",
-            Self::Reviewing => "🔍",
-            Self::Shipping => "🚀",
-            Self::Working => "⚙️",
+            Self::Thinking => "\u{1F4AD}",
+            Self::Planning => "\u{1F4CB}",
+            Self::Building => "\u{1F528}",
+            Self::Testing => "\u{1F9EA}",
+            Self::Reviewing => "\u{1F50D}",
+            Self::Shipping => "\u{1F680}",
+            Self::Working => "\u{2699}\u{FE0F}",
         }
     }
 }
@@ -95,7 +80,8 @@ impl std::fmt::Display for SessionPhase {
 pub struct PhaseLabel {
     pub phase: SessionPhase,
     pub confidence: f64,
-    pub window_size: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
 /// Full phase history for a session.
@@ -134,77 +120,22 @@ pub fn dominant_phase(labels: &[PhaseLabel]) -> Option<SessionPhase> {
     Some(SessionPhase::ALL[max_idx])
 }
 
-// ============================================================================
-// Step Signals (input to classifier)
-// ============================================================================
-
-/// Signal vector for a single step, extracted from tool-use blocks.
-#[derive(Debug, Clone, Default)]
-pub struct StepSignals {
-    pub is_user_prompt: bool,
-
-    // Tool counts
-    pub edit_count: u32,
-    pub write_count: u32,
-    pub read_count: u32,
-    pub glob_count: u32,
-    pub grep_count: u32,
-    pub bash_count: u32,
-    pub agent_count: u32,
-    pub skill_count: u32,
-    pub todo_count: u32,
-
-    // File type counts
-    pub config_files_edited: u32,
-    pub test_files_edited: u32,
-    pub doc_files_edited: u32,
-    pub plan_files_edited: u32,
-    pub script_files_edited: u32,
-    pub ci_files_edited: u32,
-    pub migration_files_edited: u32,
-
-    // Skill type flags
-    pub has_plan_skill: bool,
-    pub has_review_skill: bool,
-    pub has_test_skill: bool,
-    pub has_ship_skill: bool,
-    pub has_debug_skill: bool,
-    pub has_config_skill: bool,
-    pub has_impl_skill: bool,
-    pub has_explore_skill: bool,
-
-    // Agent type flags
-    pub has_plan_agent: bool,
-    pub has_review_agent: bool,
-    pub has_explore_agent: bool,
-
-    // Bash command flags
-    pub has_test_cmd: bool,
-    pub has_build_cmd: bool,
-    pub has_git_push: bool,
-    pub has_publish_cmd: bool,
-    pub has_deploy_cmd: bool,
-    pub has_install_cmd: bool,
-
-    // Enriched bash signals
-    pub has_review_combo: bool,
-    pub has_plan_execute_combo: bool,
-    pub has_tdd_combo: bool,
-    pub has_git_commit: bool,
-    pub has_git_diff: bool,
-    pub has_docker_cmd: bool,
-    pub has_lint_cmd: bool,
-
-    // Prompt keyword flags
-    pub prompt_plan_kw: bool,
-    pub prompt_impl_kw: bool,
-    pub prompt_fix_kw: bool,
-    pub prompt_review_kw: bool,
-    pub prompt_test_kw: bool,
-    pub prompt_release_kw: bool,
-    pub prompt_config_kw: bool,
-    pub prompt_explore_kw: bool,
+/// Check if a bash command represents a shipping/deploy action.
+pub fn is_shipping_cmd(cmd: &str) -> bool {
+    let c = cmd.to_lowercase();
+    c.contains("npm publish")
+        || c.contains("cargo publish")
+        || c.contains("fly deploy")
+        || c.contains("vercel --prod")
+        || c.contains("netlify deploy")
+        || c.contains("wrangler deploy")
+        || c.contains("gh release create")
+        || c.starts_with("docker push")
+        || c.starts_with("podman push")
 }
+
+/// Maximum number of phase labels to retain per session.
+pub const MAX_PHASE_LABELS: usize = 100;
 
 #[cfg(test)]
 mod tests;

@@ -8,17 +8,12 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::live_parser::{parse_tail, LineType, TailFinders};
-use crate::phase::{
-    classify_window, dominant_phase, extract_step_signals, PhaseHistory, PhaseLabel, StepSignals,
-};
+use crate::phase::{dominant_phase, PhaseHistory, PhaseLabel};
 use crate::pricing::{
     calculate_cost, finalize_cost_breakdown, CacheStatus, CostBreakdown, ModelPricing, TokenUsage,
 };
 use crate::progress::{ProgressItem, ProgressSource, ProgressStatus};
 use crate::subagent::{SubAgentInfo, SubAgentStatus};
-
-/// Sliding window size for phase classification (number of steps).
-const PHASE_WINDOW_SIZE: usize = 10;
 
 /// Accumulated per-session state -- shared between live monitoring and history batch parsing.
 ///
@@ -49,8 +44,7 @@ pub struct SessionAccumulator {
     /// tokens/cost multiple times when Claude Code splits one API response into
     /// multiple JSONL lines (one per content block: thinking, text, tool_use).
     seen_api_calls: std::collections::HashSet<String>,
-    /// Sliding window of recent step signals for phase classification.
-    step_signals: Vec<StepSignals>,
+    // Phase fields will be added in Task 8 (oMLX classification wiring)
     /// Phase labels emitted so far (one per classification).
     phase_labels: Vec<PhaseLabel>,
 }
@@ -100,7 +94,6 @@ impl SessionAccumulator {
             slug: None,
             accumulated_cost: CostBreakdown::default(),
             seen_api_calls: std::collections::HashSet::new(),
-            step_signals: Vec::with_capacity(PHASE_WINDOW_SIZE),
             phase_labels: Vec::new(),
         }
     }
@@ -507,18 +500,7 @@ impl SessionAccumulator {
             }
         }
 
-        // -----------------------------------------------------------------
-        // Phase classification: extract signals, maintain sliding window,
-        // and classify after each new step.
-        // -----------------------------------------------------------------
-        if let Some(signals) = extract_step_signals(line) {
-            if self.step_signals.len() >= PHASE_WINDOW_SIZE {
-                self.step_signals.remove(0);
-            }
-            self.step_signals.push(signals);
-            let label = classify_window(&self.step_signals);
-            self.phase_labels.push(label);
-        }
+        // TODO: wire oMLX classification (Task 8)
     }
 
     /// Finalize accumulation: return per-turn accumulated cost, derive cache
