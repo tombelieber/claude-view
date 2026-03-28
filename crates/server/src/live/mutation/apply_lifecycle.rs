@@ -13,8 +13,17 @@ pub fn status_from_agent_state(state: &AgentState) -> SessionStatus {
     crate::live::state::status_from_agent_state(state)
 }
 
+/// Bind PID if not already set. Extracted to avoid repetition.
+fn bind_pid(hook: &mut HookFields, pid: Option<u32>) {
+    if hook.pid.is_none() {
+        if let Some(p) = pid {
+            hook.pid = Some(p);
+        }
+    }
+}
+
 /// Apply a lifecycle event to hook fields, returning a new SessionStatus
-/// when the event changes it (StateChange, End).
+/// when the event changes it (StateChange, End, Stop, StopFailure, etc.).
 ///
 /// Pure function — no IO, no locks. The caller is responsible for:
 /// - Setting `session.status` from the returned `Option<SessionStatus>`
@@ -27,20 +36,8 @@ pub fn apply_lifecycle(
     now: i64,
 ) -> Option<SessionStatus> {
     match event {
-        LifecycleEvent::Start {
-            pid,
-            source,
-            model: _,
-            cwd: _,
-            transcript_path: _,
-        } => {
-            // Update PID if not already bound
-            if hook.pid.is_none() {
-                if let Some(p) = pid {
-                    hook.pid = Some(*p);
-                }
-            }
-            // "clear" source resets turn state (e.g. /clear command)
+        LifecycleEvent::Start { pid, source, .. } => {
+            bind_pid(hook, *pid);
             if source.as_deref() == Some("clear") {
                 hook.turn_count = 0;
                 hook.current_turn_started_at = None;
@@ -49,20 +46,13 @@ pub fn apply_lifecycle(
         }
 
         LifecycleEvent::Prompt { text, pid } => {
-            // Truncate to 500 chars for display
             hook.last_user_message = text.chars().take(500).collect();
             if hook.title.is_empty() {
                 hook.title = hook.last_user_message.clone();
             }
             hook.turn_count += 1;
             hook.current_turn_started_at = Some(now);
-
-            // PID binding
-            if hook.pid.is_none() {
-                if let Some(p) = pid {
-                    hook.pid = Some(*p);
-                }
-            }
+            bind_pid(hook, *pid);
             None
         }
 
@@ -74,11 +64,7 @@ pub fn apply_lifecycle(
             // PostToolUse during compacting = skip state change
             // (compacting state is sticky until PreCompact clears it)
             if event_name == "PostToolUse" && hook.agent_state.state == "compacting" {
-                if hook.pid.is_none() {
-                    if let Some(p) = pid {
-                        hook.pid = Some(*p);
-                    }
-                }
+                bind_pid(hook, *pid);
                 return None;
             }
 
@@ -95,26 +81,140 @@ pub fn apply_lifecycle(
             let status = status_from_agent_state(&new_state);
             hook.agent_state = new_state;
             hook.current_activity = agent_state.label.clone();
-
-            // PID binding
-            if hook.pid.is_none() {
-                if let Some(p) = pid {
-                    hook.pid = Some(*p);
-                }
-            }
-
+            bind_pid(hook, *pid);
             Some(status)
         }
 
-        LifecycleEvent::End => {
+        LifecycleEvent::Stop {
+            agent_state,
+            last_assistant_message,
+            pid,
+        } => {
+            // Context preservation (same logic as StateChange)
+            let mut new_state = agent_state.clone();
+            if new_state.context.is_none()
+                && hook.agent_state.state == new_state.state
+                && hook.agent_state.context.is_some()
+            {
+                new_state.context = hook.agent_state.context.clone();
+            }
+
+            let status = status_from_agent_state(&new_state);
+            hook.agent_state = new_state;
+            hook.current_activity = agent_state.label.clone();
+            hook.current_turn_started_at = None; // turn ended
+
+            // Store truncated preview
+            hook.last_assistant_preview = last_assistant_message
+                .as_ref()
+                .map(|m| m.chars().take(200).collect());
+
+            // Clear error state (session recovered from previous StopFailure)
+            hook.last_error = None;
+            hook.last_error_details = None;
+
+            bind_pid(hook, *pid);
+            Some(status)
+        }
+
+        LifecycleEvent::StopFailure {
+            error,
+            error_details,
+            pid,
+        } => {
+            hook.agent_state = AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "error".into(),
+                label: format!("API error: {}", error.as_deref().unwrap_or("unknown")),
+                context: error_details
+                    .as_ref()
+                    .map(|d| serde_json::json!({"details": d})),
+            };
+            hook.current_activity = hook.agent_state.label.clone();
+            hook.current_turn_started_at = None;
+            hook.last_error = error.clone();
+            hook.last_error_details = error_details.clone();
+            bind_pid(hook, *pid);
+            Some(SessionStatus::Paused) // NOT Done — may resume after rate limit
+        }
+
+        LifecycleEvent::End { reason } => {
+            let label = match reason.as_deref() {
+                Some(r) if !r.is_empty() => format!("Session ended ({})", r),
+                _ => "Session ended".into(),
+            };
             hook.agent_state = AgentState {
                 group: AgentStateGroup::NeedsYou,
                 state: "session_ended".into(),
-                label: "Session ended".into(),
+                label,
                 context: None,
             };
             hook.hook_events.clear();
             Some(SessionStatus::Done)
+        }
+
+        LifecycleEvent::Compacted {
+            trigger: _,
+            summary,
+            pid,
+        } => {
+            hook.compact_count += 1;
+            hook.agent_state = AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Context compacted".into(),
+                context: summary.as_ref().map(
+                    |s| serde_json::json!({"summary": s.chars().take(500).collect::<String>()}),
+                ),
+            };
+            hook.current_activity = hook.agent_state.label.clone();
+            bind_pid(hook, *pid);
+            Some(SessionStatus::Paused)
+        }
+
+        LifecycleEvent::CwdChanged { pid, .. } => {
+            // Observability only — don't change agent_state
+            bind_pid(hook, *pid);
+            None
+        }
+
+        LifecycleEvent::Observability { pid, .. } => {
+            // Observability only — don't change agent_state
+            bind_pid(hook, *pid);
+            None
+        }
+
+        LifecycleEvent::SubagentStarted {
+            agent_state,
+            agent_type,
+            agent_id,
+            pid,
+        } => {
+            hook.agent_state = agent_state.clone();
+            hook.current_activity = agent_state.label.clone();
+
+            hook.sub_agents
+                .push(claude_view_core::subagent::SubAgentInfo {
+                    tool_use_id: String::new(), // Hook events don't carry tool_use_id
+                    agent_id: agent_id.clone(),
+                    agent_type: agent_type.clone(),
+                    description: String::new(),
+                    status: claude_view_core::subagent::SubAgentStatus::Running,
+                    started_at: now,
+                    completed_at: None,
+                    duration_ms: None,
+                    tool_use_count: None,
+                    model: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
+                    cost_usd: None,
+                    current_activity: None,
+                });
+
+            bind_pid(hook, *pid);
+            Some(status_from_agent_state(agent_state))
         }
 
         LifecycleEvent::SubEntity(sub) => {
@@ -131,6 +231,21 @@ pub fn apply_lifecycle(
                             agent.status = claude_view_core::subagent::SubAgentStatus::Complete;
                         }
                     }
+                }
+                SubEntityEvent::TaskCreated {
+                    task_id,
+                    subject,
+                    description: _,
+                } => {
+                    hook.progress_items
+                        .push(claude_view_core::progress::ProgressItem {
+                            id: Some(task_id.clone()),
+                            tool_use_id: None,
+                            title: subject.clone().unwrap_or_else(|| "Task created".into()),
+                            status: claude_view_core::progress::ProgressStatus::InProgress,
+                            active_form: None,
+                            source: claude_view_core::progress::ProgressSource::Task,
+                        });
                 }
                 SubEntityEvent::TaskComplete { task_id } => {
                     for item in &mut hook.progress_items {
@@ -221,10 +336,24 @@ mod tests {
         });
         assert!(!hook.hook_events.is_empty());
 
-        let result = apply_lifecycle(&mut hook, &LifecycleEvent::End, 2000);
+        let result = apply_lifecycle(&mut hook, &LifecycleEvent::End { reason: None }, 2000);
         assert_eq!(result, Some(SessionStatus::Done));
         assert!(hook.hook_events.is_empty());
         assert_eq!(hook.agent_state.state, "session_ended");
+    }
+
+    #[test]
+    fn end_with_reason_includes_reason_in_label() {
+        let mut hook = make_hook_fields();
+        let result = apply_lifecycle(
+            &mut hook,
+            &LifecycleEvent::End {
+                reason: Some("clear".into()),
+            },
+            2000,
+        );
+        assert_eq!(result, Some(SessionStatus::Done));
+        assert_eq!(hook.agent_state.label, "Session ended (clear)");
     }
 
     #[test]
@@ -292,5 +421,130 @@ mod tests {
             hook.agent_state.context.as_ref().unwrap().to_string(),
             r#"{"file":"main.rs"}"#
         );
+    }
+
+    // ── New variant tests ──
+
+    #[test]
+    fn stop_clears_turn_and_stores_preview() {
+        let mut hook = make_hook_fields();
+        hook.current_turn_started_at = Some(999);
+
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting".into(),
+            context: None,
+        };
+        let event = LifecycleEvent::Stop {
+            agent_state: state,
+            last_assistant_message: Some("I've completed the task.".into()),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(result, Some(SessionStatus::Paused));
+        assert!(hook.current_turn_started_at.is_none());
+        assert_eq!(
+            hook.last_assistant_preview.as_deref(),
+            Some("I've completed the task.")
+        );
+    }
+
+    #[test]
+    fn stop_failure_sets_error_state() {
+        let mut hook = make_hook_fields();
+        let event = LifecycleEvent::StopFailure {
+            error: Some("rate_limit".into()),
+            error_details: Some("429 Too Many Requests".into()),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(result, Some(SessionStatus::Paused));
+        assert_eq!(hook.agent_state.state, "error");
+        assert_eq!(hook.agent_state.group, AgentStateGroup::NeedsYou);
+        assert_eq!(hook.last_error.as_deref(), Some("rate_limit"));
+    }
+
+    #[test]
+    fn stop_clears_previous_error() {
+        let mut hook = make_hook_fields();
+        hook.last_error = Some("rate_limit".into());
+
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting".into(),
+            context: None,
+        };
+        let event = LifecycleEvent::Stop {
+            agent_state: state,
+            last_assistant_message: None,
+            pid: None,
+        };
+        apply_lifecycle(&mut hook, &event, 1000);
+        assert!(hook.last_error.is_none());
+    }
+
+    #[test]
+    fn compacted_increments_count() {
+        let mut hook = make_hook_fields();
+        assert_eq!(hook.compact_count, 0);
+
+        let event = LifecycleEvent::Compacted {
+            trigger: Some("auto".into()),
+            summary: Some("Summary of conversation".into()),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(result, Some(SessionStatus::Paused));
+        assert_eq!(hook.compact_count, 1);
+    }
+
+    #[test]
+    fn observability_preserves_state() {
+        let mut hook = make_hook_fields();
+        hook.agent_state = make_autonomous_state("acting", "Running Bash");
+
+        let event = LifecycleEvent::Observability {
+            event_name: "FileChanged".into(),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(result, None); // no status change
+        assert_eq!(hook.agent_state.state, "acting"); // preserved
+    }
+
+    #[test]
+    fn subagent_started_pushes_and_updates_state() {
+        let mut hook = make_hook_fields();
+        assert!(hook.sub_agents.is_empty());
+
+        let state = make_autonomous_state("delegating", "Running Explore agent");
+        let event = LifecycleEvent::SubagentStarted {
+            agent_state: state,
+            agent_type: "Explore".into(),
+            agent_id: Some("abc123".into()),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+        assert!(result.is_some());
+        assert_eq!(hook.sub_agents.len(), 1);
+        assert_eq!(hook.sub_agents[0].agent_type, "Explore");
+        assert_eq!(hook.agent_state.state, "delegating");
+    }
+
+    #[test]
+    fn task_created_pushes_progress_item() {
+        let mut hook = make_hook_fields();
+        assert!(hook.progress_items.is_empty());
+
+        let event = LifecycleEvent::SubEntity(SubEntityEvent::TaskCreated {
+            task_id: "task-001".into(),
+            subject: Some("Fix the bug".into()),
+            description: Some("Fix auth flow".into()),
+        });
+        apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(hook.progress_items.len(), 1);
+        assert_eq!(hook.progress_items[0].title, "Fix the bug");
     }
 }

@@ -1324,6 +1324,9 @@ mod tests {
                     compact_count: 0,
                     agent_state_set_at: 0,
                     hook_events: Vec::new(),
+                    last_assistant_preview: None,
+                    last_error: None,
+                    last_error_details: None,
                 },
                 jsonl: crate::live::state::JsonlFields {
                     project: "test-project".to_string(),

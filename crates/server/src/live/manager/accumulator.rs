@@ -260,6 +260,9 @@ pub(super) fn build_recovered_session(
             progress_items: Vec::new(),
             compact_count: 0,
             agent_state_set_at: 0,
+            last_assistant_preview: None,
+            last_error: None,
+            last_error_details: None,
             hook_events: Vec::new(),
         },
         jsonl: JsonlFields {
