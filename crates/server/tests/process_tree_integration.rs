@@ -104,7 +104,7 @@ async fn test_sse_stream_emits_process_tree_event() {
 
     let t = match received {
         MonitorEvent::ProcessTree(ref snap) => snap,
-        MonitorEvent::Snapshot(_) => panic!("expected ProcessTree variant"),
+        _ => panic!("expected ProcessTree variant"),
     };
 
     let json_str = serde_json::to_string(t).expect("must serialize");
@@ -339,6 +339,6 @@ async fn test_state_monitor_tx_accepts_both_variants() {
                 "second ecosystem entry must be Self_"
             );
         }
-        MonitorEvent::Snapshot(_) => panic!("second event must be ProcessTree, got Snapshot"),
+        _ => panic!("second event must be ProcessTree"),
     }
 }
