@@ -26,12 +26,18 @@ pub enum SessionMutation {
 }
 
 impl SessionMutation {
-    /// Only Start and Reconcile may create a brand-new session.
+    /// Only Start (with valid cwd) and Reconcile may create a brand-new session.
+    ///
+    /// Start events without a cwd are buffered — the session cannot be created
+    /// without a project path (matches the old hooks.rs `has_valid_cwd` guard).
     pub fn can_create_session(&self) -> bool {
-        matches!(
-            self,
-            Self::Lifecycle(LifecycleEvent::Start { .. }) | Self::Reconcile(_)
-        )
+        match self {
+            Self::Lifecycle(LifecycleEvent::Start { cwd, .. }) => {
+                cwd.as_ref().map_or(false, |v| !v.trim().is_empty())
+            }
+            Self::Reconcile(_) => true,
+            _ => false,
+        }
     }
 }
 
