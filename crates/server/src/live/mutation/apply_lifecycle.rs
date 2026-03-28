@@ -515,6 +515,73 @@ mod tests {
     }
 
     #[test]
+    fn stop_truncates_last_assistant_preview_at_200_chars() {
+        let mut hook = make_hook_fields();
+
+        // Exactly 200 chars — should NOT be truncated
+        let exact_200: String = "A".repeat(200);
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting".into(),
+            context: None,
+        };
+        let event = LifecycleEvent::Stop {
+            agent_state: state.clone(),
+            last_assistant_message: Some(exact_200.clone()),
+            pid: None,
+        };
+        apply_lifecycle(&mut hook, &event, 1000);
+        assert_eq!(
+            hook.last_assistant_preview.as_ref().unwrap().len(),
+            200,
+            "Exactly 200 chars must be preserved in full"
+        );
+
+        // 201 chars — should be truncated to 200
+        let over_200: String = "B".repeat(201);
+        let event2 = LifecycleEvent::Stop {
+            agent_state: state,
+            last_assistant_message: Some(over_200),
+            pid: None,
+        };
+        apply_lifecycle(&mut hook, &event2, 1001);
+        let preview = hook.last_assistant_preview.as_ref().unwrap();
+        assert_eq!(
+            preview.len(),
+            200,
+            "201-char message must be truncated to 200"
+        );
+        assert!(preview.chars().all(|c| c == 'B'));
+    }
+
+    #[test]
+    fn stop_truncates_multibyte_chars_at_char_boundary() {
+        let mut hook = make_hook_fields();
+
+        // 201 multibyte chars (Chinese) — .take(200) counts chars, not bytes
+        let long_msg: String = "你".repeat(201);
+        let state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting".into(),
+            context: None,
+        };
+        let event = LifecycleEvent::Stop {
+            agent_state: state,
+            last_assistant_message: Some(long_msg),
+            pid: None,
+        };
+        apply_lifecycle(&mut hook, &event, 1000);
+        let preview = hook.last_assistant_preview.as_ref().unwrap();
+        assert_eq!(
+            preview.chars().count(),
+            200,
+            "Multibyte: must truncate at 200 chars, not bytes"
+        );
+    }
+
+    #[test]
     fn subagent_started_pushes_and_updates_state() {
         let mut hook = make_hook_fields();
         assert!(hook.sub_agents.is_empty());

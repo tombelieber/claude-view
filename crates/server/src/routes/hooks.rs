@@ -1231,6 +1231,35 @@ mod tests {
     }
 
     #[test]
+    fn test_serde_flatten_captures_unknown_fields() {
+        let json = serde_json::json!({
+            "session_id": "test-123",
+            "hook_event_name": "FutureEvent",
+            "brand_new_field": "surprise",
+            "nested_data": {"key": "value"}
+        });
+        let payload: HookPayload = serde_json::from_value(json).unwrap();
+        assert_eq!(payload.session_id, "test-123");
+        assert_eq!(payload.hook_event_name, "FutureEvent");
+        // Unknown fields land in `extra` via #[serde(flatten)]
+        assert_eq!(
+            payload.extra.get("brand_new_field"),
+            Some(&serde_json::json!("surprise")),
+            "Unknown string field must be captured in extra HashMap"
+        );
+        assert_eq!(
+            payload.extra.get("nested_data"),
+            Some(&serde_json::json!({"key": "value"})),
+            "Unknown nested object must be captured in extra HashMap"
+        );
+        // Known fields must NOT appear in extra
+        assert!(
+            !payload.extra.contains_key("session_id"),
+            "Known fields must not leak into extra"
+        );
+    }
+
+    #[test]
     fn test_extract_pid_from_header_valid() {
         let pid = extract_pid_from_header(Some("12345"));
         assert_eq!(pid, Some(12345));
@@ -1969,5 +1998,253 @@ mod tests {
             "resume must not mark session as Done"
         );
         assert_eq!(s.hook.pid, Some(60001));
+    }
+
+    // =========================================================================
+    // Observability events must NOT change agent_state
+    // =========================================================================
+    // These 5 events route to LifecycleEvent::Observability in handle_hook.
+    // The contract: agent_state stays exactly as it was before the event.
+
+    /// Helper: send a hook event to an existing session and return the response status.
+    async fn send_hook_event(
+        app: &axum::Router,
+        session_id: &str,
+        body: serde_json::Value,
+    ) -> axum::http::StatusCode {
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/live/hook")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        response.status()
+    }
+
+    #[tokio::test]
+    async fn test_instructions_loaded_preserves_agent_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "InstructionsLoaded",
+                "file_path": "/home/user/.claude/CLAUDE.md",
+                "memory_type": "user",
+                "load_reason": "session_start"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "InstructionsLoaded must not change agent_state"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
+        // Hook event should still be recorded
+        assert!(session
+            .hook
+            .hook_events
+            .iter()
+            .any(|e| e.event_name == "InstructionsLoaded"));
+    }
+
+    #[tokio::test]
+    async fn test_config_change_preserves_agent_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "ConfigChange",
+                "file_path": "/home/user/.claude/settings.json"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "ConfigChange must not change agent_state"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_file_changed_preserves_agent_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "FileChanged",
+                "file_path": "/tmp/test/src/main.rs",
+                "event": "change"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "FileChanged must not change agent_state"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_worktree_create_preserves_agent_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "WorktreeCreate",
+                "cwd": "/tmp/test-worktree"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "WorktreeCreate must not change agent_state"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_unknown_event_routes_to_observability_and_preserves_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "FutureClaudeCodeEvent",
+                "some_new_field": "data"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "Unknown event must not change agent_state (Observability path)"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
+        // Hook event should still be recorded for timeline
+        assert!(session
+            .hook
+            .hook_events
+            .iter()
+            .any(|e| e.event_name == "FutureClaudeCodeEvent"));
+    }
+
+    #[tokio::test]
+    async fn test_worktree_remove_preserves_agent_state() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = crate::state::AppState::new(db);
+        {
+            let mut sessions = state.live_sessions.write().await;
+            sessions.insert("obs-test".into(), make_autonomous_session("obs-test"));
+        }
+
+        let app = crate::api_routes(state.clone());
+        let status = send_hook_event(
+            &app,
+            "obs-test",
+            serde_json::json!({
+                "session_id": "obs-test",
+                "hook_event_name": "WorktreeRemove",
+                "worktree_path": "/tmp/test-worktree"
+            }),
+        )
+        .await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+
+        let sessions = state.live_sessions.read().await;
+        let session = sessions.get("obs-test").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "acting",
+            "WorktreeRemove must not change agent_state"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
     }
 }
