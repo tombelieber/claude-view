@@ -1,0 +1,50 @@
+---
+name: insights
+description: "Use when the user asks about patterns, insights, or behavioral analysis — e.g. 'what patterns do you see', 'insights', 'how am I doing', 'behavioral analysis'"
+allowed-tools:
+  - mcp__claude-view__insights_get_insights
+  - mcp__claude-view__insights_get_categories
+  - mcp__claude-view__insights_get_insights_trends
+  - mcp__claude-view__insights_get_benchmarks
+  - mcp__claude-view__classify_start_classification
+---
+
+{{PREAMBLE}}
+
+# Behavioral Insights
+
+Analyze the user's Claude Code usage patterns and present actionable insights.
+
+## Steps
+
+1. **Get behavioral insights.** Call `mcp__claude-view__insights_get_insights` to compute pattern analysis across sessions.
+
+2. **Get insight categories.** Call `mcp__claude-view__insights_get_categories` to get the hierarchical category breakdown.
+
+3. **Get trend data.** Call `mcp__claude-view__insights_get_insights_trends` to see how patterns change over time.
+
+4. **Get benchmarks.** Call `mcp__claude-view__insights_get_benchmarks` to compare against personal progress baselines.
+
+5. **Present findings** grouped by category:
+
+```
+## Behavioral Insights
+
+### Patterns
+- [insight description] — [frequency/impact]
+(grouped by category from insights_get_categories)
+
+### Trends
+- [metric]: [direction] over [period] ([value] -> [value])
+
+### Benchmarks
+- [metric]: [current] vs [baseline] ([delta])
+
+### Recommendations
+- [actionable suggestion based on insights]
+- [actionable suggestion based on trends]
+```
+
+6. **If no insights data is available**, suggest running more sessions or triggering a classification via `mcp__claude-view__classify_start_classification` to build the analysis dataset.
+
+{{AVAILABLE_TOOLS}}

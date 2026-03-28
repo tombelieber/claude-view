@@ -33,7 +33,7 @@ pub struct SessionFilterParams {
 }
 
 /// A single point in the activity histogram.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
 pub struct ActivityPoint {
     pub date: String,
     pub count: i64,

@@ -27,13 +27,13 @@ use crate::state::AppState;
 // Request / Response types
 // =============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct KillProcessRequest {
     pub start_time: i64,
     pub force: bool,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -45,18 +45,18 @@ pub struct KillProcessResponse {
     pub error: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct KillTarget {
     pub pid: u32,
     pub start_time: i64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CleanupRequest {
     pub targets: Vec<KillTarget>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -67,7 +67,7 @@ pub struct CleanupResponse {
     pub failed: Vec<KillFailure>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -92,7 +92,12 @@ pub fn router() -> Router<Arc<AppState>> {
 // Handlers
 // =============================================================================
 
-async fn kill_process(
+#[utoipa::path(post, path = "/api/processes/{pid}/kill", tag = "processes",
+    params(("pid" = u32, Path, description = "Process ID")),
+    request_body = KillProcessRequest,
+    responses((status = 200, description = "Kill result", body = KillProcessResponse))
+)]
+pub async fn kill_process(
     State(_state): State<Arc<AppState>>,
     Path(pid): Path<u32>,
     Json(req): Json<KillProcessRequest>,
@@ -116,7 +121,11 @@ async fn kill_process(
     }
 }
 
-async fn cleanup_processes(
+#[utoipa::path(post, path = "/api/processes/cleanup", tag = "processes",
+    request_body = CleanupRequest,
+    responses((status = 200, description = "Cleanup result", body = CleanupResponse))
+)]
+pub async fn cleanup_processes(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CleanupRequest>,
 ) -> Json<CleanupResponse> {

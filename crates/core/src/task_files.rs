@@ -7,7 +7,7 @@ use ts_rs::TS;
 /// A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.
 ///
 /// Richer than ProgressItem — includes description and dependency edges.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskItem {

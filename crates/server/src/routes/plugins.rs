@@ -27,7 +27,7 @@ use claude_view_core::registry::{InvocableInfo, InvocableKind};
 // ---------------------------------------------------------------------------
 
 /// A single invocable item within a plugin (skill, command, agent, or MCP tool).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginItem {
@@ -42,7 +42,7 @@ pub struct PluginItem {
 }
 
 /// An installed plugin with its metadata, items, and usage stats.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginInfo {
@@ -78,7 +78,7 @@ pub struct PluginInfo {
 }
 
 /// A plugin available for installation (not yet installed).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AvailablePlugin {
@@ -92,7 +92,7 @@ pub struct AvailablePlugin {
 }
 
 /// A user-created skill, command, or agent (not from any marketplace).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct UserItemInfo {
@@ -116,7 +116,7 @@ pub struct PluginsQuery {
 }
 
 /// Full response for the plugins endpoint.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginsResponse {
@@ -542,7 +542,12 @@ fn read_plugin_descriptions_and_existence(
 // ---------------------------------------------------------------------------
 
 /// GET /api/plugins — Unified view of installed + available plugins.
-async fn list_plugins(
+#[utoipa::path(get, path = "/api/plugins", tag = "plugins",
+    responses(
+        (status = 200, description = "Unified plugin list", body = PluginsResponse),
+    )
+)]
+pub async fn list_plugins(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PluginsQuery>,
 ) -> ApiResult<Json<PluginsResponse>> {
@@ -879,7 +884,7 @@ async fn list_plugins(
 // ---------------------------------------------------------------------------
 
 /// Request body for POST /api/plugins/action.
-#[derive(Debug, Deserialize, Serialize, TS)]
+#[derive(Debug, Deserialize, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginActionRequest {
@@ -897,7 +902,7 @@ pub struct PluginActionRequest {
 }
 
 /// Response for POST /api/plugins/action.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginActionResponse {
@@ -948,7 +953,7 @@ pub(crate) fn get_marketplace_lock() -> &'static tokio::sync::Mutex<()> {
 // ---------------------------------------------------------------------------
 
 /// A configured marketplace.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MarketplaceInfo {
@@ -1022,7 +1027,12 @@ struct CliMarketplace {
 }
 
 /// GET /api/plugins/marketplaces
-async fn list_marketplaces(
+#[utoipa::path(get, path = "/api/plugins/marketplaces", tag = "plugins",
+    responses(
+        (status = 200, description = "Configured marketplaces", body = Vec<MarketplaceInfo>),
+    )
+)]
+pub async fn list_marketplaces(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<MarketplaceInfo>>> {
     let json = run_claude_plugin(&["marketplace", "list", "--json"]).await;

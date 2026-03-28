@@ -19,7 +19,7 @@ use crate::live::manager::LiveSessionMap;
 // =============================================================================
 
 /// Static system information that doesn't change between snapshots.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -42,7 +42,7 @@ pub struct SystemInfo {
 }
 
 /// A single process group — aggregated by normalized process name.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -61,7 +61,7 @@ pub struct ProcessGroup {
 }
 
 /// Per-session resource snapshot (CPU + memory for the Claude process).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
@@ -80,7 +80,7 @@ pub struct SessionResource {
 }
 
 /// A periodic resource snapshot broadcast to SSE clients.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")

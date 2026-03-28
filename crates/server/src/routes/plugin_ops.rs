@@ -16,7 +16,7 @@ use ts_rs::TS;
 
 const DEFAULT_EVICTION_TTL: Duration = Duration::from_secs(60);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub enum OpStatus {
@@ -26,7 +26,7 @@ pub enum OpStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginOp {
@@ -161,7 +161,13 @@ impl PluginOpQueue {
 // ---------------------------------------------------------------------------
 
 /// POST /api/plugins/ops — Enqueue a plugin mutation, return immediately.
-async fn enqueue_op(
+#[utoipa::path(post, path = "/api/plugins/ops", tag = "plugins",
+    request_body = crate::routes::plugins::PluginActionRequest,
+    responses(
+        (status = 200, description = "Operation enqueued", body = PluginOp),
+    )
+)]
+pub async fn enqueue_op(
     State(state): State<Arc<crate::state::AppState>>,
     Json(req): Json<super::plugins::PluginActionRequest>,
 ) -> crate::error::ApiResult<Json<PluginOp>> {
@@ -186,7 +192,12 @@ async fn enqueue_op(
 }
 
 /// GET /api/plugins/ops — List all queued/running/completed ops.
-async fn list_ops_handler(State(state): State<Arc<crate::state::AppState>>) -> Json<Vec<PluginOp>> {
+#[utoipa::path(get, path = "/api/plugins/ops", tag = "plugins",
+    responses(
+        (status = 200, description = "All plugin operations", body = Vec<PluginOp>),
+    )
+)]
+pub async fn list_ops_handler(State(state): State<Arc<crate::state::AppState>>) -> Json<Vec<PluginOp>> {
     Json(state.plugin_op_queue.list_ops())
 }
 

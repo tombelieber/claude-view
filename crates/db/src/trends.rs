@@ -63,7 +63,7 @@ pub fn previous_week_bounds() -> (i64, i64) {
 // ============================================================================
 
 /// A single trend metric comparing current vs previous period.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TrendMetric {
@@ -105,7 +105,7 @@ impl TrendMetric {
 }
 
 /// Collection of all week-over-week trend metrics.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekTrends {
@@ -126,7 +126,7 @@ pub struct WeekTrends {
 }
 
 /// Index metadata for data freshness tracking.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {

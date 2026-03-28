@@ -21,6 +21,7 @@ similar = { workspace = true }
 uuid = { workspace = true }
 rust-stemmers = "1.2"
 reqwest = { workspace = true }
+utoipa = { version = "5" }
 
 [features]
 # Gate ts-rs file generation behind this feature so `cargo test` alone

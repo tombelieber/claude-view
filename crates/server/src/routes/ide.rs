@@ -16,7 +16,7 @@ use crate::state::AppState;
 // ---------------------------------------------------------------------------
 
 /// Describes a single detected IDE.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(rename_all = "camelCase")]
@@ -28,7 +28,7 @@ pub struct IdeInfo {
 }
 
 /// Response for `GET /api/ide/detect`.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "camelCase")]
@@ -37,7 +37,7 @@ pub struct IdeDetectResponse {
 }
 
 /// Request body for `POST /api/ide/open`.
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OpenInIdeRequest {
@@ -51,7 +51,7 @@ pub struct OpenInIdeRequest {
 }
 
 /// Response for `POST /api/ide/open`.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(serde::Deserialize))]
 #[serde(rename_all = "camelCase")]
@@ -158,7 +158,10 @@ pub fn detect_installed_ides() -> Vec<(IdeInfo, String)> {
 // ---------------------------------------------------------------------------
 
 /// `GET /api/ide/detect` — return cached list of installed IDEs.
-async fn get_detect(State(state): State<Arc<AppState>>) -> Json<IdeDetectResponse> {
+#[utoipa::path(get, path = "/api/ide/detect", tag = "ide",
+    responses((status = 200, description = "Detected IDEs", body = IdeDetectResponse))
+)]
+pub async fn get_detect(State(state): State<Arc<AppState>>) -> Json<IdeDetectResponse> {
     let ides: Vec<IdeInfo> = state
         .available_ides
         .iter()
@@ -168,7 +171,11 @@ async fn get_detect(State(state): State<Arc<AppState>>) -> Json<IdeDetectRespons
 }
 
 /// `POST /api/ide/open` — open a file in the requested IDE.
-async fn post_open(
+#[utoipa::path(post, path = "/api/ide/open", tag = "ide",
+    request_body = OpenInIdeRequest,
+    responses((status = 200, description = "IDE opened", body = OpenInIdeResponse))
+)]
+pub async fn post_open(
     State(state): State<Arc<AppState>>,
     Json(req): Json<OpenInIdeRequest>,
 ) -> ApiResult<Json<OpenInIdeResponse>> {

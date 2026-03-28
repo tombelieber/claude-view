@@ -12,7 +12,7 @@ use ts_rs::TS;
 use crate::state::AppState;
 use claude_view_core::telemetry_config::TelemetryStatus;
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ConfigResponse {
@@ -30,6 +30,14 @@ pub struct ConfigResponse {
     pub anonymous_id: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/config",
+    tag = "health",
+    responses(
+        (status = 200, description = "Runtime capabilities", body = ConfigResponse),
+    )
+)]
 pub async fn config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> {
     let (telemetry_status, posthog_key, anonymous_id) = match &state.telemetry {
         Some(client) => {

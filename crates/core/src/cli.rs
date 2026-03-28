@@ -33,7 +33,7 @@ pub fn resolved_cli_path() -> Option<&'static str> {
 }
 
 /// Claude CLI status information.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]

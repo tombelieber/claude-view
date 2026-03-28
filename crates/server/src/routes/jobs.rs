@@ -15,12 +15,18 @@ use crate::jobs::JobProgress;
 use crate::state::AppState;
 
 /// GET /api/jobs — List all active jobs.
-async fn list_jobs(State(state): State<Arc<AppState>>) -> axum::Json<Vec<JobProgress>> {
+#[utoipa::path(get, path = "/api/jobs", tag = "jobs",
+    responses((status = 200, description = "Active jobs", body = Vec<crate::jobs::JobProgress>))
+)]
+pub async fn list_jobs(State(state): State<Arc<AppState>>) -> axum::Json<Vec<JobProgress>> {
     axum::Json(state.jobs.active_jobs())
 }
 
 /// GET /api/jobs/stream — SSE stream of all job progress updates.
-async fn stream_jobs(
+#[utoipa::path(get, path = "/api/jobs/stream", tag = "jobs",
+    responses((status = 200, description = "SSE stream of job progress", content_type = "text/event-stream"))
+)]
+pub async fn stream_jobs(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.jobs.subscribe();

@@ -10,6 +10,11 @@ use crate::error::ApiResult;
 use crate::state::AppState;
 
 /// GET /api/invocables - List all invocables with their usage counts.
+#[utoipa::path(get, path = "/api/invocables", tag = "insights",
+    responses(
+        (status = 200, description = "All invocables (tools, skills, MCPs) sorted by usage", body = Vec<claude_view_db::InvocableWithCount>),
+    )
+)]
 ///
 /// Returns a list of all known invocables (tools, skills, MCPs) ordered by
 /// invocation count descending, then name ascending.
@@ -21,6 +26,11 @@ pub async fn list_invocables(
 }
 
 /// GET /api/stats/overview - Aggregate usage statistics.
+#[utoipa::path(get, path = "/api/stats/overview", tag = "stats",
+    responses(
+        (status = 200, description = "Aggregate usage stats (sessions, invocations, top invocables)", body = claude_view_db::StatsOverview),
+    )
+)]
 ///
 /// Returns total sessions, total invocations, unique invocables used,
 /// and the top 10 invocables by usage count.
@@ -30,6 +40,11 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> ApiResult<Jso
 }
 
 /// GET /api/stats/tokens - Aggregate token usage statistics.
+#[utoipa::path(get, path = "/api/stats/tokens", tag = "stats",
+    responses(
+        (status = 200, description = "Aggregate token usage with cache ratios", body = claude_view_db::TokenStats),
+    )
+)]
 pub async fn stats_tokens(State(state): State<Arc<AppState>>) -> ApiResult<Json<TokenStats>> {
     let stats = state.db.get_token_stats().await?;
     Ok(Json(stats))

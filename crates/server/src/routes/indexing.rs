@@ -17,7 +17,7 @@ use crate::indexing_state::IndexingStatus;
 use crate::state::AppState;
 
 /// JSON snapshot of current indexing progress (for polling).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexingStatusResponse {
@@ -47,6 +47,11 @@ pub fn router() -> Router<Arc<AppState>> {
 ///
 /// Returns the current phase, indexed count, and total count.
 /// Designed for polling (every 200–300 ms) from the frontend during rebuilds.
+#[utoipa::path(get, path = "/api/indexing/status", tag = "sync",
+    responses(
+        (status = 200, description = "Current indexing phase and progress", body = crate::routes::indexing::IndexingStatusResponse),
+    )
+)]
 pub async fn indexing_status(State(state): State<Arc<AppState>>) -> Json<IndexingStatusResponse> {
     let indexing = &state.indexing;
     let status = indexing.status();
@@ -87,6 +92,11 @@ pub async fn indexing_status(State(state): State<Arc<AppState>>) -> Json<Indexin
 /// | `error`          | Indexing failed                            |
 ///
 /// The stream terminates after `done` or `error`.
+#[utoipa::path(get, path = "/api/indexing/progress", tag = "sync",
+    responses(
+        (status = 200, description = "SSE stream of indexing progress events", content_type = "text/event-stream"),
+    )
+)]
 pub async fn indexing_progress(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {

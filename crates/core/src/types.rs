@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Tool usage statistics for a session
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ToolCounts {
     pub edit: usize,
@@ -23,7 +23,7 @@ impl ToolCounts {
 }
 
 /// Message role in a conversation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -299,7 +299,7 @@ pub struct PaginatedMessages {
 }
 
 /// Session info for listing (without full message content)
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
@@ -482,7 +482,7 @@ impl SessionInfo {
 }
 
 /// Project info with sessions
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
@@ -504,7 +504,7 @@ impl ProjectInfo {
 }
 
 /// Lightweight project summary for sidebar — no sessions array.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
@@ -519,7 +519,7 @@ pub struct ProjectSummary {
 }
 
 /// Paginated sessions response.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionsPage {
@@ -528,7 +528,7 @@ pub struct SessionsPage {
 }
 
 /// Pre-computed dashboard statistics.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardStats {
@@ -545,7 +545,7 @@ pub struct DashboardStats {
 }
 
 /// A single day in the activity heatmap.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DayActivity {
@@ -554,7 +554,7 @@ pub struct DayActivity {
 }
 
 /// A skill with its usage count.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillStat {
@@ -563,7 +563,7 @@ pub struct SkillStat {
 }
 
 /// A project with its session count (for dashboard top projects).
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectStat {
@@ -573,7 +573,7 @@ pub struct ProjectStat {
 }
 
 /// A session entry for the "Longest Tasks" dashboard card.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionDurationStat {
@@ -692,7 +692,7 @@ pub enum ContentBlock {
 // ============================================================================
 
 /// Status of a classification job.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum ClassificationJobStatus {
@@ -726,7 +726,7 @@ impl ClassificationJobStatus {
 }
 
 /// A classification job record.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationJob {
@@ -757,7 +757,7 @@ pub struct ClassificationJob {
 // ============================================================================
 
 /// Type of index run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunType {
@@ -788,7 +788,7 @@ impl IndexRunType {
 }
 
 /// Status of an index run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum IndexRunStatus {
@@ -819,7 +819,7 @@ impl IndexRunStatus {
 }
 
 /// An index run record.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRun {
@@ -844,7 +844,7 @@ pub struct IndexRun {
 // ============================================================================
 
 /// Metrics for a time period (used in Then vs Now comparison).
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PeriodMetrics {
@@ -859,7 +859,7 @@ pub struct PeriodMetrics {
 }
 
 /// Improvement percentages between two periods.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ImprovementMetrics {
@@ -874,7 +874,7 @@ pub struct ImprovementMetrics {
 }
 
 /// Progress comparison between first and last month.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressComparison {
@@ -885,7 +885,7 @@ pub struct ProgressComparison {
 }
 
 /// Verdict for category performance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum CategoryVerdict {
@@ -896,7 +896,7 @@ pub enum CategoryVerdict {
 }
 
 /// Performance metrics for a single category.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryPerformance {
@@ -909,7 +909,7 @@ pub struct CategoryPerformance {
 }
 
 /// Learning curve data point.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct LearningCurvePoint {
@@ -918,7 +918,7 @@ pub struct LearningCurvePoint {
 }
 
 /// Skill adoption with impact metrics.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SkillAdoption {
@@ -931,7 +931,7 @@ pub struct SkillAdoption {
 }
 
 /// Monthly report summary.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSummary {
@@ -950,7 +950,7 @@ pub struct ReportSummary {
 }
 
 /// Full benchmarks response.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarksResponse {

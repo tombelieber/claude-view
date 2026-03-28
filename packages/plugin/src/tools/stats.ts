@@ -1,13 +1,5 @@
 import { z } from 'zod'
-import type { ClaudeViewClient } from '../client.js'
-
-interface ToolDef<TSchema extends z.ZodObject<any> = z.ZodObject<any>> {
-  name: string
-  description: string
-  inputSchema: TSchema
-  annotations: Record<string, boolean>
-  handler: (client: ClaudeViewClient, args: z.output<TSchema>) => Promise<string>
-}
+import type { ToolDef } from './types.js'
 
 const getStatsSchema = z.object({
   project: z.string().optional().describe('Filter by project name'),
