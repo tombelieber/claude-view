@@ -17,20 +17,41 @@ const SENTINEL: &str = "# claude-view-hook";
 /// Hook events to register. SessionStart is sync (no "async" field),
 /// all others are async ("async": true).
 const HOOK_EVENTS: &[&str] = &[
-    "SessionStart",       // sync — blocks startup until server acknowledges
-    "UserPromptSubmit",   // async
-    "PreToolUse",         // async — NEW: real-time tool activity
-    "PostToolUse",        // async — NEW: tool completion tracking
+    // ── Session lifecycle ──
+    "SessionStart", // sync — blocks startup until server acknowledges
+    "SessionEnd",   // async
+    // ── User input ──
+    "UserPromptSubmit", // async
+    // ── Tool events ──
+    "PreToolUse",         // async
+    "PostToolUse",        // async
     "PostToolUseFailure", // async
-    "PermissionRequest",  // async — NEW: richer permission data (tool_name, suggestions)
-    "Stop",               // async
-    "Notification",       // async
-    "SubagentStart",      // async
-    "SubagentStop",       // async
-    "TeammateIdle",       // async — NEW: sub-agent idle tracking
-    "TaskCompleted",      // async — NEW: task completion events
-    "PreCompact",         // async — NEW: context compaction indicator
-    "SessionEnd",         // async
+    "PermissionRequest",  // async
+    // ── Agent turn end ──
+    "Stop",        // async
+    "StopFailure", // async — API error turn end
+    // ── Notifications ──
+    "Notification", // async
+    // ── Sub-entities ──
+    "SubagentStart", // async
+    "SubagentStop",  // async
+    "TeammateIdle",  // async
+    "TaskCreated",   // async — task/todo created
+    "TaskCompleted", // async
+    // ── Context management ──
+    "PreCompact",  // async
+    "PostCompact", // async — compaction complete
+    // ── Configuration / environment ──
+    "InstructionsLoaded", // async — CLAUDE.md loaded
+    "ConfigChange",       // async — settings file changed
+    "CwdChanged",         // async — cd command
+    "FileChanged",        // async — watched file modified
+    // ── Worktree ──
+    "WorktreeCreate", // async — worktree created
+    "WorktreeRemove", // async — worktree removed
+    // ── MCP Elicitation ──
+    "Elicitation",       // async — MCP input request
+    "ElicitationResult", // async ��� MCP input response
 ];
 
 fn settings_path() -> Option<PathBuf> {
@@ -106,7 +127,7 @@ fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
     }
 }
 
-/// Register 14 hooks in ~/.claude/settings.json.
+/// Register 25 hooks in ~/.claude/settings.json.
 /// Removes any previous Live Monitor hooks first (idempotent).
 /// Called from create_app_full() on server startup.
 pub fn register(port: u16) {
@@ -143,7 +164,7 @@ pub fn register(port: u16) {
         remove_our_hooks(hooks);
     }
 
-    // Append our 14 hooks in the new matcher-group format
+    // Append our 25 hooks in the new matcher-group format
     let Some(hooks) = settings["hooks"].as_object_mut() else {
         tracing::error!("settings.json has unexpected structure — cannot register hooks");
         return;
