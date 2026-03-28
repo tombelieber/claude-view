@@ -7,7 +7,7 @@ use crate::live::mutation::types::{LifecycleEvent, SessionMutation, SubEntityEve
 use crate::live::state::{AgentState, AgentStateGroup, HookEvent, SessionStatus};
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Deserialize, serde::Serialize, utoipa::ToSchema)]
 pub struct HookPayload {
     pub session_id: String,
     pub hook_event_name: String,
@@ -108,20 +108,9 @@ pub async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    // ── Debug log: capture key fields before mutation consumes agent_state ──
+    // ── Debug log: full raw payload before mutation consumes it ──
     #[cfg(debug_assertions)]
-    let debug_line = {
-        let group_str = group_name_from_agent_group(&agent_state.group);
-        serde_json::json!({
-            "ts": now,
-            "session": &payload.session_id[..8.min(payload.session_id.len())],
-            "event": &payload.hook_event_name,
-            "state": &agent_state.state,
-            "group": group_str,
-            "pid": pid,
-        })
-        .to_string()
-    };
+    let debug_line = serde_json::to_string(&payload).unwrap_or_default();
 
     // ── Build hook event context (for event log) ────────────────────────
     let hook_event_context: Option<serde_json::Value> = payload.tool_input.clone().or_else(|| {
@@ -151,7 +140,9 @@ pub async fn handle_hook(
                 pid,
             })
         }
-        "SessionEnd" => SessionMutation::Lifecycle(LifecycleEvent::End),
+        "SessionEnd" => SessionMutation::Lifecycle(LifecycleEvent::End {
+            reason: payload.reason.clone(),
+        }),
         "SubagentStop" => SessionMutation::Lifecycle(LifecycleEvent::SubEntity(
             SubEntityEvent::SubagentComplete {
                 agent_type: payload.agent_type.clone().unwrap_or_default(),
@@ -696,6 +687,9 @@ mod tests {
                 progress_items: Vec::new(),
                 compact_count: 0,
                 agent_state_set_at: 0,
+                last_assistant_preview: None,
+                last_error: None,
+                last_error_details: None,
                 hook_events: Vec::new(),
             },
             jsonl: crate::live::state::JsonlFields {
