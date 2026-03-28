@@ -17,6 +17,7 @@ chrono = { workspace = true }
 grep-matcher = { workspace = true }
 grep-regex = { workspace = true }
 grep-searcher = { workspace = true }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [features]
 codegen = ["claude-view-core/codegen"]
