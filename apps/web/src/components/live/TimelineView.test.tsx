@@ -52,7 +52,7 @@ describe('TimelineView', () => {
   const createAgent = (overrides: Partial<SubAgentInfo> = {}): SubAgentInfo => ({
     toolUseId: overrides.toolUseId ?? 'test-1',
     agentType: overrides.agentType ?? 'Explore',
-    description: overrides.description ?? 'Test description',
+    description: overrides.description ?? '',
     status: overrides.status ?? 'complete',
     startedAt: overrides.startedAt ?? baseSessionStart + 5,
     completedAt: overrides.completedAt ?? baseSessionStart + 10,
@@ -214,8 +214,8 @@ describe('TimelineView', () => {
         sessionDurationMs={30000}
       />,
     )
-    // Should render with green color class
-    const bars = container.querySelectorAll('.bg-green-600')
+    // Complete Explore agents render with type-based blue color
+    const bars = container.querySelectorAll('[class*="bg-blue"]')
     expect(bars.length).toBeGreaterThan(0)
   })
 
@@ -236,7 +236,7 @@ describe('TimelineView', () => {
     )
     // Should render with min-width CSS (max(2px, ...))
     // We can't easily test the computed width, but verify it renders
-    const bars = container.querySelectorAll('[class*="bg-green"]')
+    const bars = container.querySelectorAll('[class*="bg-blue"]')
     expect(bars.length).toBeGreaterThan(0)
   })
 
@@ -285,7 +285,7 @@ describe('TimelineView', () => {
       />,
     )
     // Should clamp to 0% start position
-    const bars = container.querySelectorAll('[class*="bg-green"]')
+    const bars = container.querySelectorAll('[class*="bg-blue"]')
     expect(bars.length).toBeGreaterThan(0)
   })
 
@@ -305,7 +305,7 @@ describe('TimelineView', () => {
       />,
     )
     // Should clamp width to not exceed 100%
-    const bars = container.querySelectorAll('[class*="bg-green"]')
+    const bars = container.querySelectorAll('[class*="bg-blue"]')
     expect(bars.length).toBeGreaterThan(0)
   })
 
@@ -323,7 +323,7 @@ describe('TimelineView', () => {
         sessionDurationMs={30000}
       />,
     )
-    // Should render without crashing
+    // Should render without crashing (time labels still use font-mono)
     expect(container.querySelector('.font-mono')).toBeDefined()
   })
 
@@ -355,6 +355,23 @@ describe('TimelineView', () => {
     // Note: Tooltip content is in portal, harder to test without user interaction
     // This test just verifies component renders
     expect(screen.getByText('Explore')).toBeDefined()
+  })
+
+  it('prefers description over agentType as row label', () => {
+    const agents = [
+      createAgent({ agentType: 'Explore', description: 'Find timeline code', toolUseId: '1' }),
+      createAgent({ agentType: 'Agent', description: '', toolUseId: '2' }),
+    ]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={30000}
+      />,
+    )
+    // Description shown when available, falls back to agentType
+    expect(screen.getByText('Find timeline code')).toBeDefined()
+    expect(screen.getByText('Agent')).toBeDefined()
   })
 
   it('makes timeline bars keyboard accessible', () => {

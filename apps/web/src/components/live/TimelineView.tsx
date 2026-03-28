@@ -12,147 +12,143 @@ interface TimelineViewProps {
   sessionDurationMs: number
 }
 
-function formatCost(usd: number): string {
-  return formatCostUsd(usd)
-}
+/* ── Helpers ─────────────────────────────────── */
 
-/** Format duration in seconds with 1 decimal (e.g., "2.1s") */
 function formatDurationSeconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-/** Calculate adaptive time axis intervals based on total duration */
+/** Color by agent type; error/running override type color */
+function getBarColor(agentType: string, status: string): string {
+  if (status === 'error') return 'bg-red-500 dark:bg-red-400'
+  if (status === 'running') return 'bg-emerald-500 dark:bg-emerald-400'
+
+  const t = agentType.toLowerCase()
+  if (t === 'explore') return 'bg-blue-500 dark:bg-blue-400'
+  if (t === 'plan') return 'bg-amber-500 dark:bg-amber-400'
+  if (t.includes('review')) return 'bg-violet-500 dark:bg-violet-400'
+  if (t.includes('search')) return 'bg-sky-500 dark:bg-sky-400'
+  if (t.includes('super')) return 'bg-indigo-500 dark:bg-indigo-400'
+  return 'bg-emerald-500 dark:bg-emerald-400'
+}
+
+/** Adaptive time-axis intervals, capped to ≤10 labels */
 function calculateTimeIntervals(durationMs: number): number[] {
   const durationSec = durationMs / 1000
 
-  // Determine interval size based on total duration
   let intervalSec: number
-  if (durationSec <= 30) {
-    intervalSec = 5 // 5s intervals for <30s
-  } else if (durationSec <= 60) {
-    intervalSec = 10 // 10s intervals for <1m
-  } else if (durationSec <= 300) {
-    intervalSec = 30 // 30s intervals for <5m
-  } else if (durationSec <= 600) {
-    intervalSec = 60 // 1m intervals for <10m
-  } else if (durationSec <= 1800) {
-    intervalSec = 300 // 5m intervals for <30m
-  } else {
-    intervalSec = 600 // 10m intervals for >=30m
-  }
+  if (durationSec <= 30) intervalSec = 5
+  else if (durationSec <= 60) intervalSec = 10
+  else if (durationSec <= 300) intervalSec = 30
+  else if (durationSec <= 600) intervalSec = 60
+  else if (durationSec <= 1800) intervalSec = 300
+  else if (durationSec <= 3600) intervalSec = 600
+  else if (durationSec <= 7200) intervalSec = 900
+  else intervalSec = 1800
 
-  // Generate intervals from 0 to durationSec
   const intervals: number[] = []
   for (let t = 0; t <= durationSec; t += intervalSec) {
     intervals.push(t)
   }
-
-  // Always include the end time if not already present
-  if (intervals[intervals.length - 1] < durationSec) {
+  if (intervals.length > 0 && intervals[intervals.length - 1] < durationSec) {
     intervals.push(durationSec)
   }
 
+  // Thin to ≤10 labels — always keep first & last
+  if (intervals.length > 10) {
+    const step = Math.ceil(intervals.length / 8)
+    return intervals.filter((_, i) => i === 0 || i === intervals.length - 1 || i % step === 0)
+  }
   return intervals
 }
 
-/** Format time label (e.g., "0s", "15s", "1m 30s", "5m") */
 function formatTimeLabel(seconds: number): string {
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`
-  }
+  if (seconds < 60) return `${Math.round(seconds)}s`
   const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = Math.round(seconds % 60)
-  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
+  const rem = Math.round(seconds % 60)
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return m > 0 ? `${h}h${m}m` : `${h}h`
+  }
+  return rem > 0 ? `${minutes}m${rem}s` : `${minutes}m`
 }
+
+/* ── Component ───────────────────────────────── */
 
 /**
  * TimelineView — Gantt-like timeline showing when sub-agents ran.
  *
- * Layout:
- * ```
- * Time:  0s     5s     10s    15s    20s    25s
- *        |------|------|------|------|------|
- * Main   ███████████████████████████████████████
- * Explore       ████████████████
- * code-rev            ██████████████
- * search  ████████
- * ```
- *
- * - Horizontal time axis at top, scaled to session duration
- * - Each agent as a horizontal bar positioned by startedAt offset, width by durationMs
- * - Overlapping bars clearly show parallel execution
- * - Hover tooltip: agent type, description, duration, cost
- * - Color: green for complete, red for error
- * - Running agents show animated right edge (growing bar)
- * - Time axis labels adapt based on total duration
- * - Min bar width of 2px so very short agents are still visible
+ * Each agent is a coloured bar positioned by its start offset,
+ * sized by duration. Colour encodes agent type; tooltip shows
+ * description, cost, and tool-use count.
  */
 export function TimelineView({
   subAgents,
   sessionStartedAt,
   sessionDurationMs,
 }: TimelineViewProps) {
-  // Calculate time intervals for the axis
   const timeIntervals = useMemo(
     () => calculateTimeIntervals(sessionDurationMs),
     [sessionDurationMs],
   )
 
-  // Sort agents by startedAt (chronological order)
-  const sortedAgents = useMemo(() => {
-    return [...subAgents]
-      .filter((a) => a.startedAt > 0) // Exclude epoch-zero (data bug)
-      .sort((a, b) => a.startedAt - b.startedAt)
-  }, [subAgents])
+  const sortedAgents = useMemo(
+    () => [...subAgents].filter((a) => a.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt),
+    [subAgents],
+  )
 
-  // Force re-render every 2 seconds when any agent is running
-  // This allows running agent bars to grow as time progresses
+  // Tick every 2 s while any agent is still running
   const [, setTick] = useState(0)
   useEffect(() => {
     const hasRunning = sortedAgents.some((a) => a.status === 'running')
     if (!hasRunning) return
-
-    const interval = setInterval(() => {
-      setTick((prev) => prev + 1)
-    }, 2000)
-
-    return () => clearInterval(interval)
+    const id = setInterval(() => setTick((p) => p + 1), 2000)
+    return () => clearInterval(id)
   }, [sortedAgents])
 
-  // Early return if no sub-agents
   if (subAgents.length === 0) return null
 
   const durationSec = sessionDurationMs / 1000
 
   return (
-    <div className="flex flex-col gap-3 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-lg p-4 font-mono overflow-hidden">
-      {/* Time axis */}
-      <div className="relative h-8 border-b border-gray-300 dark:border-gray-700">
-        <div className="absolute inset-0 flex items-end">
-          {timeIntervals.map((timeSec) => {
-            const positionPct = (timeSec / durationSec) * 100
+    <div className="flex flex-col gap-1.5 overflow-hidden">
+      {/* ── Time axis (aligned with bar tracks via matching spacer) ── */}
+      <div className="flex items-end gap-2">
+        {/* Spacer matching the label column width */}
+        <div className="w-24 shrink-0" />
+
+        <div className="relative flex-1 h-5">
+          {timeIntervals.map((timeSec, i) => {
+            const pct = (timeSec / durationSec) * 100
+            const isFirst = i === 0
+            const isLast = i === timeIntervals.length - 1
             return (
               <div
                 key={timeSec}
                 className="absolute bottom-0 flex flex-col items-center"
-                style={{ left: `${positionPct}%` }}
+                style={{ left: `${pct}%` }}
               >
-                {/* Tick mark */}
-                <div className="w-px h-2 bg-gray-400 dark:bg-gray-600" />
-                {/* Time label */}
-                <span className="text-xs text-gray-500 mt-1 -translate-x-1/2 whitespace-nowrap">
+                <div className="w-px h-1.5 bg-gray-300 dark:bg-gray-600" />
+                <span
+                  className="font-mono text-[10px] leading-none mt-0.5 whitespace-nowrap text-gray-400 dark:text-gray-500"
+                  style={{
+                    transform: isLast ? 'translateX(-100%)' : isFirst ? 'none' : 'translateX(-50%)',
+                  }}
+                >
                   {formatTimeLabel(timeSec)}
                 </span>
               </div>
             )
           })}
+          {/* Baseline */}
+          <div className="absolute bottom-2.75 left-0 right-0 h-px bg-gray-200 dark:bg-gray-700/50" />
         </div>
       </div>
 
-      {/* Agent timeline bars */}
-      <div className="flex flex-col gap-1">
+      {/* ── Agent rows ── */}
+      <div className="flex flex-col gap-0.5">
         {sortedAgents.map((agent) => {
-          // Calculate bar position and width as percentages
           const startOffsetMs = (agent.startedAt - sessionStartedAt) * 1000
           const startPct = Math.max(0, (startOffsetMs / sessionDurationMs) * 100)
 
@@ -160,39 +156,29 @@ export function TimelineView({
           let isRunning = false
 
           if (agent.status === 'running') {
-            // Running agents: bar extends to current time (now)
-            const nowMs = Date.now()
-            const elapsedMs = nowMs - agent.startedAt * 1000
+            const elapsedMs = Date.now() - agent.startedAt * 1000
             widthPct = Math.min(100 - startPct, (elapsedMs / sessionDurationMs) * 100)
             isRunning = true
           } else if (agent.durationMs != null) {
-            // Completed agents: use actual duration
             widthPct = Math.min(100 - startPct, (agent.durationMs / sessionDurationMs) * 100)
           } else {
-            // Fallback: 1% width for visibility
             widthPct = 1
           }
 
-          // Bar color based on status
-          const barColorClass =
-            agent.status === 'error'
-              ? 'bg-red-500'
-              : agent.status === 'running'
-                ? 'bg-green-500'
-                : 'bg-green-600'
+          const barColor = getBarColor(agent.agentType, agent.status)
+          const label = agent.description || agent.agentType
 
-          // Tooltip content
           const tooltipContent = (
             <div className="flex flex-col gap-1 text-xs">
               <div className="font-semibold text-gray-900 dark:text-white">{agent.agentType}</div>
               <div className="text-gray-600 dark:text-gray-300">{agent.description}</div>
               <div className="flex gap-3 text-gray-500 dark:text-gray-400 mt-1">
                 {agent.durationMs != null && <span>{formatDurationSeconds(agent.durationMs)}</span>}
-                {agent.costUsd != null && <span>{formatCost(agent.costUsd)}</span>}
-                {agent.toolUseCount != null && <span>{agent.toolUseCount} tool calls</span>}
+                {agent.costUsd != null && <span>{formatCostUsd(agent.costUsd)}</span>}
+                {agent.toolUseCount != null && <span>{agent.toolUseCount} tools</span>}
               </div>
               {agent.status === 'running' && (
-                <div className="text-green-600 dark:text-green-400 mt-1">Running...</div>
+                <div className="text-emerald-600 dark:text-emerald-400 mt-1">Running…</div>
               )}
               {agent.status === 'error' && (
                 <div className="text-red-500 dark:text-red-400 mt-1">Error</div>
@@ -205,28 +191,27 @@ export function TimelineView({
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
                   <div
-                    className="flex items-center gap-2 h-6"
+                    className="flex items-center gap-2 h-5"
                     tabIndex={0}
                     role="button"
-                    aria-label={`${agent.agentType} agent: ${agent.description}`}
+                    aria-label={`${agent.agentType}: ${agent.description}`}
                   >
-                    {/* Agent type label */}
-                    <span className="text-xs text-gray-500 dark:text-gray-400 w-20 truncate flex-shrink-0">
-                      {agent.agentType}
+                    {/* Label — description is far more useful than generic "Agent" */}
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-24 truncate shrink-0 text-right">
+                      {label}
                     </span>
 
-                    {/* Timeline bar container */}
-                    <div className="relative flex-1 h-4 bg-gray-100 dark:bg-gray-900 rounded">
-                      {/* The actual bar */}
+                    {/* Track + bar */}
+                    <div className="relative flex-1 h-3 bg-gray-100/60 dark:bg-gray-800/30 rounded-sm">
                       <div
                         className={cn(
-                          'absolute h-full rounded transition-all',
-                          barColorClass,
+                          'absolute h-full rounded-sm',
+                          barColor,
                           isRunning && 'timeline-bar-growing',
                         )}
                         style={{
                           left: `${startPct}%`,
-                          width: `max(2px, ${widthPct}%)`, // Min 2px width
+                          width: `max(3px, ${widthPct}%)`,
                         }}
                       />
                     </div>
@@ -234,7 +219,7 @@ export function TimelineView({
                 </Tooltip.Trigger>
                 <Tooltip.Portal>
                   <Tooltip.Content
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 shadow-lg z-50 max-w-sm"
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 shadow-lg z-50 max-w-sm"
                     sideOffset={5}
                   >
                     {tooltipContent}
