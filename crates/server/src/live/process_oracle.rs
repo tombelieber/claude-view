@@ -24,7 +24,7 @@ use tokio::sync::watch;
 
 use super::monitor::{normalize_process_name, ProcessGroup, ResourceSnapshot, SessionResource};
 use super::process::{detect_claude_processes_with_sys, ClaudeProcess};
-use super::process_tree::{classify_processes, ProcessTreeSnapshot};
+use super::process_tree::ProcessTreeSnapshot;
 
 /// Snapshot produced by the oracle on every 2s tick.
 #[derive(Debug, Clone)]
@@ -144,6 +144,7 @@ pub fn start_oracle(
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
         let mut tick: u32 = 0;
+        let mut tree_cache = super::process_tree::ProcessTreeCache::new();
 
         loop {
             interval.tick().await;
@@ -154,8 +155,13 @@ pub fn start_oracle(
             let sidecar_ref = sidecar.clone();
             let omlx_ref = omlx_status.clone();
             let mut sys_moved = std::mem::take(&mut sys);
+            let mut cache_moved = std::mem::replace(
+                &mut tree_cache,
+                super::process_tree::ProcessTreeCache::new(),
+            );
             let result = tokio::task::spawn_blocking(move || {
-                let snapshot = collect_oracle_snapshot(&mut sys_moved, tick, should_classify);
+                let snapshot =
+                    collect_oracle_snapshot(&mut sys_moved, tick, should_classify, &mut cache_moved);
                 let component_snapshot = if should_classify {
                     Some(super::component_collector::collect(
                         &sys_moved,
@@ -165,19 +171,21 @@ pub fn start_oracle(
                 } else {
                     None
                 };
-                (snapshot, component_snapshot, sys_moved)
+                (snapshot, component_snapshot, sys_moved, cache_moved)
             })
             .await;
 
             match result {
-                Ok((mut snapshot, component_snapshot, sys_back)) => {
+                Ok((mut snapshot, component_snapshot, sys_back, cache_back)) => {
                     sys = sys_back;
+                    tree_cache = cache_back;
                     snapshot.component_snapshot = component_snapshot;
                     let _ = tx.send(Arc::new(snapshot));
                 }
                 Err(e) => {
                     tracing::error!("process_oracle: blocking task panicked: {e}");
                     sys = System::new_all();
+                    tree_cache = super::process_tree::ProcessTreeCache::new();
                 }
             }
         }
@@ -187,7 +195,12 @@ pub fn start_oracle(
 }
 
 /// Compute a single oracle snapshot (runs on a blocking thread).
-fn collect_oracle_snapshot(sys: &mut System, tick: u32, should_classify: bool) -> OracleSnapshot {
+fn collect_oracle_snapshot(
+    sys: &mut System,
+    tick: u32,
+    should_classify: bool,
+    tree_cache: &mut super::process_tree::ProcessTreeCache,
+) -> OracleSnapshot {
     // Refresh all process + resource data.
     sys.refresh_cpu_usage();
     sys.refresh_memory();
@@ -262,7 +275,7 @@ fn collect_oracle_snapshot(sys: &mut System, tick: u32, should_classify: bool) -
     // Claude process detection + process tree classification (every 5th tick)
     let (claude_procs, process_tree) = if should_classify {
         let claude = detect_claude_processes_with_sys(sys);
-        let tree = classify_processes(sys);
+        let tree = super::process_tree::classify_processes_cached(sys, tree_cache);
         (Some(Arc::new(claude)), Some(tree))
     } else {
         (None, None)
