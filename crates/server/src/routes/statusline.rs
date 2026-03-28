@@ -967,4 +967,91 @@ mod tests {
         assert_eq!(session.statusline_rate_limit_5h_pct, None, "rate_limit must clear");
         assert_eq!(session.statusline_rate_limit_5h_resets_at, None, "resets_at must clear");
     }
+
+    #[test]
+    fn apply_statusline_preserves_duration_when_cost_sends_none() {
+        use crate::live::state::test_live_session;
+        let mut session = test_live_session("test");
+        session.statusline_total_duration_ms = Some(17000);
+        session.statusline_lines_added = Some(42);
+
+        // Simulate a cost block where duration and lines are null
+        let payload = StatuslinePayload {
+            session_id: "test".into(),
+            cost: Some(StatuslineCost {
+                total_cost_usd: Some(1.50),
+                total_duration_ms: None,
+                total_api_duration_ms: Some(8000),
+                total_lines_added: None,
+                total_lines_removed: None,
+            }),
+            context_window: None,
+            model: None,
+            workspace: None,
+            cwd: None,
+            version: None,
+            transcript_path: None,
+            exceeds_200k_tokens: None,
+            output_style: None,
+            vim: None,
+            agent: None,
+            worktree: None,
+            rate_limits: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        apply_statusline(&mut session, &payload);
+
+        // Duration and lines preserved (not wiped to None)
+        assert_eq!(session.statusline_total_duration_ms, Some(17000));
+        assert_eq!(session.statusline_lines_added, Some(42));
+        // API duration accepted (was None, now Some)
+        assert_eq!(session.statusline_api_duration_ms, Some(8000));
+        // Cost USD accepted (guarded > 0)
+        assert_eq!(session.statusline_cost_usd, Some(1.50));
+    }
+
+    #[test]
+    fn apply_statusline_preserves_context_window_fields_when_sends_none() {
+        use crate::live::state::test_live_session;
+        let mut session = test_live_session("test");
+        session.statusline_remaining_pct = Some(0.85);
+        session.statusline_total_input_tokens = Some(50000);
+        session.statusline_total_output_tokens = Some(12000);
+
+        // Context window block present but remaining/tokens are null
+        let payload = StatuslinePayload {
+            session_id: "test".into(),
+            cost: None,
+            context_window: Some(StatuslineContextWindow {
+                context_window_size: Some(200000),
+                used_percentage: Some(15.0),
+                remaining_percentage: None,
+                total_input_tokens: None,
+                total_output_tokens: None,
+                current_usage: None,
+            }),
+            model: None,
+            workspace: None,
+            cwd: None,
+            version: None,
+            transcript_path: None,
+            exceeds_200k_tokens: None,
+            output_style: None,
+            vim: None,
+            agent: None,
+            worktree: None,
+            rate_limits: None,
+            extra: std::collections::HashMap::new(),
+        };
+
+        apply_statusline(&mut session, &payload);
+
+        // Context window fields preserved (not wiped to None)
+        assert_eq!(session.statusline_remaining_pct, Some(0.85));
+        assert_eq!(session.statusline_total_input_tokens, Some(50000));
+        assert_eq!(session.statusline_total_output_tokens, Some(12000));
+        // context_window_size and used_pct accepted (guarded if-let-Some)
+        assert_eq!(session.statusline_context_window_size, Some(200000));
+    }
 }
