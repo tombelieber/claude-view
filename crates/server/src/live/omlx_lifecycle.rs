@@ -46,7 +46,10 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
         .expect("reqwest client");
 
     let mut state = OmlxState::Unknown;
-    info!(port, "oMLX lifecycle started, checking {}", base_url);
+    info!(
+        port = status.port,
+        "oMLX lifecycle started, checking {}", base_url
+    );
 
     loop {
         let interval = match state {

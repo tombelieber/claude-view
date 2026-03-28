@@ -244,8 +244,18 @@ pub fn create_app_full(
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
+    // Create omlx_status before oracle (both need it).
+    let omlx_port: u16 = std::env::var("OMLX_PORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10710);
+    let omlx_status = Arc::new(live::omlx_lifecycle::OmlxStatus::new(omlx_port));
+
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
-    let oracle_rx = live::process_oracle::start_oracle();
+    let oracle_rx = live::process_oracle::start_oracle(
+        sidecar.clone(),
+        omlx_status.clone(),
+    );
 
     // Create hook event channels before the manager so both manager and AppState share one instance.
     let hook_event_channels: std::sync::Arc<
@@ -265,6 +275,7 @@ pub fn create_app_full(
             registry.clone(),
             Some(sidecar.clone()),
             teams.clone(),
+            omlx_status.clone(),
             oracle_rx.clone(),
             hook_event_channels.clone(),
         );
