@@ -16,11 +16,11 @@ pub enum ComponentKind {
     feature = "codegen",
     ts(export, export_to = "../../../../../apps/web/src/types/generated/")
 )]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(tag = "type")]
 pub enum ComponentDetails {
-    #[serde(rename = "sidecar")]
+    #[serde(rename = "sidecar", rename_all = "camelCase")]
     Sidecar { session_count: Option<u32> },
-    #[serde(rename = "omlx")]
+    #[serde(rename = "omlx", rename_all = "camelCase")]
     Omlx {
         model_id: String,
         port: u16,
