@@ -170,6 +170,10 @@ impl SessionCoordinator {
             if let Some(new_status) = status_change {
                 session.status = new_status;
             }
+            // Set closed_at when transitioning to Done
+            if session.status == SessionStatus::Done && session.closed_at.is_none() {
+                session.closed_at = Some(now);
+            }
 
             // Common post-mutation bookkeeping
             let post = common_post_mutation(&mutation, pid, now);

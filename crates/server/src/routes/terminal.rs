@@ -1284,7 +1284,7 @@ mod tests {
             pending_statusline: tokio::sync::Mutex::new(
                 crate::live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
             ),
-            coordinator: crate::live::coordinator::SessionCoordinator::new(),
+            coordinator: std::sync::Arc::new(crate::live::coordinator::SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         });
@@ -1499,7 +1499,7 @@ mod tests {
             pending_statusline: tokio::sync::Mutex::new(
                 crate::live::buffer::PendingMutations::new(std::time::Duration::from_secs(120)),
             ),
-            coordinator: crate::live::coordinator::SessionCoordinator::new(),
+            coordinator: std::sync::Arc::new(crate::live::coordinator::SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         });
