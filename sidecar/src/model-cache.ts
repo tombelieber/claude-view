@@ -66,6 +66,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * Fire-and-forget: never throws, logs errors.
  */
 async function refreshModelCache(): Promise<void> {
+  if (shuttingDown) return
   if (refreshInFlight) {
     console.log('[model-cache] Skipped: refresh already in flight')
     return
@@ -117,11 +118,23 @@ async function refreshModelCache(): Promise<void> {
   }
 }
 
+let refreshInterval: ReturnType<typeof setInterval> | null = null
+let shuttingDown = false
+
 /**
  * Start the model cache refresh lifecycle.
  * Runs once immediately on startup, then every hour.
  */
 export function startModelCacheRefresh(): void {
+  shuttingDown = false
   refreshModelCache()
-  setInterval(refreshModelCache, 60 * 60 * 1000)
+  refreshInterval = setInterval(refreshModelCache, 60 * 60 * 1000)
+}
+
+export function stopModelCacheRefresh(): void {
+  shuttingDown = true
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
 }
