@@ -20,7 +20,7 @@ pub enum SessionMutation {
     /// Hook-driven lifecycle events (start, prompt, state change, end).
     Lifecycle(LifecycleEvent),
     /// JSONL reconciliation data (project, model, tokens, cost, phase).
-    Reconcile(ReconcileData),
+    Reconcile(Box<ReconcileData>),
     /// Sidecar control binding / unbinding.
     Control(ControlAction),
 }
