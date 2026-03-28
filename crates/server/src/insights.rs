@@ -36,7 +36,9 @@ pub struct Insight {
 }
 
 /// Insight severity/type for UI styling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS, utoipa::ToSchema,
+)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum InsightKind {

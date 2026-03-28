@@ -628,7 +628,8 @@ pub async fn get_session_hook_events(
         if let Some(session) = sessions.get(&session_id) {
             if !session.hook.hook_events.is_empty() {
                 let json_events: Vec<serde_json::Value> = session
-                    .hook.hook_events
+                    .hook
+                    .hook_events
                     .iter()
                     .map(|e| {
                         serde_json::json!({

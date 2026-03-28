@@ -67,7 +67,9 @@ pub struct PairedDeviceResponse {
         (status = 503, description = "Relay not configured"),
     )
 )]
-pub async fn generate_qr(State(_state): State<Arc<AppState>>) -> Result<Json<QrPayload>, StatusCode> {
+pub async fn generate_qr(
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<QrPayload>, StatusCode> {
     use rand::Rng;
 
     let identity = load_or_create_identity().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

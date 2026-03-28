@@ -197,7 +197,9 @@ pub async fn enqueue_op(
         (status = 200, description = "All plugin operations", body = Vec<PluginOp>),
     )
 )]
-pub async fn list_ops_handler(State(state): State<Arc<crate::state::AppState>>) -> Json<Vec<PluginOp>> {
+pub async fn list_ops_handler(
+    State(state): State<Arc<crate::state::AppState>>,
+) -> Json<Vec<PluginOp>> {
     Json(state.plugin_op_queue.list_ops())
 }
 

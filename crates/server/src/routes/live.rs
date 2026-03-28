@@ -216,7 +216,10 @@ pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serd
         (status = 404, description = "Session not found"),
     )
 )]
-pub async fn get_live_session(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Response {
+pub async fn get_live_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
     let map = state.live_sessions.read().await;
     match map.get(&id) {
         Some(session) => Json(serde_json::json!({ "session": session })).into_response(),
@@ -358,7 +361,8 @@ pub async fn kill_session(
         map.get(&session_id).map(|s| s.hook.pid)
     };
 
-    match session_info {        Some(Some(pid)) => {
+    match session_info {
+        Some(Some(pid)) => {
             let pid_i32 = pid as i32; // safe: macOS PIDs max ~99999, Linux ~4M
             let result = unsafe { libc::kill(pid_i32, libc::SIGTERM) };
             if result != 0 {

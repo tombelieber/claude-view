@@ -3,9 +3,9 @@
 pub mod classify;
 pub mod coaching;
 pub mod config;
-pub mod docs;
 pub mod contributions;
 pub mod control;
+pub mod docs;
 pub mod export;
 pub mod facets;
 pub mod file_history;
