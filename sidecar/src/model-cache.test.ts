@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { getCacheState, updateModelCacheFromSession } from './model-cache.js'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  getCacheState,
+  startModelCacheRefresh,
+  stopModelCacheRefresh,
+  updateModelCacheFromSession,
+} from './model-cache.js'
 
 // Reset cache between tests by updating with empty then known state
 function resetCache() {
@@ -88,5 +93,24 @@ describe('getCacheState', () => {
     const state = getCacheState()
     expect(Array.isArray(state.models)).toBe(true)
     expect(state.updatedAt === null || typeof state.updatedAt === 'number').toBe(true)
+  })
+})
+
+describe('startModelCacheRefresh / stopModelCacheRefresh', () => {
+  it('stopModelCacheRefresh clears the interval', () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+    startModelCacheRefresh()
+    stopModelCacheRefresh()
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+    clearSpy.mockRestore()
+  })
+
+  it('stopModelCacheRefresh is idempotent', () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+    startModelCacheRefresh()
+    stopModelCacheRefresh()
+    stopModelCacheRefresh()
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+    clearSpy.mockRestore()
   })
 })
