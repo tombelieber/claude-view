@@ -65,6 +65,7 @@ export class SessionRegistry {
     this.sessions.delete(controlId)
   }
 
+  /** Schedule a delayed remove (called by runStreamLoop's finally block). */
   scheduleRemove(controlId: string, delayMs: number): void {
     const timer = setTimeout(() => {
       this.pendingTimers.delete(controlId)
@@ -113,6 +114,7 @@ export class SessionRegistry {
   }
 
   async closeAll(): Promise<void> {
+    // Cancel all pending delayed-remove timers
     for (const timer of this.pendingTimers.values()) {
       clearTimeout(timer)
     }
