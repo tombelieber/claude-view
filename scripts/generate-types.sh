@@ -23,10 +23,10 @@ echo "Generating TypeScript types from Rust structs..."
 # Run only the export_bindings tests with the `codegen` feature enabled.
 # Without `--features codegen`, #[ts(export)] is gated off via cfg_attr,
 # so normal `cargo test` never touches the generated files.
-cargo test -p claude-view-core --features codegen export_bindings -- --nocapture
-cargo test -p claude-view-search --features codegen export_bindings -- --nocapture
-cargo test -p claude-view-db --features codegen export_bindings -- --nocapture
-cargo test -p claude-view-server --features codegen export_bindings -- --nocapture
+"$ROOT_DIR/scripts/cq" test -p claude-view-core --features codegen export_bindings -- --nocapture
+"$ROOT_DIR/scripts/cq" test -p claude-view-search --features codegen export_bindings -- --nocapture
+"$ROOT_DIR/scripts/cq" test -p claude-view-db --features codegen export_bindings -- --nocapture
+"$ROOT_DIR/scripts/cq" test -p claude-view-server --features codegen export_bindings -- --nocapture
 
 # Post-process: fix cross-package JsonValue import that ts-rs generates
 # ts-rs resolves serde_json::Value to apps/web/... but we use a local shim

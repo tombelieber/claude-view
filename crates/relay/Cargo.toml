@@ -26,3 +26,4 @@ anyhow = { workspace = true }
 sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
 sentry-tracing = "0.38"
 axum-extra = { version = "0.10", features = ["typed-header"] }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
