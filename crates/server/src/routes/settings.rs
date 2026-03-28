@@ -21,7 +21,9 @@ pub struct UpdateSettingsRequest {
 /// GET /api/settings - Read current app settings.
 #[utoipa::path(get, path = "/api/settings", tag = "settings",
     responses((status = 200, description = "Current app settings", body = AppSettings)))]
-pub async fn get_settings(State(state): State<Arc<AppState>>) -> Result<Json<AppSettings>, ApiError> {
+pub async fn get_settings(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<AppSettings>, ApiError> {
     let settings = state
         .db
         .get_app_settings()

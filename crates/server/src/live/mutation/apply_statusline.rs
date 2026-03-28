@@ -15,7 +15,9 @@ use crate::routes::statusline::StatuslinePayload;
 pub fn apply_statusline(state: &mut StatuslineFields, payload: &StatuslinePayload) {
     // Context window
     if let Some(ref cw) = payload.context_window {
-        state.statusline_context_window_size.merge(cw.context_window_size);
+        state
+            .statusline_context_window_size
+            .merge(cw.context_window_size);
         state
             .statusline_used_pct
             .merge(cw.used_percentage.map(|p| p as f32));
@@ -45,12 +47,16 @@ pub fn apply_statusline(state: &mut StatuslineFields, payload: &StatuslinePayloa
     if let Some(ref cost) = payload.cost {
         let usd = cost.total_cost_usd.filter(|&v| v > 0.0);
         state.statusline_cost_usd.merge(usd);
-        state.statusline_total_duration_ms.merge(cost.total_duration_ms);
+        state
+            .statusline_total_duration_ms
+            .merge(cost.total_duration_ms);
         state
             .statusline_api_duration_ms
             .merge(cost.total_api_duration_ms);
         state.statusline_lines_added.merge(cost.total_lines_added);
-        state.statusline_lines_removed.merge(cost.total_lines_removed);
+        state
+            .statusline_lines_removed
+            .merge(cost.total_lines_removed);
     }
 
     // Workspace (Latest -- only merge when present)
@@ -69,12 +75,9 @@ pub fn apply_statusline(state: &mut StatuslineFields, payload: &StatuslinePayloa
         .merge(payload.transcript_path.clone());
 
     // Transient fields -- unconditional so stale values clear
-    state.statusline_output_style.merge(
-        payload
-            .output_style
-            .as_ref()
-            .and_then(|os| os.name.clone()),
-    );
+    state
+        .statusline_output_style
+        .merge(payload.output_style.as_ref().and_then(|os| os.name.clone()));
     state
         .statusline_vim_mode
         .merge(payload.vim.as_ref().and_then(|v| v.mode.clone()));
@@ -233,10 +236,7 @@ mod tests {
             mode: Some("NORMAL".into()),
         });
         apply_statusline(&mut state, &p1);
-        assert_eq!(
-            state.statusline_vim_mode.get(),
-            Some(&"NORMAL".to_string())
-        );
+        assert_eq!(state.statusline_vim_mode.get(), Some(&"NORMAL".to_string()));
 
         // Vim absent from payload -> Transient clears
         let p2 = empty_payload();
