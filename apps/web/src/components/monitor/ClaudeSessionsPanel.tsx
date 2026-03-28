@@ -2,12 +2,13 @@ import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { formatBytes } from '../../lib/format-utils'
+import type { ComponentSnapshot } from '../../types/generated/ComponentSnapshot'
 import type { ProcessTreeSnapshot } from '../../types/generated/ProcessTreeSnapshot'
 import type { SessionResource } from '../../types/generated/SessionResource'
 import type { SystemInfo } from '../../types/generated/SystemInfo'
 import type { LiveSession } from '../live/use-live-sessions'
 import { ChildProcessRow } from './ChildProcessRow'
-import { SelfAppRow } from './SelfAppRow'
+import { ComponentDashboard } from './ComponentDashboard'
 import { SessionAccordionRow } from './SessionAccordionRow'
 import { SessionRollupBar } from './SessionRollupBar'
 
@@ -37,6 +38,7 @@ interface ClaudeSessionsPanelProps {
   liveSessions: LiveSession[]
   processTree: ProcessTreeSnapshot | null
   systemInfo: SystemInfo | null
+  components?: ComponentSnapshot | null
 }
 
 export function ClaudeSessionsPanel({
@@ -44,6 +46,7 @@ export function ClaudeSessionsPanel({
   liveSessions,
   processTree,
   systemInfo,
+  components,
 }: ClaudeSessionsPanelProps) {
   // --- Primary source: liveSessions, supplemented by sessionResources for CPU/RAM ---
   const resourceBySessionId = new Map(sessionResources.map((r) => [r.sessionId, r]))
@@ -265,9 +268,10 @@ export function ClaudeSessionsPanel({
       {/* This App row + Session rows */}
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {selfProcess && systemInfo ? (
-          <SelfAppRow
+          <ComponentDashboard
             process={selfProcess}
             systemInfo={systemInfo}
+            components={components}
             expanded={selfExpanded}
             onToggle={() => setSelfExpanded((prev) => !prev)}
             onKill={handleKill}
