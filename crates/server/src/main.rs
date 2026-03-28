@@ -1062,8 +1062,17 @@ async fn main() -> Result<()> {
     let shutdown_port = port;
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            // Wait for Ctrl+C
-            tokio::signal::ctrl_c().await.ok();
+            // Listen for both SIGINT (Ctrl+C) and SIGTERM (kill, Docker, systemd).
+            // Without SIGTERM handling, `kill <pid>` bypasses all cleanup.
+            let mut sigterm = tokio::signal::unix::signal(
+                tokio::signal::unix::SignalKind::terminate(),
+            )
+            .expect("register SIGTERM handler");
+
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = sigterm.recv() => {}
+            }
             eprintln!("\n  Shutting down...");
 
             // Signal all SSE streams to terminate (breaks their select! loops).
@@ -1081,9 +1090,11 @@ async fn main() -> Result<()> {
             sidecar_for_shutdown.shutdown();
 
             // Give SSE streams a moment to see the shutdown signal and break.
-            // Second Ctrl+C skips the wait for impatient users.
+            // Second signal (Ctrl+C or another SIGTERM) skips the wait for impatient users.
+            // sigterm.recv() is re-armable and cancel-safe — safe to reuse in a second select!
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
+                _ = sigterm.recv() => {}
                 _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
             }
         })
