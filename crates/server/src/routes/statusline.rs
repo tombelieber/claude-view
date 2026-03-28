@@ -13,6 +13,7 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::live::mutation::types::SessionMutation;
 use crate::live::state::LiveSession;
 use crate::state::AppState;
 
@@ -130,10 +131,7 @@ pub struct StatuslineRateLimitWindow {
 /// then handles cross-source fields (model, context_window_tokens) on LiveSession.
 pub fn apply_statusline(session: &mut LiveSession, payload: &StatuslinePayload) {
     // Delegate all 32 statusline fields to the sub-struct
-    crate::live::mutation::apply_statusline::apply_statusline(
-        &mut session.statusline,
-        payload,
-    );
+    crate::live::mutation::apply_statusline::apply_statusline(&mut session.statusline, payload);
 
     // context_window_tokens lives on LiveSession (derived from current_usage)
     if let Some(ref cw) = payload.context_window {
@@ -187,101 +185,59 @@ pub async fn handle_statusline(
     Json(payload): Json<StatuslinePayload>,
 ) -> Json<serde_json::Value> {
     // Extract PID from wrapper's $PPID header (secondary binding path).
-    let statusline_pid: Option<u32> = headers
+    let pid: Option<u32> = headers
         .get("x-claude-pid")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .filter(|&pid: &u32| pid > 1);
-    // Step 1: Check transcript dedup FIRST (acquire + release transcript lock).
-    // Lock ordering: transcript_to_session → live_sessions → accumulators.
-    let dedup_action = if let Some(ref tp) = payload.transcript_path {
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    // Step 1: Transcript dedup — acquire + release transcript lock BEFORE coordinator.
+    // Lock ordering: transcript_to_session (write) must be dropped before
+    // coordinator.handle() which acquires sessions (write).
+    let effective_session_id = if let Some(ref tp) = payload.transcript_path {
         let transcript_path = std::path::PathBuf::from(tp);
         let mut tmap = state.transcript_to_session.write().await;
         if let Some(existing_id) = tmap.get(&transcript_path) {
             if existing_id != &payload.session_id {
-                Some(existing_id.clone())
+                // Transcript-path collision: route mutation to the older (canonical) session.
+                let older = existing_id.clone();
+                tracing::debug!(
+                    older_id = %older,
+                    newer_id = %payload.session_id,
+                    "transcript_path dedup: routing statusline to canonical session"
+                );
+                // tmap lock dropped at end of block
+                older
             } else {
-                None
+                payload.session_id.clone()
             }
         } else {
             tmap.insert(transcript_path, payload.session_id.clone());
-            None
+            payload.session_id.clone()
         }
         // tmap lock dropped here
     } else {
-        None
+        payload.session_id.clone()
     };
 
-    // Step 2: Now acquire sessions lock (no other lock held)
-    let mut sessions = state.live_sessions.write().await;
-
-    if let Some(older_id) = dedup_action {
-        // Transcript-path collision: two session_ids share the same JSONL file.
-        // This is defense-in-depth — PID uniqueness at SessionStart should prevent
-        // this from happening. If it fires, something unexpected occurred.
-        if let Some(newer) = sessions.remove(&payload.session_id) {
-            tracing::warn!(
-                older_id = %older_id,
-                newer_id = %payload.session_id,
-                "transcript_path dedup fired (defense-in-depth) — closing newer session"
-            );
-            // Broadcast closure so frontend removes the duplicate card
-            let mut closed = newer;
-            closed.status = crate::live::state::SessionStatus::Done;
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            closed.closed_at = Some(now);
-            let _ = state
-                .live_tx
-                .send(crate::live::state::SessionEvent::SessionClosed { session: closed });
-            if let Some(older) = sessions.get_mut(&older_id) {
-                apply_statusline(older, &payload);
-                let _ = state
-                    .live_tx
-                    .send(crate::live::state::SessionEvent::SessionUpdated {
-                        session: older.clone(),
-                    });
-            }
-        } else if let Some(older) = sessions.get_mut(&older_id) {
-            // Newer session not in map yet — just apply to the older one
-            apply_statusline(older, &payload);
-            let _ = state
-                .live_tx
-                .send(crate::live::state::SessionEvent::SessionUpdated {
-                    session: older.clone(),
-                });
-        }
-    } else if let Some(session) = sessions.get_mut(&payload.session_id) {
-        apply_statusline(session, &payload);
-        // Secondary PID binding: if the session has no PID yet (hook didn't provide one),
-        // bind the PID from the statusline wrapper's $PPID header.
-        if session.hook.pid.is_none() {
-            if let Some(pid) = statusline_pid {
-                session.hook.pid = Some(pid);
-                tracing::debug!(
-                    session_id = %payload.session_id,
-                    pid = pid,
-                    "Bound PID via statusline $PPID (secondary path)"
-                );
-            }
-        }
-        // Broadcast the update so SSE clients see statusline fields (context window, cost, etc.)
-        let _ = state
-            .live_tx
-            .send(crate::live::state::SessionEvent::SessionUpdated {
-                session: session.clone(),
-            });
-    } else {
-        let mut pending = state.pending_statusline.lock().await;
-        pending.sweep_expired();
-        pending.push(&payload.session_id, payload.clone());
-        tracing::debug!(
-            session_id = %payload.session_id,
-            "Statusline buffered for undiscovered session"
-        );
-    }
+    // Step 2: Delegate to coordinator (parse → buffer-or-apply → broadcast).
+    let ctx = state.mutation_context();
+    state
+        .coordinator
+        .handle(
+            &ctx,
+            &effective_session_id,
+            SessionMutation::Statusline(payload),
+            pid,
+            now,
+            None,
+        )
+        .await;
 
     Json(serde_json::json!({ "ok": true }))
 }
@@ -593,12 +549,27 @@ mod tests {
         let sessions_lock = sessions.read().await;
         let session = sessions_lock.get("test-1").unwrap();
         assert_eq!(session.model_display_name.as_deref(), Some("Opus"));
-        assert_eq!(session.statusline.statusline_context_window_size.get(), Some(&1_000_000));
+        assert_eq!(
+            session.statusline.statusline_context_window_size.get(),
+            Some(&1_000_000)
+        );
         assert_eq!(session.statusline.statusline_cost_usd.get(), Some(&1.23));
-        assert_eq!(session.statusline.statusline_input_tokens.get(), Some(&8500));
-        assert_eq!(session.statusline.statusline_output_tokens.get(), Some(&1200));
-        assert_eq!(session.statusline.statusline_cache_read_tokens.get(), Some(&2000));
-        assert_eq!(session.statusline.statusline_cache_creation_tokens.get(), Some(&5000));
+        assert_eq!(
+            session.statusline.statusline_input_tokens.get(),
+            Some(&8500)
+        );
+        assert_eq!(
+            session.statusline.statusline_output_tokens.get(),
+            Some(&1200)
+        );
+        assert_eq!(
+            session.statusline.statusline_cache_read_tokens.get(),
+            Some(&2000)
+        );
+        assert_eq!(
+            session.statusline.statusline_cache_creation_tokens.get(),
+            Some(&5000)
+        );
 
         // Verify SSE serialization shape (camelCase)
         let json = serde_json::to_value(session.clone()).unwrap();
@@ -767,7 +738,10 @@ mod tests {
         assert_eq!(sl.statusline_output_tokens.get(), Some(&1200));
         assert_eq!(sl.statusline_cache_read_tokens.get(), Some(&2000));
         assert_eq!(sl.statusline_cache_creation_tokens.get(), Some(&5000));
-        assert_eq!(sl.statusline_version.get().map(|s| s.as_str()), Some("1.0.42"));
+        assert_eq!(
+            sl.statusline_version.get().map(|s| s.as_str()),
+            Some("1.0.42")
+        );
         assert_eq!(sl.exceeds_200k_tokens.get(), Some(&true));
         assert_eq!(
             sl.statusline_transcript_path.get().map(|s| s.as_str()),
@@ -775,8 +749,14 @@ mod tests {
         );
 
         // New fields: output style, vim, agent
-        assert_eq!(sl.statusline_output_style.get().map(|s| s.as_str()), Some("concise"));
-        assert_eq!(sl.statusline_vim_mode.get().map(|s| s.as_str()), Some("normal"));
+        assert_eq!(
+            sl.statusline_output_style.get().map(|s| s.as_str()),
+            Some("concise")
+        );
+        assert_eq!(
+            sl.statusline_vim_mode.get().map(|s| s.as_str()),
+            Some("normal")
+        );
         assert_eq!(
             sl.statusline_agent_name.get().map(|s| s.as_str()),
             Some("code-reviewer")
@@ -787,17 +767,24 @@ mod tests {
             sl.statusline_worktree_name.get().map(|s| s.as_str()),
             Some("feature-x")
         );
-        assert_eq!(sl.statusline_worktree_path.get().map(|s| s.as_str()), Some("/tmp/wt"));
+        assert_eq!(
+            sl.statusline_worktree_path.get().map(|s| s.as_str()),
+            Some("/tmp/wt")
+        );
         assert_eq!(
             sl.statusline_worktree_branch.get().map(|s| s.as_str()),
             Some("feature/x")
         );
         assert_eq!(
-            sl.statusline_worktree_original_cwd.get().map(|s| s.as_str()),
+            sl.statusline_worktree_original_cwd
+                .get()
+                .map(|s| s.as_str()),
             Some("/Users/dev")
         );
         assert_eq!(
-            sl.statusline_worktree_original_branch.get().map(|s| s.as_str()),
+            sl.statusline_worktree_original_branch
+                .get()
+                .map(|s| s.as_str()),
             Some("main")
         );
 
@@ -808,9 +795,15 @@ mod tests {
 
         // New fields: rate limits
         assert_eq!(sl.statusline_rate_limit_5h_pct.get(), Some(&23.5));
-        assert_eq!(sl.statusline_rate_limit_5h_resets_at.get(), Some(&1738425600));
+        assert_eq!(
+            sl.statusline_rate_limit_5h_resets_at.get(),
+            Some(&1738425600)
+        );
         assert_eq!(sl.statusline_rate_limit_7d_pct.get(), Some(&41.2));
-        assert_eq!(sl.statusline_rate_limit_7d_resets_at.get(), Some(&1738857600));
+        assert_eq!(
+            sl.statusline_rate_limit_7d_resets_at.get(),
+            Some(&1738857600)
+        );
     }
 
     #[test]
@@ -855,9 +848,26 @@ mod tests {
             extra: std::collections::HashMap::new(),
         };
         apply_statusline(&mut session, &full);
-        assert_eq!(session.statusline.statusline_vim_mode.get().map(|s| s.as_str()), Some("NORMAL"));
-        assert_eq!(session.statusline.statusline_agent_name.get().map(|s| s.as_str()), Some("code-reviewer"));
-        assert_eq!(session.statusline.statusline_rate_limit_5h_pct.get(), Some(&10.0));
+        assert_eq!(
+            session
+                .statusline
+                .statusline_vim_mode
+                .get()
+                .map(|s| s.as_str()),
+            Some("NORMAL")
+        );
+        assert_eq!(
+            session
+                .statusline
+                .statusline_agent_name
+                .get()
+                .map(|s| s.as_str()),
+            Some("code-reviewer")
+        );
+        assert_eq!(
+            session.statusline.statusline_rate_limit_5h_pct.get(),
+            Some(&10.0)
+        );
 
         // Second update: all transient fields absent — must clear to None
         let empty = StatuslinePayload {
@@ -880,10 +890,22 @@ mod tests {
         apply_statusline(&mut session, &empty);
 
         // All transient fields must be None, not stale
-        assert!(session.statusline.statusline_output_style.is_none(), "output_style must clear");
-        assert!(session.statusline.statusline_vim_mode.is_none(), "vim_mode must clear");
-        assert!(session.statusline.statusline_agent_name.is_none(), "agent_name must clear");
-        assert!(session.statusline.statusline_worktree_name.is_none(), "worktree must clear");
+        assert!(
+            session.statusline.statusline_output_style.is_none(),
+            "output_style must clear"
+        );
+        assert!(
+            session.statusline.statusline_vim_mode.is_none(),
+            "vim_mode must clear"
+        );
+        assert!(
+            session.statusline.statusline_agent_name.is_none(),
+            "agent_name must clear"
+        );
+        assert!(
+            session.statusline.statusline_worktree_name.is_none(),
+            "worktree must clear"
+        );
         // Rate limits use Latest (not Transient) -- when absent, they preserve
         // But in the old code they were unconditional = cleared. Now with Latest they don't clear.
         // Wait -- rate_limits used unconditional assignment in old code, so they ARE transient semantics.
@@ -896,15 +918,26 @@ mod tests {
         // to preserve the old clearing behavior. But the task spec says they're Latest.
         // For now let me keep them as Latest per spec and update the test accordingly.
         // Latest: merge(None) = no-op, so rate_limit values are preserved (not cleared).
-        assert_eq!(session.statusline.statusline_rate_limit_5h_pct.get(), Some(&10.0), "rate_limit preserved by Latest");
-        assert_eq!(session.statusline.statusline_rate_limit_5h_resets_at.get(), Some(&9999), "resets_at preserved by Latest");
+        assert_eq!(
+            session.statusline.statusline_rate_limit_5h_pct.get(),
+            Some(&10.0),
+            "rate_limit preserved by Latest"
+        );
+        assert_eq!(
+            session.statusline.statusline_rate_limit_5h_resets_at.get(),
+            Some(&9999),
+            "resets_at preserved by Latest"
+        );
     }
 
     #[test]
     fn apply_statusline_preserves_duration_when_cost_sends_none() {
         use crate::live::state::test_live_session;
         let mut session = test_live_session("test");
-        session.statusline.statusline_total_duration_ms.merge(Some(17000));
+        session
+            .statusline
+            .statusline_total_duration_ms
+            .merge(Some(17000));
         session.statusline.statusline_lines_added.merge(Some(42));
 
         // Simulate a cost block where duration and lines are null
@@ -935,10 +968,16 @@ mod tests {
         apply_statusline(&mut session, &payload);
 
         // Duration and lines preserved (not wiped to None)
-        assert_eq!(session.statusline.statusline_total_duration_ms.get(), Some(&17000));
+        assert_eq!(
+            session.statusline.statusline_total_duration_ms.get(),
+            Some(&17000)
+        );
         assert_eq!(session.statusline.statusline_lines_added.get(), Some(&42));
         // API duration accepted (was None, now Some)
-        assert_eq!(session.statusline.statusline_api_duration_ms.get(), Some(&8000));
+        assert_eq!(
+            session.statusline.statusline_api_duration_ms.get(),
+            Some(&8000)
+        );
         // Cost USD accepted (guarded > 0)
         assert_eq!(session.statusline.statusline_cost_usd.get(), Some(&1.50));
     }
@@ -947,9 +986,18 @@ mod tests {
     fn apply_statusline_preserves_context_window_fields_when_sends_none() {
         use crate::live::state::test_live_session;
         let mut session = test_live_session("test");
-        session.statusline.statusline_remaining_pct.merge(Some(0.85));
-        session.statusline.statusline_total_input_tokens.merge(Some(50000));
-        session.statusline.statusline_total_output_tokens.merge(Some(12000));
+        session
+            .statusline
+            .statusline_remaining_pct
+            .merge(Some(0.85));
+        session
+            .statusline
+            .statusline_total_input_tokens
+            .merge(Some(50000));
+        session
+            .statusline
+            .statusline_total_output_tokens
+            .merge(Some(12000));
 
         // Context window block present but remaining/tokens are null
         let payload = StatuslinePayload {
@@ -980,10 +1028,22 @@ mod tests {
         apply_statusline(&mut session, &payload);
 
         // Context window fields preserved (not wiped to None)
-        assert_eq!(session.statusline.statusline_remaining_pct.get(), Some(&0.85));
-        assert_eq!(session.statusline.statusline_total_input_tokens.get(), Some(&50000));
-        assert_eq!(session.statusline.statusline_total_output_tokens.get(), Some(&12000));
+        assert_eq!(
+            session.statusline.statusline_remaining_pct.get(),
+            Some(&0.85)
+        );
+        assert_eq!(
+            session.statusline.statusline_total_input_tokens.get(),
+            Some(&50000)
+        );
+        assert_eq!(
+            session.statusline.statusline_total_output_tokens.get(),
+            Some(&12000)
+        );
         // context_window_size and used_pct accepted (guarded if-let-Some)
-        assert_eq!(session.statusline.statusline_context_window_size.get(), Some(&200000));
+        assert_eq!(
+            session.statusline.statusline_context_window_size.get(),
+            Some(&200000)
+        );
     }
 }
