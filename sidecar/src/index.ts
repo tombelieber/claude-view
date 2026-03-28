@@ -8,7 +8,7 @@ import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
 import { healthRouter } from './health.js'
-import { startModelCacheRefresh } from './model-cache.js'
+import { startModelCacheRefresh, stopModelCacheRefresh } from './model-cache.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
@@ -76,6 +76,8 @@ server.on('upgrade', (request, socket, head) => {
 })
 
 async function shutdown() {
+  stopModelCacheRefresh()
+  wss.close()
   await registry.closeAll()
   server.close()
   process.exit(0)
