@@ -11,7 +11,23 @@ use tracing::{debug, info, warn};
 
 const POLL_INTERVAL_STARTUP: Duration = Duration::from_secs(2);
 const POLL_INTERVAL_RUNNING: Duration = Duration::from_secs(10);
-const EXPECTED_MODEL_SUBSTRING: &str = "Qwen3.5-4B";
+pub const EXPECTED_MODEL_SUBSTRING: &str = "Qwen3.5-4B";
+
+/// Shared status of the oMLX service, readable by the component collector.
+/// `ready` is `Arc<AtomicBool>` so the scheduler can share just the flag.
+pub struct OmlxStatus {
+    pub ready: Arc<AtomicBool>,
+    pub port: u16,
+}
+
+impl OmlxStatus {
+    pub fn new(port: u16) -> Self {
+        Self {
+            ready: Arc::new(AtomicBool::new(false)),
+            port,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum OmlxState {
@@ -21,9 +37,9 @@ enum OmlxState {
 }
 
 /// Run the oMLX lifecycle as a long-running tokio task.
-/// Sets `omlx_ready` to true when the correct model is detected.
-pub async fn run_lifecycle(omlx_ready: Arc<AtomicBool>, port: u16) {
-    let base_url = format!("http://localhost:{}", port);
+/// Sets `status.ready` to true when the correct model is detected.
+pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
+    let base_url = format!("http://localhost:{}", status.port);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()
@@ -45,7 +61,7 @@ pub async fn run_lifecycle(omlx_ready: Arc<AtomicBool>, port: u16) {
                 if state != OmlxState::Running {
                     info!(model_id, "oMLX ready with correct model");
                     state = OmlxState::Running;
-                    omlx_ready.store(true, Ordering::Release);
+                    status.ready.store(true, Ordering::Release);
                 }
             }
             ModelCheck::WrongModel(model_id) => {
@@ -53,7 +69,7 @@ pub async fn run_lifecycle(omlx_ready: Arc<AtomicBool>, port: u16) {
                     warn!(model_id, "oMLX model changed, no longer ready");
                 }
                 state = OmlxState::Unavailable;
-                omlx_ready.store(false, Ordering::Release);
+                status.ready.store(false, Ordering::Release);
                 debug!(
                     model_id,
                     "oMLX has wrong model, expected substring '{}'", EXPECTED_MODEL_SUBSTRING
@@ -64,7 +80,7 @@ pub async fn run_lifecycle(omlx_ready: Arc<AtomicBool>, port: u16) {
                     warn!("oMLX lost model, marking unavailable");
                 }
                 state = OmlxState::Unavailable;
-                omlx_ready.store(false, Ordering::Release);
+                status.ready.store(false, Ordering::Release);
             }
             ModelCheck::Unreachable(err) => {
                 if state == OmlxState::Running {
@@ -73,7 +89,7 @@ pub async fn run_lifecycle(omlx_ready: Arc<AtomicBool>, port: u16) {
                 if state != OmlxState::Unknown {
                     state = OmlxState::Unavailable;
                 }
-                omlx_ready.store(false, Ordering::Release);
+                status.ready.store(false, Ordering::Release);
                 debug!(%err, "oMLX not reachable at {}", base_url);
             }
         }
