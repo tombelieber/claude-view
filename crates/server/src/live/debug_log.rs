@@ -70,10 +70,8 @@ async fn writer_task(path: PathBuf, mut rx: mpsc::Receiver<String>) {
         }
 
         // Rotate when limit exceeded.
-        if line_count > MAX_LINES {
-            if rotate(&path, KEEP_LINES).await.is_ok() {
-                line_count = KEEP_LINES;
-            }
+        if line_count > MAX_LINES && rotate(&path, KEEP_LINES).await.is_ok() {
+            line_count = KEEP_LINES;
         }
     }
 }
