@@ -12,6 +12,7 @@
 //! `get_cwd_via_lsof` in `process.rs`).
 
 mod classifier;
+pub mod component_types;
 pub mod helpers;
 pub mod types;
 
