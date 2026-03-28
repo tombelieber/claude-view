@@ -9,13 +9,14 @@ use crate::git_sync_state::GitSyncState;
 use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::buffer::PendingMutations;
+use crate::live::coordinator::{MutationContext, SessionCoordinator};
 use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
 use crate::live::state::SessionEvent;
-use crate::routes::statusline::StatuslinePayload;
 use crate::routes::marketplace_refresh::MarketplaceRefreshTracker;
 use crate::routes::oauth::OAuthUsageResponse;
 use crate::routes::plugin_ops::PluginOpQueue;
 use crate::routes::plugins::CliAvailableResponse;
+use crate::routes::statusline::StatuslinePayload;
 use crate::sidecar::SidecarManager;
 use crate::terminal_state::TerminalConnectionManager;
 use claude_view_core::prompt_history::PromptStats;
@@ -169,7 +170,11 @@ pub struct AppState {
     pub transcript_to_session: TranscriptMap,
     /// Buffer for statusline payloads arriving before session discovery.
     /// Drained when session is created (hooks.rs SessionStart or lazy creation).
+    /// NOTE: Legacy — will be removed once hooks.rs is wired through coordinator (Task 10).
     pub pending_statusline: tokio::sync::Mutex<PendingMutations<StatuslinePayload>>,
+    /// Single entry point for all session state mutations.
+    /// Replaces scattered lock-acquire → mutate → broadcast patterns.
+    pub coordinator: SessionCoordinator,
     /// PostHog telemetry client. `None` when no PostHog API key is compiled in.
     pub telemetry: Option<crate::telemetry::TelemetryClient>,
     /// Path to the telemetry config file (allows tests to use temp dirs).
@@ -221,9 +226,10 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(
-                PendingMutations::new(std::time::Duration::from_secs(120)),
-            ),
+            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
+                std::time::Duration::from_secs(120),
+            )),
+            coordinator: SessionCoordinator::new(),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
@@ -272,9 +278,10 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(
-                PendingMutations::new(std::time::Duration::from_secs(120)),
-            ),
+            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
+                std::time::Duration::from_secs(120),
+            )),
+            coordinator: SessionCoordinator::new(),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
@@ -326,12 +333,25 @@ impl AppState {
             plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
             marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
             transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(
-                PendingMutations::new(std::time::Duration::from_secs(120)),
-            ),
+            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
+                std::time::Duration::from_secs(120),
+            )),
+            coordinator: SessionCoordinator::new(),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
         })
+    }
+
+    /// Build a `MutationContext` borrowing shared state for one coordinator call.
+    pub fn mutation_context(&self) -> MutationContext<'_> {
+        MutationContext {
+            sessions: &self.live_sessions,
+            live_tx: &self.live_tx,
+            live_manager: self.live_manager.as_ref(),
+            db: &self.db,
+            transcript_to_session: &self.transcript_to_session,
+            hook_event_channels: &self.hook_event_channels,
+        }
     }
 
     /// Get the server uptime in seconds.
