@@ -3,4 +3,8 @@
 /**
  * Evidence backing an insight.
  */
-export type InsightEvidence = { sampleSize: number, timeRangeDays: number, comparisonValues: Record<string, number>, };
+export type InsightEvidence = {
+  sampleSize: number
+  timeRangeDays: number
+  comparisonValues: Record<string, number>
+}

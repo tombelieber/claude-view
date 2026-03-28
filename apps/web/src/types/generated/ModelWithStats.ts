@@ -3,9 +3,21 @@
 /**
  * A model record with aggregated usage stats (for GET /api/models).
  */
-export type ModelWithStats = { id: string, provider: string | null, family: string | null, displayName: string | null, description: string | null, maxInputTokens: number | null, maxOutputTokens: number | null, firstSeen: number | null, lastSeen: number | null, totalTurns: number, totalSessions: number, 
-/**
- * True if this model is reported by the Agent SDK as usable.
- * Chat model selector filters on this — only SDK-supported models are selectable.
- */
-sdkSupported: boolean, };
+export type ModelWithStats = {
+  id: string
+  provider: string | null
+  family: string | null
+  displayName: string | null
+  description: string | null
+  maxInputTokens: number | null
+  maxOutputTokens: number | null
+  firstSeen: number | null
+  lastSeen: number | null
+  totalTurns: number
+  totalSessions: number
+  /**
+   * True if this model is reported by the Agent SDK as usable.
+   * Chat model selector filters on this — only SDK-supported models are selectable.
+   */
+  sdkSupported: boolean
+}
