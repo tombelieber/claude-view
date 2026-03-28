@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Worktree Build DX — 點解慢、點樣修</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&family=Noto+Sans+HK:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --dark: #141413;
+    --light: #faf9f5;
+    --mid: #b0aea5;
+    --subtle: #e8e6dc;
+    --orange: #d97757;
+    --blue: #6a9bcc;
+    --green: #788c5d;
+    --warm-white: #f6f4ee;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    background: var(--light);
+    color: var(--dark);
+    font-family: 'Noto Sans HK', 'Lora', Georgia, serif;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: clamp(2rem, 5vw, 4rem);
+  }
+
+  .slide {
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+
+  /* --- Header --- */
+  .header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 2rem;
+    padding-bottom: clamp(1.5rem, 3vw, 2.5rem);
+    border-bottom: 1px solid var(--subtle);
+    margin-bottom: clamp(2rem, 4vw, 3.5rem);
+  }
+
+  .header h1 {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--dark);
+  }
+
+  .header .date {
+    font-family: 'Lora', Georgia, serif;
+    font-style: italic;
+    color: var(--mid);
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  /* --- Intro --- */
+  .intro {
+    max-width: 720px;
+    font-size: clamp(1rem, 1.5vw, 1.125rem);
+    color: #4a4940;
+    margin-bottom: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .intro strong { color: var(--dark); font-weight: 500; }
+
+  /* --- Before/After Hero --- */
+  .hero-comparison {
+    display: grid;
+    grid-template-columns: 1fr 48px 1fr;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: clamp(3rem, 5vw, 4.5rem);
+  }
+
+  .state-card {
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+    border-radius: 2px;
+  }
+
+  .state-card.before {
+    background: #f0ece3;
+    border-left: 3px solid var(--orange);
+  }
+
+  .state-card.after {
+    background: #eef2ea;
+    border-left: 3px solid var(--green);
+  }
+
+  .state-card .label {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 1.25rem;
+  }
+
+  .before .label { color: var(--orange); }
+  .after .label { color: var(--green); }
+
+  .arrow-col {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .arrow-col svg {
+    width: 28px;
+    height: 28px;
+    color: var(--mid);
+  }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+
+  .metric-row:last-child { border-bottom: none; }
+
+  .metric-label {
+    font-size: 0.8125rem;
+    color: #6b6960;
+  }
+
+  .metric-value {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 1.125rem;
+  }
+
+  .before .metric-value { color: #b85a3a; }
+  .after .metric-value { color: #5a7a42; }
+
+  .metric-value .unit {
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: var(--mid);
+    margin-left: 2px;
+  }
+
+  /* --- Three Fixes --- */
+  .fixes-header {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--mid);
+    margin-bottom: 1.25rem;
+  }
+
+  .fixes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(1rem, 2.5vw, 2rem);
+    margin-bottom: clamp(3rem, 5vw, 4.5rem);
+  }
+
+  .fix {
+    padding: clamp(1.25rem, 2.5vw, 2rem);
+    background: var(--warm-white);
+    border-top: 2px solid var(--subtle);
+    transition: border-color 0.3s ease;
+  }
+
+  .fix:hover { border-color: var(--orange); }
+
+  .fix-number {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1;
+    color: var(--subtle);
+    margin-bottom: 0.75rem;
+  }
+
+  .fix h3 {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: clamp(0.9375rem, 1.5vw, 1.0625rem);
+    line-height: 1.3;
+    margin-bottom: 0.75rem;
+    color: var(--dark);
+  }
+
+  .fix p {
+    font-size: 0.8125rem;
+    color: #6b6960;
+    line-height: 1.65;
+  }
+
+  .fix .evidence {
+    margin-top: 1rem;
+    padding: 0.625rem 0.875rem;
+    background: rgba(0,0,0,0.03);
+    border-radius: 2px;
+    font-family: 'Poppins', Arial, sans-serif;
+    font-size: 0.75rem;
+    color: var(--mid);
+  }
+
+  .fix .evidence strong {
+    color: var(--dark);
+    font-weight: 600;
+  }
+
+  /* --- Rejected --- */
+  .rejected {
+    padding: clamp(1.5rem, 3vw, 2rem);
+    background: var(--warm-white);
+    border-left: 3px solid var(--subtle);
+    margin-bottom: clamp(3rem, 5vw, 4rem);
+  }
+
+  .rejected h2 {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+    color: var(--dark);
+  }
+
+  .rejected-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+  }
+
+  .rejected-item .name {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 0.8125rem;
+    color: var(--mid);
+    text-decoration: line-through;
+    margin-bottom: 0.25rem;
+  }
+
+  .rejected-item .reason {
+    font-size: 0.75rem;
+    color: #9b9890;
+    line-height: 1.5;
+  }
+
+  /* --- Insight Bar --- */
+  .insight {
+    display: grid;
+    grid-template-columns: 3px 1fr;
+    gap: 1.25rem;
+    padding: clamp(1.25rem, 2.5vw, 1.75rem) 0;
+    border-top: 1px solid var(--subtle);
+  }
+
+  .insight-bar { background: var(--orange); border-radius: 1px; }
+
+  .insight-text {
+    font-family: 'Lora', Georgia, serif;
+    font-style: italic;
+    font-size: clamp(0.9375rem, 1.5vw, 1.0625rem);
+    color: #6b6960;
+    line-height: 1.7;
+  }
+
+  .insight-text strong {
+    font-style: normal;
+    color: var(--dark);
+    font-weight: 500;
+  }
+
+  /* --- Responsive --- */
+  @media (max-width: 768px) {
+    .hero-comparison { grid-template-columns: 1fr; gap: 1rem; }
+    .arrow-col { transform: rotate(90deg); padding: 0.5rem 0; }
+    .fixes { grid-template-columns: 1fr; }
+    .rejected-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <!-- Header -->
+  <header class="header">
+    <h1>點解 Cargo 食晒 CPU 同 SSD<br>同我哋點樣修好佢</h1>
+    <span class="date">claude-view · 2026-03-29</span>
+  </header>
+
+  <!-- Intro -->
+  <p class="intro">
+    多個 agent session 喺唔同 git worktree 同時跑 <strong>cargo build</strong>，每個都用晒所有 CPU core。
+    加上 Cargo 嘅 incremental cache 永遠唔會自動清理，一晚就漲到 <strong>45GB</strong>。
+    呢個 slide 解釋我哋搵到嘅根因、做咗咩修、同點解 work。
+  </p>
+
+  <!-- Before / After -->
+  <div class="hero-comparison">
+    <div class="state-card before">
+      <div class="label">之前</div>
+      <div class="metric-row">
+        <span class="metric-label">target/ 大小</span>
+        <span class="metric-value">45<span class="unit">GB</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Dependency .rlib 數量</span>
+        <span class="metric-value">793</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">hashbrown 編譯次數</span>
+        <span class="metric-value">7<span class="unit">次</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Incremental cache dirs</span>
+        <span class="metric-value">379</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">最高 CPU 使用</span>
+        <span class="metric-value">880<span class="unit">%</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Orphan process（kill 後）</span>
+        <span class="metric-value">3+</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M5 12h14M13 5l7 7-7 7"/>
+      </svg>
+    </div>
+
+    <div class="state-card after">
+      <div class="label">之後</div>
+      <div class="metric-row">
+        <span class="metric-label">target/ 大小（clean build）</span>
+        <span class="metric-value">142<span class="unit">MB</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Dependency .rlib 數量</span>
+        <span class="metric-value">81</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">hashbrown 編譯次數</span>
+        <span class="metric-value">1<span class="unit">次</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Incremental cache dirs</span>
+        <span class="metric-value">0</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">最高 CPU 使用</span>
+        <span class="metric-value">100<span class="unit">%</span></span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Orphan process（kill 後）</span>
+        <span class="metric-value">0</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Three Fixes -->
+  <div class="fixes-header">三個 Verified Fixes</div>
+  <div class="fixes">
+
+    <div class="fix">
+      <div class="fix-number">01</div>
+      <h3>Build Queue — <code style="font-size:inherit;background:rgba(0,0,0,0.05);padding:1px 5px;border-radius:2px">cq</code></h3>
+      <p>
+        用 perl <code>flock</code> 將所有 cargo 命令排隊。一個 build 用晒所有 core（burst mode），
+        其他等佢做完先開始。macOS 冇 <code>flock</code> CLI，所以用 perl FFI。
+        同時 set <code>CARGO_INCREMENTAL=0</code> for one-shot commands（test/check/clippy），
+        防止 write-only cache 漲大。
+      </p>
+      <div class="evidence">
+        Process group 隔離：cargo + 所有 child（rustc、linker）共用一個 PGID。
+        Kill cq → <strong>kill(-TERM, -$pgid)</strong> → 0 orphans。
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fix-number">02</div>
+      <h3>cargo-hakari — Feature 統一</h3>
+      <p>
+        Workspace 入面 5 個 crate 各自用唔同嘅 feature 組合，
+        Cargo 就會幫每個組合獨立編譯成個 dependency tree。
+        hakari 整一個 workspace-hack crate，強制所有人用同一個 feature union，
+        令每個 dependency 只編譯一次。
+      </p>
+      <div class="evidence">
+        實測：.rlib <strong>793 → 81</strong>（減 90%）。
+        Diem（Meta）原創、nextest 團隊維護、963K downloads。
+      </div>
+    </div>
+
+    <div class="fix">
+      <div class="fix-number">03</div>
+      <h3>Incremental = 0 for Agents</h3>
+      <p>
+        Incremental compilation 只幫到「改一行再 build」嘅 loop。
+        Agent 跑 <code>cargo test</code> 一次就走 —
+        個 cache 寫完 500MB 永遠唔會再讀。
+        關咗之後 build 速度一樣（實測 ±1s），但唔再寫 cache。
+      </p>
+      <div class="evidence">
+        根因：31 個 <strong>server</strong> incremental hash × ~700MB = 15GB，
+        就係一個 crate。全部 write-only，從未 reused。
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Rejected -->
+  <div class="rejected">
+    <h2>攞走嘅方案（經 /prove-it 審計 reject）</h2>
+    <div class="rejected-grid">
+      <div class="rejected-item">
+        <div class="name">Cranelift backend</div>
+        <div class="reason">Nightly-only、要全套 toolchain dance、<code>cargo check</code> 完全冇受惠（skip codegen）</div>
+      </div>
+      <div class="rejected-item">
+        <div class="name">setsid process groups</div>
+        <div class="reason">macOS 冇 <code>setsid</code> CLI。用 perl <code>POSIX::setpgid</code> 代替</div>
+      </div>
+      <div class="rejected-item">
+        <div class="name">codegen feature 永遠開</div>
+        <div class="reason">實測 +18.8s（+33%）。ts-rs proc macro overhead 太重</div>
+      </div>
+      <div class="rejected-item">
+        <div class="name">sccache 跨 worktree 共享</div>
+        <div class="reason">Rust cache hit rate = 0%。只 cache C/C++ deps（ring、aws-lc-sys）</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Insight -->
+  <div class="insight">
+    <div class="insight-bar"></div>
+    <p class="insight-text">
+      Build 慢唔係因為 Rust 慢 — 係因為做咗 <strong>31 倍多餘嘅嘢</strong>。
+      修好 feature matrix 同 incremental 浪費之後，再用 queue 管理 concurrency。
+      先 eliminate waste，再 optimize throughput。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
