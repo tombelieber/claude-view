@@ -7,6 +7,12 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct Monotonic<T>(Option<T>);
 
+impl<T> Default for Monotonic<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
 impl<T: PartialOrd> Monotonic<T> {
     pub const fn new() -> Self {
         Self(None)
@@ -42,6 +48,12 @@ impl<T: PartialOrd> Monotonic<T> {
 #[serde(transparent)]
 pub struct Latest<T>(Option<T>);
 
+impl<T> Default for Latest<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
 impl<T> Latest<T> {
     pub const fn new() -> Self {
         Self(None)
@@ -68,6 +80,12 @@ impl<T> Latest<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Transient<T>(Option<T>);
+
+impl<T> Default for Transient<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
 
 impl<T> Transient<T> {
     pub const fn new() -> Self {
