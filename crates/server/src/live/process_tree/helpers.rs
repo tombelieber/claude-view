@@ -40,69 +40,6 @@ pub(super) fn truncate_command(cmd: &str) -> String {
     }
 }
 
-/// Fallback for macOS: get full command line via `ps` when sysinfo returns empty cmd.
-/// Only called for processes where: cmd is empty AND name looks Claude-related.
-#[allow(dead_code)] // Kept for single-PID fallback; batch version preferred
-pub(super) fn get_command_via_ps(pid: u32) -> Option<String> {
-    let output = std::process::Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "command="])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let cmd = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if cmd.is_empty() {
-        None
-    } else {
-        Some(cmd)
-    }
-}
-
-/// Batch command resolution: single `ps` call for all PIDs.
-///
-/// `ps -p pid1,pid2,... -o pid=,command=` returns command lines for all PIDs
-/// in one subprocess. 1 call for N PIDs instead of N calls.
-pub fn batch_get_command_via_ps(pids: &[u32]) -> std::collections::HashMap<u32, String> {
-    use std::collections::HashMap;
-    if pids.is_empty() {
-        return HashMap::new();
-    }
-    let pid_arg: String = pids
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    // ps exits 1 when any PID doesn't exist — parse stdout unconditionally
-    // (same lesson as batch lsof).
-    let output = match std::process::Command::new("ps")
-        .args(["-p", &pid_arg, "-o", "pid=,command="])
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => return HashMap::new(),
-    };
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut result = HashMap::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // Format: "  PID COMMAND..." — split on first whitespace after PID
-        let mut parts = trimmed.splitn(2, char::is_whitespace);
-        if let (Some(pid_str), Some(cmd)) = (parts.next(), parts.next()) {
-            if let Ok(pid) = pid_str.trim().parse::<u32>() {
-                let cmd = cmd.trim();
-                if !cmd.is_empty() {
-                    result.insert(pid, cmd.to_string());
-                }
-            }
-        }
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,13 +189,4 @@ mod tests {
         assert!(matches!(staleness, Staleness::Active));
     }
 
-    #[test]
-    fn test_get_command_via_ps_nonexistent_pid() {
-        let result = get_command_via_ps(4_000_000);
-        assert!(
-            result.is_none(),
-            "nonexistent PID must return None, got: {:?}",
-            result
-        );
-    }
 }

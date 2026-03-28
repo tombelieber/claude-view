@@ -40,12 +40,8 @@ pub fn collect(
 
     // --- oMLX ---
     let omlx_healthy = omlx_status.ready.load(Ordering::Acquire);
-    // Only spawn lsof when oMLX is known-healthy — skip wasted subprocess when not running
-    let omlx_pid = if omlx_healthy {
-        find_port_pid(omlx_status.port)
-    } else {
-        None
-    };
+    // PID cached by omlx_lifecycle at startup — no lsof on the 10s hot path
+    let omlx_pid = if omlx_healthy { omlx_status.pid() } else { None };
     let (omlx_cpu, omlx_mem) = pid_metrics(sys, omlx_pid);
     components.push(ComponentStatus {
         name: "omlx-qwen".into(),
@@ -89,44 +85,6 @@ fn pid_metrics(sys: &System, pid: Option<u32>) -> (f32, u64) {
     }
 }
 
-/// Find the PID holding a TCP port via `lsof` (macOS).
-/// Uses a 2-second timeout to avoid blocking the oracle if lsof hangs.
-fn find_port_pid(port: u16) -> Option<u32> {
-    use std::io::Read;
-
-    let mut child = std::process::Command::new("lsof")
-        .args(["-ti", &format!(":{port}"), "-sTCP:LISTEN"])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .ok()?;
-
-    // Wait up to 2 seconds — lsof can hang on dead NFS mounts or disk I/O
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_status)) => break,
-            Ok(None) => {
-                if std::time::Instant::now() > deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-            Err(_) => return None,
-        }
-    }
-
-    let mut stdout = String::new();
-    child.stdout.take()?.read_to_string(&mut stdout).ok()?;
-
-    stdout
-        .split_whitespace()
-        .next()
-        .and_then(|s| s.parse::<u32>().ok())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,9 +111,4 @@ mod tests {
         let _ = cpu;
     }
 
-    #[test]
-    fn find_port_pid_returns_none_for_unused_port() {
-        // Port 1 is almost certainly unused
-        assert!(find_port_pid(1).is_none());
-    }
 }
