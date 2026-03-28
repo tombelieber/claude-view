@@ -58,3 +58,16 @@ describe('SessionRegistry.closeAll', () => {
     expect(cs.query.close).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('SessionRegistry delayed-remove cancellation', () => {
+  it('closeAll cancels pending delayed-remove timers', async () => {
+    const clearSpy = vi.spyOn(globalThis, 'clearTimeout')
+    const registry = new SessionRegistry()
+    const cs = makeStubSession()
+    registry.register(cs)
+    registry.scheduleRemove(cs.controlId, 5_000)
+    await registry.closeAll()
+    expect(clearSpy).toHaveBeenCalled()
+    clearSpy.mockRestore()
+  })
+})
