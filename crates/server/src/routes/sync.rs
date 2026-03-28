@@ -38,7 +38,7 @@ fn get_deep_index_mutex() -> &'static Mutex<()> {
 }
 
 /// Status value for accepted sync responses.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum SyncStatus {
@@ -46,7 +46,7 @@ pub enum SyncStatus {
 }
 
 /// Response for successful sync initiation.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncAcceptedResponse {
@@ -61,6 +61,12 @@ pub struct SyncAcceptedResponse {
 /// - 409 Conflict: Sync already in progress
 ///
 /// The sync runs in the background. Poll /api/status for completion.
+#[utoipa::path(post, path = "/api/sync/git", tag = "sync",
+    responses(
+        (status = 202, description = "Git sync started", body = crate::routes::sync::SyncAcceptedResponse),
+        (status = 409, description = "Sync already in progress"),
+    )
+)]
 pub async fn trigger_git_sync(State(state): State<Arc<AppState>>) -> ApiResult<Response> {
     let mutex = get_sync_mutex();
 
@@ -166,6 +172,12 @@ pub async fn trigger_git_sync(State(state): State<Arc<AppState>>) -> ApiResult<R
 /// | `error`        | Sync failed                      |
 ///
 /// The stream terminates after `done` or `error`.
+/// GET /api/sync/git/progress — SSE stream of git sync progress.
+#[utoipa::path(get, path = "/api/sync/git/progress", tag = "sync",
+    responses(
+        (status = 200, description = "SSE stream of git sync progress events", content_type = "text/event-stream"),
+    )
+)]
 pub async fn git_sync_progress(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
@@ -277,6 +289,13 @@ pub async fn git_sync_progress(
 /// - 409 Conflict: A rebuild is already in progress
 ///
 /// The rebuild runs in the background. Poll /api/status or /api/indexing/progress for completion.
+/// POST /api/sync/deep-index — Trigger a full deep index rebuild.
+#[utoipa::path(post, path = "/api/sync/deep-index", tag = "sync",
+    responses(
+        (status = 202, description = "Deep index rebuild started", body = crate::routes::sync::SyncAcceptedResponse),
+        (status = 409, description = "Deep index already running"),
+    )
+)]
 pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult<Response> {
     let mutex = get_deep_index_mutex();
 

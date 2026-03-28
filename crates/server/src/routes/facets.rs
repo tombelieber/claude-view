@@ -34,7 +34,7 @@ pub struct BadgesQuery {
 }
 
 /// Response for GET /facets/stats.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FacetStatsResponse {
     pub total_with_facets: i64,
@@ -46,7 +46,7 @@ pub struct FacetStatsResponse {
 }
 
 /// Per-session badge data returned in the badges map.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionBadge {
     pub outcome: Option<String>,
@@ -54,7 +54,7 @@ pub struct SessionBadge {
 }
 
 /// Response for GET /facets/pattern-alert.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatternAlertResponse {
     pub pattern: Option<String>,
@@ -65,7 +65,7 @@ pub struct PatternAlertResponse {
 }
 
 /// Response for POST /facets/ingest/trigger.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TriggerResponse {
     pub status: String,
@@ -78,6 +78,11 @@ pub struct TriggerResponse {
 /// GET /api/facets/ingest/stream — SSE stream polling FacetIngestState atomics
 /// every 200ms. Emits "progress" events repeatedly, then a terminal "done"
 /// event when the ingest reaches Complete, Error, or NoCacheFound.
+#[utoipa::path(get, path = "/api/facets/ingest/stream", tag = "facets",
+    responses(
+        (status = 200, description = "SSE stream of facet ingest progress events", content_type = "text/event-stream"),
+    )
+)]
 pub async fn facet_ingest_stream(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
@@ -114,6 +119,11 @@ pub async fn facet_ingest_stream(
 /// POST /api/facets/ingest/trigger — Start facet ingest from the Claude Code
 /// insights cache. Returns immediately with `{"status": "started"}` or
 /// `{"status": "already_running"}` if an ingest is already in progress.
+#[utoipa::path(post, path = "/api/facets/ingest/trigger", tag = "facets",
+    responses(
+        (status = 200, description = "Facet ingest triggered or already running", body = crate::routes::facets::TriggerResponse),
+    )
+)]
 pub async fn trigger_facet_ingest(State(state): State<Arc<AppState>>) -> Json<TriggerResponse> {
     if state.facet_ingest.is_running() {
         return Json(TriggerResponse {
@@ -137,6 +147,11 @@ pub async fn trigger_facet_ingest(State(state): State<Arc<AppState>>) -> Json<Tr
 }
 
 /// GET /api/facets/stats — Aggregate statistics across all session facets.
+#[utoipa::path(get, path = "/api/facets/stats", tag = "facets",
+    responses(
+        (status = 200, description = "Aggregate facet statistics", body = crate::routes::facets::FacetStatsResponse),
+    )
+)]
 pub async fn facet_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<FacetStatsResponse>, axum::http::StatusCode> {
@@ -159,6 +174,12 @@ pub async fn facet_stats(
 /// GET /api/facets/badges?ids=id1,id2,id3 — Quality badges (outcome +
 /// satisfaction) for the requested session IDs. Returns a JSON map keyed
 /// by session ID.
+#[utoipa::path(get, path = "/api/facets/badges", tag = "facets",
+    params(("ids" = String, Query, description = "Comma-separated session IDs")),
+    responses(
+        (status = 200, description = "Session quality badges keyed by session ID", body = serde_json::Value),
+    )
+)]
 pub async fn facet_badges(
     State(state): State<Arc<AppState>>,
     Query(query): Query<BadgesQuery>,
@@ -194,6 +215,11 @@ pub async fn facet_badges(
 /// GET /api/facets/pattern-alert — Check the most recent sessions for a
 /// negative satisfaction pattern. Returns `{pattern, count, tip}` if a
 /// pattern is detected, or `{pattern: null}` otherwise.
+#[utoipa::path(get, path = "/api/facets/pattern-alert", tag = "facets",
+    responses(
+        (status = 200, description = "Negative satisfaction pattern alert", body = crate::routes::facets::PatternAlertResponse),
+    )
+)]
 pub async fn pattern_alert(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<PatternAlertResponse>, axum::http::StatusCode> {

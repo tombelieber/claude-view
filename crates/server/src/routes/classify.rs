@@ -39,7 +39,7 @@ pub struct ClassifyRequest {
 }
 
 /// Response for POST /api/classify (202 Accepted).
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyResponse {
@@ -51,7 +51,7 @@ pub struct ClassifyResponse {
 }
 
 /// Response for POST /api/classify/cancel.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CancelResponse {
@@ -63,7 +63,7 @@ pub struct CancelResponse {
 }
 
 /// Response for GET /api/classify/status.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyStatusResponse {
@@ -86,7 +86,7 @@ pub struct ClassifyStatusResponse {
 }
 
 /// Progress information for a running classification.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyProgressInfo {
@@ -101,7 +101,7 @@ pub struct ClassifyProgressInfo {
 }
 
 /// Information about the last completed classification run.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyLastRun {
@@ -120,7 +120,7 @@ pub struct ClassifyLastRun {
 }
 
 /// Error information for failed classification.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifyErrorInfo {
@@ -129,7 +129,7 @@ pub struct ClassifyErrorInfo {
 }
 
 /// Response for POST /api/classify/single/:session_id.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifySingleResponse {
@@ -165,7 +165,15 @@ struct SseCompleteData {
 // ============================================================================
 
 /// POST /api/classify — Trigger a classification job.
-async fn start_classification(
+#[utoipa::path(post, path = "/api/classify", tag = "classify",
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Classification job started or dry-run result", body = crate::routes::classify::ClassifyResponse),
+        (status = 202, description = "Classification job accepted"),
+        (status = 409, description = "Job already running"),
+    )
+)]
+pub async fn start_classification(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ClassifyRequest>,
 ) -> ApiResult<impl IntoResponse> {
@@ -240,7 +248,12 @@ async fn start_classification(
 }
 
 /// GET /api/classify/status — Get classification status.
-async fn get_classification_status(
+#[utoipa::path(get, path = "/api/classify/status", tag = "classify",
+    responses(
+        (status = 200, description = "Classification job status and progress", body = crate::routes::classify::ClassifyStatusResponse),
+    )
+)]
+pub async fn get_classification_status(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClassifyStatusResponse>> {
     let classify_state = &state.classify;
@@ -321,7 +334,12 @@ async fn get_classification_status(
 }
 
 /// GET /api/classify/stream — SSE stream of classification progress.
-async fn stream_classification(
+#[utoipa::path(get, path = "/api/classify/stream", tag = "classify",
+    responses(
+        (status = 200, description = "SSE stream of classification progress events", content_type = "text/event-stream"),
+    )
+)]
+pub async fn stream_classification(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
     let classify_state = Arc::clone(&state.classify);
@@ -411,7 +429,13 @@ async fn stream_classification(
 }
 
 /// POST /api/classify/cancel — Cancel a running classification job.
-async fn cancel_classification(
+#[utoipa::path(post, path = "/api/classify/cancel", tag = "classify",
+    responses(
+        (status = 200, description = "Classification job cancelled", body = crate::routes::classify::CancelResponse),
+        (status = 400, description = "No job running"),
+    )
+)]
+pub async fn cancel_classification(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<CancelResponse>> {
     let classify_state = &state.classify;
@@ -440,7 +464,14 @@ async fn cancel_classification(
 /// Bypasses ClassifyState entirely — no job record, no SSE.
 /// Returns the classification result directly.
 /// Uses dedicated O(1) DB queries — NOT the bulk session list.
-async fn classify_single_session(
+#[utoipa::path(post, path = "/api/classify/single/{session_id}", tag = "classify",
+    params(("session_id" = String, Path, description = "Session ID to classify")),
+    responses(
+        (status = 200, description = "Classification result (live or cached)", body = crate::routes::classify::ClassifySingleResponse),
+        (status = 404, description = "Session not found"),
+    )
+)]
+pub async fn classify_single_session(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<impl IntoResponse> {

@@ -27,7 +27,7 @@ use crate::state::AppState;
 use crate::time_range::{resolve_from_to_or_all_time, ResolveFromToInput};
 
 /// Query parameters for dashboard stats endpoint.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, utoipa::IntoParams)]
 pub struct DashboardQuery {
     /// Period start timestamp (Unix seconds, inclusive).
     /// If omitted along with `to`, returns all-time stats with no trends.
@@ -42,7 +42,7 @@ pub struct DashboardQuery {
 }
 
 /// Current period metrics for dashboard (adapts to selected time range).
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CurrentPeriodMetrics {
@@ -57,7 +57,7 @@ pub struct CurrentPeriodMetrics {
 }
 
 /// Extended dashboard stats with current period and trends.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExtendedDashboardStats {
@@ -90,7 +90,7 @@ pub struct ExtendedDashboardStats {
 }
 
 /// Dashboard metadata wrapper.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardMeta {
@@ -100,7 +100,7 @@ pub struct DashboardMeta {
 }
 
 /// Section-specific range metadata for dashboard.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardRangesMeta {
@@ -109,7 +109,7 @@ pub struct DashboardRangesMeta {
 }
 
 /// Simplified trends for dashboard display.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardTrends {
@@ -128,7 +128,7 @@ pub struct DashboardTrends {
 }
 
 /// AI generation response wrapper with additive metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AIGenerationStatsResponse {
@@ -151,7 +151,7 @@ impl From<WeekTrends> for DashboardTrends {
 }
 
 /// Storage statistics for the settings page.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StorageStats {
@@ -254,6 +254,12 @@ async fn fetch_session_breakdown(
 /// - Trends: period-over-period changes for key metrics (None if viewing all-time)
 /// - Period bounds: periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd
 /// - dataStartDate: earliest session in database
+#[utoipa::path(get, path = "/api/stats/dashboard", tag = "stats",
+    params(DashboardQuery),
+    responses(
+        (status = 200, description = "Dashboard statistics with trends and heatmap", body = serde_json::Value),
+    )
+)]
 pub async fn dashboard_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DashboardQuery>,
@@ -489,6 +495,11 @@ pub async fn dashboard_stats(
 /// - Storage sizes: JSONL files, SQLite database, search index
 /// - Counts: sessions, projects, commits
 /// - Timing: oldest session, last index, last git sync
+#[utoipa::path(get, path = "/api/stats/storage", tag = "stats",
+    responses(
+        (status = 200, description = "Storage usage statistics (JSONL, SQLite, search index)", body = StorageStats),
+    )
+)]
 pub async fn storage_stats(State(state): State<Arc<AppState>>) -> ApiResult<Json<StorageStats>> {
     let start = Instant::now();
 
@@ -676,6 +687,12 @@ async fn calculate_directory_size(dir: &Path) -> u64 {
 /// - totalInputTokens, totalOutputTokens: Aggregate token usage
 /// - tokensByModel: Token breakdown by AI model
 /// - tokensByProject: Top 5 projects by token usage + "Others"
+#[utoipa::path(get, path = "/api/stats/ai-generation", tag = "stats",
+    params(DashboardQuery),
+    responses(
+        (status = 200, description = "AI generation statistics (tokens, cost, tool usage)", body = serde_json::Value),
+    )
+)]
 pub async fn ai_generation_stats(
     State(state): State<Arc<AppState>>,
     Query(query): Query<DashboardQuery>,

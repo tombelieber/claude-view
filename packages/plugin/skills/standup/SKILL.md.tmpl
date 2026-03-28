@@ -1,0 +1,48 @@
+---
+name: standup
+description: "Use when the user asks for a standup update, work log, or activity summary — e.g. 'standup update', 'what did I work on today', 'work log', 'daily summary'"
+allowed-tools:
+  - mcp__claude-view__list_sessions
+  - mcp__claude-view__get_session
+  - mcp__claude-view__list_live_sessions
+---
+
+{{PREAMBLE}}
+
+# Standup Update
+
+Generate a standup-style work summary from recent Claude Code sessions.
+
+## Steps
+
+1. **Fetch recent sessions.** Call `mcp__claude-view__list_sessions` with:
+   - `sort: "recent"`
+   - `limit: 20`
+
+   From the results, filter to sessions whose `modified` field (ISO 8601 string) is within the last 24 hours. If the user asks about a different period (e.g. "this week"), adjust the filter accordingly.
+
+2. **For the top 3-5 sessions by duration**, call `mcp__claude-view__get_session` on each to get commit details.
+
+3. **Check for running sessions.** Call `mcp__claude-view__list_live_sessions` to find any currently active sessions for the "In Progress" section.
+
+4. **Present the standup** in this format:
+
+```
+## Standup — [today's date]
+
+### Done
+- **[project] ([branch])** — [1-line summary from recent_commits/summary] (Xm)
+- **[project] ([branch])** — [1-line summary] (Xm)
+
+### In Progress
+- [project] — [model] — [agent_state] (from list_live_sessions)
+
+### Metrics
+- Sessions: N | Total time: Xh Ym | Commits: Z
+```
+
+5. **Keep each item to one line.** The standup should be copy-pasteable into Slack or a standup bot.
+
+6. **If no sessions found in the time range**, say "No Claude Code sessions found in the last 24 hours."
+
+{{AVAILABLE_TOOLS}}

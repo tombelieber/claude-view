@@ -10,7 +10,7 @@ use ts_rs::TS;
 
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
 #[serde(default)]
 pub struct PromptsListQuery {
     pub q: Option<String>,
@@ -26,7 +26,7 @@ pub struct PromptsListQuery {
     pub offset: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PromptInfo {
@@ -48,7 +48,7 @@ pub struct PromptInfo {
     pub template_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PromptListResponse {
@@ -57,7 +57,7 @@ pub struct PromptListResponse {
     pub has_more: bool,
 }
 
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PromptTemplateInfo {
@@ -67,7 +67,14 @@ pub struct PromptTemplateInfo {
     pub slots: Vec<String>,
 }
 
-async fn list_prompts(
+/// GET /api/prompts - List prompt history with optional search/filter.
+#[utoipa::path(get, path = "/api/prompts", tag = "prompts",
+    params(PromptsListQuery),
+    responses(
+        (status = 200, description = "Paginated prompt history", body = crate::routes::prompts::PromptListResponse),
+    )
+)]
+pub async fn list_prompts(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PromptsListQuery>,
 ) -> Json<PromptListResponse> {
@@ -173,14 +180,28 @@ async fn list_prompts(
     }
 }
 
-async fn get_prompt_stats(
+/// GET /api/prompts/stats - Aggregate prompt statistics.
+#[utoipa::path(get, path = "/api/prompts/stats", tag = "prompts",
+    responses(
+        (status = 200, description = "Aggregate prompt statistics", body = serde_json::Value),
+    )
+)]
+pub async fn get_prompt_stats(
     State(state): State<Arc<AppState>>,
 ) -> Json<Option<claude_view_core::prompt_history::PromptStats>> {
     let guard = state.prompt_stats.read().unwrap();
     Json(guard.clone())
 }
 
-async fn get_prompt_templates(State(state): State<Arc<AppState>>) -> Json<Vec<PromptTemplateInfo>> {
+/// GET /api/prompts/templates - Detected prompt templates.
+#[utoipa::path(get, path = "/api/prompts/templates", tag = "prompts",
+    responses(
+        (status = 200, description = "Detected prompt templates with slot patterns", body = Vec<crate::routes::prompts::PromptTemplateInfo>),
+    )
+)]
+pub async fn get_prompt_templates(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<PromptTemplateInfo>> {
     let guard = state.prompt_templates.read().unwrap();
     match guard.as_ref() {
         Some(templates) => {

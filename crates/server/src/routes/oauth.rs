@@ -14,7 +14,7 @@ use crate::state::AppState;
 
 // ── Response types (sent to frontend) ───────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTier {
     pub id: String,
@@ -27,7 +27,7 @@ pub struct UsageTier {
     pub spent: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthUsageResponse {
     pub has_auth: bool,
@@ -36,7 +36,7 @@ pub struct OAuthUsageResponse {
     pub tiers: Vec<UsageTier>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthIdentityResponse {
     pub has_auth: bool,
@@ -313,6 +313,11 @@ fn fetch_auth_identity() -> Option<crate::state::AuthIdentity> {
 ///
 /// Returns cached auth identity (email, org, plan).
 /// Calls `claude auth status` on first request only, caches forever.
+#[utoipa::path(get, path = "/api/oauth/identity", tag = "oauth",
+    responses(
+        (status = 200, description = "Auth identity (email, org, plan)", body = AuthIdentityResponse),
+    )
+)]
 pub async fn get_auth_identity(State(state): State<Arc<AppState>>) -> Json<AuthIdentityResponse> {
     let identity = state
         .auth_identity
@@ -402,6 +407,11 @@ async fn fetch_oauth_usage_inner() -> Result<OAuthUsageResponse, String> {
 /// Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.
 /// Sets `Cache-Control: max-age=<remaining_ttl>` so the frontend respects the
 /// server's TTL without hardcoding its own polling interval.
+#[utoipa::path(get, path = "/api/oauth/usage", tag = "oauth",
+    responses(
+        (status = 200, description = "OAuth usage tiers with cache headers", body = OAuthUsageResponse),
+    )
+)]
 pub async fn get_oauth_usage(State(state): State<Arc<AppState>>) -> axum::response::Response {
     match state
         .oauth_usage_cache
@@ -430,6 +440,12 @@ const FORCE_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::fro
 ///
 /// Bypass TTL cache and fetch fresh data from Anthropic.
 /// Returns 429 + Retry-After header if called within 60s of the last attempt.
+#[utoipa::path(post, path = "/api/oauth/usage/refresh", tag = "oauth",
+    responses(
+        (status = 200, description = "Refreshed usage data", body = OAuthUsageResponse),
+        (status = 429, description = "Rate limited, retry after header set"),
+    )
+)]
 pub async fn post_oauth_usage_refresh(
     State(state): State<Arc<AppState>>,
 ) -> axum::response::Response {

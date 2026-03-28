@@ -18,7 +18,7 @@ pre-commit:
       glob: "*.rs"
       run: rustfmt {staged_files} && git add {staged_files}
     skill-sync:
-      glob: "{claude-view/**,packages/mcp/src/tools/**,plugin.json,marketplace.json}"
+      glob: "{claude-view/**,packages/plugin/src/tools/**,plugin.json,marketplace.json}"
       run: bash test/skill-sync.sh
     pii-check:
       run: bash scripts/integrity/pii-check.sh

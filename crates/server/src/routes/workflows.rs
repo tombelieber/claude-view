@@ -26,7 +26,7 @@ use crate::state::AppState;
 // All imports are declared upfront per Rust convention — unused warnings only
 // appear if Task 10 is not yet implemented.
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowStageGate {
@@ -34,7 +34,7 @@ pub struct WorkflowStageGate {
     pub retry: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowStage {
@@ -48,7 +48,7 @@ pub struct WorkflowStage {
     pub agents: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowInput {
@@ -57,7 +57,7 @@ pub struct WorkflowInput {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDefinition {
@@ -77,7 +77,7 @@ fn default_version() -> String {
     "1.0.0".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[cfg_attr(test, derive(Deserialize))]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +95,7 @@ pub struct WorkflowSummary {
     pub run_count: u32,
 }
 
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDetail {
@@ -106,7 +106,7 @@ pub struct WorkflowDetail {
     pub yaml: String,
 }
 
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkflowRequest {
@@ -187,7 +187,10 @@ pub fn seed_official_workflows() {
 // Handlers
 // ---------------------------------------------------------------------------
 
-async fn list_workflows(
+#[utoipa::path(get, path = "/api/workflows", tag = "workflows",
+    responses((status = 200, description = "All workflows", body = Vec<WorkflowSummary>))
+)]
+pub async fn list_workflows(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<WorkflowSummary>>> {
     let mut summaries: Vec<WorkflowSummary> = Vec::new();
@@ -212,7 +215,14 @@ async fn list_workflows(
     Ok(Json(summaries))
 }
 
-async fn get_workflow(
+#[utoipa::path(get, path = "/api/workflows/{id}", tag = "workflows",
+    params(("id" = String, Path, description = "Workflow ID")),
+    responses(
+        (status = 200, description = "Workflow detail", body = WorkflowDetail),
+        (status = 404, description = "Workflow not found"),
+    )
+)]
+pub async fn get_workflow(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<WorkflowDetail>> {
@@ -237,7 +247,11 @@ async fn get_workflow(
     Err(ApiError::NotFound(format!("Workflow '{id}' not found")))
 }
 
-async fn create_workflow(
+#[utoipa::path(post, path = "/api/workflows", tag = "workflows",
+    request_body = CreateWorkflowRequest,
+    responses((status = 200, description = "Created workflow", body = WorkflowDetail))
+)]
+pub async fn create_workflow(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CreateWorkflowRequest>,
 ) -> ApiResult<Json<WorkflowDetail>> {
@@ -267,7 +281,14 @@ async fn create_workflow(
     }))
 }
 
-async fn delete_workflow(
+#[utoipa::path(delete, path = "/api/workflows/{id}", tag = "workflows",
+    params(("id" = String, Path, description = "Workflow ID")),
+    responses(
+        (status = 204, description = "Workflow deleted"),
+        (status = 404, description = "Workflow not found"),
+    )
+)]
+pub async fn delete_workflow(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<axum::http::StatusCode> {
@@ -290,7 +311,7 @@ async fn delete_workflow(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatRequest {
+pub struct ChatRequest {
     messages: Vec<ChatMessage>,
     #[allow(dead_code)]
     workflow_id: Option<String>,
@@ -304,7 +325,11 @@ struct ChatMessage {
 }
 
 /// POST /api/workflows/chat — direct POST-to-SSE streaming (same pattern as generate_report())
-async fn chat_workflow(
+#[utoipa::path(post, path = "/api/workflows/chat", tag = "workflows",
+    request_body = serde_json::Value,
+    responses((status = 200, description = "SSE stream of chat messages", content_type = "text/event-stream"))
+)]
+pub async fn chat_workflow(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<ChatRequest>,
 ) -> ApiResult<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>> {
@@ -324,11 +349,16 @@ async fn chat_workflow(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct RunControlRequest {
+pub struct RunControlRequest {
     command: String, // "pause" | "skip" | "abort"
 }
 
-async fn control_run(
+#[utoipa::path(post, path = "/api/workflows/run/{run_id}/control", tag = "workflows",
+    params(("run_id" = String, Path, description = "Run ID")),
+    request_body = serde_json::Value,
+    responses((status = 204, description = "Control command accepted"))
+)]
+pub async fn control_run(
     State(_state): State<Arc<AppState>>,
     Path(run_id): Path<String>,
     Json(body): Json<RunControlRequest>,
