@@ -16,7 +16,7 @@ use crate::routes::statusline::StatuslinePayload;
 /// Typed mutation — one per upstream source. Exhaustive match required.
 pub enum SessionMutation {
     /// Statusline JSON forwarded from Claude Code wrapper script.
-    Statusline(StatuslinePayload),
+    Statusline(Box<StatuslinePayload>),
     /// Hook-driven lifecycle events (start, prompt, state change, end).
     Lifecycle(LifecycleEvent),
     /// JSONL reconciliation data (project, model, tokens, cost, phase).
@@ -33,7 +33,7 @@ impl SessionMutation {
     pub fn can_create_session(&self) -> bool {
         match self {
             Self::Lifecycle(LifecycleEvent::Start { cwd, .. }) => {
-                cwd.as_ref().map_or(false, |v| !v.trim().is_empty())
+                cwd.as_ref().is_some_and(|v| !v.trim().is_empty())
             }
             Self::Reconcile(_) => true,
             _ => false,

@@ -232,7 +232,7 @@ pub async fn handle_statusline(
         .handle(
             &ctx,
             &effective_session_id,
-            SessionMutation::Statusline(payload),
+            SessionMutation::Statusline(Box::new(payload)),
             pid,
             now,
             None,

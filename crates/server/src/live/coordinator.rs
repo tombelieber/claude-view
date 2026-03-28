@@ -69,6 +69,12 @@ const PENDING_TTL: Duration = Duration::from_secs(120);
 /// Maximum hook events kept per session (re-exported for clarity).
 const MAX_EVENTS: usize = MAX_HOOK_EVENTS_PER_SESSION;
 
+impl Default for SessionCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionCoordinator {
     pub fn new() -> Self {
         Self {
@@ -228,7 +234,7 @@ impl SessionCoordinator {
         }
 
         // ── Phase 4: Broadcast ──────────────────────────────────────────
-        let result = match broadcast_action {
+        match broadcast_action {
             BroadcastAction::Created => {
                 let _ = ctx.live_tx.send(SessionEvent::SessionDiscovered {
                     session: snapshot.clone(),
@@ -254,9 +260,7 @@ impl SessionCoordinator {
                 MutationResult::Removed(session_id.to_string())
             }
             BroadcastAction::None => MutationResult::Updated(snapshot),
-        };
-
-        result
+        }
     }
 
     /// Sweep expired entries from the pending buffer.
@@ -349,7 +353,7 @@ fn apply_mutation_to_session(
     now: i64,
 ) -> Option<SessionStatus> {
     match mutation {
-        SessionMutation::Statusline(payload) => {
+        SessionMutation::Statusline(ref payload) => {
             apply_statusline(&mut session.statusline, payload);
             // Cross-source: context_window_tokens (derived from current_usage)
             if let Some(ref cw) = payload.context_window {
@@ -715,7 +719,7 @@ mod tests {
             extra: Default::default(),
         };
 
-        let mutation = SessionMutation::Statusline(payload);
+        let mutation = SessionMutation::Statusline(Box::new(payload));
         apply_mutation_to_session(&mut session, &mutation, 1700000001);
 
         assert_eq!(session.model.as_deref(), Some("claude-sonnet-4-20250514"));
@@ -735,23 +739,24 @@ mod tests {
 
     #[test]
     fn common_post_mutation_falls_back_to_caller_pid() {
-        let mutation = SessionMutation::Statusline(crate::routes::statusline::StatuslinePayload {
-            session_id: "test".into(),
-            model: None,
-            cwd: None,
-            workspace: None,
-            cost: None,
-            context_window: None,
-            exceeds_200k_tokens: None,
-            transcript_path: None,
-            version: None,
-            output_style: None,
-            vim: None,
-            agent: None,
-            worktree: None,
-            rate_limits: None,
-            extra: Default::default(),
-        });
+        let mutation =
+            SessionMutation::Statusline(Box::new(crate::routes::statusline::StatuslinePayload {
+                session_id: "test".into(),
+                model: None,
+                cwd: None,
+                workspace: None,
+                cost: None,
+                context_window: None,
+                exceeds_200k_tokens: None,
+                transcript_path: None,
+                version: None,
+                output_style: None,
+                vim: None,
+                agent: None,
+                worktree: None,
+                rate_limits: None,
+                extra: Default::default(),
+            }));
         let post = common_post_mutation(&mutation, Some(555), 1700000000);
         assert_eq!(post.bind_pid, Some(555));
     }
@@ -803,7 +808,7 @@ mod tests {
             .handle(
                 &ctx,
                 "buffered-session",
-                SessionMutation::Statusline(payload),
+                SessionMutation::Statusline(Box::new(payload)),
                 None,
                 1700000000,
                 None,
