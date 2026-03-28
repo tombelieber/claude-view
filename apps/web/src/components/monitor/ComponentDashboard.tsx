@@ -101,7 +101,12 @@ export function ComponentDashboard({
       {expanded && (
         <>
           {components?.components.map((comp) => (
-            <ComponentRow key={comp.name} component={comp} systemInfo={systemInfo} />
+            <ComponentRow
+              key={comp.name}
+              component={comp}
+              systemInfo={systemInfo}
+              totalVramBytes={components.totalVramBytes}
+            />
           ))}
           {proc.descendants.map((child) => (
             <ChildProcessRow
