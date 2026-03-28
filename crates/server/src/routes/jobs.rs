@@ -137,6 +137,8 @@ mod tests {
             coordinator: std::sync::Arc::new(crate::live::coordinator::SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+            debug_statusline_log: None,
+            debug_hooks_log: None,
         });
 
         let app = Router::new()

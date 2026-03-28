@@ -10,6 +10,7 @@ use crate::indexing_state::IndexingState;
 use crate::jobs::JobRunner;
 use crate::live::buffer::PendingMutations;
 use crate::live::coordinator::{MutationContext, SessionCoordinator};
+use crate::live::debug_log::DebugEventLog;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
 use crate::live::state::SessionEvent;
 use crate::routes::marketplace_refresh::MarketplaceRefreshTracker;
@@ -180,6 +181,10 @@ pub struct AppState {
     pub telemetry: Option<crate::telemetry::TelemetryClient>,
     /// Path to the telemetry config file (allows tests to use temp dirs).
     pub telemetry_config_path: std::path::PathBuf,
+    /// Rolling JSONL debug log for statusline events (debug builds only).
+    pub debug_statusline_log: Option<DebugEventLog>,
+    /// Rolling JSONL debug log for hook events (debug builds only).
+    pub debug_hooks_log: Option<DebugEventLog>,
 }
 
 impl AppState {
@@ -187,6 +192,14 @@ impl AppState {
     ///
     /// Uses a default (idle) `IndexingState` and empty registry holder.
     pub fn new(db: Database) -> Arc<Self> {
+        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+            (
+                Some(DebugEventLog::new(".debug/statusline.jsonl")),
+                Some(DebugEventLog::new(".debug/hooks.jsonl")),
+            )
+        } else {
+            (None, None)
+        };
         Arc::new(Self {
             start_time: Instant::now(),
             db,
@@ -233,12 +246,22 @@ impl AppState {
             coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+            debug_statusline_log,
+            debug_hooks_log,
         })
     }
 
     /// Create with an externally-provided `IndexingState` (for testing and
     /// server-first startup where the caller owns the indexing handle).
     pub fn new_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Arc<Self> {
+        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+            (
+                Some(DebugEventLog::new(".debug/statusline.jsonl")),
+                Some(DebugEventLog::new(".debug/hooks.jsonl")),
+            )
+        } else {
+            (None, None)
+        };
         Arc::new(Self {
             start_time: Instant::now(),
             db,
@@ -285,6 +308,8 @@ impl AppState {
             coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+            debug_statusline_log,
+            debug_hooks_log,
         })
     }
 
@@ -294,6 +319,14 @@ impl AppState {
         indexing: Arc<IndexingState>,
         registry: RegistryHolder,
     ) -> Arc<Self> {
+        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+            (
+                Some(DebugEventLog::new(".debug/statusline.jsonl")),
+                Some(DebugEventLog::new(".debug/hooks.jsonl")),
+            )
+        } else {
+            (None, None)
+        };
         Arc::new(Self {
             start_time: Instant::now(),
             db,
@@ -340,6 +373,8 @@ impl AppState {
             coordinator: Arc::new(SessionCoordinator::new()),
             telemetry: None,
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+            debug_statusline_log,
+            debug_hooks_log,
         })
     }
 

@@ -137,6 +137,18 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         coordinator: Arc::new(live::coordinator::SessionCoordinator::new()),
         telemetry: None,
         telemetry_config_path,
+        debug_statusline_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(
+                ".debug/statusline.jsonl",
+            ))
+        } else {
+            None
+        },
+        debug_hooks_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/hooks.jsonl"))
+        } else {
+            None
+        },
     });
     api_routes(state)
 }
@@ -214,6 +226,18 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         coordinator: Arc::new(live::coordinator::SessionCoordinator::new()),
         telemetry: None,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+        debug_statusline_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(
+                ".debug/statusline.jsonl",
+            ))
+        } else {
+            None
+        },
+        debug_hooks_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/hooks.jsonl"))
+        } else {
+            None
+        },
     });
     api_routes(state)
 }
@@ -252,10 +276,7 @@ pub fn create_app_full(
     let omlx_status = Arc::new(live::omlx_lifecycle::OmlxStatus::new(omlx_port));
 
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
-    let oracle_rx = live::process_oracle::start_oracle(
-        sidecar.clone(),
-        omlx_status.clone(),
-    );
+    let oracle_rx = live::process_oracle::start_oracle(sidecar.clone(), omlx_status.clone());
 
     // Create hook event channels before the manager so both manager and AppState share one instance.
     let hook_event_channels: std::sync::Arc<
@@ -340,6 +361,18 @@ pub fn create_app_full(
         coordinator,
         telemetry,
         telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+        debug_statusline_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(
+                ".debug/statusline.jsonl",
+            ))
+        } else {
+            None
+        },
+        debug_hooks_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/hooks.jsonl"))
+        } else {
+            None
+        },
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).

@@ -37,6 +37,9 @@ install-claude-view/
 # Local data directory (sandbox/dev)
 .data/
 
+# Debug event logs (rolling JSONL, dev-only)
+.debug/
+
 # IDE
 .idea/
 .vscode/*

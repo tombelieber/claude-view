@@ -108,6 +108,21 @@ pub async fn handle_hook(
         .unwrap_or_default()
         .as_secs() as i64;
 
+    // ── Debug log: capture key fields before mutation consumes agent_state ──
+    #[cfg(debug_assertions)]
+    let debug_line = {
+        let group_str = group_name_from_agent_group(&agent_state.group);
+        serde_json::json!({
+            "ts": now,
+            "session": &payload.session_id[..8.min(payload.session_id.len())],
+            "event": &payload.hook_event_name,
+            "state": &agent_state.state,
+            "group": group_str,
+            "pid": pid,
+        })
+        .to_string()
+    };
+
     // ── Build hook event context (for event log) ────────────────────────
     let hook_event_context: Option<serde_json::Value> = payload.tool_input.clone().or_else(|| {
         payload
@@ -206,6 +221,12 @@ pub async fn handle_hook(
         .coordinator
         .handle(&ctx, &payload.session_id, mutation, pid, now, hook_event)
         .await;
+
+    // ── Append to debug log (fire-and-forget, non-blocking) ─────────────
+    #[cfg(debug_assertions)]
+    if let Some(ref log) = state.debug_hooks_log {
+        log.append(debug_line);
+    }
 
     Json(serde_json::json!({ "ok": true }))
 }
