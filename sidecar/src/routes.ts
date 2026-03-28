@@ -126,18 +126,26 @@ export function createRoutes(registry: SessionRegistry) {
       )
       // Wait for turn_complete by listening to the emitter
       return new Promise<Response>((resolve) => {
+        const onMessage = (event: { type: string }) => {
+          if (event.type === 'turn_complete' || event.type === 'turn_error') {
+            cleanup()
+            closeSession(cs, registry)
+            resolve(c.json(event))
+          }
+        }
+
         const timeout = setTimeout(() => {
+          cleanup()
           closeSession(cs, registry)
           resolve(c.json({ error: 'Prompt timed out' }, 504))
         }, 120_000) // 2 min max
 
-        cs.emitter.on('message', (event) => {
-          if (event.type === 'turn_complete' || event.type === 'turn_error') {
-            clearTimeout(timeout)
-            closeSession(cs, registry)
-            resolve(c.json(event))
-          }
-        })
+        const cleanup = () => {
+          clearTimeout(timeout)
+          cs.emitter.removeListener('message', onMessage)
+        }
+
+        cs.emitter.on('message', onMessage)
       })
     } catch (err) {
       return c.json({ error: `Prompt failed: ${err instanceof Error ? err.message : err}` }, 500)
