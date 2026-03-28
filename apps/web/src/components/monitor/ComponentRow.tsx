@@ -12,9 +12,9 @@ export function ComponentRow({ component: c, systemInfo }: ComponentRowProps) {
   const kindLabel = c.kind === 'ExternalService' ? 'external' : 'child process'
 
   const statusDot = c.running
-    ? 'bg-green-500'
+    ? 'bg-green-500 dark:bg-green-400'
     : c.enabled
-      ? 'bg-amber-500 animate-pulse'
+      ? 'bg-amber-500 dark:bg-amber-400 animate-pulse'
       : 'bg-gray-400 dark:bg-gray-600'
 
   return (
