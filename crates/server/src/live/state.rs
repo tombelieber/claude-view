@@ -314,6 +314,120 @@ pub struct StatuslineFields {
 }
 
 // ---------------------------------------------------------------------------
+// JsonlFields — 22 fields sourced from JSONL watcher, extracted from LiveSession
+// ---------------------------------------------------------------------------
+
+/// JSONL-watcher-sourced fields, grouped for decomposition clarity.
+///
+/// `#[serde(flatten)]` on the parent ensures JSON keys are identical to the old
+/// flat layout. Contains project info, branch info, token/cost data, team data,
+/// tools, files, phase classification, and session source.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonlFields {
+    /// Encoded project directory name (as stored on disk).
+    pub project: String,
+    /// Human-readable project name (last path component, decoded).
+    pub project_display_name: String,
+    /// Full decoded project path.
+    pub project_path: String,
+    /// Absolute path to the JSONL session file.
+    pub file_path: String,
+    /// Git branch name, if detected.
+    pub git_branch: Option<String>,
+    /// Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
+    pub worktree_branch: Option<String>,
+    /// Whether this session is running inside a git worktree.
+    pub is_worktree: bool,
+    /// Computed: worktree_branch ?? git_branch. Always use this for display.
+    pub effective_branch: Option<String>,
+    /// Accumulated token usage for this session (cumulative, for cost).
+    pub tokens: TokenUsage,
+    /// Computed cost breakdown in USD.
+    pub cost: CostBreakdown,
+    /// Whether the Anthropic prompt cache is likely warm or cold.
+    pub cache_status: CacheStatus,
+    /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
+    /// Used by frontend to show task time for needs_you sessions.
+    pub last_turn_task_seconds: Option<u32>,
+    /// Unix timestamp when the last cache hit or creation occurred.
+    /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
+    /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
+    #[ts(type = "number | null")]
+    pub last_cache_hit_at: Option<i64>,
+    /// Team name if this session is a team lead.
+    /// Populated from the top-level `teamName` field in the JSONL (present after TeamCreate).
+    /// Frontend uses this to show team badge instead of sub-agent pills.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_name: Option<String>,
+    /// Team members read from ~/.claude/teams/{name}/config.json.
+    /// Populated after each JSONL metadata application when team_name is Some.
+    /// Empty vec when not a team lead.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub team_members: Vec<crate::teams::TeamMember>,
+    /// Number of inbox messages for this team (0 when not a team lead).
+    /// Used by frontend as a version signal to invalidate inbox queries.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub team_inbox_count: u32,
+    /// Number of file-modifying tool uses (Edit + Write) in this session.
+    /// Used by frontend as a version signal to invalidate file-history and plan queries.
+    #[serde(default)]
+    pub edit_count: u32,
+    /// Unique tool integrations detected in this session (MCP servers, skills).
+    /// Discovered from actual tool_use invocations -- 100% accuracy.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tools_used: Vec<ToolUsed>,
+    /// Session slug for plan file association.
+    pub slug: Option<String>,
+    /// Verified file references detected from user messages.
+    /// Deduplicated by absolute path across session lifetime (<=10, first-N-wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_files: Option<Vec<VerifiedFile>>,
+    /// Where this session was launched from (terminal, IDE, or Agent SDK).
+    /// Detected from the parent process at discovery time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SessionSourceInfo>,
+    /// SDLC phase classification (current phase, label history, dominant phase).
+    pub phase: PhaseHistory,
+}
+
+impl Default for JsonlFields {
+    fn default() -> Self {
+        Self {
+            project: String::new(),
+            project_display_name: String::new(),
+            project_path: String::new(),
+            file_path: String::new(),
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            tokens: TokenUsage::default(),
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            last_turn_task_seconds: None,
+            last_cache_hit_at: None,
+            team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
+            tools_used: Vec::new(),
+            slug: None,
+            user_files: None,
+            source: None,
+            phase: PhaseHistory::default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // HookFields — 13 fields sourced from hooks, extracted from LiveSession
 // ---------------------------------------------------------------------------
 
@@ -410,108 +524,51 @@ impl Default for HookFields {
 pub struct LiveSession {
     /// Session UUID (filename without .jsonl extension).
     pub id: String,
-    /// Encoded project directory name (as stored on disk).
-    pub project: String,
-    /// Human-readable project name (last path component, decoded).
-    pub project_display_name: String,
-    /// Full decoded project path.
-    pub project_path: String,
-    /// Absolute path to the JSONL session file.
-    pub file_path: String,
     /// Current derived session status.
     pub status: SessionStatus,
-    /// All hook-sourced fields (agent_state, pid, title, turn_count, etc.).
-    /// Flattened into JSON for zero wire format change.
-    #[serde(flatten)]
-    #[ts(flatten)]
-    pub hook: HookFields,
-    /// Git branch name, if detected.
-    pub git_branch: Option<String>,
-    /// Resolved branch from worktree HEAD (differs from git_branch when in a worktree).
-    pub worktree_branch: Option<String>,
-    /// Whether this session is running inside a git worktree.
-    pub is_worktree: bool,
-    /// Computed: worktree_branch ?? git_branch. Always use this for display.
-    pub effective_branch: Option<String>,
     /// Unix timestamp when the session started, if known.
     #[ts(type = "number | null")]
     pub started_at: Option<i64>,
-    /// The primary model used in this session.
-    pub model: Option<String>,
-    /// Accumulated token usage for this session (cumulative, for cost).
-    pub tokens: TokenUsage,
-    /// Current context window fill: total input tokens from the last assistant turn.
-    #[ts(type = "number")]
-    pub context_window_tokens: u64,
-    /// Computed cost breakdown in USD.
-    pub cost: CostBreakdown,
-    /// Whether the Anthropic prompt cache is likely warm or cold.
-    pub cache_status: CacheStatus,
-    /// Seconds the agent spent on the last completed turn (frozen on Working->Paused).
-    /// Used by frontend to show task time for needs_you sessions.
-    pub last_turn_task_seconds: Option<u32>,
-    /// Team name if this session is a team lead.
-    /// Populated from the top-level `teamName` field in the JSONL (present after TeamCreate).
-    /// Frontend uses this to show team badge instead of sub-agent pills.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub team_name: Option<String>,
-    /// Team members read from ~/.claude/teams/{name}/config.json.
-    /// Populated after each JSONL metadata application when team_name is Some.
-    /// Empty vec when not a team lead.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub team_members: Vec<crate::teams::TeamMember>,
-    /// Number of inbox messages for this team (0 when not a team lead).
-    /// Used by frontend as a version signal to invalidate inbox queries.
-    #[serde(default, skip_serializing_if = "is_zero_u32")]
-    pub team_inbox_count: u32,
-    /// Number of file-modifying tool uses (Edit + Write) in this session.
-    /// Used by frontend as a version signal to invalidate file-history and plan queries.
-    #[serde(default)]
-    pub edit_count: u32,
-    /// Unique tool integrations detected in this session (MCP servers, skills).
-    /// Discovered from actual tool_use invocations -- 100% accuracy.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub tools_used: Vec<ToolUsed>,
-    /// Unix timestamp when the last cache hit or creation occurred.
-    /// Set only when a turn has cache_read_tokens > 0 OR cache_creation_tokens > 0.
-    /// Null if no cache activity has been detected (e.g., new session or below minimum tokens).
-    #[ts(type = "number | null")]
-    pub last_cache_hit_at: Option<i64>,
-    /// Session slug for plan file association.
-    pub slug: Option<String>,
-    /// Verified file references detected from user messages.
-    /// Deduplicated by absolute path across session lifetime (≤10, first-N-wins).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub user_files: Option<Vec<VerifiedFile>>,
     /// Unix timestamp when this session's process exited (None = still running).
     /// Set by reconciliation loop or SessionEnd hook. Used by frontend for
     /// "closed Xm ago" display and by recently-closed persistence.
     #[ts(type = "number | null")]
     pub closed_at: Option<i64>,
-    /// Where this session was launched from (terminal, IDE, or Agent SDK).
-    /// Detected from the parent process at discovery time.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<SessionSourceInfo>,
     /// If Some, this session is being controlled via the sidecar Agent SDK.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control: Option<ControlBinding>,
-    /// All statusline-derived fields (32 fields). Flattened into the JSON
-    /// output for zero wire format change.
-    #[serde(flatten)]
-    #[ts(flatten)]
-    pub statusline: StatuslineFields,
+    // -- Cross-source fields (written by both statusline and JSONL watcher) --
+    /// The primary model used in this session.
+    pub model: Option<String>,
     /// Display name from statusline (e.g. "Opus", "Sonnet"). Source of truth for live sessions.
-    /// Cross-source field — NOT moved into StatuslineFields.
+    /// Cross-source field — NOT moved into any sub-struct.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_display_name: Option<String>,
-    /// SDLC phase classification (current phase, label history, dominant phase).
-    pub phase: PhaseHistory,
     /// Monotonic timestamp when `model` was last set. Writers only overwrite
     /// when their timestamp > this value, preventing stale statusline updates
     /// from clobbering newer hook values. NOT serialized.
     #[serde(skip)]
     #[ts(skip)]
     pub model_set_at: i64,
+    /// Current context window fill: total input tokens from the last assistant turn.
+    #[ts(type = "number")]
+    pub context_window_tokens: u64,
+    // -- Sub-structs (flattened for zero wire format change) --
+    /// All statusline-derived fields (32 fields). Flattened into the JSON
+    /// output for zero wire format change.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub statusline: StatuslineFields,
+    /// All hook-sourced fields (agent_state, pid, title, turn_count, etc.).
+    /// Flattened into JSON for zero wire format change.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub hook: HookFields,
+    /// All JSONL-watcher-sourced fields (22 fields). Flattened into JSON
+    /// for zero wire format change.
+    #[serde(flatten)]
+    #[ts(flatten)]
+    pub jsonl: JsonlFields,
 }
 
 /// A single hook lifecycle event, captured for the event log.
@@ -664,11 +721,15 @@ pub fn status_from_agent_state(agent_state: &AgentState) -> SessionStatus {
 pub(crate) fn test_live_session(id: &str) -> LiveSession {
     LiveSession {
         id: id.to_string(),
-        project: String::new(),
-        project_display_name: "test".to_string(),
-        project_path: "/tmp/test".to_string(),
-        file_path: "/tmp/test.jsonl".to_string(),
         status: SessionStatus::Working,
+        started_at: Some(1000),
+        closed_at: None,
+        control: None,
+        model: None,
+        model_display_name: None,
+        model_set_at: 0,
+        context_window_tokens: 0,
+        statusline: StatuslineFields::default(),
         hook: HookFields {
             agent_state: AgentState {
                 group: AgentStateGroup::Autonomous,
@@ -689,32 +750,30 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
             agent_state_set_at: 0,
             hook_events: Vec::new(),
         },
-        git_branch: None,
-        worktree_branch: None,
-        is_worktree: false,
-        effective_branch: None,
-        started_at: Some(1000),
-        model: None,
-        tokens: TokenUsage::default(),
-        context_window_tokens: 0,
-        cost: CostBreakdown::default(),
-        cache_status: CacheStatus::Unknown,
-        last_turn_task_seconds: None,
-        team_name: None,
-        team_members: Vec::new(),
-        team_inbox_count: 0,
-        edit_count: 0,
-        tools_used: Vec::new(),
-        last_cache_hit_at: None,
-        slug: None,
-        user_files: None,
-        closed_at: None,
-        control: None,
-        statusline: StatuslineFields::default(),
-        model_display_name: None,
-        model_set_at: 0,
-        source: None,
-        phase: PhaseHistory::default(),
+        jsonl: JsonlFields {
+            project: String::new(),
+            project_display_name: "test".to_string(),
+            project_path: "/tmp/test".to_string(),
+            file_path: "/tmp/test.jsonl".to_string(),
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            tokens: TokenUsage::default(),
+            cost: CostBreakdown::default(),
+            cache_status: CacheStatus::Unknown,
+            last_turn_task_seconds: None,
+            last_cache_hit_at: None,
+            team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
+            tools_used: Vec::new(),
+            slug: None,
+            user_files: None,
+            source: None,
+            phase: PhaseHistory::default(),
+        },
     }
 }
 
@@ -979,7 +1038,7 @@ mod tests {
     #[test]
     fn verified_file_in_live_session_serializes_correctly() {
         let mut session = minimal_live_session("test-1");
-        session.user_files = Some(vec![
+        session.jsonl.user_files = Some(vec![
             VerifiedFile {
                 path: "/Users/dev/src/auth.rs".into(),
                 kind: FileSourceKind::Mention,

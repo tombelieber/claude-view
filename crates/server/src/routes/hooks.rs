@@ -7,13 +7,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::live::state::{
     append_capped_hook_event, append_capped_hook_events, status_from_agent_state, AgentState,
-    AgentStateGroup, HookEvent, HookFields, LiveSession, SessionEvent, SessionStatus,
+    AgentStateGroup, HookEvent, HookFields, JsonlFields, LiveSession, SessionEvent, SessionStatus,
     MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::state::AppState;
 use claude_view_core::discovery::resolve_git_branch;
-use claude_view_core::phase::PhaseHistory;
-use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct HookPayload {
@@ -208,11 +206,15 @@ pub async fn handle_hook(
                     let effective = wt_branch.clone().or(branch.clone());
                     let mut session = LiveSession {
                         id: payload.session_id.clone(),
-                        project: String::new(),
-                        project_display_name: extract_project_name(payload.cwd.as_deref()),
-                        project_path: payload.cwd.clone().unwrap_or_default(),
-                        file_path: payload.transcript_path.clone().unwrap_or_default(),
                         status: status_from_agent_state(&agent_state),
+                        started_at: None,
+                        closed_at: None,
+                        control: None,
+                        model: payload.model.clone(),
+                        model_display_name: None,
+                        model_set_at: now_ms(),
+                        context_window_tokens: 0,
+                        statusline: crate::live::state::StatuslineFields::default(),
                         hook: HookFields {
                             agent_state: agent_state.clone(),
                             pid: claude_pid,
@@ -232,32 +234,17 @@ pub async fn handle_hook(
                             agent_state_set_at: now_ms(),
                             hook_events: Vec::new(),
                         },
-                        git_branch: branch,
-                        worktree_branch: wt_branch,
-                        is_worktree: is_wt,
-                        effective_branch: effective,
-                        started_at: None,
-                        model: payload.model.clone(),
-                        tokens: TokenUsage::default(),
-                        context_window_tokens: 0,
-                        cost: CostBreakdown::default(),
-                        cache_status: CacheStatus::Unknown,
-                        last_turn_task_seconds: None,
-                        team_name: None,
-                        team_members: Vec::new(),
-                        team_inbox_count: 0,
-                        edit_count: 0,
-                        tools_used: Vec::new(),
-                        last_cache_hit_at: None,
-                        slug: None,
-                        user_files: None,
-                        closed_at: None,
-                        control: None,
-                        statusline: crate::live::state::StatuslineFields::default(),
-                        model_display_name: None,
-                        model_set_at: now_ms(),
-                        source: None,
-                        phase: PhaseHistory::default(),
+                        jsonl: JsonlFields {
+                            project: String::new(),
+                            project_display_name: extract_project_name(payload.cwd.as_deref()),
+                            project_path: payload.cwd.clone().unwrap_or_default(),
+                            file_path: payload.transcript_path.clone().unwrap_or_default(),
+                            git_branch: branch,
+                            worktree_branch: wt_branch,
+                            is_worktree: is_wt,
+                            effective_branch: effective,
+                            ..JsonlFields::default()
+                        },
                     };
                     append_capped_hook_events(
                         &mut session.hook.hook_events,
@@ -387,7 +374,7 @@ pub async fn handle_hook(
                         context: None,
                     };
                     session.hook.hook_events.clear();
-                    let is_ghost = session.file_path.is_empty() && session.hook.turn_count == 0;
+                    let is_ghost = session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
                     let tp = session
                         .statusline
                         .statusline_transcript_path
@@ -457,11 +444,15 @@ pub async fn handle_hook(
                 let effective = wt_branch.clone().or(branch.clone());
                 let mut session = LiveSession {
                     id: payload.session_id.clone(),
-                    project: String::new(),
-                    project_display_name: extract_project_name(payload.cwd.as_deref()),
-                    project_path: payload.cwd.clone().unwrap_or_default(),
-                    file_path: payload.transcript_path.clone().unwrap_or_default(),
                     status: status_from_agent_state(&agent_state),
+                    started_at: Some(now),
+                    closed_at: None,
+                    control: None,
+                    model: payload.model.clone(),
+                    model_display_name: None,
+                    model_set_at: now_ms(),
+                    context_window_tokens: 0,
+                    statusline: crate::live::state::StatuslineFields::default(),
                     hook: HookFields {
                         agent_state: agent_state.clone(),
                         pid: claude_pid,
@@ -477,32 +468,17 @@ pub async fn handle_hook(
                         agent_state_set_at: now_ms(),
                         hook_events: Vec::new(),
                     },
-                    git_branch: branch,
-                    worktree_branch: wt_branch,
-                    is_worktree: is_wt,
-                    effective_branch: effective,
-                    started_at: Some(now),
-                    model: payload.model.clone(),
-                    tokens: TokenUsage::default(),
-                    context_window_tokens: 0,
-                    cost: CostBreakdown::default(),
-                    cache_status: CacheStatus::Unknown,
-                    last_turn_task_seconds: None,
-                    team_name: None,
-                    team_members: Vec::new(),
-                    team_inbox_count: 0,
-                    edit_count: 0,
-                    tools_used: Vec::new(),
-                    last_cache_hit_at: None,
-                    slug: None,
-                    user_files: None,
-                    closed_at: None,
-                    control: None,
-                    statusline: crate::live::state::StatuslineFields::default(),
-                    model_display_name: None,
-                    source: None,
-                    model_set_at: now_ms(),
-                    phase: PhaseHistory::default(),
+                    jsonl: JsonlFields {
+                        project: String::new(),
+                        project_display_name: extract_project_name(payload.cwd.as_deref()),
+                        project_path: payload.cwd.clone().unwrap_or_default(),
+                        file_path: payload.transcript_path.clone().unwrap_or_default(),
+                        git_branch: branch,
+                        worktree_branch: wt_branch,
+                        is_worktree: is_wt,
+                        effective_branch: effective,
+                        ..JsonlFields::default()
+                    },
                 };
                 append_capped_hook_events(
                     &mut session.hook.hook_events,
@@ -1361,11 +1337,15 @@ mod tests {
     fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
         crate::live::state::LiveSession {
             id: id.to_string(),
-            project: String::new(),
-            project_display_name: "test".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: "/tmp/test.jsonl".to_string(),
             status: crate::live::state::SessionStatus::Working,
+            started_at: Some(1000),
+            closed_at: None,
+            control: None,
+            model: None,
+            model_display_name: None,
+            model_set_at: 0,
+            context_window_tokens: 0,
+            statusline: crate::live::state::StatuslineFields::default(),
             hook: HookFields {
                 agent_state: AgentState {
                     group: AgentStateGroup::Autonomous,
@@ -1386,32 +1366,13 @@ mod tests {
                 agent_state_set_at: 0,
                 hook_events: Vec::new(),
             },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            started_at: Some(1000),
-            model: None,
-            tokens: claude_view_core::pricing::TokenUsage::default(),
-            context_window_tokens: 0,
-            cost: claude_view_core::pricing::CostBreakdown::default(),
-            cache_status: claude_view_core::pricing::CacheStatus::Unknown,
-            last_turn_task_seconds: None,
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            statusline: crate::live::state::StatuslineFields::default(),
-            model_display_name: None,
-            model_set_at: 0,
-            source: None,
-            phase: claude_view_core::phase::PhaseHistory::default(),
+            jsonl: crate::live::state::JsonlFields {
+                project: String::new(),
+                project_display_name: "test".to_string(),
+                project_path: "/tmp/test".to_string(),
+                file_path: "/tmp/test.jsonl".to_string(),
+                ..crate::live::state::JsonlFields::default()
+            },
         }
     }
 
@@ -1844,7 +1805,7 @@ mod tests {
         let session = sessions
             .get(session_id)
             .expect("session should be promoted");
-        assert_eq!(session.project_path, "/tmp/promoted-project");
+        assert_eq!(session.jsonl.project_path, "/tmp/promoted-project");
         assert_eq!(session.hook.hook_events.len(), 2);
         assert_eq!(session.hook.hook_events[0].event_name, "PreToolUse");
         assert_eq!(session.hook.hook_events[1].event_name, "UserPromptSubmit");
@@ -2348,7 +2309,7 @@ mod tests {
             let mut sessions = state.live_sessions.write().await;
             let mut real = make_autonomous_session("real-old");
             real.hook.pid = Some(99998);
-            real.file_path = "/tmp/real.jsonl".into();
+            real.jsonl.file_path = "/tmp/real.jsonl".into();
             real.hook.turn_count = 5;
             sessions.insert("real-old".into(), real);
         }
@@ -2467,7 +2428,7 @@ mod tests {
             let mut sessions = state.live_sessions.write().await;
             let mut ghost = make_autonomous_session("ghost-session");
             ghost.hook.pid = Some(40001);
-            ghost.file_path = String::new(); // no JSONL
+            ghost.jsonl.file_path = String::new(); // no JSONL
             ghost.hook.turn_count = 0; // zero turns
             sessions.insert("ghost-session".into(), ghost);
         }
