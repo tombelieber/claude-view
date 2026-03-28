@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { sseUrl } from '../lib/sse-url'
+import type { ComponentSnapshot } from '../types/generated/ComponentSnapshot'
 import type { ProcessTreeSnapshot } from '../types/generated/ProcessTreeSnapshot'
 import type { ResourceSnapshot } from '../types/generated/ResourceSnapshot'
 import type { SystemInfo } from '../types/generated/SystemInfo'
@@ -14,6 +15,8 @@ export interface SystemMonitorState {
   processTree: ProcessTreeSnapshot | null
   /** Unix timestamp (ms) when processTree was last updated. For freshness indicator. */
   processTreeFreshAt: number | null
+  /** Component-level resource breakdown. null until first `components` SSE event (~10s). */
+  components: ComponentSnapshot | null
 }
 
 const INITIAL_STATE: SystemMonitorState = {
@@ -22,6 +25,7 @@ const INITIAL_STATE: SystemMonitorState = {
   snapshot: null,
   processTree: null,
   processTreeFreshAt: null,
+  components: null,
 }
 
 const MAX_BACKOFF_MS = 30_000
@@ -80,6 +84,16 @@ export function useSystemMonitor(): SystemMonitorState {
             processTree: tree,
             processTreeFreshAt: Date.now(),
           }))
+        } catch {
+          // ignore malformed data
+        }
+      })
+
+      es.addEventListener('components', (e: MessageEvent) => {
+        if (unmounted || esRef.current !== es) return
+        try {
+          const data: ComponentSnapshot = JSON.parse(e.data)
+          setState((prev) => ({ ...prev, components: data }))
         } catch {
           // ignore malformed data
         }
