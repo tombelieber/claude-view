@@ -10,5 +10,6 @@ export type ComponentStatus = {
   pid: number | null
   cpuPercent: number
   memoryBytes: number
+  vramBytes: number | null
   details: ComponentDetails
 }
