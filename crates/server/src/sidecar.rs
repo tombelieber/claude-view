@@ -258,6 +258,19 @@ impl SidecarManager {
         }
     }
 
+    /// Get the PID of the managed sidecar child process, if alive.
+    pub fn child_pid(&self) -> Option<u32> {
+        let Ok(mut guard) = self.child.lock() else {
+            return None;
+        };
+        if let Some(ref mut child) = *guard {
+            if matches!(child.try_wait(), Ok(None)) {
+                return Some(child.id());
+            }
+        }
+        None
+    }
+
     /// HTTP health check over TCP using reqwest.
     async fn health_check(&self) -> Result<(), SidecarError> {
         let url = format!("{}/health", self.base_url);
