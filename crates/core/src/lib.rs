@@ -54,8 +54,7 @@ pub use invocation::*;
 pub use metrics::*;
 pub use parser::*;
 pub use phase::{
-    classify_window, dominant_phase, PhaseClassifier, PhaseHistory, PhaseLabel, SessionPhase,
-    StepSignals,
+    dominant_phase, is_shipping_cmd, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
 };
 pub use registry::*;
 pub use session_index::*;
