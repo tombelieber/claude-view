@@ -121,6 +121,60 @@ impl<T> Transient<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ts_rs::TS;
+
+    // -- ts-rs flatten spike --
+
+    /// Verifies #[serde(flatten)] + #[ts(flatten)] on a sub-struct
+    /// containing Monotonic/Latest/Transient produces flat TypeScript output.
+    /// Uses #[ts(as = "Option<T>")] on fields since newtypes don't derive TS.
+    #[derive(Debug, Clone, Default, Serialize, TS)]
+    #[serde(rename_all = "camelCase")]
+    struct SpikeSubStruct {
+        #[ts(as = "Option<u64>")]
+        #[serde(default, skip_serializing_if = "Monotonic::is_none")]
+        pub spike_duration: Monotonic<u64>,
+        #[ts(as = "Option<String>")]
+        #[serde(default, skip_serializing_if = "Latest::is_none")]
+        pub spike_version: Latest<String>,
+        #[ts(as = "Option<String>")]
+        #[serde(default, skip_serializing_if = "Transient::is_none")]
+        pub spike_vim: Transient<String>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, TS)]
+    #[serde(rename_all = "camelCase")]
+    struct SpikeParent {
+        pub id: String,
+        #[serde(flatten)]
+        #[ts(flatten)]
+        pub sub: SpikeSubStruct,
+    }
+
+    #[test]
+    fn ts_rs_flatten_spike_produces_flat_fields() {
+        // Verify the TypeScript type has flat fields, not a nested `sub` object
+        let ts = <SpikeParent as TS>::inline();
+        // SpikeParent should contain `spikeDuration`, `spikeVersion`, `spikeVim`
+        // as flat fields (not nested under `sub`)
+        assert!(
+            ts.contains("spikeDuration"),
+            "Expected flat field 'spikeDuration' in TS output, got: {ts}"
+        );
+        assert!(
+            ts.contains("spikeVersion"),
+            "Expected flat field 'spikeVersion' in TS output, got: {ts}"
+        );
+        assert!(
+            ts.contains("spikeVim"),
+            "Expected flat field 'spikeVim' in TS output, got: {ts}"
+        );
+        // Should NOT contain `sub:` as a nested field
+        assert!(
+            !ts.contains("sub:"),
+            "Expected NO nested 'sub' field in TS output, got: {ts}"
+        );
+    }
 
     // -- Monotonic tests --
 
