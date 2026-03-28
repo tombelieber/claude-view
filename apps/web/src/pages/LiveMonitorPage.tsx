@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { CostTokenPopover } from '../components/live/CostTokenPopover'
+import { HarnessKanbanView } from '../components/live/HarnessKanbanView'
 import { KanbanView } from '../components/live/KanbanView'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { ListView } from '../components/live/ListView'
@@ -34,11 +35,11 @@ import { useMonitorStore } from '../store/monitor-store'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
   const urlView = searchParams.get('view') as LiveViewMode | null
-  if (urlView && ['grid', 'list', 'kanban', 'monitor'].includes(urlView)) {
+  if (urlView && ['grid', 'list', 'kanban', 'monitor', 'harness'].includes(urlView)) {
     return urlView
   }
   const stored = localStorage.getItem(LIVE_VIEW_STORAGE_KEY) as LiveViewMode | null
-  if (stored && ['grid', 'list', 'kanban', 'monitor'].includes(stored)) {
+  if (stored && ['grid', 'list', 'kanban', 'monitor', 'harness'].includes(stored)) {
     return stored
   }
   return 'kanban'
@@ -441,10 +442,10 @@ export function LiveMonitorPage() {
 
       {/* Scrollable content — kanban columns scroll independently, other views page-scroll */}
       <div
-        className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' || viewMode === 'monitor' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+        className={`flex-1 min-h-0 px-6 pt-4 pb-20 sm:pb-6 ${viewMode === 'kanban' || viewMode === 'monitor' || viewMode === 'harness' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
       >
         <div
-          className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' || viewMode === 'monitor' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
+          className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' || viewMode === 'monitor' || viewMode === 'harness' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
         >
           {/* View content */}
           {viewMode === 'grid' && (
@@ -497,47 +498,61 @@ export function LiveMonitorPage() {
             <MonitorView sessions={filteredSessions} onSelectSession={handleMonitorExpand} />
           )}
 
-          {/* Empty state — skip for kanban (columns have their own emptyMessage) */}
-          {filteredSessions.length === 0 && isConnected && viewMode !== 'kanban' && (
-            <div className="text-center text-gray-400 dark:text-gray-500 py-16">
-              <div className="text-4xl mb-4">~</div>
-              {sessions.length === 0 ? (
-                serverSummary && serverSummary.processCount > 0 ? (
-                  <>
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 text-green-500 text-sm font-medium mb-3">
-                      <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                      {serverSummary.processCount} Claude{' '}
-                      {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
-                    </div>
-                    <div className="text-sm">Sessions appear as they report in via hooks.</div>
-                    <div className="text-xs mt-1 text-gray-500 dark:text-gray-600">
-                      Try sending a message in one of your Claude Code terminals.
-                    </div>
-                  </>
+          {viewMode === 'harness' && (
+            <HarnessKanbanView
+              sessions={filteredSessions}
+              selectedId={selectedId}
+              onSelect={handleSelectSession}
+              onCardClick={handleSelectSession}
+              stalledSessions={stalledSessions}
+              currentTime={currentTime}
+            />
+          )}
+
+          {/* Empty state — skip for kanban and harness (columns have their own emptyMessage) */}
+          {filteredSessions.length === 0 &&
+            isConnected &&
+            viewMode !== 'kanban' &&
+            viewMode !== 'harness' && (
+              <div className="text-center text-gray-400 dark:text-gray-500 py-16">
+                <div className="text-4xl mb-4">~</div>
+                {sessions.length === 0 ? (
+                  serverSummary && serverSummary.processCount > 0 ? (
+                    <>
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 text-green-500 text-sm font-medium mb-3">
+                        <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                        {serverSummary.processCount} Claude{' '}
+                        {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
+                      </div>
+                      <div className="text-sm">Sessions appear as they report in via hooks.</div>
+                      <div className="text-xs mt-1 text-gray-500 dark:text-gray-600">
+                        Try sending a message in one of your Claude Code terminals.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm">No active Claude Code sessions detected.</div>
+                      <div className="text-xs mt-1">
+                        Start a session in your terminal and it will appear here.
+                      </div>
+                    </>
+                  )
                 ) : (
                   <>
-                    <div className="text-sm">No active Claude Code sessions detected.</div>
+                    <div className="text-sm">No sessions match your filters.</div>
                     <div className="text-xs mt-1">
-                      Start a session in your terminal and it will appear here.
+                      <button
+                        type="button"
+                        onClick={filterActions.clearAll}
+                        className="text-indigo-400 hover:text-indigo-300"
+                      >
+                        Clear filters
+                      </button>
                     </div>
                   </>
-                )
-              ) : (
-                <>
-                  <div className="text-sm">No sessions match your filters.</div>
-                  <div className="text-xs mt-1">
-                    <button
-                      type="button"
-                      onClick={filterActions.clearAll}
-                      className="text-indigo-400 hover:text-indigo-300"
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
 
           {/* Recently closed sessions — grid and list views only */}
           {(viewMode === 'grid' || viewMode === 'list') && (

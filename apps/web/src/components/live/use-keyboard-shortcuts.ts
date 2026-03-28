@@ -83,6 +83,10 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
             opts.onViewModeChange('grid')
             e.preventDefault()
             return
+          case 'h':
+            opts.onViewModeChange('harness')
+            e.preventDefault()
+            return
         }
         // Unrecognized second key — fall through to normal handling
       }
@@ -105,6 +109,11 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions): void
 
         case '4':
           opts.onViewModeChange('monitor')
+          e.preventDefault()
+          break
+
+        case '5':
+          opts.onViewModeChange('harness')
           e.preventDefault()
           break
 
