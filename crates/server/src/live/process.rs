@@ -241,7 +241,7 @@ pub fn count_claude_processes() -> u32 {
 
     let mut count = 0u32;
 
-    for (_pid, process) in sys.processes() {
+    for process in sys.processes().values() {
         let name = process.name().to_string_lossy();
         let is_claude = name.contains("claude")
             || process
