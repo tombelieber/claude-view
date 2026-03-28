@@ -106,6 +106,7 @@ pub struct LiveLine {
     pub line_type: LineType,
     pub role: Option<String>,
     pub content_preview: String,
+    pub content_extended: String,
     pub tool_names: Vec<String>,
     pub model: Option<String>,
     pub input_tokens: Option<u64>,
@@ -475,6 +476,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 line_type: LineType::Other,
                 role: None,
                 content_preview: String::new(),
+                content_extended: String::new(),
                 tool_names: Vec::new(),
                 model: None,
                 input_tokens: None,
@@ -543,6 +545,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     };
     let (
         content_preview,
+        content_extended,
         tool_names,
         skill_names,
         bash_commands,
@@ -1024,6 +1027,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         line_type,
         role,
         content_preview,
+        content_extended,
         tool_names,
         model,
         input_tokens,
@@ -1132,14 +1136,15 @@ pub(crate) fn strip_noise_tags(content: &str) -> (String, Option<String>) {
 /// content array contains a `tool_result` block.
 /// Content extraction result from `extract_content_and_tools`.
 type ContentExtraction = (
-    String,       // content_preview
-    Vec<String>,  // tool_names
-    Vec<String>,  // skill_names
-    Vec<String>,  // bash_commands
-    Vec<String>,  // edited_files
-    bool,         // has_tool_result
+    String,         // content_preview
+    String,         // content_extended (500-char truncation for phase classifier)
+    Vec<String>,    // tool_names
+    Vec<String>,    // skill_names
+    Vec<String>,    // bash_commands
+    Vec<String>,    // edited_files
+    bool,           // has_tool_result
     Option<String>, // ide_file
-    Vec<String>,  // at_files
+    Vec<String>,    // at_files
 );
 
 fn extract_content_and_tools(
@@ -1152,6 +1157,7 @@ fn extract_content_and_tools(
         .get_or_init(|| regex_lite::Regex::new(r"(?:^|\s)@([\w./-]+\.\w{1,15})").unwrap());
 
     let mut preview = String::new();
+    let mut extended = String::new();
     let mut tool_names = Vec::new();
     let mut skill_names = Vec::new();
     let mut bash_commands = Vec::new();
@@ -1172,6 +1178,7 @@ fn extract_content_and_tools(
             }
             let (stripped, file) = strip_noise_tags(s);
             preview = truncate_str(&stripped, 200);
+            extended = truncate_str(&stripped, 500);
             ide_file = file;
         }
         Some(serde_json::Value::Array(blocks)) => {
@@ -1190,6 +1197,7 @@ fn extract_content_and_tools(
                             if preview.is_empty() {
                                 let (stripped, file) = strip_noise_tags(text);
                                 preview = truncate_str(&stripped, 200);
+                                extended = truncate_str(&stripped, 500);
                                 if ide_file.is_none() {
                                     ide_file = file;
                                 }
@@ -1202,9 +1210,8 @@ fn extract_content_and_tools(
                             let input = block.get("input");
                             match name {
                                 "Skill" => {
-                                    if let Some(skill) = input
-                                        .and_then(|i| i.get("skill"))
-                                        .and_then(|s| s.as_str())
+                                    if let Some(skill) =
+                                        input.and_then(|i| i.get("skill")).and_then(|s| s.as_str())
                                     {
                                         if !skill.is_empty() {
                                             skill_names.push(skill.to_string());
@@ -1217,8 +1224,7 @@ fn extract_content_and_tools(
                                         .and_then(|s| s.as_str())
                                     {
                                         if !cmd.is_empty() {
-                                            bash_commands
-                                                .push(truncate_str(cmd, 200).to_string());
+                                            bash_commands.push(truncate_str(cmd, 200).to_string());
                                         }
                                     }
                                 }
@@ -1248,6 +1254,7 @@ fn extract_content_and_tools(
 
     (
         preview,
+        extended,
         tool_names,
         skill_names,
         bash_commands,
