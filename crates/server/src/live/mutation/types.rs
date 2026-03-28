@@ -63,9 +63,46 @@ pub enum LifecycleEvent {
         event_name: String,
         pid: Option<u32>,
     },
-    /// Session ended (process exited).
-    End,
-    /// Sub-entity lifecycle (subagent, task, teammate).
+    /// Session ended. Reason: "clear", "resume", "logout", "prompt_input_exit", etc.
+    End { reason: Option<String> },
+    /// Agent turn ended normally. Carries optional assistant response preview.
+    Stop {
+        agent_state: AgentState,
+        last_assistant_message: Option<String>,
+        pid: Option<u32>,
+    },
+    /// Turn ended due to API error (rate_limit, server_error, etc.).
+    StopFailure {
+        error: Option<String>,
+        error_details: Option<String>,
+        pid: Option<u32>,
+    },
+    /// Context compaction completed.
+    Compacted {
+        trigger: Option<String>,
+        summary: Option<String>,
+        pid: Option<u32>,
+    },
+    /// Working directory changed mid-session.
+    CwdChanged {
+        old_cwd: Option<String>,
+        new_cwd: Option<String>,
+        pid: Option<u32>,
+    },
+    /// Observability-only event. Does NOT change agent_state.
+    /// Appends to hook_events timeline but preserves current state.
+    Observability {
+        event_name: String,
+        pid: Option<u32>,
+    },
+    /// Subagent spawned. Updates agent_state AND pushes to sub_agents list.
+    SubagentStarted {
+        agent_state: AgentState,
+        agent_type: String,
+        agent_id: Option<String>,
+        pid: Option<u32>,
+    },
+    /// Sub-entity lifecycle (subagent complete, task create/complete, teammate idle).
     SubEntity(SubEntityEvent),
 }
 
@@ -74,6 +111,11 @@ pub enum SubEntityEvent {
     SubagentComplete {
         agent_type: String,
         agent_id: Option<String>,
+    },
+    TaskCreated {
+        task_id: String,
+        subject: Option<String>,
+        description: Option<String>,
     },
     TaskComplete {
         task_id: String,

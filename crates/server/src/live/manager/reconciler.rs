@@ -87,7 +87,7 @@ impl LiveSessionManager {
                             .handle(
                                 &ctx,
                                 session_id,
-                                SessionMutation::Lifecycle(LifecycleEvent::End),
+                                SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
                                 None,
                                 now,
                                 None,
@@ -383,7 +383,7 @@ impl LiveSessionManager {
                         .handle(
                             &ctx,
                             &session_id,
-                            SessionMutation::Lifecycle(LifecycleEvent::End),
+                            SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
                             None,
                             now,
                             None,

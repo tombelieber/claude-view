@@ -433,7 +433,7 @@ fn plan_side_effects(
     let mut effects = Vec::new();
 
     match mutation {
-        SessionMutation::Lifecycle(LifecycleEvent::End) => {
+        SessionMutation::Lifecycle(LifecycleEvent::End { .. }) => {
             // Capture hook events before End clears them
             if !session.hook.hook_events.is_empty() {
                 effects.push(SideEffect::PersistHookEvents {
@@ -533,9 +533,15 @@ fn common_post_mutation(
     // Extract PID from lifecycle events, falling back to caller-provided PID.
     // `mutation` is borrowed, so `pid` fields are `&Option<u32>`.
     let bind_pid = match mutation {
-        SessionMutation::Lifecycle(LifecycleEvent::Start { pid, .. }) => (*pid).or(caller_pid),
-        SessionMutation::Lifecycle(LifecycleEvent::Prompt { pid, .. }) => (*pid).or(caller_pid),
-        SessionMutation::Lifecycle(LifecycleEvent::StateChange { pid, .. }) => {
+        SessionMutation::Lifecycle(LifecycleEvent::Start { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::Prompt { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::StateChange { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::Stop { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::StopFailure { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::Compacted { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::CwdChanged { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::Observability { pid, .. })
+        | SessionMutation::Lifecycle(LifecycleEvent::SubagentStarted { pid, .. }) => {
             (*pid).or(caller_pid)
         }
         _ => caller_pid,
@@ -645,7 +651,7 @@ mod tests {
             source: "hook".into(),
         });
 
-        let mutation = SessionMutation::Lifecycle(LifecycleEvent::End);
+        let mutation = SessionMutation::Lifecycle(LifecycleEvent::End { reason: None });
         let effects = plan_side_effects("end-test", &session, &mutation, 1700000003);
 
         // Should have: PersistHookEvents, RemoveAccumulator,
