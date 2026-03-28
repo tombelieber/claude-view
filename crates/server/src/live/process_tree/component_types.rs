@@ -120,6 +120,55 @@ mod tests {
     }
 
     #[test]
+    fn full_snapshot_serialization_contract() {
+        let snap = ComponentSnapshot {
+            components: vec![
+                ComponentStatus {
+                    name: "agent-sdk-sidecar".into(),
+                    kind: ComponentKind::ChildProcess,
+                    enabled: true,
+                    running: true,
+                    pid: Some(1234),
+                    cpu_percent: 2.5,
+                    memory_bytes: 188_000_000,
+                    vram_bytes: None,
+                    details: ComponentDetails::Sidecar {
+                        session_count: Some(3),
+                    },
+                },
+                ComponentStatus {
+                    name: "omlx-qwen".into(),
+                    kind: ComponentKind::ExternalService,
+                    enabled: true,
+                    running: true,
+                    pid: Some(5678),
+                    cpu_percent: 15.0,
+                    memory_bytes: 131_000_000,
+                    vram_bytes: Some(2_000_000_000),
+                    details: ComponentDetails::Omlx {
+                        model_id: "Qwen3.5-4B".into(),
+                        port: 8080,
+                        healthy: true,
+                    },
+                },
+            ],
+            build_mode: "debug".into(),
+            total_vram_bytes: Some(16_000_000_000),
+        };
+
+        let json = serde_json::to_value(&snap).unwrap();
+
+        // Verify full camelCase contract
+        assert_eq!(json["totalVramBytes"], 16_000_000_000u64);
+        let sidecar = &json["components"][0];
+        assert_eq!(sidecar["details"]["sessionCount"], 3);
+        assert!(sidecar["vramBytes"].is_null());
+        let omlx = &json["components"][1];
+        assert_eq!(omlx["vramBytes"], 2_000_000_000u64);
+        assert_eq!(omlx["details"]["modelId"], "Qwen3.5-4B");
+    }
+
+    #[test]
     fn component_status_camel_case_fields() {
         let status = ComponentStatus {
             name: "test".into(),
