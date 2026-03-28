@@ -35,7 +35,7 @@ use crate::time_range::{
 // ============================================================================
 
 /// Top-level category breakdown percentages.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryBreakdown {
@@ -46,7 +46,7 @@ pub struct CategoryBreakdown {
 }
 
 /// Count and percentage for a single L1 category.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategorySummary {
@@ -55,7 +55,7 @@ pub struct CategorySummary {
 }
 
 /// Hierarchical category node for treemap.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoryNode {
@@ -81,11 +81,12 @@ pub struct CategoryNode {
     pub insight: Option<String>,
     /// Child categories (empty for L3)
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[schema(no_recursion)]
     pub children: Vec<CategoryNode>,
 }
 
 /// Full categories response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesResponse {
@@ -100,7 +101,7 @@ pub struct CategoriesResponse {
 }
 
 /// Categories response metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CategoriesMeta {
@@ -110,7 +111,7 @@ pub struct CategoriesMeta {
 }
 
 /// Overall averages across all sessions for comparison.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct OverallAverages {
@@ -125,7 +126,7 @@ pub struct OverallAverages {
 // ============================================================================
 
 /// Full insights API response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsResponse {
@@ -142,7 +143,7 @@ pub struct InsightsResponse {
 }
 
 /// Overview statistics for the insights page.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsOverview {
@@ -152,7 +153,7 @@ pub struct InsightsOverview {
 }
 
 /// Work type breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkBreakdown {
@@ -163,7 +164,7 @@ pub struct WorkBreakdown {
 }
 
 /// Efficiency trend stats.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct EfficiencyStats {
@@ -174,7 +175,7 @@ pub struct EfficiencyStats {
 }
 
 /// Best time of day/week stats.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BestTimeStats {
@@ -184,7 +185,7 @@ pub struct BestTimeStats {
 }
 
 /// Patterns grouped by impact tier.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PatternGroups {
@@ -194,7 +195,7 @@ pub struct PatternGroups {
 }
 
 /// Classification coverage status.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationCoverage {
@@ -205,7 +206,7 @@ pub struct ClassificationCoverage {
 }
 
 /// Response metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsMeta {
@@ -223,7 +224,7 @@ pub struct InsightsMeta {
 }
 
 /// Trends response metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsTrendsMeta {
@@ -233,7 +234,7 @@ pub struct InsightsTrendsMeta {
 }
 
 /// Full trends response wrapper with additive metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsTrendsResponse {
@@ -256,7 +257,7 @@ pub struct InsightsTrendsResponse {
 }
 
 /// Benchmarks response wrapper with additive metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct BenchmarksResponseWithMeta {
@@ -269,7 +270,7 @@ pub struct BenchmarksResponseWithMeta {
 // Query parameters
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct InsightsQuery {
     /// Period start (unix timestamp).
     pub from: Option<i64>,
@@ -482,6 +483,12 @@ async fn fetch_analytics_scope_meta_for_range(
 // ============================================================================
 
 /// GET /api/insights - Compute and return behavioral insights.
+#[utoipa::path(get, path = "/api/insights", tag = "insights",
+    params(InsightsQuery),
+    responses(
+        (status = 200, description = "Behavioral insights with patterns and classification status", body = InsightsResponse),
+    )
+)]
 pub async fn get_insights(
     State(state): State<Arc<AppState>>,
     Query(query): Query<InsightsQuery>,
@@ -849,7 +856,7 @@ async fn get_classification_status(pool: &sqlx::SqlitePool) -> ApiResult<Classif
 // ============================================================================
 
 /// Query parameters for GET /api/insights/categories.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct CategoriesQuery {
     /// Period start (unix timestamp).
     pub from: Option<i64>,
@@ -870,6 +877,12 @@ struct CategoryCountRow {
 }
 
 /// GET /api/insights/categories - Returns hierarchical category data.
+#[utoipa::path(get, path = "/api/insights/categories", tag = "insights",
+    params(CategoriesQuery),
+    responses(
+        (status = 200, description = "Hierarchical category breakdown for treemap", body = CategoriesResponse),
+    )
+)]
 pub async fn get_categories(
     State(state): State<Arc<AppState>>,
     Query(query): Query<CategoriesQuery>,
@@ -1258,7 +1271,7 @@ fn aggregate_category_metrics(counts: &[&CategoryCountRow]) -> (f64, u32, f64, f
 // ============================================================================
 
 /// Query parameters for GET /api/insights/trends.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct TrendsQuery {
     #[serde(default = "default_metric")]
     pub metric: String,
@@ -1287,6 +1300,12 @@ const VALID_TREND_RANGES: &[&str] = &["3mo", "6mo", "1yr", "all"];
 const VALID_GRANULARITIES: &[&str] = &["day", "week", "month"];
 
 /// GET /api/insights/trends - Get time-series trend data for charts.
+#[utoipa::path(get, path = "/api/insights/trends", tag = "insights",
+    params(TrendsQuery),
+    responses(
+        (status = 200, description = "Time-series trend data for metrics and heatmap", body = InsightsTrendsResponse),
+    )
+)]
 pub async fn get_insights_trends(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TrendsQuery>,
@@ -1442,13 +1461,19 @@ pub async fn get_insights_trends(
 // ============================================================================
 
 /// Query parameters for the benchmarks endpoint.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct BenchmarksQuery {
     /// Time range: all, 30d, 90d, 1y. Defaults to all.
     pub range: Option<String>,
 }
 
 /// GET /api/insights/benchmarks - Compute personal progress benchmarks.
+#[utoipa::path(get, path = "/api/insights/benchmarks", tag = "insights",
+    params(BenchmarksQuery),
+    responses(
+        (status = 200, description = "Personal progress benchmarks vs past periods", body = serde_json::Value),
+    )
+)]
 pub async fn get_benchmarks(
     State(state): State<Arc<AppState>>,
     Query(query): Query<BenchmarksQuery>,

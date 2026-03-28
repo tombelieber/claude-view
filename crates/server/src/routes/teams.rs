@@ -15,12 +15,24 @@ use crate::state::AppState;
 use crate::teams::{InboxMessage, TeamDetail, TeamSummary};
 
 /// GET /api/teams — List all teams.
-async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<TeamSummary>>> {
+#[utoipa::path(get, path = "/api/teams", tag = "teams",
+    responses(
+        (status = 200, description = "All team summaries", body = serde_json::Value),
+    )
+)]
+pub async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Vec<TeamSummary>>> {
     Ok(Json(state.teams.summaries()))
 }
 
 /// GET /api/teams/:name — Get team detail.
-async fn get_team(
+#[utoipa::path(get, path = "/api/teams/{name}", tag = "teams",
+    params(("name" = String, Path, description = "Team name")),
+    responses(
+        (status = 200, description = "Team detail", body = serde_json::Value),
+        (status = 404, description = "Team not found"),
+    )
+)]
+pub async fn get_team(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<TeamDetail>> {
@@ -32,7 +44,14 @@ async fn get_team(
 }
 
 /// GET /api/teams/:name/inbox — Get team inbox messages.
-async fn get_team_inbox(
+#[utoipa::path(get, path = "/api/teams/{name}/inbox", tag = "teams",
+    params(("name" = String, Path, description = "Team name")),
+    responses(
+        (status = 200, description = "Inbox messages", body = serde_json::Value),
+        (status = 404, description = "Team not found"),
+    )
+)]
+pub async fn get_team_inbox(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<Vec<InboxMessage>>> {

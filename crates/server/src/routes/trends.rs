@@ -13,7 +13,7 @@ use crate::error::ApiResult;
 use crate::state::AppState;
 
 /// Legacy trends response wrapper with additive metadata.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekTrendsResponse {
@@ -23,6 +23,11 @@ pub struct WeekTrendsResponse {
 }
 
 /// GET /api/trends - Get week-over-week trend metrics.
+#[utoipa::path(get, path = "/api/trends", tag = "stats",
+    responses(
+        (status = 200, description = "Week-over-week trend metrics for sessions, tokens, files, commits", body = serde_json::Value),
+    )
+)]
 ///
 /// Returns trends for:
 /// - Session count

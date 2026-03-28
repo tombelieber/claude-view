@@ -431,8 +431,7 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | `apps/landing/` | `@claude-view/landing` | Static HTML landing page |
 | `packages/shared/` | `@claude-view/shared` | Shared types & theme tokens |
 | `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
-| `packages/mcp/` | `@claude-view/mcp` | MCP server integration |
-| `packages/plugin/` | `@claude-view/plugin` | Claude Code plugin (tools + skills) |
+| `packages/plugin/` | `@claude-view/plugin` | Claude Code plugin (MCP server + tools + skills) |
 | `crates/` | — | Rust backend (Axum) |
 | `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
 | `infra/install-worker/` | — | Cloudflare Worker — install script proxy with download tracking |

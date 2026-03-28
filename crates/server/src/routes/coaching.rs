@@ -36,7 +36,7 @@ const MAX_RULES: usize = 8;
 // ============================================================================
 
 /// Request body for POST /api/coaching/rules.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyRuleRequest {
     pub pattern_id: String,
@@ -48,7 +48,7 @@ pub struct ApplyRuleRequest {
 }
 
 /// A coaching rule parsed from a `coaching-*.md` file.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
@@ -63,7 +63,7 @@ pub struct CoachingRule {
 }
 
 /// Response for GET /api/coaching/rules.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
@@ -74,7 +74,7 @@ pub struct ListRulesResponse {
 }
 
 /// Response for DELETE /api/coaching/rules/{id}.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
@@ -124,7 +124,12 @@ fn confidence_label(impact: f64) -> &'static str {
 // ============================================================================
 
 /// GET /api/coaching/rules — List all coaching rules from the rules directory.
-async fn list_rules(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListRulesResponse>> {
+#[utoipa::path(get, path = "/api/coaching/rules", tag = "coaching",
+    responses(
+        (status = 200, description = "All coaching rules from the rules directory", body = crate::routes::coaching::ListRulesResponse),
+    )
+)]
+pub async fn list_rules(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListRulesResponse>> {
     let rules = read_all_rules(&state.rules_dir);
     let count = rules.len();
     Ok(Json(ListRulesResponse {
@@ -135,7 +140,14 @@ async fn list_rules(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListRu
 }
 
 /// POST /api/coaching/rules — Create a new coaching rule file.
-async fn apply_rule(
+#[utoipa::path(post, path = "/api/coaching/rules", tag = "coaching",
+    request_body = ApplyRuleRequest,
+    responses(
+        (status = 200, description = "Coaching rule created or updated", body = crate::routes::coaching::CoachingRule),
+        (status = 409, description = "Rule budget exceeded (max 8 rules)"),
+    )
+)]
+pub async fn apply_rule(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ApplyRuleRequest>,
 ) -> ApiResult<Json<CoachingRule>> {
@@ -209,7 +221,14 @@ async fn apply_rule(
 }
 
 /// DELETE /api/coaching/rules/{id} — Remove a coaching rule file.
-async fn remove_rule(
+#[utoipa::path(delete, path = "/api/coaching/rules/{id}", tag = "coaching",
+    params(("id" = String, Path, description = "Coaching rule pattern ID")),
+    responses(
+        (status = 200, description = "Coaching rule removed", body = crate::routes::coaching::RemoveRuleResponse),
+        (status = 400, description = "Rule not found or invalid ID"),
+    )
+)]
+pub async fn remove_rule(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<RemoveRuleResponse>> {

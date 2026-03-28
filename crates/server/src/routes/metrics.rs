@@ -18,6 +18,12 @@ use crate::state::AppState;
 ///
 /// Returns metrics in Prometheus text format for scraping.
 /// Returns 503 Service Unavailable if metrics are not initialized.
+#[utoipa::path(get, path = "/metrics", tag = "system",
+    responses(
+        (status = 200, description = "Prometheus metrics in text format", content_type = "text/plain"),
+        (status = 503, description = "Metrics not initialized"),
+    )
+)]
 pub async fn metrics_handler() -> Response {
     match render_metrics() {
         Some(output) => (

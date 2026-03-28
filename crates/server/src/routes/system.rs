@@ -29,7 +29,7 @@ use crate::state::AppState;
 // ============================================================================
 
 /// Full system status response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SystemResponse {
@@ -43,7 +43,7 @@ pub struct SystemResponse {
 }
 
 /// Storage section of system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StorageInfo {
@@ -72,7 +72,7 @@ impl From<SystemStorageStats> for StorageInfo {
 }
 
 /// Performance section of system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceInfo {
@@ -87,7 +87,7 @@ pub struct PerformanceInfo {
 }
 
 /// Health section of system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthInfo {
@@ -122,7 +122,7 @@ impl From<HealthStats> for HealthInfo {
 }
 
 /// Integrity section of system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrityInfo {
@@ -130,7 +130,7 @@ pub struct IntegrityInfo {
 }
 
 /// Integrity counter values from the latest index run.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrityCounterInfo {
@@ -172,7 +172,7 @@ impl From<IndexRunIntegrityCounters> for IntegrityCounterInfo {
 }
 
 /// Index history entry in system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct IndexRunInfo {
@@ -189,7 +189,7 @@ pub struct IndexRunInfo {
 }
 
 /// Classification section of system response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassificationInfo {
@@ -226,7 +226,7 @@ impl From<ClassificationStatus> for ClassificationInfo {
 }
 
 /// Generic action response for POST endpoints.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActionResponse {
@@ -236,7 +236,7 @@ pub struct ActionResponse {
 }
 
 /// Clear cache response.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ClearCacheResponse {
@@ -259,6 +259,11 @@ pub struct ResetRequest {
 ///
 /// Runs storage, health, and classification queries in parallel
 /// using tokio::join!, then detects Claude CLI status.
+#[utoipa::path(get, path = "/api/system", tag = "system",
+    responses(
+        (status = 200, description = "Comprehensive system status including storage, health, and classification", body = crate::routes::system::SystemResponse),
+    )
+)]
 pub async fn get_system_status(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<SystemResponse>> {
@@ -354,6 +359,11 @@ fn calculate_performance(
 ///
 /// This is a lightweight endpoint that signals the server to start
 /// a background re-index. The actual work happens asynchronously.
+#[utoipa::path(post, path = "/api/system/reindex", tag = "system",
+    responses(
+        (status = 200, description = "Re-index triggered", body = serde_json::Value),
+    )
+)]
 pub async fn trigger_reindex(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ActionResponse>> {
@@ -389,6 +399,11 @@ pub async fn trigger_reindex(
 /// 4. `remove_dir_all()` — now safe, no live handles
 /// 5. `SearchIndex::open()` — creates fresh empty index
 /// 6. Write-lock holder, swap in the new `Arc<SearchIndex>`
+#[utoipa::path(post, path = "/api/system/clear-cache", tag = "system",
+    responses(
+        (status = 200, description = "Cache cleared, returns bytes freed", body = serde_json::Value),
+    )
+)]
 pub async fn clear_cache(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClearCacheResponse>> {
@@ -465,6 +480,11 @@ pub async fn clear_cache(
 }
 
 /// POST /api/system/git-resync - Trigger full git re-sync.
+#[utoipa::path(post, path = "/api/system/git-resync", tag = "system",
+    responses(
+        (status = 200, description = "Git re-sync triggered (stub)", body = serde_json::Value),
+    )
+)]
 pub async fn trigger_git_resync(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ActionResponse>> {
@@ -477,6 +497,13 @@ pub async fn trigger_git_resync(
 /// POST /api/system/reset - Factory reset all data.
 ///
 /// Requires a confirmation string "RESET_ALL_DATA" in the request body.
+#[utoipa::path(post, path = "/api/system/reset", tag = "system",
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Factory reset completed", body = serde_json::Value),
+        (status = 400, description = "Missing or invalid confirmation string"),
+    )
+)]
 pub async fn reset_all(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ResetRequest>,
@@ -533,12 +560,12 @@ fn calculate_dir_size(dir: &std::path::Path) -> u64 {
 // Check Path
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct CheckPathQuery {
     path: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct CheckPathResponse {
     exists: bool,
 }
@@ -547,7 +574,11 @@ pub struct CheckPathResponse {
 ///
 /// Used by the frontend to validate project paths before offering "resume session".
 /// Worktree directories can be removed, making the session un-resumable.
-async fn check_path(Query(q): Query<CheckPathQuery>) -> Json<CheckPathResponse> {
+#[utoipa::path(get, path = "/api/check-path", tag = "system",
+    params(CheckPathQuery),
+    responses((status = 200, description = "Path existence check", body = CheckPathResponse))
+)]
+pub async fn check_path(Query(q): Query<CheckPathQuery>) -> Json<CheckPathResponse> {
     let exists = std::path::Path::new(&q.path).exists();
     Json(CheckPathResponse { exists })
 }

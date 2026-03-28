@@ -9,7 +9,7 @@ use super::scoring::{calculate_pattern_score, Actionability};
 use super::templates::{get_template, render_template};
 
 /// A generated insight with human-readable text and scoring.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedInsight {
@@ -24,7 +24,7 @@ pub struct GeneratedInsight {
 }
 
 /// Evidence backing an insight.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightEvidence {

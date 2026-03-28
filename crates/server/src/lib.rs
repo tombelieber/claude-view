@@ -18,6 +18,7 @@ pub mod insights;
 pub mod jobs;
 pub mod live;
 pub mod metrics;
+pub mod openapi;
 pub mod routes;
 pub mod search_service;
 pub mod share_serializer;

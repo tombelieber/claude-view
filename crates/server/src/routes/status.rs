@@ -25,13 +25,21 @@ use crate::state::AppState;
 /// - commits_found: Commits found in last git sync
 /// - links_created: Session-commit links created in last git sync
 /// - updated_at: When metadata was last updated
+#[utoipa::path(
+    get,
+    path = "/api/status",
+    tag = "health",
+    responses(
+        (status = 200, description = "Index metadata and data freshness", body = IndexMetadata),
+    )
+)]
 pub async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<Json<IndexMetadata>> {
     let metadata = state.db.get_index_metadata().await?;
     Ok(Json(metadata))
 }
 
 /// Request body for updating the git sync interval.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateGitSyncIntervalRequest {
     /// Interval in seconds. Must be between 10 and 3600.
@@ -42,6 +50,16 @@ pub struct UpdateGitSyncIntervalRequest {
 ///
 /// Body: { "intervalSecs": 60 }
 /// Returns the updated IndexMetadata.
+#[utoipa::path(
+    put,
+    path = "/api/settings/git-sync-interval",
+    tag = "settings",
+    request_body = UpdateGitSyncIntervalRequest,
+    responses(
+        (status = 200, description = "Updated metadata", body = IndexMetadata),
+        (status = 400, description = "Invalid interval"),
+    )
+)]
 pub async fn update_git_sync_interval(
     State(state): State<Arc<AppState>>,
     Json(body): Json<UpdateGitSyncIntervalRequest>,
