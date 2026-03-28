@@ -70,7 +70,7 @@ fn gpu_alloc_bytes_iokit() -> Option<u64> {
     }
 
     unsafe {
-        let matching = IOServiceMatching(b"IOAccelerator\0".as_ptr() as *const _);
+        let matching = IOServiceMatching(c"IOAccelerator".as_ptr());
         if matching.is_null() {
             return None;
         }
