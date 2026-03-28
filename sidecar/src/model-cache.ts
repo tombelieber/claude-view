@@ -131,6 +131,11 @@ export function startModelCacheRefresh(): void {
   refreshInterval = setInterval(refreshModelCache, 60 * 60 * 1000)
 }
 
+/**
+ * Stop the model cache refresh interval and prevent in-flight refreshes
+ * from spawning new query() subprocesses.
+ * Called during sidecar shutdown to allow clean Node.js exit.
+ */
 export function stopModelCacheRefresh(): void {
   shuttingDown = true
   if (refreshInterval) {
