@@ -1,4 +1,4 @@
-import type { SessionPhase } from '../../types/generated/SessionPhase'
+import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
 import type { LiveSession } from './use-live-sessions'
 
 /** Displayable phases -- excludes 'working' which is the unclassified fallback */
