@@ -117,8 +117,8 @@ fn build_envelope(
         "payload": encrypted,
     });
     if let Some(s) = session {
-        if s.agent_state.group == AgentStateGroup::NeedsYou {
-            envelope["push_hint"] = serde_json::Value::String(s.agent_state.label.clone());
+        if s.hook.agent_state.group == AgentStateGroup::NeedsYou {
+            envelope["push_hint"] = serde_json::Value::String(s.hook.agent_state.label.clone());
             envelope["push_title"] = serde_json::Value::String(s.project_display_name.clone());
         }
     }

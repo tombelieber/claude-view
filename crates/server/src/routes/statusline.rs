@@ -257,9 +257,9 @@ pub async fn handle_statusline(
         apply_statusline(session, &payload);
         // Secondary PID binding: if the session has no PID yet (hook didn't provide one),
         // bind the PID from the statusline wrapper's $PPID header.
-        if session.pid.is_none() {
+        if session.hook.pid.is_none() {
             if let Some(pid) = statusline_pid {
-                session.pid = Some(pid);
+                session.hook.pid = Some(pid);
                 tracing::debug!(
                     session_id = %payload.session_id,
                     pid = pid,

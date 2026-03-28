@@ -278,7 +278,7 @@ pub fn build_resource_snapshot(
     let session_resources: Vec<SessionResource> = sessions
         .values()
         .filter_map(|session| {
-            let pid = session.pid?;
+            let pid = session.hook.pid?;
             let res = data.process_resources.get(&pid)?;
             Some(SessionResource {
                 session_id: session.id.clone(),
