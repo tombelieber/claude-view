@@ -283,11 +283,11 @@ fn create_session_from_start(
     pid: &Option<u32>,
     now: i64,
 ) -> LiveSession {
-    let mut hook = HookFields::default();
-    hook.last_activity_at = now;
-    if let Some(p) = pid {
-        hook.pid = Some(*p);
-    }
+    let hook = HookFields {
+        last_activity_at: now,
+        pid: *pid,
+        ..HookFields::default()
+    };
 
     LiveSession {
         id: session_id.to_string(),
@@ -311,8 +311,10 @@ fn create_session_from_start(
 /// Create a minimal `LiveSession` shell for watcher discovery (Reconcile).
 /// JSONL data fills in project/tokens/cost; hooks will follow.
 fn create_session_shell(session_id: &str, data: &ReconcileData, now: i64) -> LiveSession {
-    let mut hook = HookFields::default();
-    hook.last_activity_at = now;
+    let hook = HookFields {
+        last_activity_at: now,
+        ..HookFields::default()
+    };
 
     let mut jsonl = JsonlFields::default();
     if let Some(ref p) = data.project {
