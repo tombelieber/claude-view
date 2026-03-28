@@ -72,7 +72,7 @@ async fn ws_terminal_handler(
     // Look up the session to get its JSONL file path
     let file_path = {
         let map = state.live_sessions.read().await;
-        map.get(&session_id).map(|s| s.file_path.clone())
+        map.get(&session_id).map(|s| s.jsonl.file_path.clone())
     };
 
     let file_path = match file_path {
@@ -170,7 +170,7 @@ async fn ws_subagent_terminal_handler(
     // Look up parent session to get its JSONL file path
     let parent_file_path = {
         let map = state.live_sessions.read().await;
-        map.get(&session_id).map(|s| s.file_path.clone())
+        map.get(&session_id).map(|s| s.jsonl.file_path.clone())
     };
 
     let parent_file_path = match parent_file_path {
@@ -1290,16 +1290,18 @@ mod tests {
 
         // Register the session in the live sessions map
         {
-            use claude_view_core::phase::PhaseHistory;
-            use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
             let mut map = state.live_sessions.write().await;
             let session = crate::live::state::LiveSession {
                 id: session_id.to_string(),
-                project: "test-project".to_string(),
-                project_display_name: "test-project".to_string(),
-                project_path: "/tmp/test-project".to_string(),
-                file_path: file_path.to_string(),
                 status: crate::live::state::SessionStatus::Working,
+                started_at: None,
+                closed_at: None,
+                control: None,
+                model: None,
+                model_display_name: None,
+                model_set_at: 0,
+                context_window_tokens: 0,
+                statusline: crate::live::state::StatuslineFields::default(),
                 hook: crate::live::state::HookFields {
                     agent_state: crate::live::state::AgentState {
                         group: crate::live::state::AgentStateGroup::Autonomous,
@@ -1320,32 +1322,13 @@ mod tests {
                     agent_state_set_at: 0,
                     hook_events: Vec::new(),
                 },
-                git_branch: None,
-                worktree_branch: None,
-                is_worktree: false,
-                effective_branch: None,
-                started_at: None,
-                model: None,
-                tokens: TokenUsage::default(),
-                context_window_tokens: 0,
-                cost: CostBreakdown::default(),
-                cache_status: CacheStatus::Unknown,
-                last_turn_task_seconds: None,
-                team_name: None,
-                team_members: Vec::new(),
-                team_inbox_count: 0,
-                edit_count: 0,
-                tools_used: Vec::new(),
-                last_cache_hit_at: None,
-                slug: None,
-                user_files: None,
-                closed_at: None,
-                control: None,
-                source: None,
-                statusline: crate::live::state::StatuslineFields::default(),
-                model_display_name: None,
-                model_set_at: 0,
-                phase: PhaseHistory::default(),
+                jsonl: crate::live::state::JsonlFields {
+                    project: "test-project".to_string(),
+                    project_display_name: "test-project".to_string(),
+                    project_path: "/tmp/test-project".to_string(),
+                    file_path: file_path.to_string(),
+                    ..crate::live::state::JsonlFields::default()
+                },
             };
             map.insert(session_id.to_string(), session);
         }

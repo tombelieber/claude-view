@@ -35,7 +35,7 @@ use super::file_resolver::resolve_file_path;
 use super::process::{count_claude_processes, detect_claude_processes, is_pid_alive};
 use super::state::{
     append_capped_hook_event, status_from_agent_state, AgentState, AgentStateGroup, FileSourceKind,
-    HookEvent, HookFields, LiveSession, SessionEvent, SessionSnapshot, SessionStatus,
+    HookEvent, HookFields, JsonlFields, LiveSession, SessionEvent, SessionSnapshot, SessionStatus,
     SnapshotEntry, VerifiedFile, MAX_HOOK_EVENTS_PER_SESSION,
 };
 use super::watcher::{initial_scan, start_watcher, FileEvent};
@@ -268,11 +268,15 @@ fn build_recovered_session(
 
     LiveSession {
         id: session_id.to_string(),
-        project,
-        project_display_name,
-        project_path,
-        file_path: file_path.to_string(),
         status,
+        started_at: None,
+        closed_at: None,
+        control: None,
+        model: None,
+        model_display_name: None,
+        model_set_at: 0,
+        context_window_tokens: 0,
+        statusline: crate::live::state::StatuslineFields::default(),
         hook: HookFields {
             agent_state: entry.agent_state.clone(),
             pid: Some(entry.pid),
@@ -288,32 +292,13 @@ fn build_recovered_session(
             agent_state_set_at: 0,
             hook_events: Vec::new(),
         },
-        git_branch: None,
-        worktree_branch: None,
-        is_worktree: false,
-        effective_branch: None,
-        started_at: None,
-        model: None,
-        tokens: TokenUsage::default(),
-        context_window_tokens: 0,
-        cost: CostBreakdown::default(),
-        cache_status: CacheStatus::Unknown,
-        last_turn_task_seconds: None,
-        team_name: None,
-        team_members: Vec::new(),
-        team_inbox_count: 0,
-        edit_count: 0,
-        tools_used: Vec::new(),
-        last_cache_hit_at: None,
-        slug: None,
-        closed_at: None,
-        source: None,
-        control: None,
-        statusline: crate::live::state::StatuslineFields::default(),
-        model_display_name: None,
-        model_set_at: 0,
-        user_files: None,
-        phase: PhaseHistory::default(),
+        jsonl: JsonlFields {
+            project,
+            project_display_name,
+            project_path,
+            file_path: file_path.to_string(),
+            ..JsonlFields::default()
+        },
     }
 }
 
@@ -402,31 +387,32 @@ fn apply_jsonl_metadata(
     project_display_name: &str,
     project_path: &str,
 ) {
-    session.file_path = file_path.to_string();
-    session.project = project.to_string();
-    session.project_display_name = project_display_name.to_string();
-    session.project_path = project_path.to_string();
+    session.jsonl.file_path = file_path.to_string();
+    session.jsonl.project = project.to_string();
+    session.jsonl.project_display_name = project_display_name.to_string();
+    session.jsonl.project_path = project_path.to_string();
     // Only overwrite branch fields when the JSONL accumulator has a definitive value.
     // Hooks resolve branch eagerly from CWD (filesystem HEAD); the accumulator learns
     // gitBranch later when user-type JSONL lines are parsed. Without this guard,
     // the first process_jsonl_update (which may only contain metadata lines) overwrites
     // the hook-resolved branch with None, causing a "(no branch)" flash in the UI.
     if m.git_branch.is_some() {
-        session.git_branch = m.git_branch.clone();
+        session.jsonl.git_branch = m.git_branch.clone();
     }
     if m.worktree_branch.is_some() {
-        session.worktree_branch = m.worktree_branch.clone();
+        session.jsonl.worktree_branch = m.worktree_branch.clone();
     }
     if m.is_worktree {
-        session.is_worktree = true;
+        session.jsonl.is_worktree = true;
     }
     // Recompute effective_branch from current session state (may include hook-resolved values)
     let new_effective = session
+        .jsonl
         .worktree_branch
         .clone()
-        .or(session.git_branch.clone());
+        .or(session.jsonl.git_branch.clone());
     if new_effective.is_some() {
-        session.effective_branch = new_effective;
+        session.jsonl.effective_branch = new_effective;
     }
     // PID binding: only assign PID on first discovery. Once bound,
     // the process detector owns liveness checks for that specific PID.
@@ -458,24 +444,24 @@ fn apply_jsonl_metadata(
             session.model_set_at = now;
         }
     }
-    session.tokens = m.tokens.clone();
+    session.jsonl.tokens = m.tokens.clone();
     session.context_window_tokens = m.context_window_tokens;
-    session.cost = m.cost.clone();
-    session.cache_status = m.cache_status.clone();
+    session.jsonl.cost = m.cost.clone();
+    session.jsonl.cache_status = m.cache_status.clone();
     session.hook.current_turn_started_at = m.current_turn_started_at;
-    session.last_turn_task_seconds = m.last_turn_task_seconds;
+    session.jsonl.last_turn_task_seconds = m.last_turn_task_seconds;
     session.hook.sub_agents = m.sub_agents.clone();
-    session.team_name = m.team_name.clone();
+    session.jsonl.team_name = m.team_name.clone();
     session.hook.progress_items = m.progress_items.clone();
-    session.tools_used = m.tools_used.clone();
-    session.last_cache_hit_at = m.last_cache_hit_at;
+    session.jsonl.tools_used = m.tools_used.clone();
+    session.jsonl.last_cache_hit_at = m.last_cache_hit_at;
     session.hook.compact_count = m.compact_count;
-    session.slug = m.slug.clone();
+    session.jsonl.slug = m.slug.clone();
     if m.user_files.is_some() {
-        session.user_files = m.user_files.clone();
+        session.jsonl.user_files = m.user_files.clone();
     }
-    session.edit_count = m.edit_count;
-    session.phase = m.phase.clone();
+    session.jsonl.edit_count = m.edit_count;
+    session.jsonl.phase = m.phase.clone();
 }
 
 /// Central manager that orchestrates file watching, process detection,
@@ -784,18 +770,18 @@ impl LiveSessionManager {
                 &project_path,
             );
             // Populate team data from TeamsStore (not from JSONL accumulator)
-            if let Some(ref tn) = session.team_name.clone() {
+            if let Some(ref tn) = session.jsonl.team_name.clone() {
                 if let Some(detail) = self.teams.get(tn) {
-                    session.team_members = detail.members;
+                    session.jsonl.team_members = detail.members;
                 }
-                session.team_inbox_count = self
+                session.jsonl.team_inbox_count = self
                     .teams
                     .inbox(tn)
                     .map(|msgs| msgs.len() as u32)
                     .unwrap_or(0);
             } else {
-                session.team_members = Vec::new();
-                session.team_inbox_count = 0;
+                session.jsonl.team_members = Vec::new();
+                session.jsonl.team_inbox_count = 0;
             }
             // Preserve the hook's last_activity_at if it's more recent than file mtime
             if hook_activity > session.hook.last_activity_at {
@@ -857,7 +843,7 @@ impl LiveSessionManager {
                 cancel: tokio_util::sync::CancellationToken::new(),
             });
             // Control binding = sidecar Agent SDK — set source immediately
-            session.source = Some(super::process::SessionSourceInfo {
+            session.jsonl.source = Some(super::process::SessionSourceInfo {
                 category: super::process::SessionSource::AgentSdk,
                 label: None,
             });
@@ -1149,18 +1135,18 @@ impl LiveSessionManager {
                                     &project_path,
                                 );
                                 // Populate team data from TeamsStore (not from JSONL accumulator)
-                                if let Some(ref tn) = session.team_name.clone() {
+                                if let Some(ref tn) = session.jsonl.team_name.clone() {
                                     if let Some(detail) = manager.teams.get(tn) {
-                                        session.team_members = detail.members;
+                                        session.jsonl.team_members = detail.members;
                                     }
-                                    session.team_inbox_count = manager
+                                    session.jsonl.team_inbox_count = manager
                                         .teams
                                         .inbox(tn)
                                         .map(|msgs| msgs.len() as u32)
                                         .unwrap_or(0);
                                 } else {
-                                    session.team_members = Vec::new();
-                                    session.team_inbox_count = 0;
+                                    session.jsonl.team_members = Vec::new();
+                                    session.jsonl.team_inbox_count = 0;
                                 }
                             } else {
                                 drop(accumulators);
@@ -1588,7 +1574,7 @@ impl LiveSessionManager {
                                 // ever written. Auto-complete (remove) instead of keeping
                                 // in "recently closed" — there's nothing to show.
                                 let is_ghost =
-                                    session.file_path.is_empty() && session.hook.turn_count == 0;
+                                    session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
                                 if is_ghost {
                                     info!(
                                         session_id = %session_id,
@@ -1803,8 +1789,8 @@ impl LiveSessionManager {
                         }
                         // Path 1: control binding = AgentSdk (authoritative)
                         if session.control.is_some() {
-                            if session.source.as_ref() != Some(&sdk_source) {
-                                session.source = Some(sdk_source.clone());
+                            if session.jsonl.source.as_ref() != Some(&sdk_source) {
+                                session.jsonl.source = Some(sdk_source.clone());
                                 updated.push(session.clone());
                             }
                             continue;
@@ -1813,8 +1799,8 @@ impl LiveSessionManager {
                         if let Some(pid) = session.hook.pid {
                             if let Some(cp) = processes.get(&pid) {
                                 let new_source = Some(cp.source.clone());
-                                if session.source != new_source {
-                                    session.source = new_source;
+                                if session.jsonl.source != new_source {
+                                    session.jsonl.source = new_source;
                                     updated.push(session.clone());
                                 }
                             }
@@ -1892,7 +1878,7 @@ impl LiveSessionManager {
                 if let Some(session) = sessions.get_mut(&session_id) {
                     // Only act if this session is still alive and owns this PID
                     if session.status != SessionStatus::Done && session.hook.pid == Some(pid) {
-                        let is_ghost = session.file_path.is_empty() && session.hook.turn_count == 0;
+                        let is_ghost = session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
                         let now = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -2754,18 +2740,18 @@ impl LiveSessionManager {
                 &project_path,
             );
             // Populate team data from TeamsStore (not from JSONL accumulator)
-            if let Some(ref tn) = session.team_name.clone() {
+            if let Some(ref tn) = session.jsonl.team_name.clone() {
                 if let Some(detail) = self.teams.get(tn) {
-                    session.team_members = detail.members;
+                    session.jsonl.team_members = detail.members;
                 }
-                session.team_inbox_count = self
+                session.jsonl.team_inbox_count = self
                     .teams
                     .inbox(tn)
                     .map(|msgs| msgs.len() as u32)
                     .unwrap_or(0);
             } else {
-                session.team_members = Vec::new();
-                session.team_inbox_count = 0;
+                session.jsonl.team_members = Vec::new();
+                session.jsonl.team_inbox_count = 0;
             }
 
             // Apply Channel A events to LiveSession (NO cross-channel dedup)
@@ -3279,9 +3265,9 @@ mod tests {
         assert_eq!(session.status, SessionStatus::Paused);
         assert_eq!(session.hook.agent_state.state, "awaiting_input");
         assert_eq!(session.hook.last_activity_at, 1708500000);
-        assert_eq!(session.project_display_name, "-tmp");
+        assert_eq!(session.jsonl.project_display_name, "-tmp");
         // Without cwd from JSONL, project_path is the encoded name (not naive decode)
-        assert_eq!(session.project_path, "-tmp");
+        assert_eq!(session.jsonl.project_path, "-tmp");
     }
 
     #[test]
@@ -4024,15 +4010,20 @@ mod hook_event_tests {
     // only overwrite branch fields when the accumulator has a Some value.
 
     fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
-        use crate::live::state::{AgentState, AgentStateGroup, HookFields, SessionStatus};
-        use claude_view_core::pricing::CacheStatus;
+        use crate::live::state::{
+            AgentState, AgentStateGroup, HookFields, JsonlFields, SessionStatus,
+        };
         LiveSession {
             id: id.to_string(),
-            project: String::new(),
-            project_display_name: "test".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: "/tmp/test.jsonl".to_string(),
             status: SessionStatus::Working,
+            started_at: None,
+            closed_at: None,
+            control: None,
+            model: None,
+            model_display_name: None,
+            model_set_at: 0,
+            context_window_tokens: 0,
+            statusline: crate::live::state::StatuslineFields::default(),
             hook: HookFields {
                 agent_state: AgentState {
                     group: AgentStateGroup::Autonomous,
@@ -4053,32 +4044,13 @@ mod hook_event_tests {
                 agent_state_set_at: 0,
                 hook_events: Vec::new(),
             },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            started_at: None,
-            model: None,
-            tokens: TokenUsage::default(),
-            context_window_tokens: 0,
-            cost: CostBreakdown::default(),
-            cache_status: CacheStatus::Unknown,
-            last_turn_task_seconds: None,
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            statusline: crate::live::state::StatuslineFields::default(),
-            model_display_name: None,
-            model_set_at: 0,
-            source: None,
-            phase: PhaseHistory::default(),
+            jsonl: JsonlFields {
+                project: String::new(),
+                project_display_name: "test".to_string(),
+                project_path: "/tmp/test".to_string(),
+                file_path: "/tmp/test.jsonl".to_string(),
+                ..JsonlFields::default()
+            },
         }
     }
 
@@ -4120,8 +4092,8 @@ mod hook_event_tests {
     fn test_apply_jsonl_metadata_preserves_hook_branch_when_accumulator_has_none() {
         let mut session = minimal_live_session_for_branch_tests("test-session");
         // Simulate hook path: branch resolved from git rev-parse
-        session.git_branch = Some("main".to_string());
-        session.effective_branch = Some("main".to_string());
+        session.jsonl.git_branch = Some("main".to_string());
+        session.jsonl.effective_branch = Some("main".to_string());
 
         // First process_jsonl_update: only metadata lines, no gitBranch yet
         let meta = minimal_jsonl_metadata(); // git_branch: None
@@ -4136,12 +4108,12 @@ mod hook_event_tests {
         );
 
         assert_eq!(
-            session.git_branch.as_deref(),
+            session.jsonl.git_branch.as_deref(),
             Some("main"),
             "Hook-resolved branch must not be overwritten by None accumulator"
         );
         assert_eq!(
-            session.effective_branch.as_deref(),
+            session.jsonl.effective_branch.as_deref(),
             Some("main"),
             "effective_branch must preserve hook-resolved value"
         );
@@ -4151,8 +4123,8 @@ mod hook_event_tests {
     #[test]
     fn test_apply_jsonl_metadata_jsonl_branch_wins_when_some() {
         let mut session = minimal_live_session_for_branch_tests("test-session");
-        session.git_branch = Some("old-hook-branch".to_string());
-        session.effective_branch = Some("old-hook-branch".to_string());
+        session.jsonl.git_branch = Some("old-hook-branch".to_string());
+        session.jsonl.effective_branch = Some("old-hook-branch".to_string());
 
         let mut meta = minimal_jsonl_metadata();
         meta.git_branch = Some("main".to_string()); // JSONL has definitive value
@@ -4167,12 +4139,12 @@ mod hook_event_tests {
         );
 
         assert_eq!(
-            session.git_branch.as_deref(),
+            session.jsonl.git_branch.as_deref(),
             Some("main"),
             "JSONL-sourced branch must overwrite hook branch when Some"
         );
         assert_eq!(
-            session.effective_branch.as_deref(),
+            session.jsonl.effective_branch.as_deref(),
             Some("main"),
             "effective_branch must reflect JSONL branch"
         );
@@ -4182,7 +4154,7 @@ mod hook_event_tests {
     #[test]
     fn test_apply_jsonl_metadata_none_stays_none_when_no_source() {
         let mut session = minimal_live_session_for_branch_tests("test-session");
-        // session.git_branch is None (no hook resolution, e.g. non-git dir)
+        // session.jsonl.git_branch is None (no hook resolution, e.g. non-git dir)
 
         let meta = minimal_jsonl_metadata(); // also None
 
@@ -4196,11 +4168,11 @@ mod hook_event_tests {
         );
 
         assert!(
-            session.git_branch.is_none(),
+            session.jsonl.git_branch.is_none(),
             "Branch stays None when neither hook nor JSONL provides a value"
         );
         assert!(
-            session.effective_branch.is_none(),
+            session.jsonl.effective_branch.is_none(),
             "effective_branch stays None when no source provides a value"
         );
     }
@@ -4210,10 +4182,10 @@ mod hook_event_tests {
     #[test]
     fn test_apply_jsonl_metadata_preserves_worktree_branch_when_none() {
         let mut session = minimal_live_session_for_branch_tests("test-session");
-        session.git_branch = Some("main".to_string());
-        session.worktree_branch = Some("feat/my-feature".to_string());
-        session.is_worktree = true;
-        session.effective_branch = Some("feat/my-feature".to_string()); // worktree wins
+        session.jsonl.git_branch = Some("main".to_string());
+        session.jsonl.worktree_branch = Some("feat/my-feature".to_string());
+        session.jsonl.is_worktree = true;
+        session.jsonl.effective_branch = Some("feat/my-feature".to_string()); // worktree wins
 
         let meta = minimal_jsonl_metadata(); // worktree_branch: None, is_worktree: false
 
@@ -4227,16 +4199,16 @@ mod hook_event_tests {
         );
 
         assert_eq!(
-            session.worktree_branch.as_deref(),
+            session.jsonl.worktree_branch.as_deref(),
             Some("feat/my-feature"),
             "Hook-resolved worktree branch must not be cleared by None accumulator"
         );
         assert!(
-            session.is_worktree,
+            session.jsonl.is_worktree,
             "is_worktree must not be reset to false by metadata with is_worktree=false"
         );
         assert_eq!(
-            session.effective_branch.as_deref(),
+            session.jsonl.effective_branch.as_deref(),
             Some("feat/my-feature"),
             "effective_branch must stay as worktree branch"
         );
@@ -4246,9 +4218,9 @@ mod hook_event_tests {
     #[test]
     fn test_apply_jsonl_metadata_jsonl_worktree_branch_wins_when_some() {
         let mut session = minimal_live_session_for_branch_tests("test-session");
-        session.git_branch = Some("main".to_string());
-        session.worktree_branch = None;
-        session.effective_branch = Some("main".to_string());
+        session.jsonl.git_branch = Some("main".to_string());
+        session.jsonl.worktree_branch = None;
+        session.jsonl.effective_branch = Some("main".to_string());
 
         let mut meta = minimal_jsonl_metadata();
         meta.git_branch = Some("main".to_string());
@@ -4264,10 +4236,10 @@ mod hook_event_tests {
             "/tmp",
         );
 
-        assert_eq!(session.worktree_branch.as_deref(), Some("feat/my-feature"));
-        assert!(session.is_worktree);
+        assert_eq!(session.jsonl.worktree_branch.as_deref(), Some("feat/my-feature"));
+        assert!(session.jsonl.is_worktree);
         assert_eq!(
-            session.effective_branch.as_deref(),
+            session.jsonl.effective_branch.as_deref(),
             Some("feat/my-feature"),
             "effective_branch must prefer worktree_branch over git_branch"
         );
@@ -4291,7 +4263,7 @@ mod hook_event_tests {
         );
 
         assert_eq!(
-            session.edit_count, 7,
+            session.jsonl.edit_count, 7,
             "edit_count must be propagated from JsonlMetadata to LiveSession"
         );
     }
@@ -4302,7 +4274,7 @@ mod hook_event_tests {
         // Guards against construction sites that forget the default.
         let session = minimal_live_session_for_branch_tests("test-zero-edit-count");
         assert_eq!(
-            session.edit_count, 0,
+            session.jsonl.edit_count, 0,
             "edit_count must default to 0 in freshly constructed LiveSession"
         );
     }
@@ -4313,11 +4285,11 @@ mod hook_event_tests {
         // Guards against sessions leaking team data from previous state.
         let session = minimal_live_session_for_branch_tests("test-no-team");
         assert!(
-            session.team_members.is_empty(),
+            session.jsonl.team_members.is_empty(),
             "team_members must be empty for non-team sessions"
         );
         assert_eq!(
-            session.team_inbox_count, 0,
+            session.jsonl.team_inbox_count, 0,
             "team_inbox_count must be 0 for non-team sessions"
         );
     }

@@ -31,7 +31,7 @@ async fn resolve_session_file_path(
         None => {
             let map = state.live_sessions.read().await;
             map.get(session_id)
-                .map(|s| s.file_path.clone())
+                .map(|s| s.jsonl.file_path.clone())
                 .ok_or_else(|| ApiError::SessionNotFound(session_id.to_string()))?
         }
     };
@@ -2051,10 +2051,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_hook_events_from_live_session() {
         use crate::live::state::{
-            AgentState, AgentStateGroup, HookEvent, HookFields, LiveSession, SessionStatus,
+            AgentState, AgentStateGroup, HookEvent, HookFields, JsonlFields, LiveSession,
+            SessionStatus,
         };
-        use claude_view_core::phase::PhaseHistory;
-        use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
         let db = test_db().await;
 
@@ -2067,11 +2066,15 @@ mod tests {
         // Insert a live session with hook events into the live_sessions map
         let mut session = LiveSession {
             id: "live-hook-test".to_string(),
-            project: "test-project".to_string(),
-            project_display_name: "test-project".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: String::new(),
             status: SessionStatus::Working,
+            started_at: Some(1000),
+            closed_at: None,
+            control: None,
+            model: Some("claude-sonnet-4-5-20250929".to_string()),
+            model_display_name: None,
+            model_set_at: 0,
+            context_window_tokens: 200000,
+            statusline: crate::live::state::StatuslineFields::default(),
             hook: HookFields {
                 agent_state: AgentState {
                     state: "working".to_string(),
@@ -2092,32 +2095,13 @@ mod tests {
                 agent_state_set_at: 0,
                 hook_events: Vec::new(),
             },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            started_at: Some(1000),
-            model: Some("claude-sonnet-4-5-20250929".to_string()),
-            tokens: TokenUsage::default(),
-            context_window_tokens: 200000,
-            cost: CostBreakdown::default(),
-            cache_status: CacheStatus::Unknown,
-            last_turn_task_seconds: None,
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            source: None,
-            statusline: crate::live::state::StatuslineFields::default(),
-            model_display_name: None,
-            model_set_at: 0,
-            phase: PhaseHistory::default(),
+            jsonl: JsonlFields {
+                project: "test-project".to_string(),
+                project_display_name: "test-project".to_string(),
+                project_path: "/tmp/test".to_string(),
+                file_path: String::new(),
+                ..JsonlFields::default()
+            },
         };
         session.hook.hook_events.push(HookEvent {
             timestamp: 1000,
@@ -2281,31 +2265,33 @@ mod tests {
     /// Helper: create a LiveSession with a given file_path (no DB insertion).
     fn make_live_session(id: &str, file_path: &str) -> crate::live::state::LiveSession {
         use crate::live::state::{
-            AgentState, AgentStateGroup, HookFields, LiveSession, SessionStatus,
+            AgentState, AgentStateGroup, HookFields, JsonlFields, LiveSession, SessionStatus,
         };
-        use claude_view_core::phase::PhaseHistory;
-        use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 
         LiveSession {
             id: id.to_string(),
-            project: "test-project".to_string(),
-            project_display_name: "test-project".to_string(),
-            project_path: "/tmp/test".to_string(),
-            file_path: file_path.to_string(),
             status: SessionStatus::Working,
+            started_at: Some(1000),
+            closed_at: None,
+            control: None,
+            model: Some("claude-sonnet-4-5-20250929".to_string()),
+            model_display_name: None,
+            model_set_at: 0,
+            context_window_tokens: 200000,
+            statusline: crate::live::state::StatuslineFields::default(),
             hook: HookFields {
                 agent_state: AgentState {
-                    state: "working".to_string(),
                     group: AgentStateGroup::Autonomous,
-                    label: "Running".to_string(),
+                    state: "acting".into(),
+                    label: "Working".into(),
                     context: None,
                 },
-                pid: Some(12345),
-                title: String::new(),
+                pid: None,
+                title: "Test session".into(),
                 last_user_message: String::new(),
-                current_activity: String::new(),
-                turn_count: 1,
-                last_activity_at: 1001,
+                current_activity: "Working".into(),
+                turn_count: 0,
+                last_activity_at: 1000,
                 current_turn_started_at: None,
                 sub_agents: Vec::new(),
                 progress_items: Vec::new(),
@@ -2313,32 +2299,13 @@ mod tests {
                 agent_state_set_at: 0,
                 hook_events: Vec::new(),
             },
-            git_branch: None,
-            worktree_branch: None,
-            is_worktree: false,
-            effective_branch: None,
-            started_at: Some(1000),
-            model: Some("claude-sonnet-4-5-20250929".to_string()),
-            tokens: TokenUsage::default(),
-            context_window_tokens: 200000,
-            cost: CostBreakdown::default(),
-            cache_status: CacheStatus::Unknown,
-            last_turn_task_seconds: None,
-            team_name: None,
-            team_members: Vec::new(),
-            team_inbox_count: 0,
-            edit_count: 0,
-            tools_used: Vec::new(),
-            last_cache_hit_at: None,
-            slug: None,
-            user_files: None,
-            closed_at: None,
-            control: None,
-            source: None,
-            statusline: crate::live::state::StatuslineFields::default(),
-            model_display_name: None,
-            model_set_at: 0,
-            phase: PhaseHistory::default(),
+            jsonl: JsonlFields {
+                file_path: file_path.to_string(),
+                project: "test-project".to_string(),
+                project_display_name: "test-project".to_string(),
+                project_path: "/tmp/test".to_string(),
+                ..JsonlFields::default()
+            },
         }
     }
 
