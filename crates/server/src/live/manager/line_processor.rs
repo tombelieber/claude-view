@@ -578,7 +578,7 @@ fn process_phase_classification(
     let should_classify = acc.message_buf_dirty
         && (acc.message_buf_total <= 2
             || acc.stabilizer.displayed_phase().is_none()
-            || acc.message_buf_total % 5 == 0);
+            || acc.message_buf_total.is_multiple_of(5));
 
     if should_classify {
         acc.message_buf_dirty = false;
