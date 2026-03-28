@@ -8,7 +8,5 @@ use crate::openapi::ApiDoc;
 use crate::state::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new().merge(
-        SwaggerUi::new("/api/docs").url("/api/openapi.json", ApiDoc::openapi()),
-    )
+    Router::new().merge(SwaggerUi::new("/api/docs").url("/api/openapi.json", ApiDoc::openapi()))
 }
