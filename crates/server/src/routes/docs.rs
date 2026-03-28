@@ -9,6 +9,6 @@ use crate::state::AppState;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new().merge(
-        SwaggerUi::new("/api/docs/{_:.*}").url("/api/openapi.json", ApiDoc::openapi()),
+        SwaggerUi::new("/api/docs").url("/api/openapi.json", ApiDoc::openapi()),
     )
 }
