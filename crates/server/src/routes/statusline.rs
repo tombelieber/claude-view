@@ -479,28 +479,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn debug_endpoint_returns_raw_statusline() {
-        use crate::live::state::test_live_session;
-        use std::collections::HashMap;
-        use std::sync::Arc;
-        use tokio::sync::RwLock;
+    async fn debug_log_stores_rolling_entries() {
+        use crate::live::state::{test_live_session, MAX_STATUSLINE_DEBUG_ENTRIES};
 
         let mut session = test_live_session("test-1");
-        session.statusline.statusline_raw =
-            Some(serde_json::json!({"session_id": "test-1", "version": "1.0"}));
+        let payload = StatuslinePayload {
+            session_id: "test-1".into(),
+            cost: Some(StatuslineCost {
+                total_cost_usd: None,
+                total_duration_ms: Some(1000),
+                total_api_duration_ms: None,
+                total_lines_added: None,
+                total_lines_removed: None,
+            }),
+            context_window: None,
+            model: None,
+            workspace: None,
+            cwd: None,
+            version: None,
+            transcript_path: None,
+            exceeds_200k_tokens: None,
+            output_style: None,
+            vim: None,
+            agent: None,
+            worktree: None,
+            rate_limits: None,
+            extra: Default::default(),
+        };
+        apply_statusline(&mut session, &payload);
 
-        let mut map = HashMap::new();
-        map.insert("test-1".to_string(), session);
-        let sessions: crate::live::manager::LiveSessionMap = Arc::new(RwLock::new(map));
+        assert_eq!(session.statusline.statusline_debug_log.len(), 1);
+        let entry = &session.statusline.statusline_debug_log[0];
+        assert!(entry.blocks_present.contains(&"cost".to_string()));
+        assert!(!entry.blocks_present.contains(&"context_window".to_string()));
 
-        let lock = sessions.read().await;
-        let session = lock.get("test-1").unwrap();
-        let raw = session.statusline.statusline_raw.as_ref().unwrap();
-        assert_eq!(raw["version"], "1.0");
-        assert_eq!(raw["session_id"], "test-1");
-
-        let session2 = test_live_session("test-2");
-        assert!(session2.statusline.statusline_raw.is_none());
+        // Fill to max
+        for _ in 0..MAX_STATUSLINE_DEBUG_ENTRIES + 5 {
+            apply_statusline(&mut session, &payload);
+        }
+        assert_eq!(
+            session.statusline.statusline_debug_log.len(),
+            MAX_STATUSLINE_DEBUG_ENTRIES
+        );
     }
 
     #[tokio::test]
@@ -586,8 +606,8 @@ mod tests {
         assert_eq!(json["statuslineRateLimit7dPct"], 41.2);
         assert_eq!(json["statuslineRateLimit7dResetsAt"], 1738857600);
         assert!(
-            json["statuslineRaw"].is_null(),
-            "statusline_raw has #[serde(skip)] — must not appear in SSE"
+            json["statuslineDebugLog"].is_null(),
+            "statusline_debug_log has #[serde(skip)] — must not appear in SSE"
         );
     }
 

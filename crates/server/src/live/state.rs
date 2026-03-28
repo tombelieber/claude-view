@@ -306,11 +306,24 @@ pub struct StatuslineFields {
     #[serde(default, skip_serializing_if = "Transient::is_none")]
     pub statusline_worktree_original_branch: Transient<String>,
 
-    // -- Raw: always replace (not serialized) --
-    /// Raw statusline JSON blob for the debug endpoint. NOT serialized to SSE.
+    // -- Raw: rolling debug buffer (not serialized) --
+    /// Last N raw statusline payloads for debugging. NOT serialized to SSE.
+    /// Newest at back. Capped at MAX_STATUSLINE_DEBUG_ENTRIES.
     #[serde(skip)]
     #[ts(skip)]
-    pub statusline_raw: Option<serde_json::Value>,
+    pub statusline_debug_log: std::collections::VecDeque<StatuslineDebugEntry>,
+}
+
+/// Max entries in the per-session statusline debug ring buffer.
+pub const MAX_STATUSLINE_DEBUG_ENTRIES: usize = 20;
+
+/// A timestamped raw statusline payload for debugging.
+#[derive(Debug, Clone)]
+pub struct StatuslineDebugEntry {
+    pub received_at: i64,
+    pub payload: serde_json::Value,
+    /// Which top-level blocks were present (quick scan without reading payload).
+    pub blocks_present: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
