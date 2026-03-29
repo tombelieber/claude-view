@@ -34,7 +34,7 @@ use claude_view_core::live_parser::TailFinders;
 use claude_view_core::phase::client::OmlxClient;
 use claude_view_core::phase::scheduler::{ClassifyResult, Priority};
 use claude_view_core::phase::{
-    dominant_phase, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
+    dominant_phase, PhaseFreshness, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
 };
 use claude_view_core::pricing::ModelPricing;
 
@@ -186,6 +186,8 @@ impl LiveSessionManager {
             client,
             omlx_status.ready.clone(),
             drain_wake,
+            manager.sessions.clone(),
+            manager.tx.clone(),
         ));
 
         // Spawn classify result handler
@@ -231,6 +233,7 @@ impl LiveSessionManager {
                             current: acc.phase_labels.last().cloned(),
                             dominant: dominant_phase(&acc.phase_labels),
                             labels: acc.phase_labels.clone(),
+                            freshness: PhaseFreshness::Fresh,
                         }
                     };
                     // accumulators lock dropped here

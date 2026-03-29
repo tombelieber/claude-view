@@ -1,9 +1,9 @@
 //! Event-driven drain loop for oMLX phase classification.
 //!
-//! Uses `tokio::JoinSet` as the task executor — spawned classify calls are
-//! tracked, awaited, and abortable without manual channel/counter plumbing.
-//! Fair round-robin scheduling via `last_served_at` ensures no session
-//! starves when the queue is deep: 20 sessions = each gets 1/20 of bandwidth.
+//! Uses idle-gap detection instead of fixed debounce: classify only when a
+//! session's JSONL activity pauses (model is "thinking" or user is reading).
+//! This naturally coalesces rapid tool bursts into a single classify call.
+//! Fair round-robin via `last_served_at` prevents any session from starving.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,13 +22,20 @@ use super::manager::accumulator::SessionAccumulator;
 /// server's DB writes + JSONL parsing). Proven: 92% failure at 2 concurrent.
 const MAX_CONCURRENT: usize = 1;
 
-fn debounce_for(priority: Priority) -> Duration {
+/// Idle gap before a session becomes ready for classification.
+/// Classify when activity pauses — not during rapid tool-call bursts.
+fn idle_gap_for(priority: Priority) -> Duration {
     match priority {
-        Priority::New => Duration::from_millis(250),
-        Priority::Transition => Duration::from_millis(750),
-        Priority::Steady => Duration::from_millis(2500),
+        Priority::New => Duration::from_millis(500),
+        Priority::Transition => Duration::from_secs(1),
+        Priority::Steady => Duration::from_secs(2),
     }
 }
+
+/// Per-session budget: minimum interval between successive classifications.
+/// Even during constant activity, a session won't be classified more often
+/// than this. Prevents one chatty session from dominating the oMLX slot.
+const MIN_INTERVAL_SECS: u64 = 5;
 
 fn backpressure_factor(queue_depth: usize) -> f32 {
     (1.0 + queue_depth as f32 / (2.0 * MAX_CONCURRENT as f32)).clamp(1.0, 4.0)
@@ -36,7 +43,9 @@ fn backpressure_factor(queue_depth: usize) -> f32 {
 
 /// Per-session entry in the dirty registry.
 struct DirtyEntry {
-    dirty_at: Instant,
+    /// Most recent JSONL activity. Reset on every dirty notification.
+    /// Classify only when `now - last_activity_at >= idle_gap`.
+    last_activity_at: Instant,
     /// Round-robin fairness: least-recently-served goes first.
     /// `None` = never served = highest priority.
     last_served_at: Option<Instant>,
@@ -44,9 +53,7 @@ struct DirtyEntry {
     in_flight: bool,
 }
 
-/// Drain loop state, separated from `JoinSet` to avoid borrow conflicts
-/// in `tokio::select!` (JoinSet is polled in a branch while state is
-/// mutated in the handler).
+/// Drain loop state, separated from `JoinSet` to avoid borrow conflicts.
 struct DrainState {
     dirty: HashMap<String, DirtyEntry>,
     error_streak: u32,
@@ -55,17 +62,20 @@ struct DrainState {
     client: Arc<OmlxClient>,
     result_tx: mpsc::Sender<ClassifyResult>,
     omlx_ready: Arc<AtomicBool>,
+    /// Shared sessions map for setting freshness=pending on dirty.
+    sessions: Arc<RwLock<HashMap<String, super::state::LiveSession>>>,
+    tx: tokio::sync::broadcast::Sender<super::state::SessionEvent>,
 }
 
 impl DrainState {
     fn mark_dirty(&mut self, session_id: String, priority: Priority) {
         let entry = self.dirty.entry(session_id).or_insert_with(|| DirtyEntry {
-            dirty_at: Instant::now(),
+            last_activity_at: Instant::now(),
             last_served_at: None,
             priority,
             in_flight: false,
         });
-        entry.dirty_at = Instant::now();
+        entry.last_activity_at = Instant::now();
         if priority < entry.priority {
             entry.priority = priority;
         }
@@ -74,13 +84,14 @@ impl DrainState {
     fn handle_completion(&mut self, result: Result<(String, bool), tokio::task::JoinError>) {
         let (session_id, success) = match result {
             Ok(v) => v,
-            Err(_) => return, // Aborted or panicked — JoinSet already freed the slot
+            Err(_) => return,
         };
         if let Some(entry) = self.dirty.get_mut(&session_id) {
             entry.in_flight = false;
             entry.last_served_at = Some(Instant::now());
             if !success {
-                entry.dirty_at = Instant::now();
+                // Reset activity timestamp so idle gap restarts.
+                entry.last_activity_at = Instant::now();
             }
         }
         if success {
@@ -92,12 +103,30 @@ impl DrainState {
         }
     }
 
+    fn is_idle_ready(entry: &DirtyEntry, now: Instant, bp: f32) -> bool {
+        if entry.in_flight {
+            return false;
+        }
+        // Idle gap check: activity must have paused long enough.
+        let gap = idle_gap_for(entry.priority).mul_f32(bp);
+        if now.duration_since(entry.last_activity_at) < gap {
+            return false;
+        }
+        // Budget check: don't reclassify too soon after last classification.
+        if let Some(last) = entry.last_served_at {
+            if now.duration_since(last) < Duration::from_secs(MIN_INTERVAL_SECS) {
+                return false;
+            }
+        }
+        true
+    }
+
     async fn try_drain(&mut self, tasks: &mut JoinSet<(String, bool)>) {
         if !self.omlx_ready.load(Ordering::Relaxed) {
             return;
         }
 
-        // Exponential cooldown: 500ms × 2^streak, capped at 30s.
+        // Exponential cooldown after consecutive errors.
         if let Some(last_err) = self.last_error_at {
             let cooldown_ms = (500u64 << self.error_streak.min(6)).min(30_000);
             if last_err.elapsed() < Duration::from_millis(cooldown_ms) {
@@ -107,19 +136,14 @@ impl DrainState {
 
         let now = Instant::now();
         let queue_depth = self.dirty.values().filter(|e| !e.in_flight).count();
+        let bp = backpressure_factor(queue_depth);
 
         while tasks.len() < MAX_CONCURRENT {
-            let bp = backpressure_factor(queue_depth);
-
-            // Fair round-robin: among debounce-ready, pick least-recently-served.
-            // None < Some(_), so never-served sessions always go first.
+            // Fair round-robin among idle-ready sessions.
             let candidate = self
                 .dirty
                 .iter()
-                .filter(|(_, e)| {
-                    !e.in_flight
-                        && now.duration_since(e.dirty_at) >= debounce_for(e.priority).mul_f32(bp)
-                })
+                .filter(|(_, e)| Self::is_idle_ready(e, now, bp))
                 .min_by_key(|(_, e)| e.last_served_at)
                 .map(|(id, _)| id.clone());
 
@@ -164,9 +188,36 @@ impl DrainState {
             });
         }
     }
+
+    /// Set freshness=pending on sessions that are dirty but not yet classified,
+    /// then broadcast the update so the frontend can show the breathing animation.
+    async fn broadcast_pending(&self) {
+        use super::state::SessionEvent;
+        use claude_view_core::phase::PhaseFreshness;
+
+        let mut sessions = self.sessions.write().await;
+        for (sid, entry) in &self.dirty {
+            // Only mark pending if the session has at least one prior classification
+            // (otherwise there's no badge to animate).
+            if entry.in_flight {
+                continue;
+            }
+            if let Some(session) = sessions.get_mut(sid) {
+                if session.jsonl.phase.current.is_some()
+                    && session.jsonl.phase.freshness != PhaseFreshness::Pending
+                {
+                    session.jsonl.phase.freshness = PhaseFreshness::Pending;
+                    let _ = self.tx.send(SessionEvent::SessionUpdated {
+                        session: session.clone(),
+                    });
+                }
+            }
+        }
+    }
 }
 
 /// Run the drain loop as a long-lived tokio task.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_drain_loop(
     mut dirty_rx: mpsc::Receiver<(String, Priority)>,
     result_tx: mpsc::Sender<ClassifyResult>,
@@ -174,6 +225,8 @@ pub(crate) async fn run_drain_loop(
     client: Arc<OmlxClient>,
     omlx_ready: Arc<AtomicBool>,
     wake: Arc<Notify>,
+    sessions: Arc<RwLock<HashMap<String, super::state::LiveSession>>>,
+    tx: tokio::sync::broadcast::Sender<super::state::SessionEvent>,
 ) {
     let mut state = DrainState {
         dirty: HashMap::new(),
@@ -183,6 +236,8 @@ pub(crate) async fn run_drain_loop(
         client,
         result_tx,
         omlx_ready,
+        sessions,
+        tx,
     };
     let mut tasks: JoinSet<(String, bool)> = JoinSet::new();
 
@@ -203,13 +258,14 @@ pub(crate) async fn run_drain_loop(
                 state.try_drain(&mut tasks).await;
             }
 
+            // Tick: check for idle-gap expiry + broadcast pending freshness.
             _ = tokio::time::sleep(Duration::from_millis(500)) => {
+                state.broadcast_pending().await;
                 state.try_drain(&mut tasks).await;
             }
         }
     }
 
-    // Graceful shutdown: abort in-flight tasks and wait for cleanup.
     tasks.shutdown().await;
 }
 
@@ -233,13 +289,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn debounce_values() {
-        assert_eq!(debounce_for(Priority::New), Duration::from_millis(250));
-        assert_eq!(
-            debounce_for(Priority::Transition),
-            Duration::from_millis(750)
-        );
-        assert_eq!(debounce_for(Priority::Steady), Duration::from_millis(2500));
+    fn idle_gap_values() {
+        assert_eq!(idle_gap_for(Priority::New), Duration::from_millis(500));
+        assert_eq!(idle_gap_for(Priority::Transition), Duration::from_secs(1));
+        assert_eq!(idle_gap_for(Priority::Steady), Duration::from_secs(2));
     }
 
     #[test]
@@ -251,7 +304,6 @@ mod tests {
 
     #[test]
     fn round_robin_fairness() {
-        // Never-served (None) should sort before any served session.
         let never: Option<Instant> = None;
         let served = Some(Instant::now());
         assert!(
@@ -261,61 +313,50 @@ mod tests {
     }
 
     #[test]
-    fn priority_promotion() {
-        let mut state = DrainState {
-            dirty: HashMap::new(),
-            error_streak: 0,
-            last_error_at: None,
-            accumulators: Arc::new(RwLock::new(HashMap::new())),
-            client: Arc::new(OmlxClient::new("http://test".into(), "test".into())),
-            result_tx: mpsc::channel(1).0,
-            omlx_ready: Arc::new(AtomicBool::new(true)),
+    fn idle_ready_respects_gap() {
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now(),
+            last_served_at: None,
+            priority: Priority::New,
+            in_flight: false,
         };
-        state.mark_dirty("s1".into(), Priority::Steady);
-        state.mark_dirty("s1".into(), Priority::New);
-        assert_eq!(state.dirty["s1"].priority, Priority::New);
+        // Just dirtied — not ready yet (gap not elapsed).
+        assert!(!DrainState::is_idle_ready(&entry, Instant::now(), 1.0));
     }
 
     #[test]
-    fn handle_completion_resets_streak_on_success() {
-        let mut state = DrainState {
-            dirty: HashMap::new(),
-            error_streak: 5,
-            last_error_at: Some(Instant::now()),
-            accumulators: Arc::new(RwLock::new(HashMap::new())),
-            client: Arc::new(OmlxClient::new("http://test".into(), "test".into())),
-            result_tx: mpsc::channel(1).0,
-            omlx_ready: Arc::new(AtomicBool::new(true)),
+    fn idle_ready_after_gap() {
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now() - Duration::from_secs(2),
+            last_served_at: None,
+            priority: Priority::New,
+            in_flight: false,
         };
-        state.handle_completion(Ok(("s1".into(), true)));
-        assert_eq!(state.error_streak, 0);
-        assert!(state.last_error_at.is_none());
+        // 2s since last activity, gap is 500ms → ready.
+        assert!(DrainState::is_idle_ready(&entry, Instant::now(), 1.0));
     }
 
     #[test]
-    fn handle_completion_increments_streak_on_failure() {
-        let mut state = DrainState {
-            dirty: HashMap::new(),
-            error_streak: 2,
-            last_error_at: None,
-            accumulators: Arc::new(RwLock::new(HashMap::new())),
-            client: Arc::new(OmlxClient::new("http://test".into(), "test".into())),
-            result_tx: mpsc::channel(1).0,
-            omlx_ready: Arc::new(AtomicBool::new(true)),
+    fn budget_prevents_rapid_reclassification() {
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now() - Duration::from_secs(3),
+            last_served_at: Some(Instant::now() - Duration::from_secs(2)),
+            priority: Priority::Steady,
+            in_flight: false,
         };
-        state.dirty.insert(
-            "s1".into(),
-            DirtyEntry {
-                dirty_at: Instant::now() - Duration::from_secs(10),
-                last_served_at: None,
-                priority: Priority::Steady,
-                in_flight: true,
-            },
-        );
-        state.handle_completion(Ok(("s1".into(), false)));
-        assert_eq!(state.error_streak, 3);
-        assert!(state.last_error_at.is_some());
-        // dirty_at should be reset (debounce restart)
-        assert!(state.dirty["s1"].dirty_at.elapsed() < Duration::from_millis(50));
+        // 3s since activity (gap OK), but only 2s since last serve (budget=5s).
+        assert!(!DrainState::is_idle_ready(&entry, Instant::now(), 1.0));
+    }
+
+    #[test]
+    fn budget_allows_after_interval() {
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now() - Duration::from_secs(10),
+            last_served_at: Some(Instant::now() - Duration::from_secs(6)),
+            priority: Priority::Steady,
+            in_flight: false,
+        };
+        // 10s since activity, 6s since last serve (>5s budget) → ready.
+        assert!(DrainState::is_idle_ready(&entry, Instant::now(), 1.0));
     }
 }

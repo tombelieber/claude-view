@@ -96,6 +96,27 @@ pub struct PhaseLabel {
     pub scope: Option<String>,
 }
 
+/// How fresh the phase classification is — drives badge animation on the frontend.
+///
+/// `fresh` → solid badge, `pending` → last badge + breathing animation,
+/// `stale` → no change (long-idle session, classification still valid).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
+#[serde(rename_all = "lowercase")]
+pub enum PhaseFreshness {
+    /// Classified recently — show solid badge.
+    #[default]
+    Fresh,
+    /// Session has new activity, classification queued — show breathing animation.
+    Pending,
+}
+
 /// Full phase history for a session.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[cfg_attr(
@@ -110,6 +131,8 @@ pub struct PhaseHistory {
     pub current: Option<PhaseLabel>,
     pub labels: Vec<PhaseLabel>,
     pub dominant: Option<SessionPhase>,
+    /// Badge animation hint: `fresh` = solid, `pending` = breathing.
+    pub freshness: PhaseFreshness,
 }
 
 /// Compute dominant phase from a history of labels.

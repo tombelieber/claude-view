@@ -525,6 +525,7 @@ pub(super) fn build_metadata_from_accumulator(
             current: acc.phase_labels.last().cloned(),
             dominant: dominant_phase(&acc.phase_labels),
             labels: acc.phase_labels.clone(),
+            freshness: Default::default(),
         },
     }
 }
