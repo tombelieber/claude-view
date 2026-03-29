@@ -114,6 +114,7 @@ impl OmlxClient {
         Self {
             http: Client::builder()
                 .timeout(TIMEOUT)
+                .pool_max_idle_per_host(0)
                 .build()
                 .expect("reqwest client"),
             base_url,
@@ -177,9 +178,15 @@ impl OmlxClient {
                 let content = body.choices.first()?.message.content.clone();
                 let parsed = parse_classify_response(&content);
                 self.debug_log_call(
-                    session_id, generation,
-                    context.turns.len(), temperature, &conversation, latency_ms,
-                    Some(&content), parsed.as_ref(), None,
+                    session_id,
+                    generation,
+                    context.turns.len(),
+                    temperature,
+                    &conversation,
+                    latency_ms,
+                    Some(&content),
+                    parsed.as_ref(),
+                    None,
                 );
                 parsed
             }
@@ -188,18 +195,30 @@ impl OmlxClient {
                 let body = r.text().await.unwrap_or_default();
                 self.signal_error();
                 self.debug_log_call(
-                    session_id, generation,
-                    context.turns.len(), temperature, &conversation, latency_ms,
-                    None, None, Some(&format!("http_{status}: {body}")),
+                    session_id,
+                    generation,
+                    context.turns.len(),
+                    temperature,
+                    &conversation,
+                    latency_ms,
+                    None,
+                    None,
+                    Some(&format!("http_{status}: {body}")),
                 );
                 None
             }
             Err(e) => {
                 self.signal_error();
                 self.debug_log_call(
-                    session_id, generation,
-                    context.turns.len(), temperature, &conversation, latency_ms,
-                    None, None, Some(&e.to_string()),
+                    session_id,
+                    generation,
+                    context.turns.len(),
+                    temperature,
+                    &conversation,
+                    latency_ms,
+                    None,
+                    None,
+                    Some(&e.to_string()),
                 );
                 None
             }
@@ -399,7 +418,13 @@ pub fn format_context(ctx: &ClassifyContext) -> String {
         }
         out.push_str(&turn.text);
         if !turn.tools.is_empty() {
-            let tools: String = turn.tools.iter().take(10).cloned().collect::<Vec<_>>().join(", ");
+            let tools: String = turn
+                .tools
+                .iter()
+                .take(10)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
             out.push_str(&format!(" [tools: {}]", tools));
         }
         out.push('\n');
