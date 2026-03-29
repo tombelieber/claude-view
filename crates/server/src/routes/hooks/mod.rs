@@ -359,6 +359,7 @@ pub async fn handle_hook(
             now,
             hook_event,
             payload.cwd.as_deref(),
+            payload.transcript_path.as_deref(),
         )
         .await;
 
