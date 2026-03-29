@@ -1,3 +1,4 @@
+import type { PhaseFreshness } from '@claude-view/shared/types/generated/PhaseFreshness'
 import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
 import { Cpu } from 'lucide-react'
 import { cn } from '../lib/utils'
@@ -58,6 +59,7 @@ const PHASE_CONFIG: Record<Exclude<SessionPhase, 'working'>, PhaseConfig> = {
 interface PhaseBadgeProps {
   phase: SessionPhase | null | undefined
   scope?: string | null
+  freshness?: PhaseFreshness
   className?: string
 }
 
@@ -66,19 +68,22 @@ interface PhaseBadgeProps {
  * Only shown when the classifier is confident (phase != 'working').
  * Confidence gating happens server-side — if we get a non-working phase, show it.
  */
-export function PhaseBadge({ phase, scope, className }: PhaseBadgeProps) {
+export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgeProps) {
   if (!phase || phase === 'working') return null
 
   const config = PHASE_CONFIG[phase]
   if (!config) return null
 
+  const isPending = freshness === 'pending'
+
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 px-1 py-px text-[10px] font-medium rounded border leading-3.5',
+        'inline-flex items-center gap-0.5 px-1 py-px text-[10px] font-medium rounded border leading-3.5 transition-opacity duration-300',
         config.bg,
         config.text,
         config.border,
+        isPending && 'animate-pulse opacity-75',
         className,
       )}
     >
