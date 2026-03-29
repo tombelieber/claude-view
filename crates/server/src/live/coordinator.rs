@@ -95,6 +95,7 @@ impl SessionCoordinator {
     /// and the session doesn't exist, the coordinator upserts (creates a shell
     /// session) instead of buffering. This handles server restarts where the
     /// original `SessionStart` was consumed by the previous process.
+    #[allow(clippy::too_many_arguments)]
     pub async fn handle(
         &self,
         ctx: &MutationContext<'_>,
