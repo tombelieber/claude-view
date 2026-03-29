@@ -240,6 +240,7 @@ pub async fn handle_statusline(
             pid,
             now,
             None,
+            None, // statusline has its own session creation path
         )
         .await;
 
