@@ -81,6 +81,20 @@ export function ComponentDashboard({
         </span>
 
         <div className="flex items-center gap-4 shrink-0 ml-auto">
+          {rollupVram > 0 && totalVramBytes > 0 && (
+            <>
+              <div className="w-56">
+                <SessionRollupBar
+                  label="VRAM"
+                  value={rollupVram}
+                  max={totalVramBytes}
+                  formatValue={(v) => formatBytes(v)}
+                  color="purple"
+                />
+              </div>
+              <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+            </>
+          )}
           <div className="w-56">
             <SessionRollupBar label="CPU" value={rollupCpu} max={systemInfo.cpuCoreCount * 100} />
           </div>
@@ -93,20 +107,6 @@ export function ComponentDashboard({
               formatValue={(v) => formatBytes(v)}
             />
           </div>
-          {rollupVram > 0 && totalVramBytes > 0 && (
-            <>
-              <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
-              <div className="w-56">
-                <SessionRollupBar
-                  label="VRAM"
-                  value={rollupVram}
-                  max={totalVramBytes}
-                  formatValue={(v) => formatBytes(v)}
-                  color="purple"
-                />
-              </div>
-            </>
-          )}
         </div>
       </div>
 

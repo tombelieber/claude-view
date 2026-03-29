@@ -82,7 +82,7 @@ pub fn collect(
 fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
     let url = format!("{}/api/sidecar/sessions", sidecar.base_url());
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(1))
+        .timeout(std::time::Duration::from_millis(200))
         .build()
         .ok()?;
     let resp = client.get(&url).send().ok()?;
@@ -93,22 +93,29 @@ fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
     body.as_array().map(|arr| arr.len() as u32)
 }
 
-/// Find sidecar PID by scanning sysinfo for the sidecar process.
-/// Matches command containing "sidecar/dist/index.js" or "sidecar/src/index.ts".
-/// Zero cost — sys is already refreshed, this is just a HashMap scan.
+/// Find sidecar PID by scanning sysinfo for the sidecar node process.
+/// Matches the tsx worker: command contains "sidecar/node_modules/tsx" AND "index.ts".
+/// This is the actual node process doing the work (not the tsx watcher parent).
+/// Zero cost — sys is already refreshed, just a HashMap scan.
 fn find_sidecar_pid(sys: &System) -> Option<u32> {
-    for (pid, proc) in sys.processes() {
-        let cmd: String = proc
+    let mut best: Option<(u32, u64)> = None; // (pid, memory) — pick largest
+    for (pid, proc_) in sys.processes() {
+        let cmd: String = proc_
             .cmd()
             .iter()
             .map(|s| s.to_string_lossy())
             .collect::<Vec<_>>()
             .join(" ");
-        if cmd.contains("sidecar/dist/index.js") || cmd.contains("sidecar/src/index.ts") {
-            return Some(pid.as_u32());
+        let is_sidecar = cmd.contains("sidecar/dist/index.js")
+            || (cmd.contains("sidecar/node_modules/tsx") && cmd.contains("index.ts"));
+        if is_sidecar {
+            let mem = proc_.memory();
+            if best.is_none() || mem > best.unwrap().1 {
+                best = Some((pid.as_u32(), mem));
+            }
         }
     }
-    None
+    best.map(|(pid, _)| pid)
 }
 
 /// Look up CPU and memory for a PID from the already-refreshed System.
