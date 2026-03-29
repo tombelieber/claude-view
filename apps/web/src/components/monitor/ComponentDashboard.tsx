@@ -28,12 +28,14 @@ export function ComponentDashboard({
   pendingPids,
   expandAll = false,
 }: ComponentDashboardProps) {
-  // Header = self process + all component rows (sidecar, omlx).
-  // Component rows = breakdown. Header is the rollup.
-  const componentCpu = components?.components.reduce((s, c) => s + c.cpuPercent, 0) ?? 0
-  const componentMem = components?.components.reduce((s, c) => s + c.memoryBytes, 0) ?? 0
-  const rollupCpu = proc.cpuPercent + componentCpu
-  const rollupMem = proc.memoryBytes + componentMem
+  // Header = sum of all component rows (self + sidecar + omlx).
+  // Self-process is a component, so sum(components) = total.
+  const rollupCpu = components
+    ? components.components.reduce((s, c) => s + c.cpuPercent, 0)
+    : proc.cpuPercent + proc.descendantCpu
+  const rollupMem = components
+    ? components.components.reduce((s, c) => s + c.memoryBytes, 0)
+    : proc.memoryBytes + proc.descendantMemory
   const componentCount = components?.components.length ?? proc.descendantCount
   const rollupVram = components
     ? components.components.reduce((sum, c) => sum + (c.vramBytes ?? 0), 0)
