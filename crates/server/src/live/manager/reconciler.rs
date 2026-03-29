@@ -92,6 +92,7 @@ impl LiveSessionManager {
                                 now,
                                 None,
                                 None,
+                                None,
                             )
                             .await;
                     }
@@ -387,6 +388,7 @@ impl LiveSessionManager {
                             SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
                             None,
                             now,
+                            None,
                             None,
                             None,
                         )
