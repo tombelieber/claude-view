@@ -2839,39 +2839,6 @@ where
         0
     };
 
-    // ── Hook events persist (after write_results_sqlx commit) ────────
-    // insert_hook_events starts its own transaction — must run AFTER
-    // write_results_sqlx returns (no nested BEGIN).
-    for result in &results {
-        if !result.parse_result.deep.hook_progress_events.is_empty() {
-            let mut events = result.parse_result.deep.hook_progress_events.clone();
-            events.sort_by(|a, b| {
-                a.timestamp
-                    .cmp(&b.timestamp)
-                    .then(a.event_name.cmp(&b.event_name))
-                    .then(a.tool_name.cmp(&b.tool_name))
-                    .then(a.source.cmp(&b.source))
-            });
-            events.dedup_by(|a, b| {
-                a.timestamp == b.timestamp
-                    && a.event_name == b.event_name
-                    && a.tool_name == b.tool_name
-                    && a.source == b.source
-            });
-
-            if let Err(e) =
-                crate::queries::hook_events::insert_hook_events(db, &result.session_id, &events)
-                    .await
-            {
-                tracing::warn!(
-                    session_id = %result.session_id,
-                    error = %e,
-                    "Failed to persist hook_progress events"
-                );
-            }
-        }
-    }
-
     // ── Search index phase (after SQLite commit) ──────────────────────
     // Write collected search messages to Tantivy. Runs after SQLite succeeds.
     // If Tantivy fails, we only log a warning — search index will be rebuilt
@@ -3124,6 +3091,37 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
             )
             .await
             .map_err(|e| format!("Failed to insert turns for {}: {}", result.session_id, e))?;
+        }
+
+        // ── Hook events (atomic with session data) ───────────────────
+        if !result.parse_result.deep.hook_progress_events.is_empty() {
+            let mut events = result.parse_result.deep.hook_progress_events.clone();
+            events.sort_by(|a, b| {
+                a.timestamp
+                    .cmp(&b.timestamp)
+                    .then(a.event_name.cmp(&b.event_name))
+                    .then(a.tool_name.cmp(&b.tool_name))
+                    .then(a.source.cmp(&b.source))
+            });
+            events.dedup_by(|a, b| {
+                a.timestamp == b.timestamp
+                    && a.event_name == b.event_name
+                    && a.tool_name == b.tool_name
+                    && a.source == b.source
+            });
+
+            crate::queries::hook_events::insert_hook_events_tx(
+                &mut tx,
+                &result.session_id,
+                &events,
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Failed to insert hook events for {}: {}",
+                    result.session_id, e
+                )
+            })?;
         }
     }
 
@@ -3749,6 +3747,37 @@ where
                     )
                 })?;
             }
+
+            // ── Hook events (atomic with session data) ───────────────
+            if !session.hook_progress_events.is_empty() {
+                let mut events = session.hook_progress_events.clone();
+                events.sort_by(|a, b| {
+                    a.timestamp
+                        .cmp(&b.timestamp)
+                        .then(a.event_name.cmp(&b.event_name))
+                        .then(a.tool_name.cmp(&b.tool_name))
+                        .then(a.source.cmp(&b.source))
+                });
+                events.dedup_by(|a, b| {
+                    a.timestamp == b.timestamp
+                        && a.event_name == b.event_name
+                        && a.tool_name == b.tool_name
+                        && a.source == b.source
+                });
+
+                crate::queries::hook_events::insert_hook_events_tx(
+                    &mut tx,
+                    &session.parsed.id,
+                    &events,
+                )
+                .await
+                .map_err(|e| {
+                    format!(
+                        "Failed to insert hook events for {}: {}",
+                        session.parsed.id, e
+                    )
+                })?;
+            }
         }
 
         tx.commit()
@@ -3764,39 +3793,6 @@ where
 
         // Yield between chunks so live manager writes can slip through
         tokio::task::yield_now().await;
-    }
-
-    // ── Hook events persist (after all chunked transactions commit) ────
-    // insert_hook_events starts its own transaction — must run AFTER
-    // the chunked write loop returns (no nested BEGIN).
-    for session in &indexed_sessions {
-        if !session.hook_progress_events.is_empty() {
-            let mut events = session.hook_progress_events.clone();
-            events.sort_by(|a, b| {
-                a.timestamp
-                    .cmp(&b.timestamp)
-                    .then(a.event_name.cmp(&b.event_name))
-                    .then(a.tool_name.cmp(&b.tool_name))
-                    .then(a.source.cmp(&b.source))
-            });
-            events.dedup_by(|a, b| {
-                a.timestamp == b.timestamp
-                    && a.event_name == b.event_name
-                    && a.tool_name == b.tool_name
-                    && a.source == b.source
-            });
-
-            if let Err(e) =
-                crate::queries::hook_events::insert_hook_events(db, &session.parsed.id, &events)
-                    .await
-            {
-                tracing::warn!(
-                    session_id = %session.parsed.id,
-                    error = %e,
-                    "Failed to persist hook_progress events"
-                );
-            }
-        }
     }
 
     tracing::info!(
