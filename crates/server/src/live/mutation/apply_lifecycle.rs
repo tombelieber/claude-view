@@ -52,8 +52,16 @@ pub fn apply_lifecycle(
             }
             hook.turn_count += 1;
             hook.current_turn_started_at = Some(now);
+            // User submitted prompt → agent is now thinking (Autonomous)
+            hook.agent_state = AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "thinking".into(),
+                label: "Processing prompt...".into(),
+                context: None,
+            };
+            hook.current_activity = "Processing prompt...".into();
             bind_pid(hook, *pid);
-            None
+            Some(status_from_agent_state(&hook.agent_state))
         }
 
         LifecycleEvent::StateChange {
@@ -320,6 +328,31 @@ mod tests {
         };
         apply_lifecycle(&mut hook, &event2, 1001);
         assert_eq!(hook.title, "Fix the bug in main.rs");
+    }
+
+    #[test]
+    fn prompt_transitions_to_autonomous_thinking() {
+        let mut hook = make_hook_fields();
+        // Start in NeedsYou/idle (typical post-Stop state)
+        hook.agent_state = AgentState {
+            group: AgentStateGroup::NeedsYou,
+            state: "idle".into(),
+            label: "Waiting".into(),
+            context: None,
+        };
+
+        let event = LifecycleEvent::Prompt {
+            text: "Fix the bug".into(),
+            pid: None,
+        };
+        let result = apply_lifecycle(&mut hook, &event, 1000);
+
+        assert_eq!(result, Some(SessionStatus::Working));
+        assert_eq!(hook.agent_state.state, "thinking");
+        assert!(matches!(
+            hook.agent_state.group,
+            AgentStateGroup::Autonomous
+        ));
     }
 
     #[test]
