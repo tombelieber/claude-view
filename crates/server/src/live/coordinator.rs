@@ -29,8 +29,8 @@ use crate::live::mutation::types::{
     SessionMutation, SideEffect,
 };
 use crate::live::state::{
-    append_capped_hook_event, HookEvent, HookFields, JsonlFields, LiveSession, SessionEvent,
-    SessionStatus, StatuslineFields, MAX_HOOK_EVENTS_PER_SESSION,
+    append_capped_hook_event, AgentState, AgentStateGroup, HookEvent, HookFields, JsonlFields,
+    LiveSession, SessionEvent, SessionStatus, StatuslineFields, MAX_HOOK_EVENTS_PER_SESSION,
 };
 
 // ---------------------------------------------------------------------------
@@ -138,14 +138,25 @@ impl SessionCoordinator {
                         ..
                     }) => create_session_from_start(session_id, start_cwd, model, start_pid, now),
                     SessionMutation::Reconcile(data) => create_session_shell(session_id, data, now),
-                    // Upsert: any event with cwd creates a shell session
-                    _ => create_session_from_start(
-                        session_id,
-                        &cwd.map(|c| c.to_string()),
-                        &None,
-                        &pid,
-                        now,
-                    ),
+                    // Upsert: session is actively sending hooks → Autonomous
+                    _ => {
+                        let mut s = create_session_from_start(
+                            session_id,
+                            &cwd.map(|c| c.to_string()),
+                            &None,
+                            &pid,
+                            now,
+                        );
+                        // Override default NeedsYou/unknown — session is clearly active
+                        s.hook.agent_state = AgentState {
+                            group: AgentStateGroup::Autonomous,
+                            state: "acting".into(),
+                            label: "Working".into(),
+                            context: None,
+                        };
+                        s.status = SessionStatus::Working;
+                        s
+                    }
                 };
                 sessions.insert(session_id.to_string(), new_session);
 
