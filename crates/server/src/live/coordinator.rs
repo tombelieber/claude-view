@@ -134,6 +134,7 @@ impl SessionCoordinator {
             let mut sessions = ctx.sessions.write().await;
 
             // Create session if needed (Start, Reconcile, or upsert via cwd)
+            let mut upserted = false;
             if !sessions.contains_key(session_id) {
                 let new_session = match &mutation {
                     SessionMutation::Lifecycle(LifecycleEvent::Start {
@@ -145,6 +146,7 @@ impl SessionCoordinator {
                     SessionMutation::Reconcile(data) => create_session_shell(session_id, data, now),
                     // Upsert: shell session — state set by the mutation that follows
                     _ => {
+                        upserted = true;
                         let mut s = create_session_from_start(
                             session_id,
                             &cwd.map(|c| c.to_string()),
@@ -193,7 +195,14 @@ impl SessionCoordinator {
             };
 
             // Plan side effects BEFORE mutation (capture data mutation will clear)
-            let side_effects = plan_side_effects(session_id, session, &mutation, now);
+            let mut side_effects = plan_side_effects(session_id, session, &mutation, now);
+
+            // Upserted sessions need immediate JSONL enrichment
+            if upserted {
+                side_effects.push(SideEffect::EnrichFromJsonl {
+                    session_id: session_id.to_string(),
+                });
+            }
 
             // Dispatch to the appropriate apply function
             let status_change = apply_mutation_to_session(session, &mutation, now);
@@ -499,6 +508,11 @@ async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect) {
         SideEffect::RemoveAccumulator { session_id } => {
             if let Some(mgr) = ctx.live_manager {
                 mgr.remove_accumulator(session_id).await;
+            }
+        }
+        SideEffect::EnrichFromJsonl { session_id } => {
+            if let Some(mgr) = ctx.live_manager {
+                mgr.enrich_session_from_accumulator(session_id).await;
             }
         }
         SideEffect::CreateAccumulator { session_id } => {
