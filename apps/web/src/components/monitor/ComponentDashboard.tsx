@@ -37,6 +37,10 @@ export function ComponentDashboard({
     ? components.components.reduce((sum, c) => sum + c.memoryBytes, 0)
     : proc.memoryBytes + proc.descendantMemory
   const componentCount = components?.components.length ?? proc.descendantCount
+  const rollupVram = components
+    ? components.components.reduce((sum, c) => sum + (c.vramBytes ?? 0), 0)
+    : 0
+  const totalVramBytes = components?.totalVramBytes ?? 0
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -92,6 +96,20 @@ export function ComponentDashboard({
               formatValue={(v) => formatBytes(v)}
             />
           </div>
+          {rollupVram > 0 && totalVramBytes > 0 && (
+            <>
+              <div className="w-px h-4 bg-gray-200 dark:bg-gray-700" />
+              <div className="w-56">
+                <SessionRollupBar
+                  label="VRAM"
+                  value={rollupVram}
+                  max={totalVramBytes}
+                  formatValue={(v) => formatBytes(v)}
+                  color="purple"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
