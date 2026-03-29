@@ -28,11 +28,12 @@ export function ComponentDashboard({
   pendingPids,
   expandAll = false,
 }: ComponentDashboardProps) {
-  // Header = total app footprint from process tree (self + descendants).
-  // Component rows = breakdown of sub-components (sidecar, omlx).
-  // VRAM comes from components since only they track GPU memory.
-  const rollupCpu = proc.cpuPercent + proc.descendantCpu
-  const rollupMem = proc.memoryBytes + proc.descendantMemory
+  // Header = self process + all component rows (sidecar, omlx).
+  // Component rows = breakdown. Header is the rollup.
+  const componentCpu = components?.components.reduce((s, c) => s + c.cpuPercent, 0) ?? 0
+  const componentMem = components?.components.reduce((s, c) => s + c.memoryBytes, 0) ?? 0
+  const rollupCpu = proc.cpuPercent + componentCpu
+  const rollupMem = proc.memoryBytes + componentMem
   const componentCount = components?.components.length ?? proc.descendantCount
   const rollupVram = components
     ? components.components.reduce((sum, c) => sum + (c.vramBytes ?? 0), 0)
