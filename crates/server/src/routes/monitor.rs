@@ -117,7 +117,9 @@ pub async fn monitor_stream(
         // Re-bind so the move into this async block is explicit.
         let _guard = _guard;
 
-        // 1. Send init event with system info + first snapshot
+        // 1. Send init event with system info + snapshot.
+        // Use a lightweight snapshot (no 200ms CPU baseline sleep) for fast first paint.
+        // CPU% will read 0 on first init — corrected by the next 2s oracle tick.
         let system_info = collect_system_info();
         let first_snapshot = {
             let sessions = live_sessions.read().await;
@@ -125,8 +127,6 @@ pub async fn monitor_stream(
             drop(sessions);
             let mut sys = sysinfo::System::new_all();
             tokio::task::spawn_blocking(move || {
-                // Brief sleep so sysinfo CPU delta is non-zero on first measurement
-                std::thread::sleep(Duration::from_millis(200));
                 collect_snapshot(&mut sys, &sessions_clone)
             })
             .await
@@ -141,7 +141,6 @@ pub async fn monitor_stream(
                 session_resources: Vec::new(),
             })
         };
-
         let init = MonitorInit {
             system_info,
             snapshot: first_snapshot,

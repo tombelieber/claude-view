@@ -20,7 +20,22 @@ pub fn collect(
     sidecar: &SidecarManager,
     omlx_status: &OmlxStatus,
 ) -> ComponentSnapshot {
-    let mut components = Vec::with_capacity(2);
+    let mut components = Vec::with_capacity(3);
+
+    // --- Self (claude-view server) ---
+    let self_pid = std::process::id();
+    let (self_cpu, self_mem) = pid_metrics(sys, Some(self_pid));
+    components.push(ComponentStatus {
+        name: "claude-view".into(),
+        kind: ComponentKind::ChildProcess,
+        enabled: true,
+        running: true,
+        pid: Some(self_pid),
+        cpu_percent: self_cpu,
+        memory_bytes: self_mem,
+        vram_bytes: None,
+        details: ComponentDetails::Server,
+    });
 
     // --- Agent SDK Sidecar ---
     // Detect running state by HTTP (works in dev mode where concurrently starts sidecar).
