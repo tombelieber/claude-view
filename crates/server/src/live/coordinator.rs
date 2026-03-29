@@ -904,4 +904,282 @@ mod tests {
             "Buffered statusline model should have been applied"
         );
     }
+
+    // =========================================================================
+    // Upsert regression tests — any hook with cwd must create-if-missing
+    // =========================================================================
+
+    /// Helper: create a MutationContext for upsert tests (no live_manager).
+    async fn make_upsert_ctx() -> (
+        SessionCoordinator,
+        Arc<RwLock<HashMap<String, LiveSession>>>,
+        broadcast::Sender<SessionEvent>,
+        claude_view_db::Database,
+        TranscriptMap,
+        Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
+    ) {
+        let coordinator = SessionCoordinator::new();
+        let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+        let (live_tx, _rx) = broadcast::channel(16);
+        let db = claude_view_db::Database::new_in_memory()
+            .await
+            .expect("in-memory DB");
+        let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
+        let hook_event_channels: Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>> =
+            Arc::new(RwLock::new(HashMap::new()));
+        (
+            coordinator,
+            sessions,
+            live_tx,
+            db,
+            transcript_to_session,
+            hook_event_channels,
+        )
+    }
+
+    #[tokio::test]
+    async fn upsert_state_change_with_cwd_creates_session() {
+        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+        };
+
+        // PreToolUse with cwd — should upsert, not buffer
+        let result = coordinator
+            .handle(
+                &ctx,
+                "upsert-session",
+                SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+                    agent_state: crate::live::state::AgentState {
+                        group: crate::live::state::AgentStateGroup::Autonomous,
+                        state: "acting".into(),
+                        label: "Running Bash".into(),
+                        context: None,
+                    },
+                    event_name: "PreToolUse".into(),
+                    pid: Some(12345),
+                }),
+                Some(12345),
+                1700000000,
+                None,
+                Some("/tmp/my-project"),
+                Some("/home/user/.claude/projects/my-project/upsert-session.jsonl"),
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Created(_)),
+            "StateChange with cwd must upsert, not buffer"
+        );
+
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("upsert-session").unwrap();
+        assert_eq!(session.jsonl.project_path, "/tmp/my-project");
+        assert_eq!(
+            session.jsonl.file_path,
+            "/home/user/.claude/projects/my-project/upsert-session.jsonl"
+        );
+        // State should reflect the StateChange mutation
+        assert_eq!(session.hook.agent_state.state, "acting");
+        assert_eq!(session.hook.agent_state.label, "Running Bash");
+    }
+
+    #[tokio::test]
+    async fn upsert_observability_with_cwd_creates_session() {
+        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+        };
+
+        // ConfigChange (Observability) with cwd — must still upsert
+        let result = coordinator
+            .handle(
+                &ctx,
+                "obs-upsert",
+                SessionMutation::Lifecycle(LifecycleEvent::Observability {
+                    event_name: "ConfigChange".into(),
+                    pid: Some(555),
+                }),
+                Some(555),
+                1700000000,
+                None,
+                Some("/tmp/project"),
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Created(_)),
+            "Observability with cwd must upsert, not buffer"
+        );
+
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("obs-upsert").unwrap();
+        assert_eq!(session.jsonl.project_path, "/tmp/project");
+    }
+
+    #[tokio::test]
+    async fn no_cwd_still_buffers() {
+        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+        };
+
+        // StateChange without cwd — must buffer, not upsert
+        let result = coordinator
+            .handle(
+                &ctx,
+                "no-cwd-session",
+                SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+                    agent_state: crate::live::state::AgentState {
+                        group: crate::live::state::AgentStateGroup::Autonomous,
+                        state: "acting".into(),
+                        label: "Working".into(),
+                        context: None,
+                    },
+                    event_name: "PreToolUse".into(),
+                    pid: None,
+                }),
+                None,
+                1700000000,
+                None,
+                None, // no cwd
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Buffered),
+            "Without cwd, non-Start events must buffer"
+        );
+        assert!(ctx.sessions.read().await.get("no-cwd-session").is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_drains_previously_buffered_events() {
+        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+        };
+
+        // 1) First event: no cwd → buffered
+        coordinator
+            .handle(
+                &ctx,
+                "drain-test",
+                SessionMutation::Lifecycle(LifecycleEvent::Prompt {
+                    text: "Hello world".into(),
+                    pid: None,
+                }),
+                None,
+                1700000000,
+                None,
+                None,
+                None,
+            )
+            .await;
+        assert!(ctx.sessions.read().await.get("drain-test").is_none());
+
+        // 2) Second event: has cwd → upsert + drain buffered Prompt
+        coordinator
+            .handle(
+                &ctx,
+                "drain-test",
+                SessionMutation::Lifecycle(LifecycleEvent::StateChange {
+                    agent_state: crate::live::state::AgentState {
+                        group: crate::live::state::AgentStateGroup::Autonomous,
+                        state: "acting".into(),
+                        label: "Working".into(),
+                        context: None,
+                    },
+                    event_name: "PreToolUse".into(),
+                    pid: None,
+                }),
+                None,
+                1700000001,
+                None,
+                Some("/tmp/proj"),
+                None,
+            )
+            .await;
+
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("drain-test").unwrap();
+        // Buffered Prompt should have been drained → turn_count incremented
+        assert_eq!(
+            session.hook.turn_count, 1,
+            "Buffered Prompt must be drained on upsert"
+        );
+        assert_eq!(session.hook.last_user_message, "Hello world");
+    }
+
+    #[tokio::test]
+    async fn upsert_does_not_force_autonomous_state() {
+        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+        };
+
+        // Stop event with cwd → should upsert with NeedsYou/idle, NOT Autonomous
+        let result = coordinator
+            .handle(
+                &ctx,
+                "stop-upsert",
+                SessionMutation::Lifecycle(LifecycleEvent::Stop {
+                    agent_state: crate::live::state::AgentState {
+                        group: crate::live::state::AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Waiting".into(),
+                        context: None,
+                    },
+                    last_assistant_message: Some("Done.".into()),
+                    pid: None,
+                }),
+                None,
+                1700000000,
+                None,
+                Some("/tmp/proj"),
+                None,
+            )
+            .await;
+
+        assert!(matches!(result, MutationResult::Created(_)));
+
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("stop-upsert").unwrap();
+        assert_eq!(
+            session.hook.agent_state.state, "idle",
+            "Stop upsert must reflect idle state, not forced acting"
+        );
+        assert!(matches!(
+            session.hook.agent_state.group,
+            crate::live::state::AgentStateGroup::NeedsYou
+        ));
+        assert_eq!(session.status, SessionStatus::Paused);
+    }
 }
