@@ -38,6 +38,7 @@ export function ComponentDashboard({
     ? components.components.reduce((sum, c) => sum + (c.vramBytes ?? 0), 0)
     : 0
   const totalVramBytes = components?.totalVramBytes ?? 0
+  const showVramColumn = rollupVram > 0 && totalVramBytes > 0
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800">
@@ -81,7 +82,7 @@ export function ComponentDashboard({
         </span>
 
         <div className="flex items-center gap-4 shrink-0 ml-auto">
-          {rollupVram > 0 && totalVramBytes > 0 && (
+          {showVramColumn && (
             <>
               <div className="w-56">
                 <SessionRollupBar
@@ -127,6 +128,7 @@ export function ComponentDashboard({
               component={comp}
               systemInfo={systemInfo}
               totalVramBytes={components.totalVramBytes}
+              showVramColumn={showVramColumn}
             />
           ))}
           {proc.descendants.map((child) => (

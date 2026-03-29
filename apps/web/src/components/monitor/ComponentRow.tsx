@@ -7,9 +7,10 @@ interface ComponentRowProps {
   component: ComponentStatus
   systemInfo: SystemInfo
   totalVramBytes?: number | null
+  showVramColumn?: boolean
 }
 
-export function ComponentRow({ component: c, systemInfo, totalVramBytes }: ComponentRowProps) {
+export function ComponentRow({ component: c, systemInfo, totalVramBytes, showVramColumn = false }: ComponentRowProps) {
   const kindLabel: Record<string, string> = {
     server: 'server',
     sidecar: 'child process',
@@ -53,25 +54,27 @@ export function ComponentRow({ component: c, systemInfo, totalVramBytes }: Compo
       )}
 
       <div className="flex items-center gap-4 shrink-0 ml-auto">
-        {c.vramBytes != null && totalVramBytes != null && totalVramBytes > 0 && (
+        {showVramColumn && (
           <>
-            <div className="w-40">
-              <SessionRollupBar
-                label="VRAM"
-                value={c.vramBytes}
-                max={totalVramBytes}
-                formatValue={(v) => formatBytes(v)}
-                color="purple"
-              />
+            <div className="w-56">
+              {c.vramBytes != null && totalVramBytes != null && totalVramBytes > 0 ? (
+                <SessionRollupBar
+                  label="VRAM"
+                  value={c.vramBytes}
+                  max={totalVramBytes}
+                  formatValue={(v) => formatBytes(v)}
+                  color="purple"
+                />
+              ) : null}
             </div>
             <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
           </>
         )}
-        <div className="w-40">
+        <div className="w-56">
           <SessionRollupBar label="CPU" value={c.cpuPercent} max={systemInfo.cpuCoreCount * 100} />
         </div>
         <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
-        <div className="w-40">
+        <div className="w-56">
           <SessionRollupBar
             label="RAM"
             value={c.memoryBytes}
