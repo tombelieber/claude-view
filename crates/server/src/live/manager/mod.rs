@@ -33,7 +33,9 @@ use tracing::info;
 use claude_view_core::live_parser::TailFinders;
 use claude_view_core::phase::client::OmlxClient;
 use claude_view_core::phase::scheduler::{run_scheduler, ClassifyRequest, ClassifyResult};
-use claude_view_core::phase::{PhaseLabel, SessionPhase, MAX_PHASE_LABELS};
+use claude_view_core::phase::{
+    dominant_phase, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
+};
 use claude_view_core::pricing::ModelPricing;
 
 use claude_view_db::Database;
@@ -190,8 +192,21 @@ impl LiveSessionManager {
             let tx = manager.tx.clone();
             tokio::spawn(async move {
                 while let Some(result) = result_rx.recv().await {
-                    let mut accs = accumulators.write().await;
-                    if let Some(acc) = accs.get_mut(&result.session_id) {
+                    let session_id = result.session_id.clone();
+
+                    // Phase 1: Update accumulator (write lock)
+                    let phase_history = {
+                        let mut accs = accumulators.write().await;
+                        let Some(acc) = accs.get_mut(&session_id) else {
+                            continue;
+                        };
+
+                        // Reject stale results from older in-flight calls
+                        if result.generation < acc.last_applied_generation {
+                            continue;
+                        }
+                        acc.last_applied_generation = result.generation;
+
                         acc.stabilizer.update(result.phase, result.scope);
                         if acc.stabilizer.should_emit() {
                             let label = PhaseLabel {
@@ -207,10 +222,20 @@ impl LiveSessionManager {
                                 acc.phase_labels.remove(0);
                             }
                         }
-                    }
-                    drop(accs);
-                    let sessions = sessions.read().await;
-                    if let Some(session) = sessions.get(&result.session_id) {
+
+                        // Build phase history from accumulator for session map write
+                        PhaseHistory {
+                            current: acc.phase_labels.last().cloned(),
+                            dominant: dominant_phase(&acc.phase_labels),
+                            labels: acc.phase_labels.clone(),
+                        }
+                    };
+                    // accumulators lock dropped here
+
+                    // Phase 2: Write fresh phase into session map, then broadcast
+                    let mut sessions = sessions.write().await;
+                    if let Some(session) = sessions.get_mut(&session_id) {
+                        session.jsonl.phase = phase_history;
                         let _ = tx.send(SessionEvent::SessionUpdated {
                             session: session.clone(),
                         });
@@ -258,6 +283,16 @@ impl LiveSessionManager {
             .await
             .entry(session_id.to_string())
             .or_insert_with(SessionAccumulator::new);
+    }
+
+    /// Return the JSONL file path from the accumulator, if known.
+    /// Used as a fallback when transcript_path is not in the hook payload
+    /// but the file watcher has already discovered the JSONL via initial_scan.
+    pub async fn accumulator_file_path(&self, session_id: &str) -> Option<std::path::PathBuf> {
+        let accumulators = self.accumulators.read().await;
+        accumulators
+            .get(session_id)
+            .and_then(|a| a.file_path.clone())
     }
 
     /// Apply cached accumulator data to a session object that is NOT yet
