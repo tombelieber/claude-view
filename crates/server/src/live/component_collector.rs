@@ -20,30 +20,14 @@ pub fn collect(
     sidecar: &SidecarManager,
     omlx_status: &OmlxStatus,
 ) -> ComponentSnapshot {
-    let mut components = Vec::with_capacity(3);
-
-    // --- Self (claude-view server) ---
-    let self_pid = std::process::id();
-    let (self_cpu, self_mem) = pid_metrics(sys, Some(self_pid));
-    components.push(ComponentStatus {
-        name: "claude-view".into(),
-        kind: ComponentKind::ChildProcess,
-        enabled: true,
-        running: true,
-        pid: Some(self_pid),
-        cpu_percent: self_cpu,
-        memory_bytes: self_mem,
-        vram_bytes: None,
-        details: ComponentDetails::Server,
-    });
+    let mut components = Vec::with_capacity(2);
 
     // --- Agent SDK Sidecar ---
-    // Detect sidecar by HTTP response, not just child_pid().
-    // In dev mode, sidecar is started by concurrently — child_pid() returns None
-    // even though the sidecar is running and reachable.
+    // Detect running state by HTTP (works in dev mode where concurrently starts sidecar).
+    // Find PID by scanning sysinfo for the sidecar process (no subprocess).
     let session_count = fetch_session_count(sidecar);
     let sidecar_running = session_count.is_some();
-    let sidecar_pid = sidecar.child_pid();
+    let sidecar_pid = sidecar.child_pid().or_else(|| find_sidecar_pid(sys));
     let (sidecar_cpu, sidecar_mem) = pid_metrics(sys, sidecar_pid);
     components.push(ComponentStatus {
         name: "agent-sdk-sidecar".into(),
@@ -107,6 +91,24 @@ fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
     }
     let body: serde_json::Value = resp.json().ok()?;
     body.as_array().map(|arr| arr.len() as u32)
+}
+
+/// Find sidecar PID by scanning sysinfo for the sidecar process.
+/// Matches command containing "sidecar/dist/index.js" or "sidecar/src/index.ts".
+/// Zero cost — sys is already refreshed, this is just a HashMap scan.
+fn find_sidecar_pid(sys: &System) -> Option<u32> {
+    for (pid, proc) in sys.processes() {
+        let cmd: String = proc
+            .cmd()
+            .iter()
+            .map(|s| s.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if cmd.contains("sidecar/dist/index.js") || cmd.contains("sidecar/src/index.ts") {
+            return Some(pid.as_u32());
+        }
+    }
+    None
 }
 
 /// Look up CPU and memory for a PID from the already-refreshed System.

@@ -149,7 +149,7 @@ pub fn start_oracle(
         loop {
             interval.tick().await;
             tick = tick.wrapping_add(1);
-            let should_classify = tick > 0 && tick.is_multiple_of(5); // every 10s
+            let should_classify = tick == 1 || tick.is_multiple_of(5); // first tick + every 10s
 
             // All sysinfo calls happen on a blocking thread.
             let sidecar_ref = sidecar.clone();
