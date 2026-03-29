@@ -137,10 +137,9 @@ pub fn start_oracle(
         tracing::info!("process_oracle: started");
 
         // The System instance persists across ticks — critical for CPU delta tracking.
+        // Skip the 200ms CPU baseline sleep — first tick CPU reads 0% but components
+        // load ~200ms faster. Second tick (2s later) has accurate CPU deltas.
         let mut sys = System::new_all();
-        // Initial CPU baseline — first reading is always 0.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        sys.refresh_cpu_usage();
 
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
         let mut tick: u32 = 0;
