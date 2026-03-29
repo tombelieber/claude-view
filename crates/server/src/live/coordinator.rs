@@ -91,6 +91,10 @@ impl SessionCoordinator {
     /// This is the ONLY public entry point for session state changes.
     /// All side effects (DB writes, accumulator cleanup) are executed
     /// after the write lock is dropped.
+    /// `cwd`: optional working directory from the hook payload. When present
+    /// and the session doesn't exist, the coordinator upserts (creates a shell
+    /// session) instead of buffering. This handles server restarts where the
+    /// original `SessionStart` was consumed by the previous process.
     pub async fn handle(
         &self,
         ctx: &MutationContext<'_>,
@@ -99,15 +103,17 @@ impl SessionCoordinator {
         pid: Option<u32>,
         now: i64,
         hook_event: Option<HookEvent>,
+        cwd: Option<&str>,
     ) -> MutationResult {
-        // ── Phase 1: Buffer ──────────────────────────────────────────────
+        // ── Phase 1: Buffer or upsert ───────────────────────────────────
         let session_exists = {
             let sessions = ctx.sessions.read().await;
             sessions.contains_key(session_id)
         };
 
         if !session_exists {
-            if mutation.can_create_session() {
+            let has_valid_cwd = cwd.is_some_and(|c| !c.trim().is_empty());
+            if mutation.can_create_session() || has_valid_cwd {
                 // Create session, then drain buffered mutations below
             } else {
                 // Buffer mutation + hook event together, return early
@@ -121,17 +127,24 @@ impl SessionCoordinator {
         let (snapshot, broadcast_action, side_effects) = {
             let mut sessions = ctx.sessions.write().await;
 
-            // Create session if needed (Start or Reconcile on missing session)
+            // Create session if needed (Start, Reconcile, or upsert via cwd)
             if !sessions.contains_key(session_id) {
                 let new_session = match &mutation {
                     SessionMutation::Lifecycle(LifecycleEvent::Start {
-                        cwd,
+                        cwd: start_cwd,
                         model,
                         pid: start_pid,
                         ..
-                    }) => create_session_from_start(session_id, cwd, model, start_pid, now),
+                    }) => create_session_from_start(session_id, start_cwd, model, start_pid, now),
                     SessionMutation::Reconcile(data) => create_session_shell(session_id, data, now),
-                    _ => unreachable!("can_create_session guard ensures only Start/Reconcile"),
+                    // Upsert: any event with cwd creates a shell session
+                    _ => create_session_from_start(
+                        session_id,
+                        &cwd.map(|c| c.to_string()),
+                        &None,
+                        &pid,
+                        now,
+                    ),
                 };
                 sessions.insert(session_id.to_string(), new_session);
 
@@ -820,6 +833,7 @@ mod tests {
                 None,
                 1700000000,
                 None,
+                None, // no cwd → buffer
             )
             .await;
 
@@ -843,6 +857,7 @@ mod tests {
                 Some(111),
                 1700000001,
                 None,
+                None, // Start carries cwd internally
             )
             .await;
 

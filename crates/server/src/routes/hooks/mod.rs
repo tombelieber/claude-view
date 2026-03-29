@@ -351,7 +351,15 @@ pub async fn handle_hook(
     let ctx = state.mutation_context();
     state
         .coordinator
-        .handle(&ctx, &payload.session_id, mutation, pid, now, hook_event)
+        .handle(
+            &ctx,
+            &payload.session_id,
+            mutation,
+            pid,
+            now,
+            hook_event,
+            payload.cwd.as_deref(),
+        )
         .await;
 
     // ── Append to debug log (fire-and-forget, non-blocking) ─────────────
