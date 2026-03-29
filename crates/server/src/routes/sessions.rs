@@ -153,6 +153,9 @@ pub struct SessionDetail {
     pub tasks: Vec<TaskItem>,
     /// Whether plan files exist for this session's slug
     pub has_plans: bool,
+    /// Warnings for non-fatal data read failures (e.g. task/plan file errors)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 /// A commit linked to a session with its confidence tier
@@ -447,15 +450,30 @@ pub async fn get_session_detail(
     let derived_metrics = DerivedMetrics::from(&session);
 
     // Read persistent task files (if any)
-    let tasks = task_files::claude_tasks_dir()
-        .map(|dir| task_files::parse_session_tasks(&dir, &session_id))
-        .unwrap_or_default();
+    let mut warnings: Vec<String> = Vec::new();
+
+    let tasks = match task_files::claude_tasks_dir() {
+        Some(dir) => task_files::parse_session_tasks(&dir, &session_id),
+        None => {
+            warnings.push(
+                "Failed to read task files: could not resolve ~/.claude/tasks directory".into(),
+            );
+            Vec::new()
+        }
+    };
 
     // Check if plan files exist for this session's slug
     let has_plans = session.slug.as_ref().is_some_and(|slug| {
-        claude_view_core::plan_files::claude_plans_dir()
-            .map(|dir| claude_view_core::plan_files::has_plan_files(&dir, slug))
-            .unwrap_or(false)
+        match claude_view_core::plan_files::claude_plans_dir() {
+            Some(dir) => claude_view_core::plan_files::has_plan_files(&dir, slug),
+            None => {
+                warnings.push(
+                    "Failed to check plan files: could not resolve ~/.claude/plans directory"
+                        .into(),
+                );
+                false
+            }
+        }
     });
 
     Ok(Json(SessionDetail {
@@ -464,6 +482,7 @@ pub async fn get_session_detail(
         derived_metrics,
         tasks,
         has_plans,
+        warnings,
     }))
 }
 

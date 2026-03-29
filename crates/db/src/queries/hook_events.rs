@@ -44,6 +44,24 @@ pub async fn insert_hook_events(
     }
 
     let mut tx = db.pool().begin().await?;
+    insert_hook_events_tx(&mut tx, session_id, events).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Insert hook events using an existing transaction.
+///
+/// Callers that already hold a transaction (e.g. `write_results_sqlx`) use this
+/// to keep hook events atomic with the surrounding writes.
+pub async fn insert_hook_events_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    session_id: &str,
+    events: &[HookEventRow],
+) -> Result<(), sqlx::Error> {
+    if events.is_empty() {
+        return Ok(());
+    }
+
     for event in events {
         sqlx::query(
             "INSERT OR IGNORE INTO hook_events (session_id, timestamp, event_name, tool_name, label, group_name, context, source)
@@ -57,10 +75,9 @@ pub async fn insert_hook_events(
         .bind(&event.group_name)
         .bind(&event.context)
         .bind(&event.source)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
-    tx.commit().await?;
     Ok(())
 }
 

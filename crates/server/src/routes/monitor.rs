@@ -56,6 +56,10 @@ struct MonitorInit {
     components: Option<crate::live::process_tree::component_types::ComponentSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     process_tree: Option<crate::live::process_tree::ProcessTreeSnapshot>,
+    /// Seconds since the oracle last updated its snapshot.
+    /// `i64::MAX` if the oracle has never produced a snapshot (last_updated_at == 0).
+    /// Frontend can use this to show a staleness indicator.
+    oracle_age_secs: i64,
 }
 
 /// GET /api/monitor/stream -- SSE stream of periodic resource snapshots.
@@ -141,11 +145,17 @@ pub async fn monitor_stream(
                 session_resources: Vec::new(),
             })
         };
+        let oracle_age_secs = if oracle_snap.last_updated_at == 0 {
+            i64::MAX
+        } else {
+            chrono::Utc::now().timestamp() - oracle_snap.last_updated_at
+        };
         let init = MonitorInit {
             system_info,
             snapshot: first_snapshot,
             components: oracle_snap.component_snapshot.clone(),
             process_tree: oracle_snap.process_tree.clone(),
+            oracle_age_secs,
         };
         match serde_json::to_string(&init) {
             Ok(data) => yield Ok(Event::default().event("init").data(data)),
