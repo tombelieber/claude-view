@@ -543,6 +543,7 @@ impl SessionAccumulator {
                 current: self.phase_labels.last().cloned(),
                 dominant: dominant_phase(&self.phase_labels),
                 labels: self.phase_labels.clone(),
+                freshness: Default::default(),
             },
         }
     }
