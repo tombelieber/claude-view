@@ -52,6 +52,10 @@ pub fn router() -> Router<Arc<AppState>> {
 struct MonitorInit {
     system_info: SystemInfo,
     snapshot: ResourceSnapshot,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    components: Option<crate::live::process_tree::component_types::ComponentSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    process_tree: Option<crate::live::process_tree::ProcessTreeSnapshot>,
 }
 
 /// GET /api/monitor/stream -- SSE stream of periodic resource snapshots.
@@ -81,6 +85,8 @@ pub async fn monitor_stream(
     let subscribers = state.monitor_subscribers.clone();
     let live_sessions = state.live_sessions.clone();
     let mut shutdown = state.shutdown.clone();
+    // Grab latest oracle data for init event — avoids 10s wait on page reload.
+    let oracle_snap = state.oracle_rx.borrow().clone();
 
     // Lazy start: if 0 → 1, spawn the polling task
     let prev = subscribers.fetch_add(1, Ordering::SeqCst);
@@ -139,6 +145,8 @@ pub async fn monitor_stream(
         let init = MonitorInit {
             system_info,
             snapshot: first_snapshot,
+            components: oracle_snap.component_snapshot.clone(),
+            process_tree: oracle_snap.process_tree.clone(),
         };
         match serde_json::to_string(&init) {
             Ok(data) => yield Ok(Event::default().event("init").data(data)),
