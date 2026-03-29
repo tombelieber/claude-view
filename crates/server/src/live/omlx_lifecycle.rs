@@ -84,7 +84,10 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
         match check_model(&client, &base_url).await {
             ModelCheck::CorrectModel(model_id) => {
                 if state != OmlxState::Running {
-                    info!(model_id, "oMLX ready with correct model (inference verified)");
+                    info!(
+                        model_id,
+                        "oMLX ready with correct model (inference verified)"
+                    );
                     state = OmlxState::Running;
                     status.ready.store(true, Ordering::Release);
 
@@ -169,7 +172,10 @@ async fn check_model(client: &reqwest::Client, base_url: &str) -> ModelCheck {
     }
 
     // Check if any loaded model matches our expected substring
-    let matched = body.data.iter().find(|m| m.id.contains(EXPECTED_MODEL_SUBSTRING));
+    let matched = body
+        .data
+        .iter()
+        .find(|m| m.id.contains(EXPECTED_MODEL_SUBSTRING));
     let Some(model) = matched else {
         return ModelCheck::WrongModel(body.data[0].id.clone());
     };
@@ -186,6 +192,8 @@ async fn check_model(client: &reqwest::Client, base_url: &str) -> ModelCheck {
 }
 
 /// Tiny inference probe — 1 token, verifies model weights are loaded.
+/// Sends the same fields as the real classify request (including
+/// `chat_template_kwargs`) so the probe catches format-level 500s.
 async fn probe_inference(client: &reqwest::Client, base_url: &str, model: &str) -> bool {
     let url = format!("{}/v1/chat/completions", base_url);
     let body = serde_json::json!({
@@ -193,6 +201,7 @@ async fn probe_inference(client: &reqwest::Client, base_url: &str, model: &str) 
         "messages": [{"role": "user", "content": "hi"}],
         "max_tokens": 1,
         "temperature": 0.0,
+        "chat_template_kwargs": {"enable_thinking": false},
     });
     match client.post(&url).json(&body).send().await {
         Ok(r) => r.status().is_success(),
