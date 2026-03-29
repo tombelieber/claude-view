@@ -38,24 +38,23 @@ pub fn collect(
     });
 
     // --- Agent SDK Sidecar ---
+    // Detect sidecar by HTTP response, not just child_pid().
+    // In dev mode, sidecar is started by concurrently — child_pid() returns None
+    // even though the sidecar is running and reachable.
+    let session_count = fetch_session_count(sidecar);
+    let sidecar_running = session_count.is_some();
     let sidecar_pid = sidecar.child_pid();
     let (sidecar_cpu, sidecar_mem) = pid_metrics(sys, sidecar_pid);
     components.push(ComponentStatus {
         name: "agent-sdk-sidecar".into(),
         kind: ComponentKind::ChildProcess,
-        enabled: true, // v1: always enabled
-        running: sidecar_pid.is_some(),
+        enabled: true,
+        running: sidecar_running,
         pid: sidecar_pid,
         cpu_percent: sidecar_cpu,
         memory_bytes: sidecar_mem,
         vram_bytes: None,
-        details: ComponentDetails::Sidecar {
-            session_count: if sidecar_pid.is_some() {
-                fetch_session_count(sidecar)
-            } else {
-                None
-            },
-        },
+        details: ComponentDetails::Sidecar { session_count },
     });
 
     // --- oMLX ---

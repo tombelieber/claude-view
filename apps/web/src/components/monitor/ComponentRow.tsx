@@ -10,12 +10,12 @@ interface ComponentRowProps {
 }
 
 export function ComponentRow({ component: c, systemInfo, totalVramBytes }: ComponentRowProps) {
-  const kindLabel =
-    c.details.type === 'server'
-      ? 'server'
-      : c.kind === 'ExternalService'
-        ? 'external'
-        : 'child process'
+  const kindLabel: Record<string, string> = {
+    server: 'server',
+    sidecar: 'child process',
+    omlx: 'external',
+  }
+  const label = kindLabel[c.details.type] ?? 'child process'
 
   const statusDot = c.running
     ? 'bg-green-500 dark:bg-green-400'
@@ -31,7 +31,7 @@ export function ComponentRow({ component: c, systemInfo, totalVramBytes }: Compo
         {c.name}
       </span>
 
-      <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{kindLabel}</span>
+      <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{label}</span>
 
       {!c.enabled && (
         <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0">
