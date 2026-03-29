@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight, FlaskConical } from 'lucide-react'
 import { useMemo } from 'react'
 import { cn } from '../../lib/utils'
 import { HarnessGroupedContent } from './HarnessGroupedContent'
@@ -57,15 +58,26 @@ export function HarnessKanbanView({
     [sessions],
   )
 
+  const needsYouIds = useMemo(() => new Set(needsYou.map((s) => s.id)), [needsYou])
+
   const autonomous = useMemo(
-    () => sessions.filter((s) => s.agentState.group === 'autonomous'),
-    [sessions],
+    () => sessions.filter((s) => !needsYouIds.has(s.id)),
+    [sessions, needsYouIds],
   )
 
   const hasNeedsYou = needsYou.length > 0
 
   return (
-    <div className="flex h-full min-h-0 gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      {/* Preview callout */}
+      <div className="mx-1 flex items-center gap-2 rounded-md border border-amber-300/30 dark:border-amber-700/30 bg-amber-50/60 dark:bg-amber-950/30 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+        <FlaskConical className="size-3.5 shrink-0" />
+        <span>
+          <span className="font-medium">Preview</span> — UI polish coming soon
+        </span>
+      </div>
+
+      <div className="flex flex-1 min-h-0 gap-4">
       {/* Left sidebar -- needs_you sessions */}
       <div
         className={cn(
@@ -88,6 +100,7 @@ export function HarnessKanbanView({
       <div className="flex-1 min-w-0 min-h-0 overflow-y-auto pb-4">
         <PhasePipeline
           sessions={autonomous}
+          excludeIds={needsYouIds}
           groupBy={groupBy}
           projectGroups={projectGroups}
           selectedId={selectedId}
@@ -99,6 +112,7 @@ export function HarnessKanbanView({
           toggleCollapse={toggleCollapse}
         />
       </div>
+      </div>
     </div>
   )
 }
@@ -106,6 +120,7 @@ export function HarnessKanbanView({
 /** Phase pipeline: Design + Delivery groups with phase columns */
 function PhasePipeline({
   sessions,
+  excludeIds,
   groupBy,
   projectGroups,
   selectedId,
@@ -117,6 +132,7 @@ function PhasePipeline({
   toggleCollapse,
 }: {
   sessions: LiveSession[]
+  excludeIds: Set<string>
   groupBy: KanbanGroupBy
   projectGroups: ProjectGroup[]
   selectedId: string | null
@@ -152,48 +168,67 @@ function PhasePipeline({
     <div className="flex flex-col gap-4">
       {PHASE_GROUPS.map((group) => {
         const groupCount = groupCounts[group.id as 'design' | 'delivery']
+        const groupKey = `harness-${group.id}`
+        const groupCollapsed = isCollapsed(groupKey)
+        const Chevron = groupCollapsed ? ChevronRight : ChevronDown
         return (
           <div key={group.id} className="rounded-lg border border-gray-200 dark:border-gray-800">
-            {/* Group header */}
-            <div className="px-4 py-2.5 flex items-center gap-2 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50 rounded-t-lg">
-              <span className="text-base">{group.emoji}</span>
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {group.label}
-              </span>
-              <span className="text-xs text-gray-400 dark:text-gray-500">({groupCount})</span>
-            </div>
+            {/* Sticky group header + phase columns */}
+            <div className={cn('sticky top-0 z-10 bg-white dark:bg-gray-950', groupCollapsed ? 'rounded-lg' : 'rounded-t-lg')}>
+              {/* Group header — clickable to collapse */}
+              <button
+                type="button"
+                onClick={() => toggleCollapse(groupKey)}
+                className={cn(
+                  'w-full px-4 py-2.5 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors',
+                  groupCollapsed ? 'rounded-lg' : 'rounded-t-lg border-b border-gray-200 dark:border-gray-800',
+                )}
+              >
+                <Chevron className="size-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
+                <span className="text-base">{group.emoji}</span>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  {group.label}
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">({groupCount})</span>
+              </button>
 
-            {/* Phase column headers */}
-            <HarnessPhaseColumnHeaders phases={group.phases} counts={phaseCounts} />
-
-            {/* Content: grouped or flat */}
-            <div className="px-1 pb-3">
-              {isGrouped ? (
-                <HarnessGroupedContent
-                  phases={group.phases}
-                  projectGroups={projectGroups}
-                  isDesign={group.id === 'design'}
-                  selectedId={selectedId}
-                  onSelect={onSelect}
-                  stalledSessions={stalledSessions}
-                  currentTime={currentTime}
-                  onCardClick={onCardClick}
-                  isCollapsed={isCollapsed}
-                  toggleCollapse={toggleCollapse}
-                />
-              ) : (
-                <FlatContent
-                  phases={group.phases}
-                  sessions={sessions}
-                  isDesign={group.id === 'design'}
-                  selectedId={selectedId}
-                  onSelect={onSelect}
-                  stalledSessions={stalledSessions}
-                  currentTime={currentTime}
-                  onCardClick={onCardClick}
-                />
+              {/* Phase column headers — hidden when collapsed */}
+              {!groupCollapsed && (
+                <HarnessPhaseColumnHeaders phases={group.phases} counts={phaseCounts} />
               )}
             </div>
+
+            {/* Content: grouped or flat — hidden when collapsed */}
+            {!groupCollapsed && (
+              <div className="px-1 pb-3">
+                {isGrouped ? (
+                  <HarnessGroupedContent
+                    phases={group.phases}
+                    projectGroups={projectGroups}
+                    excludeIds={excludeIds}
+                    isDesign={group.id === 'design'}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                    stalledSessions={stalledSessions}
+                    currentTime={currentTime}
+                    onCardClick={onCardClick}
+                    isCollapsed={isCollapsed}
+                    toggleCollapse={toggleCollapse}
+                  />
+                ) : (
+                  <FlatContent
+                    phases={group.phases}
+                    sessions={sessions}
+                    isDesign={group.id === 'design'}
+                    selectedId={selectedId}
+                    onSelect={onSelect}
+                    stalledSessions={stalledSessions}
+                    currentTime={currentTime}
+                    onCardClick={onCardClick}
+                  />
+                )}
+              </div>
+            )}
           </div>
         )
       })}

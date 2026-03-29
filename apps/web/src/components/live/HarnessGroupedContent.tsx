@@ -21,6 +21,7 @@ interface FilteredBranch {
 interface GroupedContentProps {
   phases: readonly PhaseColumn[]
   projectGroups: ProjectGroup[]
+  excludeIds: Set<string>
   isDesign: boolean
   selectedId: string | null
   onSelect: (id: string) => void
@@ -34,6 +35,7 @@ interface GroupedContentProps {
 export function HarnessGroupedContent({
   phases,
   projectGroups,
+  excludeIds,
   isDesign,
   selectedId,
   onSelect,
@@ -50,7 +52,7 @@ export function HarnessGroupedContent({
       const filteredBranches: FilteredBranch[] = []
       for (const branch of project.branches) {
         const matching = branch.sessions.filter(
-          (s) => isDesignPhase(getSessionPhase(s)) === isDesign,
+          (s) => !excludeIds.has(s.id) && isDesignPhase(getSessionPhase(s)) === isDesign,
         )
         if (matching.length > 0) {
           filteredBranches.push({
@@ -65,7 +67,7 @@ export function HarnessGroupedContent({
       }
     }
     return result
-  }, [projectGroups, isDesign])
+  }, [projectGroups, excludeIds, isDesign])
 
   if (relevantProjects.length === 0) {
     return (

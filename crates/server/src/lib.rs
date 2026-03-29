@@ -149,6 +149,11 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         } else {
             None
         },
+        debug_omlx_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/omlx.jsonl"))
+        } else {
+            None
+        },
     });
     api_routes(state)
 }
@@ -238,6 +243,11 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         } else {
             None
         },
+        debug_omlx_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/omlx.jsonl"))
+        } else {
+            None
+        },
     });
     api_routes(state)
 }
@@ -288,6 +298,13 @@ pub fn create_app_full(
         >,
     > = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
+    let debug_omlx_tx = if cfg!(debug_assertions) {
+        Some(
+            live::debug_log::DebugEventLog::new(".debug/omlx.jsonl").sender(),
+        )
+    } else {
+        None
+    };
     let (manager, live_sessions, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
@@ -299,6 +316,7 @@ pub fn create_app_full(
             omlx_status.clone(),
             oracle_rx.clone(),
             hook_event_channels.clone(),
+            debug_omlx_tx,
         );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -370,6 +388,11 @@ pub fn create_app_full(
         },
         debug_hooks_log: if cfg!(debug_assertions) {
             Some(live::debug_log::DebugEventLog::new(".debug/hooks.jsonl"))
+        } else {
+            None
+        },
+        debug_omlx_log: if cfg!(debug_assertions) {
+            Some(live::debug_log::DebugEventLog::new(".debug/omlx.jsonl"))
         } else {
             None
         },

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use super::client::{ConversationTurn, OmlxClient};
+use super::client::{ClassifyContext, OmlxClient};
 use super::SessionPhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,7 +18,7 @@ pub enum Priority {
 pub struct ClassifyRequest {
     pub session_id: String,
     pub priority: Priority,
-    pub turns: Vec<ConversationTurn>,
+    pub context: ClassifyContext,
     pub temperature: f32,
     pub generation: u64,
 }
@@ -27,6 +27,9 @@ pub struct ClassifyResult {
     pub session_id: String,
     pub phase: SessionPhase,
     pub scope: Option<String>,
+    /// Generation counter from the request that produced this result.
+    /// Used to reject stale in-flight results that arrive after newer ones.
+    pub generation: u64,
 }
 
 /// Run the scheduler as a tokio task.
@@ -94,14 +97,16 @@ async fn drain_queue(
         let done_tx = done_tx.clone();
         let session_id = req.session_id.clone();
         let temp = req.temperature;
+        let generation = req.generation;
 
         tokio::spawn(async move {
-            if let Some((phase, scope)) = client.classify(&req.turns, temp).await {
+            if let Some((phase, scope)) = client.classify(&req.context, temp, &session_id, generation).await {
                 let _ = result_tx
                     .send(ClassifyResult {
                         session_id,
                         phase,
                         scope,
+                        generation,
                     })
                     .await;
             }
@@ -122,15 +127,22 @@ mod tests {
 
     #[test]
     fn classify_request_fields() {
-        use super::super::client::Role;
+        use super::super::client::{ConversationTurn, Role};
         let req = ClassifyRequest {
             session_id: "test".into(),
             priority: Priority::New,
-            turns: vec![ConversationTurn {
-                role: Role::User,
-                text: "hello".into(),
-                tools: vec![],
-            }],
+            context: ClassifyContext {
+                turns: vec![ConversationTurn {
+                    role: Role::User,
+                    text: "hello".into(),
+                    tools: vec![],
+                }],
+                first_user_message: "hello".into(),
+                user_files: vec![],
+                edited_files: vec![],
+                bash_commands: vec![],
+                tool_summary: String::new(),
+            },
             temperature: 0.2,
             generation: 1,
         };

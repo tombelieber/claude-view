@@ -12,3 +12,5 @@ Definitions:
 - testing: running tests, debugging, verifying
 - reviewing: code review, auditing, quality checks
 - shipping: deploying, releasing, publishing, creating PRs
+
+Use the Signals section (files, commands, tools) alongside the conversation to determine the phase.

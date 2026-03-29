@@ -3,6 +3,7 @@ pub mod component_collector;
 pub mod gpu_memory;
 pub mod coordinator;
 pub mod debug_log;
+pub mod drain_loop;
 pub mod file_resolver;
 pub mod hook_registrar;
 pub mod manager;

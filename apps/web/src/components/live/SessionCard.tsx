@@ -23,7 +23,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
-import { PhaseBadge } from '../PhaseBadge'
+import { PhaseBadge, PhaseBadgeSkeleton } from '../PhaseBadge'
 import { SourceBadge } from '../shared/SourceBadge'
 import { SessionSpinner, pickVerb } from '../spinner'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
@@ -164,7 +164,6 @@ export function SessionCard({
             )
           )}
           <SourceBadge source={session.source} />
-          <PhaseBadge phase={session.phase?.current?.phase} scope={session.phase?.current?.scope} />
           {session.statuslineVersion && (
             <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
               v{session.statuslineVersion}
@@ -234,6 +233,28 @@ export function SessionCard({
           </CostTooltip>
         </div>
       </div>
+
+      {/* Phase badge or oMLX skeleton — above title */}
+      {(() => {
+        const currentPhase = session.phase?.current?.phase
+        const hasPhase = currentPhase && currentPhase !== 'working'
+        const isClassifying = !hasPhase && isAutonomous && session.turnCount > 0
+        if (hasPhase) {
+          return (
+            <div className="mb-1">
+              <PhaseBadge phase={currentPhase} scope={session.phase?.current?.scope} />
+            </div>
+          )
+        }
+        if (isClassifying) {
+          return (
+            <div className="mb-1">
+              <PhaseBadgeSkeleton />
+            </div>
+          )
+        }
+        return null
+      })()}
 
       {/* Title: latest human prompt, with fallback to first prompt/project name */}
       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mb-1">

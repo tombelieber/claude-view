@@ -185,6 +185,8 @@ pub struct AppState {
     pub debug_statusline_log: Option<DebugEventLog>,
     /// Rolling JSONL debug log for hook events (debug builds only).
     pub debug_hooks_log: Option<DebugEventLog>,
+    /// Rolling JSONL debug log for oMLX API calls (debug builds only).
+    pub debug_omlx_log: Option<DebugEventLog>,
 }
 
 impl AppState {
@@ -192,13 +194,14 @@ impl AppState {
     ///
     /// Uses a default (idle) `IndexingState` and empty registry holder.
     pub fn new(db: Database) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
             (
                 Some(DebugEventLog::new(".debug/statusline.jsonl")),
                 Some(DebugEventLog::new(".debug/hooks.jsonl")),
+                Some(DebugEventLog::new(".debug/omlx.jsonl")),
             )
         } else {
-            (None, None)
+            (None, None, None)
         };
         Arc::new(Self {
             start_time: Instant::now(),
@@ -248,19 +251,21 @@ impl AppState {
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
             debug_statusline_log,
             debug_hooks_log,
+            debug_omlx_log,
         })
     }
 
     /// Create with an externally-provided `IndexingState` (for testing and
     /// server-first startup where the caller owns the indexing handle).
     pub fn new_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
             (
                 Some(DebugEventLog::new(".debug/statusline.jsonl")),
                 Some(DebugEventLog::new(".debug/hooks.jsonl")),
+                Some(DebugEventLog::new(".debug/omlx.jsonl")),
             )
         } else {
-            (None, None)
+            (None, None, None)
         };
         Arc::new(Self {
             start_time: Instant::now(),
@@ -310,6 +315,7 @@ impl AppState {
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
             debug_statusline_log,
             debug_hooks_log,
+            debug_omlx_log,
         })
     }
 
@@ -319,13 +325,14 @@ impl AppState {
         indexing: Arc<IndexingState>,
         registry: RegistryHolder,
     ) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log) = if cfg!(debug_assertions) {
+        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
             (
                 Some(DebugEventLog::new(".debug/statusline.jsonl")),
                 Some(DebugEventLog::new(".debug/hooks.jsonl")),
+                Some(DebugEventLog::new(".debug/omlx.jsonl")),
             )
         } else {
-            (None, None)
+            (None, None, None)
         };
         Arc::new(Self {
             start_time: Instant::now(),
@@ -375,6 +382,7 @@ impl AppState {
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
             debug_statusline_log,
             debug_hooks_log,
+            debug_omlx_log,
         })
     }
 
