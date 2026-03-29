@@ -177,6 +177,7 @@ impl LiveSessionManager {
                     now,
                     None,
                     None,
+                    None,
                 )
                 .await;
             let db = self.db.clone();

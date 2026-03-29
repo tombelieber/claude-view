@@ -95,6 +95,10 @@ impl SessionCoordinator {
     /// and the session doesn't exist, the coordinator upserts (creates a shell
     /// session) instead of buffering. This handles server restarts where the
     /// original `SessionStart` was consumed by the previous process.
+    /// `cwd` + `transcript_path`: optional fields from the hook payload.
+    /// When cwd is present and the session doesn't exist, the coordinator
+    /// upserts a shell session. transcript_path links it to the JSONL file
+    /// so the reconciler can backfill model/tokens/cost/title.
     #[allow(clippy::too_many_arguments)]
     pub async fn handle(
         &self,
@@ -105,6 +109,7 @@ impl SessionCoordinator {
         now: i64,
         hook_event: Option<HookEvent>,
         cwd: Option<&str>,
+        transcript_path: Option<&str>,
     ) -> MutationResult {
         // ── Phase 1: Buffer or upsert ───────────────────────────────────
         let session_exists = {
@@ -155,6 +160,10 @@ impl SessionCoordinator {
                             context: None,
                         };
                         s.status = SessionStatus::Working;
+                        // Link JSONL so reconciler can backfill title/model/tokens
+                        if let Some(tp) = transcript_path {
+                            s.jsonl.file_path = tp.to_string();
+                        }
                         s
                     }
                 };
@@ -846,6 +855,7 @@ mod tests {
                 1700000000,
                 None,
                 None, // no cwd → buffer
+                None,
             )
             .await;
 
@@ -870,6 +880,7 @@ mod tests {
                 1700000001,
                 None,
                 None, // Start carries cwd internally
+                None,
             )
             .await;
 
