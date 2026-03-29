@@ -40,6 +40,11 @@ impl DebugEventLog {
     pub fn append(&self, line: String) {
         let _ = self.tx.try_send(line);
     }
+
+    /// Get a raw sender for passing to code outside this crate (e.g. core).
+    pub fn sender(&self) -> mpsc::Sender<String> {
+        self.tx.clone()
+    }
 }
 
 /// Background task: drains the channel and appends lines to the file.

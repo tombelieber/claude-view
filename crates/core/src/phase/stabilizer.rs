@@ -1,48 +1,38 @@
-//! Classification stabilizer: temperature-diversified voting + scope normalization.
+//! Classification stabilizer: EMA-based phase tracking with consecutive-confirm transitions.
+//!
+//! Replaces the previous 3-ring temperature-diversified voting approach.
+//! - First call shows badge immediately (no waiting for consensus).
+//! - Phase transitions require 2 consecutive results + EMA > threshold.
+//! - Single fixed temperature (no rotation).
+//! - Shipping lock heuristic preserved.
 
-use rust_stemmers::{Algorithm, Stemmer};
-use std::collections::HashSet;
-use std::sync::LazyLock;
+use std::collections::HashMap;
 
 use super::SessionPhase;
 
-const RING_SIZE: usize = 3;
-const TEMP_SCHEDULE: [f32; 3] = [0.2, 0.4, 0.6];
-
-static STOP_WORDS: &[&str] = &["the", "a", "an", "for", "of", "and", "in", "to", "with"];
-
-static GENERIC_STEMS: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    let stemmer = Stemmer::create(Algorithm::English);
-    [
-        "code",
-        "changes",
-        "work",
-        "task",
-        "implementation",
-        "feature",
-        "update",
-        "fix",
-        "general",
-        "various",
-        "project",
-        "codebase",
-    ]
-    .iter()
-    .map(|w| stemmer.stem(w).to_string())
-    .collect()
-});
+/// EMA decay factor. Higher = more weight on recent call.
+const EMA_DECAY: f32 = 0.4;
+/// Minimum EMA score for the new phase to trigger a transition.
+const TRANSITION_THRESHOLD: f32 = 0.6;
+/// Fixed temperature for all classify calls (no rotation).
+const FIXED_TEMPERATURE: f32 = 0.15;
+/// Consecutive identical results required to transition displayed phase.
+const CONSECUTIVE_REQUIRED: u8 = 2;
 
 pub struct ClassificationStabilizer {
-    phase_ring: [Option<SessionPhase>; RING_SIZE],
-    scope_norm_ring: [Option<Vec<String>>; RING_SIZE],
-    scope_raw_ring: [Option<String>; RING_SIZE],
-    ring_idx: usize,
-    ring_count: usize,
+    /// EMA weight per phase. Each phase decays independently.
+    phase_ema: HashMap<SessionPhase, f32>,
+    /// Total classify results received.
+    call_count: u32,
+    /// The phase currently displayed in the badge.
     displayed_phase: Option<SessionPhase>,
+    /// Raw scope from the most recent result matching displayed phase.
     displayed_scope: Option<String>,
+    /// Last N phases seen (for consecutive detection).
+    last_phases: Vec<SessionPhase>,
+    /// Shipping lock: suppresses updates for 3 non-shipping results.
     pub shipping_locked: bool,
     non_shipping_count: u32,
-    temp_idx: usize,
 }
 
 impl Default for ClassificationStabilizer {
@@ -54,113 +44,68 @@ impl Default for ClassificationStabilizer {
 impl ClassificationStabilizer {
     pub fn new() -> Self {
         Self {
-            phase_ring: [None, None, None],
-            scope_norm_ring: [None, None, None],
-            scope_raw_ring: [None, None, None],
-            ring_idx: 0,
-            ring_count: 0,
+            phase_ema: HashMap::new(),
+            call_count: 0,
             displayed_phase: None,
             displayed_scope: None,
+            last_phases: Vec::new(),
             shipping_locked: false,
             non_shipping_count: 0,
-            temp_idx: 0,
         }
     }
 
     pub fn update(&mut self, phase: SessionPhase, scope: Option<String>) {
+        // Shipping lock: count non-shipping results, unlock after 3
         if self.shipping_locked {
             self.non_shipping_count += 1;
             if self.non_shipping_count >= 3 {
                 self.shipping_locked = false;
                 self.non_shipping_count = 0;
             }
+            return;
         }
 
-        let norm = scope.as_ref().map(|s| normalize_scope(s));
+        self.call_count += 1;
 
-        self.phase_ring[self.ring_idx] = Some(phase);
-        self.scope_norm_ring[self.ring_idx] = norm;
-        self.scope_raw_ring[self.ring_idx] = scope;
-        self.ring_idx = (self.ring_idx + 1) % RING_SIZE;
-        if self.ring_count < RING_SIZE {
-            self.ring_count += 1;
+        // Update EMA: decay all, then boost incoming phase
+        for score in self.phase_ema.values_mut() {
+            *score *= 1.0 - EMA_DECAY;
         }
-        self.temp_idx = (self.temp_idx + 1) % RING_SIZE;
+        *self.phase_ema.entry(phase).or_insert(0.0) += EMA_DECAY;
 
-        if !self.shipping_locked {
-            self.compute_display();
+        // Track consecutive phases (keep last CONSECUTIVE_REQUIRED)
+        self.last_phases.push(phase);
+        if self.last_phases.len() > CONSECUTIVE_REQUIRED as usize {
+            self.last_phases.remove(0);
         }
-    }
 
-    fn compute_display(&mut self) {
-        let majority = self.majority_phase();
-        self.displayed_phase = majority;
+        // First call: show immediately
+        if self.call_count == 1 {
+            self.displayed_phase = Some(phase);
+            self.displayed_scope = scope;
+            return;
+        }
 
-        // Scope strategy: try stemmed 2/3 majority first; if that fails,
-        // take the scope from the most recent result that agreed with the
-        // majority phase. Free-text scope rarely achieves word-level consensus
-        // across temperature-varied calls, so falling back to the latest
-        // phase-agreeing scope is the practical path.
-        if let Some(majority_idx) = self.majority_scope_idx() {
-            let raw = self.scope_raw_ring[majority_idx].clone();
-            if let Some(ref s) = raw {
-                if !is_generic_scope(s) {
-                    self.displayed_scope = raw;
-                    return;
-                }
+        // Same phase as displayed: just update scope if present
+        if Some(phase) == self.displayed_phase {
+            if let Some(s) = scope {
+                self.displayed_scope = Some(s);
             }
+            return;
         }
 
-        // Fallback: latest scope from a result that matched the majority phase
-        if let Some(phase) = majority {
-            // Walk ring backwards from most recent write
-            for offset in 1..=RING_SIZE {
-                let idx = (self.ring_idx + RING_SIZE - offset) % RING_SIZE;
-                if self.phase_ring[idx] == Some(phase) {
-                    if let Some(ref s) = self.scope_raw_ring[idx] {
-                        if !is_generic_scope(s) {
-                            self.displayed_scope = Some(s.clone());
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        self.displayed_scope = None;
-    }
-
-    fn majority_phase(&self) -> Option<SessionPhase> {
-        let filled: Vec<SessionPhase> = self.phase_ring.iter().filter_map(|p| *p).collect();
-        if filled.len() < 2 {
-            return None;
-        }
-        for &candidate in &filled {
-            let count = filled.iter().filter(|&&p| p == candidate).count();
-            if count >= 2 {
-                return Some(candidate);
-            }
-        }
-        None
-    }
-
-    fn majority_scope_idx(&self) -> Option<usize> {
-        let filled: Vec<(usize, &Vec<String>)> = self
-            .scope_norm_ring
+        // Different phase: check transition conditions
+        let consecutive = self
+            .last_phases
             .iter()
-            .enumerate()
-            .filter_map(|(i, s)| s.as_ref().map(|v| (i, v)))
-            .collect();
-        if filled.len() < 2 {
-            return None;
+            .all(|&p| p == phase)
+            && self.last_phases.len() >= CONSECUTIVE_REQUIRED as usize;
+        let ema_score = self.phase_ema.get(&phase).copied().unwrap_or(0.0);
+
+        if consecutive && ema_score > TRANSITION_THRESHOLD {
+            self.displayed_phase = Some(phase);
+            self.displayed_scope = scope;
         }
-        for &(i, candidate) in &filled {
-            let count = filled.iter().filter(|(_, v)| *v == candidate).count();
-            if count >= 2 {
-                return Some(i);
-            }
-        }
-        None
     }
 
     pub fn should_emit(&self) -> bool {
@@ -175,26 +120,17 @@ impl ClassificationStabilizer {
         self.displayed_scope.clone()
     }
 
+    /// Returns the highest EMA score as confidence.
     pub fn confidence(&self) -> f64 {
-        let filled: Vec<SessionPhase> = self.phase_ring.iter().filter_map(|p| *p).collect();
-        if filled.is_empty() {
-            return 0.0;
-        }
-        let majority_count = filled
-            .iter()
-            .map(|&p| filled.iter().filter(|&&q| q == p).count())
-            .max()
-            .unwrap_or(0);
-        match (filled.len(), majority_count) {
-            (3, 3) => 1.0,
-            (_, n) if n >= 2 => 0.8,
-            (1, 1) => 0.5,
-            _ => 0.0,
-        }
+        self.phase_ema
+            .values()
+            .cloned()
+            .fold(0.0_f32, f32::max) as f64
     }
 
+    /// Fixed temperature — no rotation.
     pub fn next_temperature(&self) -> f32 {
-        TEMP_SCHEDULE[self.temp_idx % RING_SIZE]
+        FIXED_TEMPERATURE
     }
 
     pub fn lock_shipping(&mut self) {
@@ -203,43 +139,14 @@ impl ClassificationStabilizer {
     }
 
     pub fn reset(&mut self) {
-        self.phase_ring = [None, None, None];
-        self.scope_norm_ring = [None, None, None];
-        self.scope_raw_ring = [None, None, None];
-        self.ring_idx = 0;
-        self.ring_count = 0;
+        self.phase_ema.clear();
+        self.call_count = 0;
         self.displayed_phase = None;
         self.displayed_scope = None;
+        self.last_phases.clear();
         self.shipping_locked = false;
         self.non_shipping_count = 0;
     }
-}
-
-pub fn normalize_scope(scope: &str) -> Vec<String> {
-    let stemmer = Stemmer::create(Algorithm::English);
-    let mut words: Vec<String> = scope
-        .to_lowercase()
-        .split_whitespace()
-        .filter(|w| !STOP_WORDS.contains(w))
-        .map(|w| stemmer.stem(w).to_string())
-        .collect();
-    words.sort();
-    words.truncate(4);
-    words
-}
-
-pub fn is_generic_scope(scope: &str) -> bool {
-    let stemmer = Stemmer::create(Algorithm::English);
-    let significant: Vec<String> = scope
-        .to_lowercase()
-        .split_whitespace()
-        .filter(|w| !STOP_WORDS.contains(w))
-        .map(|w| stemmer.stem(w).to_string())
-        .collect();
-    if significant.len() < 2 {
-        return true;
-    }
-    significant.iter().all(|w| GENERIC_STEMS.contains(w))
 }
 
 #[cfg(test)]
@@ -248,51 +155,68 @@ mod tests {
     use crate::phase::SessionPhase;
 
     #[test]
-    fn phase_empty_no_emit() {
-        let s = ClassificationStabilizer::new();
-        assert!(!s.should_emit());
-        assert!(s.displayed_phase().is_none());
-    }
-
-    #[test]
-    fn phase_two_agree_emits() {
+    fn first_call_shows_badge() {
         let mut s = ClassificationStabilizer::new();
-        s.update(SessionPhase::Building, Some("auth system".into()));
         s.update(SessionPhase::Building, Some("auth system".into()));
         assert!(s.should_emit());
         assert_eq!(s.displayed_phase(), Some(SessionPhase::Building));
+        assert_eq!(s.displayed_scope().as_deref(), Some("auth system"));
     }
 
     #[test]
-    fn phase_two_disagree_no_emit() {
+    fn same_phase_updates_scope() {
         let mut s = ClassificationStabilizer::new();
         s.update(SessionPhase::Building, Some("auth".into()));
-        s.update(SessionPhase::Planning, Some("auth".into()));
-        assert!(!s.should_emit());
+        s.update(SessionPhase::Building, Some("auth refactor".into()));
+        assert_eq!(s.displayed_scope().as_deref(), Some("auth refactor"));
     }
 
     #[test]
-    fn phase_majority_2_of_3() {
+    fn transition_needs_two_consecutive() {
         let mut s = ClassificationStabilizer::new();
+        // Establish building
         s.update(SessionPhase::Building, None);
-        s.update(SessionPhase::Planning, None);
+        assert_eq!(s.displayed_phase(), Some(SessionPhase::Building));
+
+        // One testing call — not enough
+        s.update(SessionPhase::Testing, None);
+        assert_eq!(s.displayed_phase(), Some(SessionPhase::Building));
+
+        // Second consecutive testing — should transition
+        s.update(SessionPhase::Testing, None);
+        assert_eq!(s.displayed_phase(), Some(SessionPhase::Testing));
+    }
+
+    #[test]
+    fn noise_rejected() {
+        let mut s = ClassificationStabilizer::new();
+        // Establish building with several calls
+        for _ in 0..5 {
+            s.update(SessionPhase::Building, None);
+        }
+
+        // One noisy testing call
+        s.update(SessionPhase::Testing, None);
+        assert_eq!(s.displayed_phase(), Some(SessionPhase::Building));
+
+        // Back to building — no transition happened
         s.update(SessionPhase::Building, None);
-        assert!(s.should_emit());
         assert_eq!(s.displayed_phase(), Some(SessionPhase::Building));
     }
 
     #[test]
-    fn scope_inflection_match() {
-        let a = normalize_scope("building new features");
-        let b = normalize_scope("build the new feature");
-        assert_eq!(a, b);
-    }
+    fn ema_decay_enables_transition() {
+        let mut s = ClassificationStabilizer::new();
+        // 5x building → EMA heavily weighted to building
+        for _ in 0..5 {
+            s.update(SessionPhase::Building, None);
+        }
 
-    #[test]
-    fn scope_generic_suppressed() {
-        assert!(is_generic_scope("code changes"));
-        assert!(is_generic_scope("fix update"));
-        assert!(!is_generic_scope("XGBoost phase classifier"));
+        // 5x testing → EMA should shift enough
+        for _ in 0..5 {
+            s.update(SessionPhase::Testing, None);
+        }
+        assert_eq!(s.displayed_phase(), Some(SessionPhase::Testing));
     }
 
     #[test]
@@ -314,25 +238,35 @@ mod tests {
     }
 
     #[test]
-    fn temp_rotation() {
+    fn fixed_temperature() {
         let mut s = ClassificationStabilizer::new();
-        assert_eq!(s.next_temperature(), 0.2);
+        assert_eq!(s.next_temperature(), 0.15);
         s.update(SessionPhase::Building, None);
-        assert_eq!(s.next_temperature(), 0.4);
-        s.update(SessionPhase::Building, None);
-        assert_eq!(s.next_temperature(), 0.6);
-        s.update(SessionPhase::Building, None);
-        assert_eq!(s.next_temperature(), 0.2);
+        assert_eq!(s.next_temperature(), 0.15);
+        s.update(SessionPhase::Testing, None);
+        assert_eq!(s.next_temperature(), 0.15);
     }
 
     #[test]
-    fn reset_clears_buffers() {
+    fn confidence_reflects_ema() {
         let mut s = ClassificationStabilizer::new();
-        s.update(SessionPhase::Building, Some("test".into()));
+        s.update(SessionPhase::Building, None);
+        assert!(s.confidence() > 0.3);
+
+        // More calls to same phase → higher confidence
+        s.update(SessionPhase::Building, None);
+        s.update(SessionPhase::Building, None);
+        assert!(s.confidence() > 0.5);
+    }
+
+    #[test]
+    fn reset_clears_everything() {
+        let mut s = ClassificationStabilizer::new();
         s.update(SessionPhase::Building, Some("test".into()));
         assert!(s.should_emit());
         s.reset();
         assert!(!s.should_emit());
         assert!(s.displayed_phase().is_none());
+        assert_eq!(s.call_count, 0);
     }
 }

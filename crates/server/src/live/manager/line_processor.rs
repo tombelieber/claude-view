@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use claude_view_core::live_parser::LineType;
 use claude_view_core::phase::client::{ConversationTurn, Role};
-use claude_view_core::phase::scheduler::{ClassifyRequest, Priority};
+use claude_view_core::phase::scheduler::Priority;
 use claude_view_core::phase::{is_shipping_cmd, PhaseLabel, SessionPhase, MAX_PHASE_LABELS};
 use claude_view_core::pricing::{calculate_cost, ModelPricing, TokenUsage};
 use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
@@ -188,7 +188,7 @@ impl LiveSessionManager {
         emit_channel_a_events(line, channel_a_events);
 
         // Phase classification
-        process_phase_classification(line, acc, session_id, &self.classify_tx);
+        process_phase_classification(line, acc, session_id, &self.dirty_tx);
     }
 }
 
@@ -536,9 +536,9 @@ fn process_phase_classification(
     line: &claude_view_core::live_parser::LiveLine,
     acc: &mut SessionAccumulator,
     session_id: &str,
-    classify_tx: &tokio::sync::mpsc::Sender<ClassifyRequest>,
+    dirty_tx: &tokio::sync::mpsc::Sender<(String, Priority)>,
 ) {
-    // Phase classification: check shipping rule
+    // Deterministic shipping rule (pre-LLM shortcut)
     for cmd in &line.bash_commands {
         if is_shipping_cmd(cmd) {
             acc.stabilizer.lock_shipping();
@@ -554,7 +554,21 @@ fn process_phase_classification(
         }
     }
 
-    // Accumulate conversation turn
+    // Accumulate activity signals for classify context
+    for cmd in &line.bash_commands {
+        if acc.recent_bash_commands.len() >= 5 {
+            acc.recent_bash_commands.pop_front();
+        }
+        acc.recent_bash_commands.push_back(cmd.clone());
+    }
+    for file in &line.edited_files {
+        if acc.recent_edited_files.len() >= 5 {
+            acc.recent_edited_files.pop_front();
+        }
+        acc.recent_edited_files.push_back(file.clone());
+    }
+
+    // Accumulate conversation turn (user/assistant only)
     if line.role.as_deref() == Some("assistant") || line.role.as_deref() == Some("user") {
         let role = if line.role.as_deref() == Some("user") {
             Role::User
@@ -570,32 +584,16 @@ fn process_phase_classification(
             acc.message_buf.pop_front();
         }
         acc.message_buf.push_back(turn);
-        acc.message_buf_dirty = true;
-        acc.message_buf_total += 1;
     }
 
-    // Schedule classification if dirty and not in steady-state skip
-    let should_classify = acc.message_buf_dirty
-        && (acc.message_buf_total <= 2
-            || acc.stabilizer.displayed_phase().is_none()
-            || acc.message_buf_total.is_multiple_of(5));
-
-    if should_classify {
-        acc.message_buf_dirty = false;
-        let priority = if acc.phase_labels.is_empty() {
-            Priority::New
-        } else if acc.stabilizer.displayed_phase().is_none() {
-            Priority::Transition
-        } else {
-            Priority::Steady
-        };
-        acc.classify_generation += 1;
-        let _ = classify_tx.try_send(ClassifyRequest {
-            session_id: session_id.to_string(),
-            priority,
-            turns: acc.message_buf.iter().cloned().collect(),
-            temperature: acc.stabilizer.next_temperature(),
-            generation: acc.classify_generation,
-        });
-    }
+    // Mark session dirty on ANY line — drain loop handles debounce/scheduling.
+    // Context is built from accumulator at drain time (freshest data).
+    let priority = if acc.phase_labels.is_empty() {
+        Priority::New
+    } else if acc.stabilizer.displayed_phase().is_none() {
+        Priority::Transition
+    } else {
+        Priority::Steady
+    };
+    let _ = dirty_tx.try_send((session_id.to_string(), priority));
 }

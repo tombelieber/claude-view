@@ -69,7 +69,7 @@ pub(super) fn resolve_accumulated_files(
 }
 
 /// Accumulated per-session state that persists across tail polls.
-pub(super) struct SessionAccumulator {
+pub(crate) struct SessionAccumulator {
     /// Byte offset for the next `parse_tail` call.
     pub offset: u64,
     /// Accumulated token counts (for cost calculation).
@@ -137,10 +137,16 @@ pub(super) struct SessionAccumulator {
     pub message_buf_dirty: bool,
     /// Total messages accumulated (monotonic counter for skip logic).
     pub message_buf_total: u32,
+    /// Recent bash commands for classify context (ring, max 5).
+    pub recent_bash_commands: VecDeque<String>,
+    /// Recent edited files for classify context (ring, max 5).
+    pub recent_edited_files: VecDeque<String>,
     /// Stabilizer for smoothing noisy LLM classifications.
     pub stabilizer: ClassificationStabilizer,
     /// Monotonic generation counter for classify request dedup.
     pub classify_generation: u64,
+    /// Highest generation applied from a ClassifyResult (reject older).
+    pub last_applied_generation: u64,
     /// Phase labels emitted so far (one per classification).
     pub phase_labels: Vec<PhaseLabel>,
 }
@@ -183,8 +189,11 @@ impl SessionAccumulator {
             message_buf: VecDeque::new(),
             message_buf_dirty: false,
             message_buf_total: 0,
+            recent_bash_commands: VecDeque::new(),
+            recent_edited_files: VecDeque::new(),
             stabilizer: ClassificationStabilizer::new(),
             classify_generation: 0,
+            last_applied_generation: 0,
             phase_labels: Vec::new(),
         }
     }

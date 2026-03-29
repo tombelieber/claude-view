@@ -153,7 +153,7 @@ fn pipeline_parse_and_stabilize() {
 }
 
 #[test]
-fn pipeline_disagreement_no_emit() {
+fn pipeline_disagreement_holds_first_phase() {
     use super::client::parse_classify_response;
     use super::stabilizer::ClassificationStabilizer;
 
@@ -170,8 +170,10 @@ fn pipeline_disagreement_no_emit() {
         stabilizer.update(phase, scope);
     }
 
-    // No 2/3 majority
-    assert!(!stabilizer.should_emit());
+    // EMA: first call (building) shows immediately; subsequent disagreements
+    // don't transition because no 2 consecutive + EMA threshold.
+    assert!(stabilizer.should_emit());
+    assert_eq!(stabilizer.displayed_phase(), Some(SessionPhase::Building));
 }
 
 #[test]
