@@ -197,11 +197,14 @@ impl SessionCoordinator {
             // Plan side effects BEFORE mutation (capture data mutation will clear)
             let mut side_effects = plan_side_effects(session_id, session, &mutation, now);
 
-            // Upserted sessions need immediate JSONL enrichment
+            // Upserted sessions need immediate JSONL parse + enrichment
             if upserted {
-                side_effects.push(SideEffect::EnrichFromJsonl {
-                    session_id: session_id.to_string(),
-                });
+                if let Some(tp) = transcript_path {
+                    side_effects.push(SideEffect::EnrichFromJsonl {
+                        session_id: session_id.to_string(),
+                        file_path: std::path::PathBuf::from(tp),
+                    });
+                }
             }
 
             // Dispatch to the appropriate apply function
@@ -510,9 +513,12 @@ async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect) {
                 mgr.remove_accumulator(session_id).await;
             }
         }
-        SideEffect::EnrichFromJsonl { session_id } => {
+        SideEffect::EnrichFromJsonl {
+            session_id: _,
+            file_path,
+        } => {
             if let Some(mgr) = ctx.live_manager {
-                mgr.enrich_session_from_accumulator(session_id).await;
+                mgr.process_jsonl_update(file_path).await;
             }
         }
         SideEffect::CreateAccumulator { session_id } => {

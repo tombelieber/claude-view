@@ -38,11 +38,44 @@ pub fn apply_lifecycle(
     match event {
         LifecycleEvent::Start { pid, source, .. } => {
             bind_pid(hook, *pid);
-            if source.as_deref() == Some("clear") {
-                hook.turn_count = 0;
-                hook.current_turn_started_at = None;
+            match source.as_deref() {
+                Some("clear") => {
+                    hook.turn_count = 0;
+                    hook.current_turn_started_at = None;
+                    hook.agent_state = AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Session cleared".into(),
+                        context: None,
+                    };
+                }
+                Some("compact") => {
+                    hook.agent_state = AgentState {
+                        group: AgentStateGroup::Autonomous,
+                        state: "thinking".into(),
+                        label: "Compacting context...".into(),
+                        context: None,
+                    };
+                }
+                Some("resume") => {
+                    hook.agent_state = AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Session resumed".into(),
+                        context: None,
+                    };
+                }
+                _ => {
+                    hook.agent_state = AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Waiting for first prompt".into(),
+                        context: None,
+                    };
+                }
             }
-            None
+            hook.current_activity = hook.agent_state.label.clone();
+            Some(status_from_agent_state(&hook.agent_state))
         }
 
         LifecycleEvent::Prompt { text, pid } => {
