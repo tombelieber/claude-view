@@ -46,7 +46,7 @@ struct DirtyEntry {
 /// - `accumulators`: shared accumulator map (read at drain time for freshest data)
 /// - `client`: oMLX HTTP client
 /// - `omlx_ready`: health check flag
-pub async fn run_drain_loop(
+pub(crate) async fn run_drain_loop(
     mut dirty_rx: mpsc::Receiver<(String, Priority)>,
     result_tx: mpsc::Sender<ClassifyResult>,
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
