@@ -48,13 +48,22 @@ export function useSystemMonitor(): SystemMonitorState {
       es.addEventListener('init', (e: MessageEvent) => {
         if (unmounted || esRef.current !== es) return
         try {
-          const data: { systemInfo: SystemInfo; snapshot: ResourceSnapshot } = JSON.parse(e.data)
+          const data: {
+            systemInfo: SystemInfo
+            snapshot: ResourceSnapshot
+            components?: ComponentSnapshot | null
+            processTree?: ProcessTreeSnapshot | null
+          } = JSON.parse(e.data)
           retriesRef.current = 0
           setState((prev) => ({
             ...prev,
             status: 'connected',
             systemInfo: data.systemInfo,
             snapshot: data.snapshot,
+            ...(data.components ? { components: data.components } : {}),
+            ...(data.processTree
+              ? { processTree: data.processTree, processTreeFreshAt: Date.now() }
+              : {}),
           }))
         } catch {
           // ignore malformed data
