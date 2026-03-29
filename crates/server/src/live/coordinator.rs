@@ -129,24 +129,43 @@ impl SessionCoordinator {
             }
         }
 
+        // ── Phase 1b: Pre-enrich from JSONL (BEFORE write lock) ────────────
+        // Structural invariant: every session MUST have its JSONL parsed
+        // before it enters the map. We do this outside the write lock because
+        // process_jsonl_update does blocking IO. When the session already
+        // exists in the map, this is a no-op (fast path).
+        if !session_exists {
+            if let Some(tp) = transcript_path {
+                if let Some(mgr) = ctx.live_manager {
+                    mgr.process_jsonl_update(std::path::Path::new(tp)).await;
+                }
+            }
+        }
+
         // ── Phase 2+3: Plan + Execute under write lock ───────────────────
         let (snapshot, broadcast_action, side_effects) = {
             let mut sessions = ctx.sessions.write().await;
 
             // Create session if needed (Start, Reconcile, or upsert via cwd)
-            let mut upserted = false;
             if !sessions.contains_key(session_id) {
                 let new_session = match &mutation {
                     SessionMutation::Lifecycle(LifecycleEvent::Start {
                         cwd: start_cwd,
                         model,
                         pid: start_pid,
+                        transcript_path: start_tp,
                         ..
-                    }) => create_session_from_start(session_id, start_cwd, model, start_pid, now),
+                    }) => {
+                        let mut s =
+                            create_session_from_start(session_id, start_cwd, model, start_pid, now);
+                        if let Some(tp) = start_tp {
+                            s.jsonl.file_path = tp.clone();
+                        }
+                        s
+                    }
                     SessionMutation::Reconcile(data) => create_session_shell(session_id, data, now),
                     // Upsert: shell session — state set by the mutation that follows
                     _ => {
-                        upserted = true;
                         let mut s = create_session_from_start(
                             session_id,
                             &cwd.map(|c| c.to_string()),
@@ -154,13 +173,22 @@ impl SessionCoordinator {
                             &pid,
                             now,
                         );
-                        // Link JSONL so reconciler can backfill title/model/tokens
                         if let Some(tp) = transcript_path {
                             s.jsonl.file_path = tp.to_string();
                         }
                         s
                     }
                 };
+
+                // Apply pre-enriched JSONL data from accumulator (populated in Phase 1b).
+                // This ensures the session enters the map with title/tokens/cost
+                // already filled — no empty card is ever broadcast.
+                let mut new_session = new_session;
+                if let Some(mgr) = ctx.live_manager {
+                    mgr.apply_accumulator_to_session(session_id, &mut new_session)
+                        .await;
+                }
+
                 sessions.insert(session_id.to_string(), new_session);
 
                 // Drain buffered mutations — apply them inline before the
@@ -195,17 +223,7 @@ impl SessionCoordinator {
             };
 
             // Plan side effects BEFORE mutation (capture data mutation will clear)
-            let mut side_effects = plan_side_effects(session_id, session, &mutation, now);
-
-            // Upserted sessions need immediate JSONL parse + enrichment
-            if upserted {
-                if let Some(tp) = transcript_path {
-                    side_effects.push(SideEffect::EnrichFromJsonl {
-                        session_id: session_id.to_string(),
-                        file_path: std::path::PathBuf::from(tp),
-                    });
-                }
-            }
+            let side_effects = plan_side_effects(session_id, session, &mutation, now);
 
             // Dispatch to the appropriate apply function
             let status_change = apply_mutation_to_session(session, &mutation, now);

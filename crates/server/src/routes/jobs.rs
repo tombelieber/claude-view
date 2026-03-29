@@ -139,6 +139,7 @@ mod tests {
             telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
             debug_statusline_log: None,
             debug_hooks_log: None,
+            debug_omlx_log: None,
         });
 
         let app = Router::new()
