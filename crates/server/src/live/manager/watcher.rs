@@ -244,7 +244,7 @@ impl LiveSessionManager {
     /// 3. Accumulates token counts and user turn counts.
     /// 4. Derives session status, activity, and cost.
     /// 5. Updates the shared session map.
-    pub(super) async fn process_jsonl_update(&self, path: &Path) {
+    pub(crate) async fn process_jsonl_update(&self, path: &Path) {
         let session_id = extract_session_id(path);
         let cached_cwd = {
             let accumulators = self.accumulators.read().await;
