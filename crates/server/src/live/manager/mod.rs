@@ -11,7 +11,7 @@
 //! - `watcher` -- spawn_file_watcher, process_jsonl_update, startup recovery
 //! - `reconciler` -- spawn_reconciliation_loop, cleanup, death consumer
 
-mod accumulator;
+pub(crate) mod accumulator;
 mod helpers;
 mod line_processor;
 mod reconciler;
@@ -32,7 +32,7 @@ use tracing::info;
 
 use claude_view_core::live_parser::TailFinders;
 use claude_view_core::phase::client::OmlxClient;
-use claude_view_core::phase::scheduler::{run_scheduler, ClassifyRequest, ClassifyResult};
+use claude_view_core::phase::scheduler::{ClassifyResult, Priority};
 use claude_view_core::phase::{
     dominant_phase, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
 };
@@ -86,8 +86,8 @@ pub struct LiveSessionManager {
     oracle_rx: super::process_oracle::OracleReceiver,
     /// Event-driven process death watcher (kqueue on macOS).
     _death_watcher: super::process_death::ProcessDeathWatcher,
-    /// Channel to send classification requests to the oMLX scheduler.
-    classify_tx: mpsc::Sender<ClassifyRequest>,
+    /// Channel to mark sessions dirty for the drain loop classifier.
+    dirty_tx: mpsc::Sender<(String, Priority)>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
     hook_event_channels: Arc<tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
     /// Shared coordinator for routing mutations through the 4-phase pipeline.
@@ -131,7 +131,7 @@ impl LiveSessionManager {
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
         // oMLX phase classifier infrastructure (omlx_status injected from caller)
-        let (classify_tx, classify_rx) = mpsc::channel::<ClassifyRequest>(64);
+        let (dirty_tx, dirty_rx) = mpsc::channel::<(String, Priority)>(256);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
 
         // Create shared coordinator
@@ -153,7 +153,7 @@ impl LiveSessionManager {
             transcript_to_session: transcript_to_session.clone(),
             oracle_rx,
             _death_watcher: death_watcher,
-            classify_tx,
+            dirty_tx,
             hook_event_channels,
             coordinator: coordinator.clone(),
         });
@@ -168,21 +168,24 @@ impl LiveSessionManager {
         // Spawn oMLX lifecycle (health check)
         tokio::spawn(super::omlx_lifecycle::run_lifecycle(omlx_status.clone()));
 
-        // Spawn classify scheduler
+        // Spawn oMLX drain loop (replaces cadence-based scheduler)
         let mut omlx_client = OmlxClient::new(
             format!("http://localhost:{}", omlx_status.port),
             "Qwen3.5-4B-MLX-4bit".into(),
-        );
+        )
+        .with_ready_flag(omlx_status.ready.clone());
         if let Some(tx) = debug_omlx_tx {
             omlx_client = omlx_client.with_debug_tx(tx);
         }
         let client = Arc::new(omlx_client);
-        tokio::spawn(run_scheduler(
-            classify_rx,
+        let drain_wake = Arc::new(tokio::sync::Notify::new());
+        tokio::spawn(super::drain_loop::run_drain_loop(
+            dirty_rx,
             result_tx,
+            manager.accumulators.clone(),
             client,
             omlx_status.ready.clone(),
-            2,
+            drain_wake,
         ));
 
         // Spawn classify result handler

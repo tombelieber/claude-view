@@ -1178,7 +1178,7 @@ fn extract_content_and_tools(
             }
             let (stripped, file) = strip_noise_tags(s);
             preview = truncate_str(&stripped, 200);
-            extended = truncate_str(&stripped, 500);
+            extended = truncate_str(&stripped, 1500);
             ide_file = file;
         }
         Some(serde_json::Value::Array(blocks)) => {
@@ -1197,7 +1197,7 @@ fn extract_content_and_tools(
                             if preview.is_empty() {
                                 let (stripped, file) = strip_noise_tags(text);
                                 preview = truncate_str(&stripped, 200);
-                                extended = truncate_str(&stripped, 500);
+                                extended = truncate_str(&stripped, 1500);
                                 if ide_file.is_none() {
                                     ide_file = file;
                                 }

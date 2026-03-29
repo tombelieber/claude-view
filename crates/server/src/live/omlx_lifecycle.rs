@@ -67,6 +67,13 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
     );
 
     loop {
+        // If the client signalled errors (cleared omlx_ready), demote to fast poll
+        if state == OmlxState::Running && !status.ready.load(Ordering::Acquire) {
+            warn!("oMLX readiness cleared by client errors, re-probing");
+            state = OmlxState::Unavailable;
+            status.set_pid(None);
+        }
+
         let interval = match state {
             OmlxState::Running => POLL_INTERVAL_RUNNING,
             _ => POLL_INTERVAL_STARTUP,
@@ -77,11 +84,11 @@ pub async fn run_lifecycle(status: Arc<OmlxStatus>) {
         match check_model(&client, &base_url).await {
             ModelCheck::CorrectModel(model_id) => {
                 if state != OmlxState::Running {
-                    info!(model_id, "oMLX ready with correct model");
+                    info!(model_id, "oMLX ready with correct model (inference verified)");
                     state = OmlxState::Running;
                     status.ready.store(true, Ordering::Release);
 
-                    // One-time PID resolution (cold path, not on 10s hot loop)
+                    // PID resolution (only on state transitions)
                     let pid = find_omlx_pid(status.port);
                     status.set_pid(pid);
                     if let Some(p) = pid {
@@ -162,14 +169,35 @@ async fn check_model(client: &reqwest::Client, base_url: &str) -> ModelCheck {
     }
 
     // Check if any loaded model matches our expected substring
-    for model in &body.data {
-        if model.id.contains(EXPECTED_MODEL_SUBSTRING) {
-            return ModelCheck::CorrectModel(model.id.clone());
-        }
+    let matched = body.data.iter().find(|m| m.id.contains(EXPECTED_MODEL_SUBSTRING));
+    let Some(model) = matched else {
+        return ModelCheck::WrongModel(body.data[0].id.clone());
+    };
+    let model_id = model.id.clone();
+
+    // Probe: send a tiny inference call to verify weights are loaded.
+    // oMLX lists the model before weights finish loading → /v1/models
+    // returns 200 but inference returns 500. This probe catches that.
+    if !probe_inference(client, base_url, &model_id).await {
+        return ModelCheck::Unreachable("model listed but inference 500 (weights loading)".into());
     }
 
-    // Models loaded but none match
-    ModelCheck::WrongModel(body.data[0].id.clone())
+    ModelCheck::CorrectModel(model_id)
+}
+
+/// Tiny inference probe — 1 token, verifies model weights are loaded.
+async fn probe_inference(client: &reqwest::Client, base_url: &str, model: &str) -> bool {
+    let url = format!("{}/v1/chat/completions", base_url);
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 1,
+        "temperature": 0.0,
+    });
+    match client.post(&url).json(&body).send().await {
+        Ok(r) => r.status().is_success(),
+        Err(_) => false,
+    }
 }
 
 /// One-time PID resolution for oMLX. Only called at startup/rediscovery.

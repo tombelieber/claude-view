@@ -1,4 +1,5 @@
 import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
+import { Cpu } from 'lucide-react'
 import { cn } from '../lib/utils'
 
 interface PhaseConfig {
@@ -88,6 +89,33 @@ export function PhaseBadge({ phase, scope, className }: PhaseBadgeProps) {
           · {scope.length > 30 ? `${scope.slice(0, 30)}…` : scope}
         </span>
       )}
+    </span>
+  )
+}
+
+/**
+ * Skeleton shown while oMLX + Qwen3.5 is classifying the session phase.
+ * Displays only for autonomous sessions before the first stabilized result.
+ */
+export function PhaseBadgeSkeleton({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-1.5 py-px text-[10px] font-medium rounded border leading-3.5',
+        'bg-gray-100/60 dark:bg-gray-800/40',
+        'text-gray-400 dark:text-gray-500',
+        'border-gray-200/50 dark:border-gray-700/40',
+        'animate-pulse',
+        className,
+      )}
+    >
+      <Cpu className="size-2.5" />
+      <span>oMLX · Qwen3.5</span>
+      <span className="inline-flex gap-px ml-0.5">
+        <span className="size-1 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
+        <span className="size-1 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
+        <span className="size-1 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
+      </span>
     </span>
   )
 }
