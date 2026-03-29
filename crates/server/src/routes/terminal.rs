@@ -902,6 +902,20 @@ async fn handle_terminal_ws(
         tx.subscribe()
     };
 
+    // Note: hook event history was already replayed in step 3b above.
+    // The broadcast channel subscription (4b) ensures new events are received.
+    // Track how many events were replayed so we can skip duplicates in the main
+    // loop (an event may land in both the vec and the channel during the gap
+    // between subscribe and the 3b snapshot read).
+    let replayed_hook_count: usize = {
+        let sessions = state.live_sessions.read().await;
+        sessions
+            .get(&session_id)
+            .map(|s| s.hook.hook_events.len())
+            .unwrap_or(0)
+    };
+    let mut hook_events_seen: usize = 0;
+
     // 5. Main event loop: multiplex file watcher, client messages, and heartbeat
     //
     // Heartbeat is 10s (not 30s) to detect dead connections fast — during dev
@@ -1127,6 +1141,12 @@ async fn handle_terminal_ws(
             hook_event = hook_rx.recv() => {
                 match hook_event {
                     Ok(event) => {
+                        // Skip events already sent during 3b replay (race: event
+                        // arrived between 4b subscribe and 3b snapshot read).
+                        hook_events_seen += 1;
+                        if hook_events_seen <= replayed_hook_count {
+                            continue;
+                        }
                         let msg = serde_json::json!({
                             "type": "hook_event",
                             "timestamp": event.timestamp,

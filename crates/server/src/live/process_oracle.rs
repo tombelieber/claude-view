@@ -43,6 +43,10 @@ pub struct OracleSnapshot {
     pub scanned_at: Instant,
     /// Monotonic tick counter.
     pub tick: u32,
+    /// Wall-clock Unix timestamp (seconds) of the last successful oracle update.
+    /// Used by consumers to detect stale snapshots (e.g. if the oracle panics).
+    /// 0 means "never updated".
+    pub last_updated_at: i64,
 }
 
 /// Raw resource data computed from the System object.
@@ -98,6 +102,7 @@ pub fn stub() -> OracleReceiver {
         component_snapshot: None,
         scanned_at: Instant::now(),
         tick: 0,
+        last_updated_at: 0,
     });
     watch::channel(initial).1
 }
@@ -129,6 +134,7 @@ pub fn start_oracle(
         component_snapshot: None,
         scanned_at: Instant::now(),
         tick: 0,
+        last_updated_at: 0,
     });
 
     let (tx, rx) = watch::channel(initial);
@@ -159,8 +165,12 @@ pub fn start_oracle(
                 super::process_tree::ProcessTreeCache::new(),
             );
             let result = tokio::task::spawn_blocking(move || {
-                let snapshot =
-                    collect_oracle_snapshot(&mut sys_moved, tick, should_classify, &mut cache_moved);
+                let snapshot = collect_oracle_snapshot(
+                    &mut sys_moved,
+                    tick,
+                    should_classify,
+                    &mut cache_moved,
+                );
                 let component_snapshot = if should_classify {
                     Some(super::component_collector::collect(
                         &sys_moved,
@@ -296,6 +306,7 @@ fn collect_oracle_snapshot(
         component_snapshot: None, // Filled in by oracle loop after spawn_blocking
         scanned_at: Instant::now(),
         tick,
+        last_updated_at: chrono::Utc::now().timestamp(),
     }
 }
 

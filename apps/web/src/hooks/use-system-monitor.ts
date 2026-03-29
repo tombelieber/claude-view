@@ -17,6 +17,8 @@ export interface SystemMonitorState {
   processTreeFreshAt: number | null
   /** Component-level resource breakdown. null until first `components` SSE event (~10s). */
   components: ComponentSnapshot | null
+  /** Seconds since the oracle last updated. null until init event. i64::MAX if oracle never ran. */
+  oracleAgeSecs: number | null
 }
 
 const INITIAL_STATE: SystemMonitorState = {
@@ -26,6 +28,7 @@ const INITIAL_STATE: SystemMonitorState = {
   processTree: null,
   processTreeFreshAt: null,
   components: null,
+  oracleAgeSecs: null,
 }
 
 const MAX_BACKOFF_MS = 30_000
@@ -53,6 +56,7 @@ export function useSystemMonitor(): SystemMonitorState {
             snapshot: ResourceSnapshot
             components?: ComponentSnapshot | null
             processTree?: ProcessTreeSnapshot | null
+            oracleAgeSecs: number
           } = JSON.parse(e.data)
           retriesRef.current = 0
           setState((prev) => ({
@@ -60,6 +64,7 @@ export function useSystemMonitor(): SystemMonitorState {
             status: 'connected',
             systemInfo: data.systemInfo,
             snapshot: data.snapshot,
+            oracleAgeSecs: data.oracleAgeSecs,
             ...(data.components ? { components: data.components } : {}),
             ...(data.processTree
               ? { processTree: data.processTree, processTreeFreshAt: Date.now() }
