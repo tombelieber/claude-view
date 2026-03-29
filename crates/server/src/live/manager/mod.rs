@@ -110,6 +110,7 @@ impl LiveSessionManager {
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
         >,
+        debug_omlx_tx: Option<mpsc::Sender<String>>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -166,10 +167,14 @@ impl LiveSessionManager {
         tokio::spawn(super::omlx_lifecycle::run_lifecycle(omlx_status.clone()));
 
         // Spawn classify scheduler
-        let client = Arc::new(OmlxClient::new(
+        let mut omlx_client = OmlxClient::new(
             format!("http://localhost:{}", omlx_status.port),
             "Qwen3.5-4B-MLX-4bit".into(),
-        ));
+        );
+        if let Some(tx) = debug_omlx_tx {
+            omlx_client = omlx_client.with_debug_tx(tx);
+        }
+        let client = Arc::new(omlx_client);
         tokio::spawn(run_scheduler(
             classify_rx,
             result_tx,
@@ -255,8 +260,69 @@ impl LiveSessionManager {
             .or_insert_with(SessionAccumulator::new);
     }
 
-    /// Enrich a newly-created session from its existing accumulator data.
-    pub async fn enrich_session_from_accumulator(&self, session_id: &str) {
+    /// Apply cached accumulator data to a session object that is NOT yet
+    /// in the map. This is the structural guarantee: every session is
+    /// enriched from its JSONL before it becomes visible to SSE clients.
+    ///
+    /// Called by:
+    /// - coordinator (Phase 1b → Phase 2: enrich before insert)
+    /// - startup recovery (promote_from_snapshot: enrich before broadcast)
+    ///
+    /// If no accumulator exists or it has no data, this is a no-op.
+    pub async fn apply_accumulator_to_session(&self, session_id: &str, session: &mut LiveSession) {
+        let accumulators = self.accumulators.read().await;
+        let Some(acc) = accumulators.get(session_id) else {
+            return;
+        };
+        if acc.offset == 0 {
+            return;
+        }
+        let Some(ref file_path) = acc.file_path else {
+            return;
+        };
+
+        let cached_cwd = acc.resolved_cwd.as_deref();
+        let (project, project_display_name, project_path, _) =
+            extract_project_info(file_path, cached_cwd);
+
+        let last_activity_at = std::fs::metadata(file_path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let metadata = build_metadata_from_accumulator(acc, last_activity_at, None);
+        let file_path_str = file_path.to_string_lossy().to_string();
+        drop(accumulators);
+
+        apply_jsonl_metadata(
+            session,
+            &metadata,
+            &file_path_str,
+            &project,
+            &project_display_name,
+            &project_path,
+        );
+        // Populate team data from TeamsStore
+        if let Some(ref tn) = session.jsonl.team_name.clone() {
+            if let Some(detail) = self.teams.get(tn) {
+                session.jsonl.team_members = detail.members;
+            }
+            session.jsonl.team_inbox_count = self
+                .teams
+                .inbox(tn)
+                .map(|msgs| msgs.len() as u32)
+                .unwrap_or(0);
+        } else {
+            session.jsonl.team_members = Vec::new();
+            session.jsonl.team_inbox_count = 0;
+        }
+    }
+
+    /// Enrich a session that IS already in the map. Used by the file watcher
+    /// event loop when a JSONL file changes and the session needs updating.
+    pub async fn enrich_session_in_map(&self, session_id: &str) {
         let accumulators = self.accumulators.read().await;
         let Some(acc) = accumulators.get(session_id) else {
             return;

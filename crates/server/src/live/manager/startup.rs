@@ -14,13 +14,8 @@ use crate::live::state::{
     status_from_agent_state, AgentState, AgentStateGroup, SessionEvent, SessionStatus,
 };
 
-use super::accumulator::{
-    apply_jsonl_metadata, build_metadata_from_accumulator, build_recovered_session,
-    derive_agent_state_from_jsonl,
-};
-use super::helpers::{
-    extract_project_info, extract_session_id, load_session_snapshot, pid_snapshot_path,
-};
+use super::accumulator::{build_recovered_session, derive_agent_state_from_jsonl};
+use super::helpers::{extract_session_id, load_session_snapshot, pid_snapshot_path};
 use super::LiveSessionManager;
 
 impl LiveSessionManager {
@@ -59,46 +54,11 @@ impl LiveSessionManager {
                 let file_path_str = path.to_string_lossy().to_string();
                 let mut session = build_recovered_session(session_id, entry, &file_path_str);
 
-                // Enrich with accumulator metrics if available
-                let accumulators = self.accumulators.read().await;
-                let cached_cwd = accumulators
-                    .get(session_id)
-                    .and_then(|a| a.resolved_cwd.as_deref());
-                let (project, project_display_name, project_path, _) =
-                    extract_project_info(path, cached_cwd);
-                if let Some(acc) = accumulators.get(session_id) {
-                    let metadata = build_metadata_from_accumulator(
-                        acc,
-                        entry.last_activity_at,
-                        Some(entry.pid),
-                    );
-                    drop(accumulators);
-
-                    apply_jsonl_metadata(
-                        &mut session,
-                        &metadata,
-                        &file_path_str,
-                        &project,
-                        &project_display_name,
-                        &project_path,
-                    );
-                    // Populate team data from TeamsStore
-                    if let Some(ref tn) = session.jsonl.team_name.clone() {
-                        if let Some(detail) = self.teams.get(tn) {
-                            session.jsonl.team_members = detail.members;
-                        }
-                        session.jsonl.team_inbox_count = self
-                            .teams
-                            .inbox(tn)
-                            .map(|msgs| msgs.len() as u32)
-                            .unwrap_or(0);
-                    } else {
-                        session.jsonl.team_members = Vec::new();
-                        session.jsonl.team_inbox_count = 0;
-                    }
-                } else {
-                    drop(accumulators);
-                }
+                // Structural invariant: parse JSONL → enrich → then insert.
+                // Same pattern as coordinator Phase 1b → apply_accumulator_to_session.
+                self.process_jsonl_update(path).await;
+                self.apply_accumulator_to_session(session_id, &mut session)
+                    .await;
 
                 // Override snapshot agent_state with JSONL ground truth
                 if let Some(derived) = derive_agent_state_from_jsonl(path).await {
