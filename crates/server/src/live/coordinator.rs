@@ -134,10 +134,21 @@ impl SessionCoordinator {
         // before it enters the map. We do this outside the write lock because
         // process_jsonl_update does blocking IO. When the session already
         // exists in the map, this is a no-op (fast path).
+        //
+        // When transcript_path is None (e.g. upsert via cwd without
+        // transcript_path in payload), fall back to the accumulator's
+        // cached file_path — the file watcher may have already seen it.
         if !session_exists {
-            if let Some(tp) = transcript_path {
-                if let Some(mgr) = ctx.live_manager {
+            if let Some(mgr) = ctx.live_manager {
+                if let Some(tp) = transcript_path {
                     mgr.process_jsonl_update(std::path::Path::new(tp)).await;
+                } else {
+                    // Fallback: check if the watcher already discovered this
+                    // session's JSONL (accumulator has file_path from initial_scan)
+                    let fallback_path = mgr.accumulator_file_path(session_id).await;
+                    if let Some(ref fp) = fallback_path {
+                        mgr.process_jsonl_update(fp).await;
+                    }
                 }
             }
         }
