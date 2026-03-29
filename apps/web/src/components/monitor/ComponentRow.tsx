@@ -53,6 +53,20 @@ export function ComponentRow({ component: c, systemInfo, totalVramBytes }: Compo
       )}
 
       <div className="flex items-center gap-4 shrink-0 ml-auto">
+        {c.vramBytes != null && totalVramBytes != null && totalVramBytes > 0 && (
+          <>
+            <div className="w-40">
+              <SessionRollupBar
+                label="VRAM"
+                value={c.vramBytes}
+                max={totalVramBytes}
+                formatValue={(v) => formatBytes(v)}
+                color="purple"
+              />
+            </div>
+            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
+          </>
+        )}
         <div className="w-40">
           <SessionRollupBar label="CPU" value={c.cpuPercent} max={systemInfo.cpuCoreCount * 100} />
         </div>
@@ -65,20 +79,6 @@ export function ComponentRow({ component: c, systemInfo, totalVramBytes }: Compo
             formatValue={(v) => formatBytes(v)}
           />
         </div>
-        {c.vramBytes != null && totalVramBytes != null && totalVramBytes > 0 && (
-          <>
-            <div className="w-px h-3 bg-gray-200 dark:bg-gray-700" />
-            <div className="w-40">
-              <SessionRollupBar
-                label="VRAM"
-                value={c.vramBytes}
-                max={totalVramBytes}
-                formatValue={(v) => formatBytes(v)}
-                color="purple"
-              />
-            </div>
-          </>
-        )}
       </div>
     </div>
   )
