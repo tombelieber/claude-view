@@ -185,9 +185,10 @@ pub enum SideEffect {
     CleanHookEventChannel {
         session_id: String,
     },
-    /// Trigger immediate JSONL enrichment for an upserted session.
+    /// Trigger immediate JSONL parse + reconciliation for an upserted session.
     EnrichFromJsonl {
         session_id: String,
+        file_path: PathBuf,
     },
     PersistClosedAt {
         session_id: String,
