@@ -242,7 +242,7 @@ export function SessionCard({
         if (hasPhase) {
           return (
             <div className="mb-1">
-              <PhaseBadge phase={currentPhase} scope={session.phase?.current?.scope} />
+              <PhaseBadge phase={currentPhase} scope={session.phase?.current?.scope} freshness={session.phase?.freshness} />
             </div>
           )
         }
