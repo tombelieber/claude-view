@@ -490,7 +490,7 @@ fn plan_side_effects(
     session_id: &str,
     session: &LiveSession,
     mutation: &SessionMutation,
-    now: i64,
+    _now: i64,
 ) -> Vec<SideEffect> {
     let mut effects = Vec::new();
 
