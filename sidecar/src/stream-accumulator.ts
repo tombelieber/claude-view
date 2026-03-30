@@ -37,6 +37,46 @@ import type {
   UserMessageEcho,
 } from './protocol.js'
 
+// ── Progress types — mirrored from packages/shared/src/types/generated/ ─
+// These MUST match the frontend's ProgressData discriminated union.
+// If Rust types change (ts-rs regenerates), update these to match.
+// Without typed data, the frontend casts blocks blindly → runtime crashes.
+type ProgressVariant = 'bash' | 'agent' | 'mcp' | 'hook' | 'task_queue' | 'search' | 'query'
+type ActionCategory = 'builtin' | 'mcp' | 'agent' | 'hook'
+type BashProgressData = {
+  type: 'bash'
+  output: string
+  fullOutput: string
+  elapsedTimeSeconds: number
+  totalLines: number
+  totalBytes: number
+  taskId?: string | null
+}
+type AgentProgressData = {
+  type: 'agent'
+  prompt: string
+  agentId?: string
+  message?: string
+}
+type McpProgressData = { type: 'mcp'; serverName: string; toolName: string }
+type HookProgressData = {
+  type: 'hook'
+  hookName: string
+  hookType: string
+  statusMessage?: string
+}
+type TaskQueueProgressData = { type: 'task_queue'; queueSize: number }
+type SearchProgressData = { type: 'search'; query: string }
+type QueryProgressData = { type: 'query'; query: string }
+type ProgressData =
+  | BashProgressData
+  | AgentProgressData
+  | McpProgressData
+  | HookProgressData
+  | TaskQueueProgressData
+  | SearchProgressData
+  | QueryProgressData
+
 // ── Block types (inlined for sidecar isolation) ─────────────────────────
 
 export type UserBlock = {
@@ -164,9 +204,9 @@ export type SystemBlock = {
 export type ProgressBlock = {
   type: 'progress'
   id: string
-  variant: string
-  category: string
-  data: Record<string, unknown>
+  variant: ProgressVariant
+  category: ActionCategory
+  data: ProgressData
   ts: number
   parentToolUseId?: string
 }
@@ -614,9 +654,9 @@ export class StreamAccumulator {
   }
 
   private pushProgress(
-    variant: string,
-    category: string,
-    data: Record<string, unknown>,
+    variant: ProgressVariant,
+    category: ActionCategory,
+    data: ProgressData,
     parentToolUseId?: string,
   ): void {
     const block: ProgressBlock = {

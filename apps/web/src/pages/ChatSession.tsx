@@ -3,6 +3,7 @@ import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
 import { TakeoverDialog } from '../components/chat/TakeoverDialog'
+import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { ThinkingIndicator } from '@claude-view/shared/components/conversation/ThinkingIndicator'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
@@ -359,38 +360,40 @@ export function ChatSession({
             /* No blocks yet but something is happening — centered indicator */
             <ThinkingIndicator phase={thinkingState ?? 'loading'} centered />
           ) : (
-            <ConversationActionsProvider
-              actions={{
-                retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
-                stopTask: (taskId) => {
-                  channel?.send({ type: 'stop_task', taskId })
-                },
-                respondPermission: (rid, allowed, perms) =>
-                  dispatch({
-                    type: 'RESPOND_PERMISSION',
-                    requestId: rid,
-                    allowed,
-                    updatedPermissions: perms,
-                  }),
-                answerQuestion: (rid, answers) =>
-                  dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
-                approvePlan: (rid, approved, feedback) =>
-                  dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
-                submitElicitation: (rid, response) =>
-                  dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
-              }}
-            >
-              <ConversationThread
-                key={sessionId || 'new'}
-                blocks={blocks}
-                renderers={registry}
-                filterBar={displayMode !== 'chat'}
-                onStartReached={handleLoadOlderHistory}
-                isFetchingOlder={historyPagination.isFetchingOlder}
-                hasOlderMessages={historyPagination.hasOlderMessages}
-                scrollToBottomSignal={scrollToBottomSignal}
-              />
-            </ConversationActionsProvider>
+            <ErrorBoundary>
+              <ConversationActionsProvider
+                actions={{
+                  retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                  stopTask: (taskId) => {
+                    channel?.send({ type: 'stop_task', taskId })
+                  },
+                  respondPermission: (rid, allowed, perms) =>
+                    dispatch({
+                      type: 'RESPOND_PERMISSION',
+                      requestId: rid,
+                      allowed,
+                      updatedPermissions: perms,
+                    }),
+                  answerQuestion: (rid, answers) =>
+                    dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                  approvePlan: (rid, approved, feedback) =>
+                    dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                  submitElicitation: (rid, response) =>
+                    dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
+                }}
+              >
+                <ConversationThread
+                  key={sessionId || 'new'}
+                  blocks={blocks}
+                  renderers={registry}
+                  filterBar={displayMode !== 'chat'}
+                  onStartReached={handleLoadOlderHistory}
+                  isFetchingOlder={historyPagination.isFetchingOlder}
+                  hasOlderMessages={historyPagination.hasOlderMessages}
+                  scrollToBottomSignal={scrollToBottomSignal}
+                />
+              </ConversationActionsProvider>
+            </ErrorBoundary>
           )}
           {/* Thinking indicator — inline below thread when blocks exist */}
           {blocks.length > 0 && thinkingState && <ThinkingIndicator phase={thinkingState} />}
