@@ -48,7 +48,7 @@ impl LocalLlmConfig {
     pub fn set_enabled(&self, val: bool) -> std::io::Result<()> {
         self.enabled.store(val, Ordering::Release);
         let json = serde_json::to_string_pretty(&ConfigFile { enabled: val })
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
