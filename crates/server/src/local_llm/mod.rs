@@ -4,6 +4,7 @@ mod download;
 mod inventory;
 mod lifecycle;
 mod model_manager;
+mod omlx_binary;
 pub mod registry;
 mod routes;
 mod service;
