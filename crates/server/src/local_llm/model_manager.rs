@@ -31,12 +31,13 @@ impl Default for ModelManager {
 }
 
 impl ModelManager {
-    /// Create a ModelManager using the default cache directory.
-    /// `~/.cache/claude-view/models` on macOS/Linux.
+    /// Create a ModelManager using the app data directory.
+    /// `~/.claude-view/local-llm/models` — centralized, survives reinstalls.
     pub fn new() -> Self {
-        let model_dir = dirs::cache_dir()
+        let model_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("claude-view")
+            .join(".claude-view")
+            .join("local-llm")
             .join(MODEL_DIR);
         Self { model_dir }
     }
