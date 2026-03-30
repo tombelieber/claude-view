@@ -1,11 +1,10 @@
-//! Startup recovery: snapshot promotion, PID dedup, and closed session restoration.
+//! Startup recovery: snapshot promotion and PID dedup.
 //!
 //! These methods run once during server startup to reconstruct in-memory state
-//! from disk artifacts (PID snapshot, SQLite closed_at, JSONL files).
+//! from disk artifacts (PID snapshot, JSONL files). OS process table is truth.
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tracing::{info, warn};
 
@@ -42,6 +41,26 @@ impl LiveSessionManager {
                 continue;
             }
             if !is_pid_alive(entry.pid) {
+                dead += 1;
+                dead_ids.push(session_id.clone());
+                continue;
+            }
+
+            // PID reuse guard: verify this PID is still a Claude-related process.
+            // After a crash, the OS may have recycled this PID for an unrelated process.
+            let is_claude = {
+                let oracle_snap = self.oracle_rx.borrow().clone();
+                match oracle_snap.claude_processes.as_ref() {
+                    Some(cp) => cp.processes.contains_key(&entry.pid),
+                    None => true, // Oracle not ready yet — trust snapshot (reconciliation will catch it)
+                }
+            };
+            if !is_claude {
+                info!(
+                    session_id = %session_id,
+                    pid = entry.pid,
+                    "PID alive but not a Claude process — PID reuse detected, discarding"
+                );
                 dead += 1;
                 dead_ids.push(session_id.clone());
                 continue;
@@ -182,26 +201,15 @@ impl LiveSessionManager {
         }
 
         if !pid_dupes.is_empty() {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
             for dupe_id in &pid_dupes {
-                if let Some(session) = sessions.get_mut(dupe_id) {
+                if let Some(session) = sessions.get(dupe_id) {
                     info!(
                         session_id = %dupe_id,
                         pid = ?session.hook.pid,
                         "Snapshot PID dedup: evicting stale entry"
                     );
-                    session.status = SessionStatus::Done;
-                    session.closed_at = Some(now);
-                    session.hook.agent_state = AgentState {
-                        group: AgentStateGroup::NeedsYou,
-                        state: "session_ended".into(),
-                        label: "Evicted (PID collision)".into(),
-                        context: None,
-                    };
                 }
+                sessions.remove(dupe_id);
             }
             let dupe_set: std::collections::HashSet<&str> =
                 pid_dupes.iter().map(|s| s.as_str()).collect();
@@ -210,63 +218,6 @@ impl LiveSessionManager {
                 evicted = pid_dupes.len(),
                 "Snapshot recovery PID dedup complete"
             );
-        }
-    }
-
-    /// Restore recently-closed sessions from SQLite.
-    pub(super) async fn restore_closed_sessions(
-        self: &Arc<Self>,
-        initial_paths: &[std::path::PathBuf],
-    ) {
-        let closed_rows: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT id, closed_at FROM sessions WHERE closed_at IS NOT NULL AND dismissed_at IS NULL",
-        )
-        .fetch_all(self.db.pool())
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "Failed to load recently-closed sessions from SQLite");
-            Vec::new()
-        });
-
-        // Phase 1: Parse JSONL files for closed sessions (OUTSIDE sessions lock)
-        for (session_id, _closed_at) in &closed_rows {
-            if self.sessions.read().await.contains_key(session_id) {
-                continue;
-            }
-            if let Some(path) = initial_paths
-                .iter()
-                .find(|p| extract_session_id(p) == *session_id)
-            {
-                self.process_jsonl_update(path).await;
-            }
-        }
-
-        // Phase 2: Mark recovered sessions as closed (with sessions lock)
-        {
-            let mut sessions = self.sessions.write().await;
-            let mut restored = 0u32;
-            for (session_id, closed_at) in &closed_rows {
-                if let Some(session) = sessions.get_mut(session_id) {
-                    if session.closed_at.is_none() {
-                        session.status = SessionStatus::Done;
-                        session.closed_at = Some(*closed_at);
-                        session.hook.agent_state = AgentState {
-                            group: AgentStateGroup::NeedsYou,
-                            state: "session_ended".into(),
-                            label: "Session ended".into(),
-                            context: None,
-                        };
-                        session.hook.hook_events.clear();
-                        restored += 1;
-                    }
-                }
-            }
-            if restored > 0 {
-                info!(
-                    count = restored,
-                    "Restored recently-closed sessions from SQLite"
-                );
-            }
         }
     }
 }
