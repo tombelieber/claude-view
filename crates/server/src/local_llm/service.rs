@@ -41,13 +41,16 @@ impl LocalLlmService {
     }
 
     /// Create a classify client wired to this service's ready flag.
+    /// Model ID is read dynamically from LlmStatus (set by lifecycle).
     pub fn client(
         &self,
-        model: String,
         debug_tx: Option<tokio::sync::mpsc::Sender<String>>,
     ) -> LlmClient {
-        let mut c = LlmClient::new(format!("http://localhost:{}", self.status.port), model)
-            .with_ready_flag(self.status.ready.clone());
+        let mut c = LlmClient::new(
+            format!("http://localhost:{}", self.status.port),
+            self.status.discovered_model_ref(),
+        )
+        .with_ready_flag(self.status.ready.clone());
         if let Some(tx) = debug_tx {
             c = c.with_debug_tx(tx);
         }

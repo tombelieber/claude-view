@@ -57,6 +57,7 @@ pub async fn run_lifecycle(
                 info!("LLM config disabled, shutting down lifecycle");
                 status.ready.store(false, Ordering::Release);
                 status.set_pid(None);
+                status.set_discovered_model_id(None);
                 status.set_server_state(ServerState::Unknown);
             }
             tokio::time::sleep(POLL_INTERVAL_STARTUP).await;
@@ -89,17 +90,23 @@ pub async fn run_lifecycle(
                 }
                 status.ready.store(false, Ordering::Release);
                 status.set_pid(None);
+                status.set_discovered_model_id(None);
                 status.set_server_state(ServerState::Unavailable);
                 state = ServerState::Unavailable;
                 continue;
             }
         };
 
+        // Store the runtime model ID discovered from oMLX — this is the
+        // single source of truth for what model name to use in requests.
+        status.set_discovered_model_id(Some(model_id.clone()));
+
         // Verify inference on first transition to Running (or re-probe after demotion)
         if state != ServerState::Running || was_demoted {
             if !verify_inference(&client, &base_url, &model_id).await {
                 debug!("LLM inference verify failed (model loading?)");
                 status.ready.store(false, Ordering::Release);
+                status.set_discovered_model_id(None);
                 status.set_server_state(ServerState::Unavailable);
                 state = ServerState::Unavailable;
                 continue;

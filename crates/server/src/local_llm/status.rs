@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
@@ -23,12 +23,17 @@ impl From<u8> for ServerState {
 }
 
 /// Lock-free shared status for the local LLM process.
+///
+/// `discovered_model_id` is the **runtime model ID** reported by oMLX via
+/// `/v1/models`. This is the single source of truth for what model name to
+/// send in chat completion requests. Set by lifecycle, read by LlmClient.
 #[derive(Debug)]
 pub struct LlmStatus {
     pub ready: Arc<AtomicBool>,
     pub port: u16,
     pid: Arc<AtomicU32>,
     state: Arc<AtomicU8>,
+    discovered_model_id: Arc<RwLock<Option<String>>>,
 }
 
 impl LlmStatus {
@@ -38,6 +43,7 @@ impl LlmStatus {
             port,
             pid: Arc::new(AtomicU32::new(0)),
             state: Arc::new(AtomicU8::new(ServerState::Unknown as u8)),
+            discovered_model_id: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -60,7 +66,24 @@ impl LlmStatus {
         self.state.store(s as u8, Ordering::Release);
     }
 
-    /// Snapshot for the status route — cheap, lock-free.
+    /// The runtime model ID discovered from oMLX's `/v1/models` endpoint.
+    /// This is what the LlmClient must send in chat completion requests.
+    pub fn discovered_model_id(&self) -> Option<String> {
+        self.discovered_model_id.read().unwrap().clone()
+    }
+
+    /// Set by lifecycle when it discovers a model from oMLX.
+    /// Cleared when server becomes unavailable or disabled.
+    pub fn set_discovered_model_id(&self, id: Option<String>) {
+        *self.discovered_model_id.write().unwrap() = id;
+    }
+
+    /// Shared reference for LlmClient to read at request time.
+    pub fn discovered_model_ref(&self) -> Arc<RwLock<Option<String>>> {
+        self.discovered_model_id.clone()
+    }
+
+    /// Snapshot for the status route — cheap.
     pub fn snapshot(&self) -> StatusSnapshot {
         StatusSnapshot {
             ready: self.ready.load(Ordering::Acquire),
