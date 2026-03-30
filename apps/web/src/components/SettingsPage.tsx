@@ -479,6 +479,9 @@ export function SettingsPage() {
           {/* ACCOUNT */}
           <AccountSection />
 
+          {/* ON-DEVICE AI (local LLM) */}
+          <OnDeviceAiCard />
+
           {/* STORAGE OVERVIEW */}
           <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
             <StorageOverview />
@@ -488,9 +491,6 @@ export function SettingsPage() {
 
           {/* LLM PROVIDER (used by reports) */}
           <ProviderSettings cliStatus={systemData?.claudeCli} />
-
-          {/* ON-DEVICE AI (local LLM) */}
-          <OnDeviceAiCard />
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
