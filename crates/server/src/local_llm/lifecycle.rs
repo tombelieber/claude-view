@@ -7,11 +7,11 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use super::config::LocalLlmConfig;
+use super::registry;
 use super::status::{LlmStatus, ServerState};
 
 const POLL_INTERVAL_STARTUP: Duration = Duration::from_secs(2);
 const POLL_INTERVAL_RUNNING: Duration = Duration::from_secs(10);
-pub const EXPECTED_MODEL_SUBSTRING: &str = "Qwen3.5-4B";
 
 /// How the LLM process is managed.
 #[derive(Debug)]
@@ -74,8 +74,14 @@ pub async fn run_lifecycle(
 
         tokio::time::sleep(interval).await;
 
+        // Resolve active model substring for health check
+        let active = config
+            .active_model()
+            .and_then(|id| registry::find_model(&id))
+            .unwrap_or_else(registry::default_model);
+
         // Probe /v1/models
-        let model_id = match check_model(&client, &base_url).await {
+        let model_id = match check_model(&client, &base_url, active.model_id_substring).await {
             Some(id) => id,
             None => {
                 if state == ServerState::Running {
@@ -110,7 +116,7 @@ pub async fn run_lifecycle(
     }
 }
 
-async fn check_model(client: &Client, base_url: &str) -> Option<String> {
+async fn check_model(client: &Client, base_url: &str, model_substring: &str) -> Option<String> {
     let resp = client
         .get(format!("{base_url}/v1/models"))
         .send()
@@ -120,7 +126,7 @@ async fn check_model(client: &Client, base_url: &str) -> Option<String> {
     models
         .data
         .iter()
-        .find(|m| m.id.contains(EXPECTED_MODEL_SUBSTRING))
+        .find(|m| m.id.contains(model_substring))
         .map(|m| m.id.clone())
 }
 
