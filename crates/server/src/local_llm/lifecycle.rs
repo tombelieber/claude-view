@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use reqwest::Client;
@@ -7,6 +8,7 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use super::config::LocalLlmConfig;
+use super::process::ManagedProcess;
 use super::registry;
 use super::status::{LlmStatus, ServerState};
 
@@ -18,7 +20,11 @@ const POLL_INTERVAL_RUNNING: Duration = Duration::from_secs(10);
 pub enum ProcessMode {
     /// External process — user runs it. We discover via port.
     Discover { port: u16 },
-    // Future: Managed { binary, args, child } — we spawn + own it.
+    /// claude-view owns the oMLX child process.
+    Managed {
+        port: u16,
+        process: Arc<Mutex<Option<ManagedProcess>>>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -32,12 +38,18 @@ struct ModelEntry {
 }
 
 /// Background task: polls the LLM server health, updates shared status.
-/// Exits when config is disabled or when the shutdown signal fires.
-pub async fn run_lifecycle(
-    status: Arc<LlmStatus>,
-    config: Arc<LocalLlmConfig>,
-    _mode: ProcessMode,
-) {
+pub async fn run_lifecycle(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>, mode: ProcessMode) {
+    match mode {
+        ProcessMode::Discover { port: _ } => {
+            run_discover_loop(status, config).await;
+        }
+        ProcessMode::Managed { port: _, process } => {
+            run_managed_loop(status, config, process).await;
+        }
+    }
+}
+
+async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) {
     let base_url = format!("http://localhost:{}", status.port);
     let client = Client::builder()
         .timeout(Duration::from_secs(3))
@@ -115,6 +127,128 @@ pub async fn run_lifecycle(
             let pid = find_llm_pid(status.port);
             status.set_pid(pid);
             info!(model = %model_id, ?pid, "LLM ready");
+        }
+
+        status.ready.store(true, Ordering::Release);
+        status.set_server_state(ServerState::Running);
+        state = ServerState::Running;
+    }
+}
+
+const MAX_RESTART_ATTEMPTS: u32 = 3;
+
+async fn run_managed_loop(
+    status: Arc<LlmStatus>,
+    config: Arc<LocalLlmConfig>,
+    process: Arc<Mutex<Option<ManagedProcess>>>,
+) {
+    let base_url = format!("http://localhost:{}", status.port);
+    let client = Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .expect("reqwest client");
+
+    let mut state = ServerState::Unknown;
+    let mut restart_count = 0u32;
+
+    info!(port = status.port, "LLM managed lifecycle started");
+
+    loop {
+        if !config.enabled() {
+            if state == ServerState::Running {
+                info!("LLM config disabled");
+                status.ready.store(false, Ordering::Release);
+                status.set_pid(None);
+                status.set_discovered_model_id(None);
+                status.set_server_state(ServerState::Unknown);
+            }
+            // Shutdown managed process if running
+            if let Some(mut proc) = process.lock().unwrap().take() {
+                tokio::spawn(async move { proc.shutdown().await });
+            }
+            tokio::time::sleep(POLL_INTERVAL_STARTUP).await;
+            state = ServerState::Unknown;
+            restart_count = 0;
+            continue;
+        }
+
+        // Check if child process is still alive
+        let process_died = {
+            let mut guard = process.lock().unwrap();
+            if let Some(ref mut proc) = *guard {
+                if !proc.is_alive() {
+                    warn!("oMLX process exited unexpectedly");
+                    *guard = None;
+                    status.ready.store(false, Ordering::Release);
+                    status.set_pid(None);
+                    status.set_discovered_model_id(None);
+                    status.set_server_state(ServerState::Unavailable);
+                    state = ServerState::Unavailable;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }; // guard dropped here
+
+        if process_died {
+            // Auto-restart up to MAX_RESTART_ATTEMPTS
+            if restart_count < MAX_RESTART_ATTEMPTS {
+                restart_count += 1;
+                warn!(attempt = restart_count, "will attempt restart");
+            } else {
+                warn!("max restart attempts reached, giving up");
+                tokio::time::sleep(POLL_INTERVAL_RUNNING).await;
+                continue;
+            }
+        }
+
+        // Standard health check (same as discover loop)
+        let was_demoted = state == ServerState::Running && !status.ready.load(Ordering::Acquire);
+        let interval = match state {
+            ServerState::Running if !was_demoted => POLL_INTERVAL_RUNNING,
+            _ => POLL_INTERVAL_STARTUP,
+        };
+        tokio::time::sleep(interval).await;
+
+        let active = config
+            .active_model()
+            .and_then(|id| registry::find_model(&id))
+            .unwrap_or_else(registry::default_model);
+
+        let model_id = match check_model(&client, &base_url, active.model_id_substring).await {
+            Some(id) => id,
+            None => {
+                if state == ServerState::Running {
+                    warn!("LLM model check failed, marking unavailable");
+                }
+                status.ready.store(false, Ordering::Release);
+                status.set_pid(None);
+                status.set_discovered_model_id(None);
+                status.set_server_state(ServerState::Unavailable);
+                state = ServerState::Unavailable;
+                continue;
+            }
+        };
+
+        status.set_discovered_model_id(Some(model_id.clone()));
+
+        if state != ServerState::Running || was_demoted {
+            if !verify_inference(&client, &base_url, &model_id).await {
+                debug!("LLM inference verify failed (model loading?)");
+                status.ready.store(false, Ordering::Release);
+                status.set_discovered_model_id(None);
+                status.set_server_state(ServerState::Unavailable);
+                state = ServerState::Unavailable;
+                continue;
+            }
+
+            let pid = find_llm_pid(status.port);
+            status.set_pid(pid);
+            info!(model = %model_id, ?pid, "LLM ready (managed)");
+            restart_count = 0; // Reset on successful startup
         }
 
         status.ready.store(true, Ordering::Release);

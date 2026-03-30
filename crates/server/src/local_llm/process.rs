@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
 /// An oMLX child process owned by claude-view.
+#[derive(Debug)]
 pub struct ManagedProcess {
     child: Child,
     port: u16,
