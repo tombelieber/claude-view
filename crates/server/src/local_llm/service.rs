@@ -53,13 +53,15 @@ impl LocalLlmService {
     /// Enable on-device AI. Persists to disk, ensures model, lifecycle will pick up.
     pub async fn enable(
         &self,
-    ) -> Result<Option<tokio::sync::mpsc::Receiver<super::model_manager::DownloadProgress>>, String>
+    ) -> Result<Option<tokio::sync::mpsc::Receiver<super::download::DownloadProgress>>, String>
     {
         self.config
             .set_enabled(true)
             .map_err(|e| format!("failed to persist config: {e}"))?;
         info!("on-device AI enabled");
-        self.model_manager.ensure_model().await
+        self.model_manager
+            .ensure_model(super::registry::default_model().id)
+            .await
     }
 
     /// Disable on-device AI. Dual-path: immediate ready=false + persist to disk.
@@ -78,8 +80,10 @@ impl LocalLlmService {
         ServiceStatus {
             enabled: self.config.enabled(),
             llm: self.status.snapshot(),
-            model_exists: self.model_manager.model_exists(),
-            model_size_bytes: self.model_manager.model_size_bytes(),
+            model_exists: self
+                .model_manager
+                .is_downloaded(super::registry::default_model().id),
+            model_size_bytes: Some(super::registry::default_model().size_bytes),
         }
     }
 }
