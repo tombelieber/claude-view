@@ -4,14 +4,16 @@ mod download;
 mod inventory;
 mod lifecycle;
 mod model_manager;
-mod registry;
+pub mod registry;
 mod routes;
 mod service;
 mod status;
 
 pub use config::LocalLlmConfig;
+pub use download::DownloadProgress;
 pub use lifecycle::{run_lifecycle, ProcessMode, EXPECTED_MODEL_SUBSTRING};
-pub use model_manager::{DownloadProgress, ModelManager};
+pub use model_manager::ModelManager;
+pub use registry::{ModelEntry, REGISTRY};
 pub use routes::local_llm_routes;
 pub use service::{LocalLlmService, ServiceStatus};
 pub use status::{LlmStatus, ServerState, StatusSnapshot};
