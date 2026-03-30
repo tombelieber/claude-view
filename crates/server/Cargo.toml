@@ -72,6 +72,7 @@ reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 libc = "0.2"
+nix = { version = "0.29", features = ["signal"] }
 core-foundation = { workspace = true }
 core-foundation-sys = { workspace = true }
 crypto_box = "0.9"
