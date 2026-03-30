@@ -32,6 +32,7 @@ import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { AccountSection } from './AccountSection'
+import { OnDeviceAiCard } from './OnDeviceAiCard'
 import { PairingQrCode } from './PairingQrCode'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
@@ -487,6 +488,9 @@ export function SettingsPage() {
 
           {/* LLM PROVIDER (used by reports) */}
           <ProviderSettings cliStatus={systemData?.claudeCli} />
+
+          {/* ON-DEVICE AI (local LLM) */}
+          <OnDeviceAiCard />
 
           {/* GIT SYNC */}
           <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">

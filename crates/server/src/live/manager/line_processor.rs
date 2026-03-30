@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
+use crate::local_llm::client::{ConversationTurn, Role};
 use claude_view_core::live_parser::LineType;
-use claude_view_core::phase::client::{ConversationTurn, Role};
 use claude_view_core::phase::scheduler::Priority;
 use claude_view_core::phase::{is_shipping_cmd, PhaseLabel, SessionPhase, MAX_PHASE_LABELS};
 use claude_view_core::pricing::{calculate_cost, ModelPricing, TokenUsage};

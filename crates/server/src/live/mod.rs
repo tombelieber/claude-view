@@ -1,15 +1,14 @@
 pub mod buffer;
 pub mod component_collector;
-pub mod gpu_memory;
 pub mod coordinator;
 pub mod debug_log;
 pub mod drain_loop;
 pub mod file_resolver;
+pub mod gpu_memory;
 pub mod hook_registrar;
 pub mod manager;
 pub mod monitor;
 pub mod mutation;
-pub mod omlx_lifecycle;
 pub mod process;
 pub mod process_death;
 pub mod process_oracle;

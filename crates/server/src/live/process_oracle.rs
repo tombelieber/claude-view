@@ -116,7 +116,7 @@ pub fn stub() -> OracleReceiver {
 /// because the LiveSessionManager always needs process data for reconciliation.
 pub fn start_oracle(
     sidecar: Arc<crate::sidecar::SidecarManager>,
-    omlx_status: Arc<super::omlx_lifecycle::OmlxStatus>,
+    omlx_status: Arc<crate::local_llm::LlmStatus>,
 ) -> OracleReceiver {
     let initial = Arc::new(OracleSnapshot {
         resource: ResourceData {

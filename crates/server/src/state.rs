@@ -187,6 +187,8 @@ pub struct AppState {
     pub debug_hooks_log: Option<DebugEventLog>,
     /// Rolling JSONL debug log for oMLX API calls (debug builds only).
     pub debug_omlx_log: Option<DebugEventLog>,
+    /// Local LLM service (on-device AI).
+    pub local_llm: Arc<crate::local_llm::LocalLlmService>,
 }
 
 impl AppState {
@@ -252,6 +254,10 @@ impl AppState {
             debug_statusline_log,
             debug_hooks_log,
             debug_omlx_log,
+            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
+                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
+                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+            )),
         })
     }
 
@@ -316,6 +322,10 @@ impl AppState {
             debug_statusline_log,
             debug_hooks_log,
             debug_omlx_log,
+            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
+                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
+                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+            )),
         })
     }
 
@@ -383,6 +393,10 @@ impl AppState {
             debug_statusline_log,
             debug_hooks_log,
             debug_omlx_log,
+            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
+                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
+                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+            )),
         })
     }
 
