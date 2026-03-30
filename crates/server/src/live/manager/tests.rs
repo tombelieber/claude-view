@@ -185,6 +185,45 @@ fn test_session_snapshot_corrupt_file() {
 }
 
 #[test]
+fn test_snapshot_atomic_write_cleans_tmp() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sessions.json");
+    let tmp = path.with_extension("json.tmp");
+
+    let mut m = HashMap::new();
+    m.insert(
+        "test-session".to_string(),
+        SnapshotEntry {
+            pid: 12345,
+            status: "working".to_string(),
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "acting".into(),
+                label: "Working".into(),
+                context: None,
+            },
+            last_activity_at: 1000,
+            control_id: None,
+        },
+    );
+    let snapshot = SessionSnapshot {
+        version: 2,
+        sessions: m,
+    };
+
+    save_session_snapshot(&path, &snapshot);
+
+    // Main file exists, tmp file does NOT
+    assert!(path.exists(), "Snapshot file must exist after save");
+    assert!(!tmp.exists(), "Tmp file must be cleaned up after rename");
+
+    // Content is valid JSON
+    let loaded = load_session_snapshot(&path);
+    assert_eq!(loaded.sessions.len(), 1);
+    assert!(loaded.sessions.contains_key("test-session"));
+}
+
+#[test]
 fn test_snapshot_v2_round_trip() {
     let mut entries = HashMap::new();
     entries.insert(
