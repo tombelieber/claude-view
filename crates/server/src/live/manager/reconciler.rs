@@ -1,17 +1,16 @@
-//! Reconciliation loop, cleanup task, and death consumer.
+//! Reconciliation loop and death consumer.
 //!
-//! PID liveness checks, stale session cleanup, process count refresh,
+//! PID liveness checks via `reap_session()`, process count refresh,
 //! and event-driven death notification handling.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use tracing::info;
 
-use crate::live::mutation::types::{LifecycleEvent, SessionMutation};
 use crate::live::process::detect_claude_processes;
-use crate::live::state::{AgentState, AgentStateGroup, SessionEvent, SessionStatus};
+use crate::live::state::{SessionEvent, SessionStatus};
 
 use super::LiveSessionManager;
 
@@ -41,124 +40,31 @@ impl LiveSessionManager {
                 // =============================================================
                 // Phase 1: Lightweight liveness check (every tick = 10s)
                 // =============================================================
-                let mut dead_sessions: Vec<String> = Vec::new();
-                let mut ghost_sessions: Vec<String> = Vec::new();
-                {
+                // NOTE: Do NOT filter by `status != Done`. The hook-based
+                // SessionEnd path sets status=Done via the coordinator BEFORE
+                // the process exits. If we skip Done sessions here, and kqueue
+                // misses the subsequent PID death, the session stays as a zombie.
+                // reap_session() has its own is_pid_alive() guard — safe to call
+                // on any session with a dead PID regardless of status.
+                let dead_session_ids: Vec<String> = {
                     let sessions = manager.sessions.read().await;
-                    for (session_id, session) in sessions.iter() {
-                        if session.status == SessionStatus::Done {
-                            continue;
-                        }
-                        if let Some(pid) = session.hook.pid {
-                            if !crate::live::process::is_pid_alive(pid) {
-                                let is_ghost = session.jsonl.file_path.is_empty()
-                                    && session.hook.turn_count == 0;
-                                if is_ghost {
-                                    info!(
-                                        session_id = %session_id,
-                                        pid = pid,
-                                        "Ghost session (no JSONL, zero turns) -- auto-completing"
-                                    );
-                                    ghost_sessions.push(session_id.clone());
-                                } else {
-                                    info!(
-                                        session_id = %session_id,
-                                        pid = pid,
-                                        "Bound PID is dead -- marking session ended"
-                                    );
-                                    dead_sessions.push(session_id.clone());
-                                }
-                            }
-                        }
-                    }
-                }
+                    sessions
+                        .iter()
+                        .filter(|(_, session)| {
+                            session
+                                .hook
+                                .pid
+                                .is_some_and(|pid| !crate::live::process::is_pid_alive(pid))
+                        })
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                };
 
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-
-                // Route dead sessions through coordinator
-                if !dead_sessions.is_empty() {
-                    let ctx = manager.mutation_context(&manager);
-                    for session_id in &dead_sessions {
-                        manager
-                            .coordinator
-                            .handle(
-                                &ctx,
-                                session_id,
-                                SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
-                                None,
-                                now,
-                                None,
-                                None,
-                                None,
-                            )
-                            .await;
+                if !dead_session_ids.is_empty() {
+                    let count = manager.reap_sessions(&dead_session_ids).await;
+                    if count > 0 {
+                        info!(reaped = count, "Reconciliation: reaped dead sessions");
                     }
-                }
-
-                // Ghost sessions: manual removal + SessionCompleted
-                if !ghost_sessions.is_empty() {
-                    {
-                        let mut sessions = manager.sessions.write().await;
-                        for session_id in &ghost_sessions {
-                            if let Some(session) = sessions.get_mut(session_id) {
-                                session.hook.agent_state = AgentState {
-                                    group: AgentStateGroup::NeedsYou,
-                                    state: "session_ended".into(),
-                                    label: "Session ended".into(),
-                                    context: None,
-                                };
-                                session.status = SessionStatus::Done;
-                                session.closed_at = Some(now);
-                            }
-                            sessions.remove(session_id);
-                        }
-                    }
-                    for session_id in &ghost_sessions {
-                        let _ = manager.tx.send(SessionEvent::SessionCompleted {
-                            session_id: session_id.clone(),
-                        });
-                    }
-                    let mut accumulators = manager.accumulators.write().await;
-                    for session_id in &ghost_sessions {
-                        accumulators.remove(session_id);
-                    }
-                }
-
-                // Save session snapshot if any sessions changed
-                if !dead_sessions.is_empty() || !ghost_sessions.is_empty() {
-                    manager.save_session_snapshot_from_state().await;
-                }
-
-                // Persist closed_at to SQLite
-                let all_closed: Vec<String> = dead_sessions
-                    .iter()
-                    .chain(ghost_sessions.iter())
-                    .cloned()
-                    .collect();
-                if !all_closed.is_empty() {
-                    let db = manager.db.clone();
-                    tokio::spawn(async move {
-                        let mut tx = match db.pool().begin().await {
-                            Ok(tx) => tx,
-                            Err(e) => {
-                                tracing::warn!(error = %e, "Failed to begin transaction for closed_at persistence");
-                                return;
-                            }
-                        };
-                        for session_id in all_closed {
-                            let _ = sqlx::query(
-                                "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL",
-                            )
-                            .bind(now)
-                            .bind(&session_id)
-                            .execute(&mut *tx)
-                            .await;
-                        }
-                        let _ = tx.commit().await;
-                    });
                 }
 
                 // =============================================================
@@ -290,38 +196,10 @@ impl LiveSessionManager {
         }
     }
 
-    /// Spawn the periodic housekeeping task.
-    ///
-    /// Every 60 seconds: removes orphaned accumulators.
-    pub(super) fn spawn_cleanup_task(self: &Arc<Self>) {
-        let manager = self.clone();
-
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-
-                let sessions = manager.sessions.read().await;
-                let mut accumulators = manager.accumulators.write().await;
-                let orphan_ids: Vec<String> = accumulators
-                    .keys()
-                    .filter(|id| !sessions.contains_key(*id))
-                    .cloned()
-                    .collect();
-                for id in &orphan_ids {
-                    accumulators.remove(id);
-                }
-                if !orphan_ids.is_empty() {
-                    info!("Cleaned up {} orphaned accumulators", orphan_ids.len());
-                }
-            }
-        });
-    }
-
     /// Spawn the death notification consumer.
     ///
-    /// Reads from the kqueue-based ProcessDeathWatcher and immediately marks
-    /// sessions as Done when their PID exits.
+    /// Reads from the kqueue-based ProcessDeathWatcher and immediately reaps
+    /// sessions when their PID exits.
     pub(super) fn spawn_death_consumer(
         self: &Arc<Self>,
         mut death_rx: tokio::sync::mpsc::Receiver<super::super::process_death::DeathNotification>,
@@ -329,72 +207,23 @@ impl LiveSessionManager {
         let manager = self.clone();
         tokio::spawn(async move {
             while let Some((pid, session_id)) = death_rx.recv().await {
-                let (should_act, is_ghost) = {
+                // Verify this session still maps to this PID before reaping.
+                let should_reap = {
                     let sessions = manager.sessions.read().await;
-                    match sessions.get(&session_id) {
-                        Some(session)
-                            if session.status != SessionStatus::Done
-                                && session.hook.pid == Some(pid) =>
-                        {
-                            let ghost =
-                                session.jsonl.file_path.is_empty() && session.hook.turn_count == 0;
-                            (true, ghost)
-                        }
-                        _ => (false, false),
-                    }
+                    matches!(
+                        sessions.get(&session_id),
+                        Some(session) if session.hook.pid == Some(pid)
+                    )
                 };
 
-                if !should_act {
-                    continue;
+                if should_reap {
+                    info!(
+                        session_id = %session_id,
+                        pid = pid,
+                        "kqueue: PID death -> reaping session"
+                    );
+                    manager.reap_session(&session_id).await;
                 }
-
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-
-                info!(
-                    session_id = %session_id,
-                    pid = pid,
-                    ghost = is_ghost,
-                    "kqueue: PID death -> marking session ended"
-                );
-
-                if is_ghost {
-                    let mut sessions = manager.sessions.write().await;
-                    if let Some(session) = sessions.get_mut(&session_id) {
-                        session.hook.agent_state = AgentState {
-                            group: AgentStateGroup::NeedsYou,
-                            state: "session_ended".into(),
-                            label: "Session ended".into(),
-                            context: None,
-                        };
-                        session.status = SessionStatus::Done;
-                        session.closed_at = Some(now);
-                    }
-                    let sid = session_id.clone();
-                    sessions.remove(&sid);
-                    drop(sessions);
-                    let _ = manager
-                        .tx
-                        .send(SessionEvent::SessionCompleted { session_id: sid });
-                } else {
-                    let ctx = manager.mutation_context(&manager);
-                    manager
-                        .coordinator
-                        .handle(
-                            &ctx,
-                            &session_id,
-                            SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
-                            None,
-                            now,
-                            None,
-                            None,
-                            None,
-                        )
-                        .await;
-                }
-                manager.request_snapshot_save();
             }
         });
     }

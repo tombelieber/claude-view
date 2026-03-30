@@ -163,7 +163,6 @@ impl LiveSessionManager {
         manager.spawn_snapshot_writer(snapshot_rx);
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
-        manager.spawn_cleanup_task();
         manager.spawn_death_consumer(death_rx);
 
         // Spawn LLM drain loop (replaces cadence-based scheduler)
