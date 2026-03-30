@@ -20,7 +20,7 @@ use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use crate::live::mutation::types::{LifecycleEvent, SessionMutation};
 use crate::live::process::count_claude_processes;
 use crate::live::state::{
-    append_capped_hook_event, HookEvent, SessionEvent, MAX_HOOK_EVENTS_PER_SESSION,
+    append_capped_hook_event, HookEvent, SessionEvent, SessionStatus, MAX_HOOK_EVENTS_PER_SESSION,
 };
 use crate::live::watcher::{initial_scan, start_watcher, FileEvent};
 
@@ -145,21 +145,15 @@ impl LiveSessionManager {
     /// Handle a JSONL file removal event.
     async fn handle_file_removed(self: &Arc<Self>, path: &Path) {
         let session_id = extract_session_id(path);
-        let (should_close, already_closed) = {
+        let should_close = {
             let sessions = self.sessions.read().await;
-            match sessions.get(&session_id) {
-                Some(session) if session.closed_at.is_some() => (false, true),
-                Some(_) => (true, false),
-                None => (false, false),
-            }
+            matches!(
+                sessions.get(&session_id),
+                Some(session) if session.status != SessionStatus::Done
+            )
         };
 
-        if already_closed {
-            tracing::debug!(
-                session_id = %session_id,
-                "JSONL file removed for recently-closed session -- keeping in map"
-            );
-        } else if should_close {
+        if should_close {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
@@ -177,17 +171,6 @@ impl LiveSessionManager {
                     None,
                 )
                 .await;
-            let db = self.db.clone();
-            let sid = session_id.clone();
-            tokio::spawn(async move {
-                let _ = sqlx::query(
-                    "UPDATE sessions SET closed_at = ?1 WHERE id = ?2 AND closed_at IS NULL",
-                )
-                .bind(now)
-                .bind(&sid)
-                .execute(db.pool())
-                .await;
-            });
         }
     }
 
@@ -400,7 +383,7 @@ impl LiveSessionManager {
         // Update the shared session map
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&session_id) {
-            if session.closed_at.is_some() {
+            if session.status == SessionStatus::Done {
                 return;
             }
             apply_jsonl_metadata(
