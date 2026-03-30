@@ -100,6 +100,10 @@ pub(super) fn pid_snapshot_path() -> Option<PathBuf> {
 }
 
 /// Save the extended session snapshot to disk atomically.
+///
+/// Pattern: write(tmp) → fsync(tmp) → rename(tmp, real).
+/// `rename` is atomic on POSIX. `fsync` ensures the data hits disk before
+/// rename, so power loss can't leave a zero-byte file.
 pub(super) fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
     let content = match serde_json::to_string(snapshot) {
         Ok(c) => c,
@@ -109,10 +113,19 @@ pub(super) fn save_session_snapshot(path: &Path, snapshot: &SessionSnapshot) {
         }
     };
     let tmp = path.with_extension("json.tmp");
-    if std::fs::write(&tmp, &content).is_ok() {
-        if let Err(e) = std::fs::rename(&tmp, path) {
-            tracing::error!(error = %e, "failed to persist session snapshot");
-        }
+    let Ok(mut file) = std::fs::File::create(&tmp) else {
+        warn!("Failed to create tmp snapshot file");
+        return;
+    };
+    use std::io::Write;
+    if file.write_all(content.as_bytes()).is_err() || file.sync_all().is_err() {
+        warn!("Failed to write/fsync tmp snapshot file");
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    drop(file);
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        tracing::error!(error = %e, "failed to persist session snapshot");
     }
 }
 
