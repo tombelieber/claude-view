@@ -57,9 +57,9 @@ impl LocalLlmConfig {
 }
 
 fn config_path() -> PathBuf {
-    dirs::cache_dir()
+    dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join("claude-view")
+        .join(".claude-view")
         .join("local-llm.json")
 }
 
