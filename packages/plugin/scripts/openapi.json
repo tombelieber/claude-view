@@ -11,9 +11,7 @@
   "paths": {
     "/api/branches": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/branches - Get distinct list of branch names across all sessions.",
         "description": "Returns a sorted array of unique branch names found in the database.\nExcludes sessions without a branch (NULL git_branch).",
         "operationId": "list_branches",
@@ -36,9 +34,7 @@
     },
     "/api/check-path": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "GET /api/check-path?path=... — Check whether a filesystem path still exists.",
         "description": "Used by the frontend to validate project paths before offering \"resume session\".\nWorktree directories can be removed, making the session un-resumable.",
         "operationId": "check_path",
@@ -68,9 +64,7 @@
     },
     "/api/classify": {
       "post": {
-        "tags": [
-          "classify"
-        ],
+        "tags": ["classify"],
         "summary": "POST /api/classify — Trigger a classification job.",
         "operationId": "start_classification",
         "requestBody": {
@@ -103,9 +97,7 @@
     },
     "/api/classify/cancel": {
       "post": {
-        "tags": [
-          "classify"
-        ],
+        "tags": ["classify"],
         "summary": "POST /api/classify/cancel — Cancel a running classification job.",
         "operationId": "cancel_classification",
         "responses": {
@@ -127,9 +119,7 @@
     },
     "/api/classify/single/{session_id}": {
       "post": {
-        "tags": [
-          "classify"
-        ],
+        "tags": ["classify"],
         "summary": "POST /api/classify/single/:session_id — Classify a single session synchronously.",
         "description": "Bypasses ClassifyState entirely — no job record, no SSE.\nReturns the classification result directly.\nUses dedicated O(1) DB queries — NOT the bulk session list.",
         "operationId": "classify_single_session",
@@ -163,9 +153,7 @@
     },
     "/api/classify/status": {
       "get": {
-        "tags": [
-          "classify"
-        ],
+        "tags": ["classify"],
         "summary": "GET /api/classify/status — Get classification status.",
         "operationId": "get_classification_status",
         "responses": {
@@ -184,9 +172,7 @@
     },
     "/api/classify/stream": {
       "get": {
-        "tags": [
-          "classify"
-        ],
+        "tags": ["classify"],
         "summary": "GET /api/classify/stream — SSE stream of classification progress.",
         "operationId": "stream_classification",
         "responses": {
@@ -201,9 +187,7 @@
     },
     "/api/coaching/rules": {
       "get": {
-        "tags": [
-          "coaching"
-        ],
+        "tags": ["coaching"],
         "summary": "GET /api/coaching/rules — List all coaching rules from the rules directory.",
         "operationId": "list_rules",
         "responses": {
@@ -220,9 +204,7 @@
         }
       },
       "post": {
-        "tags": [
-          "coaching"
-        ],
+        "tags": ["coaching"],
         "summary": "POST /api/coaching/rules — Create a new coaching rule file.",
         "operationId": "apply_rule",
         "requestBody": {
@@ -254,9 +236,7 @@
     },
     "/api/coaching/rules/{id}": {
       "delete": {
-        "tags": [
-          "coaching"
-        ],
+        "tags": ["coaching"],
         "summary": "DELETE /api/coaching/rules/{id} — Remove a coaching rule file.",
         "operationId": "remove_rule",
         "parameters": [
@@ -289,9 +269,7 @@
     },
     "/api/config": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "operationId": "config",
         "responses": {
           "200": {
@@ -309,9 +287,7 @@
     },
     "/api/contributions": {
       "get": {
-        "tags": [
-          "contributions"
-        ],
+        "tags": ["contributions"],
         "summary": "GET /api/contributions - Main contributions page data.",
         "operationId": "get_contributions",
         "parameters": [
@@ -330,10 +306,7 @@
             "description": "Start date for custom range (YYYY-MM-DD)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -342,10 +315,7 @@
             "description": "End date for custom range (YYYY-MM-DD)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -354,10 +324,7 @@
             "description": "Optional project filter",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -366,10 +333,7 @@
             "description": "Optional branch filter (requires project_id)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -389,9 +353,7 @@
     },
     "/api/contributions/branches/{name}/sessions": {
       "get": {
-        "tags": [
-          "contributions"
-        ],
+        "tags": ["contributions"],
         "summary": "GET /api/contributions/branches/:name/sessions - Sessions for a branch.",
         "operationId": "get_branch_sessions",
         "parameters": [
@@ -419,10 +381,7 @@
             "description": "Start date for custom range (YYYY-MM-DD)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -431,10 +390,7 @@
             "description": "End date for custom range (YYYY-MM-DD)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -443,10 +399,7 @@
             "description": "Optional project filter",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -455,10 +408,7 @@
             "description": "Maximum number of sessions to return (default: 10, max: 50)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           }
@@ -479,9 +429,7 @@
     },
     "/api/contributions/sessions/{id}": {
       "get": {
-        "tags": [
-          "contributions"
-        ],
+        "tags": ["contributions"],
         "summary": "GET /api/contributions/sessions/:id - Session contribution detail.",
         "operationId": "get_session_contribution",
         "parameters": [
@@ -509,10 +457,7 @@
             "description": "Start date for custom range (YYYY-MM-DD)",
             "required": true,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -521,10 +466,7 @@
             "description": "End date for custom range (YYYY-MM-DD)",
             "required": true,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -533,10 +475,7 @@
             "description": "Optional project filter",
             "required": true,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -545,10 +484,7 @@
             "description": "Optional branch filter (requires project_id)",
             "required": true,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -571,9 +507,7 @@
     },
     "/api/estimate": {
       "post": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "POST /api/estimate — cost estimation (Rust-only, no sidecar).",
         "operationId": "estimate_cost",
         "requestBody": {
@@ -605,9 +539,7 @@
     },
     "/api/export/sessions": {
       "get": {
-        "tags": [
-          "export"
-        ],
+        "tags": ["export"],
         "summary": "GET /api/export/sessions - Export all sessions.",
         "description": "Query parameters:\n- format: \"json\" (default) or \"csv\"\n\nJSON format returns structured data per A5.2 spec.\nCSV format returns RFC 4180 compliant CSV with proper escaping.",
         "operationId": "export_sessions",
@@ -618,10 +550,7 @@
             "description": "Export format: \"json\" (default) or \"csv\"",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -641,9 +570,7 @@
     },
     "/api/facets/badges": {
       "get": {
-        "tags": [
-          "facets"
-        ],
+        "tags": ["facets"],
         "summary": "GET /api/facets/badges?ids=id1,id2,id3 — Quality badges (outcome +\nsatisfaction) for the requested session IDs. Returns a JSON map keyed\nby session ID.",
         "operationId": "facet_badges",
         "parameters": [
@@ -671,9 +598,7 @@
     },
     "/api/facets/ingest/stream": {
       "get": {
-        "tags": [
-          "facets"
-        ],
+        "tags": ["facets"],
         "summary": "GET /api/facets/ingest/stream — SSE stream polling FacetIngestState atomics\nevery 200ms. Emits \"progress\" events repeatedly, then a terminal \"done\"\nevent when the ingest reaches Complete, Error, or NoCacheFound.",
         "operationId": "facet_ingest_stream",
         "responses": {
@@ -688,9 +613,7 @@
     },
     "/api/facets/ingest/trigger": {
       "post": {
-        "tags": [
-          "facets"
-        ],
+        "tags": ["facets"],
         "summary": "POST /api/facets/ingest/trigger — Start facet ingest from the Claude Code\ninsights cache. Returns immediately with `{\"status\": \"started\"}` or\n`{\"status\": \"already_running\"}` if an ingest is already in progress.",
         "operationId": "trigger_facet_ingest",
         "responses": {
@@ -709,9 +632,7 @@
     },
     "/api/facets/pattern-alert": {
       "get": {
-        "tags": [
-          "facets"
-        ],
+        "tags": ["facets"],
         "summary": "GET /api/facets/pattern-alert — Check the most recent sessions for a\nnegative satisfaction pattern. Returns `{pattern, count, tip}` if a\npattern is detected, or `{pattern: null}` otherwise.",
         "operationId": "pattern_alert",
         "responses": {
@@ -730,9 +651,7 @@
     },
     "/api/facets/stats": {
       "get": {
-        "tags": [
-          "facets"
-        ],
+        "tags": ["facets"],
         "summary": "GET /api/facets/stats — Aggregate statistics across all session facets.",
         "operationId": "facet_stats",
         "responses": {
@@ -751,9 +670,7 @@
     },
     "/api/health": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "GET /api/health - Health check endpoint.",
         "description": "Returns server status, version, and uptime.",
         "operationId": "health_check",
@@ -773,9 +690,7 @@
     },
     "/api/ide/detect": {
       "get": {
-        "tags": [
-          "ide"
-        ],
+        "tags": ["ide"],
         "summary": "`GET /api/ide/detect` — return cached list of installed IDEs.",
         "operationId": "get_detect",
         "responses": {
@@ -794,9 +709,7 @@
     },
     "/api/ide/open": {
       "post": {
-        "tags": [
-          "ide"
-        ],
+        "tags": ["ide"],
         "summary": "`POST /api/ide/open` — open a file in the requested IDE.",
         "operationId": "post_open",
         "requestBody": {
@@ -825,9 +738,7 @@
     },
     "/api/indexing/progress": {
       "get": {
-        "tags": [
-          "sync"
-        ],
+        "tags": ["sync"],
         "summary": "SSE handler that streams indexing progress events.",
         "description": "# Events\n\n| Event name       | When emitted                              |\n|------------------|-------------------------------------------|\n| `status`         | Indexer enters `ReadingIndexes` phase      |\n| `ready`          | Projects/sessions discovered, UI can load  |\n| `deep-progress`  | Each batch of deep-indexed sessions        |\n| `done`           | Indexing complete                          |\n| `error`          | Indexing failed                            |\n\nThe stream terminates after `done` or `error`.",
         "operationId": "indexing_progress",
@@ -843,9 +754,7 @@
     },
     "/api/indexing/status": {
       "get": {
-        "tags": [
-          "sync"
-        ],
+        "tags": ["sync"],
         "summary": "GET /api/indexing/status — lightweight JSON snapshot of indexing progress.",
         "description": "Returns the current phase, indexed count, and total count.\nDesigned for polling (every 200–300 ms) from the frontend during rebuilds.",
         "operationId": "indexing_status",
@@ -865,9 +774,7 @@
     },
     "/api/insights": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/insights - Compute and return behavioral insights.",
         "operationId": "get_insights",
         "parameters": [
@@ -877,10 +784,7 @@
             "description": "Period start (unix timestamp).",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -890,10 +794,7 @@
             "description": "Period end (unix timestamp).",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -903,10 +804,7 @@
             "description": "Minimum impact score (0.0-1.0). Defaults to 0.3.",
             "required": false,
             "schema": {
-              "type": [
-                "number",
-                "null"
-              ],
+              "type": ["number", "null"],
               "format": "double"
             }
           },
@@ -916,10 +814,7 @@
             "description": "Comma-separated pattern categories to include.",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -928,10 +823,7 @@
             "description": "Max patterns to return. Defaults to 50.",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int32",
               "minimum": 0
             }
@@ -953,9 +845,7 @@
     },
     "/api/insights/benchmarks": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/insights/benchmarks - Compute personal progress benchmarks.",
         "operationId": "get_benchmarks",
         "parameters": [
@@ -965,10 +855,7 @@
             "description": "Time range: all, 30d, 90d, 1y. Defaults to all.",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -986,9 +873,7 @@
     },
     "/api/insights/categories": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/insights/categories - Returns hierarchical category data.",
         "operationId": "get_categories",
         "parameters": [
@@ -998,10 +883,7 @@
             "description": "Period start (unix timestamp).",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -1011,10 +893,7 @@
             "description": "Period end (unix timestamp).",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           }
@@ -1035,9 +914,7 @@
     },
     "/api/insights/trends": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/insights/trends - Get time-series trend data for charts.",
         "operationId": "get_insights_trends",
         "parameters": [
@@ -1054,10 +931,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -1073,10 +947,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -1085,10 +956,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           }
@@ -1109,9 +977,7 @@
     },
     "/api/invocables": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/invocables - List all invocables with their usage counts.",
         "description": "Returns a list of all known invocables (tools, skills, MCPs) ordered by\ninvocation count descending, then name ascending.",
         "operationId": "list_invocables",
@@ -1134,9 +1000,7 @@
     },
     "/api/jobs": {
       "get": {
-        "tags": [
-          "jobs"
-        ],
+        "tags": ["jobs"],
         "summary": "GET /api/jobs — List all active jobs.",
         "operationId": "list_jobs",
         "responses": {
@@ -1158,9 +1022,7 @@
     },
     "/api/jobs/stream": {
       "get": {
-        "tags": [
-          "jobs"
-        ],
+        "tags": ["jobs"],
         "summary": "GET /api/jobs/stream — SSE stream of all job progress updates.",
         "operationId": "stream_jobs",
         "responses": {
@@ -1175,9 +1037,7 @@
     },
     "/api/live/hook": {
       "post": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "operationId": "handle_hook",
         "requestBody": {
           "content": {
@@ -1203,9 +1063,7 @@
     },
     "/api/live/pricing": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/pricing -- Return the model pricing table.",
         "description": "Exposes per-model costs in a frontend-friendly format (cost per million tokens).",
         "operationId": "get_pricing",
@@ -1223,9 +1081,7 @@
     },
     "/api/live/recently-closed": {
       "delete": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "DELETE /api/live/recently-closed -- Dismiss all recently closed sessions.",
         "operationId": "dismiss_all_closed",
         "responses": {
@@ -1242,9 +1098,7 @@
     },
     "/api/live/sessions": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/sessions -- List all live sessions, sorted by most recent activity.",
         "operationId": "list_live_sessions",
         "responses": {
@@ -1261,9 +1115,7 @@
     },
     "/api/live/sessions/{id}": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/sessions/:id -- Get a single live session by ID.",
         "operationId": "get_live_session",
         "parameters": [
@@ -1294,9 +1146,7 @@
     },
     "/api/live/sessions/{id}/bind-control": {
       "post": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "POST /api/live/sessions/:id/bind-control -- Sidecar notifies that it now controls this session.",
         "description": "Sets the `control` field on the LiveSession, which flows to SSE clients.\nIdempotent: re-binding with the same controlId is a no-op success.",
         "operationId": "bind_control",
@@ -1338,9 +1188,7 @@
     },
     "/api/live/sessions/{id}/dismiss": {
       "delete": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.",
         "description": "Removes the session from the live map and marks it as dismissed in SQLite.\nSends `SessionCompleted` to notify the frontend to remove from `recentlyClosed`.\n\nNote: There is a narrow race window between removing from the map and persisting\nto SQLite. If the server crashes in that window, the session reappears on restart\n(user clicks dismiss again). This is accept-and-retry tolerant by design.",
         "operationId": "dismiss_session",
@@ -1372,9 +1220,7 @@
     },
     "/api/live/sessions/{id}/kill": {
       "post": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "POST /api/live/sessions/:id/kill -- Send SIGTERM to the session's Claude process.",
         "description": "Returns `{ \"killed\": true, \"pid\": <pid> }` on success.\nReturns 500 with `{ \"error\": \"...\", \"pid\": <pid> }` if SIGTERM fails.\nReturns 404 with `{ \"canDismiss\": true }` if the session has no PID (already exited).\nReturns 404 with `{ \"error\": \"Session not found\" }` if the session ID is unknown.",
         "operationId": "kill_session",
@@ -1409,9 +1255,7 @@
     },
     "/api/live/sessions/{id}/messages": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/sessions/:id/messages?limit=20 -- Get the most recent messages\nfor a live session.",
         "description": "Looks up the session in the live_sessions map to find its JSONL file path,\nthen parses the file and returns the last N messages (most recent).",
         "operationId": "get_live_session_messages",
@@ -1453,9 +1297,7 @@
     },
     "/api/live/sessions/{id}/statusline": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/sessions/{id}/statusline -- debug endpoint returning raw statusline JSON.",
         "operationId": "get_session_statusline_debug",
         "parameters": [
@@ -1486,9 +1328,7 @@
     },
     "/api/live/sessions/{id}/unbind-control": {
       "post": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "POST /api/live/sessions/:id/unbind-control -- Sidecar notifies it released control.",
         "description": "Only unbinds if the current controlId matches (CAS semantics).",
         "operationId": "unbind_control",
@@ -1530,9 +1370,7 @@
     },
     "/api/live/statusline": {
       "post": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "operationId": "handle_statusline",
         "requestBody": {
           "content": {
@@ -1558,9 +1396,7 @@
     },
     "/api/live/stream": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/stream -- SSE stream of real-time session events.",
         "description": "# Events\n\n| Event name          | When emitted                           |\n|---------------------|----------------------------------------|\n| `summary`           | On connect, and when a client lags     |\n| `session_discovered`| New session detected                   |\n| `session_updated`   | Session state changed                  |\n| `session_closed`    | Session process exited (recently closed) |\n| `session_completed` | Session ended                          |\n| `heartbeat`         | Every 15 seconds to keep connection    |\n\nOn initial connection, the server sends the current summary followed by\nall active sessions so the client can hydrate immediately without a\nseparate REST call.",
         "operationId": "live_stream",
@@ -1576,9 +1412,7 @@
     },
     "/api/live/summary": {
       "get": {
-        "tags": [
-          "live"
-        ],
+        "tags": ["live"],
         "summary": "GET /api/live/summary -- Aggregate statistics across all live sessions.",
         "operationId": "get_live_summary",
         "responses": {
@@ -1595,9 +1429,7 @@
     },
     "/api/monitor/snapshot": {
       "get": {
-        "tags": [
-          "monitor"
-        ],
+        "tags": ["monitor"],
         "summary": "GET /api/monitor/snapshot -- One-shot JSON snapshot of current resources.",
         "operationId": "monitor_snapshot",
         "responses": {
@@ -1616,9 +1448,7 @@
     },
     "/api/monitor/stream": {
       "get": {
-        "tags": [
-          "monitor"
-        ],
+        "tags": ["monitor"],
         "summary": "GET /api/monitor/stream -- SSE stream of periodic resource snapshots.",
         "description": "# Lazy observer pattern\n\nOn first subscriber (0 → 1), spawns a background polling task that collects\nsystem resources every 2 seconds. On last unsubscribe (1 → 0), the polling\ntask exits on its next tick. This avoids wasting CPU when no one is watching.\n\n# Events\n\n| Event name  | When emitted                       |\n|-------------|------------------------------------|\n| `init`      | On connect: system info + snapshot  |\n| `snapshot`  | Every 2s: resource snapshot          |\n| `heartbeat` | Every 15s: keepalive                 |",
         "operationId": "monitor_stream",
@@ -1634,9 +1464,7 @@
     },
     "/api/oauth/identity": {
       "get": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "GET /api/oauth/identity",
         "description": "Returns cached auth identity (email, org, plan).\nCalls `claude auth status` on first request only, caches forever.",
         "operationId": "get_auth_identity",
@@ -1656,9 +1484,7 @@
     },
     "/api/oauth/usage": {
       "get": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "GET /api/oauth/usage",
         "description": "Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.\nSets `Cache-Control: max-age=<remaining_ttl>` so the frontend respects the\nserver's TTL without hardcoding its own polling interval.",
         "operationId": "get_oauth_usage",
@@ -1678,9 +1504,7 @@
     },
     "/api/oauth/usage/refresh": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "POST /api/oauth/usage/refresh",
         "description": "Bypass TTL cache and fetch fresh data from Anthropic.\nReturns 429 + Retry-After header if called within 60s of the last attempt.",
         "operationId": "post_oauth_usage_refresh",
@@ -1703,9 +1527,7 @@
     },
     "/api/pairing/devices": {
       "get": {
-        "tags": [
-          "pairing"
-        ],
+        "tags": ["pairing"],
         "summary": "GET /pairing/devices — List paired devices.",
         "operationId": "list_devices",
         "responses": {
@@ -1727,9 +1549,7 @@
     },
     "/api/pairing/devices/{id}": {
       "delete": {
-        "tags": [
-          "pairing"
-        ],
+        "tags": ["pairing"],
         "summary": "DELETE /pairing/devices/:id — Unpair a device.",
         "operationId": "unpair_device",
         "parameters": [
@@ -1752,9 +1572,7 @@
     },
     "/api/pairing/qr": {
       "get": {
-        "tags": [
-          "pairing"
-        ],
+        "tags": ["pairing"],
         "summary": "GET /pairing/qr — Generate QR payload for mobile pairing.",
         "operationId": "generate_qr",
         "responses": {
@@ -1776,9 +1594,7 @@
     },
     "/api/plugins": {
       "get": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "GET /api/plugins — Unified view of installed + available plugins.",
         "operationId": "list_plugins",
         "responses": {
@@ -1797,9 +1613,7 @@
     },
     "/api/plugins/marketplaces": {
       "get": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "GET /api/plugins/marketplaces",
         "operationId": "list_marketplaces",
         "responses": {
@@ -1821,9 +1635,7 @@
     },
     "/api/plugins/marketplaces/refresh-all": {
       "post": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "POST /api/plugins/marketplaces/refresh-all",
         "description": "Starts a batch refresh of all (or specified) marketplaces.\nReturns 409 if a batch is already active.",
         "operationId": "refresh_all",
@@ -1856,9 +1668,7 @@
     },
     "/api/plugins/marketplaces/refresh-status": {
       "get": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "GET /api/plugins/marketplaces/refresh-status",
         "operationId": "refresh_status",
         "responses": {
@@ -1877,9 +1687,7 @@
     },
     "/api/plugins/ops": {
       "get": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "GET /api/plugins/ops — List all queued/running/completed ops.",
         "operationId": "list_ops_handler",
         "responses": {
@@ -1899,9 +1707,7 @@
         }
       },
       "post": {
-        "tags": [
-          "plugins"
-        ],
+        "tags": ["plugins"],
         "summary": "POST /api/plugins/ops — Enqueue a plugin mutation, return immediately.",
         "operationId": "enqueue_op",
         "requestBody": {
@@ -1930,9 +1736,7 @@
     },
     "/api/processes/cleanup": {
       "post": {
-        "tags": [
-          "processes"
-        ],
+        "tags": ["processes"],
         "operationId": "cleanup_processes",
         "requestBody": {
           "content": {
@@ -1960,9 +1764,7 @@
     },
     "/api/processes/{pid}/kill": {
       "post": {
-        "tags": [
-          "processes"
-        ],
+        "tags": ["processes"],
         "operationId": "kill_process",
         "parameters": [
           {
@@ -2003,9 +1805,7 @@
     },
     "/api/projects": {
       "get": {
-        "tags": [
-          "projects"
-        ],
+        "tags": ["projects"],
         "summary": "GET /api/projects - List all projects as lightweight summaries.",
         "description": "Returns ProjectSummary[] (no sessions array). ~2 KB for 10 projects.",
         "operationId": "list_projects",
@@ -2028,9 +1828,7 @@
     },
     "/api/projects/{id}/branches": {
       "get": {
-        "tags": [
-          "projects"
-        ],
+        "tags": ["projects"],
         "summary": "GET /api/projects/:id/branches - List distinct branches with session counts.",
         "description": "Returns all unique git_branch values for sessions in this project,\nsorted by session count descending.",
         "operationId": "list_project_branches",
@@ -2061,9 +1859,7 @@
     },
     "/api/projects/{id}/sessions": {
       "get": {
-        "tags": [
-          "projects"
-        ],
+        "tags": ["projects"],
         "summary": "GET /api/projects/:id/sessions - Paginated sessions for a project.",
         "operationId": "list_project_sessions",
         "parameters": [
@@ -2107,10 +1903,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2138,9 +1931,7 @@
     },
     "/api/prompts": {
       "get": {
-        "tags": [
-          "prompts"
-        ],
+        "tags": ["prompts"],
         "summary": "GET /api/prompts - List prompt history with optional search/filter.",
         "operationId": "list_prompts",
         "parameters": [
@@ -2149,10 +1940,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2160,10 +1948,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2171,10 +1956,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2182,10 +1964,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2193,10 +1972,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2204,10 +1980,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2215,10 +1988,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2227,10 +1997,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2239,10 +2006,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2250,10 +2014,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           },
@@ -2262,10 +2023,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           }
@@ -2286,9 +2044,7 @@
     },
     "/api/prompts/stats": {
       "get": {
-        "tags": [
-          "prompts"
-        ],
+        "tags": ["prompts"],
         "summary": "GET /api/prompts/stats - Aggregate prompt statistics.",
         "operationId": "get_prompt_stats",
         "responses": {
@@ -2305,9 +2061,7 @@
     },
     "/api/prompts/templates": {
       "get": {
-        "tags": [
-          "prompts"
-        ],
+        "tags": ["prompts"],
         "summary": "GET /api/prompts/templates - Detected prompt templates.",
         "operationId": "get_prompt_templates",
         "responses": {
@@ -2329,9 +2083,7 @@
     },
     "/api/reports": {
       "get": {
-        "tags": [
-          "reports"
-        ],
+        "tags": ["reports"],
         "summary": "GET /api/reports — List all saved reports.",
         "operationId": "list_reports",
         "responses": {
@@ -2353,9 +2105,7 @@
     },
     "/api/reports/generate": {
       "post": {
-        "tags": [
-          "reports"
-        ],
+        "tags": ["reports"],
         "summary": "POST /api/reports/generate — Stream-generate a report via Claude CLI.",
         "description": "Returns SSE with events:\n- `chunk` — text chunk from Claude CLI stdout\n- `done`  — generation complete, includes `{ reportId }` JSON\n- `error` — generation failed, includes `{ message }` JSON",
         "operationId": "generate_report",
@@ -2384,9 +2134,7 @@
     },
     "/api/reports/preview": {
       "get": {
-        "tags": [
-          "reports"
-        ],
+        "tags": ["reports"],
         "summary": "GET /api/reports/preview — Aggregate preview stats for a date range.",
         "operationId": "get_preview",
         "parameters": [
@@ -2425,9 +2173,7 @@
     },
     "/api/reports/{id}": {
       "get": {
-        "tags": [
-          "reports"
-        ],
+        "tags": ["reports"],
         "summary": "GET /api/reports/:id — Get a single report.",
         "operationId": "get_report",
         "parameters": [
@@ -2459,9 +2205,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "reports"
-        ],
+        "tags": ["reports"],
         "summary": "DELETE /api/reports/:id — Delete a report.",
         "operationId": "delete_report",
         "parameters": [
@@ -2488,9 +2232,7 @@
     },
     "/api/score": {
       "get": {
-        "tags": [
-          "insights"
-        ],
+        "tags": ["insights"],
         "summary": "GET /api/score - Get the current AI Fluency Score.",
         "description": "Returns a composite score (0-100) plus sub-metric breakdown\ncomputed from session facets.",
         "operationId": "get_fluency_score",
@@ -2508,9 +2250,7 @@
     },
     "/api/search": {
       "get": {
-        "tags": [
-          "search"
-        ],
+        "tags": ["search"],
         "summary": "GET /api/search - Full-text search across sessions.",
         "operationId": "search_handler",
         "parameters": [
@@ -2519,10 +2259,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2530,10 +2267,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           },
@@ -2542,10 +2276,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           },
@@ -2554,10 +2285,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2565,10 +2293,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2576,10 +2301,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2587,10 +2309,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2598,10 +2317,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -2622,9 +2338,7 @@
     },
     "/api/sessions": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions - List all sessions with filter/sort (Step 20).",
         "description": "Filters:\n- `all` (default): no filter\n- `has_commits`: commit_count > 0\n- `high_reedit`: reedit_rate > 0.2\n- `long_session`: duration_seconds > 1800 (30 minutes)\n\nSorts:\n- `recent` (default): first_message_at DESC\n- `tokens`: (total_input + total_output) DESC\n- `prompts`: user_prompt_count DESC\n- `files_edited`: files_edited_count DESC\n- `duration`: duration_seconds DESC\n\nReturns 400 with valid options list for invalid filter/sort.",
         "operationId": "list_sessions",
@@ -2635,10 +2349,7 @@
             "description": "Filter: all (default), has_commits, high_reedit, long_session (kept for backward compat)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2647,10 +2358,7 @@
             "description": "Sort: recent (default), tokens, prompts, files_edited, duration",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2659,10 +2367,7 @@
             "description": "Pagination limit (default 30)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2672,10 +2377,7 @@
             "description": "Pagination offset (default 0)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2685,10 +2387,7 @@
             "description": "Text search across preview, last_message, project name",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2697,10 +2396,7 @@
             "description": "Comma-separated list of branches to filter by",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2709,10 +2405,7 @@
             "description": "Comma-separated list of models to filter by",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2721,10 +2414,7 @@
             "description": "Filter sessions with commits (true) or without (false)",
             "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": ["boolean", "null"]
             }
           },
           {
@@ -2733,10 +2423,7 @@
             "description": "Filter sessions with skills (true) or without (false)",
             "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": ["boolean", "null"]
             }
           },
           {
@@ -2745,10 +2432,7 @@
             "description": "Minimum duration in seconds",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2758,10 +2442,7 @@
             "description": "Minimum number of files edited",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2771,10 +2452,7 @@
             "description": "Minimum total tokens (input + output)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2784,10 +2462,7 @@
             "description": "Filter sessions with high re-edit rate (> 0.2)",
             "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": ["boolean", "null"]
             }
           },
           {
@@ -2796,10 +2471,7 @@
             "description": "Filter sessions after this timestamp (unix seconds)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2809,10 +2481,7 @@
             "description": "Filter sessions before this timestamp (unix seconds)",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -2822,10 +2491,7 @@
             "description": "Optional project filter (matches project_id or git_root)",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -2834,10 +2500,7 @@
             "description": "Include archived sessions (queries `sessions` table instead of `valid_sessions` view)",
             "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": ["boolean", "null"]
             }
           }
         ],
@@ -2860,9 +2523,7 @@
     },
     "/api/sessions/activity": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/activity — Activity histogram for sparkline chart.",
         "operationId": "session_activity",
         "responses": {
@@ -2881,9 +2542,7 @@
     },
     "/api/sessions/archive": {
       "post": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "operationId": "bulk_archive_handler",
         "requestBody": {
           "content": {
@@ -2911,9 +2570,7 @@
     },
     "/api/sessions/unarchive": {
       "post": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "operationId": "bulk_unarchive_handler",
         "requestBody": {
           "content": {
@@ -2941,9 +2598,7 @@
     },
     "/api/sessions/{id}": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id - Get extended session detail (Step 21).",
         "description": "Returns session with:\n- All atomic units (files_read, files_edited arrays)\n- Derived metrics (tokens_per_prompt, reedit_rate, etc.)\n- Linked commits with tier",
         "operationId": "get_session_detail",
@@ -2977,9 +2632,7 @@
     },
     "/api/sessions/{id}/archive": {
       "post": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "operationId": "archive_session_handler",
         "parameters": [
           {
@@ -3011,9 +2664,7 @@
     },
     "/api/sessions/{id}/file-history": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/file-history — List all file changes for a session.",
         "operationId": "get_file_history",
         "parameters": [
@@ -3046,9 +2697,7 @@
     },
     "/api/sessions/{id}/file-history/{file_hash}/diff": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/file-history/:file_hash/diff?from=N&to=M",
         "operationId": "get_file_diff",
         "parameters": [
@@ -3096,10 +2745,7 @@
             "description": "If provided, skip JSONL re-parse and use this path directly.\nThe frontend already has the resolved path from the file-history response.",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -3125,9 +2771,7 @@
     },
     "/api/sessions/{id}/hook-events": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/hook-events — Fetch hook events for a session.",
         "description": "For live sessions, hook events are in memory (not flushed to SQLite until\nSessionEnd). Check the live state first, then fall back to SQLite.",
         "operationId": "get_session_hook_events",
@@ -3156,9 +2800,7 @@
     },
     "/api/sessions/{id}/messages": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/messages — Get paginated messages by session ID.",
         "description": "Resolves the JSONL file path from the DB's `file_path` column.\nNo `project_dir` parameter needed — the server owns path resolution.",
         "operationId": "get_session_messages_by_id",
@@ -3177,10 +2819,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           },
@@ -3189,10 +2828,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 0
             }
           },
@@ -3210,10 +2846,7 @@
             "description": "\"block\" → return ConversationBlock[], otherwise legacy Message[]",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -3234,9 +2867,7 @@
     },
     "/api/sessions/{id}/parsed": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/parsed — Get full parsed session by ID.",
         "description": "Resolves the JSONL file path from the DB's `file_path` column.\nNo `project_dir` parameter needed — the server owns path resolution.",
         "operationId": "get_session_parsed",
@@ -3268,9 +2899,7 @@
     },
     "/api/sessions/{id}/plans": {
       "get": {
-        "tags": [
-          "plans"
-        ],
+        "tags": ["plans"],
         "summary": "GET /api/sessions/:id/plans -- returns plan documents for the session's slug.",
         "operationId": "get_session_plans",
         "parameters": [
@@ -3306,9 +2935,7 @@
     },
     "/api/sessions/{id}/rich": {
       "get": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "summary": "GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return\nrich session data (tokens, cost, cache status, sub-agents, progress items, etc.).",
         "description": "This endpoint bridges historical sessions with the same rich data shape used by\nLive Monitor, enabling a unified session detail view.",
         "operationId": "get_session_rich",
@@ -3340,9 +2967,7 @@
     },
     "/api/sessions/{id}/turns": {
       "get": {
-        "tags": [
-          "turns"
-        ],
+        "tags": ["turns"],
         "summary": "GET /api/sessions/{id}/turns — Per-turn breakdown for a historical session.",
         "operationId": "get_session_turns",
         "parameters": [
@@ -3378,9 +3003,7 @@
     },
     "/api/sessions/{id}/unarchive": {
       "post": {
-        "tags": [
-          "sessions"
-        ],
+        "tags": ["sessions"],
         "operationId": "unarchive_session_handler",
         "parameters": [
           {
@@ -3412,9 +3035,7 @@
     },
     "/api/sessions/{session_id}/share": {
       "post": {
-        "tags": [
-          "share"
-        ],
+        "tags": ["share"],
         "operationId": "create_share",
         "parameters": [
           {
@@ -3441,9 +3062,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "share"
-        ],
+        "tags": ["share"],
         "operationId": "revoke_share",
         "parameters": [
           {
@@ -3470,9 +3089,7 @@
     },
     "/api/settings": {
       "get": {
-        "tags": [
-          "settings"
-        ],
+        "tags": ["settings"],
         "summary": "GET /api/settings - Read current app settings.",
         "operationId": "get_settings",
         "responses": {
@@ -3489,9 +3106,7 @@
         }
       },
       "put": {
-        "tags": [
-          "settings"
-        ],
+        "tags": ["settings"],
         "summary": "PUT /api/settings - Update app settings (partial).",
         "operationId": "update_settings",
         "requestBody": {
@@ -3523,9 +3138,7 @@
     },
     "/api/settings/git-sync-interval": {
       "put": {
-        "tags": [
-          "settings"
-        ],
+        "tags": ["settings"],
         "summary": "PUT /api/settings/git-sync-interval - Update the git sync interval.",
         "description": "Body: { \"intervalSecs\": 60 }\nReturns the updated IndexMetadata.",
         "operationId": "update_git_sync_interval",
@@ -3558,9 +3171,7 @@
     },
     "/api/shares": {
       "get": {
-        "tags": [
-          "share"
-        ],
+        "tags": ["share"],
         "operationId": "list_shares",
         "responses": {
           "200": {
@@ -3576,9 +3187,7 @@
     },
     "/api/stats/ai-generation": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/stats/ai-generation - AI generation statistics with time range filtering.",
         "description": "Query params:\n- `from`: Period start (Unix timestamp, optional)\n- `to`: Period end (Unix timestamp, optional)\n\nReturns:\n- linesAdded, linesRemoved: Currently not tracked, returns 0 (future migration needed)\n- filesCreated: Files edited/created by AI\n- totalInputTokens, totalOutputTokens: Aggregate token usage\n- tokensByModel: Token breakdown by AI model\n- tokensByProject: Top 5 projects by token usage + \"Others\"",
         "operationId": "ai_generation_stats",
@@ -3589,10 +3198,7 @@
             "description": "Period start timestamp (Unix seconds, inclusive).\nIf omitted along with `to`, returns all-time stats with no trends.",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -3602,10 +3208,7 @@
             "description": "Period end timestamp (Unix seconds, inclusive).\nIf omitted along with `from`, returns all-time stats with no trends.",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -3615,10 +3218,7 @@
             "description": "Optional project filter (matches sessions.project_id).",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -3627,10 +3227,7 @@
             "description": "Optional branch filter (matches sessions.git_branch).",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -3648,9 +3245,7 @@
     },
     "/api/stats/dashboard": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.",
         "description": "Query params:\n- `from`: Period start (Unix timestamp, optional)\n- `to`: Period end (Unix timestamp, optional)\n\nIf `from` and `to` are omitted, returns all-time stats with no trends.\nIf provided, returns stats filtered to that period with comparison to the equivalent previous period.\n\nReturns:\n- Base stats: total_sessions, total_projects, heatmap, top_skills, top_projects, tool_totals\n- Current period: session_count, total_tokens, total_files_edited, commit_count\n- Trends: period-over-period changes for key metrics (None if viewing all-time)\n- Period bounds: periodStart, periodEnd, comparisonPeriodStart, comparisonPeriodEnd\n- dataStartDate: earliest session in database",
         "operationId": "dashboard_stats",
@@ -3661,10 +3256,7 @@
             "description": "Period start timestamp (Unix seconds, inclusive).\nIf omitted along with `to`, returns all-time stats with no trends.",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -3674,10 +3266,7 @@
             "description": "Period end timestamp (Unix seconds, inclusive).\nIf omitted along with `from`, returns all-time stats with no trends.",
             "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "format": "int64"
             }
           },
@@ -3687,10 +3276,7 @@
             "description": "Optional project filter (matches sessions.project_id).",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           },
           {
@@ -3699,10 +3285,7 @@
             "description": "Optional branch filter (matches sessions.git_branch).",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": ["string", "null"]
             }
           }
         ],
@@ -3720,9 +3303,7 @@
     },
     "/api/stats/overview": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/stats/overview - Aggregate usage statistics.",
         "description": "Returns total sessions, total invocations, unique invocables used,\nand the top 10 invocables by usage count.",
         "operationId": "stats_overview",
@@ -3742,9 +3323,7 @@
     },
     "/api/stats/storage": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/stats/storage - Storage statistics for the settings page.",
         "description": "Returns:\n- Storage sizes: JSONL files, SQLite database, search index\n- Counts: sessions, projects, commits\n- Timing: oldest session, last index, last git sync",
         "operationId": "storage_stats",
@@ -3764,9 +3343,7 @@
     },
     "/api/stats/tokens": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/stats/tokens - Aggregate token usage statistics.",
         "operationId": "stats_tokens",
         "responses": {
@@ -3785,9 +3362,7 @@
     },
     "/api/status": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "GET /api/status - Get index metadata and data freshness info.",
         "description": "Returns:\n- last_indexed_at: When indexing last completed\n- last_index_duration_ms: How long the last index took\n- sessions_indexed: Number of sessions in last index\n- projects_indexed: Number of projects in last index\n- last_git_sync_at: When git sync last completed\n- commits_found: Commits found in last git sync\n- links_created: Session-commit links created in last git sync\n- updated_at: When metadata was last updated",
         "operationId": "get_status",
@@ -3807,9 +3382,7 @@
     },
     "/api/sync/deep-index": {
       "post": {
-        "tags": [
-          "sync"
-        ],
+        "tags": ["sync"],
         "summary": "POST /api/sync/deep - Trigger a full deep index rebuild.",
         "description": "This endpoint:\n1. Marks all sessions for re-indexing (clears deep_indexed_at)\n2. Runs Pass 2 deep indexing on all sessions\n\nReturns:\n- 202 Accepted: Deep index rebuild started\n- 409 Conflict: A rebuild is already in progress\n\nThe rebuild runs in the background. Poll /api/status or /api/indexing/progress for completion.\nPOST /api/sync/deep-index — Trigger a full deep index rebuild.",
         "operationId": "trigger_deep_index",
@@ -3832,9 +3405,7 @@
     },
     "/api/sync/git": {
       "post": {
-        "tags": [
-          "sync"
-        ],
+        "tags": ["sync"],
         "summary": "POST /api/sync/git - Trigger git commit scanning (A8.5).",
         "description": "Returns:\n- 202 Accepted: Sync started (no sync was running)\n- 409 Conflict: Sync already in progress\n\nThe sync runs in the background. Poll /api/status for completion.",
         "operationId": "trigger_git_sync",
@@ -3857,9 +3428,7 @@
     },
     "/api/sync/git/progress": {
       "get": {
-        "tags": [
-          "sync"
-        ],
+        "tags": ["sync"],
         "summary": "GET /api/sync/git/progress - SSE stream of git sync progress.",
         "description": "# Events\n\n| Event name     | When emitted                     |\n|----------------|----------------------------------|\n| `scanning`     | Repos being scanned              |\n| `correlating`  | Linking commits to sessions      |\n| `done`         | Sync complete                    |\n| `error`        | Sync failed                      |\n\nThe stream terminates after `done` or `error`.\nGET /api/sync/git/progress — SSE stream of git sync progress.",
         "operationId": "git_sync_progress",
@@ -3875,9 +3444,7 @@
     },
     "/api/system": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "GET /api/system - Get comprehensive system status.",
         "description": "Runs storage, health, and classification queries in parallel\nusing tokio::join!, then detects Claude CLI status.",
         "operationId": "get_system_status",
@@ -3897,9 +3464,7 @@
     },
     "/api/system/clear-cache": {
       "post": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "POST /api/system/clear-cache - Clear search index and cached data.",
         "description": "Uses a take-drop-recreate pattern:\n1. Write-lock the holder, `.take()` the old `Arc<SearchIndex>` (holder becomes `None`)\n2. Call `clear_all()` on the old index (flushes deletes via Tantivy API)\n3. Drop the old index — releases mmap handles and file locks\n4. `remove_dir_all()` — now safe, no live handles\n5. `SearchIndex::open()` — creates fresh empty index\n6. Write-lock holder, swap in the new `Arc<SearchIndex>`",
         "operationId": "clear_cache",
@@ -3917,9 +3482,7 @@
     },
     "/api/system/git-resync": {
       "post": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "POST /api/system/git-resync - Trigger full git re-sync.",
         "operationId": "trigger_git_resync",
         "responses": {
@@ -3936,9 +3499,7 @@
     },
     "/api/system/reindex": {
       "post": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "POST /api/system/reindex - Trigger a full re-index.",
         "description": "This is a lightweight endpoint that signals the server to start\na background re-index. The actual work happens asynchronously.",
         "operationId": "trigger_reindex",
@@ -3956,9 +3517,7 @@
     },
     "/api/system/reset": {
       "post": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "summary": "POST /api/system/reset - Factory reset all data.",
         "description": "Requires a confirmation string \"RESET_ALL_DATA\" in the request body.",
         "operationId": "reset_all",
@@ -3987,9 +3546,7 @@
     },
     "/api/teams": {
       "get": {
-        "tags": [
-          "teams"
-        ],
+        "tags": ["teams"],
         "summary": "GET /api/teams — List all teams.",
         "operationId": "list_teams",
         "responses": {
@@ -4006,9 +3563,7 @@
     },
     "/api/teams/{name}": {
       "get": {
-        "tags": [
-          "teams"
-        ],
+        "tags": ["teams"],
         "summary": "GET /api/teams/:name — Get team detail.",
         "operationId": "get_team",
         "parameters": [
@@ -4039,9 +3594,7 @@
     },
     "/api/teams/{name}/inbox": {
       "get": {
-        "tags": [
-          "teams"
-        ],
+        "tags": ["teams"],
         "summary": "GET /api/teams/:name/inbox — Get team inbox messages.",
         "operationId": "get_team_inbox",
         "parameters": [
@@ -4072,9 +3625,7 @@
     },
     "/api/telemetry/consent": {
       "post": {
-        "tags": [
-          "telemetry"
-        ],
+        "tags": ["telemetry"],
         "summary": "POST /api/telemetry/consent — Set telemetry consent preference.",
         "operationId": "set_consent",
         "requestBody": {
@@ -4103,9 +3654,7 @@
     },
     "/api/trends": {
       "get": {
-        "tags": [
-          "stats"
-        ],
+        "tags": ["stats"],
         "summary": "GET /api/trends - Get week-over-week trend metrics.",
         "description": "Returns trends for:\n- Session count\n- Total tokens\n- Avg tokens per prompt\n- Total files edited\n- Avg re-edit rate\n- Commit link count",
         "operationId": "get_trends",
@@ -4123,9 +3672,7 @@
     },
     "/api/workflows": {
       "get": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "operationId": "list_workflows",
         "responses": {
           "200": {
@@ -4144,9 +3691,7 @@
         }
       },
       "post": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "operationId": "create_workflow",
         "requestBody": {
           "content": {
@@ -4174,9 +3719,7 @@
     },
     "/api/workflows/chat": {
       "post": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "summary": "POST /api/workflows/chat — direct POST-to-SSE streaming (same pattern as generate_report())",
         "operationId": "chat_workflow",
         "requestBody": {
@@ -4199,9 +3742,7 @@
     },
     "/api/workflows/run/{run_id}/control": {
       "post": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "operationId": "control_run",
         "parameters": [
           {
@@ -4231,9 +3772,7 @@
     },
     "/api/workflows/{id}": {
       "get": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "operationId": "get_workflow",
         "parameters": [
           {
@@ -4263,9 +3802,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "workflows"
-        ],
+        "tags": ["workflows"],
         "operationId": "delete_workflow",
         "parameters": [
           {
@@ -4360,9 +3897,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "meta"
-            ],
+            "required": ["meta"],
             "properties": {
               "meta": {
                 "$ref": "#/components/schemas/AnalyticsScopeMeta"
@@ -4375,15 +3910,10 @@
       "ActionResponse": {
         "type": "object",
         "description": "Generic action response for POST endpoints.",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "status": {
             "type": "string"
@@ -4393,10 +3923,7 @@
       "ActivityPoint": {
         "type": "object",
         "description": "A single point in the activity histogram.",
-        "required": [
-          "date",
-          "count"
-        ],
+        "required": ["date", "count"],
         "properties": {
           "count": {
             "type": "integer",
@@ -4503,18 +4030,12 @@
       "AnalyticsDataScope": {
         "type": "string",
         "description": "Canonical analytics data-scope vocabulary.",
-        "enum": [
-          "primary_sessions_only",
-          "primary_plus_subagent_work"
-        ]
+        "enum": ["primary_sessions_only", "primary_plus_subagent_work"]
       },
       "AnalyticsDataScopeMeta": {
         "type": "object",
         "description": "Canonical `meta.dataScope` payload.",
-        "required": [
-          "sessions",
-          "workload"
-        ],
+        "required": ["sessions", "workload"],
         "properties": {
           "sessions": {
             "$ref": "#/components/schemas/AnalyticsDataScope"
@@ -4527,10 +4048,7 @@
       "AnalyticsScopeMeta": {
         "type": "object",
         "description": "Canonical analytics scope metadata wrapper.",
-        "required": [
-          "dataScope",
-          "sessionBreakdown"
-        ],
+        "required": ["dataScope", "sessionBreakdown"],
         "properties": {
           "dataScope": {
             "$ref": "#/components/schemas/AnalyticsDataScopeMeta"
@@ -4571,10 +4089,7 @@
       "AppSettings": {
         "type": "object",
         "description": "Application settings (single-row table).",
-        "required": [
-          "llmModel",
-          "llmTimeoutSecs"
-        ],
+        "required": ["llmModel", "llmTimeoutSecs"],
         "properties": {
           "llmModel": {
             "type": "string"
@@ -4588,14 +4103,7 @@
       "ApplyRuleRequest": {
         "type": "object",
         "description": "Request body for POST /api/coaching/rules.",
-        "required": [
-          "patternId",
-          "recommendation",
-          "title",
-          "impactScore",
-          "sampleSize",
-          "scope"
-        ],
+        "required": ["patternId", "recommendation", "title", "impactScore", "sampleSize", "scope"],
         "properties": {
           "impactScore": {
             "type": "number",
@@ -4621,9 +4129,7 @@
       },
       "ArchiveResponse": {
         "type": "object",
-        "required": [
-          "archived"
-        ],
+        "required": ["archived"],
         "properties": {
           "archived": {
             "type": "boolean"
@@ -4632,49 +4138,29 @@
       },
       "AuthIdentityResponse": {
         "type": "object",
-        "required": [
-          "hasAuth"
-        ],
+        "required": ["hasAuth"],
         "properties": {
           "authMethod": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "email": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "hasAuth": {
             "type": "boolean"
           },
           "orgName": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "subscriptionType": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "AvailablePlugin": {
         "type": "object",
         "description": "A plugin available for installation (not yet installed).",
-        "required": [
-          "pluginId",
-          "name",
-          "description",
-          "marketplaceName",
-          "alreadyInstalled"
-        ],
+        "required": ["pluginId", "name", "description", "marketplaceName", "alreadyInstalled"],
         "properties": {
           "alreadyInstalled": {
             "type": "boolean"
@@ -4683,10 +4169,7 @@
             "type": "string"
           },
           "installCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
@@ -4700,10 +4183,7 @@
             "type": "string"
           },
           "version": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -4750,9 +4230,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "meta"
-            ],
+            "required": ["meta"],
             "properties": {
               "meta": {
                 "$ref": "#/components/schemas/AnalyticsScopeMeta"
@@ -4765,11 +4243,7 @@
       "BestTimeStats": {
         "type": "object",
         "description": "Best time of day/week stats.",
-        "required": [
-          "dayOfWeek",
-          "timeSlot",
-          "improvementPct"
-        ],
+        "required": ["dayOfWeek", "timeSlot", "improvementPct"],
         "properties": {
           "dayOfWeek": {
             "type": "string"
@@ -4785,9 +4259,7 @@
       },
       "BindControlRequest": {
         "type": "object",
-        "required": [
-          "controlId"
-        ],
+        "required": ["controlId"],
         "properties": {
           "controlId": {
             "type": "string"
@@ -4797,19 +4269,10 @@
       "BranchBreakdown": {
         "type": "object",
         "description": "Branch contribution breakdown.",
-        "required": [
-          "branch",
-          "sessionsCount",
-          "linesAdded",
-          "linesRemoved",
-          "commitsCount"
-        ],
+        "required": ["branch", "sessionsCount", "linesAdded", "linesRemoved", "commitsCount"],
         "properties": {
           "aiShare": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "branch": {
@@ -4820,10 +4283,7 @@
             "format": "int64"
           },
           "lastActivity": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "linesAdded": {
@@ -4835,16 +4295,10 @@
             "format": "int64"
           },
           "projectId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "projectName": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "sessionsCount": {
             "type": "integer",
@@ -4855,15 +4309,10 @@
       "BranchCount": {
         "type": "object",
         "description": "Branch count for a project.",
-        "required": [
-          "count"
-        ],
+        "required": ["count"],
         "properties": {
           "branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "count": {
             "type": "integer",
@@ -4907,21 +4356,14 @@
             "type": "string"
           },
           "workType": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "BranchSessionsResponse": {
         "type": "object",
         "description": "Response for GET /api/contributions/branches/:name/sessions.",
-        "required": [
-          "branch",
-          "sessions",
-          "meta"
-        ],
+        "required": ["branch", "sessions", "meta"],
         "properties": {
           "branch": {
             "type": "string",
@@ -4943,9 +4385,7 @@
       "BranchesResponse": {
         "type": "object",
         "description": "Response from GET /api/projects/:id/branches",
-        "required": [
-          "branches"
-        ],
+        "required": ["branches"],
         "properties": {
           "branches": {
             "type": "array",
@@ -4957,9 +4397,7 @@
       },
       "BulkArchiveRequest": {
         "type": "object",
-        "required": [
-          "ids"
-        ],
+        "required": ["ids"],
         "properties": {
           "ids": {
             "type": "array",
@@ -4971,9 +4409,7 @@
       },
       "BulkArchiveResponse": {
         "type": "object",
-        "required": [
-          "archived_count"
-        ],
+        "required": ["archived_count"],
         "properties": {
           "archived_count": {
             "type": "integer",
@@ -4984,11 +4420,7 @@
       "CancelResponse": {
         "type": "object",
         "description": "Response for POST /api/classify/cancel.",
-        "required": [
-          "jobId",
-          "classified",
-          "status"
-        ],
+        "required": ["jobId", "classified", "status"],
         "properties": {
           "classified": {
             "type": "integer",
@@ -5011,9 +4443,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "effectiveRange"
-            ],
+            "required": ["effectiveRange"],
             "properties": {
               "effectiveRange": {
                 "$ref": "#/components/schemas/EffectiveRangeMeta"
@@ -5026,12 +4456,7 @@
       "CategoriesResponse": {
         "type": "object",
         "description": "Full categories response.",
-        "required": [
-          "breakdown",
-          "categories",
-          "overallAverages",
-          "meta"
-        ],
+        "required": ["breakdown", "categories", "overallAverages", "meta"],
         "properties": {
           "breakdown": {
             "$ref": "#/components/schemas/CategoryBreakdown",
@@ -5057,12 +4482,7 @@
       "CategoryBreakdown": {
         "type": "object",
         "description": "Top-level category breakdown percentages.",
-        "required": [
-          "codeWork",
-          "supportWork",
-          "thinkingWork",
-          "uncategorized"
-        ],
+        "required": ["codeWork", "supportWork", "thinkingWork", "uncategorized"],
         "properties": {
           "codeWork": {
             "$ref": "#/components/schemas/CategorySummary"
@@ -5081,12 +4501,7 @@
       "CategoryDataPoint": {
         "type": "object",
         "description": "Category evolution data point.",
-        "required": [
-          "date",
-          "codeWork",
-          "supportWork",
-          "thinkingWork"
-        ],
+        "required": ["date", "codeWork", "supportWork", "thinkingWork"],
         "properties": {
           "codeWork": {
             "type": "number",
@@ -5159,10 +4574,7 @@
             "description": "Hierarchical ID: \"code_work\", \"code_work/feature\", \"code_work/feature/new-component\""
           },
           "insight": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "AI-generated insight/recommendation (nullable)"
           },
           "level": {
@@ -5185,13 +4597,7 @@
       "CategoryPerformance": {
         "type": "object",
         "description": "Performance metrics for a single category.",
-        "required": [
-          "category",
-          "reeditRate",
-          "vsAverage",
-          "verdict",
-          "insight"
-        ],
+        "required": ["category", "reeditRate", "vsAverage", "verdict", "insight"],
         "properties": {
           "category": {
             "type": "string"
@@ -5216,10 +4622,7 @@
       "CategorySummary": {
         "type": "object",
         "description": "Count and percentage for a single L1 category.",
-        "required": [
-          "count",
-          "percentage"
-        ],
+        "required": ["count", "percentage"],
         "properties": {
           "count": {
             "type": "integer",
@@ -5235,18 +4638,11 @@
       "CategoryVerdict": {
         "type": "string",
         "description": "Verdict for category performance.",
-        "enum": [
-          "excellent",
-          "good",
-          "average",
-          "needs_work"
-        ]
+        "enum": ["excellent", "good", "average", "needs_work"]
       },
       "CheckPathResponse": {
         "type": "object",
-        "required": [
-          "exists"
-        ],
+        "required": ["exists"],
         "properties": {
           "exists": {
             "type": "boolean"
@@ -5256,12 +4652,7 @@
       "ClassificationCoverage": {
         "type": "object",
         "description": "Classification coverage status.",
-        "required": [
-          "classified",
-          "total",
-          "pendingClassification",
-          "classificationPct"
-        ],
+        "required": ["classified", "total", "pendingClassification", "classificationPct"],
         "properties": {
           "classificationPct": {
             "type": "number",
@@ -5287,13 +4678,7 @@
       "ClassificationInfo": {
         "type": "object",
         "description": "Classification section of system response.",
-        "required": [
-          "classifiedCount",
-          "unclassifiedCount",
-          "provider",
-          "model",
-          "isRunning"
-        ],
+        "required": ["classifiedCount", "unclassifiedCount", "provider", "model", "isRunning"],
         "properties": {
           "classifiedCount": {
             "type": "integer",
@@ -5303,33 +4688,21 @@
             "type": "boolean"
           },
           "lastRunAt": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "lastRunCostCents": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "lastRunDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "model": {
             "type": "string"
           },
           "progress": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "provider": {
@@ -5344,10 +4717,7 @@
       "ClassifyErrorInfo": {
         "type": "object",
         "description": "Error information for failed classification.",
-        "required": [
-          "message",
-          "retryable"
-        ],
+        "required": ["message", "retryable"],
         "properties": {
           "message": {
             "type": "string"
@@ -5360,24 +4730,13 @@
       "ClassifyLastRun": {
         "type": "object",
         "description": "Information about the last completed classification run.",
-        "required": [
-          "jobId",
-          "sessionsClassified",
-          "errorCount",
-          "status"
-        ],
+        "required": ["jobId", "sessionsClassified", "errorCount", "status"],
         "properties": {
           "completedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "costCents": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "errorCount": {
@@ -5400,12 +4759,7 @@
       "ClassifyProgressInfo": {
         "type": "object",
         "description": "Progress information for a running classification.",
-        "required": [
-          "classified",
-          "total",
-          "percentage",
-          "eta"
-        ],
+        "required": ["classified", "total", "percentage", "eta"],
         "properties": {
           "classified": {
             "type": "integer",
@@ -5413,10 +4767,7 @@
             "minimum": 0
           },
           "currentBatch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "eta": {
             "type": "string"
@@ -5435,11 +4786,7 @@
       "ClassifyResponse": {
         "type": "object",
         "description": "Response for POST /api/classify (202 Accepted).",
-        "required": [
-          "jobId",
-          "totalSessions",
-          "status"
-        ],
+        "required": ["jobId", "totalSessions", "status"],
         "properties": {
           "jobId": {
             "type": "integer",
@@ -5491,12 +4838,7 @@
       "ClassifyStatusResponse": {
         "type": "object",
         "description": "Response for GET /api/classify/status.",
-        "required": [
-          "status",
-          "totalSessions",
-          "classifiedSessions",
-          "unclassifiedSessions"
-        ],
+        "required": ["status", "totalSessions", "classifiedSessions", "unclassifiedSessions"],
         "properties": {
           "classifiedSessions": {
             "type": "integer",
@@ -5513,10 +4855,7 @@
             ]
           },
           "jobId": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "lastRun": {
@@ -5555,42 +4894,29 @@
       "ClaudeCliStatus": {
         "type": "object",
         "description": "Claude CLI status information.",
-        "required": [
-          "authenticated"
-        ],
+        "required": ["authenticated"],
         "properties": {
           "authenticated": {
             "type": "boolean",
             "description": "Whether CLI is authenticated."
           },
           "path": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Path to claude binary, None if not found."
           },
           "subscriptionType": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Subscription type if authenticated."
           },
           "version": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Version string, None if not found."
           }
         }
       },
       "CleanupRequest": {
         "type": "object",
-        "required": [
-          "targets"
-        ],
+        "required": ["targets"],
         "properties": {
           "targets": {
             "type": "array",
@@ -5602,10 +4928,7 @@
       },
       "CleanupResponse": {
         "type": "object",
-        "required": [
-          "killed",
-          "failed"
-        ],
+        "required": ["killed", "failed"],
         "properties": {
           "failed": {
             "type": "array",
@@ -5626,10 +4949,7 @@
       "ClearCacheResponse": {
         "type": "object",
         "description": "Clear cache response.",
-        "required": [
-          "status",
-          "clearedBytes"
-        ],
+        "required": ["status", "clearedBytes"],
         "properties": {
           "clearedBytes": {
             "type": "integer",
@@ -5644,15 +4964,7 @@
       "CoachingRule": {
         "type": "object",
         "description": "A coaching rule parsed from a `coaching-*.md` file.",
-        "required": [
-          "id",
-          "patternId",
-          "title",
-          "body",
-          "scope",
-          "appliedAt",
-          "filePath"
-        ],
+        "required": ["id", "patternId", "title", "body", "scope", "appliedAt", "filePath"],
         "properties": {
           "appliedAt": {
             "type": "string"
@@ -5680,24 +4992,13 @@
       "CommitWithTier": {
         "type": "object",
         "description": "A commit linked to a session with its confidence tier",
-        "required": [
-          "hash",
-          "message",
-          "timestamp",
-          "tier"
-        ],
+        "required": ["hash", "message", "timestamp", "tier"],
         "properties": {
           "author": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "hash": {
             "type": "string"
@@ -5718,18 +5019,10 @@
       },
       "ConfigResponse": {
         "type": "object",
-        "required": [
-          "auth",
-          "sharing",
-          "version",
-          "telemetry"
-        ],
+        "required": ["auth", "sharing", "version", "telemetry"],
         "properties": {
           "anonymousId": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Anonymous device ID for telemetry — null when running self-hosted."
           },
           "auth": {
@@ -5737,10 +5030,7 @@
             "description": "Whether Supabase auth is configured (JWKS loaded)."
           },
           "posthogKey": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "PostHog project API key — null when running self-hosted (no compiled key)."
           },
           "sharing": {
@@ -5759,9 +5049,7 @@
       },
       "ConsentRequest": {
         "type": "object",
-        "required": [
-          "enabled"
-        ],
+        "required": ["enabled"],
         "properties": {
           "enabled": {
             "type": "boolean"
@@ -5770,9 +5058,7 @@
       },
       "ConsentResponse": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "status": {
             "$ref": "#/components/schemas/TelemetryStatus"
@@ -5782,10 +5068,7 @@
       "ContributionWarning": {
         "type": "object",
         "description": "Warning attached to response when data is incomplete.",
-        "required": [
-          "code",
-          "message"
-        ],
+        "required": ["code", "message"],
         "properties": {
           "code": {
             "type": "string"
@@ -5908,10 +5191,7 @@
             "minimum": 0
           },
           "first_message_cost": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "has_pricing": {
@@ -5930,26 +5210,17 @@
             "type": "string"
           },
           "per_message_cost": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "project_name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "session_id": {
             "type": "string"
           },
           "session_title": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "turn_count": {
             "type": "integer",
@@ -5960,9 +5231,7 @@
       },
       "CreateWorkflowRequest": {
         "type": "object",
-        "required": [
-          "yaml"
-        ],
+        "required": ["yaml"],
         "properties": {
           "yaml": {
             "type": "string"
@@ -5972,12 +5241,7 @@
       "CurrentPeriodMetrics": {
         "type": "object",
         "description": "Current period metrics for dashboard (adapts to selected time range).",
-        "required": [
-          "sessionCount",
-          "totalTokens",
-          "totalFilesEdited",
-          "commitCount"
-        ],
+        "required": ["sessionCount", "totalTokens", "totalFilesEdited", "commitCount"],
         "properties": {
           "commitCount": {
             "type": "integer",
@@ -6050,9 +5314,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "ranges"
-            ],
+            "required": ["ranges"],
             "properties": {
               "ranges": {
                 "$ref": "#/components/schemas/DashboardRangesMeta"
@@ -6065,10 +5327,7 @@
       "DashboardRangesMeta": {
         "type": "object",
         "description": "Section-specific range metadata for dashboard.",
-        "required": [
-          "currentPeriod",
-          "heatmap"
-        ],
+        "required": ["currentPeriod", "heatmap"],
         "properties": {
           "currentPeriod": {
             "$ref": "#/components/schemas/EffectiveRangeMeta"
@@ -6190,10 +5449,7 @@
       "DayActivity": {
         "type": "object",
         "description": "A single day in the activity heatmap.",
-        "required": [
-          "date",
-          "count"
-        ],
+        "required": ["date", "count"],
         "properties": {
           "count": {
             "type": "integer",
@@ -6209,42 +5465,27 @@
         "description": "Derived metrics calculated from atomic units",
         "properties": {
           "editVelocity": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Edit velocity: files_edited_count / (duration_seconds / 60)"
           },
           "readToEditRatio": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Read-to-edit ratio: files_read_count / files_edited_count"
           },
           "reeditRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Re-edit rate: reedited_files_count / files_edited_count"
           },
           "tokensPerPrompt": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Tokens per prompt: (total_input + total_output) / user_prompt_count"
           },
           "toolDensity": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Tool density: tool_call_count / api_call_count"
           }
@@ -6252,13 +5493,7 @@
       },
       "DiffHunk": {
         "type": "object",
-        "required": [
-          "oldStart",
-          "oldLines",
-          "newStart",
-          "newLines",
-          "lines"
-        ],
+        "required": ["oldStart", "oldLines", "newStart", "newLines", "lines"],
         "properties": {
           "lines": {
             "type": "array",
@@ -6290,10 +5525,7 @@
       },
       "DiffLine": {
         "type": "object",
-        "required": [
-          "kind",
-          "content"
-        ],
+        "required": ["kind", "content"],
         "properties": {
           "content": {
             "type": "string"
@@ -6302,18 +5534,12 @@
             "$ref": "#/components/schemas/DiffLineKind"
           },
           "newLineNo": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           },
           "oldLineNo": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           }
@@ -6321,18 +5547,11 @@
       },
       "DiffLineKind": {
         "type": "string",
-        "enum": [
-          "context",
-          "add",
-          "remove"
-        ]
+        "enum": ["context", "add", "remove"]
       },
       "DiffStats": {
         "type": "object",
-        "required": [
-          "added",
-          "removed"
-        ],
+        "required": ["added", "removed"],
         "properties": {
           "added": {
             "type": "integer",
@@ -6348,11 +5567,7 @@
       },
       "DiffSummary": {
         "type": "object",
-        "required": [
-          "totalFiles",
-          "totalAdded",
-          "totalRemoved"
-        ],
+        "required": ["totalFiles", "totalAdded", "totalRemoved"],
         "properties": {
           "totalAdded": {
             "type": "integer",
@@ -6374,11 +5589,7 @@
       "EffectiveRangeMeta": {
         "type": "object",
         "description": "Canonical resolved range metadata returned additively by API responses.",
-        "required": [
-          "from",
-          "to",
-          "source"
-        ],
+        "required": ["from", "to", "source"],
         "properties": {
           "from": {
             "type": "integer",
@@ -6406,25 +5617,17 @@
       "EffectivenessMetrics": {
         "type": "object",
         "description": "Effectiveness metrics for the overview card.",
-        "required": [
-          "insight"
-        ],
+        "required": ["insight"],
         "properties": {
           "commitRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "insight": {
             "$ref": "#/components/schemas/Insight"
           },
           "reeditRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           }
         }
@@ -6450,17 +5653,11 @@
         ],
         "properties": {
           "costPerCommit": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "costPerLine": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "costScope": {
@@ -6527,12 +5724,7 @@
       "EfficiencyStats": {
         "type": "object",
         "description": "Efficiency trend stats.",
-        "required": [
-          "avgReeditRate",
-          "avgEditVelocity",
-          "trend",
-          "trendPct"
-        ],
+        "required": ["avgReeditRate", "avgEditVelocity", "trend", "trendPct"],
         "properties": {
           "avgEditVelocity": {
             "type": "number",
@@ -6554,15 +5746,10 @@
       "EstimateRequest": {
         "type": "object",
         "description": "Request body for cost estimation.",
-        "required": [
-          "session_id"
-        ],
+        "required": ["session_id"],
         "properties": {
           "model": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "session_id": {
             "type": "string"
@@ -6572,11 +5759,7 @@
       "ExportResponse": {
         "type": "object",
         "description": "JSON export response wrapper.",
-        "required": [
-          "sessions",
-          "exportedAt",
-          "totalCount"
-        ],
+        "required": ["sessions", "exportedAt", "totalCount"],
         "properties": {
           "exportedAt": {
             "type": "integer",
@@ -6651,10 +5834,7 @@
             "type": "string"
           },
           "reeditRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "reeditedFilesCount": {
@@ -6663,10 +5843,7 @@
             "minimum": 0
           },
           "tokensPerPrompt": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "toolCallCount": {
@@ -6675,18 +5852,12 @@
             "minimum": 0
           },
           "totalInputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "totalOutputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
@@ -6705,24 +5876,15 @@
           },
           {
             "type": "object",
-            "required": [
-              "currentWeek",
-              "meta"
-            ],
+            "required": ["currentWeek", "meta"],
             "properties": {
               "comparisonPeriodEnd": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "format": "int64",
                 "description": "End of the comparison period (Unix timestamp)."
               },
               "comparisonPeriodStart": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "format": "int64",
                 "description": "Start of the comparison period (Unix timestamp)."
               },
@@ -6731,10 +5893,7 @@
                 "description": "Current period metrics (adapts to selected time range)"
               },
               "dataStartDate": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "format": "int64",
                 "description": "Earliest session date in the database (Unix timestamp).\nUsed to display \"since [date]\" in the UI."
               },
@@ -6743,18 +5902,12 @@
                 "description": "Additive section-specific effective range metadata."
               },
               "periodEnd": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "format": "int64",
                 "description": "End of the requested period (Unix timestamp)."
               },
               "periodStart": {
-                "type": [
-                  "integer",
-                  "null"
-                ],
+                "type": ["integer", "null"],
                 "format": "int64",
                 "description": "Start of the requested period (Unix timestamp)."
               },
@@ -6814,12 +5967,7 @@
       },
       "FileChange": {
         "type": "object",
-        "required": [
-          "filePath",
-          "fileHash",
-          "versions",
-          "stats"
-        ],
+        "required": ["filePath", "fileHash", "versions", "stats"],
         "properties": {
           "fileHash": {
             "type": "string"
@@ -6840,13 +5988,7 @@
       },
       "FileDiffResponse": {
         "type": "object",
-        "required": [
-          "filePath",
-          "fromVersion",
-          "toVersion",
-          "hunks",
-          "stats"
-        ],
+        "required": ["filePath", "fromVersion", "toVersion", "hunks", "stats"],
         "properties": {
           "filePath": {
             "type": "string"
@@ -6874,11 +6016,7 @@
       },
       "FileHistoryResponse": {
         "type": "object",
-        "required": [
-          "sessionId",
-          "files",
-          "summary"
-        ],
+        "required": ["sessionId", "files", "summary"],
         "properties": {
           "files": {
             "type": "array",
@@ -6897,12 +6035,7 @@
       "FileImpact": {
         "type": "object",
         "description": "File impact for session detail view.",
-        "required": [
-          "path",
-          "linesAdded",
-          "linesRemoved",
-          "action"
-        ],
+        "required": ["path", "linesAdded", "linesRemoved", "action"],
         "properties": {
           "action": {
             "type": "string"
@@ -6922,11 +6055,7 @@
       },
       "FileVersion": {
         "type": "object",
-        "required": [
-          "version",
-          "backupFileName",
-          "sizeBytes"
-        ],
+        "required": ["version", "backupFileName", "sizeBytes"],
         "properties": {
           "backupFileName": {
             "type": "string"
@@ -6946,11 +6075,7 @@
       "FluencyMetrics": {
         "type": "object",
         "description": "Fluency metrics for the overview card.",
-        "required": [
-          "sessions",
-          "promptsPerSession",
-          "insight"
-        ],
+        "required": ["sessions", "promptsPerSession", "insight"],
         "properties": {
           "insight": {
             "$ref": "#/components/schemas/Insight"
@@ -6964,10 +6089,7 @@
             "format": "int64"
           },
           "trend": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           }
         }
@@ -6975,13 +6097,7 @@
       "GenerateRequest": {
         "type": "object",
         "description": "Request body for POST /api/reports/generate.",
-        "required": [
-          "reportType",
-          "dateStart",
-          "dateEnd",
-          "startTs",
-          "endTs"
-        ],
+        "required": ["reportType", "dateStart", "dateEnd", "startTs", "endTs"],
         "properties": {
           "dateEnd": {
             "type": "string"
@@ -7037,10 +6153,7 @@
             "type": "string"
           },
           "recommendation": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "title": {
             "type": "string"
@@ -7050,13 +6163,7 @@
       "HealthInfo": {
         "type": "object",
         "description": "Health section of system response.",
-        "required": [
-          "sessionsCount",
-          "commitsCount",
-          "projectsCount",
-          "errorsCount",
-          "status"
-        ],
+        "required": ["sessionsCount", "commitsCount", "projectsCount", "errorsCount", "status"],
         "properties": {
           "commitsCount": {
             "type": "integer",
@@ -7067,10 +6174,7 @@
             "format": "int64"
           },
           "lastSyncAt": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "projectsCount": {
             "type": "integer",
@@ -7088,11 +6192,7 @@
       "HealthResponse": {
         "type": "object",
         "description": "Response for the health check endpoint.",
-        "required": [
-          "status",
-          "version",
-          "uptime_secs"
-        ],
+        "required": ["status", "version", "uptime_secs"],
         "properties": {
           "status": {
             "type": "string"
@@ -7110,21 +6210,12 @@
       "HealthStatus": {
         "type": "string",
         "description": "Health status enum for the system page.",
-        "enum": [
-          "healthy",
-          "warning",
-          "error"
-        ]
+        "enum": ["healthy", "warning", "error"]
       },
       "HeatmapCell": {
         "type": "object",
         "description": "Activity heatmap cell.",
-        "required": [
-          "dayOfWeek",
-          "hourOfDay",
-          "sessions",
-          "avgReeditRate"
-        ],
+        "required": ["dayOfWeek", "hourOfDay", "sessions", "avgReeditRate"],
         "properties": {
           "avgReeditRate": {
             "type": "number",
@@ -7154,89 +6245,47 @@
           },
           {
             "type": "object",
-            "required": [
-              "session_id",
-              "hook_event_name"
-            ],
+            "required": ["session_id", "hook_event_name"],
             "properties": {
               "action": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "agent_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "agent_transcript_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "agent_type": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "compact_summary": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "content": {},
               "custom_instructions": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "cwd": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "elicitation_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "error": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "error_details": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "event": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "file_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "globs": {
-                "type": [
-                  "array",
-                  "null"
-                ],
+                "type": ["array", "null"],
                 "items": {
                   "type": "string"
                 }
@@ -7245,197 +6294,104 @@
                 "type": "string"
               },
               "is_interrupt": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
+                "type": ["boolean", "null"]
               },
               "last_assistant_message": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "load_reason": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "mcp_server_name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "memory_type": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "message": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "mode": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "model": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "new_cwd": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "notification_type": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "old_cwd": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "parent_file_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "permission_mode": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "permission_suggestions": {},
               "prompt": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "reason": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "requested_schema": {},
               "session_id": {
                 "type": "string"
               },
               "source": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "stop_hook_active": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
+                "type": ["boolean", "null"]
               },
               "task_description": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "task_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "task_subject": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "team_name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "teammate_name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "title": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "tool_input": {},
               "tool_name": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "tool_response": {},
               "tool_use_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "transcript_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "trigger": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "trigger_file_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "worktree_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               }
             }
           }
@@ -7444,9 +6400,7 @@
       "IdeDetectResponse": {
         "type": "object",
         "description": "Response for `GET /api/ide/detect`.",
-        "required": [
-          "available"
-        ],
+        "required": ["available"],
         "properties": {
           "available": {
             "type": "array",
@@ -7459,10 +6413,7 @@
       "IdeInfo": {
         "type": "object",
         "description": "Describes a single detected IDE.",
-        "required": [
-          "id",
-          "name"
-        ],
+        "required": ["id", "name"],
         "properties": {
           "id": {
             "type": "string",
@@ -7477,12 +6428,7 @@
       "ImprovementMetrics": {
         "type": "object",
         "description": "Improvement percentages between two periods.",
-        "required": [
-          "reeditRate",
-          "editsPerFile",
-          "promptsPerTask",
-          "commitRate"
-        ],
+        "required": ["reeditRate", "editsPerFile", "promptsPerTask", "commitRate"],
         "properties": {
           "commitRate": {
             "type": "number",
@@ -7508,19 +6454,10 @@
       },
       "InboxMessage": {
         "type": "object",
-        "required": [
-          "from",
-          "text",
-          "timestamp",
-          "messageType",
-          "read"
-        ],
+        "required": ["from", "text", "timestamp", "messageType", "read"],
         "properties": {
           "color": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "from": {
             "type": "string"
@@ -7532,10 +6469,7 @@
             "type": "boolean"
           },
           "summary": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "text": {
             "type": "string"
@@ -7578,26 +6512,17 @@
             "description": "User-configurable git sync interval in seconds (default 60)."
           },
           "lastGitSyncAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Unix timestamp of last successful git sync."
           },
           "lastIndexDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Duration of last successful index in milliseconds."
           },
           "lastIndexedAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Unix timestamp of last successful index completion."
           },
@@ -7626,30 +6551,17 @@
       "IndexRunInfo": {
         "type": "object",
         "description": "Index history entry in system response.",
-        "required": [
-          "timestamp",
-          "type",
-          "status"
-        ],
+        "required": ["timestamp", "type", "status"],
         "properties": {
           "durationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "errorMessage": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "sessionsCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "status": {
@@ -7666,13 +6578,7 @@
       "IndexingStatusResponse": {
         "type": "object",
         "description": "JSON snapshot of current indexing progress (for polling).",
-        "required": [
-          "phase",
-          "indexed",
-          "total",
-          "bytesProcessed",
-          "bytesTotal"
-        ],
+        "required": ["phase", "indexed", "total", "bytesProcessed", "bytesTotal"],
         "properties": {
           "bytesProcessed": {
             "type": "integer",
@@ -7685,10 +6591,7 @@
             "minimum": 0
           },
           "errorMessage": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "indexed": {
             "type": "integer",
@@ -7706,9 +6609,7 @@
       "Insight": {
         "type": "object",
         "description": "A single insight with optional severity/type.",
-        "required": [
-          "text"
-        ],
+        "required": ["text"],
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/InsightKind",
@@ -7723,11 +6624,7 @@
       "InsightEvidence": {
         "type": "object",
         "description": "Evidence backing an insight.",
-        "required": [
-          "sampleSize",
-          "timeRangeDays",
-          "comparisonValues"
-        ],
+        "required": ["sampleSize", "timeRangeDays", "comparisonValues"],
         "properties": {
           "comparisonValues": {
             "type": "object",
@@ -7754,12 +6651,7 @@
       "InsightKind": {
         "type": "string",
         "description": "Insight severity/type for UI styling.",
-        "enum": [
-          "info",
-          "success",
-          "warning",
-          "tip"
-        ]
+        "enum": ["info", "success", "warning", "tip"]
       },
       "InsightsMeta": {
         "allOf": [
@@ -7810,11 +6702,7 @@
       "InsightsOverview": {
         "type": "object",
         "description": "Overview statistics for the insights page.",
-        "required": [
-          "workBreakdown",
-          "efficiency",
-          "bestTime"
-        ],
+        "required": ["workBreakdown", "efficiency", "bestTime"],
         "properties": {
           "bestTime": {
             "$ref": "#/components/schemas/BestTimeStats"
@@ -7830,12 +6718,7 @@
       "InsightsResponse": {
         "type": "object",
         "description": "Full insights API response.",
-        "required": [
-          "overview",
-          "patterns",
-          "classificationStatus",
-          "meta"
-        ],
+        "required": ["overview", "patterns", "classificationStatus", "meta"],
         "properties": {
           "classificationStatus": {
             "$ref": "#/components/schemas/ClassificationCoverage",
@@ -7873,9 +6756,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "effectiveRange"
-            ],
+            "required": ["effectiveRange"],
             "properties": {
               "effectiveRange": {
                 "$ref": "#/components/schemas/EffectiveRangeMeta"
@@ -7915,19 +6796,13 @@
             "format": "double"
           },
           "categoryEvolution": {
-            "type": [
-              "array",
-              "null"
-            ],
+            "type": ["array", "null"],
             "items": {
               "$ref": "#/components/schemas/CategoryDataPoint"
             }
           },
           "categoryInsight": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "classificationRequired": {
             "type": "boolean"
@@ -8025,9 +6900,7 @@
       "IntegrityInfo": {
         "type": "object",
         "description": "Integrity section of system response.",
-        "required": [
-          "counters"
-        ],
+        "required": ["counters"],
         "properties": {
           "counters": {
             "$ref": "#/components/schemas/IntegrityCounterInfo"
@@ -8037,13 +6910,7 @@
       "InvocableWithCount": {
         "type": "object",
         "description": "An invocable (tool/skill/MCP) with its aggregated invocation count.",
-        "required": [
-          "id",
-          "name",
-          "kind",
-          "description",
-          "invocationCount"
-        ],
+        "required": ["id", "name", "kind", "description", "invocationCount"],
         "properties": {
           "description": {
             "type": "string"
@@ -8059,34 +6926,21 @@
             "type": "string"
           },
           "lastUsedAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "name": {
             "type": "string"
           },
           "pluginName": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "JobProgress": {
         "type": "object",
         "description": "Progress update sent via SSE.",
-        "required": [
-          "jobId",
-          "jobType",
-          "status",
-          "current",
-          "total",
-          "timestamp"
-        ],
+        "required": ["jobId", "jobType", "status", "current", "total", "timestamp"],
         "properties": {
           "current": {
             "type": "integer",
@@ -8100,10 +6954,7 @@
             "type": "string"
           },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "status": {
             "type": "string"
@@ -8120,10 +6971,7 @@
       },
       "KillFailure": {
         "type": "object",
-        "required": [
-          "pid",
-          "reason"
-        ],
+        "required": ["pid", "reason"],
         "properties": {
           "pid": {
             "type": "integer",
@@ -8137,10 +6985,7 @@
       },
       "KillProcessRequest": {
         "type": "object",
-        "required": [
-          "start_time",
-          "force"
-        ],
+        "required": ["start_time", "force"],
         "properties": {
           "force": {
             "type": "boolean"
@@ -8153,16 +6998,10 @@
       },
       "KillProcessResponse": {
         "type": "object",
-        "required": [
-          "killed",
-          "pid"
-        ],
+        "required": ["killed", "pid"],
         "properties": {
           "error": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "killed": {
             "type": "boolean"
@@ -8176,10 +7015,7 @@
       },
       "KillTarget": {
         "type": "object",
-        "required": [
-          "pid",
-          "start_time"
-        ],
+        "required": ["pid", "start_time"],
         "properties": {
           "pid": {
             "type": "integer",
@@ -8195,12 +7031,7 @@
       "LearningCurve": {
         "type": "object",
         "description": "Learning curve metrics.",
-        "required": [
-          "periods",
-          "currentAvg",
-          "improvement",
-          "insight"
-        ],
+        "required": ["periods", "currentAvg", "improvement", "insight"],
         "properties": {
           "currentAvg": {
             "type": "number",
@@ -8224,10 +7055,7 @@
       "LearningCurvePeriod": {
         "type": "object",
         "description": "Learning curve data point.",
-        "required": [
-          "period",
-          "reeditRate"
-        ],
+        "required": ["period", "reeditRate"],
         "properties": {
           "period": {
             "type": "string"
@@ -8241,10 +7069,7 @@
       "LearningCurvePoint": {
         "type": "object",
         "description": "Learning curve data point.",
-        "required": [
-          "session",
-          "reeditRate"
-        ],
+        "required": ["session", "reeditRate"],
         "properties": {
           "reeditRate": {
             "type": "number",
@@ -8260,27 +7085,17 @@
       "LinkedCommit": {
         "type": "object",
         "description": "Linked commit for session drill-down.",
-        "required": [
-          "hash",
-          "message",
-          "tier"
-        ],
+        "required": ["hash", "message", "tier"],
         "properties": {
           "deletions": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "hash": {
             "type": "string"
           },
           "insertions": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "message": {
@@ -8295,11 +7110,7 @@
       "ListRulesResponse": {
         "type": "object",
         "description": "Response for GET /api/coaching/rules.",
-        "required": [
-          "rules",
-          "count",
-          "maxRules"
-        ],
+        "required": ["rules", "count", "maxRules"],
         "properties": {
           "count": {
             "type": "integer",
@@ -8320,12 +7131,7 @@
       "MarketplaceInfo": {
         "type": "object",
         "description": "A configured marketplace.",
-        "required": [
-          "name",
-          "source",
-          "installedCount",
-          "availableCount"
-        ],
+        "required": ["name", "source", "installedCount", "availableCount"],
         "properties": {
           "availableCount": {
             "type": "integer",
@@ -8339,10 +7145,7 @@
             "type": "string"
           },
           "repo": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "source": {
             "type": "string"
@@ -8352,10 +7155,7 @@
       "MetricDataPoint": {
         "type": "object",
         "description": "Time-series data point for metric trends.",
-        "required": [
-          "date",
-          "value"
-        ],
+        "required": ["date", "value"],
         "properties": {
           "date": {
             "type": "string"
@@ -8389,10 +7189,7 @@
             "format": "int64"
           },
           "costPerLine": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "inputTokens": {
@@ -8414,10 +7211,7 @@
             "format": "int64"
           },
           "reeditRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "sessions": {
@@ -8429,67 +7223,38 @@
       "ModelWithStats": {
         "type": "object",
         "description": "A model record with aggregated usage stats (for GET /api/models).",
-        "required": [
-          "id",
-          "totalTurns",
-          "totalSessions",
-          "sdkSupported"
-        ],
+        "required": ["id", "totalTurns", "totalSessions", "sdkSupported"],
         "properties": {
           "description": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "displayName": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "family": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "firstSeen": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "id": {
             "type": "string"
           },
           "lastSeen": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "maxInputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "maxOutputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "provider": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "sdkSupported": {
             "type": "boolean",
@@ -8507,25 +7272,16 @@
       },
       "OAuthUsageResponse": {
         "type": "object",
-        "required": [
-          "hasAuth",
-          "tiers"
-        ],
+        "required": ["hasAuth", "tiers"],
         "properties": {
           "error": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "hasAuth": {
             "type": "boolean"
           },
           "plan": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "tiers": {
             "type": "array",
@@ -8537,26 +7293,15 @@
       },
       "OpStatus": {
         "type": "string",
-        "enum": [
-          "queued",
-          "running",
-          "completed",
-          "failed"
-        ]
+        "enum": ["queued", "running", "completed", "failed"]
       },
       "OpenInIdeRequest": {
         "type": "object",
         "description": "Request body for `POST /api/ide/open`.",
-        "required": [
-          "ide",
-          "projectPath"
-        ],
+        "required": ["ide", "projectPath"],
         "properties": {
           "filePath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Relative path to the file within the project (optional)."
           },
           "ide": {
@@ -8572,9 +7317,7 @@
       "OpenInIdeResponse": {
         "type": "object",
         "description": "Response for `POST /api/ide/open`.",
-        "required": [
-          "ok"
-        ],
+        "required": ["ok"],
         "properties": {
           "ok": {
             "type": "boolean"
@@ -8584,13 +7327,7 @@
       "OutputMetrics": {
         "type": "object",
         "description": "Output metrics for the overview card.",
-        "required": [
-          "linesAdded",
-          "linesRemoved",
-          "filesCount",
-          "commitsCount",
-          "insight"
-        ],
+        "required": ["linesAdded", "linesRemoved", "filesCount", "commitsCount", "insight"],
         "properties": {
           "commitsCount": {
             "type": "integer",
@@ -8616,12 +7353,7 @@
       "OverallAverages": {
         "type": "object",
         "description": "Overall averages across all sessions for comparison.",
-        "required": [
-          "avgReeditRate",
-          "avgDuration",
-          "avgPrompts",
-          "commitRate"
-        ],
+        "required": ["avgReeditRate", "avgDuration", "avgPrompts", "commitRate"],
         "properties": {
           "avgDuration": {
             "type": "integer",
@@ -8645,11 +7377,7 @@
       "OverviewMetrics": {
         "type": "object",
         "description": "Overview section combining all three metric cards.",
-        "required": [
-          "fluency",
-          "output",
-          "effectiveness"
-        ],
+        "required": ["fluency", "output", "effectiveness"],
         "properties": {
           "effectiveness": {
             "$ref": "#/components/schemas/EffectivenessMetrics"
@@ -8664,11 +7392,7 @@
       },
       "PairedDeviceResponse": {
         "type": "object",
-        "required": [
-          "device_id",
-          "name",
-          "paired_at"
-        ],
+        "required": ["device_id", "name", "paired_at"],
         "properties": {
           "device_id": {
             "type": "string"
@@ -8688,34 +7412,21 @@
         "description": "Response for GET /facets/pattern-alert.",
         "properties": {
           "count": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "pattern": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "tip": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "PatternGroups": {
         "type": "object",
         "description": "Patterns grouped by impact tier.",
-        "required": [
-          "high",
-          "medium",
-          "observations"
-        ],
+        "required": ["high", "medium", "observations"],
         "properties": {
           "high": {
             "type": "array",
@@ -8742,26 +7453,17 @@
         "description": "Performance section of system response.",
         "properties": {
           "lastIndexDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Duration of last successful index in milliseconds."
           },
           "sessionsPerSec": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Sessions indexed per second during last index."
           },
           "throughputBytesPerSec": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Throughput: bytes processed per second during last index.",
             "minimum": 0
@@ -8771,12 +7473,7 @@
       "PeriodMetrics": {
         "type": "object",
         "description": "Metrics for a time period (used in Then vs Now comparison).",
-        "required": [
-          "reeditRate",
-          "editsPerFile",
-          "promptsPerTask",
-          "commitRate"
-        ],
+        "required": ["reeditRate", "editsPerFile", "promptsPerTask", "commitRate"],
         "properties": {
           "commitRate": {
             "type": "number",
@@ -8803,13 +7500,7 @@
       "PlanDocument": {
         "type": "object",
         "description": "A plan document from ~/.claude/plans/{slug}[-variant].md.",
-        "required": [
-          "slug",
-          "filename",
-          "content",
-          "sizeBytes",
-          "modifiedAt"
-        ],
+        "required": ["slug", "filename", "content", "sizeBytes", "modifiedAt"],
         "properties": {
           "content": {
             "type": "string",
@@ -8835,10 +7526,7 @@
             "description": "Base slug (e.g. \"sparkling-bouncing-glacier\")"
           },
           "variant": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Variant suffix if any (e.g. \"IMPROVEMENTS\", \"gaps\"), None for the base plan"
           }
         }
@@ -8846,10 +7534,7 @@
       "PluginActionRequest": {
         "type": "object",
         "description": "Request body for POST /api/plugins/action.",
-        "required": [
-          "action",
-          "name"
-        ],
+        "required": ["action", "name"],
         "properties": {
           "action": {
             "type": "string",
@@ -8860,17 +7545,11 @@
             "description": "Plugin name or full ID (e.g. \"superpowers\" or \"superpowers@marketplace\")"
           },
           "projectPath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "For project-scoped plugins: the project directory where it was installed.\nRequired for uninstall of project-scoped plugins (CLI needs correct CWD)."
           },
           "scope": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "\"user\" | \"project\""
           }
         }
@@ -8878,20 +7557,13 @@
       "PluginActionResponse": {
         "type": "object",
         "description": "Response for POST /api/plugins/action.",
-        "required": [
-          "success",
-          "action",
-          "name"
-        ],
+        "required": ["success", "action", "name"],
         "properties": {
           "action": {
             "type": "string"
           },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "name": {
             "type": "string"
@@ -8935,10 +7607,7 @@
             "minimum": 0
           },
           "description": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Description from the marketplace listing (mirrors AvailablePlugin)."
           },
           "duplicateMarketplaces": {
@@ -8957,19 +7626,13 @@
             }
           },
           "gitSha": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "id": {
             "type": "string"
           },
           "installCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Global install count from the marketplace listing (mirrors AvailablePlugin).",
             "minimum": 0
@@ -8984,16 +7647,10 @@
             }
           },
           "lastUpdated": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "lastUsedAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "marketplace": {
@@ -9008,10 +7665,7 @@
             "type": "string"
           },
           "projectPath": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "scope": {
             "type": "string"
@@ -9037,24 +7691,14 @@
             "type": "boolean"
           },
           "version": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "PluginItem": {
         "type": "object",
         "description": "A single invocable item within a plugin (skill, command, agent, or MCP tool).",
-        "required": [
-          "id",
-          "name",
-          "kind",
-          "description",
-          "content",
-          "invocationCount"
-        ],
+        "required": ["id", "name", "kind", "description", "content", "invocationCount"],
         "properties": {
           "content": {
             "type": "string",
@@ -9074,10 +7718,7 @@
             "type": "string"
           },
           "lastUsedAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "name": {
@@ -9087,45 +7728,28 @@
       },
       "PluginOp": {
         "type": "object",
-        "required": [
-          "id",
-          "action",
-          "name",
-          "status"
-        ],
+        "required": ["id", "action", "name", "status"],
         "properties": {
           "action": {
             "type": "string"
           },
           "error": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "id": {
             "type": "string"
           },
           "message": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "name": {
             "type": "string"
           },
           "projectPath": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "scope": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "status": {
             "$ref": "#/components/schemas/OpStatus"
@@ -9157,10 +7781,7 @@
             }
           },
           "cliError": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Non-empty when the CLI call failed — used by PluginHealthBanner."
           },
           "duplicateCount": {
@@ -9222,12 +7843,7 @@
       "ProcessGroup": {
         "type": "object",
         "description": "A single process group — aggregated by normalized process name.",
-        "required": [
-          "name",
-          "processCount",
-          "cpuPercent",
-          "memoryBytes"
-        ],
+        "required": ["name", "processCount", "cpuPercent", "memoryBytes"],
         "properties": {
           "cpuPercent": {
             "type": "number",
@@ -9255,10 +7871,7 @@
       "ProgressComparison": {
         "type": "object",
         "description": "Progress comparison between first and last month.",
-        "required": [
-          "lastMonth",
-          "insight"
-        ],
+        "required": ["lastMonth", "insight"],
         "properties": {
           "firstMonth": {
             "oneOf": [
@@ -9291,10 +7904,7 @@
       "ProjectPreview": {
         "type": "object",
         "description": "Per-project summary in the preview.",
-        "required": [
-          "name",
-          "sessionCount"
-        ],
+        "required": ["name", "sessionCount"],
         "properties": {
           "name": {
             "type": "string"
@@ -9308,11 +7918,7 @@
       "ProjectStat": {
         "type": "object",
         "description": "A project with its session count (for dashboard top projects).",
-        "required": [
-          "name",
-          "displayName",
-          "sessionCount"
-        ],
+        "required": ["name", "displayName", "sessionCount"],
         "properties": {
           "displayName": {
             "type": "string"
@@ -9329,13 +7935,7 @@
       "ProjectSummary": {
         "type": "object",
         "description": "Lightweight project summary for sidebar — no sessions array.",
-        "required": [
-          "name",
-          "displayName",
-          "path",
-          "sessionCount",
-          "activeCount"
-        ],
+        "required": ["name", "displayName", "path", "sessionCount", "activeCount"],
         "properties": {
           "activeCount": {
             "type": "integer",
@@ -9345,10 +7945,7 @@
             "type": "string"
           },
           "lastActivityAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "name": {
@@ -9377,10 +7974,7 @@
         ],
         "properties": {
           "branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "complexity": {
             "type": "string"
@@ -9398,16 +7992,10 @@
             "type": "string"
           },
           "model": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "pastePreview": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "project": {
             "type": "string"
@@ -9416,23 +8004,14 @@
             "type": "string"
           },
           "sessionId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "snippet": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "HTML snippet with `<b>` tags around matched search terms.\n`None` in browse/filter-only mode (no free-text query)."
           },
           "templateId": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "timestamp": {
             "type": "integer",
@@ -9442,11 +8021,7 @@
       },
       "PromptListResponse": {
         "type": "object",
-        "required": [
-          "prompts",
-          "total",
-          "hasMore"
-        ],
+        "required": ["prompts", "total", "hasMore"],
         "properties": {
           "hasMore": {
             "type": "boolean"
@@ -9465,12 +8040,7 @@
       },
       "PromptTemplateInfo": {
         "type": "object",
-        "required": [
-          "pattern",
-          "frequency",
-          "examples",
-          "slots"
-        ],
+        "required": ["pattern", "frequency", "examples", "slots"],
         "properties": {
           "examples": {
             "type": "array",
@@ -9495,14 +8065,7 @@
       },
       "QrPayload": {
         "type": "object",
-        "required": [
-          "url",
-          "r",
-          "k",
-          "t",
-          "s",
-          "v"
-        ],
+        "required": ["url", "r", "k", "t", "s", "v"],
         "properties": {
           "k": {
             "type": "string",
@@ -9536,10 +8099,7 @@
         "type": "object",
         "properties": {
           "names": {
-            "type": [
-              "array",
-              "null"
-            ],
+            "type": ["array", "null"],
             "items": {
               "type": "string"
             }
@@ -9548,9 +8108,7 @@
       },
       "RefreshAllResponse": {
         "type": "object",
-        "required": [
-          "count"
-        ],
+        "required": ["count"],
         "properties": {
           "count": {
             "type": "integer",
@@ -9560,15 +8118,10 @@
       },
       "RefreshOp": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "error": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "status": {
             "$ref": "#/components/schemas/RefreshStatus"
@@ -9577,19 +8130,11 @@
       },
       "RefreshStatus": {
         "type": "string",
-        "enum": [
-          "queued",
-          "running",
-          "completed",
-          "failed"
-        ]
+        "enum": ["queued", "running", "completed", "failed"]
       },
       "RefreshStatusResponse": {
         "type": "object",
-        "required": [
-          "active",
-          "ops"
-        ],
+        "required": ["active", "ops"],
         "properties": {
           "active": {
             "type": "boolean"
@@ -9608,10 +8153,7 @@
       "RemoveRuleResponse": {
         "type": "object",
         "description": "Response for DELETE /api/coaching/rules/{id}.",
-        "required": [
-          "removed",
-          "id"
-        ],
+        "required": ["removed", "id"],
         "properties": {
           "id": {
             "type": "string"
@@ -9687,10 +8229,7 @@
             "type": "string"
           },
           "contextDigest": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "createdAt": {
             "type": "string"
@@ -9702,30 +8241,18 @@
             "type": "string"
           },
           "generationInputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "generationModel": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "generationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "generationOutputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "id": {
@@ -9805,10 +8332,7 @@
             }
           },
           "totalCostUsd": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           }
         }
@@ -9880,11 +8404,7 @@
       "SessionActivityResponse": {
         "type": "object",
         "description": "Response for GET /api/sessions/activity",
-        "required": [
-          "activity",
-          "bucket",
-          "total"
-        ],
+        "required": ["activity", "bucket", "total"],
         "properties": {
           "activity": {
             "type": "array",
@@ -9907,16 +8427,10 @@
         "description": "Per-session badge data returned in the badges map.",
         "properties": {
           "outcome": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "satisfaction": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -9947,10 +8461,7 @@
             "description": "AI lines removed"
           },
           "commitRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Commit rate for this session"
           },
@@ -9992,10 +8503,7 @@
             "description": "Number of prompts"
           },
           "reeditRate": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Re-edit rate for this session"
           },
@@ -10004,10 +8512,7 @@
             "description": "Session ID"
           },
           "workType": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Work type classification"
           }
         }
@@ -10019,11 +8524,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "commits",
-              "derivedMetrics",
-              "hasPlans"
-            ],
+            "required": ["commits", "derivedMetrics", "hasPlans"],
             "properties": {
               "commits": {
                 "type": "array",
@@ -10044,6 +8545,13 @@
                   "$ref": "#/components/schemas/TaskItem"
                 },
                 "description": "Persistent task data from ~/.claude/tasks/{sessionId}/*.json"
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Warnings for non-fatal data read failures (e.g. task/plan file errors)"
               }
             }
           }
@@ -10053,13 +8561,7 @@
       "SessionDurationStat": {
         "type": "object",
         "description": "A session entry for the \"Longest Tasks\" dashboard card.",
-        "required": [
-          "id",
-          "preview",
-          "projectName",
-          "projectDisplayName",
-          "durationSeconds"
-        ],
+        "required": ["id", "preview", "projectName", "projectDisplayName", "durationSeconds"],
         "properties": {
           "durationSeconds": {
             "type": "integer",
@@ -10121,41 +8623,23 @@
             "minimum": 0
           },
           "categoryConfidence": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "categoryL1": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "categoryL2": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "categoryL3": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "categorySource": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "classifiedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "commitCount": {
             "type": "integer",
@@ -10216,23 +8700,14 @@
             }
           },
           "firstMessageAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "gitBranch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "gitRoot": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Canonical git repository root resolved from session_cwd at index time.\nNone for non-git directories or sessions indexed before this field existed."
           },
           "hookProgressCount": {
@@ -10265,16 +8740,10 @@
             "minimum": 0
           },
           "longestTaskPreview": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "longestTaskSeconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           },
@@ -10300,10 +8769,7 @@
             "type": "string"
           },
           "primaryModel": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "project": {
             "type": "string"
@@ -10312,10 +8778,7 @@
             "type": "string"
           },
           "promptWordCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           },
@@ -10341,16 +8804,10 @@
             }
           },
           "slug": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "summary": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "thinkingBlockCount": {
             "type": "integer",
@@ -10366,49 +8823,31 @@
             "$ref": "#/components/schemas/ToolCounts"
           },
           "totalCacheCreationTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "totalCacheReadTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "totalCostUsd": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           },
           "totalInputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "totalOutputTokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "totalTaskTimeSeconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           },
@@ -10417,26 +8856,17 @@
             "minimum": 0
           },
           "turnCountApi": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "turnDurationAvgMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "turnDurationMaxMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
@@ -10450,12 +8880,7 @@
       "SessionResource": {
         "type": "object",
         "description": "Per-session resource snapshot (CPU + memory for the Claude process).",
-        "required": [
-          "sessionId",
-          "pid",
-          "cpuPercent",
-          "memoryBytes"
-        ],
+        "required": ["sessionId", "pid", "cpuPercent", "memoryBytes"],
         "properties": {
           "cpuPercent": {
             "type": "number",
@@ -10483,13 +8908,7 @@
       "SessionsListResponse": {
         "type": "object",
         "description": "Response for GET /api/sessions with pagination",
-        "required": [
-          "sessions",
-          "total",
-          "hasMore",
-          "filter",
-          "sort"
-        ],
+        "required": ["sessions", "total", "hasMore", "filter", "sort"],
         "properties": {
           "filter": {
             "type": "string"
@@ -10515,10 +8934,7 @@
       "SessionsPage": {
         "type": "object",
         "description": "Paginated sessions response.",
-        "required": [
-          "sessions",
-          "total"
-        ],
+        "required": ["sessions", "total"],
         "properties": {
           "sessions": {
             "type": "array",
@@ -10534,10 +8950,7 @@
       },
       "ShareResponse": {
         "type": "object",
-        "required": [
-          "token",
-          "url"
-        ],
+        "required": ["token", "url"],
         "properties": {
           "token": {
             "type": "string"
@@ -10550,13 +8963,7 @@
       "SkillAdoption": {
         "type": "object",
         "description": "Skill adoption with impact metrics.",
-        "required": [
-          "skill",
-          "adoptedAt",
-          "sessionCount",
-          "impactOnReedit",
-          "learningCurve"
-        ],
+        "required": ["skill", "adoptedAt", "sessionCount", "impactOnReedit", "learningCurve"],
         "properties": {
           "adoptedAt": {
             "type": "string"
@@ -10585,10 +8992,7 @@
       "SkillStat": {
         "type": "object",
         "description": "A skill with its usage count.",
-        "required": [
-          "name",
-          "count"
-        ],
+        "required": ["name", "count"],
         "properties": {
           "count": {
             "type": "integer",
@@ -10602,13 +9006,7 @@
       "SkillStats": {
         "type": "object",
         "description": "Skill effectiveness statistics.",
-        "required": [
-          "skill",
-          "sessions",
-          "avgLoc",
-          "commitRate",
-          "reeditRate"
-        ],
+        "required": ["skill", "sessions", "avgLoc", "commitRate", "reeditRate"],
         "properties": {
           "avgLoc": {
             "type": "integer",
@@ -10634,12 +9032,7 @@
       "StatsOverview": {
         "type": "object",
         "description": "Aggregate statistics overview for the API.",
-        "required": [
-          "totalSessions",
-          "totalInvocations",
-          "uniqueInvocablesUsed",
-          "topInvocables"
-        ],
+        "required": ["totalSessions", "totalInvocations", "uniqueInvocablesUsed", "topInvocables"],
         "properties": {
           "topInvocables": {
             "type": "array",
@@ -10665,10 +9058,7 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -10676,10 +9066,7 @@
         "type": "object",
         "properties": {
           "context_window_size": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "description": "The real context window limit in tokens (200_000 or 1_000_000).\nThis is the authoritative value — no guessing needed.",
             "minimum": 0
@@ -10696,36 +9083,24 @@
             ]
           },
           "remaining_percentage": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Pre-computed percentage remaining (0.0–100.0)."
           },
           "total_input_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Cumulative input tokens across the session.",
             "minimum": 0
           },
           "total_output_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Cumulative output tokens across the session.",
             "minimum": 0
           },
           "used_percentage": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Pre-computed percentage used (0.0–100.0). Null early in session."
           }
@@ -10735,45 +9110,30 @@
         "type": "object",
         "properties": {
           "total_api_duration_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "API-only duration in milliseconds.",
             "minimum": 0
           },
           "total_cost_usd": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Claude Code's own total cost calculation in USD."
           },
           "total_duration_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Total wall-clock session duration in milliseconds.",
             "minimum": 0
           },
           "total_lines_added": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Total lines added across the session.",
             "minimum": 0
           },
           "total_lines_removed": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Total lines removed across the session.",
             "minimum": 0
@@ -10784,34 +9144,22 @@
         "type": "object",
         "properties": {
           "cache_creation_input_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "cache_read_input_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "input_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           },
           "output_tokens": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "minimum": 0
           }
@@ -10821,16 +9169,10 @@
         "type": "object",
         "properties": {
           "display_name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "id": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -10838,10 +9180,7 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -10852,9 +9191,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "session_id"
-            ],
+            "required": ["session_id"],
             "properties": {
               "agent": {
                 "oneOf": [
@@ -10887,16 +9224,10 @@
                 ]
               },
               "cwd": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "exceeds_200k_tokens": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
+                "type": ["boolean", "null"]
               },
               "model": {
                 "oneOf": [
@@ -10932,16 +9263,10 @@
                 "type": "string"
               },
               "transcript_path": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "version": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "vim": {
                 "oneOf": [
@@ -10981,17 +9306,11 @@
         "type": "object",
         "properties": {
           "resets_at": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "used_percentage": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double"
           }
         }
@@ -11025,10 +9344,7 @@
         "type": "object",
         "properties": {
           "mode": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -11036,16 +9352,10 @@
         "type": "object",
         "properties": {
           "current_dir": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "project_dir": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -11053,47 +9363,26 @@
         "type": "object",
         "properties": {
           "branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "name": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "original_branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "original_cwd": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "path": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
       "StorageInfo": {
         "type": "object",
         "description": "Storage section of system response.",
-        "required": [
-          "jsonlBytes",
-          "indexBytes",
-          "dbBytes",
-          "cacheBytes",
-          "totalBytes"
-        ],
+        "required": ["jsonlBytes", "indexBytes", "dbBytes", "cacheBytes", "totalBytes"],
         "properties": {
           "cacheBytes": {
             "type": "integer",
@@ -11137,10 +9426,7 @@
         ],
         "properties": {
           "appDataPath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Parent app data directory — safe to delete, rebuilt on next launch."
           },
           "commitCount": {
@@ -11155,10 +9441,7 @@
             "minimum": 0
           },
           "indexPath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Path to Tantivy search index directory."
           },
           "jsonlBytes": {
@@ -11168,25 +9451,16 @@
             "minimum": 0
           },
           "jsonlPath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Path to JSONL session files (Claude Code data, read-only)."
           },
           "lastGitSyncAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Unix timestamp of last git sync."
           },
           "lastGitSyncDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Duration of last git sync in milliseconds (not currently tracked, returns None)."
           },
@@ -11196,18 +9470,12 @@
             "description": "Number of repos scanned in last git sync (not currently tracked, returns 0)."
           },
           "lastIndexAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Unix timestamp of last index completion."
           },
           "lastIndexDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Duration of last index in milliseconds."
           },
@@ -11217,10 +9485,7 @@
             "description": "Number of sessions indexed in last run."
           },
           "oldestSessionDate": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Unix timestamp of oldest session."
           },
@@ -11241,10 +9506,7 @@
             "minimum": 0
           },
           "sqlitePath": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Path to SQLite database file."
           }
         }
@@ -11252,10 +9514,7 @@
       "SyncAcceptedResponse": {
         "type": "object",
         "description": "Response for successful sync initiation.",
-        "required": [
-          "message",
-          "status"
-        ],
+        "required": ["message", "status"],
         "properties": {
           "message": {
             "type": "string"
@@ -11268,21 +9527,12 @@
       "SyncStatus": {
         "type": "string",
         "description": "Status value for accepted sync responses.",
-        "enum": [
-          "accepted"
-        ]
+        "enum": ["accepted"]
       },
       "SystemInfo": {
         "type": "object",
         "description": "Static system information that doesn't change between snapshots.",
-        "required": [
-          "hostname",
-          "os",
-          "osVersion",
-          "arch",
-          "cpuCoreCount",
-          "totalMemoryBytes"
-        ],
+        "required": ["hostname", "os", "osVersion", "arch", "cpuCoreCount", "totalMemoryBytes"],
         "properties": {
           "arch": {
             "type": "string",
@@ -11355,13 +9605,7 @@
       "TaskItem": {
         "type": "object",
         "description": "A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.\n\nRicher than ProgressItem — includes description and dependency edges.",
-        "required": [
-          "id",
-          "subject",
-          "description",
-          "activeForm",
-          "status"
-        ],
+        "required": ["id", "subject", "description", "activeForm", "status"],
         "properties": {
           "activeForm": {
             "type": "string"
@@ -11394,13 +9638,7 @@
       },
       "TeamDetail": {
         "type": "object",
-        "required": [
-          "name",
-          "description",
-          "createdAt",
-          "leadSessionId",
-          "members"
-        ],
+        "required": ["name", "description", "createdAt", "leadSessionId", "members"],
         "properties": {
           "createdAt": {
             "type": "integer",
@@ -11425,14 +9663,7 @@
       },
       "TeamMember": {
         "type": "object",
-        "required": [
-          "agentId",
-          "name",
-          "agentType",
-          "model",
-          "color",
-          "cwd"
-        ],
+        "required": ["agentId", "name", "agentType", "model", "color", "cwd"],
         "properties": {
           "agentId": {
             "type": "string"
@@ -11441,10 +9672,7 @@
             "type": "string"
           },
           "backendType": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "color": {
             "type": "string"
@@ -11459,10 +9687,7 @@
             "type": "string"
           },
           "prompt": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           }
         }
       },
@@ -11486,10 +9711,7 @@
             "type": "string"
           },
           "durationEstimateSecs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int32",
             "minimum": 0
           },
@@ -11519,11 +9741,7 @@
       },
       "TelemetryStatus": {
         "type": "string",
-        "enum": [
-          "undecided",
-          "enabled",
-          "disabled"
-        ]
+        "enum": ["undecided", "enabled", "disabled"]
       },
       "TokenStats": {
         "type": "object",
@@ -11577,11 +9795,7 @@
       "TokensByModel": {
         "type": "object",
         "description": "Token usage breakdown by model.",
-        "required": [
-          "model",
-          "inputTokens",
-          "outputTokens"
-        ],
+        "required": ["model", "inputTokens", "outputTokens"],
         "properties": {
           "inputTokens": {
             "type": "integer",
@@ -11599,11 +9813,7 @@
       "TokensByProject": {
         "type": "object",
         "description": "Token usage breakdown by project.",
-        "required": [
-          "project",
-          "inputTokens",
-          "outputTokens"
-        ],
+        "required": ["project", "inputTokens", "outputTokens"],
         "properties": {
           "inputTokens": {
             "type": "integer",
@@ -11621,12 +9831,7 @@
       "ToolCounts": {
         "type": "object",
         "description": "Tool usage statistics for a session",
-        "required": [
-          "edit",
-          "read",
-          "bash",
-          "write"
-        ],
+        "required": ["edit", "read", "bash", "write"],
         "properties": {
           "bash": {
             "type": "integer",
@@ -11649,11 +9854,7 @@
       "TrendMetric": {
         "type": "object",
         "description": "A single trend metric comparing current vs previous period.",
-        "required": [
-          "current",
-          "previous",
-          "delta"
-        ],
+        "required": ["current", "previous", "delta"],
         "properties": {
           "current": {
             "type": "integer",
@@ -11666,10 +9867,7 @@
             "description": "Absolute change (current - previous)."
           },
           "deltaPercent": {
-            "type": [
-              "number",
-              "null"
-            ],
+            "type": ["number", "null"],
             "format": "double",
             "description": "Percentage change, rounded to 1 decimal place.\nNone if previous == 0 (cannot calculate percentage)."
           },
@@ -11683,9 +9881,7 @@
       "TriggerResponse": {
         "type": "object",
         "description": "Response for POST /facets/ingest/trigger.",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "status": {
             "type": "string"
@@ -11695,18 +9891,10 @@
       "TurnInfo": {
         "type": "object",
         "description": "A single turn in the session breakdown.",
-        "required": [
-          "index",
-          "startedAt",
-          "wallClockSeconds",
-          "promptPreview"
-        ],
+        "required": ["index", "startedAt", "wallClockSeconds", "promptPreview"],
         "properties": {
           "ccDurationMs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64",
             "description": "Claude Code reported turn duration in milliseconds (from `turn_duration` system message).\nNull if no `turn_duration` message follows this turn.",
             "minimum": 0
@@ -11735,9 +9923,7 @@
       },
       "UnbindControlRequest": {
         "type": "object",
-        "required": [
-          "controlId"
-        ],
+        "required": ["controlId"],
         "properties": {
           "controlId": {
             "type": "string"
@@ -11759,10 +9945,7 @@
         ],
         "properties": {
           "branch": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "filesCount": {
             "type": "integer",
@@ -11796,9 +9979,7 @@
       "UpdateGitSyncIntervalRequest": {
         "type": "object",
         "description": "Request body for updating the git sync interval.",
-        "required": [
-          "intervalSecs"
-        ],
+        "required": ["intervalSecs"],
         "properties": {
           "intervalSecs": {
             "type": "integer",
@@ -11812,28 +9993,17 @@
         "type": "object",
         "properties": {
           "llmModel": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "llmTimeoutSecs": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           }
         }
       },
       "UsageTier": {
         "type": "object",
-        "required": [
-          "id",
-          "label",
-          "percentage",
-          "resetAt"
-        ],
+        "required": ["id", "label", "percentage", "resetAt"],
         "properties": {
           "id": {
             "type": "string"
@@ -11851,10 +10021,7 @@
             "description": "ISO-8601 reset timestamp"
           },
           "spent": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "Dollar description for budget tiers"
           }
         }
@@ -11862,22 +10029,13 @@
       "UserItemInfo": {
         "type": "object",
         "description": "A user-created skill, command, or agent (not from any marketplace).",
-        "required": [
-          "name",
-          "kind",
-          "path",
-          "totalInvocations",
-          "sessionCount"
-        ],
+        "required": ["name", "kind", "path", "totalInvocations", "sessionCount"],
         "properties": {
           "kind": {
             "type": "string"
           },
           "lastUsedAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "name": {
@@ -11941,9 +10099,7 @@
           },
           {
             "type": "object",
-            "required": [
-              "meta"
-            ],
+            "required": ["meta"],
             "properties": {
               "meta": {
                 "$ref": "#/components/schemas/AnalyticsScopeMeta"
@@ -11956,12 +10112,7 @@
       "WorkBreakdown": {
         "type": "object",
         "description": "Work type breakdown.",
-        "required": [
-          "totalSessions",
-          "withCommits",
-          "exploration",
-          "avgSessionMinutes"
-        ],
+        "required": ["totalSessions", "withCommits", "exploration", "avgSessionMinutes"],
         "properties": {
           "avgSessionMinutes": {
             "type": "number",
@@ -11986,12 +10137,7 @@
       },
       "WorkflowDefinition": {
         "type": "object",
-        "required": [
-          "name",
-          "description",
-          "author",
-          "category"
-        ],
+        "required": ["name", "description", "author", "category"],
         "properties": {
           "author": {
             "type": "string"
@@ -12024,12 +10170,7 @@
       },
       "WorkflowDetail": {
         "type": "object",
-        "required": [
-          "id",
-          "source",
-          "definition",
-          "yaml"
-        ],
+        "required": ["id", "source", "definition", "yaml"],
         "properties": {
           "definition": {
             "$ref": "#/components/schemas/WorkflowDefinition"
@@ -12048,11 +10189,7 @@
       },
       "WorkflowInput": {
         "type": "object",
-        "required": [
-          "name",
-          "type",
-          "description"
-        ],
+        "required": ["name", "type", "description"],
         "properties": {
           "description": {
             "type": "string"
@@ -12067,10 +10204,7 @@
       },
       "WorkflowStage": {
         "type": "object",
-        "required": [
-          "name",
-          "skills"
-        ],
+        "required": ["name", "skills"],
         "properties": {
           "agents": {
             "type": "integer",
@@ -12088,10 +10222,7 @@
             ]
           },
           "model": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "name": {
             "type": "string"
@@ -12109,10 +10240,7 @@
       },
       "WorkflowStageGate": {
         "type": "object",
-        "required": [
-          "condition",
-          "retry"
-        ],
+        "required": ["condition", "retry"],
         "properties": {
           "condition": {
             "type": "string"
@@ -12149,10 +10277,7 @@
             "type": "string"
           },
           "lastRunAt": {
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": ["integer", "null"],
             "format": "int64"
           },
           "name": {

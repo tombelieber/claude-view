@@ -61,7 +61,7 @@ struct DrainState {
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
     client: Arc<LlmClient>,
     result_tx: mpsc::Sender<ClassifyResult>,
-    omlx_ready: Arc<AtomicBool>,
+    llm_ready: Arc<AtomicBool>,
     /// Shared sessions map for setting freshness=pending on dirty.
     sessions: Arc<RwLock<HashMap<String, super::state::LiveSession>>>,
     tx: tokio::sync::broadcast::Sender<super::state::SessionEvent>,
@@ -122,7 +122,7 @@ impl DrainState {
     }
 
     async fn try_drain(&mut self, tasks: &mut JoinSet<(String, bool)>) {
-        if !self.omlx_ready.load(Ordering::Relaxed) {
+        if !self.llm_ready.load(Ordering::Relaxed) {
             return;
         }
 
@@ -223,7 +223,7 @@ pub(crate) async fn run_drain_loop(
     result_tx: mpsc::Sender<ClassifyResult>,
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
     client: Arc<LlmClient>,
-    omlx_ready: Arc<AtomicBool>,
+    llm_ready: Arc<AtomicBool>,
     wake: Arc<Notify>,
     sessions: Arc<RwLock<HashMap<String, super::state::LiveSession>>>,
     tx: tokio::sync::broadcast::Sender<super::state::SessionEvent>,
@@ -235,7 +235,7 @@ pub(crate) async fn run_drain_loop(
         accumulators,
         client,
         result_tx,
-        omlx_ready,
+        llm_ready,
         sessions,
         tx,
     };

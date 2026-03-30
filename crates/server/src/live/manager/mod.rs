@@ -107,12 +107,12 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
-        omlx_status: Arc<crate::local_llm::LlmStatus>,
+        llm_status: Arc<crate::local_llm::LlmStatus>,
+        llm_client: Arc<LlmClient>,
         oracle_rx: super::process_oracle::OracleReceiver,
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
         >,
-        debug_omlx_tx: Option<mpsc::Sender<String>>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -130,7 +130,7 @@ impl LiveSessionManager {
         // Start event-driven process death watcher (kqueue on macOS)
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
-        // oMLX phase classifier infrastructure (omlx_status injected from caller)
+        // LLM phase classifier infrastructure (llm_client injected from caller)
         let (dirty_tx, dirty_rx) = mpsc::channel::<(String, Priority)>(256);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
 
@@ -165,23 +165,14 @@ impl LiveSessionManager {
         manager.spawn_cleanup_task();
         manager.spawn_death_consumer(death_rx);
 
-        // Spawn oMLX drain loop (replaces cadence-based scheduler)
-        let mut llm_client = LlmClient::new(
-            format!("http://localhost:{}", omlx_status.port),
-            "Qwen3.5-4B-MLX-4bit".into(),
-        )
-        .with_ready_flag(omlx_status.ready.clone());
-        if let Some(tx) = debug_omlx_tx {
-            llm_client = llm_client.with_debug_tx(tx);
-        }
-        let client = Arc::new(llm_client);
+        // Spawn LLM drain loop (replaces cadence-based scheduler)
         let drain_wake = Arc::new(tokio::sync::Notify::new());
         tokio::spawn(super::drain_loop::run_drain_loop(
             dirty_rx,
             result_tx,
             manager.accumulators.clone(),
-            client,
-            omlx_status.ready.clone(),
+            llm_client,
+            llm_status.ready.clone(),
             drain_wake,
             manager.sessions.clone(),
             manager.tx.clone(),
