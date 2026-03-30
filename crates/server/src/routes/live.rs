@@ -51,8 +51,10 @@ pub fn router() -> Router<Arc<AppState>> {
             "/live/sessions/{id}/statusline",
             get(get_session_statusline_debug),
         )
+        .route("/live/sessions/{id}/dismiss", delete(dismiss_session))
         .route("/live/sessions/{id}/bind-control", post(bind_control))
         .route("/live/sessions/{id}/unbind-control", post(unbind_control))
+        .route("/live/recently-closed", delete(dismiss_all_closed))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
 }
@@ -188,6 +190,12 @@ pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serd
     let map = state.live_sessions.read().await;
     let mut sessions: Vec<_> = map.values().cloned().collect();
     sessions.sort_by(|a, b| b.hook.last_activity_at.cmp(&a.hook.last_activity_at));
+    let recently_closed: Vec<_> = {
+        let rc = state.recently_closed.read().await;
+        let mut v: Vec<_> = rc.values().cloned().collect();
+        v.sort_by(|a, b| (b.closed_at.unwrap_or(0)).cmp(&a.closed_at.unwrap_or(0)));
+        v
+    };
     let process_count = state
         .live_manager
         .as_ref()
@@ -195,6 +203,7 @@ pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serd
         .unwrap_or(0);
     Json(serde_json::json!({
         "sessions": sessions,
+        "recentlyClosed": recently_closed,
         "total": sessions.len(),
         "processCount": process_count,
     }))
@@ -514,7 +523,38 @@ pub async fn unbind_control(
     }
 }
 
-/// DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.
+/// DELETE /api/live/sessions/:id/dismiss -- Dismiss from recently closed (in-memory only).
+pub async fn dismiss_session(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let removed = state.recently_closed.write().await.remove(&id).is_some();
+    if removed {
+        let _ = state.live_tx.send(SessionEvent::SessionCompleted {
+            session_id: id,
+        });
+        (axum::http::StatusCode::OK, Json(serde_json::json!({"dismissed": true})))
+    } else {
+        (axum::http::StatusCode::NOT_FOUND, Json(serde_json::json!({"dismissed": false})))
+    }
+}
+
+/// DELETE /api/live/recently-closed -- Dismiss all recently closed (in-memory only).
+pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let count = {
+        let mut rc = state.recently_closed.write().await;
+        let ids: Vec<String> = rc.keys().cloned().collect();
+        rc.clear();
+        for id in &ids {
+            let _ = state.live_tx.send(SessionEvent::SessionCompleted {
+                session_id: id.clone(),
+            });
+        }
+        ids.len()
+    };
+    Json(serde_json::json!({"dismissedCount": count}))
+}
+
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
 #[utoipa::path(get, path = "/api/live/summary", tag = "live",
     responses(
