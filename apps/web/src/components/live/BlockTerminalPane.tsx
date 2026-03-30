@@ -1,3 +1,4 @@
+import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
 import { useBlockSocket } from '../../hooks/use-block-socket'
 import { useMonitorStore } from '../../store/monitor-store'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
@@ -35,11 +36,13 @@ export function BlockTerminalPane({
   }
 
   return (
-    <ConversationThread
-      blocks={blocks}
-      renderers={registry}
-      compact={compact}
-      filterBar={!compact && displayMode === 'developer'}
-    />
+    <ErrorBoundary>
+      <ConversationThread
+        blocks={blocks}
+        renderers={registry}
+        compact={compact}
+        filterBar={!compact && displayMode === 'developer'}
+      />
+    </ErrorBoundary>
   )
 }

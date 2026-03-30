@@ -547,6 +547,11 @@ export function ConversationThread({
   // ── Stable render callback ──────────────────────────────────────────────
 
   // Detect whether we're in developer mode (renderers have the dev progress block)
+  // Stable identity key for the current renderer — forces Virtuoso remount when
+  // display mode changes (chat ↔ developer). Without this, Virtuoso retains stale
+  // height measurements from the previous mode's block renderers.
+  const rendererKey = filterBar ? 'dev' : 'chat'
+
   const isDeveloperMode = filterBar
 
   const renderItem = useCallback(
@@ -640,6 +645,7 @@ export function ConversationThread({
                 </div>
               )}
               <Virtuoso
+                key={rendererKey}
                 ref={virtuosoRef}
                 data={items}
                 computeItemKey={itemKey}
