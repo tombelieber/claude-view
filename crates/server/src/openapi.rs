@@ -45,8 +45,6 @@ use utoipa::OpenApi;
         crate::routes::live::kill_session,
         crate::routes::live::bind_control,
         crate::routes::live::unbind_control,
-        crate::routes::live::dismiss_session,
-        crate::routes::live::dismiss_all_closed,
         crate::routes::live::get_live_summary,
         crate::routes::live::get_pricing,
         crate::routes::hooks::handle_hook,

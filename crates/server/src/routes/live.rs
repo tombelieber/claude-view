@@ -5,8 +5,6 @@
 //! - `GET /api/live/sessions/:id`        -- Get a single live session
 //! - `GET /api/live/sessions/:id/messages` -- Get recent messages for a live session
 //! - `POST /api/live/sessions/:id/kill`   -- Send SIGTERM to a session's process
-//! - `DELETE /api/live/sessions/:id/dismiss` -- Dismiss a recently closed session
-//! - `DELETE /api/live/recently-closed`   -- Dismiss all recently closed sessions
 //! - `GET /api/live/summary`             -- Aggregate live session statistics
 //! - `GET /api/live/pricing`             -- Model pricing table
 
@@ -53,10 +51,8 @@ pub fn router() -> Router<Arc<AppState>> {
             "/live/sessions/{id}/statusline",
             get(get_session_statusline_debug),
         )
-        .route("/live/sessions/{id}/dismiss", delete(dismiss_session))
         .route("/live/sessions/{id}/bind-control", post(bind_control))
         .route("/live/sessions/{id}/unbind-control", post(unbind_control))
-        .route("/live/recently-closed", delete(dismiss_all_closed))
         .route("/live/summary", get(get_live_summary))
         .route("/live/pricing", get(get_pricing))
 }
@@ -185,25 +181,21 @@ pub async fn live_stream(
 /// GET /api/live/sessions -- List all live sessions, sorted by most recent activity.
 #[utoipa::path(get, path = "/api/live/sessions", tag = "live",
     responses(
-        (status = 200, description = "Active and recently closed live sessions", body = serde_json::Value),
+        (status = 200, description = "Active live sessions", body = serde_json::Value),
     )
 )]
 pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let mut all_sessions: Vec<_> = map.values().cloned().collect();
-    all_sessions.sort_by(|a, b| b.hook.last_activity_at.cmp(&a.hook.last_activity_at));
-    let (active, recently_closed): (Vec<_>, Vec<_>) = all_sessions
-        .into_iter()
-        .partition(|s| s.closed_at.is_none());
+    let mut sessions: Vec<_> = map.values().cloned().collect();
+    sessions.sort_by(|a, b| b.hook.last_activity_at.cmp(&a.hook.last_activity_at));
     let process_count = state
         .live_manager
         .as_ref()
         .map(|m| m.process_count())
         .unwrap_or(0);
     Json(serde_json::json!({
-        "sessions": active,
-        "recentlyClosed": recently_closed,
-        "total": active.len(),
+        "sessions": sessions,
+        "total": sessions.len(),
         "processCount": process_count,
     }))
 }
@@ -523,116 +515,6 @@ pub async fn unbind_control(
 }
 
 /// DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.
-#[utoipa::path(delete, path = "/api/live/sessions/{id}/dismiss", tag = "live",
-    params(("id" = String, Path, description = "Session ID")),
-    responses(
-        (status = 200, description = "Session dismissed from recently closed list", body = serde_json::Value),
-        (status = 404, description = "Session not found or still active"),
-    )
-)]
-///
-/// Removes the session from the live map and marks it as dismissed in SQLite.
-/// Sends `SessionCompleted` to notify the frontend to remove from `recentlyClosed`.
-///
-/// Note: There is a narrow race window between removing from the map and persisting
-/// to SQLite. If the server crashes in that window, the session reappears on restart
-/// (user clicks dismiss again). This is accept-and-retry tolerant by design.
-pub async fn dismiss_session(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
-    let removed = {
-        let mut sessions = state.live_sessions.write().await;
-        if let Some(session) = sessions.get(&id) {
-            if session.closed_at.is_some() {
-                sessions.remove(&id);
-                true
-            } else {
-                false // Can't dismiss an active session
-            }
-        } else {
-            false
-        }
-    };
-
-    if removed {
-        // Persist dismissal to SQLite
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        if let Err(e) = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
-            .bind(now)
-            .bind(&id)
-            .execute(state.db.pool())
-            .await
-        {
-            tracing::warn!(session_id = %id, error = %e, "Failed to persist dismiss to SQLite");
-        }
-        // Notify frontend to remove from recentlyClosed
-        let _ = state
-            .live_tx
-            .send(SessionEvent::SessionCompleted { session_id: id });
-        (
-            axum::http::StatusCode::OK,
-            Json(serde_json::json!({"dismissed": true})),
-        )
-    } else {
-        (
-            axum::http::StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"dismissed": false})),
-        )
-    }
-}
-
-/// DELETE /api/live/recently-closed -- Dismiss all recently closed sessions.
-#[utoipa::path(delete, path = "/api/live/recently-closed", tag = "live",
-    responses(
-        (status = 200, description = "All recently closed sessions dismissed", body = serde_json::Value),
-    )
-)]
-pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let dismissed_ids: Vec<String> = {
-        let mut sessions = state.live_sessions.write().await;
-        let ids: Vec<String> = sessions
-            .iter()
-            .filter(|(_, s)| s.closed_at.is_some())
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in &ids {
-            sessions.remove(id);
-        }
-        ids
-    };
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    match state.db.pool().begin().await {
-        Ok(mut tx) => {
-            for id in &dismissed_ids {
-                let _ = sqlx::query("UPDATE sessions SET dismissed_at = ?1 WHERE id = ?2")
-                    .bind(now)
-                    .bind(id)
-                    .execute(&mut *tx)
-                    .await;
-            }
-            let _ = tx.commit().await;
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to begin transaction for dismiss_all_closed — dismissal not persisted");
-        }
-    }
-    for id in &dismissed_ids {
-        let _ = state.live_tx.send(SessionEvent::SessionCompleted {
-            session_id: id.clone(),
-        });
-    }
-
-    Json(serde_json::json!({"dismissedCount": dismissed_ids.len()}))
-}
-
 /// GET /api/live/summary -- Aggregate statistics across all live sessions.
 #[utoipa::path(get, path = "/api/live/summary", tag = "live",
     responses(
