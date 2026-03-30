@@ -14,6 +14,7 @@
 pub(crate) mod accumulator;
 mod helpers;
 mod line_processor;
+mod reaper;
 mod reconciler;
 mod startup;
 mod watcher;
