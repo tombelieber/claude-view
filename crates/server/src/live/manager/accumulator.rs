@@ -8,7 +8,7 @@ use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use claude_view_core::phase::client::ConversationTurn;
+use crate::local_llm::client::ConversationTurn;
 use claude_view_core::phase::stabilizer::ClassificationStabilizer;
 use claude_view_core::phase::{PhaseHistory, PhaseLabel};
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};

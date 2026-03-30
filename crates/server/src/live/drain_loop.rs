@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Notify, RwLock};
 use tokio::task::JoinSet;
 
-use claude_view_core::phase::client::{ClassifyContext, OmlxClient};
+use crate::local_llm::client::{ClassifyContext, LlmClient};
 use claude_view_core::phase::scheduler::{ClassifyResult, Priority};
 
 use super::manager::accumulator::SessionAccumulator;
@@ -59,7 +59,7 @@ struct DrainState {
     error_streak: u32,
     last_error_at: Option<Instant>,
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
-    client: Arc<OmlxClient>,
+    client: Arc<LlmClient>,
     result_tx: mpsc::Sender<ClassifyResult>,
     omlx_ready: Arc<AtomicBool>,
     /// Shared sessions map for setting freshness=pending on dirty.
@@ -222,7 +222,7 @@ pub(crate) async fn run_drain_loop(
     mut dirty_rx: mpsc::Receiver<(String, Priority)>,
     result_tx: mpsc::Sender<ClassifyResult>,
     accumulators: Arc<RwLock<HashMap<String, SessionAccumulator>>>,
-    client: Arc<OmlxClient>,
+    client: Arc<LlmClient>,
     omlx_ready: Arc<AtomicBool>,
     wake: Arc<Notify>,
     sessions: Arc<RwLock<HashMap<String, super::state::LiveSession>>>,

@@ -140,6 +140,10 @@ mod tests {
             debug_statusline_log: None,
             debug_hooks_log: None,
             debug_omlx_log: None,
+            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
+                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
+                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+            )),
         });
 
         let app = Router::new()

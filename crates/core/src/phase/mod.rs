@@ -1,6 +1,5 @@
 //! SDLC phase + scope classifier via Qwen3.5-4B on oMLX.
 
-pub mod client;
 pub mod scheduler;
 pub mod stabilizer;
 
