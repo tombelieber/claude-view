@@ -243,11 +243,6 @@ impl SessionCoordinator {
             if let Some(new_status) = status_change {
                 session.status = new_status;
             }
-            // Set closed_at when transitioning to Done
-            if session.status == SessionStatus::Done && session.closed_at.is_none() {
-                session.closed_at = Some(now);
-            }
-
             // Common post-mutation bookkeeping
             let post = common_post_mutation(&mutation, pid, now);
             if let Some(bind_pid) = post.bind_pid {
@@ -514,10 +509,6 @@ fn plan_side_effects(
             effects.push(SideEffect::CleanHookEventChannel {
                 session_id: session_id.to_string(),
             });
-            effects.push(SideEffect::PersistClosedAt {
-                session_id: session_id.to_string(),
-                closed_at: now,
-            });
         }
         SessionMutation::Lifecycle(LifecycleEvent::Start { .. }) => {
             effects.push(SideEffect::CreateAccumulator {
@@ -558,17 +549,6 @@ async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect) {
         SideEffect::CleanHookEventChannel { session_id } => {
             let mut channels = ctx.hook_event_channels.write().await;
             channels.remove(session_id.as_str());
-        }
-        SideEffect::PersistClosedAt {
-            session_id,
-            closed_at,
-        } => {
-            debug!(
-                session_id,
-                closed_at, "closed_at set in-memory; snapshot writer persists to disk"
-            );
-            // closed_at is set on the LiveSession in-memory and persisted
-            // by the snapshot writer. No direct DB call needed here.
         }
         SideEffect::CleanTranscriptDedup { path } => {
             let mut map = ctx.transcript_to_session.write().await;
@@ -729,9 +709,8 @@ mod tests {
         let mutation = SessionMutation::Lifecycle(LifecycleEvent::End { reason: None });
         let effects = plan_side_effects("end-test", &session, &mutation, 1700000003);
 
-        // Should have: PersistHookEvents, RemoveAccumulator,
-        // CleanHookEventChannel, PersistClosedAt
-        assert_eq!(effects.len(), 4);
+        // Should have: PersistHookEvents, RemoveAccumulator, CleanHookEventChannel
+        assert_eq!(effects.len(), 3);
 
         // Verify PersistHookEvents captured the events
         let persist = effects
