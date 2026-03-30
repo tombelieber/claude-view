@@ -313,11 +313,12 @@ pub fn create_app_full(
         >,
     > = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
-    let debug_omlx_tx = if cfg!(debug_assertions) {
+    let debug_llm_tx = if cfg!(debug_assertions) {
         Some(live::debug_log::DebugEventLog::new(".debug/omlx.jsonl").sender())
     } else {
         None
     };
+    let llm_client = Arc::new(local_llm_service.client("Qwen3.5-4B-MLX-4bit".into(), debug_llm_tx));
     let (manager, live_sessions, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
@@ -327,9 +328,9 @@ pub fn create_app_full(
             Some(sidecar.clone()),
             teams.clone(),
             llm_status.clone(),
+            llm_client,
             oracle_rx.clone(),
             hook_event_channels.clone(),
-            debug_omlx_tx,
         );
 
     // Hook registration deferred — caller must invoke register_hooks()
