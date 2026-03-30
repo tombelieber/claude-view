@@ -32,8 +32,8 @@ impl LiveSessionManager {
     /// Cleans: live_sessions, transcript_to_session, hook_event_channels,
     ///         accumulators, and signals drain_loop to drop its dirty entry.
     pub(crate) async fn reap_session(self: &Arc<Self>, session_id: &str) -> ReapResult {
-        // Phase 1: Remove from live_sessions map, capture cleanup data.
-        let cleanup_data = {
+        // Phase 1: Remove from live_sessions, capture for recently_closed.
+        let (cleanup_tp, closed_session) = {
             let mut sessions = self.sessions.write().await;
             let Some(session) = sessions.get(session_id) else {
                 return ReapResult::NotFound;
@@ -56,36 +56,41 @@ impl LiveSessionManager {
                     .map(std::path::PathBuf::from)
             };
 
+            // Capture last-known state for ephemeral recently-closed display.
+            let mut closed = session.clone();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            closed.status = crate::live::state::SessionStatus::Done;
+            closed.closed_at = Some(now);
+
             sessions.remove(session_id);
-            transcript_path
+            (transcript_path, closed)
         };
 
-        // Phase 2: Clean auxiliary maps (no sessions lock held).
-
-        // 2a: transcript_to_session dedup map
-        if let Some(ref tp) = cleanup_data {
-            let mut tmap = self.transcript_to_session.write().await;
-            tmap.remove(tp);
-        }
-
-        // 2b: hook_event_channels
+        // Phase 1b: Capture to ephemeral recently-closed buffer.
         {
-            let mut channels = self.hook_event_channels.write().await;
-            channels.remove(session_id);
+            let mut rc = self.recently_closed.write().await;
+            rc.insert(session_id.to_string(), closed_session.clone());
         }
 
-        // 2c: accumulators
+        // Phase 2: Clean auxiliary maps (no sessions lock held).
+        if let Some(ref tp) = cleanup_tp {
+            self.transcript_to_session.write().await.remove(tp);
+        }
+        self.hook_event_channels.write().await.remove(session_id);
         self.remove_accumulator(session_id).await;
 
-        // Phase 3: Broadcast removal to frontend via SSE.
-        let _ = self.tx.send(SessionEvent::SessionCompleted {
-            session_id: session_id.to_string(),
+        // Phase 3: Broadcast to frontend — session moved to recently closed.
+        let _ = self.tx.send(SessionEvent::SessionClosed {
+            session: closed_session,
         });
 
-        // Phase 4: Persist clean snapshot.
+        // Phase 4: Persist clean snapshot (recently_closed NOT included).
         self.request_snapshot_save();
 
-        info!(session_id = %session_id, "Session reaped from all maps");
+        info!(session_id = %session_id, "Session reaped → recently closed");
 
         ReapResult::Reaped
     }
@@ -164,6 +169,7 @@ mod tests {
             dirty_tx,
             hook_event_channels: Arc::new(RwLock::new(HashMap::new())),
             coordinator: Arc::new(SessionCoordinator::new()),
+            recently_closed: Arc::new(RwLock::new(HashMap::new())),
         });
 
         (manager, rx, snapshot_rx)
@@ -308,7 +314,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_reap_broadcasts_session_completed() {
+    async fn test_reap_broadcasts_session_closed() {
         let (mgr, mut rx, _snap_rx) = make_test_manager().await;
         let session_id = "sess-broadcast";
 
@@ -320,16 +326,24 @@ mod tests {
 
         mgr.reap_session(session_id).await;
 
-        // Should have received a SessionCompleted event.
+        // Should have received a SessionClosed event (moved to recently closed).
         let event = rx
             .try_recv()
             .expect("expected a broadcast event after reap");
         match event {
-            SessionEvent::SessionCompleted { session_id: id } => {
-                assert_eq!(id, session_id);
+            SessionEvent::SessionClosed { session } => {
+                assert_eq!(session.id, session_id);
+                assert_eq!(session.status, SessionStatus::Done);
+                assert!(session.closed_at.is_some());
             }
-            other => panic!("expected SessionCompleted, got {:?}", other),
+            other => panic!("expected SessionClosed, got {:?}", other),
         }
+
+        // Should also be in the recently_closed map.
+        assert!(
+            mgr.recently_closed.read().await.contains_key(session_id),
+            "reaped session should be in recently_closed"
+        );
     }
 
     #[tokio::test]

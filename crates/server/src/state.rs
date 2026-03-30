@@ -104,6 +104,8 @@ pub struct AppState {
     pub pricing: Arc<PricingTable>,
     /// Live session state for Live Monitor (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
+    /// Ephemeral recently-closed sessions — captured on reap, lost on restart.
+    pub recently_closed: LiveSessionMap,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
     /// Directory where coaching rule files are stored (~/.claude/rules).
@@ -216,6 +218,7 @@ impl AppState {
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
             rules_dir: dirs::home_dir()
@@ -284,6 +287,7 @@ impl AppState {
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
             rules_dir: dirs::home_dir()
@@ -355,6 +359,7 @@ impl AppState {
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             live_tx: broadcast::channel(256).0,
 
             rules_dir: dirs::home_dir()
