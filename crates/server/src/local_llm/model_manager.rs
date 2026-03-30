@@ -24,6 +24,12 @@ pub struct ModelManager {
     model_dir: PathBuf,
 }
 
+impl Default for ModelManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModelManager {
     /// Create a ModelManager using the default cache directory.
     /// `~/.cache/claude-view/models` on macOS/Linux.
