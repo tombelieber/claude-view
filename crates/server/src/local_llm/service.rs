@@ -116,6 +116,7 @@ impl LocalLlmService {
             .map_err(|e| format!("failed to persist config: {e}"))?;
         self.status.ready.store(false, Ordering::Release);
         self.status.set_pid(None);
+        self.status.set_server_state(super::status::ServerState::Unknown);
         info!("on-device AI disabled");
         Ok(())
     }
