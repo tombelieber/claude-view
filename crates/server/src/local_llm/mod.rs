@@ -1,5 +1,6 @@
 pub mod client;
 mod config;
+mod download;
 mod inventory;
 mod lifecycle;
 mod model_manager;
