@@ -162,6 +162,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", monitor::router())
         .nest("/api", processes::router())
         .nest("/api", telemetry::router())
+        .nest("/api/local-llm", crate::local_llm::local_llm_routes())
         // Swagger UI + OpenAPI spec
         .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)

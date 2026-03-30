@@ -4,11 +4,11 @@ use std::sync::atomic::Ordering;
 
 use sysinfo::System;
 
-use super::omlx_lifecycle::OmlxStatus;
+use super::gpu_memory;
 use super::process_tree::component_types::{
     ComponentDetails, ComponentKind, ComponentSnapshot, ComponentStatus,
 };
-use super::gpu_memory;
+use crate::local_llm::LlmStatus;
 use crate::sidecar::SidecarManager;
 
 /// Collect component status snapshot.
@@ -18,7 +18,7 @@ use crate::sidecar::SidecarManager;
 pub fn collect(
     sys: &System,
     sidecar: &SidecarManager,
-    omlx_status: &OmlxStatus,
+    omlx_status: &LlmStatus,
 ) -> ComponentSnapshot {
     let mut components = Vec::with_capacity(3);
 
@@ -59,7 +59,11 @@ pub fn collect(
     // --- oMLX ---
     let omlx_healthy = omlx_status.ready.load(Ordering::Acquire);
     // PID cached by omlx_lifecycle at startup — no lsof on the 10s hot path
-    let omlx_pid = if omlx_healthy { omlx_status.pid() } else { None };
+    let omlx_pid = if omlx_healthy {
+        omlx_status.pid()
+    } else {
+        None
+    };
     let (omlx_cpu, omlx_mem) = pid_metrics(sys, omlx_pid);
     components.push(ComponentStatus {
         name: "omlx-qwen".into(),
@@ -69,9 +73,13 @@ pub fn collect(
         pid: omlx_pid,
         cpu_percent: omlx_cpu,
         memory_bytes: omlx_mem,
-        vram_bytes: if omlx_healthy { gpu_memory::gpu_alloc_bytes() } else { None },
+        vram_bytes: if omlx_healthy {
+            gpu_memory::gpu_alloc_bytes()
+        } else {
+            None
+        },
         details: ComponentDetails::Omlx {
-            model_id: super::omlx_lifecycle::EXPECTED_MODEL_SUBSTRING.into(),
+            model_id: crate::local_llm::EXPECTED_MODEL_SUBSTRING.into(),
             port: omlx_status.port,
             healthy: omlx_healthy,
         },
@@ -170,5 +178,4 @@ mod tests {
         // CPU can be 0 on first sample, that's OK
         let _ = cpu;
     }
-
 }

@@ -30,8 +30,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tracing::info;
 
+use crate::local_llm::client::LlmClient;
 use claude_view_core::live_parser::TailFinders;
-use claude_view_core::phase::client::OmlxClient;
 use claude_view_core::phase::scheduler::{ClassifyResult, Priority};
 use claude_view_core::phase::{
     dominant_phase, PhaseFreshness, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
@@ -107,7 +107,7 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
-        omlx_status: Arc<super::omlx_lifecycle::OmlxStatus>,
+        omlx_status: Arc<crate::local_llm::LlmStatus>,
         oracle_rx: super::process_oracle::OracleReceiver,
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
@@ -165,19 +165,16 @@ impl LiveSessionManager {
         manager.spawn_cleanup_task();
         manager.spawn_death_consumer(death_rx);
 
-        // Spawn oMLX lifecycle (health check)
-        tokio::spawn(super::omlx_lifecycle::run_lifecycle(omlx_status.clone()));
-
         // Spawn oMLX drain loop (replaces cadence-based scheduler)
-        let mut omlx_client = OmlxClient::new(
+        let mut llm_client = LlmClient::new(
             format!("http://localhost:{}", omlx_status.port),
             "Qwen3.5-4B-MLX-4bit".into(),
         )
         .with_ready_flag(omlx_status.ready.clone());
         if let Some(tx) = debug_omlx_tx {
-            omlx_client = omlx_client.with_debug_tx(tx);
+            llm_client = llm_client.with_debug_tx(tx);
         }
-        let client = Arc::new(omlx_client);
+        let client = Arc::new(llm_client);
         let drain_wake = Arc::new(tokio::sync::Notify::new());
         tokio::spawn(super::drain_loop::run_drain_loop(
             dirty_rx,

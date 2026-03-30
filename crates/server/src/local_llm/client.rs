@@ -1,4 +1,4 @@
-//! oMLX HTTP client for phase + scope classification.
+//! LLM HTTP client for phase + scope classification.
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-use super::SessionPhase;
+use claude_view_core::phase::SessionPhase;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
-/// After this many consecutive errors, signal omlx_ready=false
+/// After this many consecutive errors, signal llm_ready=false
 /// so the lifecycle re-probes with inference before resuming.
 const ERROR_THRESHOLD: u32 = 3;
 
@@ -62,14 +62,14 @@ pub struct ClassifyContext {
     pub tool_summary: String,
 }
 
-pub struct OmlxClient {
+pub struct LlmClient {
     http: Client,
     base_url: String,
     model: String,
     consecutive_errors: AtomicU32,
     /// Shared readiness flag — cleared on repeated errors so the lifecycle
     /// re-probes with inference. The drain loop gates on this same flag.
-    omlx_ready: Option<Arc<AtomicBool>>,
+    llm_ready: Option<Arc<AtomicBool>>,
     /// Optional debug channel — receives one JSON line per API call.
     debug_tx: Option<mpsc::Sender<String>>,
 }
@@ -109,7 +109,7 @@ struct ChatChoiceMessage {
     content: String,
 }
 
-impl OmlxClient {
+impl LlmClient {
     pub fn new(base_url: String, model: String) -> Self {
         Self {
             http: Client::builder()
@@ -120,7 +120,7 @@ impl OmlxClient {
             base_url,
             model,
             consecutive_errors: AtomicU32::new(0),
-            omlx_ready: None,
+            llm_ready: None,
             debug_tx: None,
         }
     }
@@ -129,7 +129,7 @@ impl OmlxClient {
     /// clears this flag so the lifecycle re-probes before the drain loop
     /// sends more requests.
     pub fn with_ready_flag(mut self, flag: Arc<AtomicBool>) -> Self {
-        self.omlx_ready = Some(flag);
+        self.llm_ready = Some(flag);
         self
     }
 
@@ -225,12 +225,12 @@ impl OmlxClient {
         }
     }
 
-    /// Track consecutive errors. After ERROR_THRESHOLD, clear omlx_ready
+    /// Track consecutive errors. After ERROR_THRESHOLD, clear llm_ready
     /// so the lifecycle re-probes with inference before the drain loop resumes.
     fn signal_error(&self) {
         let errors = self.consecutive_errors.fetch_add(1, Ordering::Relaxed) + 1;
         if errors >= ERROR_THRESHOLD {
-            if let Some(ref flag) = self.omlx_ready {
+            if let Some(ref flag) = self.llm_ready {
                 flag.store(false, Ordering::Release);
             }
             self.consecutive_errors.store(0, Ordering::Relaxed);
@@ -357,7 +357,7 @@ pub fn format_conversation(turns: &[ConversationTurn]) -> String {
     out
 }
 
-/// Format a `ClassifyContext` into the structured prompt sent to oMLX.
+/// Format a `ClassifyContext` into the structured prompt sent to the LLM.
 /// Includes session goal, activity signals, and recent conversation.
 pub fn format_context(ctx: &ClassifyContext) -> String {
     let mut out = String::with_capacity(6000);
@@ -520,5 +520,65 @@ mod tests {
         }];
         let formatted = format_conversation(&turns);
         assert!(!formatted.is_empty());
+    }
+
+    #[test]
+    fn pipeline_parse_and_stabilize() {
+        use claude_view_core::phase::stabilizer::ClassificationStabilizer;
+        use claude_view_core::phase::SessionPhase;
+
+        let mut stabilizer = ClassificationStabilizer::new();
+        let responses = [
+            r#"{"phase": "building", "scope": "auth system refactor"}"#,
+            r#"{"phase": "building", "scope": "auth system refactoring"}"#,
+            r#"{"phase": "building", "scope": "authentication refactor"}"#,
+        ];
+
+        for resp in &responses {
+            let (phase, scope) = parse_classify_response(resp).expect("valid JSON");
+            stabilizer.update(phase, scope);
+        }
+
+        assert!(stabilizer.should_emit());
+        assert_eq!(stabilizer.displayed_phase(), Some(SessionPhase::Building));
+        assert!(stabilizer.displayed_scope().is_some());
+    }
+
+    #[test]
+    fn format_conversation_round_trip() {
+        let turns = vec![
+            ConversationTurn {
+                role: Role::User,
+                text: "Fix the auth bug in login.ts".into(),
+                tools: vec![],
+            },
+            ConversationTurn {
+                role: Role::Assistant,
+                text: "Reading the file".into(),
+                tools: vec!["Read".into()],
+            },
+            ConversationTurn {
+                role: Role::Assistant,
+                text: "Found the issue".into(),
+                tools: vec!["Edit".into()],
+            },
+            ConversationTurn {
+                role: Role::User,
+                text: "Add a test too".into(),
+                tools: vec![],
+            },
+            ConversationTurn {
+                role: Role::Assistant,
+                text: "Writing test".into(),
+                tools: vec!["Write".into()],
+            },
+        ];
+
+        let formatted = format_conversation(&turns);
+        assert!(formatted.starts_with("User: Fix the auth bug"));
+        assert!(formatted.contains("---"));
+        assert!(formatted.contains("[tools: Read]"));
+        assert!(formatted.contains("[tools: Edit]"));
+        assert!(formatted.contains("Writing test"));
     }
 }

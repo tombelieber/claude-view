@@ -17,6 +17,7 @@ pub mod indexing_state;
 pub mod insights;
 pub mod jobs;
 pub mod live;
+pub mod local_llm;
 pub mod metrics;
 pub mod openapi;
 pub mod routes;
@@ -154,6 +155,10 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         } else {
             None
         },
+        local_llm: Arc::new(local_llm::LocalLlmService::new(
+            Arc::new(local_llm::LocalLlmConfig::new_disabled()),
+            Arc::new(local_llm::LlmStatus::new(10710)),
+        )),
     });
     api_routes(state)
 }
@@ -248,6 +253,10 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         } else {
             None
         },
+        local_llm: Arc::new(local_llm::LocalLlmService::new(
+            Arc::new(local_llm::LocalLlmConfig::new_disabled()),
+            Arc::new(local_llm::LlmStatus::new(10710)),
+        )),
     });
     api_routes(state)
 }
@@ -278,15 +287,21 @@ pub fn create_app_full(
     let teams = Arc::new(crate::teams::TeamsStore::load(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
-    // Create omlx_status before oracle (both need it).
+    // Create local LLM service before oracle (both need the status handle).
     let omlx_port: u16 = std::env::var("OMLX_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(10710);
-    let omlx_status = Arc::new(live::omlx_lifecycle::OmlxStatus::new(omlx_port));
+    let llm_config = Arc::new(local_llm::LocalLlmConfig::load());
+    let llm_status = Arc::new(local_llm::LlmStatus::new(omlx_port));
+    let local_llm_service = Arc::new(local_llm::LocalLlmService::new(
+        llm_config.clone(),
+        llm_status.clone(),
+    ));
+    local_llm_service.start_lifecycle();
 
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
-    let oracle_rx = live::process_oracle::start_oracle(sidecar.clone(), omlx_status.clone());
+    let oracle_rx = live::process_oracle::start_oracle(sidecar.clone(), llm_status.clone());
 
     // Create hook event channels before the manager so both manager and AppState share one instance.
     let hook_event_channels: std::sync::Arc<
@@ -299,9 +314,7 @@ pub fn create_app_full(
     > = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
     let debug_omlx_tx = if cfg!(debug_assertions) {
-        Some(
-            live::debug_log::DebugEventLog::new(".debug/omlx.jsonl").sender(),
-        )
+        Some(live::debug_log::DebugEventLog::new(".debug/omlx.jsonl").sender())
     } else {
         None
     };
@@ -313,7 +326,7 @@ pub fn create_app_full(
             registry.clone(),
             Some(sidecar.clone()),
             teams.clone(),
-            omlx_status.clone(),
+            llm_status.clone(),
             oracle_rx.clone(),
             hook_event_channels.clone(),
             debug_omlx_tx,
@@ -396,6 +409,7 @@ pub fn create_app_full(
         } else {
             None
         },
+        local_llm: local_llm_service.clone(),
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).
