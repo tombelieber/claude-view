@@ -3,7 +3,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -65,7 +65,9 @@ pub struct ClassifyContext {
 pub struct LlmClient {
     http: Client,
     base_url: String,
-    model: String,
+    /// Runtime model ID discovered by lifecycle from oMLX's `/v1/models`.
+    /// Read at request time — never frozen. When None, classify is a no-op.
+    discovered_model: Arc<RwLock<Option<String>>>,
     consecutive_errors: AtomicU32,
     /// Shared readiness flag — cleared on repeated errors so the lifecycle
     /// re-probes with inference. The drain loop gates on this same flag.
@@ -110,7 +112,7 @@ struct ChatChoiceMessage {
 }
 
 impl LlmClient {
-    pub fn new(base_url: String, model: String) -> Self {
+    pub fn new(base_url: String, discovered_model: Arc<RwLock<Option<String>>>) -> Self {
         Self {
             http: Client::builder()
                 .timeout(TIMEOUT)
@@ -118,11 +120,17 @@ impl LlmClient {
                 .build()
                 .expect("reqwest client"),
             base_url,
-            model,
+            discovered_model,
             consecutive_errors: AtomicU32::new(0),
             llm_ready: None,
             debug_tx: None,
         }
+    }
+
+    /// Read the current model ID from shared state. Returns None if oMLX
+    /// hasn't been discovered yet (lifecycle hasn't completed first probe).
+    fn model(&self) -> Option<String> {
+        self.discovered_model.read().unwrap().clone()
     }
 
     /// Attach the shared readiness flag. On repeated errors, the client
@@ -146,9 +154,10 @@ impl LlmClient {
         session_id: &str,
         generation: u64,
     ) -> Option<(SessionPhase, Option<String>)> {
+        let model = self.model()?; // No model discovered yet → skip
         let conversation = format_context(context);
         let req = ChatRequest {
-            model: self.model.clone(),
+            model,
             messages: vec![
                 ChatMessage {
                     role: "system".into(),
@@ -264,7 +273,7 @@ impl LlmClient {
             "ts": now,
             "session_id": session_id,
             "generation": generation,
-            "model": &self.model,
+            "model": self.model().unwrap_or_default(),
             "turns": turn_count,
             "temperature": temperature,
             "latency_ms": latency_ms,
