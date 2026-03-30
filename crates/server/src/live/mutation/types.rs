@@ -190,10 +190,6 @@ pub enum SideEffect {
         session_id: String,
         file_path: PathBuf,
     },
-    PersistClosedAt {
-        session_id: String,
-        closed_at: i64,
-    },
 }
 
 // ---------------------------------------------------------------------------
