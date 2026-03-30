@@ -93,6 +93,9 @@ pub struct LiveSessionManager {
     hook_event_channels: Arc<tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
     /// Shared coordinator for routing mutations through the 4-phase pipeline.
     coordinator: Arc<SessionCoordinator>,
+    /// Ephemeral recently-closed sessions — captured on reap, lost on restart.
+    /// Pure display buffer, not persisted anywhere.
+    recently_closed: LiveSessionMap,
 }
 
 impl LiveSessionManager {
@@ -117,12 +120,14 @@ impl LiveSessionManager {
     ) -> (
         Arc<Self>,
         LiveSessionMap,
+        LiveSessionMap,
         TranscriptMap,
         broadcast::Sender<SessionEvent>,
         Arc<SessionCoordinator>,
     ) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+        let recently_closed: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
 
         // Debounced snapshot writer channel
@@ -157,6 +162,7 @@ impl LiveSessionManager {
             dirty_tx,
             hook_event_channels,
             coordinator: coordinator.clone(),
+            recently_closed: recently_closed.clone(),
         });
 
         // Spawn background tasks
@@ -247,7 +253,7 @@ impl LiveSessionManager {
 
         info!("LiveSessionManager started with 6 background tasks (file watcher, reconciliation loop, cleanup, death watcher, relay client, db writer)");
 
-        (manager, sessions, transcript_to_session, tx, coordinator)
+        (manager, sessions, recently_closed, transcript_to_session, tx, coordinator)
     }
 
     /// Build a `MutationContext` from manager fields for coordinator calls.
