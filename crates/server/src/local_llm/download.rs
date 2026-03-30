@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 // ---- Public types ----
@@ -18,7 +19,11 @@ pub struct DownloadProgress {
     pub file_name: Option<String>,
     pub files_done: u32,
     pub files_total: u32,
+    pub speed_bytes_per_sec: Option<u64>,
+    pub eta_secs: Option<u64>,
     pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 // ---- Planning (pure, testable) ----
@@ -113,15 +118,47 @@ struct ProgressTracker {
     files_done: u32,
     files_total: u32,
     current_file: String,
+    started_at: Instant,
+    /// Exponential moving average of speed (bytes/sec), smoothed to avoid jitter.
+    ema_speed: f64,
 }
 
 impl ProgressTracker {
+    fn speed_and_eta(&self) -> (Option<u64>, Option<u64>) {
+        let speed = if self.ema_speed > 0.0 {
+            Some(self.ema_speed as u64)
+        } else {
+            None
+        };
+        let eta = if self.ema_speed > 100.0 && self.total_bytes > self.bytes_downloaded {
+            let remaining = self.total_bytes - self.bytes_downloaded;
+            Some((remaining as f64 / self.ema_speed) as u64)
+        } else {
+            None
+        };
+        (speed, eta)
+    }
+
+    fn update_speed(&mut self, chunk_bytes: u64, elapsed: Duration) {
+        let secs = elapsed.as_secs_f64();
+        if secs > 0.0 {
+            let instant_speed = chunk_bytes as f64 / secs;
+            // EMA with α=0.3 — responsive but smooth
+            if self.ema_speed == 0.0 {
+                self.ema_speed = instant_speed;
+            } else {
+                self.ema_speed = 0.3 * instant_speed + 0.7 * self.ema_speed;
+            }
+        }
+    }
+
     async fn report(&self) {
         let percent = if self.total_bytes > 0 {
             Some(self.bytes_downloaded as f32 / self.total_bytes as f32 * 100.0)
         } else {
             None
         };
+        let (speed, eta) = self.speed_and_eta();
         let _ = self
             .tx
             .send(DownloadProgress {
@@ -131,7 +168,10 @@ impl ProgressTracker {
                 file_name: Some(self.current_file.clone()),
                 files_done: self.files_done,
                 files_total: self.files_total,
+                speed_bytes_per_sec: speed,
+                eta_secs: eta,
                 done: false,
+                error: None,
             })
             .await;
     }
@@ -144,9 +184,30 @@ impl ProgressTracker {
                 total_bytes: Some(self.total_bytes),
                 percent: Some(100.0),
                 file_name: None,
+                files_done: self.files_total,
+                files_total: self.files_total,
+                speed_bytes_per_sec: None,
+                eta_secs: None,
+                done: true,
+                error: None,
+            })
+            .await;
+    }
+
+    async fn report_error(&self, error: String) {
+        let _ = self
+            .tx
+            .send(DownloadProgress {
+                bytes_downloaded: self.bytes_downloaded,
+                total_bytes: Some(self.total_bytes),
+                percent: None,
+                file_name: None,
                 files_done: self.files_done,
                 files_total: self.files_total,
+                speed_bytes_per_sec: None,
+                eta_secs: None,
                 done: true,
+                error: Some(error),
             })
             .await;
     }
@@ -156,11 +217,12 @@ impl ProgressTracker {
 
 /// Download an entire HuggingFace model repo to `model_dir`.
 /// Skips already-complete files, resumes partial downloads.
-/// Returns the number of files in the completed download.
+/// Cancellable via the provided token. Returns the number of files.
 pub async fn download_repo(
     hf_repo: &str,
     model_dir: &Path,
     tx: mpsc::Sender<DownloadProgress>,
+    cancel: CancellationToken,
 ) -> Result<u32, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(300))
@@ -224,10 +286,16 @@ pub async fn download_repo(
         files_done,
         files_total,
         current_file: String::new(),
+        started_at: Instant::now(),
+        ema_speed: 0.0,
     };
 
     // 3. Download each file
     for file in &files {
+        if cancel.is_cancelled() {
+            return Err("cancelled".into());
+        }
+
         if file.action == FileAction::Skip {
             continue;
         }
@@ -243,6 +311,10 @@ pub async fn download_repo(
         // Retry loop (3 attempts with exponential backoff)
         let mut attempt = 0u32;
         loop {
+            if cancel.is_cancelled() {
+                return Err("cancelled".into());
+            }
+
             // On retry, re-stat .partial to get actual offset (previous attempt may
             // have written bytes before failing).
             let from_byte = if attempt > 0 {
@@ -260,10 +332,12 @@ pub async fn download_repo(
                 &file.local_path,
                 from_byte,
                 &mut progress,
+                &cancel,
             )
             .await
             {
                 Ok(()) => break,
+                Err(e) if e == "cancelled" => return Err(e),
                 Err(e) if attempt < 3 && is_retryable(&e) => {
                     attempt += 1;
                     let delay = Duration::from_secs(1 << attempt);
@@ -288,6 +362,7 @@ async fn download_file(
     dest: &Path,
     from_byte: u64,
     progress: &mut ProgressTracker,
+    cancel: &CancellationToken,
 ) -> Result<(), String> {
     let partial = partial_path(dest);
 
@@ -322,16 +397,36 @@ async fn download_file(
     };
 
     let mut last_report = Instant::now();
-    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("read: {e}"))? {
-        file.write_all(&chunk)
-            .await
-            .map_err(|e| format!("write: {e}"))?;
-        progress.bytes_downloaded += chunk.len() as u64;
+    let mut chunk_bytes_since_report = 0u64;
 
-        // Throttle progress reports to ~4/sec
-        if last_report.elapsed() > Duration::from_millis(250) {
-            progress.report().await;
-            last_report = Instant::now();
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                drop(file);
+                return Err("cancelled".into());
+            }
+            chunk_result = resp.chunk() => {
+                match chunk_result.map_err(|e| format!("read: {e}"))? {
+                    Some(chunk) => {
+                        file.write_all(&chunk)
+                            .await
+                            .map_err(|e| format!("write: {e}"))?;
+                        let len = chunk.len() as u64;
+                        progress.bytes_downloaded += len;
+                        chunk_bytes_since_report += len;
+
+                        // Throttle progress reports to ~4/sec
+                        let elapsed = last_report.elapsed();
+                        if elapsed > Duration::from_millis(250) {
+                            progress.update_speed(chunk_bytes_since_report, elapsed);
+                            progress.report().await;
+                            chunk_bytes_since_report = 0;
+                            last_report = Instant::now();
+                        }
+                    }
+                    None => break,
+                }
+            }
         }
     }
     drop(file);

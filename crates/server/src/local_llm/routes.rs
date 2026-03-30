@@ -23,6 +23,7 @@ pub fn local_llm_routes() -> Router<Arc<AppState>> {
         .route("/disable", post(handle_disable))
         .route("/models", get(handle_models))
         .route("/switch", post(handle_switch))
+        .route("/cancel-download", post(handle_cancel_download))
 }
 
 async fn handle_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -89,4 +90,9 @@ async fn handle_switch(
         )
             .into_response(),
     }
+}
+
+async fn handle_cancel_download(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.local_llm.cancel_download();
+    Json(serde_json::json!({ "status": "cancelled" }))
 }

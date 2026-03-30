@@ -1,6 +1,7 @@
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use super::client::LlmClient;
@@ -16,6 +17,8 @@ pub struct LocalLlmService {
     pub config: Arc<LocalLlmConfig>,
     pub status: Arc<LlmStatus>,
     model_manager: ModelManager,
+    /// Active download cancellation handle (if a download is in progress).
+    active_download_cancel: Mutex<Option<CancellationToken>>,
 }
 
 impl LocalLlmService {
@@ -24,6 +27,7 @@ impl LocalLlmService {
             config,
             status,
             model_manager: ModelManager::new(),
+            active_download_cancel: Mutex::new(None),
         }
     }
 
@@ -60,7 +64,7 @@ impl LocalLlmService {
 
         let model = self.resolve_active_model();
         info!(model_id = model.id, "on-device AI enabled");
-        self.model_manager.ensure_model(model.id).await
+        self.start_download(model.id).await
     }
 
     /// Switch to a different model. Downloads if needed.
@@ -86,8 +90,28 @@ impl LocalLlmService {
             .map_err(|e| format!("failed to persist config: {e}"))?;
         info!(model_id, "model switched");
 
-        // Download if needed — lifecycle will pick up the new model on next poll
-        self.model_manager.ensure_model(model_id).await
+        self.start_download(model_id).await
+    }
+
+    /// Cancel any in-progress download.
+    pub fn cancel_download(&self) {
+        if let Some(cancel) = self.active_download_cancel.lock().unwrap().take() {
+            cancel.cancel();
+            info!("download cancelled by user");
+        }
+    }
+
+    async fn start_download(
+        &self,
+        model_id: &str,
+    ) -> Result<Option<tokio::sync::mpsc::Receiver<DownloadProgress>>, String> {
+        match self.model_manager.ensure_model(model_id).await? {
+            Some((rx, cancel)) => {
+                *self.active_download_cancel.lock().unwrap() = Some(cancel);
+                Ok(Some(rx))
+            }
+            None => Ok(None),
+        }
     }
 
     /// List all models with installed/active/can_run status.

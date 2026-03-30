@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Cpu, Loader2, Power, PowerOff } from 'lucide-react'
+import { ChevronDown, Cpu, Loader2, Power, PowerOff, X } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { cn } from '../lib/utils'
 
@@ -27,7 +27,10 @@ interface DownloadProgress {
   file_name: string | null
   files_done: number
   files_total: number
+  speed_bytes_per_sec: number | null
+  eta_secs: number | null
   done: boolean
+  error?: string | null
 }
 
 interface ModelInfo {
@@ -54,6 +57,55 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
 }
 
+/** Format speed as "XX.X MiB/s". */
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${bytesPerSec} B/s`
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KiB/s`
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MiB/s`
+}
+
+/** Format ETA as "Xm Ys" or "Xs". */
+function formatEta(secs: number): string {
+  if (secs < 60) return `${secs}s`
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return `${m}m ${s}s`
+}
+
+// ---------------------------------------------------------------------------
+// SSE reader — shared by enable + switch
+// ---------------------------------------------------------------------------
+
+async function readSseProgress(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  onProgress: (p: DownloadProgress) => void,
+) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  try {
+    while (!signal.aborted) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            onProgress(JSON.parse(line.slice(6)) as DownloadProgress)
+          } catch {
+            /* skip malformed */
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -64,6 +116,7 @@ export function OnDeviceAiCard() {
   const [isDisabling, setIsDisabling] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
   const [download, setDownload] = useState<DownloadProgress | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const { data: status } = useQuery<ServiceStatus>({
@@ -90,58 +143,53 @@ export function OnDeviceAiCard() {
     staleTime: 5000,
   })
 
+  const handleSseDownload = useCallback(
+    async (url: string, options?: RequestInit) => {
+      setDownload(null)
+      setDownloadError(null)
+      abortRef.current = new AbortController()
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: abortRef.current.signal,
+          ...options,
+        })
+        if (!res.ok) throw new Error('Request failed')
+
+        const contentType = res.headers.get('content-type') ?? ''
+        if (contentType.includes('text/event-stream') && res.body) {
+          await readSseProgress(res.body, abortRef.current.signal, (p) => {
+            if (p.error) {
+              setDownloadError(p.error)
+              setDownload(null)
+            } else if (p.done) {
+              setDownload(null)
+            } else {
+              setDownload(p)
+            }
+          })
+        }
+
+        queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
+        queryClient.invalidateQueries({ queryKey: ['local-llm-models'] })
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      } finally {
+        abortRef.current = null
+      }
+    },
+    [queryClient],
+  )
+
   const handleEnable = useCallback(async () => {
     setIsEnabling(true)
-    setDownload(null)
-    abortRef.current = new AbortController()
-
     try {
-      const res = await fetch('/api/local-llm/enable', {
-        method: 'POST',
-        signal: abortRef.current.signal,
-      })
-
-      if (!res.ok) throw new Error('Failed to enable local LLM')
-
-      const contentType = res.headers.get('content-type') ?? ''
-      if (contentType.includes('text/event-stream') && res.body) {
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buf = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buf += decoder.decode(value, { stream: true })
-
-          const lines = buf.split('\n')
-          buf = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const progress = JSON.parse(line.slice(6)) as DownloadProgress
-                setDownload(progress)
-                if (progress.done) {
-                  setDownload(null)
-                }
-              } catch {
-                // skip malformed SSE lines
-              }
-            }
-          }
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      // silently fail — status poll will reflect reality
+      await handleSseDownload('/api/local-llm/enable')
     } finally {
       setIsEnabling(false)
-      abortRef.current = null
     }
-  }, [queryClient])
+  }, [handleSseDownload])
 
   const handleDisable = useCallback(async () => {
     setIsDisabling(true)
@@ -159,61 +207,28 @@ export function OnDeviceAiCard() {
   const handleSwitch = useCallback(
     async (modelId: string) => {
       setIsSwitching(true)
-      setDownload(null)
-      abortRef.current = new AbortController()
-
       try {
-        const res = await fetch('/api/local-llm/switch', {
-          method: 'POST',
+        await handleSseDownload('/api/local-llm/switch', {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ model_id: modelId }),
-          signal: abortRef.current.signal,
         })
-
-        if (!res.ok) throw new Error('Failed to switch model')
-
-        const contentType = res.headers.get('content-type') ?? ''
-        if (contentType.includes('text/event-stream') && res.body) {
-          const reader = res.body.getReader()
-          const decoder = new TextDecoder()
-          let buf = ''
-
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            buf += decoder.decode(value, { stream: true })
-
-            const lines = buf.split('\n')
-            buf = lines.pop() ?? ''
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const progress = JSON.parse(line.slice(6)) as DownloadProgress
-                  setDownload(progress)
-                  if (progress.done) setDownload(null)
-                } catch {
-                  /* skip malformed */
-                }
-              }
-            }
-          }
-        }
-
-        queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
-        queryClient.invalidateQueries({ queryKey: ['local-llm-models'] })
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
       } finally {
         setIsSwitching(false)
-        abortRef.current = null
       }
     },
-    [queryClient],
+    [handleSseDownload],
   )
+
+  const handleCancel = useCallback(async () => {
+    abortRef.current?.abort()
+    await fetch('/api/local-llm/cancel-download', { method: 'POST' }).catch(() => {})
+    setDownload(null)
+    setDownloadError(null)
+  }, [])
 
   const isRunning = status?.llm.state === 'running'
   const isStarting = status?.enabled && !isRunning && !download
+  const isDownloading = download != null && !download.done
   const busy = isEnabling || isDisabling || isSwitching
 
   return (
@@ -280,7 +295,7 @@ export function OnDeviceAiCard() {
           </div>
         )}
 
-        {/* Model selector — only visible when enabled and multiple models exist */}
+        {/* Model selector */}
         {status?.enabled && models && models.length > 1 && (
           <div className="mb-4">
             <label
@@ -294,7 +309,7 @@ export function OnDeviceAiCard() {
                 id="local-llm-model-select"
                 value={status.active_model_id}
                 onChange={(e) => handleSwitch(e.target.value)}
-                disabled={busy}
+                disabled={busy || isDownloading}
                 className={cn(
                   'w-full appearance-none rounded-md border px-3 py-2 pr-8 text-sm',
                   'bg-white dark:bg-gray-800',
@@ -326,33 +341,77 @@ export function OnDeviceAiCard() {
         )}
 
         {/* Download progress */}
-        {download && !download.done && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300 mb-1">
-              <span>
+        {isDownloading && (
+          <div className="mb-4 rounded-md border border-gray-200 dark:border-gray-700 p-3">
+            {/* Header row: file info + cancel */}
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-700 dark:text-gray-200 font-medium truncate mr-2">
                 {download.file_name
-                  ? `Downloading ${download.file_name} (${download.files_done + 1}/${download.files_total})`
-                  : 'Downloading model...'}
+                  ? `${download.file_name}`
+                  : 'Preparing download...'}
               </span>
-              <span className="tabular-nums">
-                {download.percent != null
-                  ? `${download.percent.toFixed(1)}%`
-                  : formatBytes(download.bytes_downloaded)}
-              </span>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
+                title="Cancel download"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+
+            {/* Progress bar */}
+            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
               <div
                 className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
                 style={{
-                  width: download.percent != null ? `${download.percent}%` : '0%',
+                  width: download.percent != null ? `${Math.min(download.percent, 100)}%` : '0%',
                 }}
               />
             </div>
-            {download.total_bytes != null && (
-              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 tabular-nums">
-                {formatBytes(download.bytes_downloaded)} / {formatBytes(download.total_bytes)}
+
+            {/* Stats row: percent | speed | ETA | file count */}
+            <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+              <div className="flex items-center gap-3">
+                {download.percent != null && (
+                  <span>{download.percent.toFixed(1)}%</span>
+                )}
+                {download.total_bytes != null && (
+                  <span>
+                    {formatBytes(download.bytes_downloaded)} / {formatBytes(download.total_bytes)}
+                  </span>
+                )}
               </div>
-            )}
+              <div className="flex items-center gap-3">
+                {download.speed_bytes_per_sec != null && download.speed_bytes_per_sec > 0 && (
+                  <span>{formatSpeed(download.speed_bytes_per_sec)}</span>
+                )}
+                {download.eta_secs != null && download.eta_secs > 0 && (
+                  <span>{formatEta(download.eta_secs)} left</span>
+                )}
+                {download.files_total > 1 && (
+                  <span>
+                    {download.files_done + 1}/{download.files_total} files
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Download error */}
+        {downloadError && (
+          <div className="mb-4 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 p-3">
+            <p className="text-sm text-red-600 dark:text-red-400">
+              Download failed: {downloadError}
+            </p>
+            <button
+              type="button"
+              onClick={() => setDownloadError(null)}
+              className="mt-2 text-xs text-red-500 dark:text-red-400 underline cursor-pointer"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -386,7 +445,7 @@ export function OnDeviceAiCard() {
           <button
             type="button"
             onClick={handleDisable}
-            disabled={busy}
+            disabled={busy || isDownloading}
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
               'transition-colors duration-150',
