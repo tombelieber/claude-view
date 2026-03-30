@@ -1,3 +1,4 @@
+import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useBlockSocket } from '../../hooks/use-block-socket'
@@ -79,11 +80,13 @@ export function SubAgentBlockView({
             {connectionState === 'error' ? 'Failed to load sub-agent content' : 'No messages yet'}
           </div>
         ) : (
-          <ConversationThread
-            blocks={blocks}
-            renderers={registry}
-            filterBar={displayMode === 'developer'}
-          />
+          <ErrorBoundary>
+            <ConversationThread
+              blocks={blocks}
+              renderers={registry}
+              filterBar={displayMode === 'developer'}
+            />
+          </ErrorBoundary>
         )}
       </div>
     </div>

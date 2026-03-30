@@ -3,7 +3,27 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import type { PaginatedMessages } from '../types/generated'
 import { HttpError, isNotFoundError } from './use-session'
 
-const PAGE_SIZE = 100
+export const PAGE_SIZE = 50
+
+/** Compute the initial page size: load all if small, cap to 60% for large sessions.
+ *  Exported for testing. */
+export function computeInitialPage(total: number): { offset: number; size: number } {
+  const maxInitial = Math.floor(total * 0.6)
+  const size = total <= PAGE_SIZE ? total : Math.min(PAGE_SIZE, maxInitial)
+  const offset = Math.max(0, total - size)
+  return { offset, size }
+}
+
+/** Compute the previous page params with clamped limit to prevent overlap.
+ *  Returns undefined when already at the beginning. Exported for testing. */
+export function computePreviousPage(
+  currentOffset: number,
+): { offset: number; limit: number } | undefined {
+  if (currentOffset === 0) return undefined
+  const prevOffset = Math.max(0, currentOffset - PAGE_SIZE)
+  const limit = currentOffset - prevOffset
+  return { offset: prevOffset, limit }
+}
 
 export interface PaginatedBlocks {
   blocks: ConversationBlock[]
@@ -60,23 +80,30 @@ export function useSessionMessages(sessionId: string | null, options?: UseSessio
       if (!sessionId) throw new Error('sessionId is required')
 
       if (pageParam === -1) {
-        // Initial load: probe for total, then fetch the last PAGE_SIZE messages.
+        // Initial load: probe for total, then fetch the tail.
         const probe = await fetchMessages(sessionId, 0, 1, raw, suppressNotFound, format)
         const total = 'total' in probe ? probe.total : 0
-        const tailOffset = Math.max(0, total - PAGE_SIZE)
-        return fetchMessages(sessionId, tailOffset, PAGE_SIZE, raw, suppressNotFound, format)
+        const { offset: tailOffset, size: initialSize } = computeInitialPage(total)
+        return fetchMessages(sessionId, tailOffset, initialSize, raw, suppressNotFound, format)
+      }
+
+      // Previous page: { offset, limit } with clamped limit to avoid overlap
+      if (typeof pageParam === 'object' && pageParam !== null) {
+        return fetchMessages(
+          sessionId,
+          pageParam.offset,
+          pageParam.limit,
+          raw,
+          suppressNotFound,
+          format,
+        )
       }
 
       return fetchMessages(sessionId, pageParam, PAGE_SIZE, raw, suppressNotFound, format)
     },
-    initialPageParam: -1 as number,
+    initialPageParam: -1 as number | { offset: number; limit: number },
     getNextPageParam: () => undefined, // No downward pagination needed — already at the end
-    getPreviousPageParam: (firstPage) => {
-      // Load older messages (lower offsets) when scrolling up
-      if (firstPage.offset === 0) return undefined // Already at the beginning
-      const prevOffset = Math.max(0, firstPage.offset - PAGE_SIZE)
-      return prevOffset
-    },
+    getPreviousPageParam: (firstPage) => computePreviousPage(firstPage.offset),
     enabled: options?.enabled ?? !!sessionId,
     staleTime: 30_000,
     retry: options?.retry ?? ((_, error) => !isNotFoundError(error)),

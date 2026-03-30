@@ -38,6 +38,7 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
+import { ErrorBoundary } from '../ErrorBoundary'
 import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
@@ -765,25 +766,27 @@ export function SessionDetailPanel({
         {/* ---- Chat tab (conversation thread with mode toggle) ---- */}
         {activeTab === 'chat' && (
           <div className="flex flex-col h-full overflow-hidden min-h-0">
-            <ConversationActionsProvider
-              actions={{
-                retryMessage: convActions.retryMessage,
-                respondPermission: convActions.respondPermission,
-                answerQuestion: convActions.answerQuestion,
-                approvePlan: convActions.approvePlan,
-                submitElicitation: convActions.submitElicitation,
-              }}
-            >
-              <ConversationThread
-                blocks={convBlocks}
-                renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
-                filterBar={displayMode === 'developer'}
-                compact
-                onStartReached={convHistory.fetchOlderMessages}
-                isFetchingOlder={convHistory.isFetchingOlder}
-                hasOlderMessages={convHistory.hasOlderMessages}
-              />
-            </ConversationActionsProvider>
+            <ErrorBoundary>
+              <ConversationActionsProvider
+                actions={{
+                  retryMessage: convActions.retryMessage,
+                  respondPermission: convActions.respondPermission,
+                  answerQuestion: convActions.answerQuestion,
+                  approvePlan: convActions.approvePlan,
+                  submitElicitation: convActions.submitElicitation,
+                }}
+              >
+                <ConversationThread
+                  blocks={convBlocks}
+                  renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
+                  filterBar={displayMode === 'developer'}
+                  compact
+                  onStartReached={convHistory.fetchOlderMessages}
+                  isFetchingOlder={convHistory.isFetchingOlder}
+                  hasOlderMessages={convHistory.hasOlderMessages}
+                />
+              </ConversationActionsProvider>
+            </ErrorBoundary>
           </div>
         )}
 
