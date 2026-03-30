@@ -2,6 +2,7 @@ pub mod client;
 mod config;
 mod lifecycle;
 mod model_manager;
+mod registry;
 mod routes;
 mod service;
 mod status;
