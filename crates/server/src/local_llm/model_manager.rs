@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::download::{self, DownloadProgress};
@@ -45,12 +46,12 @@ impl ModelManager {
 
     /// Ensure a model is present. Returns:
     /// - `Ok(None)` — model already downloaded, no action needed.
-    /// - `Ok(Some(rx))` — download started, receiver streams progress.
+    /// - `Ok(Some((rx, cancel)))` — download started with progress stream + cancel handle.
     /// - `Err(msg)` — setup failure.
     pub async fn ensure_model(
         &self,
         model_id: &str,
-    ) -> Result<Option<mpsc::Receiver<DownloadProgress>>, String> {
+    ) -> Result<Option<(mpsc::Receiver<DownloadProgress>, CancellationToken)>, String> {
         if self.is_downloaded(model_id) {
             info!(model_id, "model already present");
             return Ok(None);
@@ -60,6 +61,8 @@ impl ModelManager {
             registry::find_model(model_id).ok_or_else(|| format!("unknown model: {model_id}"))?;
 
         let (tx, rx) = mpsc::channel::<DownloadProgress>(32);
+        let cancel = CancellationToken::new();
+        let cancel_clone = cancel.clone();
         let model_dir = self.model_dir(model_id);
         let hf_repo = entry.hf_repo.to_string();
         let inventory_path = self.inventory_path.clone();
@@ -67,9 +70,8 @@ impl ModelManager {
         let entry_size = entry.size_bytes;
 
         tokio::spawn(async move {
-            match download::download_repo(&hf_repo, &model_dir, tx.clone()).await {
+            match download::download_repo(&hf_repo, &model_dir, tx.clone(), cancel_clone).await {
                 Ok(file_count) => {
-                    // Update inventory on disk
                     let mut inv = inventory::load(&inventory_path);
                     inv.downloaded.insert(
                         entry_id,
@@ -88,6 +90,9 @@ impl ModelManager {
                     }
                     info!(file_count, "model download complete");
                 }
+                Err(e) if e == "cancelled" => {
+                    info!("model download cancelled by user");
+                }
                 Err(e) => {
                     warn!(%e, "model download failed");
                     let _ = tx
@@ -98,14 +103,17 @@ impl ModelManager {
                             file_name: None,
                             files_done: 0,
                             files_total: 0,
+                            speed_bytes_per_sec: None,
+                            eta_secs: None,
                             done: true,
+                            error: Some(e),
                         })
                         .await;
                 }
             }
         });
 
-        Ok(Some(rx))
+        Ok(Some((rx, cancel)))
     }
 }
 
