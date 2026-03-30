@@ -11,7 +11,7 @@ mod status;
 
 pub use config::LocalLlmConfig;
 pub use download::DownloadProgress;
-pub use lifecycle::{run_lifecycle, ProcessMode, EXPECTED_MODEL_SUBSTRING};
+pub use lifecycle::{run_lifecycle, ProcessMode};
 pub use model_manager::ModelManager;
 pub use registry::{ModelEntry, REGISTRY};
 pub use routes::local_llm_routes;
