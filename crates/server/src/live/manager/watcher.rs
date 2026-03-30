@@ -87,9 +87,6 @@ impl LiveSessionManager {
             // 3. Promote sessions from crash-recovery snapshot
             manager.promote_from_snapshot(&initial_paths).await;
 
-            // 4. Load recently-closed sessions from SQLite
-            manager.restore_closed_sessions(&initial_paths).await;
-
             // Start the file system watcher
             let (file_tx, mut file_rx) = mpsc::channel::<FileEvent>(512);
             let (_watcher, dropped_events) = match start_watcher(file_tx) {
@@ -234,8 +231,7 @@ impl LiveSessionManager {
         }
     }
 
-    // promote_from_snapshot, dedup_snapshot_pids, restore_closed_sessions
-    // are in startup.rs
+    // promote_from_snapshot, dedup_snapshot_pids are in startup.rs
 
     /// Core JSONL processing logic for a single session file.
     ///
