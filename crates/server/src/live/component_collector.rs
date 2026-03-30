@@ -79,7 +79,9 @@ pub fn collect(
             None
         },
         details: ComponentDetails::Omlx {
-            model_id: crate::local_llm::EXPECTED_MODEL_SUBSTRING.into(),
+            model_id: crate::local_llm::registry::default_model()
+                .model_id_substring
+                .into(),
             port: omlx_status.port,
             healthy: omlx_healthy,
         },
