@@ -320,7 +320,13 @@ pub fn create_app_full(
     } else {
         None
     };
-    let llm_client = Arc::new(local_llm_service.client("Qwen3.5-4B-MLX-4bit".into(), debug_llm_tx));
+    let active_model = llm_config
+        .active_model()
+        .and_then(|id| local_llm::registry::find_model(&id))
+        .unwrap_or_else(local_llm::registry::default_model);
+    let llm_client = Arc::new(
+        local_llm_service.client(active_model.model_id_substring.to_string(), debug_llm_tx),
+    );
     let (manager, live_sessions, recently_closed, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
