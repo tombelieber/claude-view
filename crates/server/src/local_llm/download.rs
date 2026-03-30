@@ -232,7 +232,7 @@ pub async fn download_repo(
             continue;
         }
 
-        let from_byte = match &file.action {
+        let initial_from_byte = match &file.action {
             FileAction::Resume { from_byte } => *from_byte,
             _ => 0,
         };
@@ -243,6 +243,17 @@ pub async fn download_repo(
         // Retry loop (3 attempts with exponential backoff)
         let mut attempt = 0u32;
         loop {
+            // On retry, re-stat .partial to get actual offset (previous attempt may
+            // have written bytes before failing).
+            let from_byte = if attempt > 0 {
+                partial_path(&file.local_path)
+                    .metadata()
+                    .map(|m| m.len())
+                    .unwrap_or(0)
+            } else {
+                initial_from_byte
+            };
+
             match download_file(
                 &client,
                 &file.url,

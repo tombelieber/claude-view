@@ -52,8 +52,12 @@ async fn handle_enable(State(state): State<Arc<AppState>>) -> impl IntoResponse 
 
 async fn handle_disable(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.local_llm.disable() {
-        Ok(()) => Json(serde_json::json!({ "status": "disabled" })),
-        Err(e) => Json(serde_json::json!({ "error": e })),
+        Ok(()) => Json(serde_json::json!({ "status": "disabled" })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
     }
 }
 
