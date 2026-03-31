@@ -39,6 +39,11 @@ impl ModelManager {
         inv.downloaded.contains_key(model_id)
     }
 
+    /// Path to the models directory (used by process spawner).
+    pub fn models_dir(&self) -> &std::path::Path {
+        &self.models_dir
+    }
+
     /// Return the directory path for a given model.
     pub fn model_dir(&self, model_id: &str) -> PathBuf {
         self.models_dir.join(model_id)
