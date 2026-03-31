@@ -22,7 +22,7 @@ const TIP =
 const ARROW = 'fill-gray-200 dark:fill-gray-700'
 
 const PILL =
-  'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium cursor-default transition-colors duration-200'
+  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium cursor-default transition-colors duration-200'
 
 const STATUS_STYLE = {
   running: `${PILL} bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300`,

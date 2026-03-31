@@ -72,7 +72,7 @@ export function SourceBadge({ source, size = 'sm' }: SourceBadgeProps) {
   if (source.category === 'agent_sdk') {
     return (
       <span
-        className={`inline-flex items-center gap-0.5 ${textClass} font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1 leading-3.5 shrink-0`}
+        className={`inline-flex items-center gap-1 ${textClass} font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1.5 py-0.5 shrink-0`}
         title="Started from this app — you can send prompts and interact directly"
       >
         <Zap size={iconSize} />
@@ -89,7 +89,7 @@ export function SourceBadge({ source, size = 'sm' }: SourceBadgeProps) {
 
     return (
       <span
-        className={`inline-flex items-center gap-0.5 ${textClass} font-semibold bg-gray-100 dark:bg-gray-800 rounded px-1 leading-3.5 shrink-0`}
+        className={`inline-flex items-center gap-1 ${textClass} font-semibold bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 shrink-0`}
         style={{ color: brandColor }}
         title={`Launched from ${label} extension`}
       >

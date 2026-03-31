@@ -15,7 +15,7 @@ interface SessionBadgesProps {
 }
 
 const PILL =
-  'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors duration-200 cursor-default'
+  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium transition-colors duration-200 cursor-default'
 
 const STYLE = {
   vim: `${PILL} font-mono bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300`,
