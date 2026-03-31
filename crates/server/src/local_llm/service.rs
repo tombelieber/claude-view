@@ -193,7 +193,7 @@ impl LocalLlmService {
                 min_ram_gb: entry.min_ram_gb,
                 installed: self.model_manager.is_downloaded(entry.id),
                 active: entry.id == active_id,
-                can_run: ram.map_or(true, |gb| gb >= entry.min_ram_gb as u64),
+                can_run: ram.is_none_or(|gb| gb >= entry.min_ram_gb as u64),
             })
             .collect()
     }
