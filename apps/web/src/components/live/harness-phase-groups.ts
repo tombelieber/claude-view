@@ -30,8 +30,11 @@ export const PHASE_GROUPS = [
 
 export function getSessionPhase(session: LiveSession): DisplayPhase {
   const phase = session.phase?.current?.phase
-  if (!phase || phase === 'working') return 'building'
-  return phase
+  if (phase && phase !== 'working') return phase
+  // Low confidence — fall back to last confident phase, then dominant, then building
+  const dominant = session.phase?.dominant
+  if (dominant && dominant !== 'working') return dominant
+  return 'building'
 }
 
 export function isDesignPhase(phase: string): boolean {
