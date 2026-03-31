@@ -58,7 +58,14 @@ function HelpMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: (p
     {
       icon: <Keyboard className="w-4 h-4" />,
       label: 'Keyboard Shortcuts',
-      onClick: () => { onNavigate('/settings'); onClose() },
+      onClick: () => {
+        onNavigate('/settings')
+        onClose()
+        // Defer scroll until Settings page mounts
+        setTimeout(() => {
+          document.getElementById('keyboard-shortcuts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      },
     },
     {
       icon: <Tag className="w-4 h-4" />,
