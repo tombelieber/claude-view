@@ -283,7 +283,7 @@ pub fn create_app_full(
     prompt_stats: PromptStatsHolder,
     prompt_templates: PromptTemplatesHolder,
     telemetry: Option<telemetry::TelemetryClient>,
-) -> Router {
+) -> (Router, Arc<local_llm::LocalLlmService>) {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let pricing = Arc::new(claude_view_core::pricing::load_pricing());
     let teams = Arc::new(crate::teams::TeamsStore::load(
@@ -456,7 +456,7 @@ pub fn create_app_full(
         app = app.fallback_service(ServeDir::new(&dir).fallback(ServeFile::new(&index)));
     }
 
-    app
+    (app, local_llm_service)
 }
 
 /// Register Claude Code hooks for the given port.
