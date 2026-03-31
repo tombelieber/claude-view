@@ -6,6 +6,13 @@
   "type": "module",
   "files": [".claude-plugin/", ".mcp.json", "skills/", "hooks/", "dist/", "README.md"],
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "codegen": "bun run scripts/codegen-from-openapi.ts",
     "gen:skills": "bun run scripts/gen-skill-docs.ts",

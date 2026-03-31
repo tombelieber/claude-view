@@ -67,7 +67,12 @@ jobs:
             echo "::error::Tag version ($TAG_VERSION) != Cargo.toml version ($CARGO_VERSION)"
             exit 1
           fi
-          echo "Version verified: $TAG_VERSION (npm + cargo)"
+          PLUGIN_VERSION=$(node -p "require('./packages/plugin/.claude-plugin/plugin.json').version")
+          if [ "$TAG_VERSION" != "$PLUGIN_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) != plugin.json version ($PLUGIN_VERSION)"
+            exit 1
+          fi
+          echo "Version verified: $TAG_VERSION (npm + cargo + plugin)"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3  # v2.1.2
