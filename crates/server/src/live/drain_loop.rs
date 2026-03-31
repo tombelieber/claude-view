@@ -9,8 +9,8 @@
 //! 2. **Lifecycle gate:** NeedsYou sessions get ONE final classify then freeze.
 //!    Only Running (Autonomous) sessions actively classify.
 //!
-//! Auto-tune: budget cap scales with probe latency × session count so weaker
-//! hardware (M1) doesn't saturate. User `ClassifyMode` applies a multiplier.
+//! User `ClassifyMode` applies a budget multiplier (0.5x/1.0x/2.0x).
+//! `avg_latency_ms` EMA is tracked for future auto-tune (not yet used).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -80,13 +80,13 @@ impl DirtyEntry {
     }
 
     /// Called when a classify result arrives. Adjusts budget based on phase stability.
-    fn record_result(&mut self, phase: SessionPhase, mode_multiplier: f32) {
+    /// Stores RAW budget — mode_multiplier is applied at check time in is_idle_ready_with_mode.
+    fn record_result(&mut self, phase: SessionPhase) {
         if self.last_phase == Some(phase) {
             // Same phase → exponential backoff
             self.consecutive_same += 1;
             let raw = BASE_BUDGET_SECS.saturating_mul(1 << self.consecutive_same.min(6));
-            let scaled = (raw as f32 * mode_multiplier) as u64;
-            self.current_budget = Duration::from_secs(scaled.min(MAX_BUDGET_SECS));
+            self.current_budget = Duration::from_secs(raw.min(MAX_BUDGET_SECS));
         } else {
             // Phase changed → reset to base
             self.consecutive_same = 0;
@@ -159,7 +159,7 @@ impl DrainState {
 
             if success {
                 if let Some(phase) = phase {
-                    entry.record_result(phase, self.mode_multiplier);
+                    entry.record_result(phase);
                 }
             } else {
                 entry.last_activity_at = Instant::now();
@@ -175,6 +175,7 @@ impl DrainState {
         }
     }
 
+    #[expect(dead_code, reason = "reserved for non-mode-multiplied callers")]
     fn is_idle_ready(entry: &DirtyEntry, now: Instant, bp: f32) -> bool {
         Self::is_idle_ready_with_mode(entry, now, bp, 1.0)
     }
@@ -188,9 +189,8 @@ impl DrainState {
             return false;
         }
         if let Some(last) = entry.last_served_at {
-            let effective_budget = Duration::from_secs_f32(
-                entry.current_budget.as_secs_f32() * mode_mult,
-            );
+            let effective_budget =
+                Duration::from_secs_f32(entry.current_budget.as_secs_f32() * mode_mult);
             if now.duration_since(last) < effective_budget {
                 return false;
             }
@@ -253,7 +253,10 @@ impl DrainState {
             let Some(session_id) = candidate else { break };
 
             // Lifecycle gate: check if this session should be skipped
-            if self.should_skip_for_lifecycle(&session_id, self.dirty.get(&session_id).unwrap()).await {
+            if self
+                .should_skip_for_lifecycle(&session_id, self.dirty.get(&session_id).unwrap())
+                .await
+            {
                 self.dirty.remove(&session_id);
                 continue;
             }
@@ -336,7 +339,7 @@ impl DrainState {
                 && session.jsonl.phase.current.is_some()
                 && session.jsonl.phase.freshness != PhaseFreshness::Settled
             {
-                if self.dirty.get(sid).map_or(false, |e| e.in_flight) {
+                if self.dirty.get(sid).is_some_and(|e| e.in_flight) {
                     continue;
                 }
                 session.jsonl.phase.freshness = PhaseFreshness::Settled;
@@ -521,13 +524,19 @@ mod tests {
             has_user_turn_signal: false,
         };
 
-        entry.record_result(SessionPhase::Building, 1.0);
+        entry.record_result(SessionPhase::Building);
         assert_eq!(entry.consecutive_same, 1);
-        assert_eq!(entry.current_budget, Duration::from_secs(BASE_BUDGET_SECS * 2));
+        assert_eq!(
+            entry.current_budget,
+            Duration::from_secs(BASE_BUDGET_SECS * 2)
+        );
 
-        entry.record_result(SessionPhase::Building, 1.0);
+        entry.record_result(SessionPhase::Building);
         assert_eq!(entry.consecutive_same, 2);
-        assert_eq!(entry.current_budget, Duration::from_secs(BASE_BUDGET_SECS * 4));
+        assert_eq!(
+            entry.current_budget,
+            Duration::from_secs(BASE_BUDGET_SECS * 4)
+        );
     }
 
     #[test]
@@ -543,7 +552,7 @@ mod tests {
             has_user_turn_signal: false,
         };
 
-        entry.record_result(SessionPhase::Testing, 1.0);
+        entry.record_result(SessionPhase::Testing);
         assert_eq!(entry.consecutive_same, 0);
         assert_eq!(entry.current_budget, Duration::from_secs(BASE_BUDGET_SECS));
     }
@@ -562,7 +571,7 @@ mod tests {
         };
 
         for _ in 0..20 {
-            entry.record_result(SessionPhase::Building, 1.0);
+            entry.record_result(SessionPhase::Building);
         }
         assert_eq!(entry.current_budget, Duration::from_secs(MAX_BUDGET_SECS));
     }
@@ -600,9 +609,19 @@ mod tests {
         };
 
         // With multiplier 2.0 (efficient mode), budget = 10s, only 8s elapsed → not ready
-        assert!(!DrainState::is_idle_ready_with_mode(&entry, Instant::now(), 1.0, 2.0));
+        assert!(!DrainState::is_idle_ready_with_mode(
+            &entry,
+            Instant::now(),
+            1.0,
+            2.0
+        ));
 
         // With multiplier 0.5 (realtime mode), budget = 2.5s, 8s elapsed → ready
-        assert!(DrainState::is_idle_ready_with_mode(&entry, Instant::now(), 1.0, 0.5));
+        assert!(DrainState::is_idle_ready_with_mode(
+            &entry,
+            Instant::now(),
+            1.0,
+            0.5
+        ));
     }
 }
