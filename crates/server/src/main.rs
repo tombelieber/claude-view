@@ -545,7 +545,7 @@ async fn main() -> Result<()> {
 
     // Ping CF Worker for unified install tracking (fire-and-forget).
     // All install paths (plugin, npx, install.sh) converge to one dashboard.
-    ping_install_beacon(&install_source);
+    ping_install_beacon(install_source);
 
     // Step 6: Resolve the claude dir for indexing
     let claude_dir = dirs::home_dir()
