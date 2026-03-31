@@ -33,7 +33,7 @@ use tracing::info;
 
 use crate::local_llm::client::LlmClient;
 use claude_view_core::live_parser::TailFinders;
-use claude_view_core::phase::scheduler::{ClassifyResult, Priority};
+use claude_view_core::phase::scheduler::ClassifyResult;
 use claude_view_core::phase::{
     dominant_phase, PhaseFreshness, PhaseHistory, PhaseLabel, SessionPhase, MAX_PHASE_LABELS,
 };
@@ -88,7 +88,7 @@ pub struct LiveSessionManager {
     /// Event-driven process death watcher (kqueue on macOS).
     _death_watcher: super::process_death::ProcessDeathWatcher,
     /// Channel to mark sessions dirty for the drain loop classifier.
-    dirty_tx: mpsc::Sender<(String, Priority)>,
+    dirty_tx: mpsc::Sender<super::drain_loop::DirtySignal>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
     hook_event_channels: Arc<tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
     /// Shared coordinator for routing mutations through the 4-phase pipeline.
@@ -112,6 +112,7 @@ impl LiveSessionManager {
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
         llm_status: Arc<crate::local_llm::LlmStatus>,
+        llm_config: Arc<crate::local_llm::LocalLlmConfig>,
         llm_client: Arc<LlmClient>,
         oracle_rx: super::process_oracle::OracleReceiver,
         hook_event_channels: Arc<
@@ -137,7 +138,7 @@ impl LiveSessionManager {
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
         // LLM phase classifier infrastructure (llm_client injected from caller)
-        let (dirty_tx, dirty_rx) = mpsc::channel::<(String, Priority)>(256);
+        let (dirty_tx, dirty_rx) = mpsc::channel::<super::drain_loop::DirtySignal>(256);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
 
         // Create shared coordinator
@@ -173,6 +174,7 @@ impl LiveSessionManager {
 
         // Spawn LLM drain loop (replaces cadence-based scheduler)
         let drain_wake = Arc::new(tokio::sync::Notify::new());
+        let mode_multiplier = llm_config.classify_mode().budget_multiplier();
         tokio::spawn(super::drain_loop::run_drain_loop(
             dirty_rx,
             result_tx,
@@ -182,6 +184,7 @@ impl LiveSessionManager {
             drain_wake,
             manager.sessions.clone(),
             manager.tx.clone(),
+            mode_multiplier,
         ));
 
         // Spawn classify result handler
@@ -253,7 +256,14 @@ impl LiveSessionManager {
 
         info!("LiveSessionManager started with 6 background tasks (file watcher, reconciliation loop, cleanup, death watcher, relay client, db writer)");
 
-        (manager, sessions, recently_closed, transcript_to_session, tx, coordinator)
+        (
+            manager,
+            sessions,
+            recently_closed,
+            transcript_to_session,
+            tx,
+            coordinator,
+        )
     }
 
     /// Build a `MutationContext` from manager fields for coordinator calls.
