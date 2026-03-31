@@ -235,6 +235,7 @@ impl LocalLlmService {
             model_size_bytes: Some(active.size_bytes),
             active_model_id: active.id.to_string(),
             mode,
+            omlx_available: omlx_binary::detect().is_some(),
         }
     }
 
@@ -262,6 +263,8 @@ pub struct ServiceStatus {
     pub model_size_bytes: Option<u64>,
     pub active_model_id: String,
     pub mode: &'static str,
+    /// Whether the omlx binary was found on PATH or via OMLX_PATH.
+    pub omlx_available: bool,
 }
 
 #[derive(Debug, serde::Serialize)]

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Cpu, Loader2, Power, PowerOff, X } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { cn } from '../lib/utils'
+import { OnDeviceAiSetupGuide } from './OnDeviceAiSetupGuide'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +20,7 @@ interface ServiceStatus {
   model_size_bytes: number | null
   active_model_id: string
   mode: 'none' | 'managed' | 'external'
+  omlx_available: boolean
 }
 
 interface DownloadProgress {
@@ -236,10 +238,20 @@ export function OnDeviceAiCard() {
     setDownloadError(null)
   }, [])
 
+  const [isCheckingInstall, setIsCheckingInstall] = useState(false)
+
+  const handleCheckInstall = useCallback(async () => {
+    setIsCheckingInstall(true)
+    await queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
+    // Brief pause so the spinner is visible even if refetch is instant
+    setTimeout(() => setIsCheckingInstall(false), 600)
+  }, [queryClient])
+
   const isRunning = status?.llm.state === 'running'
   const isStarting = status?.enabled && !isRunning && !download
   const isDownloading = download != null && !download.done
   const busy = isEnabling || isDisabling || isSwitching
+  const needsSetup = status != null && !status.omlx_available && !status.enabled
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -255,246 +267,255 @@ export function OnDeviceAiCard() {
         </div>
       </div>
       <div className="px-5 pb-5 pt-1">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-          Run a local LLM on your machine for offline classification and enrichment.
-        </p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-          Used by <span className="font-medium text-gray-500 dark:text-gray-400">Live Monitor</span> for session phase detection and labelling.
-        </p>
+        {needsSetup ? (
+          <OnDeviceAiSetupGuide
+            onCheckInstall={handleCheckInstall}
+            isChecking={isCheckingInstall}
+          />
+        ) : (
+          <>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+              Run a local LLM on your machine for offline classification and enrichment.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+              Used by{' '}
+              <span className="font-medium text-gray-500 dark:text-gray-400">Live Monitor</span> for
+              session phase detection and labelling.
+            </p>
 
-        {/* Status row */}
-        {status && (
-          <div className="space-y-1 mb-4">
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Status</span>
-              <span
-                className={cn(
-                  'text-sm font-medium',
-                  isRunning
-                    ? 'text-green-600 dark:text-green-400'
-                    : status.enabled
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-gray-500 dark:text-gray-400',
+            {/* Status row */}
+            {status && (
+              <div className="space-y-1 mb-4">
+                <div className="flex items-center justify-between py-1.5">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Status</span>
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      isRunning
+                        ? 'text-green-600 dark:text-green-400'
+                        : status.enabled
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-gray-500 dark:text-gray-400',
+                    )}
+                  >
+                    {isRunning
+                      ? 'Running'
+                      : isStarting
+                        ? 'Starting...'
+                        : status.enabled
+                          ? 'Enabled'
+                          : 'Disabled'}
+                  </span>
+                </div>
+
+                {status.enabled && status.mode !== 'none' && (
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Mode</span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                        status.mode === 'managed'
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+                      )}
+                    >
+                      {status.mode === 'managed' ? 'Managed' : 'External'}
+                    </span>
+                  </div>
                 )}
-              >
-                {isRunning
-                  ? 'Running'
-                  : isStarting
-                    ? 'Starting...'
-                    : status.enabled
-                      ? 'Enabled'
-                      : 'Disabled'}
-              </span>
-            </div>
 
-            {status.enabled && status.mode !== 'none' && (
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Mode</span>
-                <span
-                  className={cn(
-                    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
-                    status.mode === 'managed'
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
-                  )}
+                {isRunning && status.llm.port > 0 && (
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Port</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums">
+                      {status.llm.port}
+                    </span>
+                  </div>
+                )}
+
+                {status.model_size_bytes != null && status.model_size_bytes > 0 && (
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Model size</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums">
+                      {formatBytes(status.model_size_bytes)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Model selector */}
+            {status?.enabled && models && models.length > 1 && (
+              <div className="mb-4">
+                <label
+                  htmlFor="local-llm-model-select"
+                  className="block text-sm text-gray-500 dark:text-gray-400 mb-1"
                 >
-                  {status.mode === 'managed' ? 'Managed' : 'External'}
-                </span>
+                  Model
+                </label>
+                <div className="relative">
+                  <select
+                    id="local-llm-model-select"
+                    value={status.active_model_id}
+                    onChange={(e) => handleSwitch(e.target.value)}
+                    disabled={busy || isDownloading}
+                    className={cn(
+                      'w-full appearance-none rounded-md border px-3 py-2 pr-8 text-sm',
+                      'bg-white dark:bg-gray-800',
+                      'border-gray-200 dark:border-gray-700',
+                      'text-gray-900 dark:text-gray-100',
+                      'disabled:opacity-50 disabled:cursor-not-allowed',
+                      'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                    )}
+                  >
+                    {models.map((m) => (
+                      <option key={m.id} value={m.id} disabled={!m.can_run}>
+                        {m.name} · {formatBytes(m.size_bytes)}
+                        {!m.can_run ? ` (requires ${m.min_ram_gb} GB RAM)` : ''}
+                        {!m.installed ? ' · will download' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
               </div>
             )}
 
-            {isRunning && status.llm.port > 0 && (
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Port</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums">
-                  {status.llm.port}
-                </span>
+            {/* Starting indicator */}
+            {isStarting && (
+              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-4 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Starting local AI server...</span>
               </div>
             )}
 
-            {status.model_size_bytes != null && status.model_size_bytes > 0 && (
-              <div className="flex items-center justify-between py-1.5">
-                <span className="text-sm text-gray-500 dark:text-gray-400">Model size</span>
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100 tabular-nums">
-                  {formatBytes(status.model_size_bytes)}
-                </span>
+            {/* Download progress */}
+            {isDownloading && (
+              <div className="mb-4 rounded-md border border-gray-200 dark:border-gray-700 p-3">
+                {/* Header row: file info + cancel */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-700 dark:text-gray-200 font-medium truncate mr-2">
+                    {download.file_name ? `${download.file_name}` : 'Preparing download...'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
+                    title="Cancel download"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Progress bar */}
+                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
+                  <div
+                    className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
+                    style={{
+                      width:
+                        download.percent != null ? `${Math.min(download.percent, 100)}%` : '0%',
+                    }}
+                  />
+                </div>
+
+                {/* Stats row: percent | speed | ETA | file count */}
+                <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                  <div className="flex items-center gap-3">
+                    {download.percent != null && <span>{download.percent.toFixed(1)}%</span>}
+                    {download.total_bytes != null && (
+                      <span>
+                        {formatBytes(download.bytes_downloaded)} /{' '}
+                        {formatBytes(download.total_bytes)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {download.speed_bytes_per_sec != null && download.speed_bytes_per_sec > 0 && (
+                      <span>{formatSpeed(download.speed_bytes_per_sec)}</span>
+                    )}
+                    {download.eta_secs != null && download.eta_secs > 0 && (
+                      <span>{formatEta(download.eta_secs)} left</span>
+                    )}
+                    {download.files_total > 1 && (
+                      <span>
+                        {download.files_done + 1}/{download.files_total} files
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* Model selector */}
-        {status?.enabled && models && models.length > 1 && (
-          <div className="mb-4">
-            <label
-              htmlFor="local-llm-model-select"
-              className="block text-sm text-gray-500 dark:text-gray-400 mb-1"
-            >
-              Model
-            </label>
-            <div className="relative">
-              <select
-                id="local-llm-model-select"
-                value={status.active_model_id}
-                onChange={(e) => handleSwitch(e.target.value)}
-                disabled={busy || isDownloading}
+            {/* Download error */}
+            {downloadError && (
+              <div className="mb-4 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 p-3">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  Download failed: {downloadError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDownloadError(null)}
+                  className="mt-2 text-xs text-red-500 dark:text-red-400 underline cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            {!status?.enabled ? (
+              <button
+                type="button"
+                onClick={handleEnable}
+                disabled={busy}
                 className={cn(
-                  'w-full appearance-none rounded-md border px-3 py-2 pr-8 text-sm',
-                  'bg-white dark:bg-gray-800',
-                  'border-gray-200 dark:border-gray-700',
-                  'text-gray-900 dark:text-gray-100',
+                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                  'transition-colors duration-150',
+                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
                 )}
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} disabled={!m.can_run}>
-                    {m.name} · {formatBytes(m.size_bytes)}
-                    {!m.can_run ? ` (requires ${m.min_ram_gb} GB RAM)` : ''}
-                    {!m.installed ? ' · will download' : ''}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
-          </div>
-        )}
-
-        {/* Starting indicator */}
-        {isStarting && (
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-4 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Starting local AI server...</span>
-          </div>
-        )}
-
-        {/* Download progress */}
-        {isDownloading && (
-          <div className="mb-4 rounded-md border border-gray-200 dark:border-gray-700 p-3">
-            {/* Header row: file info + cancel */}
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-700 dark:text-gray-200 font-medium truncate mr-2">
-                {download.file_name
-                  ? `${download.file_name}`
-                  : 'Preparing download...'}
-              </span>
+                {isEnabling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Enabling...
+                  </>
+                ) : (
+                  <>
+                    <Power className="w-4 h-4" />
+                    Enable Local AI
+                  </>
+                )}
+              </button>
+            ) : (
               <button
                 type="button"
-                onClick={handleCancel}
-                className="shrink-0 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
-                title="Cancel download"
+                onClick={handleDisable}
+                disabled={busy || isDownloading}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                  'transition-colors duration-150',
+                  'text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800',
+                  'hover:bg-red-50 dark:hover:bg-red-900/20',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2',
+                )}
               >
-                <X className="w-4 h-4" />
+                {isDisabling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Disabling...
+                  </>
+                ) : (
+                  <>
+                    <PowerOff className="w-4 h-4" />
+                    Disable Local AI
+                  </>
+                )}
               </button>
-            </div>
-
-            {/* Progress bar */}
-            <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-2">
-              <div
-                className="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
-                style={{
-                  width: download.percent != null ? `${Math.min(download.percent, 100)}%` : '0%',
-                }}
-              />
-            </div>
-
-            {/* Stats row: percent | speed | ETA | file count */}
-            <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-              <div className="flex items-center gap-3">
-                {download.percent != null && (
-                  <span>{download.percent.toFixed(1)}%</span>
-                )}
-                {download.total_bytes != null && (
-                  <span>
-                    {formatBytes(download.bytes_downloaded)} / {formatBytes(download.total_bytes)}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {download.speed_bytes_per_sec != null && download.speed_bytes_per_sec > 0 && (
-                  <span>{formatSpeed(download.speed_bytes_per_sec)}</span>
-                )}
-                {download.eta_secs != null && download.eta_secs > 0 && (
-                  <span>{formatEta(download.eta_secs)} left</span>
-                )}
-                {download.files_total > 1 && (
-                  <span>
-                    {download.files_done + 1}/{download.files_total} files
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Download error */}
-        {downloadError && (
-          <div className="mb-4 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 p-3">
-            <p className="text-sm text-red-600 dark:text-red-400">
-              Download failed: {downloadError}
-            </p>
-            <button
-              type="button"
-              onClick={() => setDownloadError(null)}
-              className="mt-2 text-xs text-red-500 dark:text-red-400 underline cursor-pointer"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Action buttons */}
-        {!status?.enabled ? (
-          <button
-            type="button"
-            onClick={handleEnable}
-            disabled={busy}
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-              'transition-colors duration-150',
-              'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
             )}
-          >
-            {isEnabling ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Enabling...
-              </>
-            ) : (
-              <>
-                <Power className="w-4 h-4" />
-                Enable Local AI
-              </>
-            )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleDisable}
-            disabled={busy || isDownloading}
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-              'transition-colors duration-150',
-              'text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800',
-              'hover:bg-red-50 dark:hover:bg-red-900/20',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              'focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2',
-            )}
-          >
-            {isDisabling ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Disabling...
-              </>
-            ) : (
-              <>
-                <PowerOff className="w-4 h-4" />
-                Disable Local AI
-              </>
-            )}
-          </button>
+          </>
         )}
       </div>
     </div>
