@@ -9,7 +9,6 @@ import {
   ExternalLink,
   GitBranch,
   HardDrive,
-  Heart,
   History,
   Info,
   Link2,
@@ -40,6 +39,7 @@ import { OnDeviceAiCard } from './OnDeviceAiCard'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
 import { TelemetrySection } from './TelemetrySection'
+import { SegmentedControl } from './ui/SegmentedControl'
 
 declare const __APP_VERSION__: string
 declare const __APP_BUILD_DATE__: string
@@ -60,17 +60,30 @@ function SettingsSection({ icon, title, children, className }: SettingsSectionPr
   return (
     <div
       className={cn(
-        'bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden',
+        'bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700',
         className,
       )}
     >
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <span className="text-gray-500 dark:text-gray-400">{icon}</span>
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-          {title}
-        </h2>
+      <div className="px-5 pt-4 pb-1.5">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-400 dark:text-gray-500">{icon}</span>
+          <h2 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            {title}
+          </h2>
+        </div>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="px-5 pb-5 pt-1">{children}</div>
+    </div>
+  )
+}
+
+function SectionGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-[0.12em] mb-3 px-1">
+        {label}
+      </h2>
+      <div className="space-y-3">{children}</div>
     </div>
   )
 }
@@ -488,7 +501,6 @@ export function SettingsPage() {
 
   const queryClient = useQueryClient()
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
-  const [exportScope, setExportScope] = useState<'all' | 'project'>('all')
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [_searchParams, _setSearchParams] = useSearchParams()
@@ -537,31 +549,32 @@ export function SettingsPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-2xl mx-auto px-6 py-6">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">Settings</h1>
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <div className="flex items-baseline gap-3 mb-8">
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h1>
+          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+            v{APP_VERSION}
+          </span>
+        </div>
 
-        <div className="space-y-4">
-          {/* ACCOUNT */}
-          <AccountSection />
+        <div className="space-y-8">
+          {/* ── Account & AI ─────────────────────────────────── */}
+          <SectionGroup label="Account & AI">
+            <AccountSection />
+            <OnDeviceAiCard />
+            <ProviderSettings cliStatus={systemData?.claudeCli} />
+          </SectionGroup>
 
-          {/* ON-DEVICE AI (local LLM) */}
-          <OnDeviceAiCard />
+          {/* ── Data ─────────────────────────────────────────── */}
+          <SectionGroup label="Data">
+            <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Storage">
+              <StorageOverview />
+            </SettingsSection>
 
-          {/* STORAGE OVERVIEW */}
-          <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Data & Storage">
-            <StorageOverview />
-          </SettingsSection>
-
-          {/* CLASSIFICATION — disabled (feature flag off) */}
-
-          {/* LLM PROVIDER (used by reports) */}
-          <ProviderSettings cliStatus={systemData?.claudeCli} />
-
-          {/* GIT SYNC */}
-          <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Scans git history and correlates commits with sessions.
-            </p>
+            <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Scans git history and correlates commits with sessions.
+              </p>
 
             {status && (
               <div className="space-y-0 mb-4">
@@ -657,216 +670,143 @@ export function SettingsPage() {
                 </>
               )}
             </button>
-          </SettingsSection>
+            </SettingsSection>
 
-          {/* INDEX HISTORY */}
-          <IndexHistorySection history={systemData?.indexHistory} isLoading={systemLoading} />
+            <IndexHistorySection history={systemData?.indexHistory} isLoading={systemLoading} />
 
-          {/* EXPORT DATA */}
-          <SettingsSection icon={<Download className="w-4 h-4" />} title="Export Data">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Export all session data with metrics and commits.
-            </p>
+            <SettingsSection icon={<Download className="w-4 h-4" />} title="Export">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Export all session data with metrics and commits.
+              </p>
 
-            {/* Format selection */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                Format
-              </label>
-              <div className="flex items-center gap-4">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="format"
-                    value="json"
-                    checked={exportFormat === 'json'}
-                    onChange={() => setExportFormat('json')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">JSON</span>
-                </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="format"
-                    value="csv"
-                    checked={exportFormat === 'csv'}
-                    onChange={() => setExportFormat('csv')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">CSV</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Scope selection */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                Scope
-              </label>
-              <div className="flex items-center gap-4">
-                <label className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="scope"
-                    value="all"
-                    checked={exportScope === 'all'}
-                    onChange={() => setExportScope('all')}
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">All sessions</span>
-                </label>
-                <label className="inline-flex items-center gap-2 cursor-pointer opacity-50">
-                  <input
-                    type="radio"
-                    name="scope"
-                    value="project"
-                    checked={exportScope === 'project'}
-                    onChange={() => setExportScope('project')}
-                    disabled
-                    className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    Current project only
+              <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1.5">
+                    Format
                   </span>
-                  <span className="text-xs text-gray-400">(coming soon)</span>
-                </label>
+                  <SegmentedControl
+                    value={exportFormat}
+                    onChange={setExportFormat}
+                    options={[
+                      { value: 'json' as ExportFormat, label: 'JSON' },
+                      { value: 'csv' as ExportFormat, label: 'CSV' },
+                    ]}
+                    ariaLabel="Export format"
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Export error */}
-            {exportError && (
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>{exportError}</span>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={isExporting}
-              aria-busy={isExporting}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-                'transition-colors duration-150',
-                'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+              {exportError && (
+                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{exportError}</span>
+                </div>
               )}
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" />
-                  Download Export
-                </>
-              )}
-            </button>
-          </SettingsSection>
 
-          {/* MOBILE PAIRING */}
-          <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  Pair your phone with Claude View for on-the-go access.
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Scan a QR code to securely connect the mobile app.
-                </p>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={isExporting}
+                aria-busy={isExporting}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                  'transition-colors duration-150',
+                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                )}
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Download Export
+                  </>
+                )}
+              </button>
+            </SettingsSection>
+          </SectionGroup>
+
+          {/* ── Connections ───────────────────────────────────── */}
+          <SectionGroup label="Connections">
+            <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    Pair your phone with Claude View for on-the-go access.
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Scan a QR code to securely connect the mobile app.
+                  </p>
+                </div>
+                <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                  Coming Soon
+                </span>
               </div>
-              <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                Coming Soon
-              </span>
-            </div>
-          </SettingsSection>
+            </SettingsSection>
 
-          {/* SHARED LINKS */}
-          <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
-            <SharedLinksSection />
-          </SettingsSection>
+            <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
+              <SharedLinksSection />
+            </SettingsSection>
+          </SectionGroup>
 
-          {/* TELEMETRY */}
-          <SettingsSection icon={<Shield className="w-4 h-4" />} title="Privacy">
-            <TelemetrySection
-              telemetryStatus={config.telemetry}
-              hasPosHogKey={config.posthogKey !== null}
-              onEnable={enableTelemetry}
-              onDisable={disableTelemetry}
-            />
-          </SettingsSection>
+          {/* ── Privacy & About ───────────────────────────────── */}
+          <SectionGroup label="Privacy & About">
+            <SettingsSection icon={<Shield className="w-4 h-4" />} title="Privacy">
+              <TelemetrySection
+                telemetryStatus={config.telemetry}
+                hasPosHogKey={config.posthogKey !== null}
+                onEnable={enableTelemetry}
+                onDisable={disableTelemetry}
+              />
+            </SettingsSection>
 
-          {/* ABOUT */}
+            {/* ABOUT */}
           <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
-            <div className="mb-4">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between mb-4">
+              <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   Claude View v{APP_VERSION}
                 </p>
-                <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-                  ({APP_BUILD_DATE})
-                </span>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                  Built {APP_BUILD_DATE}
+                </p>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Browse and export Claude Code sessions
-              </p>
-            </div>
-
-            {/* GitHub links */}
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
-                  'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
-                )}
-              >
-                <Star className="w-3.5 h-3.5" />
-                Star on GitHub
-              </a>
-              <a
-                href={`${GITHUB_URL}/releases`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                  'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
-                  'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
-                )}
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Release Notes
-              </a>
-            </div>
-
-            <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
-              <Heart className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <p className="text-xs text-amber-800 dark:text-amber-300">
-                If Claude View helps your workflow, a{' '}
+              <div className="flex items-center gap-2">
                 <a
                   href={GITHUB_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-medium underline underline-offset-2 hover:text-amber-600 dark:hover:text-amber-200"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                    'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
+                    'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
+                  )}
                 >
-                  GitHub star
-                </a>{' '}
-                helps others discover it too.
-              </p>
+                  <Star className="w-3.5 h-3.5" />
+                  Star on GitHub
+                </a>
+                <a
+                  href={`${GITHUB_URL}/releases`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                    'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
+                    'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
+                  )}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Releases
+                </a>
+              </div>
             </div>
 
-            <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-5">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Keyboard Shortcuts
-              </h3>
+            <div className="space-y-5">
 
               {/* Global */}
               <ShortcutGroup
@@ -921,8 +861,9 @@ export function SettingsPage() {
               />
             </div>
           </SettingsSection>
+          </SectionGroup>
 
-          {/* DANGER ZONE — always last */}
+          {/* ── Danger Zone — always last, outside all groups ── */}
           <DangerZoneSection />
         </div>
       </div>
