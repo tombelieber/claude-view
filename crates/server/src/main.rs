@@ -87,6 +87,40 @@ fn try_reclaim_port(port: u16) -> bool {
     killed_any
 }
 
+/// Detect how the server was installed/launched.
+///
+/// Returns one of: "plugin", "install_sh", "npx".
+fn detect_install_source() -> &'static str {
+    // Plugin sets CLAUDE_PLUGIN_ROOT when launching via hooks
+    if std::env::var("CLAUDE_PLUGIN_ROOT").is_ok() {
+        return "plugin";
+    }
+    // install.sh puts the binary under ~/.cache/claude-view/
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_str = exe.to_string_lossy();
+        if exe_str.contains(".cache/claude-view") {
+            return "install_sh";
+        }
+    }
+    "npx"
+}
+
+/// Fire-and-forget ping to CF Worker for unified install tracking.
+fn ping_install_beacon(source: &str) {
+    let url = format!(
+        "https://get.claudeview.ai/ping?source={}&v={}",
+        source,
+        env!("CARGO_PKG_VERSION"),
+    );
+    tokio::spawn(async move {
+        let _ = reqwest::Client::new()
+            .get(&url)
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await;
+    });
+}
+
 /// Get the static directory for serving frontend files.
 ///
 /// Priority:
@@ -497,15 +531,21 @@ async fn main() -> Result<()> {
     claude_view_server::register_hooks(port);
 
     // Fire server_started telemetry event (fire-and-forget, non-blocking)
+    let install_source = detect_install_source();
     if let Some(ref client) = telemetry_for_server_started {
         client.track(
             "server_started",
             serde_json::json!({
                 "version": env!("CARGO_PKG_VERSION"),
                 "platform": std::env::consts::OS,
+                "install_source": install_source,
             }),
         );
     }
+
+    // Ping CF Worker for unified install tracking (fire-and-forget).
+    // All install paths (plugin, npx, install.sh) converge to one dashboard.
+    ping_install_beacon(&install_source);
 
     // Step 6: Resolve the claude dir for indexing
     let claude_dir = dirs::home_dir()

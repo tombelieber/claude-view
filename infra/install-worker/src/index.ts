@@ -5,8 +5,9 @@
  * geographic distribution, and status codes — zero extra code needed.
  *
  * Routes:
- *   GET /install.sh  → proxy install script from GitHub (cached 5 min at edge)
- *   GET /            → redirect to repo
+ *   GET /install.sh      → proxy install script from GitHub (cached 5 min at edge)
+ *   GET /ping?source=X   → install source beacon (plugin, npx, install_sh)
+ *   GET /                 → redirect to repo
  */
 
 interface Env {
@@ -14,6 +15,8 @@ interface Env {
 }
 
 const CACHE_TTL_SECONDS = 300 // 5 minutes — fresh enough for updates, light on GitHub
+
+const VALID_SOURCES = new Set(['plugin', 'npx', 'install_sh'])
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -27,9 +30,40 @@ export default {
       return handleInstallScript(request, env)
     }
 
+    if (url.pathname === '/ping') {
+      return handlePing(url)
+    }
+
     return new Response('Not Found', { status: 404 })
   },
 } satisfies ExportedHandler<Env>
+
+/**
+ * Lightweight beacon — the server pings this on first startup so all install
+ * sources (plugin, npx, install.sh) appear in one CF Workers dashboard.
+ *
+ * CF analytics auto-tracks: request count, geo, status code per unique URL.
+ * The `source` query param appears in the pathname+query breakdown.
+ */
+function handlePing(url: URL): Response {
+  const source = url.searchParams.get('source') ?? 'unknown'
+  const version = url.searchParams.get('v') ?? 'unknown'
+
+  if (!VALID_SOURCES.has(source)) {
+    return new Response('ok', { status: 200 })
+  }
+
+  // 1x1 transparent pixel response — minimal bandwidth.
+  // The real value is the CF analytics entry, not the response body.
+  return new Response('ok', {
+    status: 200,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Install-Source': source,
+      'X-Version': version,
+    },
+  })
+}
 
 async function handleInstallScript(request: Request, env: Env): Promise<Response> {
   // Check CF edge cache first
