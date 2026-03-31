@@ -118,7 +118,6 @@ struct ProgressTracker {
     files_done: u32,
     files_total: u32,
     current_file: String,
-    started_at: Instant,
     /// Exponential moving average of speed (bytes/sec), smoothed to avoid jitter.
     ema_speed: f64,
 }
@@ -194,23 +193,6 @@ impl ProgressTracker {
             .await;
     }
 
-    async fn report_error(&self, error: String) {
-        let _ = self
-            .tx
-            .send(DownloadProgress {
-                bytes_downloaded: self.bytes_downloaded,
-                total_bytes: Some(self.total_bytes),
-                percent: None,
-                file_name: None,
-                files_done: self.files_done,
-                files_total: self.files_total,
-                speed_bytes_per_sec: None,
-                eta_secs: None,
-                done: true,
-                error: Some(error),
-            })
-            .await;
-    }
 }
 
 // ---- Download execution ----
@@ -286,7 +268,6 @@ pub async fn download_repo(
         files_done,
         files_total,
         current_file: String::new(),
-        started_at: Instant::now(),
         ema_speed: 0.0,
     };
 
