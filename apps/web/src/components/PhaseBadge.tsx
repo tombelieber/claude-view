@@ -66,7 +66,11 @@ interface PhaseBadgeProps {
 /**
  * Renders the current SDLC phase as a compact badge.
  * Only shown when the classifier is confident (phase != 'working').
- * Confidence gating happens server-side — if we get a non-working phase, show it.
+ *
+ * Visual states:
+ * - `fresh`   → solid badge, full opacity (Running, confirmed phase)
+ * - `pending` → brief pulse (~400ms while classify in-flight)
+ * - `settled` → dimmed 75% opacity (NeedsYou, phase frozen)
  */
 export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgeProps) {
   if (!phase || phase === 'working') return null
@@ -75,6 +79,7 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
   if (!config) return null
 
   const isPending = freshness === 'pending'
+  const isSettled = freshness === 'settled'
 
   return (
     <span
@@ -83,7 +88,8 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
         config.bg,
         config.text,
         config.border,
-        isPending && 'animate-pulse opacity-75',
+        isPending && 'animate-pulse',
+        isSettled && 'opacity-75',
         className,
       )}
     >
