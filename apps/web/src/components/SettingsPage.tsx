@@ -6,8 +6,10 @@ import {
   ChevronDown,
   Command,
   Download,
+  ExternalLink,
   GitBranch,
   HardDrive,
+  Heart,
   History,
   Info,
   Link2,
@@ -15,6 +17,7 @@ import {
   RefreshCw,
   Shield,
   Smartphone,
+  Star,
   XCircle,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -39,7 +42,12 @@ import { StorageOverview } from './StorageOverview'
 import { TelemetrySection } from './TelemetrySection'
 
 declare const __APP_VERSION__: string
+declare const __APP_BUILD_DATE__: string
 const APP_VERSION = __APP_VERSION__
+const APP_BUILD_DATE = __APP_BUILD_DATE__
+
+const GITHUB_REPO = 'tombelieber/claude-view'
+const GITHUB_URL = `https://github.com/${GITHUB_REPO}`
 
 interface SettingsSectionProps {
   icon: React.ReactNode
@@ -796,11 +804,62 @@ export function SettingsPage() {
           {/* ABOUT */}
           <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
             <div className="mb-4">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                Claude View v{APP_VERSION}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  Claude View v{APP_VERSION}
+                </p>
+                <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                  ({APP_BUILD_DATE})
+                </span>
+              </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Browse and export Claude Code sessions
+              </p>
+            </div>
+
+            {/* GitHub links */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
+                  'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
+                )}
+              >
+                <Star className="w-3.5 h-3.5" />
+                Star on GitHub
+              </a>
+              <a
+                href={`${GITHUB_URL}/releases`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                  'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
+                  'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
+                )}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                Release Notes
+              </a>
+            </div>
+
+            <div className="flex items-start gap-2 mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+              <Heart className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                If Claude View helps your workflow, a{' '}
+                <a
+                  href={GITHUB_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline underline-offset-2 hover:text-amber-600 dark:hover:text-amber-200"
+                >
+                  GitHub star
+                </a>{' '}
+                helps others discover it too.
               </p>
             </div>
 
