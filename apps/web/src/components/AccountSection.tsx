@@ -15,16 +15,16 @@ export function AccountSection() {
   // Signed-out state
   if (!user) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-          <span className="text-gray-500 dark:text-gray-400">
-            <User className="w-4 h-4" />
-          </span>
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-            Account
-          </h2>
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="px-5 pt-4 pb-1.5">
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+            <h2 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              Account
+            </h2>
+          </div>
         </div>
-        <div className="p-4">
+        <div className="px-5 pb-5 pt-1">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
             Sign in to enable sharing and sync.
           </p>

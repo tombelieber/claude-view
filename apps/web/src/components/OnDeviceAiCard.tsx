@@ -242,22 +242,24 @@ export function OnDeviceAiCard() {
   const busy = isEnabling || isDisabling || isSwitching
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <Cpu className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
-          On-Device AI
-        </h2>
-        <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-          Experimental
-        </span>
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="px-5 pt-4 pb-1.5">
+        <div className="flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <h2 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            On-Device AI
+          </h2>
+          <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+            Experimental
+          </span>
+        </div>
       </div>
-
-      {/* Body */}
-      <div className="p-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+      <div className="px-5 pb-5 pt-1">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
           Run a local LLM on your machine for offline classification and enrichment.
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+          Used by <span className="font-medium text-gray-500 dark:text-gray-400">Live Monitor</span> for session phase detection and labelling.
         </p>
 
         {/* Status row */}
