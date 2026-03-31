@@ -13,6 +13,7 @@ import {
   Link2,
   Loader2,
   RefreshCw,
+  Shield,
   Smartphone,
   XCircle,
 } from 'lucide-react'
@@ -33,7 +34,6 @@ import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { AccountSection } from './AccountSection'
 import { OnDeviceAiCard } from './OnDeviceAiCard'
-import { PairingQrCode } from './PairingQrCode'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
 import { TelemetrySection } from './TelemetrySection'
@@ -387,6 +387,63 @@ function SharedLinksSection() {
 }
 
 // ============================================================================
+// Keyboard Shortcut Helpers (for About section)
+// ============================================================================
+
+interface KeyCombo {
+  mod?: boolean // Cmd on Mac
+  ctrl?: boolean // Ctrl
+  shift?: boolean
+  key: string
+}
+
+interface ShortcutDef {
+  keys: KeyCombo[]
+  label: string
+  separator?: string // e.g. "/" to show "j / k"
+}
+
+function ShortcutKbd({ combo }: { combo: KeyCombo }) {
+  return (
+    <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
+      {combo.mod && <Command className="w-3 h-3" />}
+      {combo.ctrl && <span className="text-[10px]">Ctrl</span>}
+      {combo.shift && <span className="text-[10px]">Shift</span>}
+      {combo.key}
+    </kbd>
+  )
+}
+
+function ShortcutGroup({ title, shortcuts }: { title: string; shortcuts: ShortcutDef[] }) {
+  return (
+    <div>
+      <h4 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
+        {title}
+      </h4>
+      <div className="space-y-1.5">
+        {shortcuts.map((s) => (
+          <div key={s.label} className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              {s.keys.map((combo, i) => (
+                <span key={i} className="inline-flex items-center gap-1">
+                  {i > 0 && s.separator && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500 mx-0.5">
+                      {s.separator}
+                    </span>
+                  )}
+                  <ShortcutKbd combo={combo} />
+                </span>
+              ))}
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{s.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
 // Main Settings Page
 // ============================================================================
 
@@ -706,10 +763,19 @@ export function SettingsPage() {
 
           {/* MOBILE PAIRING */}
           <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Scan this QR code with the Claude View mobile app to pair your phone.
-            </p>
-            <PairingQrCode />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  Pair your phone with Claude View for on-the-go access.
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Scan a QR code to securely connect the mobile app.
+                </p>
+              </div>
+              <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                Coming Soon
+              </span>
+            </div>
           </SettingsSection>
 
           {/* SHARED LINKS */}
@@ -718,7 +784,7 @@ export function SettingsPage() {
           </SettingsSection>
 
           {/* TELEMETRY */}
-          <SettingsSection icon={<Info className="w-4 h-4" />} title="Privacy">
+          <SettingsSection icon={<Shield className="w-4 h-4" />} title="Privacy">
             <TelemetrySection
               telemetryStatus={config.telemetry}
               hasPosHogKey={config.posthogKey !== null}
@@ -738,38 +804,62 @@ export function SettingsPage() {
               </p>
             </div>
 
-            <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-5">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 Keyboard Shortcuts
               </h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" />K
-                  </kbd>
-                  <span className="text-gray-600 dark:text-gray-400">Command palette</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" />/
-                  </kbd>
-                  <span className="text-gray-600 dark:text-gray-400">Focus search</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" />
-                    <span className="text-xs">Shift</span>E
-                  </kbd>
-                  <span className="text-gray-600 dark:text-gray-400">Export HTML</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <kbd className="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-gray-700 dark:text-gray-300">
-                    <Command className="w-3 h-3" />
-                    <span className="text-xs">Shift</span>P
-                  </kbd>
-                  <span className="text-gray-600 dark:text-gray-400">Export PDF</span>
-                </div>
-              </div>
+
+              {/* Global */}
+              <ShortcutGroup
+                title="Global"
+                shortcuts={[
+                  { keys: [{ mod: true, key: 'K' }], label: 'Command palette' },
+                  { keys: [{ mod: true, key: 'B' }], label: 'Toggle sidebar' },
+                ]}
+              />
+
+              {/* Conversation */}
+              <ShortcutGroup
+                title="Conversation"
+                shortcuts={[
+                  { keys: [{ mod: true, key: 'F' }], label: 'Find in conversation' },
+                  { keys: [{ mod: true, shift: true, key: 'E' }], label: 'Export HTML' },
+                  { keys: [{ mod: true, shift: true, key: 'P' }], label: 'Export PDF' },
+                  { keys: [{ mod: true, shift: true, key: 'R' }], label: 'Copy resume command' },
+                ]}
+              />
+
+              {/* Chat Tabs */}
+              <ShortcutGroup
+                title="Chat Tabs"
+                shortcuts={[
+                  { keys: [{ ctrl: true, key: 'T' }], label: 'New tab' },
+                  { keys: [{ ctrl: true, key: 'W' }], label: 'Close tab' },
+                  { keys: [{ ctrl: true, key: 'Tab' }], label: 'Next tab' },
+                  { keys: [{ ctrl: true, shift: true, key: 'Tab' }], label: 'Previous tab' },
+                  { keys: [{ ctrl: true, key: '\\' }], label: 'Split right' },
+                  { keys: [{ ctrl: true, shift: true, key: '\\' }], label: 'Split down' },
+                ]}
+              />
+
+              {/* Live Monitor */}
+              <ShortcutGroup
+                title="Live Monitor"
+                shortcuts={[
+                  {
+                    keys: [{ key: 'j' }, { key: 'k' }],
+                    label: 'Next / previous session',
+                    separator: '/',
+                  },
+                  {
+                    keys: [{ key: '1' }, { key: '2' }, { key: '3' }, { key: '4' }],
+                    label: 'Switch view',
+                    separator: '/',
+                  },
+                  { keys: [{ key: '/' }], label: 'Search' },
+                  { keys: [{ key: '?' }], label: 'Show all shortcuts' },
+                ]}
+              />
             </div>
           </SettingsSection>
 
