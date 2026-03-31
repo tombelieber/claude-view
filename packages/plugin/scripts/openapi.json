@@ -1079,23 +1079,6 @@
         }
       }
     },
-    "/api/live/recently-closed": {
-      "delete": {
-        "tags": ["live"],
-        "summary": "DELETE /api/live/recently-closed -- Dismiss all recently closed sessions.",
-        "operationId": "dismiss_all_closed",
-        "responses": {
-          "200": {
-            "description": "All recently closed sessions dismissed",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/live/sessions": {
       "get": {
         "tags": ["live"],
@@ -1103,7 +1086,7 @@
         "operationId": "list_live_sessions",
         "responses": {
           "200": {
-            "description": "Active and recently closed live sessions",
+            "description": "Active live sessions",
             "content": {
               "application/json": {
                 "schema": {}
@@ -1182,38 +1165,6 @@
           },
           "404": {
             "description": "Session not found"
-          }
-        }
-      }
-    },
-    "/api/live/sessions/{id}/dismiss": {
-      "delete": {
-        "tags": ["live"],
-        "summary": "DELETE /api/live/sessions/:id/dismiss -- Dismiss a recently closed session.",
-        "description": "Removes the session from the live map and marks it as dismissed in SQLite.\nSends `SessionCompleted` to notify the frontend to remove from `recentlyClosed`.\n\nNote: There is a narrow race window between removing from the map and persisting\nto SQLite. If the server crashes in that window, the session reappears on restart\n(user clicks dismiss again). This is accept-and-retry tolerant by design.",
-        "operationId": "dismiss_session",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Session dismissed from recently closed list",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "404": {
-            "description": "Session not found or still active"
           }
         }
       }

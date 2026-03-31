@@ -148,3 +148,4 @@ apps/landing/.astro/
 # Allow landing page images (overrides root *.png ignore)
 !apps/landing/public/*.png
 .gstack/
+.context/
