@@ -330,6 +330,7 @@ pub fn create_app_full(
             Some(sidecar.clone()),
             teams.clone(),
             llm_status.clone(),
+            llm_config.clone(),
             llm_client,
             oracle_rx.clone(),
             hook_event_channels.clone(),

@@ -63,7 +63,7 @@ function makeMockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     hookEvents: [],
     currentTurnStartedAt: null,
     lastTurnTaskSeconds: null,
-    phase: { current: null, labels: [], dominant: null },
+    phase: { current: null, labels: [], dominant: null, freshness: 'fresh' as const },
     ...overrides,
   }
 }

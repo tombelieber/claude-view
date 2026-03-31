@@ -159,7 +159,7 @@ function mockSession(overrides: Partial<LiveSession> = {}): LiveSession {
     statuslineRateLimit7dPct: 12,
     statuslineRateLimit7dResetsAt: NOW + 432000,
 
-    phase: { current: null, labels: [], dominant: null },
+    phase: { current: null, labels: [], dominant: null, freshness: 'fresh' as const },
 
     ...overrides,
   }
