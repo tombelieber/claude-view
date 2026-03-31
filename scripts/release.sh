@@ -80,6 +80,18 @@ done < <(find "$ROOT" -name package.json \
   -not -path '*/apps/landing/*' \
   | sort)
 
+# Bump .claude-plugin/plugin.json version (not named package.json, so find misses it)
+PLUGIN_JSON="$ROOT/packages/plugin/.claude-plugin/plugin.json"
+if [ -f "$PLUGIN_JSON" ]; then
+  node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('${PLUGIN_JSON}', 'utf8'));
+    pkg.version = '${VERSION}';
+    fs.writeFileSync('${PLUGIN_JSON}', JSON.stringify(pkg, null, 2) + '\n');
+  "
+  BUMPED_PKGS+=("$PLUGIN_JSON")
+fi
+
 # Bump landing page VERSION constant (stays in sync even though landing has its own release tag)
 SITE_TS="$ROOT/apps/landing/src/data/site.ts"
 if [ -f "$SITE_TS" ]; then
