@@ -157,7 +157,7 @@ pub struct PhaseHistory {
     pub current: Option<PhaseLabel>,
     pub labels: Vec<PhaseLabel>,
     pub dominant: Option<SessionPhase>,
-    /// Badge animation hint: `fresh` = solid, `pending` = breathing.
+    /// Badge visual state: `fresh` = solid, `pending` = shimmer, `settled` = dimmed.
     pub freshness: PhaseFreshness,
 }
 
