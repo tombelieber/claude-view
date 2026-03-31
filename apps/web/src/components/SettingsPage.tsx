@@ -806,7 +806,7 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="space-y-5">
+            <div id="keyboard-shortcuts" className="space-y-5 scroll-mt-6">
 
               {/* Global */}
               <ShortcutGroup
