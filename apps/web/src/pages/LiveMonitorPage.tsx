@@ -10,6 +10,7 @@ import { LiveFilterBar } from '../components/live/LiveFilterBar'
 import { MobileTabBar } from '../components/live/MobileTabBar'
 import { MonitorView } from '../components/live/MonitorView'
 import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
+import { OnDeviceAiNudge } from '../components/live/OnDeviceAiNudge'
 import { RecentlyClosedSection } from '../components/live/RecentlyClosedSection'
 import { SessionCard } from '../components/live/SessionCard'
 import { SessionDetailPanel } from '../components/live/SessionDetailPanel'
@@ -441,6 +442,7 @@ export function LiveMonitorPage() {
             onShowClosedChange={viewMode === 'kanban' ? handleShowClosedChange : undefined}
             closedCount={recentlyClosed.length}
           />
+          <OnDeviceAiNudge />
         </div>
       </div>
 
