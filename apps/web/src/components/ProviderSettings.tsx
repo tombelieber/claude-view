@@ -113,26 +113,25 @@ export function ProviderSettings({ onClose: _onClose, cliStatus }: ProviderSetti
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="px-5 pt-4 pb-1.5">
         <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+          <Settings2 className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <h2 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
             AI Provider
           </h2>
-          <span className="inline-flex items-center gap-0.5 px-1.5 py-0 text-xs font-medium rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
             <FlaskConical className="w-2.5 h-2.5" />
             Experimental
           </span>
         </div>
       </div>
-
-      {/* Body */}
-      <div className="p-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          Choose the LLM model for AI features (classification, report generation). Applies to all
-          features.
+      <div className="px-5 pb-5 pt-1">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+          Choose the LLM backend for Agent SDK integration.
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+          Used by <span className="font-medium text-gray-500 dark:text-gray-400">Chat</span> for interactive Claude sessions.
         </p>
 
         {/* Provider selection */}
