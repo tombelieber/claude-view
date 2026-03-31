@@ -18,6 +18,7 @@ interface ServiceStatus {
   model_exists: boolean
   model_size_bytes: number | null
   active_model_id: string
+  mode: 'none' | 'managed' | 'external'
 }
 
 interface DownloadProgress {
@@ -155,7 +156,10 @@ export function OnDeviceAiCard() {
           signal: abortRef.current.signal,
           ...options,
         })
-        if (!res.ok) throw new Error('Request failed')
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error((body as { error?: string }).error || 'Request failed')
+        }
 
         const contentType = res.headers.get('content-type') ?? ''
         if (contentType.includes('text/event-stream') && res.body) {
@@ -175,6 +179,7 @@ export function OnDeviceAiCard() {
         queryClient.invalidateQueries({ queryKey: ['local-llm-models'] })
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        throw err
       } finally {
         abortRef.current = null
       }
@@ -184,8 +189,13 @@ export function OnDeviceAiCard() {
 
   const handleEnable = useCallback(async () => {
     setIsEnabling(true)
+    setDownloadError(null)
     try {
       await handleSseDownload('/api/local-llm/enable')
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('omlx not found')) {
+        setDownloadError('omlx not found. Install with: pip install omlx')
+      }
     } finally {
       setIsEnabling(false)
     }
@@ -274,6 +284,22 @@ export function OnDeviceAiCard() {
                       : 'Disabled'}
               </span>
             </div>
+
+            {status.enabled && status.mode !== 'none' && (
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Mode</span>
+                <span
+                  className={cn(
+                    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium',
+                    status.mode === 'managed'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400',
+                  )}
+                >
+                  {status.mode === 'managed' ? 'Managed' : 'External'}
+                </span>
+              </div>
+            )}
 
             {isRunning && status.llm.port > 0 && (
               <div className="flex items-center justify-between py-1.5">
