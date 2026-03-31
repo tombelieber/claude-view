@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
+use claude_view_core::phase::ClassifyMode;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -9,12 +10,15 @@ struct ConfigFile {
     enabled: bool,
     #[serde(default)]
     active_model: Option<String>,
+    #[serde(default)]
+    classify_mode: ClassifyMode,
 }
 
 #[derive(Debug)]
 pub struct LocalLlmConfig {
     enabled: AtomicBool,
     active_model: RwLock<Option<String>>,
+    classify_mode: RwLock<ClassifyMode>,
     path: PathBuf,
 }
 
@@ -30,6 +34,9 @@ impl LocalLlmConfig {
         Self {
             enabled: AtomicBool::new(config.as_ref().map(|c| c.enabled).unwrap_or(false)),
             active_model: RwLock::new(config.as_ref().and_then(|c| c.active_model.clone())),
+            classify_mode: RwLock::new(
+                config.as_ref().map(|c| c.classify_mode).unwrap_or_default(),
+            ),
             path,
         }
     }
@@ -39,6 +46,7 @@ impl LocalLlmConfig {
         Self {
             enabled: AtomicBool::new(false),
             active_model: RwLock::new(None),
+            classify_mode: RwLock::new(ClassifyMode::default()),
             path: config_path(),
         }
     }
@@ -64,10 +72,20 @@ impl LocalLlmConfig {
         self.persist()
     }
 
+    pub fn classify_mode(&self) -> ClassifyMode {
+        *self.classify_mode.read().unwrap()
+    }
+
+    pub fn set_classify_mode(&self, mode: ClassifyMode) -> std::io::Result<()> {
+        *self.classify_mode.write().unwrap() = mode;
+        self.persist()
+    }
+
     fn persist(&self) -> std::io::Result<()> {
         let file = ConfigFile {
             enabled: self.enabled.load(Ordering::Acquire),
             active_model: self.active_model.read().unwrap().clone(),
+            classify_mode: *self.classify_mode.read().unwrap(),
         };
         let json = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
         if let Some(parent) = self.path.parent() {
@@ -93,6 +111,7 @@ mod tests {
         LocalLlmConfig {
             enabled: AtomicBool::new(false),
             active_model: RwLock::new(None),
+            classify_mode: RwLock::new(ClassifyMode::default()),
             path: dir.join("local-llm.json"),
         }
     }
@@ -162,5 +181,37 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&cfg.path).unwrap()).unwrap();
         assert!(content.enabled);
         assert_eq!(content.active_model.as_deref(), Some("test-model"));
+    }
+
+    #[test]
+    fn classify_mode_defaults_balanced() {
+        let dir = tempdir().unwrap();
+        let cfg = config_at(dir.path());
+        assert_eq!(cfg.classify_mode(), ClassifyMode::Balanced);
+    }
+
+    #[test]
+    fn classify_mode_round_trips() {
+        let dir = tempdir().unwrap();
+        let cfg = config_at(dir.path());
+
+        cfg.set_classify_mode(ClassifyMode::Efficient).unwrap();
+        assert_eq!(cfg.classify_mode(), ClassifyMode::Efficient);
+
+        let content: ConfigFile =
+            serde_json::from_str(&std::fs::read_to_string(&cfg.path).unwrap()).unwrap();
+        assert_eq!(content.classify_mode, ClassifyMode::Efficient);
+    }
+
+    #[test]
+    fn missing_classify_mode_defaults_balanced() {
+        let dir = tempdir().unwrap();
+        // Write a legacy config without classify_mode
+        std::fs::write(dir.path().join("local-llm.json"), r#"{"enabled": true}"#).unwrap();
+        let cfg = config_at(dir.path());
+        // Force reload by reading from disk
+        let content: ConfigFile =
+            serde_json::from_str(&std::fs::read_to_string(&cfg.path).unwrap()).unwrap();
+        assert_eq!(content.classify_mode, ClassifyMode::Balanced);
     }
 }

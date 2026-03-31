@@ -119,8 +119,8 @@ mod tests {
 
     use tokio::sync::{broadcast, mpsc, RwLock};
 
+    use crate::live::drain_loop::DirtySignal;
     use claude_view_core::live_parser::TailFinders;
-    use claude_view_core::phase::scheduler::Priority;
     use claude_view_core::pricing::ModelPricing;
 
     use crate::live::coordinator::SessionCoordinator;
@@ -146,7 +146,7 @@ mod tests {
     ) {
         let (tx, rx) = broadcast::channel(16);
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(4);
-        let (dirty_tx, _dirty_rx) = mpsc::channel::<(String, Priority)>(16);
+        let (dirty_tx, _dirty_rx) = mpsc::channel::<DirtySignal>(16);
         let (death_watcher, _death_rx) = crate::live::process_death::ProcessDeathWatcher::start();
         let db = claude_view_db::Database::new_in_memory().await.unwrap();
 
