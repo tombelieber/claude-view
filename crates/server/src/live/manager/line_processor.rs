@@ -536,7 +536,7 @@ fn process_phase_classification(
     line: &claude_view_core::live_parser::LiveLine,
     acc: &mut SessionAccumulator,
     session_id: &str,
-    dirty_tx: &tokio::sync::mpsc::Sender<(String, Priority)>,
+    dirty_tx: &tokio::sync::mpsc::Sender<super::super::drain_loop::DirtySignal>,
 ) {
     // Deterministic shipping rule (pre-LLM shortcut)
     for cmd in &line.bash_commands {
@@ -595,5 +595,10 @@ fn process_phase_classification(
     } else {
         Priority::Steady
     };
-    let _ = dirty_tx.try_send((session_id.to_string(), priority));
+    let signal = if line.role.as_deref() == Some("user") {
+        super::super::drain_loop::DirtySignal::UserTurn(session_id.to_string(), priority)
+    } else {
+        super::super::drain_loop::DirtySignal::Activity(session_id.to_string(), priority)
+    };
+    let _ = dirty_tx.try_send(signal);
 }
