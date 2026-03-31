@@ -9,6 +9,8 @@ use super::config::LocalLlmConfig;
 use super::download::DownloadProgress;
 use super::lifecycle::{self, ProcessMode};
 use super::model_manager::ModelManager;
+use super::omlx_binary;
+use super::process::ManagedProcess;
 use super::registry::{self, REGISTRY};
 use super::status::{LlmStatus, StatusSnapshot};
 
@@ -19,6 +21,8 @@ pub struct LocalLlmService {
     model_manager: ModelManager,
     /// Active download cancellation handle (if a download is in progress).
     active_download_cancel: Mutex<Option<CancellationToken>>,
+    /// Owned oMLX child process. None if using Discover mode (external).
+    managed_process: Mutex<Option<ManagedProcess>>,
 }
 
 impl LocalLlmService {
@@ -28,24 +32,42 @@ impl LocalLlmService {
             status,
             model_manager: ModelManager::new(),
             active_download_cancel: Mutex::new(None),
+            managed_process: Mutex::new(None),
         }
     }
 
     /// Spawn the background lifecycle task. Call once at startup.
+    /// Detects whether an external oMLX is already running (Discover)
+    /// or we should manage it ourselves (Managed).
     pub fn start_lifecycle(&self) {
         let status = self.status.clone();
         let config = self.config.clone();
-        let mode = ProcessMode::Discover { port: status.port };
-        tokio::spawn(lifecycle::run_lifecycle(status, config, mode));
+
+        if omlx_binary::is_port_in_use(status.port) {
+            // External oMLX detected — use Discover mode
+            info!(
+                port = status.port,
+                "external oMLX detected, using Discover mode"
+            );
+            let mode = ProcessMode::Discover { port: status.port };
+            tokio::spawn(lifecycle::run_lifecycle(status, config, mode));
+        } else {
+            // No external oMLX — use Discover mode for now
+            // Managed process spawned in enable()
+            info!(
+                port = status.port,
+                "no external oMLX, Managed mode available"
+            );
+            let mode = ProcessMode::Discover { port: status.port };
+            tokio::spawn(lifecycle::run_lifecycle(status, config, mode));
+        }
+
         info!("LLM lifecycle task spawned");
     }
 
     /// Create a classify client wired to this service's ready flag.
     /// Model ID is read dynamically from LlmStatus (set by lifecycle).
-    pub fn client(
-        &self,
-        debug_tx: Option<tokio::sync::mpsc::Sender<String>>,
-    ) -> LlmClient {
+    pub fn client(&self, debug_tx: Option<tokio::sync::mpsc::Sender<String>>) -> LlmClient {
         let mut c = LlmClient::new(
             format!("http://localhost:{}", self.status.port),
             self.status.discovered_model_ref(),
@@ -57,7 +79,7 @@ impl LocalLlmService {
         c
     }
 
-    /// Enable on-device AI. Persists to disk, ensures active model is downloaded.
+    /// Enable on-device AI. Spawns oMLX if not already running.
     pub async fn enable(
         &self,
     ) -> Result<Option<tokio::sync::mpsc::Receiver<DownloadProgress>>, String> {
@@ -67,7 +89,47 @@ impl LocalLlmService {
 
         let model = self.resolve_active_model();
         info!(model_id = model.id, "on-device AI enabled");
-        self.start_download(model.id).await
+
+        // 1. Download model if needed
+        let rx = self.start_download(model.id).await?;
+
+        // 2. If download is in progress, return the progress stream.
+        // Spawn will happen after download completes (lifecycle detects model).
+        // If no download needed, try to spawn now.
+        if rx.is_some() {
+            return Ok(rx);
+        }
+
+        // 3. If oMLX already running on port, nothing to do (Discover mode)
+        if omlx_binary::is_port_in_use(self.status.port) {
+            info!("oMLX already running on port, using Discover mode");
+            return Ok(None);
+        }
+
+        // 4. Spawn managed process
+        self.spawn_omlx().await?;
+
+        Ok(None)
+    }
+
+    /// Spawn oMLX as a managed child process.
+    async fn spawn_omlx(&self) -> Result<(), String> {
+        let binary =
+            omlx_binary::detect().ok_or("omlx not found. Install with: pip install omlx")?;
+
+        if !omlx_binary::verify(&binary) {
+            return Err("omlx binary found but failed verification".into());
+        }
+
+        let process = ManagedProcess::spawn(
+            &binary.path,
+            self.model_manager.models_dir(),
+            self.status.port,
+        )
+        .await?;
+
+        *self.managed_process.lock().unwrap() = Some(process);
+        Ok(())
     }
 
     /// Switch to a different model. Downloads if needed.
@@ -136,14 +198,22 @@ impl LocalLlmService {
             .collect()
     }
 
-    /// Disable on-device AI. Dual-path: immediate ready=false + persist to disk.
+    /// Disable on-device AI. Kills managed process if we own it.
     pub fn disable(&self) -> Result<(), String> {
         self.config
             .set_enabled(false)
             .map_err(|e| format!("failed to persist config: {e}"))?;
         self.status.ready.store(false, Ordering::Release);
         self.status.set_pid(None);
-        self.status.set_server_state(super::status::ServerState::Unknown);
+        self.status.set_discovered_model_id(None);
+        self.status
+            .set_server_state(super::status::ServerState::Unknown);
+
+        // Kill managed process if we own it
+        if let Some(mut process) = self.managed_process.lock().unwrap().take() {
+            tokio::spawn(async move { process.shutdown().await });
+        }
+
         info!("on-device AI disabled");
         Ok(())
     }
@@ -151,12 +221,27 @@ impl LocalLlmService {
     /// Snapshot for the status route.
     pub fn status_snapshot(&self) -> ServiceStatus {
         let active = self.resolve_active_model();
+        let mode = if !self.config.enabled() {
+            "none"
+        } else if self.managed_process.lock().unwrap().is_some() {
+            "managed"
+        } else {
+            "external"
+        };
         ServiceStatus {
             enabled: self.config.enabled(),
             llm: self.status.snapshot(),
             model_exists: self.model_manager.is_downloaded(active.id),
             model_size_bytes: Some(active.size_bytes),
             active_model_id: active.id.to_string(),
+            mode,
+        }
+    }
+
+    /// Shutdown managed process. Called during app exit.
+    pub async fn shutdown_managed(&self) {
+        if let Some(mut process) = self.managed_process.lock().unwrap().take() {
+            process.shutdown().await;
         }
     }
 
@@ -175,6 +260,7 @@ pub struct ServiceStatus {
     pub model_exists: bool,
     pub model_size_bytes: Option<u64>,
     pub active_model_id: String,
+    pub mode: &'static str,
 }
 
 #[derive(Debug, serde::Serialize)]
