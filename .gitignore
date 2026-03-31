@@ -131,6 +131,9 @@ lefthook-local.yml
 # PII patterns file (contains real identity info — private only)
 scripts/integrity/pii-check.sh
 
+# Phase classifier ML pipeline (private IP — symlinked from private/link.sh)
+scripts/phase-classifier/
+
 # Internal docs — plans, specs, strategy (symlinks from private/link.sh)
 docs/plans/
 docs/plans
