@@ -413,7 +413,7 @@ async fn main() -> Result<()> {
     let static_dir = get_static_dir();
     let sidecar = Arc::new(claude_view_server::SidecarManager::new());
     let sidecar_for_shutdown = sidecar.clone();
-    let app = create_app_full(
+    let (app, local_llm_for_shutdown) = create_app_full(
         db.clone(),
         indexing.clone(),
         registry_holder.clone(),
@@ -1064,10 +1064,9 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(async move {
             // Listen for both SIGINT (Ctrl+C) and SIGTERM (kill, Docker, systemd).
             // Without SIGTERM handling, `kill <pid>` bypasses all cleanup.
-            let mut sigterm = tokio::signal::unix::signal(
-                tokio::signal::unix::SignalKind::terminate(),
-            )
-            .expect("register SIGTERM handler");
+            let mut sigterm =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("register SIGTERM handler");
 
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
@@ -1085,6 +1084,9 @@ async fn main() -> Result<()> {
                 claude_view_server::live::hook_registrar::cleanup(shutdown_port);
                 claude_view_server::live::statusline_injector::cleanup();
             }
+
+            // Shut down managed oMLX process if we own it
+            local_llm_for_shutdown.shutdown_managed().await;
 
             // Shut down Node.js sidecar if running
             sidecar_for_shutdown.shutdown();

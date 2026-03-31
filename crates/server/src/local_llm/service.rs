@@ -240,7 +240,8 @@ impl LocalLlmService {
 
     /// Shutdown managed process. Called during app exit.
     pub async fn shutdown_managed(&self) {
-        if let Some(mut process) = self.managed_process.lock().unwrap().take() {
+        let process = self.managed_process.lock().unwrap().take();
+        if let Some(mut process) = process {
             process.shutdown().await;
         }
     }
