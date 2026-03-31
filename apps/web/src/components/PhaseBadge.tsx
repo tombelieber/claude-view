@@ -1,5 +1,6 @@
 import type { PhaseFreshness } from '@claude-view/shared/types/generated/PhaseFreshness'
 import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import { Cpu } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -81,10 +82,10 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
   const isPending = freshness === 'pending'
   const isSettled = freshness === 'settled'
 
-  return (
+  const badge = (
     <span
       className={cn(
-        'inline-flex items-center gap-0.5 px-1 py-px text-[10px] font-medium rounded border leading-3.5 transition-opacity duration-300',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded border transition-opacity duration-300',
         config.bg,
         config.text,
         config.border,
@@ -102,6 +103,36 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
       )}
     </span>
   )
+
+  const freshnessLabel = isPending
+    ? 'Classifying…'
+    : isSettled
+      ? 'Session idle — phase frozen'
+      : 'Live classification'
+
+  return (
+    <Tooltip.Provider delayDuration={200}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>{badge}</Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs"
+            sideOffset={5}
+          >
+            <p className="font-medium text-gray-900 dark:text-gray-100">
+              {config.emoji} {config.label} phase
+            </p>
+            {scope && <p className="text-gray-500 dark:text-gray-400 mt-0.5">{scope}</p>}
+            <p className="text-gray-400 dark:text-gray-500 mt-1">
+              <Cpu className="inline size-3 mr-0.5 -mt-px" />
+              oMLX · Qwen3.5 — {freshnessLabel}
+            </p>
+            <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  )
 }
 
 /**
@@ -112,7 +143,7 @@ export function PhaseBadgeSkeleton({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-px text-[10px] font-medium rounded border leading-3.5',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded border',
         'bg-gray-100/60 dark:bg-gray-800/40',
         'text-gray-400 dark:text-gray-500',
         'border-gray-200/50 dark:border-gray-700/40',
