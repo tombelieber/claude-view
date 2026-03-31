@@ -1,9 +1,111 @@
-import { ChevronRight, HelpCircle, Home, Monitor, Moon, Search, Settings, Sun } from 'lucide-react'
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import {
+  ChevronRight,
+  ExternalLink,
+  Github,
+  HelpCircle,
+  Home,
+  Keyboard,
+  MessageSquarePlus,
+  Monitor,
+  Moon,
+  Search,
+  Settings,
+  Sun,
+  Tag,
+} from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { NotificationSoundSettings } from '../hooks/use-notification-sound'
 import { useTheme } from '../hooks/use-theme'
 import { useTrackEvent } from '../hooks/use-track-event'
 import { useAppStore } from '../store/app-store'
+
+const GITHUB_URL = 'https://github.com/tombelieber/claude-view'
+
+interface HelpItem {
+  icon: React.ReactNode
+  label: string
+  href?: string
+  onClick?: () => void
+  external?: boolean
+}
+
+function HelpMenu({ onClose, onNavigate }: { onClose: () => void; onNavigate: (path: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [onClose])
+
+  const items: HelpItem[] = [
+    {
+      icon: <MessageSquarePlus className="w-4 h-4" />,
+      label: 'Feedback & Issues',
+      href: `${GITHUB_URL}/issues/new`,
+      external: true,
+    },
+    {
+      icon: <Keyboard className="w-4 h-4" />,
+      label: 'Keyboard Shortcuts',
+      onClick: () => { onNavigate('/settings'); onClose() },
+    },
+    {
+      icon: <Tag className="w-4 h-4" />,
+      label: 'Release Notes',
+      href: `${GITHUB_URL}/releases`,
+      external: true,
+    },
+    {
+      icon: <Github className="w-4 h-4" />,
+      label: 'GitHub',
+      href: GITHUB_URL,
+      external: true,
+    },
+  ]
+
+  return (
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-1 z-50 w-52 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1 animate-in fade-in slide-in-from-top-1 duration-150"
+    >
+      {items.map((item) => {
+        const cls =
+          'flex w-full items-center gap-2.5 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer'
+
+        return item.href ? (
+          <a
+            key={item.label}
+            href={item.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cls}
+            onClick={onClose}
+          >
+            <span className="text-gray-400 dark:text-gray-500">{item.icon}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.external && <ExternalLink className="w-3 h-3 text-gray-300 dark:text-gray-600" />}
+          </a>
+        ) : (
+          <button key={item.label} type="button" className={cls} onClick={item.onClick}>
+            <span className="text-gray-400 dark:text-gray-500">{item.icon}</span>
+            <span className="flex-1 text-left">{item.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 import { AuthPill } from './AuthPill'
 import { HealthIndicator } from './HealthIndicator'
 import { UserMenu } from './UserMenu'
@@ -26,11 +128,14 @@ export function Header({
   audioUnlocked,
 }: HeaderProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const params = useParams()
   const [searchParams] = useSearchParams()
   const { openCommandPalette } = useAppStore()
   const { theme, cycleTheme } = useTheme()
   const trackEvent = useTrackEvent()
+  const [helpOpen, setHelpOpen] = useState(false)
+  const toggleHelp = useCallback(() => setHelpOpen((v) => !v), [])
   const THEME_CYCLE = ['light', 'dark', 'system'] as const
   const handleCycleTheme = () => {
     const idx = THEME_CYCLE.indexOf(theme)
@@ -170,13 +275,18 @@ export function Header({
 
         <UserMenu />
 
-        <button
-          type="button"
-          aria-label="Help"
-          className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
-        >
-          <HelpCircle className="w-5 h-5" aria-hidden="true" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label="Help"
+            aria-expanded={helpOpen}
+            onClick={toggleHelp}
+            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-pointer transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 rounded-md"
+          >
+            <HelpCircle className="w-5 h-5" aria-hidden="true" />
+          </button>
+          {helpOpen && <HelpMenu onClose={() => setHelpOpen(false)} onNavigate={navigate} />}
+        </div>
 
         <Link
           to="/settings"
