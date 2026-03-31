@@ -165,7 +165,7 @@ export function SessionCard({
           )}
           <SourceBadge source={session.source} />
           {session.statuslineVersion && (
-            <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500">
+            <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
               v{session.statuslineVersion}
             </span>
           )}
@@ -242,7 +242,11 @@ export function SessionCard({
         if (hasPhase) {
           return (
             <div className="mb-1">
-              <PhaseBadge phase={currentPhase} scope={session.phase?.current?.scope} freshness={session.phase?.freshness} />
+              <PhaseBadge
+                phase={currentPhase}
+                scope={session.phase?.current?.scope}
+                freshness={session.phase?.freshness}
+              />
             </div>
           )
         }
