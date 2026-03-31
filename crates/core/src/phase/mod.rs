@@ -95,10 +95,11 @@ pub struct PhaseLabel {
     pub scope: Option<String>,
 }
 
-/// How fresh the phase classification is — drives badge animation on the frontend.
+/// How fresh the phase classification is — drives badge visual state.
 ///
-/// `fresh` → solid badge, `pending` → last badge + breathing animation,
-/// `stale` → no change (long-idle session, classification still valid).
+/// `Fresh` → solid badge (just classified).
+/// `Pending` → subtle shimmer (~400ms, classify in-flight).
+/// `Settled` → dimmed badge (NeedsYou session, phase frozen).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
@@ -109,11 +110,37 @@ pub struct PhaseLabel {
 )]
 #[serde(rename_all = "lowercase")]
 pub enum PhaseFreshness {
-    /// Classified recently — show solid badge.
+    /// Classified recently — solid badge at full opacity.
     #[default]
     Fresh,
-    /// Session has new activity, classification queued — show breathing animation.
+    /// Classify call in-flight — brief shimmer animation.
     Pending,
+    /// Session idle (NeedsYou), phase frozen — dimmed badge at 60% opacity.
+    Settled,
+}
+
+/// User-configurable aggressiveness for local LLM classification.
+/// Stored in `~/.claude-view/local-llm.json` as `classify_mode`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ClassifyMode {
+    /// Budget multiplier 0.5x — faster updates, more GPU.
+    Realtime,
+    /// Budget multiplier 1.0x — auto-tuned default.
+    #[default]
+    Balanced,
+    /// Budget multiplier 2.0x — slower updates, less GPU.
+    Efficient,
+}
+
+impl ClassifyMode {
+    pub fn budget_multiplier(self) -> f32 {
+        match self {
+            Self::Realtime => 0.5,
+            Self::Balanced => 1.0,
+            Self::Efficient => 2.0,
+        }
+    }
 }
 
 /// Full phase history for a session.

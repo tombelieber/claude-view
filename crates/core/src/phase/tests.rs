@@ -112,3 +112,34 @@ fn session_phase_display() {
 fn all_phases_have_six_entries() {
     assert_eq!(SessionPhase::ALL.len(), 6);
 }
+
+// ============================================================================
+// ClassifyMode tests
+// ============================================================================
+
+#[test]
+fn classify_mode_default_is_balanced() {
+    assert_eq!(ClassifyMode::default(), ClassifyMode::Balanced);
+}
+
+#[test]
+fn classify_mode_budget_multiplier() {
+    assert_eq!(ClassifyMode::Realtime.budget_multiplier(), 0.5);
+    assert_eq!(ClassifyMode::Balanced.budget_multiplier(), 1.0);
+    assert_eq!(ClassifyMode::Efficient.budget_multiplier(), 2.0);
+}
+
+// ============================================================================
+// PhaseFreshness tests
+// ============================================================================
+
+#[test]
+fn freshness_default_is_fresh() {
+    assert_eq!(PhaseFreshness::default(), PhaseFreshness::Fresh);
+}
+
+#[test]
+fn freshness_settled_serializes() {
+    let json = serde_json::to_string(&PhaseFreshness::Settled).unwrap();
+    assert_eq!(json, "\"settled\"");
+}
