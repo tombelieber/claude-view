@@ -624,4 +624,84 @@ mod tests {
             0.5
         ));
     }
+
+    #[test]
+    fn settled_needsyou_scenario() {
+        // Simulates: session classified once, then goes NeedsYou
+        // → should not be re-classified (entry would be removed by lifecycle gate)
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now() - Duration::from_secs(60),
+            last_served_at: Some(Instant::now() - Duration::from_secs(50)),
+            priority: Priority::Steady,
+            in_flight: false,
+            consecutive_same: 3,
+            current_budget: Duration::from_secs(40),
+            last_phase: Some(SessionPhase::Building),
+            has_user_turn_signal: false,
+        };
+        // Entry IS idle_ready by timing alone...
+        assert!(DrainState::is_idle_ready(&entry, Instant::now(), 1.0));
+        // ...but lifecycle gate would remove it (tested via should_skip_for_lifecycle)
+    }
+
+    #[test]
+    fn user_turn_preempts_backoff() {
+        let mut entry = DirtyEntry {
+            last_activity_at: Instant::now(),
+            last_served_at: Some(Instant::now()),
+            priority: Priority::Steady,
+            in_flight: false,
+            consecutive_same: 5,
+            current_budget: Duration::from_secs(60), // backed off to max
+            last_phase: Some(SessionPhase::Building),
+            has_user_turn_signal: false,
+        };
+
+        // Backed off → not ready for a long time
+        assert!(!DrainState::is_idle_ready(
+            &entry,
+            Instant::now() + Duration::from_secs(10),
+            1.0
+        ));
+
+        // User sends new message → budget resets
+        entry.signal_user_turn();
+        assert_eq!(entry.current_budget, Duration::from_secs(BASE_BUDGET_SECS));
+
+        // Now ready much sooner
+        let future = Instant::now() + Duration::from_secs(6);
+        entry.last_activity_at = Instant::now();
+        entry.last_served_at = Some(Instant::now());
+        assert!(DrainState::is_idle_ready(&entry, future, 1.0));
+    }
+
+    #[test]
+    fn efficient_mode_doubles_effective_budget() {
+        let entry = DirtyEntry {
+            last_activity_at: Instant::now() - Duration::from_secs(60),
+            last_served_at: Some(Instant::now() - Duration::from_secs(9)),
+            priority: Priority::Steady,
+            in_flight: false,
+            consecutive_same: 0,
+            current_budget: Duration::from_secs(BASE_BUDGET_SECS), // 5s
+            last_phase: None,
+            has_user_turn_signal: false,
+        };
+
+        // Balanced (1.0): budget=5s, 9s elapsed → ready
+        assert!(DrainState::is_idle_ready_with_mode(
+            &entry,
+            Instant::now(),
+            1.0,
+            1.0
+        ));
+
+        // Efficient (2.0): effective budget=10s, 9s elapsed → not ready
+        assert!(!DrainState::is_idle_ready_with_mode(
+            &entry,
+            Instant::now(),
+            1.0,
+            2.0
+        ));
+    }
 }
