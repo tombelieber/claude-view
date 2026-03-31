@@ -194,7 +194,18 @@ export function StorageOverview() {
     })
     toast.promise(promise, {
       loading: 'Clearing cache...',
-      success: (result) => `Cache cleared — freed ${formatBytes(result.clearedBytes)}`,
+      success: (result) => {
+        setTimeout(() => {
+          toast.info('Search will be empty until you rebuild the index.', {
+            duration: 6000,
+            action: {
+              label: 'Rebuild Now',
+              onClick: () => handleRebuildIndex(),
+            },
+          })
+        }, 500)
+        return `Cache cleared — freed ${formatBytes(result.clearedBytes)}`
+      },
       error: (e) => `Clear failed: ${e instanceof Error ? e.message : 'Unknown error'}`,
     })
   }
