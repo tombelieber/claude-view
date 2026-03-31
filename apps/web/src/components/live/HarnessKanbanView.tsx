@@ -73,7 +73,15 @@ export function HarnessKanbanView({
       <div className="mx-1 flex items-center gap-2 rounded-md border border-amber-300/30 dark:border-amber-700/30 bg-amber-50/60 dark:bg-amber-950/30 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
         <FlaskConical className="size-3.5 shrink-0" />
         <span>
-          <span className="font-medium">Preview</span> — UI polish coming soon
+          <span className="font-medium">Preview</span> — UI polish coming soon. Ideas?{' '}
+          <a
+            href="https://github.com/tombelieber/claude-view/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium underline underline-offset-2 hover:text-amber-600 dark:hover:text-amber-300"
+          >
+            Open an issue
+          </a>
         </span>
       </div>
 
