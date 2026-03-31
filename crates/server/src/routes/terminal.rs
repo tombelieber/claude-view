@@ -1265,6 +1265,7 @@ mod tests {
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
             pricing: Arc::new(std::collections::HashMap::new()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
 
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
@@ -1490,6 +1491,7 @@ mod tests {
             git_sync: Arc::new(crate::git_sync_state::GitSyncState::new()),
             pricing: Arc::new(std::collections::HashMap::new()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             live_tx: tokio::sync::broadcast::channel(256).0,
 
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
