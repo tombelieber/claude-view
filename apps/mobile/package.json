@@ -1,6 +1,6 @@
 {
   "name": "@claude-view/mobile",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
