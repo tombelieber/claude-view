@@ -536,7 +536,7 @@ pub async fn get_session_messages_by_id(
         let parsed = claude_view_core::block_accumulator::parse_session(&content);
         let total = parsed.blocks.len();
         let offset = query.offset.unwrap_or(0);
-        let limit = query.limit.unwrap_or(100);
+        let limit = query.limit.unwrap_or(50);
         let end = std::cmp::min(offset + limit, total);
         let blocks: Vec<_> = if offset < total {
             parsed.blocks.into_iter().skip(offset).take(limit).collect()

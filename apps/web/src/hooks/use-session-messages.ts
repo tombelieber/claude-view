@@ -1,29 +1,8 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
 import { useInfiniteQuery } from '@tanstack/react-query'
+import { BLOCK_PAGE_SIZE, computeInitialPage, computePreviousPage } from '../lib/block-pagination'
 import type { PaginatedMessages } from '../types/generated'
 import { HttpError, isNotFoundError } from './use-session'
-
-export const PAGE_SIZE = 50
-
-/** Compute the initial page size: load all if small, cap to 60% for large sessions.
- *  Exported for testing. */
-export function computeInitialPage(total: number): { offset: number; size: number } {
-  const maxInitial = Math.floor(total * 0.6)
-  const size = total <= PAGE_SIZE ? total : Math.min(PAGE_SIZE, maxInitial)
-  const offset = Math.max(0, total - size)
-  return { offset, size }
-}
-
-/** Compute the previous page params with clamped limit to prevent overlap.
- *  Returns undefined when already at the beginning. Exported for testing. */
-export function computePreviousPage(
-  currentOffset: number,
-): { offset: number; limit: number } | undefined {
-  if (currentOffset === 0) return undefined
-  const prevOffset = Math.max(0, currentOffset - PAGE_SIZE)
-  const limit = currentOffset - prevOffset
-  return { offset: prevOffset, limit }
-}
 
 export interface PaginatedBlocks {
   blocks: ConversationBlock[]
@@ -99,7 +78,7 @@ export function useSessionMessages(sessionId: string | null, options?: UseSessio
         )
       }
 
-      return fetchMessages(sessionId, pageParam, PAGE_SIZE, raw, suppressNotFound, format)
+      return fetchMessages(sessionId, pageParam, BLOCK_PAGE_SIZE, raw, suppressNotFound, format)
     },
     initialPageParam: -1 as number | { offset: number; limit: number },
     getNextPageParam: () => undefined, // No downward pagination needed — already at the end

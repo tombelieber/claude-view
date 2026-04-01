@@ -1,3 +1,4 @@
+import { BLOCK_PAGE_SIZE } from '../../block-pagination'
 import type {
   ChatPanelStore,
   HistoryPagination,
@@ -5,8 +6,6 @@ import type {
   RawEvent,
   TransitionResult,
 } from '../types'
-
-const PAGE_SIZE = 100
 
 export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -67,7 +66,7 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
     case 'LOAD_OLDER_HISTORY': {
       const pg = store.historyPagination
       if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
-      const newOffset = Math.max(0, pg.offset - PAGE_SIZE)
+      const newOffset = Math.max(0, pg.offset - BLOCK_PAGE_SIZE)
       const limit = pg.offset - newOffset
       return [
         { ...store, historyPagination: { ...pg, fetchingOlder: true } },
