@@ -1,0 +1,61 @@
+---
+title: "On-Device AI for Session Intelligence"
+description: "v0.28.0 brings local LLM phase classification, a component dashboard, and a polished settings experience to claude-view."
+date: 2026-04-02
+author: claude-view team
+---
+
+claude-view now runs an on-device LLM to classify what phase your coding sessions are in — no cloud calls, no latency, no cost. v0.28.0 also ships a component dashboard, a redesigned Harness view, and a settings page that finally feels finished.
+
+## The problem with cloud-only classification
+
+Phase classification tells you whether a session is exploring, building, debugging, or shipping. Previously, every classification call hit a remote model. That meant latency, cost, and GPU waste — especially for sessions that had settled into a stable phase and didn't need reclassification every few seconds.
+
+For teams running dozens of concurrent sessions, the overhead added up fast.
+
+## Local LLM with smart scheduling
+
+v0.28.0 introduces on-device classification via oMLX. claude-view detects and manages the oMLX process automatically:
+
+- **Auto-lifecycle**: detects the binary on your PATH, spawns it when you enable local AI, restarts on crash, and shuts down cleanly with SIGTERM on exit
+- **Model switching**: a curated registry with RAM guard ensures you don't accidentally load a model that exceeds your available memory
+- **Download UX**: HuggingFace multi-file downloads with resume support, cancel button, speed display, and ETA countdown
+- **Smart drain loop**: exponential backoff with EMA stabilization reduces GPU usage by 93% — sessions that haven't changed don't waste compute
+
+The classifier uses three modes: off, smart (only classifies when new activity arrives), and always. Smart mode is the default, and it's what most people should use.
+
+## Component dashboard
+
+The System Monitor now shows a component-level view instead of a single self-process row. Each component (sidecar, oMLX) gets its own metrics:
+
+- **VRAM bar** with purple styling, distinct from CPU and RAM
+- **Session count badge** showing how many sessions each sidecar is handling
+- **Per-component CPU and RAM** via IOKit GPU memory FFI and sysinfo process introspection
+
+## Harness v3
+
+The Live Monitor's Harness view got a full redesign. The needs-you sidebar groups sessions by project and branch with collapsible headers, so you can focus on what matters. The main view uses Design/Delivery swimlanes to separate sessions by lifecycle stage.
+
+## Settings that feel finished
+
+The Settings page was functional but felt like a checklist. v0.28.0 adds feature scope labels (so you know what each setting affects), unified card headers, a GitHub star CTA, release notes link, build date in the About section, and improved UX for Mobile Pairing, Privacy, and Clear Cache.
+
+## Under the hood
+
+The biggest architectural change is the SessionCoordinator — a 4-phase mutation pipeline (lifecycle, statusline, reconcile, control) that replaces the monolithic manager. The 4337-line `manager.rs` was decomposed into 8 focused modules, each handling one concern.
+
+The hook system expanded from 14 to 25 Claude Code events with explicit match arms for every event type. And the entire API surface is now exposed as 85 MCP tools via OpenAPI codegen, making it possible to build Claude Code plugins that talk to claude-view.
+
+## What's next
+
+- FSM unification: one state machine for all session views (chat, live, history)
+- Scheduled task classification: classify sessions on a timer, not just on activity
+- Mobile companion app for monitoring sessions on the go
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Enable on-device AI in Settings to try local phase classification. The smart drain loop means you won't even notice the GPU usage.

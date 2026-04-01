@@ -1256,6 +1256,53 @@ npx claude-view@latest
 ```
 
 
+--- blog/v0-28-0-on-device-ai-for-session-intelligence.mdx ---
+
+---
+title: "On-Device AI for Session Intelligence"
+description: "v0.28.0 brings local LLM phase classification, a component dashboard, and a polished settings experience to claude-view."
+date: 2026-04-02
+author: claude-view team
+---
+
+claude-view now runs an on-device LLM to classify what phase your coding sessions are in — no cloud calls, no latency, no cost. v0.28.0 also ships a component dashboard, a redesigned Harness view, and a settings page that finally feels finished.
+
+## The problem with cloud-only classification
+
+Phase classification tells you whether a session is exploring, building, debugging, or shipping. Previously, every classification call hit a remote model. That meant latency, cost, and GPU waste — especially for sessions that had settled into a stable phase and didn't need reclassification every few seconds.
+
+For teams running dozens of concurrent sessions, the overhead added up fast.
+
+## Local LLM with smart scheduling
+
+v0.28.0 introduces on-device classification via oMLX. claude-view detects and manages the oMLX process automatically:
+
+- **Auto-lifecycle**: detects the binary on your PATH, spawns it when you enable local AI, restarts on crash, and shuts down cleanly with SIGTERM on exit
+- **Model switching**: a curated registry with RAM guard ensures you don't accidentally load a model that exceeds your available memory
+- **Download UX**: HuggingFace multi-file downloads with resume support, cancel button, speed display, and ETA countdown
+- **Smart drain loop**: exponential backoff with EMA stabilization reduces GPU usage by 93% — sessions that haven't changed don't waste compute
+
+## Component dashboard
+
+The System Monitor now shows a component-level view instead of a single self-process row. Each component (sidecar, oMLX) gets its own metrics: VRAM bar, session count badge, and per-component CPU and RAM.
+
+## Harness v3
+
+The Live Monitor's Harness view got a full redesign. The needs-you sidebar groups sessions by project and branch with collapsible headers. The main view uses Design/Delivery swimlanes.
+
+## Under the hood
+
+The SessionCoordinator is a 4-phase mutation pipeline (lifecycle, statusline, reconcile, control) replacing the monolithic manager. The 4337-line manager.rs was decomposed into 8 focused modules. The hook system expanded from 14 to 25 events, and the full API is now exposed as 85 MCP tools via OpenAPI codegen.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Enable on-device AI in Settings to try local phase classification.
+
+
 --- blog/v0-27-0-geist-fonts-and-agent-costs.mdx ---
 
 ---
@@ -2508,6 +2555,45 @@ version: v0.27.0
 **Apple HIG type scale** — all font sizes normalized to Apple Human Interface Guidelines, giving consistent visual hierarchy from sidebar labels to conversation content.
 
 **"Not signed in" FAQ** — new troubleshooting guide in the README covering credentials file, macOS Keychain, token expiry, and HOME environment issues.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.28.0.md ---
+
+---
+title: "v0.28.0 — On-Device AI, Component Dashboard & Settings Polish"
+date: 2026-04-02
+version: v0.28.0
+---
+
+## New features
+
+**On-device AI with oMLX** — claude-view can now run a local LLM for phase classification. Managed lifecycle with auto-detect, spawn, restart, and graceful shutdown. Model switching with a curated registry, RAM guard, and HuggingFace download with resume, cancel, speed and ETA display.
+
+**Smart phase classification** — 93% GPU waste reduction through an exponential backoff drain loop. The classifier now uses EMA stabilization with temp-diversified voting, settling into a dimmed badge state when sessions go idle.
+
+**Component dashboard** — the System Monitor replaces the self-app row with a full component view showing sidecar and oMLX metrics including VRAM usage, CPU, RAM, and session count per component.
+
+**Harness v3** — the Live Monitor gains a needs-you sidebar grouped by project/branch with collapsible headers, plus a redesigned Harness view with Design/Delivery swimlanes.
+
+**Help dropdown** — new Help button in the header with keyboard shortcuts, release notes link, and feedback link. Auto-scrolls to the shortcuts section.
+
+## Improvements
+
+**Settings page polish** — feature scope labels, unified card headers, GitHub star CTA, release notes link, build date in About, improved Mobile Pairing and Privacy UX.
+
+**SessionCoordinator** — 4-phase mutation pipeline (lifecycle, statusline, reconcile, control) replacing the monolithic manager. The 4337-line manager.rs was decomposed into 8 focused modules.
+
+**25 hook events** — expanded from 14 to 25 Claude Code hook events with explicit match arms for every event type.
+
+**Full API as MCP tools** — OpenAPI spec generation with utoipa annotations, automatic codegen producing 85 MCP tools from the spec.
+
+**Unified block pagination** — single source of truth for all block consumers, fixing pagination state loss after format changes.
 
 ## Getting started
 
