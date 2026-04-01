@@ -746,6 +746,9 @@ COMMIT;"#,
     // Chat model selector filters on this to show only usable models.
     // Default 0 — only set to 1 when SDK actually reports via upsert_sdk_models().
     r#"ALTER TABLE models ADD COLUMN sdk_supported INTEGER NOT NULL DEFAULT 0;"#,
+    // Migration 59: entrypoint — how the session was launched (cli, claude-vscode, sdk-ts).
+    // Extracted from the JSONL "entrypoint" field on the first line that has it.
+    r#"ALTER TABLE sessions ADD COLUMN entrypoint TEXT;"#,
 ];
 
 // ============================================================================

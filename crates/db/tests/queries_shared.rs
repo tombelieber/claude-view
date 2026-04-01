@@ -76,5 +76,6 @@ pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
         first_message_at: None,
         total_cost_usd: None,
         slug: None,
+        entrypoint: None,
     }
 }

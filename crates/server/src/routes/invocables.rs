@@ -245,6 +245,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
