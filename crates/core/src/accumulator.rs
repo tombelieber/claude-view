@@ -671,6 +671,7 @@ mod tests {
             team_name: None,
             at_files: Vec::new(),
             pasted_paths: Vec::new(),
+            entrypoint: None,
         }
     }
 
