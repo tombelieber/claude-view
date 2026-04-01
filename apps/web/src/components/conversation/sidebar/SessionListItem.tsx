@@ -16,7 +16,6 @@ interface Props {
     liveData?: LiveSession | null
   }
   isSelected: boolean
-  isKeyboardActive?: boolean
   onSelect: (sessionId: string) => void
   onResume?: (sessionId: string) => void
   onTakeOver?: (sessionId: string) => void
@@ -49,7 +48,6 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
   {
     session,
     isSelected,
-    isKeyboardActive,
     onSelect,
     onResume,
     onTakeOver,
@@ -74,9 +72,7 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
     'group relative flex items-start gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors',
     isSelected
       ? 'bg-blue-500/10 dark:bg-blue-400/10 text-blue-700 dark:text-blue-300'
-      : isKeyboardActive
-        ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-        : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
+      : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300',
   ].join(' ')
 
   const handleKeyDown = useCallback(
@@ -107,7 +103,10 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           {session.liveData && <SourceBadge source={session.liveData.source} />}
-          <PhaseBadge phase={session.liveData?.phase?.current?.phase} freshness={session.liveData?.phase?.freshness} />
+          <PhaseBadge
+            phase={session.liveData?.phase?.current?.phase}
+            freshness={session.liveData?.phase?.freshness}
+          />
           <p className="text-sm font-medium truncate">{title}</p>
         </div>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
