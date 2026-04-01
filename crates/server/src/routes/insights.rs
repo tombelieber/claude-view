@@ -447,6 +447,7 @@ impl LightSession {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         }
     }
 }

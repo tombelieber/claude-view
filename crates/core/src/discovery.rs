@@ -486,6 +486,7 @@ async fn get_project_sessions(
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         });
     }
 
