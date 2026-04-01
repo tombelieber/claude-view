@@ -23,7 +23,8 @@ import { ConversationActionsProvider } from '@claude-view/shared/contexts/conver
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
 import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
-import { useConversation } from '../../hooks/use-conversation'
+import { useChatPanel } from '../../hooks/use-chat-panel'
+import { useCommandExecutor } from '../../hooks/use-command-executor'
 import { useFileHistory } from '../../hooks/use-file-history'
 import { useHookEvents } from '../../hooks/use-hook-events'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
@@ -160,14 +161,20 @@ export function SessionDetailPanel({
   // Derive liveStatus from SSE session data (falls back to 'inactive' when undefined)
   const detailLiveStatus = deriveLiveStatus(session)
 
-  // ---- Unified conversation hook — handles WS lifecycle + blocks + actions ----
+  // ---- FSM: single state machine replaces useConversation + TanStack chain ----
   const {
+    store: convStore,
+    dispatch: convDispatch,
+    pendingCmdsRef: convPendingCmdsRef,
     blocks: convBlocks,
-    actions: convActions,
-    history: convHistory,
-  } = useConversation(data.id, {
-    liveStatus: detailLiveStatus,
-  })
+    historyPagination: convHistoryPagination,
+  } = useChatPanel(data.id)
+  useCommandExecutor(convStore, convDispatch, convPendingCmdsRef)
+
+  // Dispatch live status so FSM transitions correctly for CLI-owned sessions
+  useEffect(() => {
+    convDispatch({ type: 'LIVE_STATUS_CHANGED', status: detailLiveStatus })
+  }, [detailLiveStatus, convDispatch])
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
   const hasTeam = !!data.teamName
@@ -769,11 +776,20 @@ export function SessionDetailPanel({
             <ErrorBoundary>
               <ConversationActionsProvider
                 actions={{
-                  retryMessage: convActions.retryMessage,
-                  respondPermission: convActions.respondPermission,
-                  answerQuestion: convActions.answerQuestion,
-                  approvePlan: convActions.approvePlan,
-                  submitElicitation: convActions.submitElicitation,
+                  retryMessage: (localId) => convDispatch({ type: 'RETRY_MESSAGE', localId }),
+                  respondPermission: (rid, allowed, perms) =>
+                    convDispatch({
+                      type: 'RESPOND_PERMISSION',
+                      requestId: rid,
+                      allowed,
+                      updatedPermissions: perms,
+                    }),
+                  answerQuestion: (rid, answers) =>
+                    convDispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                  approvePlan: (rid, approved, feedback) =>
+                    convDispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                  submitElicitation: (rid, response) =>
+                    convDispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
                 }}
               >
                 <ConversationThread
@@ -781,9 +797,13 @@ export function SessionDetailPanel({
                   renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
                   filterBar={displayMode === 'developer'}
                   compact
-                  onStartReached={convHistory.fetchOlderMessages}
-                  isFetchingOlder={convHistory.isFetchingOlder}
-                  hasOlderMessages={convHistory.hasOlderMessages}
+                  onStartReached={
+                    convHistoryPagination.hasOlderMessages
+                      ? () => convDispatch({ type: 'LOAD_OLDER_HISTORY' })
+                      : undefined
+                  }
+                  isFetchingOlder={convHistoryPagination.isFetchingOlder}
+                  hasOlderMessages={convHistoryPagination.hasOlderMessages}
                 />
               </ConversationActionsProvider>
             </ErrorBoundary>
