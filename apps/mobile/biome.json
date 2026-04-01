@@ -1,0 +1,6 @@
+{
+  "extends": ["../../biome.json"],
+  "files": {
+    "ignore": ["ios/Pods", "ios/build", ".tamagui", ".expo", "android"]
+  }
+}

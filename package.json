@@ -27,6 +27,7 @@
     "test:rust": "cargo test --workspace",
     "lint:rust": "cargo clippy --workspace -- -D warnings",
     "lint:all": "turbo lint && cargo clippy --workspace -- -D warnings",
+    "ci:local": "./scripts/ci-local.sh",
     "ci:check": "turbo run lint typecheck test --affected",
     "verify:manifests": "node scripts/verify-manifests.mjs",
     "check": "biome check .",
