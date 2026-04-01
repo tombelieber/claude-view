@@ -4,6 +4,7 @@
  */
 import type { AssistantBlock, SystemBlock, UserBlock } from '@claude-view/shared/types/blocks'
 import type {
+  AgentName,
   AiTitle,
   CommandOutput,
   ElicitationComplete,
@@ -427,6 +428,18 @@ export const devSystemBlocks = {
       content: 'Conversation compacted',
       message: 'Conversation compacted',
     } satisfies Informational,
+  } satisfies SystemBlock,
+
+  /** agent-name — emitted when session runs as a subagent */
+  agentName: {
+    type: 'system',
+    id: 'dsb_015',
+    variant: 'agent_name',
+    data: {
+      type: 'agent-name',
+      agentName: 'code-reviewer',
+      sessionId: 'sess-100',
+    } satisfies AgentName,
   } satisfies SystemBlock,
 }
 

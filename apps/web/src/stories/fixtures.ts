@@ -840,6 +840,17 @@ export const systemBlocks = {
         '## Implementation Plan\n\n1. Extract middleware to separate module\n2. Add JWT validation\n3. Update route guards\n4. Add integration tests',
     },
   } as SystemBlock,
+
+  agentName: {
+    type: 'system',
+    id: 'sb_009',
+    variant: 'agent_name',
+    data: {
+      type: 'agent-name',
+      agentName: 'code-reviewer',
+      sessionId: 'sess-100',
+    },
+  } as SystemBlock,
 }
 
 // ── Interaction / Protocol Data ─────────────────────────────────────────────

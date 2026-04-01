@@ -352,14 +352,15 @@ const comparisons: ModeComparison[] = [
     blocks: [devSystemBlocks.elicitationComplete as ConversationBlock],
   },
 
-  // ── 30b. System: new variants (pr_link, custom_title, plan_content) ──
+  // ── 30b. System: new variants (pr_link, custom_title, plan_content, agent_name) ──
   {
     label: 'system: new variants',
-    description: 'PR link, custom title, plan content — newly parsed from JSONL',
+    description: 'PR link, custom title, plan content, agent name — parsed from JSONL',
     blocks: [
       systemBlocks.prLink as ConversationBlock,
       systemBlocks.customTitle as ConversationBlock,
       systemBlocks.planContent as ConversationBlock,
+      systemBlocks.agentName as ConversationBlock,
     ],
   },
 

@@ -79,7 +79,10 @@ function AgentPill({ agent }: { agent: SubAgentInfo }) {
           aria-label={`${agent.agentType}: ${agent.description}`}
         >
           {STATUS_ICON[agent.status]}
-          {agent.agentType}
+          <span className="font-semibold">{agent.agentType}</span>
+          {agent.description && (
+            <span className="opacity-70 truncate max-w-[120px]">{agent.description}</span>
+          )}
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>
