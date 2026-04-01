@@ -1,0 +1,58 @@
+---
+title: "One FSM to Rule Them All"
+description: "v0.29.0 unifies all session views on a single state machine, adds entrypoint badges, and introduces a local CI pipeline that catches bugs before they ship."
+date: 2026-04-02
+author: claude-view team
+---
+
+claude-view v0.29.0 ships the biggest architectural change since the block pipeline: every session view now runs on a single finite state machine. Plus, session cards tell you how each session started, and releases are now gated by a local CI pipeline that would have caught every bug from the last three versions.
+
+## The problem with two architectures
+
+Since v0.24.0, claude-view had two parallel paths for loading and displaying session data: a TanStack Query hook chain for history views, and a finite state machine for live sessions. Both fetched blocks, both managed pagination, both handled scroll anchoring — but they did it differently.
+
+The result was predictable: bugs fixed in one path didn't get fixed in the other. Pagination worked in live view but broke in history. Scroll anchoring worked in history but drifted in live. Every fix was a game of whack-a-mole across two codebases that were supposed to do the same thing.
+
+## One state machine, everywhere
+
+v0.29.0 deletes the TanStack hook chain entirely (-5,841 lines) and runs every session view — history, live, watching — through the same FSM. One set of pagination logic. One scroll anchoring implementation. One place to fix bugs.
+
+The migration surfaced a subtle issue that had been hiding for a month: Virtuoso's `onStartReached` callback was being passed as an inline anonymous function wrapped in a conditional ternary. This created a new function reference on every render, which silently broke Virtuoso's `firstItemIndex` scroll anchoring. The fix was straightforward — a stable `useCallback` passed unconditionally — but it could only be found by diffing the working consumer against the broken one.
+
+## Entrypoint badges
+
+Session history cards now show a badge indicating how each session was started: CLI, VS Code, SDK, or other entrypoints. When you're running a dozen sessions across different tools, knowing which ones came from your IDE vs. your terminal vs. an automated SDK script makes triage faster.
+
+The entrypoint is parsed from the first line of each session's JSONL, where Claude Code writes the launch context. No additional configuration needed — it just appears on session cards.
+
+## Local CI that actually catches things
+
+Every release now passes through an 8-gate local CI pipeline before the version is bumped:
+
+1. TypeScript lint, typecheck, and tests
+2. Rust clippy (warnings as errors) and full workspace tests
+3. Evidence audit (JSONL schema guard)
+4. Storybook build (component compilation)
+5. Integrity gates (parser/indexer replay with golden fixtures)
+
+Previously, releases only ran an evidence audit and a Storybook build. The first run of the full pipeline on the existing codebase caught a missing struct field in the parser, a test assertion that assumed a specific OS error message, and 20 pre-existing test failures in components that had drifted from their implementations. GitHub Actions only handles cross-platform binary builds and npm publishing — quality gates run locally, where they're fast and you can fix things immediately.
+
+## Under the hood
+
+The agent name parser now handles `agent-name` JSONL entries, improving sub-agent identification in conversation views. A new baseline-to-parser sync guard catches evidence drift before it ships — if the parser's output no longer matches the golden baseline, the release is blocked.
+
+The mobile app's biome configuration was also fixed to exclude generated files (CocoaPods specs, Tamagui config) that were causing false lint failures.
+
+## What's next
+
+- Fix the 20 pre-existing TypeScript test failures surfaced by the full CI pipeline
+- Landing page refresh with the new changelog and blog content
+- Session filtering by entrypoint type
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+The FSM unification means fewer bugs in session views going forward. If you've been hitting pagination issues in history view, this release fixes them structurally.
