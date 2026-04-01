@@ -82,6 +82,11 @@ export function ConversationView() {
     dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus })
   }, [liveStatus, dispatch])
 
+  // Pagination: stable callback — matches ChatSession pattern
+  const handleLoadOlderHistory = useCallback(() => {
+    dispatch({ type: 'LOAD_OLDER_HISTORY' })
+  }, [dispatch])
+
   // Detect missing JSONL (session in DB but file deleted)
   const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
 
@@ -631,11 +636,7 @@ export function ConversationView() {
                         <ConversationThread
                           blocks={blocks}
                           renderers={registry}
-                          onStartReached={
-                            historyPagination.hasOlderMessages
-                              ? () => dispatch({ type: 'LOAD_OLDER_HISTORY' })
-                              : undefined
-                          }
+                          onStartReached={handleLoadOlderHistory}
                           isFetchingOlder={historyPagination.isFetchingOlder}
                           hasOlderMessages={historyPagination.hasOlderMessages}
                         />
