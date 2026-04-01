@@ -280,9 +280,6 @@ export function useCommandExecutor(
         }
         break
       }
-      case 'INVALIDATE_HISTORY':
-        queryClient.invalidateQueries({ queryKey: ['session-messages', cmd.sessionId] })
-        break
       case 'INVALIDATE_SIDEBAR':
         queryClient.invalidateQueries({ queryKey: ['chat-sidebar-sessions'] })
         break
