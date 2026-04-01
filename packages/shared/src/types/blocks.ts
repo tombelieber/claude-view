@@ -7,6 +7,7 @@ import type { ProgressData } from './generated/ProgressData'
 import type { ProgressVariant } from './generated/ProgressVariant'
 
 import type {
+  AgentName,
   AskQuestion,
   AssistantError,
   AuthStatus,
@@ -196,6 +197,7 @@ export type SystemBlock = {
     | 'custom_title'
     | 'plan_content'
     | 'informational'
+    | 'agent_name'
     | 'unknown'
   data:
     | SessionInit
@@ -215,6 +217,7 @@ export type SystemBlock = {
     | LastPrompt
     | WorktreeState
     | Informational
+    | AgentName
     | UnknownSdkEvent
     | Record<string, unknown>
   rawJson?: Record<string, unknown> | null

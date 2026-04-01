@@ -323,6 +323,7 @@ pub enum SystemVariant {
     CustomTitle,
     PlanContent,
     Informational,
+    AgentName,
     Unknown,
 }
 
@@ -686,9 +687,10 @@ mod tests {
             SystemVariant::CustomTitle,
             SystemVariant::PlanContent,
             SystemVariant::Informational,
+            SystemVariant::AgentName,
             SystemVariant::Unknown,
         ];
-        assert_eq!(variants.len(), 21);
+        assert_eq!(variants.len(), 22);
         for variant in &variants {
             let block = SystemBlock {
                 id: "s1".into(),

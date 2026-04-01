@@ -89,6 +89,7 @@ impl BlockAccumulator {
             "worktree-state" => self.handle_worktree_state(entry),
             "pr-link" => self.handle_pr_link(entry),
             "custom-title" => self.handle_custom_title(entry),
+            "agent-name" => self.handle_agent_name(entry),
             _ => {} // unknown entry type — skip silently
         }
     }
@@ -566,6 +567,15 @@ impl BlockAccumulator {
         }));
     }
 
+    fn handle_agent_name(&mut self, entry: &Value) {
+        self.blocks.push(ConversationBlock::System(SystemBlock {
+            id: self.make_id("sys"),
+            variant: SystemVariant::AgentName,
+            data: entry.clone(),
+            raw_json: None,
+        }));
+    }
+
     fn handle_worktree_state(&mut self, entry: &Value) {
         self.blocks.push(ConversationBlock::System(SystemBlock {
             id: self.make_id("sys"),
@@ -851,8 +861,8 @@ mod tests {
         let blocks = parse_session_as_blocks(&fixture);
         assert_eq!(
             blocks.len(),
-            4,
-            "Expected 4 SystemBlocks, got {}",
+            5,
+            "Expected 5 SystemBlocks, got {}",
             blocks.len()
         );
         for block in &blocks {

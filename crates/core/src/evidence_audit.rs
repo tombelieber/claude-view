@@ -1165,9 +1165,9 @@ mod tests {
         assert!(
             baseline
                 .top_level_types
-                .silently_ignored
+                .handled
                 .contains(&"pr-link".to_string()),
-            "silently_ignored should contain 'pr-link'"
+            "handled should contain 'pr-link'"
         );
 
         // Verify all_known includes everything
@@ -1175,7 +1175,8 @@ mod tests {
         assert!(all.contains("assistant"));
         assert!(all.contains("progress"));
         assert!(all.contains("pr-link"));
-        assert!(all.contains("hook_event")); // zero_occurrence_not_in_parser
+        assert!(all.contains("agent-name"));
+        assert!(all.contains("hook_event")); // zero_occurrence_but_parser_has_arm
 
         // Verify content block types
         assert!(

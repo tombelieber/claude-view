@@ -292,6 +292,12 @@ export interface LastPrompt {
   lastPrompt: string
 }
 
+export interface AgentName {
+  type: 'agent-name'
+  agentName: string
+  sessionId: string
+}
+
 export interface Informational {
   content: string
   message?: string
