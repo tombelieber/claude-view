@@ -1256,53 +1256,6 @@ npx claude-view@latest
 ```
 
 
---- blog/v0-28-0-on-device-ai-for-session-intelligence.mdx ---
-
----
-title: "On-Device AI for Session Intelligence"
-description: "v0.28.0 brings local LLM phase classification, a component dashboard, and a polished settings experience to claude-view."
-date: 2026-04-02
-author: claude-view team
----
-
-claude-view now runs an on-device LLM to classify what phase your coding sessions are in — no cloud calls, no latency, no cost. v0.28.0 also ships a component dashboard, a redesigned Harness view, and a settings page that finally feels finished.
-
-## The problem with cloud-only classification
-
-Phase classification tells you whether a session is exploring, building, debugging, or shipping. Previously, every classification call hit a remote model. That meant latency, cost, and GPU waste — especially for sessions that had settled into a stable phase and didn't need reclassification every few seconds.
-
-For teams running dozens of concurrent sessions, the overhead added up fast.
-
-## Local LLM with smart scheduling
-
-v0.28.0 introduces on-device classification via oMLX. claude-view detects and manages the oMLX process automatically:
-
-- **Auto-lifecycle**: detects the binary on your PATH, spawns it when you enable local AI, restarts on crash, and shuts down cleanly with SIGTERM on exit
-- **Model switching**: a curated registry with RAM guard ensures you don't accidentally load a model that exceeds your available memory
-- **Download UX**: HuggingFace multi-file downloads with resume support, cancel button, speed display, and ETA countdown
-- **Smart drain loop**: exponential backoff with EMA stabilization reduces GPU usage by 93% — sessions that haven't changed don't waste compute
-
-## Component dashboard
-
-The System Monitor now shows a component-level view instead of a single self-process row. Each component (sidecar, oMLX) gets its own metrics: VRAM bar, session count badge, and per-component CPU and RAM.
-
-## Harness v3
-
-The Live Monitor's Harness view got a full redesign. The needs-you sidebar groups sessions by project and branch with collapsible headers. The main view uses Design/Delivery swimlanes.
-
-## Under the hood
-
-The SessionCoordinator is a 4-phase mutation pipeline (lifecycle, statusline, reconcile, control) replacing the monolithic manager. The 4337-line manager.rs was decomposed into 8 focused modules. The hook system expanded from 14 to 25 events, and the full API is now exposed as 85 MCP tools via OpenAPI codegen.
-
-## Update now
-
-```bash
-npx claude-view@latest
-```
-
-Enable on-device AI in Settings to try local phase classification.
-
-
 --- blog/v0-27-0-geist-fonts-and-agent-costs.mdx ---
 
 ---
@@ -1339,6 +1292,133 @@ Alongside the font swap, every font size in the app was normalized to the Apple 
 ```bash
 npx claude-view@latest
 ```
+
+
+--- blog/v0-29-0-one-fsm-to-rule-them-all.mdx ---
+
+---
+title: "One FSM to Rule Them All"
+description: "v0.29.0 unifies all session views on a single state machine, adds entrypoint badges, and introduces a local CI pipeline that catches bugs before they ship."
+date: 2026-04-02
+author: claude-view team
+---
+
+claude-view v0.29.0 ships the biggest architectural change since the block pipeline: every session view now runs on a single finite state machine. Plus, session cards tell you how each session started, and releases are now gated by a local CI pipeline that would have caught every bug from the last three versions.
+
+## The problem with two architectures
+
+Since v0.24.0, claude-view had two parallel paths for loading and displaying session data: a TanStack Query hook chain for history views, and a finite state machine for live sessions. Both fetched blocks, both managed pagination, both handled scroll anchoring — but they did it differently.
+
+The result was predictable: bugs fixed in one path didn't get fixed in the other. Pagination worked in live view but broke in history. Scroll anchoring worked in history but drifted in live. Every fix was a game of whack-a-mole across two codebases that were supposed to do the same thing.
+
+## One state machine, everywhere
+
+v0.29.0 deletes the TanStack hook chain entirely (-5,841 lines) and runs every session view — history, live, watching — through the same FSM. One set of pagination logic. One scroll anchoring implementation. One place to fix bugs.
+
+The migration surfaced a subtle issue that had been hiding for a month: Virtuoso's `onStartReached` callback was being passed as an inline anonymous function wrapped in a conditional ternary. This created a new function reference on every render, which silently broke Virtuoso's `firstItemIndex` scroll anchoring. The fix was straightforward — a stable `useCallback` passed unconditionally — but it could only be found by diffing the working consumer against the broken one.
+
+## Entrypoint badges
+
+Session history cards now show a badge indicating how each session was started: CLI, VS Code, SDK, or other entrypoints. When you're running a dozen sessions across different tools, knowing which ones came from your IDE vs. your terminal vs. an automated SDK script makes triage faster.
+
+The entrypoint is parsed from the first line of each session's JSONL, where Claude Code writes the launch context. No additional configuration needed — it just appears on session cards.
+
+## Local CI that actually catches things
+
+Every release now passes through an 8-gate local CI pipeline before the version is bumped:
+
+1. TypeScript lint, typecheck, and tests
+2. Rust clippy (warnings as errors) and full workspace tests
+3. Evidence audit (JSONL schema guard)
+4. Storybook build (component compilation)
+5. Integrity gates (parser/indexer replay with golden fixtures)
+
+Previously, releases only ran an evidence audit and a Storybook build. The first run of the full pipeline on the existing codebase caught a missing struct field in the parser, a test assertion that assumed a specific OS error message, and 20 pre-existing test failures in components that had drifted from their implementations. GitHub Actions only handles cross-platform binary builds and npm publishing — quality gates run locally, where they're fast and you can fix things immediately.
+
+## Under the hood
+
+The agent name parser now handles `agent-name` JSONL entries, improving sub-agent identification in conversation views. A new baseline-to-parser sync guard catches evidence drift before it ships — if the parser's output no longer matches the golden baseline, the release is blocked.
+
+The mobile app's biome configuration was also fixed to exclude generated files (CocoaPods specs, Tamagui config) that were causing false lint failures.
+
+## What's next
+
+- Fix the 20 pre-existing TypeScript test failures surfaced by the full CI pipeline
+- Landing page refresh with the new changelog and blog content
+- Session filtering by entrypoint type
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+The FSM unification means fewer bugs in session views going forward. If you've been hitting pagination issues in history view, this release fixes them structurally.
+
+
+--- blog/v0-28-0-on-device-ai-for-session-intelligence.mdx ---
+
+---
+title: "On-Device AI for Session Intelligence"
+description: "v0.28.0 brings local LLM phase classification, a component dashboard, and a polished settings experience to claude-view."
+date: 2026-04-02
+author: claude-view team
+---
+
+claude-view now runs an on-device LLM to classify what phase your coding sessions are in — no cloud calls, no latency, no cost. v0.28.0 also ships a component dashboard, a redesigned Harness view, and a settings page that finally feels finished.
+
+## The problem with cloud-only classification
+
+Phase classification tells you whether a session is exploring, building, debugging, or shipping. Previously, every classification call hit a remote model. That meant latency, cost, and GPU waste — especially for sessions that had settled into a stable phase and didn't need reclassification every few seconds.
+
+For teams running dozens of concurrent sessions, the overhead added up fast.
+
+## Local LLM with smart scheduling
+
+v0.28.0 introduces on-device classification via oMLX. claude-view detects and manages the oMLX process automatically:
+
+- **Auto-lifecycle**: detects the binary on your PATH, spawns it when you enable local AI, restarts on crash, and shuts down cleanly with SIGTERM on exit
+- **Model switching**: a curated registry with RAM guard ensures you don't accidentally load a model that exceeds your available memory
+- **Download UX**: HuggingFace multi-file downloads with resume support, cancel button, speed display, and ETA countdown
+- **Smart drain loop**: exponential backoff with EMA stabilization reduces GPU usage by 93% — sessions that haven't changed don't waste compute
+
+The classifier uses three modes: off, smart (only classifies when new activity arrives), and always. Smart mode is the default, and it's what most people should use.
+
+## Component dashboard
+
+The System Monitor now shows a component-level view instead of a single self-process row. Each component (sidecar, oMLX) gets its own metrics:
+
+- **VRAM bar** with purple styling, distinct from CPU and RAM
+- **Session count badge** showing how many sessions each sidecar is handling
+- **Per-component CPU and RAM** via IOKit GPU memory FFI and sysinfo process introspection
+
+## Harness v3
+
+The Live Monitor's Harness view got a full redesign. The needs-you sidebar groups sessions by project and branch with collapsible headers, so you can focus on what matters. The main view uses Design/Delivery swimlanes to separate sessions by lifecycle stage.
+
+## Settings that feel finished
+
+The Settings page was functional but felt like a checklist. v0.28.0 adds feature scope labels (so you know what each setting affects), unified card headers, a GitHub star CTA, release notes link, build date in the About section, and improved UX for Mobile Pairing, Privacy, and Clear Cache.
+
+## Under the hood
+
+The biggest architectural change is the SessionCoordinator — a 4-phase mutation pipeline (lifecycle, statusline, reconcile, control) that replaces the monolithic manager. The 4337-line `manager.rs` was decomposed into 8 focused modules, each handling one concern.
+
+The hook system expanded from 14 to 25 Claude Code events with explicit match arms for every event type. And the entire API surface is now exposed as 85 MCP tools via OpenAPI codegen, making it possible to build Claude Code plugins that talk to claude-view.
+
+## What's next
+
+- FSM unification: one state machine for all session views (chat, live, history)
+- Scheduled task classification: classify sessions on a timer, not just on activity
+- Mobile companion app for monitoring sessions on the go
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Enable on-device AI in Settings to try local phase classification. The smart drain loop means you won't even notice the GPU usage.
 
 
 --- blog/v0-3-0-git-integration.mdx ---
@@ -2594,6 +2674,39 @@ version: v0.28.0
 **Full API as MCP tools** — OpenAPI spec generation with utoipa annotations, automatic codegen producing 85 MCP tools from the spec.
 
 **Unified block pagination** — single source of truth for all block consumers, fixing pagination state loss after format changes.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.29.0.md ---
+
+---
+title: "v0.29.0 — Entrypoint Badges, FSM Unification & Local CI"
+date: 2026-04-02
+version: v0.29.0
+---
+
+## New features
+
+**Session entrypoint badges** — history session cards now show how each session was started: CLI, VS Code, SDK, or other entrypoints. Visual badge on each card so you can filter and identify sessions at a glance.
+
+**Unified local CI pipeline** — new `./scripts/ci-local.sh` runs 8 sequential quality gates before every release: TS lint, typecheck, and tests; Rust clippy and workspace tests; evidence audit; Storybook build; and integrity gates. The release script now runs full local CI automatically.
+
+## Improvements
+
+**FSM-unified session views** — all session views (history, live, watching) now run on a single finite state machine, replacing the legacy TanStack hook chain. Removed 5,841 lines of duplicated state management and fixed pagination drift that had been present for a month.
+
+**Stable scroll anchoring** — fixed `onStartReached` callback instability across all pagination consumers. Inline anonymous functions and conditional ternaries replaced with stable `useCallback` references, fixing silent scroll anchoring breakage in Virtuoso.
+
+**Keyboard navigation fix** — arrow keys in the sidebar no longer hijack focus from the chat input. Global keyboard navigation removed from sidebar to prevent input stealing.
+
+**Agent name parsing** — the block pipeline now parses `agent-name` JSONL entries for better sub-agent identification in conversation views.
+
+**Evidence baseline sync** — added a baseline-to-parser sync guard that prevents stale evidence drift, catching schema changes before they ship.
 
 ## Getting started
 
