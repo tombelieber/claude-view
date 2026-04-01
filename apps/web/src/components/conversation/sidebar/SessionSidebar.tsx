@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { TOAST_DURATION } from '../../../lib/notify'
-import { type SidebarSession, toSidebarItems } from '../../../lib/sidebar-mapper'
+import { toSidebarItems } from '../../../lib/sidebar-mapper'
 import { useAppStore } from '../../../store/app-store'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SessionListItem } from './SessionListItem'
@@ -125,102 +125,11 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
     return () => observer.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  // Flatten all visible sessions into a single ordered list for keyboard nav
-  const flatSessions = useMemo(() => {
-    const list: SidebarSession[] = [...pinnedSessions]
-    for (const group of visibleTimeGroups) {
-      for (const s of group.sessions) {
-        const enriched = enrichedHistory.find((e) => e.id === s.id)
-        if (enriched) list.push(enriched)
-      }
-    }
-    return list
-  }, [pinnedSessions, visibleTimeGroups, enrichedHistory])
-
-  const [activeNavIndex, setActiveNavIndex] = useState(-1)
-  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-
-  // Reset nav index only when search query changes (user intent changed).
-  // Do NOT reset on flatSessions.length change — that happens during
-  // infinite scroll load-more which must preserve the current position.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery triggers the reset
-  useEffect(() => {
-    setActiveNavIndex(-1)
-  }, [searchQuery])
-
-  // Debounced navigation: highlight moves instantly, but the expensive
-  // navigate() (which triggers JSONL fetch + WS connect + rich data fetch)
-  // only fires after 200ms of no arrow presses — same pattern as VS Code
-  // file explorer and Slack channel list.
-  const navTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const debouncedNavigate = useCallback(
-    (sessionId: string) => {
-      clearTimeout(navTimerRef.current)
-      navTimerRef.current = setTimeout(() => {
-        navigate(`/chat/${sessionId}`)
-      }, 200)
-    },
-    [navigate],
-  )
-  // Cleanup on unmount
-  useEffect(() => () => clearTimeout(navTimerRef.current), [])
-
-  // Keyboard handler for arrow nav — no wrapping (clamped at top/bottom)
-  // Highlight moves instantly; navigation is debounced to avoid flooding fetches
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (flatSessions.length === 0) return
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault()
-        setActiveNavIndex((prev) => {
-          const next = Math.min(prev + 1, flatSessions.length - 1)
-          const session = flatSessions[next]
-          if (session) {
-            debouncedNavigate(session.id)
-            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
-          }
-          // Near the bottom — proactively load more from server
-          if (next >= flatSessions.length - 3 && hasNextPage && !isFetchingNextPage) {
-            fetchNextPage()
-          }
-          return next
-        })
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault()
-        setActiveNavIndex((prev) => {
-          if (prev <= 0) return 0
-          const next = prev - 1
-          const session = flatSessions[next]
-          if (session) {
-            debouncedNavigate(session.id)
-            itemRefs.current.get(session.id)?.scrollIntoView({ block: 'nearest' })
-          }
-          return next
-        })
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [flatSessions, debouncedNavigate, hasNextPage, isFetchingNextPage, fetchNextPage])
-
-  // Callback to register item refs
-  const setItemRef = useCallback((sessionId: string, el: HTMLDivElement | null) => {
-    if (el) itemRefs.current.set(sessionId, el)
-    else itemRefs.current.delete(sessionId)
-  }, [])
-
   const handleSelect = useCallback(
     (id: string) => {
-      // Update nav index to match clicked item
-      const idx = flatSessions.findIndex((s) => s.id === id)
-      setActiveNavIndex(idx)
       navigate(`/chat/${id}`)
     },
-    [navigate, flatSessions],
+    [navigate],
   )
   const handleNewChat = useCallback(() => {
     if (onNewChat) {
@@ -373,25 +282,20 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
                   style={{ gridTemplateRows: chatNeedsYouCollapsed ? '0fr' : '1fr' }}
                 >
                   <div className="overflow-hidden min-h-0">
-                    {needsYou.map((s) => {
-                      const idx = flatSessions.findIndex((f) => f.id === s.id)
-                      return (
-                        <SessionListItem
-                          key={s.id}
-                          ref={(el) => setItemRef(s.id, el)}
-                          session={s}
-                          isSelected={s.id === currentSessionId}
-                          isKeyboardActive={idx === activeNavIndex}
-                          onSelect={handleSelect}
-                          onResume={handleResume}
-                          onTakeOver={handleTakeOver}
-                          onFork={handleFork}
-                          onShutDown={handleShutDown}
-                          onOpenInMonitor={handleOpenInMonitor}
-                          onArchive={handleArchive}
-                        />
-                      )
-                    })}
+                    {needsYou.map((s) => (
+                      <SessionListItem
+                        key={s.id}
+                        session={s}
+                        isSelected={s.id === currentSessionId}
+                        onSelect={handleSelect}
+                        onResume={handleResume}
+                        onTakeOver={handleTakeOver}
+                        onFork={handleFork}
+                        onShutDown={handleShutDown}
+                        onOpenInMonitor={handleOpenInMonitor}
+                        onArchive={handleArchive}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -422,25 +326,20 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
                   style={{ gridTemplateRows: chatWorkingCollapsed ? '0fr' : '1fr' }}
                 >
                   <div className="overflow-hidden min-h-0">
-                    {working.map((s) => {
-                      const idx = flatSessions.findIndex((f) => f.id === s.id)
-                      return (
-                        <SessionListItem
-                          key={s.id}
-                          ref={(el) => setItemRef(s.id, el)}
-                          session={s}
-                          isSelected={s.id === currentSessionId}
-                          isKeyboardActive={idx === activeNavIndex}
-                          onSelect={handleSelect}
-                          onResume={handleResume}
-                          onTakeOver={handleTakeOver}
-                          onFork={handleFork}
-                          onShutDown={handleShutDown}
-                          onOpenInMonitor={handleOpenInMonitor}
-                          onArchive={handleArchive}
-                        />
-                      )
-                    })}
+                    {working.map((s) => (
+                      <SessionListItem
+                        key={s.id}
+                        session={s}
+                        isSelected={s.id === currentSessionId}
+                        onSelect={handleSelect}
+                        onResume={handleResume}
+                        onTakeOver={handleTakeOver}
+                        onFork={handleFork}
+                        onShutDown={handleShutDown}
+                        onOpenInMonitor={handleOpenInMonitor}
+                        onArchive={handleArchive}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -457,14 +356,11 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
                     ...s,
                     isActive: false,
                   }
-                  const idx = flatSessions.findIndex((f) => f.id === s.id)
                   return (
                     <SessionListItem
                       key={s.id}
-                      ref={(el) => setItemRef(s.id, el)}
                       session={enriched}
                       isSelected={s.id === currentSessionId}
-                      isKeyboardActive={idx === activeNavIndex}
                       onSelect={handleSelect}
                       onResume={handleResume}
                       onTakeOver={handleTakeOver}
