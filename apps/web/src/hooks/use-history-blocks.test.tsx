@@ -147,8 +147,8 @@ describe('useHistoryBlocks', () => {
     // Probe: total=50
     // Tail: offset=0 (max(0, 50-100)=0), but getPreviousPageParam checks firstPage.offset
     // For hasOlderMessages to be true, offset must be > 0 in the tail response.
-    // This happens when total > PAGE_SIZE (100).
-    const bigMessages = Array.from({ length: 100 }, (_, i) => ({
+    // This happens when total > BLOCK_PAGE_SIZE (50).
+    const bigMessages = Array.from({ length: 50 }, (_, i) => ({
       role: i % 2 === 0 ? 'user' : 'assistant',
       content: `msg-${i}`,
       uuid: `u-${i}`,
@@ -156,7 +156,7 @@ describe('useHistoryBlocks', () => {
     }))
     mockFetch(
       { messages: [messages[0]], total: 150, offset: 0, limit: 1, hasMore: true }, // probe: total=150
-      { messages: bigMessages, total: 150, offset: 50, limit: 100, hasMore: false }, // tail: offset=50 (150-100)
+      { messages: bigMessages, total: 150, offset: 100, limit: 50, hasMore: false }, // tail: offset=100 (150-50)
     )
 
     const { result } = renderHook(() => useHistoryBlocks('test-session'), {
