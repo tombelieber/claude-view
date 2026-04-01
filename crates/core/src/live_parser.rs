@@ -173,6 +173,9 @@ pub struct LiveLine {
     pub at_files: Vec<String>,
     /// Absolute file paths pasted in user messages (detected via regex, URL-filtered).
     pub pasted_paths: Vec<String>,
+    /// How the session was launched: "cli", "claude-vscode", "sdk-ts", etc.
+    /// Present on the first JSONL line; extracted once by accumulator.
+    pub entrypoint: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -512,6 +515,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 team_name: None,
                 at_files: Vec::new(),
                 pasted_paths: Vec::new(),
+                entrypoint: None,
             };
         }
     };
@@ -658,6 +662,12 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // Extract session slug from top-level (present on every line)
     let slug = parsed
         .get("slug")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // Extract entrypoint from top-level (present on the first line: "cli", "claude-vscode", "sdk-ts")
+    let entrypoint = parsed
+        .get("entrypoint")
         .and_then(|v| v.as_str())
         .map(String::from);
 
@@ -1063,6 +1073,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         team_name,
         at_files,
         pasted_paths,
+        entrypoint,
     }
 }
 
