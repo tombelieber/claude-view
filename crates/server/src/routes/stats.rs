@@ -925,6 +925,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         }
     }
 
@@ -1090,6 +1091,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -1207,6 +1209,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -1397,6 +1400,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await
@@ -1620,6 +1624,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-ai", "Project AI")
             .await
@@ -1829,6 +1834,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session, "project-range", "Project Range")
             .await
@@ -2001,6 +2007,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha")
             .await
@@ -2130,6 +2137,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         db.insert_session(&session_a, "project-alpha", "Project Alpha")
             .await

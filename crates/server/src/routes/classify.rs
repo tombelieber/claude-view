@@ -927,6 +927,7 @@ mod tests {
             first_message_at: Some(modified_at),
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         }
     }
 

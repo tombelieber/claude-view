@@ -112,6 +112,7 @@ pub struct ParsedSession {
     pub longest_task_preview: Option<String>,
     pub total_cost_usd: Option<f64>,
     pub slug: Option<String>,
+    pub entrypoint: Option<String>,
 }
 
 /// Hints from sessions-index.json — merged during parse, never written to DB directly.
@@ -508,6 +509,8 @@ pub struct ParseResult {
     /// Collected message content for full-text search indexing.
     /// Only user, assistant text, and tool_use inputs are included.
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
+    /// How the session was launched (cli, claude-vscode, sdk-ts).
+    pub entrypoint: Option<String>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
@@ -988,6 +991,9 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // slug extraction (top-level field on every JSONL line)
     let slug_finder = memmem::Finder::new(b"\"slug\":\"");
 
+    // entrypoint extraction (first line that has it: cli, claude-vscode, sdk-ts)
+    let entrypoint_finder = memmem::Finder::new(b"\"entrypoint\":\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -1029,6 +1035,18 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 if let Some(slug_val) = extract_quoted_string(&line[start..]) {
                     if !slug_val.is_empty() {
                         result.slug = Some(slug_val);
+                    }
+                }
+            }
+        }
+
+        // Extract entrypoint (first line that has it — cli, claude-vscode, sdk-ts)
+        if result.entrypoint.is_none() {
+            if let Some(pos) = entrypoint_finder.find(line) {
+                let start = pos + b"\"entrypoint\":\"".len();
+                if let Some(ep) = extract_quoted_string(&line[start..]) {
+                    if !ep.is_empty() {
+                        result.entrypoint = Some(ep);
                     }
                 }
             }
@@ -3544,6 +3562,7 @@ where
                 longest_task_preview: meta.longest_task_preview.clone(),
                 total_cost_usd,
                 slug: parse_result.slug.clone(),
+                entrypoint: parse_result.entrypoint.clone(),
             };
 
             // Use git_root as project identity for search (matches sidebar filter).

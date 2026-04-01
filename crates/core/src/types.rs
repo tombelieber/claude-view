@@ -440,6 +440,9 @@ pub struct SessionInfo {
     // Plan file association
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
+    // Entrypoint: how the session was launched (cli, claude-vscode, sdk-ts)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entrypoint: Option<String>,
 }
 
 impl SessionInfo {
@@ -1231,6 +1234,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1409,6 +1413,7 @@ mod tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         }
     }
 
