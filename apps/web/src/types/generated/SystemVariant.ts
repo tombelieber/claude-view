@@ -21,4 +21,5 @@ export type SystemVariant =
   | 'custom_title'
   | 'plan_content'
   | 'informational'
+  | 'agent_name'
   | 'unknown'

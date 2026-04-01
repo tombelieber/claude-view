@@ -172,4 +172,8 @@ fn system_only_fixture_produces_correct_variants() {
         variants.contains(&SystemVariant::FileHistorySnapshot),
         "Should have FileHistorySnapshot variant"
     );
+    assert!(
+        variants.contains(&SystemVariant::AgentName),
+        "Should have AgentName variant"
+    );
 }

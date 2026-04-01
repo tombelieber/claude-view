@@ -14,10 +14,14 @@
       "queue-operation",
       "system",
       "user",
-      "worktree-state"
+      "worktree-state",
+      "agent-name",
+      "custom-title",
+      "last-prompt",
+      "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["agent-name", "custom-title", "last-prompt", "pr-link"],
+    "silently_ignored": [],
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["result", "saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []

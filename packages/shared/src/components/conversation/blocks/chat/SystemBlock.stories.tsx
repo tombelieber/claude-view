@@ -49,3 +49,7 @@ export const CustomTitle: Story = {
 export const PlanContent: Story = {
   args: { block: systemBlocks.planContent },
 }
+
+export const AgentName: Story = {
+  args: { block: systemBlocks.agentName },
+}

@@ -2,6 +2,7 @@ import { StopCircle } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import type { SystemBlock as SystemBlockType } from '../../../../types/blocks'
 import type {
+  AgentName,
   AiTitle,
   CommandOutput,
   ElicitationComplete,
@@ -404,6 +405,15 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <LastPromptDetail data={block.data as LastPrompt} />
       case 'informational':
         return <InformationalDetail data={block.data as Informational} />
+      case 'agent_name':
+        return (
+          <EventCard
+            dot="blue"
+            chip="Agent"
+            label={(block.data as AgentName).agentName}
+            rawData={block.data}
+          />
+        )
       default:
         return null
     }

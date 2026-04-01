@@ -105,6 +105,10 @@ export const Informational: Story = {
   args: { block: devSystemBlocks.informational },
 }
 
+export const AgentName: Story = {
+  args: { block: devSystemBlocks.agentName },
+}
+
 export const WithRetryRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withRetry },
 }
