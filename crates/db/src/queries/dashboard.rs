@@ -177,7 +177,8 @@ impl Database {
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
-                s.slug
+                s.slug,
+                s.entrypoint
             FROM sessions s
             WHERE {}
             ORDER BY {}
@@ -246,7 +247,8 @@ impl Database {
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
-                s.slug
+                s.slug,
+                s.entrypoint
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -305,7 +307,8 @@ impl Database {
             s.prompt_word_count, s.correction_count, s.same_file_edit_count,
             s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
             s.total_cost_usd,
-            s.slug
+            s.slug,
+            s.entrypoint
         "#;
 
         // Helper closure: appends all WHERE clauses to a QueryBuilder.
@@ -1151,6 +1154,7 @@ mod filtered_query_tests {
             first_message_at: None,
             total_cost_usd: None,
             slug: None,
+            entrypoint: None,
         }
     }
 

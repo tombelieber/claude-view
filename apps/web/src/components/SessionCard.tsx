@@ -1,5 +1,6 @@
 import * as ContextMenu from '@radix-ui/react-context-menu'
 import * as Tooltip from '@radix-ui/react-tooltip'
+import type { SessionSourceInfo } from '@claude-view/shared/types/generated/SessionSourceInfo'
 import {
   Archive,
   Code2,
@@ -25,7 +26,21 @@ import { CategoryBadge } from './CategoryBadge'
 import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
 import { TeamMemberPills } from './live/TeamMemberPills'
+import { SourceBadge } from './shared/SourceBadge'
 import { SessionSpinner, formatDurationCompact, pickPastVerb } from './spinner'
+
+/** Map raw JSONL entrypoint string to SessionSourceInfo for SourceBadge. */
+function entrypointToSource(entrypoint: string | null | undefined): SessionSourceInfo | null {
+  if (!entrypoint) return null
+  if (entrypoint === 'cli') return { category: 'terminal', label: null }
+  if (entrypoint === 'claude-vscode') return { category: 'ide', label: 'VS Code' }
+  if (entrypoint === 'sdk-ts') return { category: 'agent_sdk', label: null }
+  // Unknown IDE entrypoints: treat as IDE with raw label
+  if (entrypoint.startsWith('claude-')) {
+    return { category: 'ide', label: entrypoint.replace('claude-', '') }
+  }
+  return null
+}
 
 /**
  * Extended session info with optional Theme 3 contribution fields.
@@ -283,6 +298,9 @@ export function SessionCard({
           <div className="flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <WeightIndicator tier={weightTier} />
+              {session.entrypoint && (
+                <SourceBadge source={entrypointToSource(session.entrypoint)} />
+              )}
               {projectLabel && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">
                   <FolderOpen className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />

@@ -550,6 +550,8 @@ pub(crate) struct SessionRow {
     pub(crate) total_cost_usd: Option<f64>,
     // Plan file association
     pub(crate) slug: Option<String>,
+    // Entrypoint
+    pub(crate) entrypoint: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
@@ -629,6 +631,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             total_cost_usd: row.try_get("total_cost_usd").ok().flatten(),
             // Plan file association
             slug: row.try_get("slug").ok().flatten(),
+            // Entrypoint
+            entrypoint: row.try_get("entrypoint").ok().flatten(),
         })
     }
 }
@@ -742,6 +746,8 @@ impl SessionRow {
             total_cost_usd: self.total_cost_usd,
             // Plan file association
             slug: self.slug,
+            // Entrypoint
+            entrypoint: self.entrypoint,
         }
     }
 }

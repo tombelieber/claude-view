@@ -12,7 +12,7 @@ use crate::indexer_parallel::ParsedSession;
 
 /// The SQL for upserting a fully-parsed session. Shared between
 /// `upsert_parsed_session()` (pool executor) and `flush_batch()` (tx executor).
-/// 64 bind parameters.
+/// 65 bind parameters.
 pub const UPSERT_SESSION_SQL: &str = r#"
     INSERT INTO sessions (
         id, project_id, project_display_name, project_path,
@@ -37,7 +37,7 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         ai_lines_added, ai_lines_removed, work_type,
         primary_model, total_task_time_seconds,
         longest_task_seconds, longest_task_preview, total_cost_usd,
-        slug
+        slug, entrypoint
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
         NULLIF(TRIM(?11), ''), ?12, ?13, ?14,
@@ -48,7 +48,7 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48,
         ?49, ?50, ?51, ?52, ?53, ?54, ?55,
         ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63,
-        ?64
+        ?64, ?65
     )
     ON CONFLICT(id) DO UPDATE SET
         project_id = excluded.project_id,
@@ -114,7 +114,8 @@ pub const UPSERT_SESSION_SQL: &str = r#"
         longest_task_seconds = excluded.longest_task_seconds,
         longest_task_preview = excluded.longest_task_preview,
         total_cost_usd = excluded.total_cost_usd,
-        slug = excluded.slug
+        slug = excluded.slug,
+        entrypoint = COALESCE(excluded.entrypoint, sessions.entrypoint)
 "#;
 
 /// Execute the upsert SQL for a single ParsedSession against any sqlx executor.
@@ -196,6 +197,7 @@ where
         .bind(&s.longest_task_preview) // ?62
         .bind(s.total_cost_usd) // ?63
         .bind(&s.slug) // ?64
+        .bind(&s.entrypoint) // ?65
         .execute(executor)
         .await?;
 
@@ -318,7 +320,7 @@ impl Database {
                 files_read, files_edited,
                 files_read_count, files_edited_count, reedited_files_count,
                 duration_seconds, commit_count,
-                git_root
+                git_root, entrypoint
             ) VALUES (
                 ?1, ?2, ?3, ?4,
                 ?5, ?6,
@@ -331,7 +333,7 @@ impl Database {
                 ?25, ?26,
                 ?27, ?28, ?29,
                 ?30, ?31,
-                ?32
+                ?32, ?33
             )
             ON CONFLICT(id) DO UPDATE SET
                 project_id = excluded.project_id,
@@ -364,7 +366,8 @@ impl Database {
                 reedited_files_count = excluded.reedited_files_count,
                 duration_seconds = excluded.duration_seconds,
                 commit_count = excluded.commit_count,
-                git_root = COALESCE(excluded.git_root, sessions.git_root)
+                git_root = COALESCE(excluded.git_root, sessions.git_root),
+                entrypoint = COALESCE(excluded.entrypoint, sessions.entrypoint)
             "#,
         )
         .bind(&session.id)
@@ -399,6 +402,7 @@ impl Database {
         .bind(session.duration_seconds as i32)
         .bind(session.commit_count as i32)
         .bind(session.git_root.as_deref())
+        .bind(session.entrypoint.as_deref())
         .execute(self.pool())
         .await?;
 
@@ -447,7 +451,8 @@ impl Database {
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
-                s.slug
+                s.slug,
+                s.entrypoint
             FROM valid_sessions s
             ORDER BY s.last_message_at DESC
             "#,
@@ -1089,7 +1094,8 @@ impl Database {
                 s.prompt_word_count, s.correction_count, s.same_file_edit_count,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
-                s.slug
+                s.slug,
+                s.entrypoint
             FROM sessions s WHERE s.id = ?1"#,
         )
         .bind(id)
@@ -1262,6 +1268,7 @@ mod upsert_tests {
             longest_task_preview: None,
             total_cost_usd: Some(0.05),
             slug: None,
+            entrypoint: Some("cli".to_string()),
         }
     }
 
