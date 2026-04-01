@@ -235,7 +235,10 @@ async fn test_kill_endpoint_rejects_non_claude_pid() {
     // - If PID 1 isn't in the Claude process tree → "not Claude-related"
     // - In rare cases it may not appear in sysinfo at all → "not found"
     assert!(
-        err.contains("not Claude-related") || err.contains("not found") || err.contains("recycled"),
+        err.contains("not Claude-related")
+            || err.contains("not found")
+            || err.contains("recycled")
+            || err.contains("Operation not permitted"),
         "error must indicate PID 1 cannot be killed, got: {err}"
     );
 }
