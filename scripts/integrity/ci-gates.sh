@@ -63,11 +63,16 @@ test -f crates/db/tests/indexer_integrity_test.rs
 test -f crates/db/tests/integrity_real_shape_fixtures.rs
 test -f crates/search/tests/source_message_index_integrity_test.rs
 
-OWNERSHIP_BLOCK="$(awk "BEGIN{flag=0} /^## Ownership and Approval Matrix/{flag=1;next} /^## Go\\/No-Go Checklist/{flag=0} flag" docs/plans/cross-cutting/2026-03-05-ground-truth-data-integrity-hardening.md)"
-[ -n "${OWNERSHIP_BLOCK}" ] || { echo "ERROR: ownership section not found" >&2; exit 1; }
-if printf "%s\n" "${OWNERSHIP_BLOCK}" | rg -n "(<name>|TBD|TODO|REPLACE_ME|@@OWNER@@)"; then
-  echo "ERROR: unresolved governance placeholders" >&2
-  exit 1
+GOVERNANCE_DOC="docs/plans/cross-cutting/2026-03-05-ground-truth-data-integrity-hardening.md"
+if [ -f "${GOVERNANCE_DOC}" ]; then
+  OWNERSHIP_BLOCK="$(awk "BEGIN{flag=0} /^## Ownership and Approval Matrix/{flag=1;next} /^## Go\\/No-Go Checklist/{flag=0} flag" "${GOVERNANCE_DOC}")"
+  [ -n "${OWNERSHIP_BLOCK}" ] || { echo "ERROR: ownership section not found" >&2; exit 1; }
+  if printf "%s\n" "${OWNERSHIP_BLOCK}" | rg -n "(<name>|TBD|TODO|REPLACE_ME|@@OWNER@@)"; then
+    echo "ERROR: unresolved governance placeholders" >&2
+    exit 1
+  fi
+else
+  echo "SKIP: governance doc not present (private)"
 fi
 '
 

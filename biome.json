@@ -16,7 +16,9 @@
       ".astro",
       "**/.astro",
       "crates/core/src/phase/model/trees.json",
-      "packages/plugin/scripts/openapi.json"
+      "packages/plugin/scripts/openapi.json",
+      "scripts/openapi.json",
+      "**/openapi.json"
     ]
   },
   "overrides": [
