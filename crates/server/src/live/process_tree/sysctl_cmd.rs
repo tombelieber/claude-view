@@ -36,8 +36,7 @@ fn get_command_sysctl(pid: u32) -> Option<String> {
     use std::mem;
 
     unsafe {
-        let mut mib: [libc::c_int; 3] =
-            [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as libc::c_int];
+        let mut mib: [libc::c_int; 3] = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid as libc::c_int];
 
         // First call: get buffer size
         let mut size: libc::size_t = 0;

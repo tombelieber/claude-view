@@ -8,9 +8,9 @@
  *         src/tools/generated/index.ts  (barrel re-export)
  */
 
-import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { SSE_OPERATION_IDS, HAND_WRITTEN_TAGS, toSnakeCase, makeToolName } from './shared.js'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { HAND_WRITTEN_TAGS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -140,7 +140,12 @@ function schemaToZod(schema: SchemaObject | undefined, required: boolean): strin
       zod = 'z.string()'
   }
   if (schema.description) {
-    const escaped = schema.description.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'").trim()
+    const escaped = schema.description
+      .replace(/\n/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .trim()
     zod += `.describe('${escaped}')`
   }
   if (!required) {
@@ -217,7 +222,17 @@ function parseOperation(
     }
   }
 
-  return { method, path, operationId, summary, description, pathParams, queryParams, bodyParams, hasBody }
+  return {
+    method,
+    path,
+    operationId,
+    summary,
+    description,
+    pathParams,
+    queryParams,
+    bodyParams,
+    hasBody,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -237,27 +252,37 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
   const allParams = [...endpoint.pathParams, ...endpoint.queryParams, ...endpoint.bodyParams]
 
   // Build description: prefer the short summary, fall back to description
-  let desc = endpoint.summary || endpoint.description || `${endpoint.method.toUpperCase()} ${endpoint.path}`
+  let desc =
+    endpoint.summary || endpoint.description || `${endpoint.method.toUpperCase()} ${endpoint.path}`
   // Strip the method prefix pattern like "GET /api/foo — " that the spec often includes
   desc = desc.replace(/^(GET|POST|PUT|DELETE|PATCH)\s+\/api\/\S+\s*[-—]\s*/i, '').trim()
   // If description is still just a raw HTTP method+path, synthesize from operationId
   if (!desc || /^(GET|POST|PUT|DELETE|PATCH)\s+\/api\//i.test(desc)) {
     desc = endpoint.operationId
       .replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase())
-      .replace(/^(.)/,  c => c.toUpperCase())
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .replace(/^(.)/, (c) => c.toUpperCase())
   }
   // If description is very short (≤2 words), synthesize a richer one from operationId + path
   if (desc.split(/\s+/).length <= 2) {
     // Use operationId as the base — it's always meaningful (e.g. "list_workflows", "create_workflow")
     const fromOpId = endpoint.operationId
       .replace(/_/g, ' ')
-      .replace(/\b\w/g, c => c.toUpperCase())
+      .replace(/\b\w/g, (c) => c.toUpperCase())
     // Append the resource path for context (e.g. "via /api/workflows")
-    const resource = endpoint.path.replace('/api/', '').split('/').filter(p => !p.startsWith('{')).join('/')
+    const resource = endpoint.path
+      .replace('/api/', '')
+      .split('/')
+      .filter((p) => !p.startsWith('{'))
+      .join('/')
     desc = `${fromOpId} (${endpoint.method.toUpperCase()} /api/${resource})`
   }
-  desc = desc.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'").trim()
+  desc = desc
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .trim()
 
   // Schema properties
   const schemaLines: string[] = []
@@ -265,13 +290,13 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
     schemaLines.push(`    ${safePropertyName(p.name)}: ${p.zodType},`)
   }
 
-  const schemaStr = schemaLines.length > 0
-    ? `z.object({\n${schemaLines.join('\n')}\n  })`
-    : 'z.object({})'
+  const schemaStr =
+    schemaLines.length > 0 ? `z.object({\n${schemaLines.join('\n')}\n  })` : 'z.object({})'
 
   // Annotations
   const isReadOnly = endpoint.method === 'get'
-  const isDestructive = endpoint.method === 'delete' || FORCE_DESTRUCTIVE_OPS.has(endpoint.operationId)
+  const isDestructive =
+    endpoint.method === 'delete' || FORCE_DESTRUCTIVE_OPS.has(endpoint.operationId)
 
   // Handler body — build the path with interpolation for path params
   // Wrap each path param with encodeURIComponent to prevent path traversal
@@ -279,7 +304,10 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
   if (endpoint.pathParams.length > 0) {
     let interpolated = endpoint.path
     for (const p of endpoint.pathParams) {
-      interpolated = interpolated.replace(`{${p.name}}`, `\${encodeURIComponent(String(args.${p.name}))}`)
+      interpolated = interpolated.replace(
+        `{${p.name}}`,
+        `\${encodeURIComponent(String(args.${p.name}))}`,
+      )
     }
     pathExpr = `\`${interpolated}\``
   } else {
@@ -288,15 +316,17 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
 
   // Query params object
   const queryParamNames = endpoint.queryParams.map((p) => p.name)
-  const queryObj = queryParamNames.length > 0
-    ? `{ ${queryParamNames.map((n) => `${safePropertyName(n)}: args.${n}`).join(', ')} }`
-    : undefined
+  const queryObj =
+    queryParamNames.length > 0
+      ? `{ ${queryParamNames.map((n) => `${safePropertyName(n)}: args.${n}`).join(', ')} }`
+      : undefined
 
   // Body object
   const bodyParamNames = endpoint.bodyParams.map((p) => p.name)
-  const bodyObj = bodyParamNames.length > 0
-    ? `{ ${bodyParamNames.map((n) => `${safePropertyName(n)}: args.${n}`).join(', ')} }`
-    : undefined
+  const bodyObj =
+    bodyParamNames.length > 0
+      ? `{ ${bodyParamNames.map((n) => `${safePropertyName(n)}: args.${n}`).join(', ')} }`
+      : undefined
 
   // Build options argument
   const optsParts: string[] = []
@@ -371,13 +401,11 @@ function main() {
 
       // Skip SSE endpoints
       if (SSE_OPERATION_IDS.has(operationId)) {
-        console.log(`  skip SSE: ${method.toUpperCase()} ${path}`)
         continue
       }
 
       // Skip operationIds that duplicate hand-written tools
       if (SKIP_OPERATION_IDS.has(operationId)) {
-        console.log(`  skip duplicate: ${operationId} (hand-written equivalent exists)`)
         continue
       }
 
@@ -389,7 +417,7 @@ function main() {
       const endpoint = parseOperation(spec, method, path, operation)
 
       if (!byTag.has(tag)) byTag.set(tag, [])
-      byTag.get(tag)!.push(endpoint)
+      byTag.get(tag)?.push(endpoint)
     }
   }
 
@@ -401,7 +429,7 @@ function main() {
 
   // Generate per-tag files
   const tagExports: { tag: string; exportName: string }[] = []
-  let totalTools = 0
+  let _totalTools = 0
 
   for (const [tag, endpoints] of [...byTag.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
     const exportName = `${tag.replace(/[^a-zA-Z0-9]/g, '')}GeneratedTools`
@@ -409,15 +437,12 @@ function main() {
     const outPath = join(GEN_DIR, `${tag}.ts`)
     writeFileSync(outPath, content)
     tagExports.push({ tag, exportName })
-    totalTools += endpoints.length
-    console.log(`  wrote ${tag}.ts (${endpoints.length} tools)`)
+    _totalTools += endpoints.length
   }
 
   // Generate index
   const indexContent = generateIndex(tagExports)
   writeFileSync(join(GEN_DIR, 'index.ts'), indexContent)
-
-  console.log(`\nGenerated ${totalTools} tools across ${tagExports.length} files in src/tools/generated/`)
 }
 
 main()

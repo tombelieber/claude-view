@@ -52,7 +52,9 @@ fn gpu_alloc_bytes_iokit() -> Option<u64> {
 
     #[link(name = "IOKit", kind = "framework")]
     extern "C" {
-        fn IOServiceMatching(name: *const libc::c_char) -> *mut core_foundation_sys::dictionary::__CFDictionary;
+        fn IOServiceMatching(
+            name: *const libc::c_char,
+        ) -> *mut core_foundation_sys::dictionary::__CFDictionary;
         fn IOServiceGetMatchingServices(
             main_port: u32,
             matching: *mut core_foundation_sys::dictionary::__CFDictionary,
@@ -88,7 +90,8 @@ fn gpu_alloc_bytes_iokit() -> Option<u64> {
                 break;
             }
 
-            let mut props: *mut core_foundation_sys::dictionary::__CFDictionary = std::ptr::null_mut();
+            let mut props: *mut core_foundation_sys::dictionary::__CFDictionary =
+                std::ptr::null_mut();
             let kr = IORegistryEntryCreateCFProperties(
                 service,
                 &mut props,
@@ -105,11 +108,13 @@ fn gpu_alloc_bytes_iokit() -> Option<u64> {
 
             // Navigate: props → "PerformanceStatistics" → "In use system memory"
             let perf_key = CFString::new("PerformanceStatistics");
-            let perf_val = CFDictionaryGetValue(props_ref, perf_key.as_concrete_TypeRef() as *const _);
+            let perf_val =
+                CFDictionaryGetValue(props_ref, perf_key.as_concrete_TypeRef() as *const _);
             if !perf_val.is_null() {
                 let perf_dict = perf_val as CFDictionaryRef;
                 let mem_key = CFString::new("In use system memory");
-                let mem_val = CFDictionaryGetValue(perf_dict, mem_key.as_concrete_TypeRef() as *const _);
+                let mem_val =
+                    CFDictionaryGetValue(perf_dict, mem_key.as_concrete_TypeRef() as *const _);
                 if !mem_val.is_null() {
                     let num = CFNumber::wrap_under_get_rule(mem_val as CFNumberRef);
                     if let Some(val) = num.to_i64() {

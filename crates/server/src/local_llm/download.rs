@@ -192,7 +192,6 @@ impl ProgressTracker {
             })
             .await;
     }
-
 }
 
 // ---- Download execution ----

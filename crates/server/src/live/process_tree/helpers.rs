@@ -188,5 +188,4 @@ mod tests {
         let staleness = compute_staleness(0.2, 1, 7200);
         assert!(matches!(staleness, Staleness::Active));
     }
-
 }

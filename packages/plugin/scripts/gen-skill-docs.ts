@@ -13,9 +13,9 @@
  * Skills WITHOUT a .tmpl file keep their SKILL.md untouched.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { SSE_OPERATION_IDS, HAND_WRITTEN_TAGS, toSnakeCase, makeToolName } from './shared.js'
+import { HAND_WRITTEN_TAGS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -91,7 +91,12 @@ const HAND_WRITTEN_GROUPS: ToolGroup[] = [
 // OpenAPI tool extraction
 // ---------------------------------------------------------------------------
 
-function cleanDescription(summary: string, description: string, path: string, method: string): string {
+function cleanDescription(
+  summary: string,
+  description: string,
+  path: string,
+  method: string,
+): string {
   let desc = summary || description || `${method.toUpperCase()} ${path}`
   // Collapse newlines and excess whitespace into single spaces
   desc = desc.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
@@ -136,7 +141,7 @@ function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
       )
 
       if (!byTag.has(tag)) byTag.set(tag, [])
-      byTag.get(tag)!.push({ name: toolName, description: desc })
+      byTag.get(tag)?.push({ name: toolName, description: desc })
     }
   }
 
@@ -217,26 +222,23 @@ function main() {
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
 
-  let generated = 0
-  let skipped = 0
+  let _generated = 0
+  let _skipped = 0
 
   for (const skill of skillDirs) {
     const tmplPath = join(SKILLS_DIR, skill, 'SKILL.md.tmpl')
     const outPath = join(SKILLS_DIR, skill, 'SKILL.md')
 
     if (!existsSync(tmplPath)) {
-      skipped++
+      _skipped++
       continue
     }
 
     const template = readFileSync(tmplPath, 'utf-8')
     const output = processTemplate(template, preamble, toolTable)
     writeFileSync(outPath, output)
-    generated++
-    console.log(`  wrote ${skill}/SKILL.md`)
+    _generated++
   }
-
-  console.log(`\nGenerated ${generated} SKILL.md files, skipped ${skipped} (no .tmpl)`)
 }
 
 main()

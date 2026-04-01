@@ -17,7 +17,7 @@
       "worktree-state"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["custom-title", "last-prompt", "pr-link"],
+    "silently_ignored": ["agent-name", "custom-title", "last-prompt", "pr-link"],
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["result", "saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
@@ -46,6 +46,7 @@
       "informational",
       "local_command",
       "microcompact_boundary",
+      "scheduled_task_fire",
       "stop_hook_summary",
       "turn_duration"
     ],
@@ -225,7 +226,10 @@
       "aiTitle",
       "origin",
       "origin.kind",
-      "messageCount"
+      "messageCount",
+      "message.stop_details",
+      "agentName",
+      "message.content[].title"
     ],
     "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Not needed by our parser for session display, cost tracking, or live monitoring."
   }

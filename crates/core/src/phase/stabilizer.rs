@@ -95,10 +95,7 @@ impl ClassificationStabilizer {
         }
 
         // Different phase: check transition conditions
-        let consecutive = self
-            .last_phases
-            .iter()
-            .all(|&p| p == phase)
+        let consecutive = self.last_phases.iter().all(|&p| p == phase)
             && self.last_phases.len() >= CONSECUTIVE_REQUIRED as usize;
         let ema_score = self.phase_ema.get(&phase).copied().unwrap_or(0.0);
 
@@ -122,10 +119,7 @@ impl ClassificationStabilizer {
 
     /// Returns the highest EMA score as confidence.
     pub fn confidence(&self) -> f64 {
-        self.phase_ema
-            .values()
-            .cloned()
-            .fold(0.0_f32, f32::max) as f64
+        self.phase_ema.values().cloned().fold(0.0_f32, f32::max) as f64
     }
 
     /// Fixed temperature — no rotation.
