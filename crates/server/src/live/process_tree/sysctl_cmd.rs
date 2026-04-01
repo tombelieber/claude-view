@@ -112,7 +112,7 @@ fn get_command_sysctl(pid: u32) -> Option<String> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 
