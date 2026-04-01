@@ -231,7 +231,6 @@ export type Command =
   | { cmd: 'OPEN_TERMINAL_WS'; sessionId: string }
   | { cmd: 'CLOSE_TERMINAL_WS' }
   | { cmd: 'WS_SEND'; message: Record<string, unknown> }
-  | { cmd: 'INVALIDATE_HISTORY'; sessionId: string }
   | { cmd: 'INVALIDATE_SIDEBAR' }
   | { cmd: 'START_TIMER'; id: string; delayMs: number; event: RawEvent }
   | { cmd: 'CANCEL_TIMER'; id: string }

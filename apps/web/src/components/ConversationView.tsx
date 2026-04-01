@@ -15,7 +15,8 @@ import { toast } from 'sonner'
 import { ExpandProvider } from '../contexts/ExpandContext'
 import { ThreadHighlightProvider } from '../contexts/ThreadHighlightContext'
 import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
-import { useConversation } from '../hooks/use-conversation'
+import { useChatPanel } from '../hooks/use-chat-panel'
+import { useCommandExecutor } from '../hooks/use-command-executor'
 import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
@@ -71,8 +72,15 @@ export function ConversationView() {
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
   const sessionInfo = sessionsPage?.sessions.find((s) => s.id === sessionId)
   const { data: richData } = useRichSessionData(sessionId || null)
-  // Unified conversation hook: blocks + actions
-  const { blocks, history, actions } = useConversation(sessionId, { liveStatus })
+  // FSM: single state machine replaces useConversation + TanStack chain
+  const { store, dispatch, pendingCmdsRef, blocks, historyPagination, viewMode } =
+    useChatPanel(sessionId)
+  useCommandExecutor(store, dispatch, pendingCmdsRef)
+
+  // Dispatch live status so FSM transitions to cc_cli.watching when CLI-owned
+  useEffect(() => {
+    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus })
+  }, [liveStatus, dispatch])
 
   // Detect missing JSONL (session in DB but file deleted)
   const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
@@ -598,27 +606,38 @@ export function ConversationView() {
             <ThreadHighlightProvider>
               <ExpandProvider>
                 <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-                  {blocks.length === 0 && history.isLoading ? (
+                  {blocks.length === 0 && viewMode === 'loading' ? (
                     <ThinkingIndicator phase="loading" centered />
                   ) : (
                     <ErrorBoundary>
                       <ConversationActionsProvider
                         actions={{
-                          retryMessage: actions.retryMessage,
-                          respondPermission: actions.respondPermission,
-                          answerQuestion: actions.answerQuestion,
-                          approvePlan: actions.approvePlan,
-                          submitElicitation: actions.submitElicitation,
+                          retryMessage: (localId) => dispatch({ type: 'RETRY_MESSAGE', localId }),
+                          respondPermission: (rid, allowed, perms) =>
+                            dispatch({
+                              type: 'RESPOND_PERMISSION',
+                              requestId: rid,
+                              allowed,
+                              updatedPermissions: perms,
+                            }),
+                          answerQuestion: (rid, answers) =>
+                            dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
+                          approvePlan: (rid, approved, feedback) =>
+                            dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                          submitElicitation: (rid, response) =>
+                            dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
                         }}
                       >
                         <ConversationThread
                           blocks={blocks}
                           renderers={registry}
                           onStartReached={
-                            history.hasOlderMessages ? history.fetchOlderMessages : undefined
+                            historyPagination.hasOlderMessages
+                              ? () => dispatch({ type: 'LOAD_OLDER_HISTORY' })
+                              : undefined
                           }
-                          isFetchingOlder={history.isFetchingOlder}
-                          hasOlderMessages={history.hasOlderMessages}
+                          isFetchingOlder={historyPagination.isFetchingOlder}
+                          hasOlderMessages={historyPagination.hasOlderMessages}
                         />
                       </ConversationActionsProvider>
                     </ErrorBoundary>
