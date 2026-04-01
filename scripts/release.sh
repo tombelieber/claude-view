@@ -7,33 +7,16 @@ set -euo pipefail
 BUMP="${1:-patch}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ─── Pre-release evidence audit ──────────────────────────────────
-# Validates parser/indexer against real JSONL data structure.
-# Catches drift before it ships. Skip with SKIP_EVIDENCE=1.
-if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
-  echo "Running evidence audit (JSONL schema guard)..."
-  if ! cargo run -p claude-view-core --bin evidence-audit --release; then
-    echo ""
-    echo "ERROR: Evidence audit failed — parser pipeline invariants violated against real data."
-    echo "Fix the drift or set SKIP_EVIDENCE=1 to bypass (NOT recommended)."
-    exit 1
-  fi
+# ─── Local CI ──────────────────────────────────────────────────────
+# Runs ALL quality gates: TS lint/typecheck/test, Rust clippy/test,
+# evidence audit, Storybook build, integrity gates.
+# Skip with SKIP_CI=1 if you've already run ./scripts/ci-local.sh.
+# Individual gates: SKIP_RUST=1, SKIP_TS=1, SKIP_EVIDENCE=1, etc.
+if [ "${SKIP_CI:-0}" != "1" ]; then
+  "$ROOT/scripts/ci-local.sh"
   echo ""
-fi
-
-# ─── Pre-release Storybook build check ──────────────────────────
-# Verifies all stories compile and render without errors.
-# Catches broken component stories before release. Skip with SKIP_STORYBOOK=1.
-if [ "${SKIP_STORYBOOK:-0}" != "1" ]; then
-  echo "Building Storybook (story compilation check)..."
-  if ! (cd "$ROOT/apps/web" && bunx storybook build -o /tmp/storybook-release-check --quiet 2>&1); then
-    echo ""
-    echo "ERROR: Storybook build failed — broken stories block release."
-    echo "Run 'bun run storybook' to debug. Skip with SKIP_STORYBOOK=1."
-    exit 1
-  fi
-  rm -rf /tmp/storybook-release-check
-  echo "Storybook build OK"
+else
+  echo "Skipping local CI (SKIP_CI=1)"
   echo ""
 fi
 
