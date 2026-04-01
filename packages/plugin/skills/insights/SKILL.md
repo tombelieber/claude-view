@@ -102,8 +102,6 @@ Analyze the user's Claude Code usage patterns and present actionable insights.
 | `insights_get_fluency_score` | Get the current AI Fluency Score. |
 | **Jobs Tools** | |
 | `jobs_list_jobs` | List all active jobs. |
-| **Models Tools** | |
-| `models_list_models` | List all known models with usage counts. |
 | **Monitor Tools** | |
 | `monitor_snapshot` | - One-shot JSON snapshot of current resources. |
 | **Oauth Tools** | |

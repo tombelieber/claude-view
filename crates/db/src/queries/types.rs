@@ -226,7 +226,9 @@ pub struct SystemStorageStats {
 }
 
 /// Health status enum for the system page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS, utoipa::ToSchema,
+)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {

@@ -11,7 +11,6 @@ import { healthGeneratedTools } from './health.js'
 import { ideGeneratedTools } from './ide.js'
 import { insightsGeneratedTools } from './insights.js'
 import { jobsGeneratedTools } from './jobs.js'
-import { modelsGeneratedTools } from './models.js'
 import { monitorGeneratedTools } from './monitor.js'
 import { oauthGeneratedTools } from './oauth.js'
 import { pairingGeneratedTools } from './pairing.js'
@@ -40,7 +39,6 @@ export const allGeneratedTools: ToolDef[] = [
   ...ideGeneratedTools,
   ...insightsGeneratedTools,
   ...jobsGeneratedTools,
-  ...modelsGeneratedTools,
   ...monitorGeneratedTools,
   ...oauthGeneratedTools,
   ...pairingGeneratedTools,
