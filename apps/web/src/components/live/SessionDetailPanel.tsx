@@ -176,6 +176,11 @@ export function SessionDetailPanel({
     convDispatch({ type: 'LIVE_STATUS_CHANGED', status: detailLiveStatus })
   }, [detailLiveStatus, convDispatch])
 
+  // Pagination: stable callback — matches ChatSession pattern
+  const handleLoadOlderHistory = useCallback(() => {
+    convDispatch({ type: 'LOAD_OLDER_HISTORY' })
+  }, [convDispatch])
+
   // ---- Teams tab (conditional — only show when session is a team lead) ----
   const hasTeam = !!data.teamName
 
@@ -797,11 +802,7 @@ export function SessionDetailPanel({
                   renderers={displayMode === 'chat' ? chatRegistry : developerRegistry}
                   filterBar={displayMode === 'developer'}
                   compact
-                  onStartReached={
-                    convHistoryPagination.hasOlderMessages
-                      ? () => convDispatch({ type: 'LOAD_OLDER_HISTORY' })
-                      : undefined
-                  }
+                  onStartReached={handleLoadOlderHistory}
                   isFetchingOlder={convHistoryPagination.isFetchingOlder}
                   hasOlderMessages={convHistoryPagination.hasOlderMessages}
                 />
