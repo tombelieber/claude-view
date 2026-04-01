@@ -530,12 +530,18 @@ pub async fn dismiss_session(
 ) -> impl IntoResponse {
     let removed = state.recently_closed.write().await.remove(&id).is_some();
     if removed {
-        let _ = state.live_tx.send(SessionEvent::SessionCompleted {
-            session_id: id,
-        });
-        (axum::http::StatusCode::OK, Json(serde_json::json!({"dismissed": true})))
+        let _ = state
+            .live_tx
+            .send(SessionEvent::SessionCompleted { session_id: id });
+        (
+            axum::http::StatusCode::OK,
+            Json(serde_json::json!({"dismissed": true})),
+        )
     } else {
-        (axum::http::StatusCode::NOT_FOUND, Json(serde_json::json!({"dismissed": false})))
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"dismissed": false})),
+        )
     }
 }
 
