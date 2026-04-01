@@ -42,6 +42,7 @@ pub struct ProcessDeathWatcher {
     register_tx: mpsc::Sender<WatchCommand>,
 }
 
+#[allow(dead_code)] // Fields consumed inside cfg(target_os = "macos") kqueue loop
 enum WatchCommand {
     Watch(u32, String),
     Unwatch(u32),
