@@ -1,6 +1,6 @@
 {
   "name": "@claude-view/shared",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
