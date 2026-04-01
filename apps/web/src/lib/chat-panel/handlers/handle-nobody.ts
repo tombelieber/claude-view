@@ -1,3 +1,4 @@
+import { BLOCK_PAGE_SIZE } from '../../block-pagination'
 import { nobodyTransition } from '../modules/nobody'
 import { outboxTransition } from '../modules/outbox'
 import type {
@@ -7,8 +8,6 @@ import type {
   RawEvent,
   TransitionResult,
 } from '../types'
-
-const PAGE_SIZE = 100
 
 export function handleNobody(store: ChatPanelStore, event: RawEvent): TransitionResult {
   const p = store.panel
@@ -44,7 +43,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
       if (p.sub.sub !== 'ready') return [store, []]
       const pg = store.historyPagination
       if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
-      const newOffset = Math.max(0, pg.offset - PAGE_SIZE)
+      const newOffset = Math.max(0, pg.offset - BLOCK_PAGE_SIZE)
       const limit = pg.offset - newOffset
       return [
         { ...store, historyPagination: { ...pg, fetchingOlder: true } },
