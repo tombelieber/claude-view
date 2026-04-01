@@ -15,7 +15,8 @@
       "apps/landing/dist",
       ".astro",
       "**/.astro",
-      "crates/core/src/phase/model/trees.json"
+      "crates/core/src/phase/model/trees.json",
+      "packages/plugin/scripts/openapi.json"
     ]
   },
   "overrides": [
