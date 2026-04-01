@@ -51,6 +51,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
 
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
       - name: Run integrity gates
         run: bash scripts/integrity/ci-gates.sh
 
@@ -165,6 +168,8 @@ jobs:
 
       - name: Build web assets for STATIC_DIR
         run: cd apps/web && bun run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Run web e2e contract checks
         run: cd apps/web && bun run test:e2e e2e/dashboard-time-range.spec.ts e2e/insights-range-contract.spec.ts
