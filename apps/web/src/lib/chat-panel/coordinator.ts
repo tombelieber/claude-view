@@ -5,6 +5,7 @@ import { handleEmpty } from './handlers/handle-empty'
 import { handleNobody } from './handlers/handle-nobody'
 import { handleRecovering } from './handlers/handle-recovering'
 import { handleSdkOwned } from './handlers/handle-sdk-owned'
+import { handleLoadOlder, handleOlderHistoryOk } from './modules/pagination'
 import type { ChatPanelStore, RawEvent, TransitionResult } from './types'
 
 export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionResult {
@@ -39,6 +40,11 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
           { cmd: 'CHECK_SIDECAR_ACTIVE', sessionId: event.sessionId },
         ],
       ]
+    case 'LOAD_OLDER_HISTORY':
+      return handleLoadOlder(store)
+
+    case 'OLDER_HISTORY_OK':
+      return handleOlderHistoryOk(store, event)
   }
 
   // ── Phase-based routing ──────────────────────────────────────

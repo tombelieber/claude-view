@@ -1,4 +1,3 @@
-import { BLOCK_PAGE_SIZE } from '../../block-pagination'
 import type {
   ChatPanelStore,
   HistoryPagination,
@@ -59,31 +58,6 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       }
       return [
         { ...store, panel: { ...p, blocks: event.blocks }, historyPagination: pagination },
-        [],
-      ]
-    }
-
-    case 'LOAD_OLDER_HISTORY': {
-      const pg = store.historyPagination
-      if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
-      const newOffset = Math.max(0, pg.offset - BLOCK_PAGE_SIZE)
-      const limit = pg.offset - newOffset
-      return [
-        { ...store, historyPagination: { ...pg, fetchingOlder: true } },
-        [{ cmd: 'FETCH_OLDER_HISTORY', sessionId: p.sessionId, offset: newOffset, limit }],
-      ]
-    }
-
-    case 'OLDER_HISTORY_OK': {
-      const blocks = [...event.blocks, ...p.blocks]
-      return [
-        {
-          ...store,
-          panel: { ...p, blocks },
-          historyPagination: store.historyPagination
-            ? { ...store.historyPagination, offset: event.offset, fetchingOlder: false }
-            : null,
-        },
         [],
       ]
     }
