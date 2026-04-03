@@ -555,12 +555,23 @@ async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect) {
             map.remove(path);
         }
         SideEffect::PersistHookEvents { session_id, events } => {
-            debug!(
-                session_id,
-                count = events.len(),
-                "Would persist hook events (not yet wired to DB)"
-            );
-            // Future: batch-insert hook events to DB for historical queries.
+            let rows: Vec<_> = events.iter().map(|e| e.to_row()).collect();
+            if let Err(e) =
+                claude_view_db::hook_events_queries::insert_hook_events(ctx.db, &session_id, &rows)
+                    .await
+            {
+                tracing::warn!(
+                    session_id,
+                    error = %e,
+                    "Failed to persist hook events"
+                );
+            } else {
+                debug!(
+                    session_id,
+                    count = rows.len(),
+                    "Persisted hook events to DB"
+                );
+            }
         }
         SideEffect::SavePidBinding { session_id, pid } => {
             debug!(
@@ -1195,5 +1206,46 @@ mod tests {
             crate::live::state::AgentStateGroup::NeedsYou
         ));
         assert_eq!(session.status, SessionStatus::Paused);
+    }
+
+    #[tokio::test]
+    async fn persist_hook_events_writes_to_db() {
+        use claude_view_db::{hook_events_queries, Database};
+
+        let db = Database::new_in_memory().await.unwrap();
+        let events = vec![
+            HookEvent {
+                timestamp: 1000,
+                event_name: "PreToolUse".into(),
+                tool_name: Some("Bash".into()),
+                label: "Running: git status".into(),
+                group: "autonomous".into(),
+                context: None,
+                source: "hook".into(),
+            },
+            HookEvent {
+                timestamp: 1001,
+                event_name: "PostToolUse".into(),
+                tool_name: Some("Bash".into()),
+                label: "Completed".into(),
+                group: "autonomous".into(),
+                context: Some(r#"{"exit_code":0}"#.into()),
+                source: "hook".into(),
+            },
+        ];
+
+        let rows: Vec<_> = events.iter().map(|e| e.to_row()).collect();
+        hook_events_queries::insert_hook_events(&db, "test-persist", &rows)
+            .await
+            .unwrap();
+
+        let stored = hook_events_queries::get_hook_events(&db, "test-persist")
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored[0].event_name, "PreToolUse");
+        assert_eq!(stored[0].group_name, "autonomous");
+        assert_eq!(stored[1].event_name, "PostToolUse");
+        assert_eq!(stored[1].context.as_deref(), Some(r#"{"exit_code":0}"#));
     }
 }
