@@ -149,6 +149,9 @@ pub(crate) struct SessionAccumulator {
     pub last_applied_generation: u64,
     /// Phase labels emitted so far (one per classification).
     pub phase_labels: Vec<PhaseLabel>,
+    /// How the session was launched: "cli", "claude-vscode", "sdk-ts".
+    /// Set once from the first JSONL line that has it.
+    pub entrypoint: Option<String>,
 }
 
 impl SessionAccumulator {
@@ -195,6 +198,7 @@ impl SessionAccumulator {
             classify_generation: 0,
             last_applied_generation: 0,
             phase_labels: Vec::new(),
+            entrypoint: None,
         }
     }
 }
@@ -227,6 +231,7 @@ pub(super) struct JsonlMetadata {
     pub user_files: Option<Vec<VerifiedFile>>,
     pub edit_count: u32,
     pub phase: PhaseHistory,
+    pub entrypoint: Option<String>,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -437,6 +442,13 @@ pub(super) fn apply_jsonl_metadata(
     }
     session.jsonl.edit_count = m.edit_count;
     session.jsonl.phase = m.phase.clone();
+    // Derive source from JSONL entrypoint (authoritative, no process classification needed)
+    if let Some(ref ep) = m.entrypoint {
+        let new_source = crate::live::process::entrypoint_to_source(ep);
+        if session.jsonl.source.as_ref() != Some(&new_source) {
+            session.jsonl.source = Some(new_source);
+        }
+    }
 }
 
 /// Build a `JsonlMetadata` snapshot from an accumulator's current state.
@@ -527,5 +539,6 @@ pub(super) fn build_metadata_from_accumulator(
             labels: acc.phase_labels.clone(),
             freshness: Default::default(),
         },
+        entrypoint: acc.entrypoint.clone(),
     }
 }

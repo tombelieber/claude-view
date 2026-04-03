@@ -106,6 +106,11 @@ impl LiveSessionManager {
                 acc.slug = Some(s.clone());
             }
         }
+        if acc.entrypoint.is_none() {
+            if let Some(ref ep) = line.entrypoint {
+                acc.entrypoint = Some(ep.clone());
+            }
+        }
 
         // Track user messages
         if line.line_type == LineType::User {

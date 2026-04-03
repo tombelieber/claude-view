@@ -1087,6 +1087,7 @@ fn minimal_jsonl_metadata() -> JsonlMetadata {
         user_files: None,
         edit_count: 0,
         phase: PhaseHistory::default(),
+        entrypoint: None,
     }
 }
 
