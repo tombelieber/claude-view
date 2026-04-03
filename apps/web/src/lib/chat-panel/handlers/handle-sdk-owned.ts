@@ -63,7 +63,14 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
     // Only merge if we have no blocks yet (don't overwrite live blocks with stale history)
     case 'HISTORY_OK':
       if (p.blocks.length === 0) {
-        return [{ ...store, panel: { ...p, blocks: event.blocks } }, []]
+        const pagination =
+          event.total != null && event.offset != null
+            ? { total: event.total, offset: event.offset, fetchingOlder: false }
+            : store.historyPagination
+        return [
+          { ...store, panel: { ...p, blocks: event.blocks }, historyPagination: pagination },
+          [],
+        ]
       }
       return [store, []]
 
