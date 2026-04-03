@@ -476,10 +476,8 @@ impl LiveSessionManager {
                 bound_at: now,
                 cancel: tokio_util::sync::CancellationToken::new(),
             });
-            session.jsonl.source = Some(super::process::SessionSourceInfo {
-                category: super::process::SessionSource::AgentSdk,
-                label: None,
-            });
+            // Source will be derived from JSONL entrypoint ("sdk-ts") via apply_jsonl_metadata.
+            // No hardcoded source needed here.
             true
         } else {
             false

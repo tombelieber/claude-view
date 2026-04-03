@@ -10,7 +10,7 @@ use std::time::Duration;
 use tracing::info;
 
 use crate::live::process::detect_claude_processes;
-use crate::live::state::{SessionEvent, SessionStatus};
+use crate::live::state::SessionStatus;
 
 use super::LiveSessionManager;
 
@@ -137,51 +137,20 @@ impl LiveSessionManager {
         }
     }
 
-    /// Refresh process data from oracle (Phase 2 of reconciliation).
+    /// Refresh process count from oracle (Phase 2 of reconciliation).
+    ///
+    /// Session source is derived from the JSONL `entrypoint` field via
+    /// `apply_jsonl_metadata` — no process-based classification needed.
     async fn refresh_process_data(self: &Arc<Self>) {
         let oracle_snap = self.oracle_rx.borrow().clone();
-        let (processes, total_count) = match oracle_snap.claude_processes.as_ref() {
-            Some(cp) => (cp.processes.clone(), cp.count),
+        let total_count = match oracle_snap.claude_processes.as_ref() {
+            Some(cp) => cp.count,
             None => tokio::task::spawn_blocking(detect_claude_processes)
                 .await
-                .unwrap_or_default(),
+                .map(|(_, count)| count)
+                .unwrap_or(0),
         };
         self.process_count.store(total_count, Ordering::Relaxed);
-
-        // Classify source for all live sessions
-        let sdk_source = crate::live::process::SessionSourceInfo {
-            category: crate::live::process::SessionSource::AgentSdk,
-            label: None,
-        };
-        let backfilled: Vec<crate::live::state::LiveSession> = {
-            let mut sessions = self.sessions.write().await;
-            let mut updated = Vec::new();
-            for session in sessions.values_mut() {
-                if session.status == SessionStatus::Done {
-                    continue;
-                }
-                if session.control.is_some() {
-                    if session.jsonl.source.as_ref() != Some(&sdk_source) {
-                        session.jsonl.source = Some(sdk_source.clone());
-                        updated.push(session.clone());
-                    }
-                    continue;
-                }
-                if let Some(pid) = session.hook.pid {
-                    if let Some(cp) = processes.get(&pid) {
-                        let new_source = Some(cp.source.clone());
-                        if session.jsonl.source != new_source {
-                            session.jsonl.source = new_source;
-                            updated.push(session.clone());
-                        }
-                    }
-                }
-            }
-            updated
-        };
-        for session in backfilled {
-            let _ = self.tx.send(SessionEvent::SessionUpdated { session });
-        }
     }
 
     /// Register alive PIDs with death watcher (idempotent).
