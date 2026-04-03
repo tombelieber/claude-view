@@ -1,4 +1,3 @@
-import { BLOCK_PAGE_SIZE } from '../../block-pagination'
 import { nobodyTransition } from '../modules/nobody'
 import { outboxTransition } from '../modules/outbox'
 import type {
@@ -37,33 +36,6 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         ]
       }
       return [{ ...store, panel: { ...p, sub }, historyPagination: pagination }, []]
-    }
-
-    case 'LOAD_OLDER_HISTORY': {
-      if (p.sub.sub !== 'ready') return [store, []]
-      const pg = store.historyPagination
-      if (!pg || pg.offset <= 0 || pg.fetchingOlder) return [store, []]
-      const newOffset = Math.max(0, pg.offset - BLOCK_PAGE_SIZE)
-      const limit = pg.offset - newOffset
-      return [
-        { ...store, historyPagination: { ...pg, fetchingOlder: true } },
-        [{ cmd: 'FETCH_OLDER_HISTORY', sessionId: p.sessionId, offset: newOffset, limit }],
-      ]
-    }
-
-    case 'OLDER_HISTORY_OK': {
-      if (p.sub.sub !== 'ready') return [store, []]
-      const blocks = [...event.blocks, ...p.sub.blocks]
-      return [
-        {
-          ...store,
-          panel: { ...p, sub: { sub: 'ready', blocks } },
-          historyPagination: store.historyPagination
-            ? { ...store.historyPagination, offset: event.offset, fetchingOlder: false }
-            : null,
-        },
-        [],
-      ]
     }
 
     case 'SIDECAR_NO_SESSION':

@@ -405,3 +405,248 @@ describe('historyPagination preserved across phase transitions', () => {
     expect(next.historyPagination).toBeNull()
   })
 })
+
+// ── LOAD_OLDER_HISTORY in sdk_owned phase ───────────────────
+
+describe('LOAD_OLDER_HISTORY in sdk_owned phase', () => {
+  const sdkOwnedStore = (offset: number, total = 126) =>
+    makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: fakeBlocks(50),
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total, offset, fetchingOlder: false } },
+    )
+
+  it('emits FETCH_OLDER_HISTORY with correct offset and limit', () => {
+    const [next, cmds] = stepWithCmds(sdkOwnedStore(76), { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next.historyPagination?.fetchingOlder).toBe(true)
+    expect(cmds).toHaveLength(1)
+    expect(cmds[0]).toMatchObject({
+      cmd: 'FETCH_OLDER_HISTORY',
+      sessionId: 's1',
+      offset: 26,
+      limit: 50,
+    })
+  })
+
+  it('no-ops when offset is 0', () => {
+    const store = sdkOwnedStore(0)
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+
+  it('no-ops when already fetching', () => {
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: fakeBlocks(50),
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: true } },
+    )
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+
+  it('no-ops when pagination is null', () => {
+    const store = makeStore({
+      phase: 'sdk_owned',
+      sessionId: 's1',
+      controlId: 'c1',
+      blocks: fakeBlocks(50),
+      pendingText: '',
+      ephemeral: false,
+      turn: { turn: 'idle' },
+      conn: { health: 'ok' },
+    } as PanelState)
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+})
+
+// ── OLDER_HISTORY_OK in sdk_owned phase ─────────────────────
+
+describe('OLDER_HISTORY_OK in sdk_owned phase', () => {
+  it('prepends blocks and updates offset', () => {
+    const existing = fakeBlocks(50)
+    const older = fakeBlocks(50).map((b) => ({ ...b, id: `old-${b.id}` }))
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: existing,
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: true } },
+    )
+
+    const next = step(store, {
+      type: 'OLDER_HISTORY_OK',
+      blocks: older,
+      offset: 26,
+    } as RawEvent)
+
+    if (next.panel.phase === 'sdk_owned') {
+      expect(next.panel.blocks).toHaveLength(100)
+      expect(next.panel.blocks[0].id).toBe('old-msg-0')
+    }
+    expect(next.historyPagination).toEqual({
+      total: 126,
+      offset: 26,
+      fetchingOlder: false,
+    })
+  })
+
+  it('no-ops when fetchingOlder is false (stale response)', () => {
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: fakeBlocks(50),
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: false } },
+    )
+    const [next, cmds] = stepWithCmds(store, {
+      type: 'OLDER_HISTORY_OK',
+      blocks: fakeBlocks(50),
+      offset: 26,
+    } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+})
+
+// ── HISTORY_OK populates historyPagination in sdk_owned ─────
+
+describe('HISTORY_OK populates historyPagination in sdk_owned phase', () => {
+  it('sets pagination from HISTORY_OK when blocks are empty', () => {
+    const store = makeStore({
+      phase: 'sdk_owned',
+      sessionId: 's1',
+      controlId: 'c1',
+      blocks: [],
+      pendingText: '',
+      ephemeral: false,
+      turn: { turn: 'idle' },
+      conn: { health: 'ok' },
+    } as PanelState)
+
+    const next = step(store, {
+      type: 'HISTORY_OK',
+      blocks: fakeBlocks(50),
+      total: 126,
+      offset: 76,
+    } as RawEvent)
+
+    expect(next.historyPagination).toEqual({
+      total: 126,
+      offset: 76,
+      fetchingOlder: false,
+    })
+  })
+
+  it('ignores pagination when blocks already exist', () => {
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: fakeBlocks(50),
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 50, offset: 0, fetchingOlder: false } },
+    )
+
+    const next = step(store, {
+      type: 'HISTORY_OK',
+      blocks: fakeBlocks(50),
+      total: 126,
+      offset: 76,
+    } as RawEvent)
+
+    // Blocks exist → HISTORY_OK ignored, pagination unchanged
+    expect(next.historyPagination).toEqual({ total: 50, offset: 0, fetchingOlder: false })
+  })
+})
+
+// ── LOAD_OLDER_HISTORY in closed phase ──────────────────────
+
+describe('LOAD_OLDER_HISTORY in closed phase', () => {
+  it('emits FETCH_OLDER_HISTORY in closed phase', () => {
+    const store = makeStore(
+      { phase: 'closed', sessionId: 's1', blocks: fakeBlocks(50), ephemeral: false } as PanelState,
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: false } },
+    )
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next.historyPagination?.fetchingOlder).toBe(true)
+    expect(cmds).toHaveLength(1)
+    expect(cmds[0]).toMatchObject({ cmd: 'FETCH_OLDER_HISTORY', sessionId: 's1' })
+  })
+})
+
+// ── Pagination skipped during non-paginatable phases ────────
+
+describe('pagination skipped during non-paginatable phases', () => {
+  it('no-ops in acquiring phase', () => {
+    const store = makeStore(
+      {
+        phase: 'acquiring',
+        sessionId: 's1',
+        targetSessionId: null,
+        action: 'resume',
+        historyBlocks: fakeBlocks(50),
+        pendingMessage: null,
+        step: { step: 'posting' },
+      } as PanelState,
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: false } },
+    )
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+
+  it('no-ops in nobody.loading sub-state', () => {
+    const store = makeStore(
+      { phase: 'nobody', sessionId: 's1', sub: { sub: 'loading' } },
+      { historyPagination: { total: 126, offset: 76, fetchingOlder: false } },
+    )
+    const [next, cmds] = stepWithCmds(store, { type: 'LOAD_OLDER_HISTORY' } as RawEvent)
+
+    expect(next).toBe(store)
+    expect(cmds).toHaveLength(0)
+  })
+})
