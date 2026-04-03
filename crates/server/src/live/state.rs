@@ -625,6 +625,21 @@ pub struct HookEvent {
     pub source: String,
 }
 
+impl HookEvent {
+    /// Convert to the DB row type. Maps `group` → `group_name`.
+    pub fn to_row(&self) -> claude_view_db::HookEventRow {
+        claude_view_db::HookEventRow {
+            timestamp: self.timestamp,
+            event_name: self.event_name.clone(),
+            tool_name: self.tool_name.clone(),
+            label: self.label.clone(),
+            group_name: self.group.clone(),
+            context: self.context.clone(),
+            source: self.source.clone(),
+        }
+    }
+}
+
 /// Maximum hook events kept in memory per session.
 pub(crate) const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
 
