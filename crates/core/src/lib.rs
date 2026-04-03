@@ -16,6 +16,7 @@ pub mod facets;
 pub mod field_inventory;
 pub mod file_history;
 pub mod fluency_score;
+pub mod hook_to_block;
 pub mod insights;
 pub mod invocation;
 pub mod live_parser;

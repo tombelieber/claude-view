@@ -21,6 +21,7 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc;
 
 use claude_view_core::category::{categorize_progress, categorize_tool};
+use claude_view_core::hook_to_block::make_hook_progress_block;
 
 use crate::state::AppState;
 
@@ -802,22 +803,30 @@ async fn handle_terminal_ws(
     {
         let sessions = state.live_sessions.read().await;
         if let Some(session) = sessions.get(&session_id) {
-            for event in &session.hook.hook_events {
-                let msg = serde_json::json!({
-                    "type": "hook_event",
-                    "timestamp": event.timestamp,
-                    "eventName": event.event_name,
-                    "toolName": event.tool_name,
-                    "label": event.label,
-                    "group": event.group,
-                    "context": event.context,
-                    "source": event.source,
-                });
-                if socket
-                    .send(Message::Text(msg.to_string().into()))
-                    .await
-                    .is_err()
-                {
+            for (i, event) in session.hook.hook_events.iter().enumerate() {
+                let text = if current_mode == "block" {
+                    let block = make_hook_progress_block(
+                        format!("hook-{}-{}", event.timestamp, i),
+                        event.timestamp as f64,
+                        &event.event_name,
+                        event.tool_name.as_deref(),
+                        &event.label,
+                    );
+                    serde_json::to_string(&block).unwrap_or_default()
+                } else {
+                    serde_json::json!({
+                        "type": "hook_event",
+                        "timestamp": event.timestamp,
+                        "eventName": event.event_name,
+                        "toolName": event.tool_name,
+                        "label": event.label,
+                        "group": event.group,
+                        "context": event.context,
+                        "source": event.source,
+                    })
+                    .to_string()
+                };
+                if socket.send(Message::Text(text.into())).await.is_err() {
                     return;
                 }
             }
@@ -1147,18 +1156,32 @@ async fn handle_terminal_ws(
                         if hook_events_seen <= replayed_hook_count {
                             continue;
                         }
-                        let msg = serde_json::json!({
-                            "type": "hook_event",
-                            "timestamp": event.timestamp,
-                            "eventName": event.event_name,
-                            "toolName": event.tool_name,
-                            "label": event.label,
-                            "group": event.group,
-                            "context": event.context,
-                            "source": event.source,
-                        });
+                        let text = if current_mode == "block" {
+                            let block = make_hook_progress_block(
+                                format!("hook-live-{}-{}", event.timestamp, hook_events_seen),
+                                event.timestamp as f64,
+                                &event.event_name,
+                                event.tool_name.as_deref(),
+                                &event.label,
+                            );
+                            let json = serde_json::to_string(&block).unwrap_or_default();
+                            sent_blocks.insert(block.id().to_string(), json.clone());
+                            json
+                        } else {
+                            serde_json::json!({
+                                "type": "hook_event",
+                                "timestamp": event.timestamp,
+                                "eventName": event.event_name,
+                                "toolName": event.tool_name,
+                                "label": event.label,
+                                "group": event.group,
+                                "context": event.context,
+                                "source": event.source,
+                            })
+                            .to_string()
+                        };
                         if socket
-                            .send(Message::Text(msg.to_string().into()))
+                            .send(Message::Text(text.into()))
                             .await
                             .is_err()
                         {
@@ -1315,6 +1338,9 @@ mod tests {
                 Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
                 Arc::new(crate::local_llm::LlmStatus::new(10710)),
             )),
+            session_channels: Arc::new(
+                crate::live::session_ws::registry::SessionChannelRegistry::new(),
+            ),
         });
 
         // Register the session in the live sessions map
@@ -1541,6 +1567,9 @@ mod tests {
                 Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
                 Arc::new(crate::local_llm::LlmStatus::new(10710)),
             )),
+            session_channels: Arc::new(
+                crate::live::session_ws::registry::SessionChannelRegistry::new(),
+            ),
         });
 
         let (addr, server_handle) = start_test_server(state).await;

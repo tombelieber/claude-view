@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use claude_view_core::accumulator::SessionAccumulator;
+use claude_view_core::hook_to_block::make_hook_progress_block;
 use claude_view_core::task_files::{self, TaskItem};
 use claude_view_core::{ParsedSession, SessionInfo};
 use claude_view_db::git_correlation::GitCommit;
@@ -534,18 +535,66 @@ pub async fn get_session_messages_by_id(
             .map_err(|e| ApiError::Internal(format!("Read error: {e}")))?;
 
         let parsed = claude_view_core::block_accumulator::parse_session(&content);
-        let total = parsed.blocks.len();
+        let mut blocks = parsed.blocks;
+
+        // Merge DB hook events (Channel B) into the block list.
+        // Skip if JSONL already produced Hook-variant ProgressBlocks (Channel A),
+        // to avoid rendering the same logical hook event twice.
+        let jsonl_has_hook_blocks = blocks.iter().any(|b| {
+            matches!(
+                b,
+                claude_view_core::ConversationBlock::Progress(p)
+                    if p.variant == claude_view_core::block_types::ProgressVariant::Hook
+            )
+        });
+
+        if !jsonl_has_hook_blocks {
+            match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await
+            {
+                Ok(hook_rows) if !hook_rows.is_empty() => {
+                    // Convert DB rows to ProgressBlocks
+                    let hook_blocks: Vec<_> = hook_rows
+                        .iter()
+                        .enumerate()
+                        .map(|(i, row)| {
+                            make_hook_progress_block(
+                                format!("hook-db-{}-{}", row.timestamp, i),
+                                row.timestamp as f64,
+                                &row.event_name,
+                                row.tool_name.as_deref(),
+                                &row.label,
+                            )
+                        })
+                        .collect();
+
+                    // Positional merge: insert hook blocks at correct timestamp
+                    // positions without disturbing existing block order.
+                    // hook_blocks are already sorted by ts ASC (DB ORDER BY).
+                    blocks = merge_hook_blocks_by_timestamp(blocks, hook_blocks);
+                }
+                Ok(_) => {} // no hook events in DB
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to fetch hook events for block merge — serving JSONL blocks only"
+                    );
+                }
+            }
+        }
+
+        let total = blocks.len();
         let offset = query.offset.unwrap_or(0);
         let limit = query.limit.unwrap_or(50);
         let end = std::cmp::min(offset + limit, total);
-        let blocks: Vec<_> = if offset < total {
-            parsed.blocks.into_iter().skip(offset).take(limit).collect()
+        let page: Vec<_> = if offset < total {
+            blocks.into_iter().skip(offset).take(limit).collect()
         } else {
             vec![]
         };
 
         let result = PaginatedBlocks {
-            blocks,
+            blocks: page,
             total,
             offset,
             limit,
@@ -706,6 +755,46 @@ pub async fn session_activity(
         bucket,
         total,
     }))
+}
+
+/// Query parameters for rich activity endpoint.
+#[derive(Debug, serde::Deserialize)]
+pub struct RichActivityParams {
+    pub time_after: Option<i64>,
+    pub time_before: Option<i64>,
+    pub project: Option<String>,
+    pub branch: Option<String>,
+}
+
+/// GET /api/sessions/activity/rich — Full server-side activity aggregation.
+///
+/// Returns histogram, project breakdown, and summary stats in a single request.
+/// Replaces the client-side `useActivityData` pagination loop.
+#[utoipa::path(get, path = "/api/sessions/activity/rich", tag = "sessions",
+    params(
+        ("time_after" = Option<i64>, Query, description = "Unix timestamp lower bound"),
+        ("time_before" = Option<i64>, Query, description = "Unix timestamp upper bound"),
+        ("project" = Option<String>, Query, description = "Filter by project path"),
+        ("branch" = Option<String>, Query, description = "Filter by git branch"),
+    ),
+    responses(
+        (status = 200, description = "Rich activity data", body = claude_view_db::RichActivityResponse),
+    )
+)]
+pub async fn session_activity_rich(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<RichActivityParams>,
+) -> ApiResult<Json<claude_view_db::RichActivityResponse>> {
+    let result = state
+        .db
+        .rich_activity(
+            params.time_after,
+            params.time_before,
+            params.project.as_deref(),
+            params.branch.as_deref(),
+        )
+        .await?;
+    Ok(Json(result))
 }
 
 // ============================================================================
@@ -1087,6 +1176,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions", get(list_sessions))
         .route("/estimate", post(estimate_cost))
         .route("/sessions/activity", get(session_activity))
+        .route("/sessions/activity/rich", get(session_activity_rich))
         .route("/sessions/archive", post(bulk_archive_handler))
         .route("/sessions/unarchive", post(bulk_unarchive_handler))
         .route("/sessions/{id}", get(get_session_detail))
@@ -1097,6 +1187,64 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}/archive", post(archive_session_handler))
         .route("/sessions/{id}/unarchive", post(unarchive_session_handler))
         .route("/branches", get(list_branches))
+}
+
+/// Extract timestamp from a ConversationBlock, if available.
+///
+/// Only Progress, User, and Assistant blocks carry timestamps.
+/// Other variants (Interaction, TurnBoundary, Notice, System) have no
+/// timestamp field — returns None so the merge algorithm skips them
+/// as insertion points rather than misplacing them.
+fn block_timestamp(block: &claude_view_core::ConversationBlock) -> Option<f64> {
+    use claude_view_core::ConversationBlock;
+    match block {
+        ConversationBlock::Progress(b) => Some(b.ts),
+        ConversationBlock::User(b) => Some(b.timestamp),
+        ConversationBlock::Assistant(b) => b.timestamp,
+        ConversationBlock::Interaction(_)
+        | ConversationBlock::TurnBoundary(_)
+        | ConversationBlock::Notice(_)
+        | ConversationBlock::System(_) => None,
+    }
+}
+
+/// Merge hook ProgressBlocks into an existing block list by timestamp.
+///
+/// Preserves original block order — only hook blocks are inserted.
+/// Non-timestamped blocks (TurnBoundary, Notice, etc.) are never moved.
+/// `hook_blocks` must be sorted by ts ASC (guaranteed by DB ORDER BY).
+fn merge_hook_blocks_by_timestamp(
+    blocks: Vec<claude_view_core::ConversationBlock>,
+    hook_blocks: Vec<claude_view_core::ConversationBlock>,
+) -> Vec<claude_view_core::ConversationBlock> {
+    if hook_blocks.is_empty() {
+        return blocks;
+    }
+    let mut merged = Vec::with_capacity(blocks.len() + hook_blocks.len());
+    let mut hi = 0; // cursor into hook_blocks
+
+    for block in blocks {
+        // Before inserting this block, insert any pending hook events
+        // whose timestamp is <= this block's timestamp.
+        if let Some(bt) = block_timestamp(&block) {
+            while hi < hook_blocks.len() {
+                if let claude_view_core::ConversationBlock::Progress(p) = &hook_blocks[hi] {
+                    if p.ts <= bt {
+                        merged.push(hook_blocks[hi].clone());
+                        hi += 1;
+                        continue;
+                    }
+                }
+                break;
+            }
+        }
+        merged.push(block);
+    }
+    // Append remaining hook events after the last block
+    for hb in &hook_blocks[hi..] {
+        merged.push(hb.clone());
+    }
+    merged
 }
 
 #[cfg(test)]
@@ -2078,11 +2226,9 @@ mod tests {
 
         let db = test_db().await;
 
-        // Build app state — new_with_indexing returns Arc<AppState>
-        let state = crate::state::AppState::new_with_indexing(
-            db,
-            Arc::new(crate::indexing_state::IndexingState::new()),
-        );
+        let state = crate::state::AppState::builder(db)
+            .with_indexing(Arc::new(crate::indexing_state::IndexingState::new()))
+            .build();
 
         // Insert a live session with hook events into the live_sessions map
         let mut session = LiveSession {
@@ -2352,10 +2498,9 @@ mod tests {
         .unwrap();
 
         // NOT inserted into DB — simulates un-indexed live session
-        let state = crate::state::AppState::new_with_indexing(
-            db,
-            Arc::new(crate::indexing_state::IndexingState::new()),
-        );
+        let state = crate::state::AppState::builder(db)
+            .with_indexing(Arc::new(crate::indexing_state::IndexingState::new()))
+            .build();
 
         let live = make_live_session("live-only", session_file.to_str().unwrap());
         state
@@ -2401,10 +2546,9 @@ mod tests {
         )
         .unwrap();
 
-        let state = crate::state::AppState::new_with_indexing(
-            db,
-            Arc::new(crate::indexing_state::IndexingState::new()),
-        );
+        let state = crate::state::AppState::builder(db)
+            .with_indexing(Arc::new(crate::indexing_state::IndexingState::new()))
+            .build();
 
         let live = make_live_session("live-rich", session_file.to_str().unwrap());
         state
@@ -2462,10 +2606,9 @@ mod tests {
         )
         .unwrap();
 
-        let state = crate::state::AppState::new_with_indexing(
-            db,
-            Arc::new(crate::indexing_state::IndexingState::new()),
-        );
+        let state = crate::state::AppState::builder(db)
+            .with_indexing(Arc::new(crate::indexing_state::IndexingState::new()))
+            .build();
         let live = make_live_session("db-priority", live_file.to_str().unwrap());
         state
             .live_sessions
@@ -2489,5 +2632,190 @@ mod tests {
         } else {
             panic!("Expected a user block from DB file");
         }
+    }
+
+    #[tokio::test]
+    async fn get_messages_block_format_includes_db_hook_events() {
+        use claude_view_db::hook_events_queries;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = test_db().await;
+
+        // Create a minimal JSONL session file on disk
+        let jsonl_path = tmp.path().join("block-hook-test.jsonl");
+        std::fs::write(
+            &jsonl_path,
+            r#"{"type":"human","message":{"role":"user","content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}
+"#,
+        )
+        .unwrap();
+
+        // Insert a session row so resolve_session_file_path() can find the JSONL
+        let mut session = make_session("block-hook-test", "project-a", 1735689600);
+        session.file_path = jsonl_path.to_string_lossy().to_string();
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        // Insert hook events into DB for this session
+        let events = vec![claude_view_db::HookEventRow {
+            timestamp: 1735689600,
+            event_name: "PreToolUse".into(),
+            tool_name: Some("Bash".into()),
+            label: "Running: git status".into(),
+            group_name: "autonomous".into(),
+            context: None,
+            source: "hook".into(),
+        }];
+        hook_events_queries::insert_hook_events(&db, "block-hook-test", &events)
+            .await
+            .unwrap();
+
+        // Request blocks via the API
+        let app = build_app(db);
+        let (status, body) =
+            do_get(app, "/api/sessions/block-hook-test/messages?format=block").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+
+        // Should contain the merged hook event as a ProgressBlock(Hook)
+        let hook_blocks: Vec<_> = blocks
+            .iter()
+            .filter(|b| b["type"] == "progress" && b["variant"] == "hook")
+            .collect();
+        assert_eq!(hook_blocks.len(), 1);
+        assert_eq!(hook_blocks[0]["data"]["hookEvent"], "PreToolUse");
+        assert_eq!(hook_blocks[0]["data"]["hookName"], "Bash");
+        assert_eq!(
+            hook_blocks[0]["data"]["statusMessage"],
+            "Running: git status"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_messages_block_format_skips_merge_when_jsonl_has_hook_blocks() {
+        use claude_view_db::hook_events_queries;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = test_db().await;
+
+        // Create JSONL with a Channel A hook_progress block (correct nested format)
+        let jsonl_path = tmp.path().join("channel-a-test.jsonl");
+        std::fs::write(
+            &jsonl_path,
+            r#"{"type":"human","message":{"role":"user","content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"progress","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"Read","command":"","statusMessage":"Reading file"},"timestamp":"2026-01-01T00:00:01Z"}
+"#,
+        )
+        .unwrap();
+
+        let mut session = make_session("channel-a-test", "project-a", 1735689600);
+        session.file_path = jsonl_path.to_string_lossy().to_string();
+        db.insert_session(&session, "project-a", "Project A")
+            .await
+            .unwrap();
+
+        // Insert DB hook events (Channel B) — these should be SKIPPED
+        let events = vec![claude_view_db::HookEventRow {
+            timestamp: 1735689601,
+            event_name: "PreToolUse".into(),
+            tool_name: Some("Bash".into()),
+            label: "Running: ls".into(),
+            group_name: "autonomous".into(),
+            context: None,
+            source: "hook".into(),
+        }];
+        hook_events_queries::insert_hook_events(&db, "channel-a-test", &events)
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) =
+            do_get(app, "/api/sessions/channel-a-test/messages?format=block").await;
+
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let blocks = json["blocks"].as_array().unwrap();
+
+        // Should contain only the Channel A hook block, NOT the DB one
+        let _channel_a_hook_blocks: Vec<_> = blocks
+            .iter()
+            .filter(|b| b["type"] == "progress" && b["variant"] == "hook")
+            .collect();
+        // The key assertion: no "hook-db-" prefixed IDs from DB merge.
+        let db_hook_blocks: Vec<_> = blocks
+            .iter()
+            .filter(|b| {
+                b["id"]
+                    .as_str()
+                    .is_some_and(|id| id.starts_with("hook-db-"))
+            })
+            .collect();
+        assert_eq!(
+            db_hook_blocks.len(),
+            0,
+            "DB hook events should be skipped when JSONL has Channel A hook blocks"
+        );
+    }
+
+    #[test]
+    fn merge_hook_blocks_preserves_order_and_inserts_by_timestamp() {
+        use claude_view_core::hook_to_block::make_hook_progress_block;
+
+        // Create some blocks with timestamps
+        let user1 = claude_view_core::ConversationBlock::User(claude_view_core::UserBlock {
+            id: "user-1".into(),
+            text: "hello".into(),
+            timestamp: 100.0,
+            status: None,
+            local_id: None,
+            pending: None,
+            permission_mode: None,
+            parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: vec![],
+            raw_json: None,
+        });
+        let user2 = claude_view_core::ConversationBlock::User(claude_view_core::UserBlock {
+            id: "user-2".into(),
+            text: "world".into(),
+            timestamp: 300.0,
+            status: None,
+            local_id: None,
+            pending: None,
+            permission_mode: None,
+            parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: vec![],
+            raw_json: None,
+        });
+
+        let hook1 =
+            make_hook_progress_block("hook-db-50-0".into(), 50.0, "Start", None, "Starting");
+        let hook2 = make_hook_progress_block(
+            "hook-db-200-1".into(),
+            200.0,
+            "PreToolUse",
+            Some("Bash"),
+            "Running",
+        );
+        let hook3 = make_hook_progress_block("hook-db-400-2".into(), 400.0, "Stop", None, "Done");
+
+        let blocks = vec![user1, user2];
+        let hook_blocks = vec![hook1, hook2, hook3];
+
+        let merged = merge_hook_blocks_by_timestamp(blocks, hook_blocks);
+
+        // Expected order: hook@50, user@100, hook@200, user@300, hook@400
+        assert_eq!(merged.len(), 5);
+        assert_eq!(merged[0].id(), "hook-db-50-0");
+        assert_eq!(merged[1].id(), "user-1");
+        assert_eq!(merged[2].id(), "hook-db-200-1");
+        assert_eq!(merged[3].id(), "user-2");
+        assert_eq!(merged[4].id(), "hook-db-400-2");
     }
 }
