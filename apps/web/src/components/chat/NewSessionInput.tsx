@@ -1,30 +1,18 @@
 import { useCallback } from 'react'
+import { useSessionMutations } from '../../hooks/use-session-mutations'
 import { ChatInputBar } from './ChatInputBar'
 
 export function NewSessionInput({
   onSessionCreated,
 }: { onSessionCreated: (sessionId: string) => void }) {
+  const { createSession } = useSessionMutations()
+
   const handleSend = useCallback(
     async (message: string) => {
-      try {
-        const res = await fetch('/api/sidecar/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ initialMessage: message }),
-        })
-        if (!res.ok) {
-          throw new Error(`Failed to start session: ${res.status}`)
-        }
-        const data = await res.json()
-        if (!data.sessionId) {
-          throw new Error('No sessionId returned from server')
-        }
-        onSessionCreated(data.sessionId)
-      } catch (err) {
-        console.error('Failed to start session:', err)
-      }
+      const result = await createSession.mutateAsync({ initialMessage: message })
+      onSessionCreated(result.sessionId)
     },
-    [onSessionCreated],
+    [onSessionCreated, createSession],
   )
 
   return <ChatInputBar onSend={handleSend} placeholder="What do you want to build?" />
