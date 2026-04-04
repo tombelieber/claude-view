@@ -605,6 +605,80 @@ pub async fn get_session_messages_by_id(
         Ok(Json(serde_json::to_value(result).unwrap()))
     }
 }
+/// GET /api/sessions/:id/subagents/:agent_id/messages — Paginated blocks for a sub-agent.
+///
+/// Resolves the parent session's JSONL path, then derives the sub-agent's JSONL
+/// file using the same path convention as the terminal WebSocket handler.
+/// Returns `PaginatedBlocks` — same shape as the parent messages endpoint.
+#[utoipa::path(get, path = "/api/sessions/{id}/subagents/{agent_id}/messages", tag = "sessions",
+    params(
+        ("id" = String, Path, description = "Parent session ID"),
+        ("agent_id" = String, Path, description = "Sub-agent ID (alphanumeric)"),
+        SessionMessagesQuery,
+    ),
+    responses(
+        (status = 200, description = "Paginated sub-agent blocks", body = serde_json::Value),
+        (status = 400, description = "Invalid agent ID"),
+        (status = 404, description = "Session or sub-agent not found"),
+    )
+)]
+pub async fn get_subagent_messages(
+    State(state): State<Arc<AppState>>,
+    Path((session_id, agent_id)): Path<(String, String)>,
+    Query(query): Query<SessionMessagesQuery>,
+) -> ApiResult<Json<serde_json::Value>> {
+    // Validate agent_id (same check as terminal WS handler)
+    if agent_id.is_empty()
+        || !agent_id.chars().all(|c| c.is_ascii_alphanumeric())
+        || agent_id.len() > 64
+    {
+        return Err(ApiError::BadRequest(format!(
+            "Invalid agent ID: '{}'",
+            agent_id
+        )));
+    }
+
+    // Resolve parent → sub-agent JSONL path
+    let parent_path = resolve_session_file_path(&state, &session_id).await?;
+    let subagent_path = crate::live::subagent_file::resolve_subagent_path(&parent_path, &agent_id);
+
+    if !subagent_path.exists() {
+        return Err(ApiError::NotFound(format!(
+            "Sub-agent '{}' JSONL not found for session '{}'",
+            agent_id, session_id
+        )));
+    }
+
+    // Parse JSONL → blocks → paginate
+    let content = tokio::fs::read_to_string(&subagent_path)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Read error: {e}")))?;
+
+    let parsed = claude_view_core::block_accumulator::parse_session(&content);
+    let blocks = parsed.blocks;
+
+    let total = blocks.len();
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(50);
+    let end = std::cmp::min(offset + limit, total);
+    let page: Vec<_> = if offset < total {
+        blocks.into_iter().skip(offset).take(limit).collect()
+    } else {
+        vec![]
+    };
+
+    let result = PaginatedBlocks {
+        blocks: page,
+        total,
+        offset,
+        limit,
+        has_more: end < total,
+        forked_from: parsed.forked_from,
+        entrypoint: parsed.entrypoint,
+    };
+    Ok(Json(serde_json::to_value(result).unwrap()))
+}
+
 /// GET /api/sessions/:id/rich — Parse JSONL on demand via `SessionAccumulator` and return
 /// rich session data (tokens, cost, cache status, sub-agents, progress items, etc.).
 ///
@@ -1182,6 +1256,10 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/sessions/{id}", get(get_session_detail))
         .route("/sessions/{id}/parsed", get(get_session_parsed))
         .route("/sessions/{id}/messages", get(get_session_messages_by_id))
+        .route(
+            "/sessions/{id}/subagents/{agent_id}/messages",
+            get(get_subagent_messages),
+        )
         .route("/sessions/{id}/rich", get(get_session_rich))
         .route("/sessions/{id}/hook-events", get(get_session_hook_events))
         .route("/sessions/{id}/archive", post(archive_session_handler))
