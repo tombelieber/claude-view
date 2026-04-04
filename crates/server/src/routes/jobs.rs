@@ -143,7 +143,7 @@ mod tests {
             debug_omlx_log: None,
             local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
                 Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
-                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+                Arc::new(crate::local_llm::LlmStatus::new()),
             )),
             session_channels: Arc::new(
                 crate::live::session_ws::registry::SessionChannelRegistry::new(),

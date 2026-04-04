@@ -1,61 +1,56 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, RwLock};
 
+use claude_view_core::phase::ClassifyMode;
 use serde::Serialize;
 
-/// Explicit server state — replaces implicit ready=true/false.
+use super::provider::Provider;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ServerState {
     Unknown = 0,
-    Running = 1,
-    Unavailable = 2,
+    Scanning = 1,
+    Connected = 2,
+    Disconnected = 3,
 }
 
 impl From<u8> for ServerState {
     fn from(v: u8) -> Self {
         match v {
-            1 => Self::Running,
-            2 => Self::Unavailable,
+            1 => Self::Scanning,
+            2 => Self::Connected,
+            3 => Self::Disconnected,
             _ => Self::Unknown,
         }
     }
 }
 
-/// Lock-free shared status for the local LLM process.
-///
-/// `discovered_model_id` is the **runtime model ID** reported by oMLX via
-/// `/v1/models`. This is the single source of truth for what model name to
-/// send in chat completion requests. Set by lifecycle, read by LlmClient.
+/// Lock-free shared status for the local LLM integration.
 #[derive(Debug)]
 pub struct LlmStatus {
     pub ready: Arc<AtomicBool>,
-    pub port: u16,
-    pid: Arc<AtomicU32>,
     state: Arc<AtomicU8>,
-    discovered_model_id: Arc<RwLock<Option<String>>>,
+    provider: Arc<RwLock<Option<Provider>>>,
+    url: Arc<RwLock<Option<String>>>,
+    models: Arc<RwLock<Vec<String>>>,
+    active_model: Arc<RwLock<Option<String>>>,
+    omlx_installed: Arc<AtomicBool>,
+    omlx_running: Arc<AtomicBool>,
 }
 
 impl LlmStatus {
-    pub fn new(port: u16) -> Self {
+    pub fn new() -> Self {
         Self {
             ready: Arc::new(AtomicBool::new(false)),
-            port,
-            pid: Arc::new(AtomicU32::new(0)),
             state: Arc::new(AtomicU8::new(ServerState::Unknown as u8)),
-            discovered_model_id: Arc::new(RwLock::new(None)),
+            provider: Arc::new(RwLock::new(None)),
+            url: Arc::new(RwLock::new(None)),
+            models: Arc::new(RwLock::new(Vec::new())),
+            active_model: Arc::new(RwLock::new(None)),
+            omlx_installed: Arc::new(AtomicBool::new(false)),
+            omlx_running: Arc::new(AtomicBool::new(false)),
         }
-    }
-
-    pub fn pid(&self) -> Option<u32> {
-        match self.pid.load(Ordering::Acquire) {
-            0 => None,
-            v => Some(v),
-        }
-    }
-
-    pub fn set_pid(&self, pid: Option<u32>) {
-        self.pid.store(pid.unwrap_or(0), Ordering::Release);
     }
 
     pub fn server_state(&self) -> ServerState {
@@ -66,40 +61,72 @@ impl LlmStatus {
         self.state.store(s as u8, Ordering::Release);
     }
 
-    /// The runtime model ID discovered from oMLX's `/v1/models` endpoint.
-    /// This is what the LlmClient must send in chat completion requests.
-    pub fn discovered_model_id(&self) -> Option<String> {
-        self.discovered_model_id.read().unwrap().clone()
-    }
-
-    /// Set by lifecycle when it discovers a model from oMLX.
-    /// Cleared when server becomes unavailable or disabled.
-    pub fn set_discovered_model_id(&self, id: Option<String>) {
-        *self.discovered_model_id.write().unwrap() = id;
+    pub fn active_model(&self) -> Option<String> {
+        self.active_model.read().unwrap().clone()
     }
 
     /// Shared reference for LlmClient to read at request time.
-    pub fn discovered_model_ref(&self) -> Arc<RwLock<Option<String>>> {
-        self.discovered_model_id.clone()
+    pub fn active_model_ref(&self) -> Arc<RwLock<Option<String>>> {
+        self.active_model.clone()
     }
 
-    /// Snapshot for the status route — cheap.
+    pub fn set_connection(
+        &self,
+        provider: Provider,
+        url: String,
+        models: Vec<String>,
+        active: Option<String>,
+    ) {
+        *self.provider.write().unwrap() = Some(provider);
+        *self.url.write().unwrap() = Some(url);
+        *self.models.write().unwrap() = models;
+        *self.active_model.write().unwrap() = active;
+        self.ready.store(true, Ordering::Release);
+        self.set_server_state(ServerState::Connected);
+    }
+
+    pub fn clear_connection(&self) {
+        *self.provider.write().unwrap() = None;
+        *self.url.write().unwrap() = None;
+        self.models.write().unwrap().clear();
+        *self.active_model.write().unwrap() = None;
+        self.ready.store(false, Ordering::Release);
+    }
+
+    pub fn set_omlx_installed(&self, v: bool) {
+        self.omlx_installed.store(v, Ordering::Release);
+    }
+
+    pub fn set_omlx_running(&self, v: bool) {
+        self.omlx_running.store(v, Ordering::Release);
+    }
+
     pub fn snapshot(&self) -> StatusSnapshot {
         StatusSnapshot {
-            ready: self.ready.load(Ordering::Acquire),
-            port: self.port,
-            pid: self.pid(),
+            enabled: false, // overridden by service.status_snapshot()
             state: self.server_state(),
+            provider: *self.provider.read().unwrap(),
+            url: self.url.read().unwrap().clone(),
+            models: self.models.read().unwrap().clone(),
+            active_model: self.active_model.read().unwrap().clone(),
+            classify_mode: ClassifyMode::default(), // overridden by service
+            omlx_installed: self.omlx_installed.load(Ordering::Acquire),
+            omlx_running: self.omlx_running.load(Ordering::Acquire),
         }
     }
 }
 
 #[derive(Debug, Serialize)]
 pub struct StatusSnapshot {
-    pub ready: bool,
-    pub port: u16,
-    pub pid: Option<u32>,
+    pub enabled: bool,
     pub state: ServerState,
+    pub provider: Option<Provider>,
+    pub url: Option<String>,
+    pub models: Vec<String>,
+    pub active_model: Option<String>,
+    pub classify_mode: ClassifyMode,
+    pub omlx_installed: bool,
+    pub omlx_running: bool,
 }
 
 #[cfg(test)]
@@ -108,41 +135,61 @@ mod tests {
 
     #[test]
     fn new_status_is_unknown_and_not_ready() {
-        let s = LlmStatus::new(10710);
+        let s = LlmStatus::new();
         assert!(!s.ready.load(Ordering::Acquire));
-        assert_eq!(s.pid(), None);
         assert_eq!(s.server_state(), ServerState::Unknown);
+        assert!(s.active_model().is_none());
     }
 
     #[test]
-    fn pid_round_trip() {
-        let s = LlmStatus::new(10710);
-        s.set_pid(Some(42));
-        assert_eq!(s.pid(), Some(42));
-        s.set_pid(None);
-        assert_eq!(s.pid(), None);
+    fn set_connection_makes_ready() {
+        let s = LlmStatus::new();
+        s.set_connection(
+            Provider::Ollama,
+            "http://localhost:11434".into(),
+            vec!["llama3.2".into()],
+            Some("llama3.2".into()),
+        );
+        assert!(s.ready.load(Ordering::Acquire));
+        assert_eq!(s.server_state(), ServerState::Connected);
+        assert_eq!(s.active_model().as_deref(), Some("llama3.2"));
     }
 
     #[test]
-    fn state_transitions() {
-        let s = LlmStatus::new(10710);
-        s.set_server_state(ServerState::Running);
-        assert_eq!(s.server_state(), ServerState::Running);
-        s.set_server_state(ServerState::Unavailable);
-        assert_eq!(s.server_state(), ServerState::Unavailable);
+    fn clear_connection_resets_all() {
+        let s = LlmStatus::new();
+        s.set_connection(
+            Provider::Omlx,
+            "http://localhost:10710".into(),
+            vec!["qwen".into()],
+            Some("qwen".into()),
+        );
+        s.clear_connection();
+        assert!(!s.ready.load(Ordering::Acquire));
+        assert!(s.active_model().is_none());
+
+        let snap = s.snapshot();
+        assert!(snap.provider.is_none());
+        assert!(snap.models.is_empty());
     }
 
     #[test]
     fn snapshot_reflects_current_state() {
-        let s = LlmStatus::new(10710);
-        s.ready.store(true, Ordering::Release);
-        s.set_pid(Some(1234));
-        s.set_server_state(ServerState::Running);
+        let s = LlmStatus::new();
+        s.set_connection(
+            Provider::Ollama,
+            "http://localhost:11434".into(),
+            vec!["model-a".into(), "model-b".into()],
+            Some("model-a".into()),
+        );
+        s.set_omlx_installed(true);
+        s.set_omlx_running(false);
 
         let snap = s.snapshot();
-        assert!(snap.ready);
-        assert_eq!(snap.pid, Some(1234));
-        assert_eq!(snap.state, ServerState::Running);
-        assert_eq!(snap.port, 10710);
+        assert_eq!(snap.state, ServerState::Connected);
+        assert_eq!(snap.provider, Some(Provider::Ollama));
+        assert_eq!(snap.models.len(), 2);
+        assert!(snap.omlx_installed);
+        assert!(!snap.omlx_running);
     }
 }
