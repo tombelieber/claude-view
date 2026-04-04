@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 /// Single source of truth for ALL claude-view write paths.
 /// Set CLAUDE_VIEW_DATA_DIR to override (e.g., `./.data` for sandbox dev).
-/// Falls back to platform cache dir (~/Library/Caches/claude-view on macOS).
+/// Falls back to `~/.claude-view/`.
 pub fn data_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("CLAUDE_VIEW_DATA_DIR") {
         let path = PathBuf::from(&dir);
@@ -19,9 +19,9 @@ pub fn data_dir() -> PathBuf {
             path
         }
     } else {
-        dirs::cache_dir()
-            .map(|d| d.join("claude-view"))
-            .expect("no platform cache directory found")
+        dirs::home_dir()
+            .expect("no home directory found")
+            .join(".claude-view")
     }
 }
 
@@ -155,10 +155,14 @@ mod tests {
     }
 
     #[test]
-    fn test_data_dir_falls_back_to_cache_dir() {
+    fn test_data_dir_falls_back_to_home_dot_claude_view() {
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
         let dir = data_dir();
-        assert!(dir.ends_with("claude-view"));
+        assert!(
+            dir.ends_with(".claude-view"),
+            "data_dir should fall back to ~/.claude-view, got: {}",
+            dir.display()
+        );
     }
 
     #[test]

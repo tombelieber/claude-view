@@ -8,7 +8,7 @@
 //! Since `statusLine` is a single slot (not an array like hooks), we wrap
 //! the user's existing command rather than replacing it:
 //!   - Read the user's current statusLine command (if any), save as "original"
-//!   - Write a wrapper script to ~/.cache/claude-view/statusline-wrapper.sh
+//!   - Write a wrapper script to ~/.claude-view/statusline-wrapper.sh
 //!   - Set statusLine.command to the wrapper path
 //!   - On cleanup: restore the original statusLine (or remove ours)
 //!
@@ -75,7 +75,7 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 ///
 /// Saves the user's current statusLine command (if any) as
 /// `_claude_view_original_statusline` so it can be restored on cleanup.
-/// Writes the wrapper script to ~/.cache/claude-view/statusline-wrapper.sh.
+/// Writes the wrapper script to ~/.claude-view/statusline-wrapper.sh.
 /// Called at server startup alongside hook_registrar::register().
 pub fn register(port: u16) {
     let Some(settings_path) = settings_path() else {
