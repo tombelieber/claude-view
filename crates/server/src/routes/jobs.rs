@@ -145,6 +145,9 @@ mod tests {
                 Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
                 Arc::new(crate::local_llm::LlmStatus::new(10710)),
             )),
+            session_channels: Arc::new(
+                crate::live::session_ws::registry::SessionChannelRegistry::new(),
+            ),
         });
 
         let app = Router::new()
