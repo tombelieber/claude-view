@@ -21,6 +21,12 @@ pub struct SessionChannelRegistry {
     global: AtomicUsize,
 }
 
+impl Default for SessionChannelRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionChannelRegistry {
     pub fn new() -> Self {
         Self {
