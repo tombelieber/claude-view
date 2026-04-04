@@ -85,6 +85,21 @@ impl LocalLlmService {
         Ok(())
     }
 
+    /// Set the active model. Validates it exists in the provider's model list,
+    /// persists to config, and updates live status immediately.
+    pub fn set_model(&self, model_id: &str) -> Result<(), String> {
+        let snap = self.status.snapshot();
+        if !snap.models.contains(&model_id.to_string()) {
+            return Err(format!("model '{model_id}' not available on server"));
+        }
+        self.config
+            .set_active_model(Some(model_id.to_string()))
+            .map_err(|e| format!("config persist failed: {e}"))?;
+        *self.status.active_model_ref().write().unwrap() = Some(model_id.to_string());
+        tracing::info!(model = %model_id, "active model changed");
+        Ok(())
+    }
+
     /// Graceful shutdown. No-op since we connect to external servers, not manage processes.
     pub async fn shutdown_managed(&self) {
         self.status.clear_connection();

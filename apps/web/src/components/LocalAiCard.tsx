@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Cpu, Loader2, Plug, PlugZap, Wifi } from 'lucide-react'
+import { Check, ChevronDown, Copy, Cpu, Loader2, Plug, PlugZap } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { cn } from '../lib/utils'
 
@@ -243,13 +243,41 @@ export function LocalAiCard() {
 // ---------------------------------------------------------------------------
 
 function ConnectedInfo({ status }: { status: ServiceStatus }) {
-  const hasModelDetails = !!status.active_model
+  const queryClient = useQueryClient()
+
+  const setModelMutation = useMutation({
+    mutationFn: async (modelId: string) => {
+      const res = await fetch('/api/local-llm/model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_id: modelId }),
+      })
+      if (!res.ok) throw new Error('model selection failed')
+    },
+    onMutate: async (modelId) => {
+      await queryClient.cancelQueries({ queryKey: ['local-llm-status'] })
+      const previous = queryClient.getQueryData<ServiceStatus>(['local-llm-status'])
+      queryClient.setQueryData<ServiceStatus>(['local-llm-status'], (old) =>
+        old ? { ...old, active_model: modelId } : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['local-llm-status'], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
+    },
+  })
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-        <Wifi className="w-4 h-4" />
-        <span className="font-medium">Connected</span>
+    <div className="space-y-3">
+      {/* Connection status */}
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Connected</span>
         {status.url && (
           <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-48">
             {status.url}
@@ -257,33 +285,64 @@ function ConnectedInfo({ status }: { status: ServiceStatus }) {
         )}
       </div>
 
-      {hasModelDetails ? (
-        <>
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-medium">Model:</span>
-            <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-mono">
-              {status.active_model}
-            </code>
+      {/* Model selector */}
+      {status.models.length > 0 ? (
+        <div className="space-y-1.5">
+          <label
+            htmlFor="llm-model-select"
+            className="text-xs font-medium text-gray-500 dark:text-gray-400"
+          >
+            Model
+          </label>
+          <div className="relative">
+            <select
+              id="llm-model-select"
+              value={status.active_model ?? status.models[0]}
+              onChange={(e) => setModelMutation.mutate(e.target.value)}
+              disabled={setModelMutation.isPending}
+              className={cn(
+                'w-full text-xs font-mono px-2.5 py-1.5 pr-7 rounded-md appearance-none',
+                'border border-gray-200 dark:border-gray-600',
+                'bg-white dark:bg-gray-800',
+                'text-gray-700 dark:text-gray-200',
+                'focus:outline-none focus:ring-1 focus:ring-blue-400',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'transition-colors cursor-pointer',
+              )}
+            >
+              {status.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
           </div>
-          {status.models.length > 1 && (
-            <div className="text-xs text-gray-400 dark:text-gray-500">
-              {status.models.length} models available
-            </div>
-          )}
-          {status.provider === 'omlx' && (
-            <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-              <PlugZap className="w-3 h-3" />
-              Apple Silicon optimized
-            </div>
-          )}
-        </>
+          <div className="flex gap-2 px-2.5 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/40">
+            <span className="text-amber-500 dark:text-amber-400 text-xs leading-tight mt-px">
+              !
+            </span>
+            <p className="text-xs text-amber-700 dark:text-amber-300/90 leading-snug">
+              VRAM and model loading managed by{' '}
+              {status.provider ? PROVIDER_LABELS[status.provider] : 'your provider'}. This selector
+              only routes requests.
+            </p>
+          </div>
+        </div>
       ) : (
         <div className="space-y-2.5" role="status" aria-label="Loading model details">
           <div className="flex items-center gap-2">
             <div className="h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
             <div className="h-4 w-36 rounded bg-gray-100 dark:bg-gray-800 animate-pulse" />
           </div>
-          <div className="h-[22px] w-40 rounded-md bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        </div>
+      )}
+
+      {/* Provider badge */}
+      {status.provider === 'omlx' && (
+        <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+          <PlugZap className="w-3 h-3" />
+          Apple Silicon optimized
         </div>
       )}
     </div>
