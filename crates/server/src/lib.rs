@@ -160,6 +160,9 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
             Arc::new(local_llm::LocalLlmConfig::new_disabled()),
             Arc::new(local_llm::LlmStatus::new(10710)),
         )),
+        session_channels: Arc::new(
+            crate::live::session_ws::registry::SessionChannelRegistry::new(),
+        ),
     });
     api_routes(state)
 }
@@ -259,6 +262,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             Arc::new(local_llm::LocalLlmConfig::new_disabled()),
             Arc::new(local_llm::LlmStatus::new(10710)),
         )),
+        session_channels: Arc::new(
+            crate::live::session_ws::registry::SessionChannelRegistry::new(),
+        ),
     });
     api_routes(state)
 }
@@ -415,6 +421,9 @@ pub fn create_app_full(
             None
         },
         local_llm: local_llm_service.clone(),
+        session_channels: Arc::new(
+            crate::live::session_ws::registry::SessionChannelRegistry::new(),
+        ),
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).
@@ -492,7 +501,7 @@ pub fn create_app_with_indexing_and_static(
     indexing: Arc<IndexingState>,
     static_dir: Option<PathBuf>,
 ) -> Router {
-    let state = AppState::new_with_indexing(db, indexing);
+    let state = AppState::builder(db).with_indexing(indexing).build();
 
     let mut app = Router::new()
         .merge(api_routes(state))
