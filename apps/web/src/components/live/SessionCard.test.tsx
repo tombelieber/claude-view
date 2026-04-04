@@ -141,8 +141,8 @@ describe('SessionCard sub-agent pills', () => {
       ],
     })
     renderCard(session)
-    expect(screen.getByText('E')).toBeInTheDocument()
-    expect(screen.getByText('2 agents (1 active)')).toBeInTheDocument()
+    expect(screen.getByText('Explore')).toBeInTheDocument()
+    expect(screen.getByText('code-reviewer')).toBeInTheDocument()
   })
 
   it('does not show SubAgentPills when no sub-agents', () => {
