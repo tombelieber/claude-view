@@ -39,6 +39,12 @@ pub struct LlmStatus {
     omlx_running: Arc<AtomicBool>,
 }
 
+impl Default for LlmStatus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LlmStatus {
     pub fn new() -> Self {
         Self {
