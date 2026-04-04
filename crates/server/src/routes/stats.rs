@@ -732,7 +732,11 @@ pub async fn ai_generation_stats(
         }
     };
 
-    // Compute aggregate cost breakdown from per-model token data + pricing engine
+    // Compute aggregate cost breakdown.
+    // total_cost_usd comes from SUM(sessions.total_cost_usd) — the authoritative
+    // per-turn tiered cost already stored by the indexer. Component breakdown
+    // (input/output/cache) uses base rates as proportional estimates since we don't
+    // store per-component costs at session level.
     if let Ok(model_tokens) = state
         .db
         .get_per_model_token_breakdown(
@@ -749,11 +753,8 @@ pub async fn ai_generation_stats(
         let mut priced_tokens_total: i64 = 0;
         let mut all_tokens_total: i64 = 0;
 
-        // Use flat base rates — NOT tiered_cost(). The 200k tiering threshold is
-        // per-API-request, but these totals are aggregated across all sessions for
-        // each model. Applying tiering to aggregates inflates costs ~1.4-2x because
-        // the bulk of tokens sits above the 200k threshold at the aggregate level,
-        // even though individual requests rarely exceed it.
+        // Component breakdown uses base rates for proportional display.
+        // The authoritative total comes from SUM(sessions.total_cost_usd) below.
         for (model_id, input, output, cache_read, cache_create) in &model_tokens {
             let model_token_total = *input + *output + *cache_read + *cache_create;
             all_tokens_total += model_token_total;
@@ -795,7 +796,27 @@ pub async fn ai_generation_stats(
         } else {
             1.0
         };
-        cost.total_cost_usd = computed_priced_total;
+
+        // Authoritative total: SUM of per-session costs (computed with per-turn
+        // tiered pricing by the indexer). This is the same number shown in session
+        // detail views, reports, and snapshots — one cost, everywhere.
+        let session_cost_sum: (Option<f64>,) = sqlx::query_as(
+            r#"SELECT SUM(total_cost_usd) FROM valid_sessions
+               WHERE last_message_at >= ?1 AND last_message_at <= ?2
+                 AND (?3 IS NULL OR project_id = ?3
+                      OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)
+                      OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3))
+                 AND (?4 IS NULL OR git_branch = ?4)"#,
+        )
+        .bind(query.from.unwrap_or(1))
+        .bind(query.to.unwrap_or(i64::MAX))
+        .bind(query.project.as_deref())
+        .bind(query.branch.as_deref())
+        .fetch_one(state.db.pool())
+        .await
+        .unwrap_or((None,));
+
+        cost.total_cost_usd = session_cost_sum.0.unwrap_or(computed_priced_total);
         cost.total_cost_source = if cost.has_unpriced_usage {
             "computed_priced_tokens_partial".to_string()
         } else {

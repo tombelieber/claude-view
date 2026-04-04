@@ -88,6 +88,40 @@ pub(super) fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProces
 }
 
 // =============================================================================
+// Classification helpers
+// =============================================================================
+
+/// Check if a process is the claude-view binary (not sidecar, not a directory match).
+/// Requires the process name itself to be "claude-view" — pure substring matching
+/// on the command line would false-positive on paths like `/backup/claude-view-old/`.
+fn is_claude_view_binary(name: &str, cmd: &str) -> bool {
+    name == "claude-view" && !cmd.contains("sidecar/dist/index.js")
+}
+
+/// Check if a process named "claude" is actually from the Anthropic Claude package.
+/// Validates against known installation paths and package identifiers to prevent
+/// false positives from unrelated binaries that happen to be named "claude".
+fn is_anthropic_claude(cmd: &str) -> bool {
+    // Empty command (SIP-restricted on macOS) — accept name-only match as fallback
+    // because the sysctl resolution already ran and couldn't resolve it.
+    if cmd.is_empty() {
+        return true;
+    }
+    // High-confidence: known Anthropic package paths
+    if cmd.contains("@anthropic-ai/claude")
+        || cmd.contains("anthropic.claude-code")
+        || cmd.contains(".claude/local")
+    {
+        return true;
+    }
+    // Medium-confidence: the first token's basename must be exactly "claude"
+    // (not "claude-game", "claude-wrapper", etc.)
+    let first_token = cmd.split_whitespace().next().unwrap_or("");
+    let basename = first_token.rsplit('/').next().unwrap_or(first_token);
+    basename == "claude"
+}
+
+// =============================================================================
 // Pass 2 + 3: Classify and aggregate
 // =============================================================================
 
@@ -111,11 +145,9 @@ pub(super) fn classify_process_list(
             Some(EcosystemTag::Ide)
         } else if cmd.contains("Claude.app/Contents") {
             Some(EcosystemTag::Desktop)
-        } else if (cmd.contains("claude-view") && !cmd.contains("sidecar/dist/index.js"))
-            || proc.pid == own_pid
-        {
+        } else if proc.pid == own_pid || is_claude_view_binary(name, cmd) {
             Some(EcosystemTag::Self_)
-        } else if name == "claude" {
+        } else if name == "claude" && is_anthropic_claude(cmd) {
             Some(EcosystemTag::Cli)
         } else {
             None
@@ -880,5 +912,141 @@ mod tests {
             snap.ecosystem.is_empty(),
             "sidecar must not be classified as ecosystem process"
         );
+    }
+
+    // =========================================================================
+    // False-positive prevention tests
+    // =========================================================================
+
+    #[test]
+    fn claude_wrapper_binary_not_classified() {
+        // A wrapper/launcher binary with "claude" in process name but different command basename
+        let processes = vec![make_raw(
+            900,
+            1,
+            "claude",
+            "/opt/tools/claude-wrapper --mode=chatbot --port=3000",
+            1.0,
+            50_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        assert!(
+            snap.ecosystem.is_empty(),
+            "binary with basename 'claude-wrapper' must not be classified as CLI ecosystem"
+        );
+    }
+
+    #[test]
+    fn anthropic_claude_with_package_path_classified() {
+        let processes = vec![make_raw(
+            901,
+            99,
+            "claude",
+            "node /home/user/.nvm/versions/node/v22/lib/node_modules/@anthropic-ai/claude/cli.mjs chat",
+            5.0,
+            200_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert!(matches!(
+            snap.ecosystem[0].ecosystem_tag,
+            Some(EcosystemTag::Cli)
+        ));
+    }
+
+    #[test]
+    fn claude_binary_at_standard_path_classified() {
+        // Standard install: /usr/local/bin/claude
+        let processes = vec![make_raw(
+            902,
+            99,
+            "claude",
+            "/usr/local/bin/claude --verbose",
+            5.0,
+            200_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert!(matches!(
+            snap.ecosystem[0].ecosystem_tag,
+            Some(EcosystemTag::Cli)
+        ));
+    }
+
+    #[test]
+    fn claude_with_empty_command_accepted_as_fallback() {
+        // macOS SIP restriction: sysinfo returns empty cmd
+        let processes = vec![make_raw(
+            903,
+            99,
+            "claude",
+            "",
+            5.0,
+            200_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        assert_eq!(snap.ecosystem.len(), 1);
+        assert!(matches!(
+            snap.ecosystem[0].ecosystem_tag,
+            Some(EcosystemTag::Cli)
+        ));
+    }
+
+    #[test]
+    fn claude_view_directory_in_path_not_classified_as_self() {
+        // A script running from a directory that happens to contain "claude-view" in its path
+        let processes = vec![make_raw(
+            904,
+            1,
+            "bash",
+            "/home/user/claude-view-backup/restore.sh",
+            0.5,
+            10_000_000,
+            1_700_000_000,
+        )];
+        let snap = classify_process_list(&processes, 9999);
+        assert!(
+            snap.ecosystem.is_empty(),
+            "process from claude-view-named directory must not be classified as Self_"
+        );
+    }
+
+    #[test]
+    fn is_anthropic_claude_helper_cases() {
+        // Package path
+        assert!(is_anthropic_claude(
+            "node /path/to/@anthropic-ai/claude/cli.mjs"
+        ));
+        // Standard binary path
+        assert!(is_anthropic_claude("/usr/local/bin/claude --verbose"));
+        // Bare command
+        assert!(is_anthropic_claude("claude chat"));
+        // Empty (SIP fallback)
+        assert!(is_anthropic_claude(""));
+        // Binary with different basename (e.g. claude-wrapper, claude-game)
+        assert!(!is_anthropic_claude("/opt/tools/claude-wrapper --mode=chatbot"));
+        assert!(!is_anthropic_claude("/opt/games/claude-game start"));
+        // Binary named "claude" at non-standard path — accepted (basename is "claude")
+        assert!(is_anthropic_claude("/opt/custom/bin/claude --flag"));
+    }
+
+    #[test]
+    fn is_claude_view_binary_helper_cases() {
+        assert!(is_claude_view_binary(
+            "claude-view",
+            "/usr/local/bin/claude-view serve"
+        ));
+        assert!(!is_claude_view_binary(
+            "bash",
+            "/home/user/claude-view-backup/script.sh"
+        ));
+        assert!(!is_claude_view_binary(
+            "node",
+            "node /path/to/claude-view/sidecar/dist/index.js"
+        ));
     }
 }
