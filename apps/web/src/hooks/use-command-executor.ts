@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { ChatPanelStore, Command, RawEvent } from '../lib/chat-panel'
 import { mapWsEvent } from '../lib/chat-panel'
+import { fetchHookEventBlocks } from '../lib/chat-panel/hook-events'
 import { fetchInitialHistory } from '../lib/fetch-initial-history'
 import { SessionChannel } from '../lib/session-channel'
 import { sidecarWsUrl } from '../lib/ws-url'
@@ -64,6 +65,16 @@ export function useCommandExecutor(
           .catch(() => {
             // On error, reset fetchingOlder flag by dispatching a no-op older history
             dispatch({ type: 'OLDER_HISTORY_OK', blocks: [], offset: cmd.offset })
+          })
+        break
+      }
+      case 'FETCH_HOOK_EVENTS': {
+        fetchHookEventBlocks(cmd.sessionId)
+          .then((blocks) => {
+            if (blocks.length > 0) dispatch({ type: 'HOOK_EVENTS_OK', blocks })
+          })
+          .catch(() => {
+            // Silently ignore — hook events are supplementary, not critical
           })
         break
       }

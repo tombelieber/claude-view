@@ -121,6 +121,8 @@ export type RawEvent =
   // History
   | { type: 'HISTORY_OK'; blocks: ConversationBlock[]; total?: number; offset?: number }
   | { type: 'HISTORY_FAILED'; error: string }
+  // Hook events (REST-fetched, merged into phase blocks)
+  | { type: 'HOOK_EVENTS_OK'; blocks: ConversationBlock[] }
   // Pagination (scroll-up infinite load)
   | { type: 'LOAD_OLDER_HISTORY' }
   | { type: 'OLDER_HISTORY_OK'; blocks: ConversationBlock[]; offset: number }
@@ -207,6 +209,7 @@ export type RawEvent =
 export type Command =
   | { cmd: 'FETCH_HISTORY'; sessionId: string; limit?: number; offset?: number }
   | { cmd: 'FETCH_OLDER_HISTORY'; sessionId: string; offset: number; limit: number }
+  | { cmd: 'FETCH_HOOK_EVENTS'; sessionId: string }
   | { cmd: 'CHECK_SIDECAR_ACTIVE'; sessionId: string }
   | {
       cmd: 'POST_CREATE'

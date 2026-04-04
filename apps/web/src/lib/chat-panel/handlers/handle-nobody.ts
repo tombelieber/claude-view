@@ -1,3 +1,4 @@
+import { blockTimestamp } from '../hook-events'
 import { nobodyTransition } from '../modules/nobody'
 import { outboxTransition } from '../modules/outbox'
 import type {
@@ -36,6 +37,18 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         ]
       }
       return [{ ...store, panel: { ...p, sub }, historyPagination: pagination }, []]
+    }
+
+    case 'HOOK_EVENTS_OK': {
+      if (p.sub.sub !== 'ready') return [store, []] // history not loaded yet — discard
+      // Merge hook blocks into history blocks by timestamp, dedup by ID
+      const existingIds = new Set(p.sub.blocks.map((b) => b.id))
+      const newHooks = event.blocks.filter((b) => !existingIds.has(b.id))
+      if (newHooks.length === 0) return [store, []]
+      const merged = [...p.sub.blocks, ...newHooks].sort(
+        (a, b) => blockTimestamp(a) - blockTimestamp(b),
+      )
+      return [{ ...store, panel: { ...p, sub: { sub: 'ready', blocks: merged } } }, []]
     }
 
     case 'SIDECAR_NO_SESSION':
