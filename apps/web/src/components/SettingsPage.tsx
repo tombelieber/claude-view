@@ -35,7 +35,7 @@ import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { AccountSection } from './AccountSection'
-import { OnDeviceAiCard } from './OnDeviceAiCard'
+import { LocalAiCard } from './LocalAiCard'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
 import { TelemetrySection } from './TelemetrySection'
@@ -561,7 +561,7 @@ export function SettingsPage() {
           {/* ── Account & AI ─────────────────────────────────── */}
           <SectionGroup label="Account & AI">
             <AccountSection />
-            <OnDeviceAiCard />
+            <LocalAiCard />
             <ProviderSettings cliStatus={systemData?.claudeCli} />
           </SectionGroup>
 
@@ -576,100 +576,107 @@ export function SettingsPage() {
                 Scans git history and correlates commits with sessions.
               </p>
 
-            {status && (
-              <div className="space-y-0 mb-4">
-                <InfoRow
-                  label="Last sync"
-                  value={status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'}
-                />
-                <InfoRow label="Commits found" value={formatNumber(status.commitsFound)} />
-                <InfoRow label="Links created" value={formatNumber(status.linksCreated)} />
-              </div>
-            )}
-
-            {/* Sync interval setting */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between">
-                <label htmlFor="sync-interval" className="text-sm text-gray-500 dark:text-gray-400">
-                  Auto-sync interval
-                </label>
-                <div className="flex items-center gap-2">
-                  <select
-                    id="sync-interval"
+              {status && (
+                <div className="space-y-0 mb-4">
+                  <InfoRow
+                    label="Last sync"
                     value={
-                      status?.gitSyncIntervalSecs != null ? Number(status.gitSyncIntervalSecs) : 60
+                      status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'
                     }
-                    onChange={(e) => handleIntervalChange(e.target.value)}
-                    disabled={isSavingInterval}
-                    className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                  />
+                  <InfoRow label="Commits found" value={formatNumber(status.commitsFound)} />
+                  <InfoRow label="Links created" value={formatNumber(status.linksCreated)} />
+                </div>
+              )}
+
+              {/* Sync interval setting */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="sync-interval"
+                    className="text-sm text-gray-500 dark:text-gray-400"
                   >
-                    <option value="10">10 seconds</option>
-                    <option value="30">30 seconds</option>
-                    <option value="60">1 minute</option>
-                    <option value="120">2 minutes</option>
-                    <option value="300">5 minutes</option>
-                    <option value="600">10 minutes</option>
-                    <option value="1800">30 minutes</option>
-                    <option value="3600">1 hour</option>
-                  </select>
-                  {isSavingInterval && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                  )}
-                  {intervalSaveStatus === 'success' && (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                  )}
-                  {intervalSaveStatus === 'error' && (
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                  )}
+                    Auto-sync interval
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      id="sync-interval"
+                      value={
+                        status?.gitSyncIntervalSecs != null
+                          ? Number(status.gitSyncIntervalSecs)
+                          : 60
+                      }
+                      onChange={(e) => handleIntervalChange(e.target.value)}
+                      disabled={isSavingInterval}
+                      className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                    >
+                      <option value="10">10 seconds</option>
+                      <option value="30">30 seconds</option>
+                      <option value="60">1 minute</option>
+                      <option value="120">2 minutes</option>
+                      <option value="300">5 minutes</option>
+                      <option value="600">10 minutes</option>
+                      <option value="1800">30 minutes</option>
+                      <option value="3600">1 hour</option>
+                    </select>
+                    {isSavingInterval && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                    )}
+                    {intervalSaveStatus === 'success' && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                    )}
+                    {intervalSaveStatus === 'error' && (
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Sync status message */}
-            {syncStatus === 'success' && (
-              <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-3 text-sm">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Sync started successfully</span>
-              </div>
-            )}
-            {syncStatus === 'conflict' && (
-              <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-3 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>Sync already in progress</span>
-              </div>
-            )}
-            {syncError && (
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
-                <AlertCircle className="w-4 h-4" />
-                <span>{syncError}</span>
-              </div>
-            )}
+              {/* Sync status message */}
+              {syncStatus === 'success' && (
+                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-3 text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Sync started successfully</span>
+                </div>
+              )}
+              {syncStatus === 'conflict' && (
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-3 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>Sync already in progress</span>
+                </div>
+              )}
+              {syncError && (
+                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>{syncError}</span>
+                </div>
+              )}
 
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={isSyncing}
-              aria-busy={isSyncing}
-              className={cn(
-                'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-                'transition-colors duration-150',
-                'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
-              )}
-            >
-              {isSyncing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  Sync Git History
-                </>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={handleSync}
+                disabled={isSyncing}
+                aria-busy={isSyncing}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                  'transition-colors duration-150',
+                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                )}
+              >
+                {isSyncing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    Sync Git History
+                  </>
+                )}
+              </button>
             </SettingsSection>
 
             <IndexHistorySection history={systemData?.indexHistory} isLoading={systemLoading} />
@@ -766,101 +773,100 @@ export function SettingsPage() {
             </SettingsSection>
 
             {/* ABOUT */}
-          <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  Claude View v{APP_VERSION}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                  Built {APP_BUILD_DATE}
-                </p>
+            <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    Claude View v{APP_VERSION}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                    Built {APP_BUILD_DATE}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                      'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
+                      'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
+                    )}
+                  >
+                    <Star className="w-3.5 h-3.5" />
+                    Star on GitHub
+                  </a>
+                  <a
+                    href={`${GITHUB_URL}/releases`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                      'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
+                      'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
+                    )}
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Releases
+                  </a>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={GITHUB_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                    'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
-                    'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
-                  )}
-                >
-                  <Star className="w-3.5 h-3.5" />
-                  Star on GitHub
-                </a>
-                <a
-                  href={`${GITHUB_URL}/releases`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                    'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
-                    'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
-                  )}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Releases
-                </a>
+
+              <div id="keyboard-shortcuts" className="space-y-5 scroll-mt-6">
+                {/* Global */}
+                <ShortcutGroup
+                  title="Global"
+                  shortcuts={[
+                    { keys: [{ mod: true, key: 'K' }], label: 'Command palette' },
+                    { keys: [{ mod: true, key: 'B' }], label: 'Toggle sidebar' },
+                  ]}
+                />
+
+                {/* Conversation */}
+                <ShortcutGroup
+                  title="Conversation"
+                  shortcuts={[
+                    { keys: [{ mod: true, key: 'F' }], label: 'Find in conversation' },
+                    { keys: [{ mod: true, shift: true, key: 'E' }], label: 'Export HTML' },
+                    { keys: [{ mod: true, shift: true, key: 'P' }], label: 'Export PDF' },
+                    { keys: [{ mod: true, shift: true, key: 'R' }], label: 'Copy resume command' },
+                  ]}
+                />
+
+                {/* Chat Tabs */}
+                <ShortcutGroup
+                  title="Chat Tabs"
+                  shortcuts={[
+                    { keys: [{ ctrl: true, key: 'T' }], label: 'New tab' },
+                    { keys: [{ ctrl: true, key: 'W' }], label: 'Close tab' },
+                    { keys: [{ ctrl: true, key: 'Tab' }], label: 'Next tab' },
+                    { keys: [{ ctrl: true, shift: true, key: 'Tab' }], label: 'Previous tab' },
+                    { keys: [{ ctrl: true, key: '\\' }], label: 'Split right' },
+                    { keys: [{ ctrl: true, shift: true, key: '\\' }], label: 'Split down' },
+                  ]}
+                />
+
+                {/* Live Monitor */}
+                <ShortcutGroup
+                  title="Live Monitor"
+                  shortcuts={[
+                    {
+                      keys: [{ key: 'j' }, { key: 'k' }],
+                      label: 'Next / previous session',
+                      separator: '/',
+                    },
+                    {
+                      keys: [{ key: '1' }, { key: '2' }, { key: '3' }, { key: '4' }],
+                      label: 'Switch view',
+                      separator: '/',
+                    },
+                    { keys: [{ key: '/' }], label: 'Search' },
+                    { keys: [{ key: '?' }], label: 'Show all shortcuts' },
+                  ]}
+                />
               </div>
-            </div>
-
-            <div id="keyboard-shortcuts" className="space-y-5 scroll-mt-6">
-
-              {/* Global */}
-              <ShortcutGroup
-                title="Global"
-                shortcuts={[
-                  { keys: [{ mod: true, key: 'K' }], label: 'Command palette' },
-                  { keys: [{ mod: true, key: 'B' }], label: 'Toggle sidebar' },
-                ]}
-              />
-
-              {/* Conversation */}
-              <ShortcutGroup
-                title="Conversation"
-                shortcuts={[
-                  { keys: [{ mod: true, key: 'F' }], label: 'Find in conversation' },
-                  { keys: [{ mod: true, shift: true, key: 'E' }], label: 'Export HTML' },
-                  { keys: [{ mod: true, shift: true, key: 'P' }], label: 'Export PDF' },
-                  { keys: [{ mod: true, shift: true, key: 'R' }], label: 'Copy resume command' },
-                ]}
-              />
-
-              {/* Chat Tabs */}
-              <ShortcutGroup
-                title="Chat Tabs"
-                shortcuts={[
-                  { keys: [{ ctrl: true, key: 'T' }], label: 'New tab' },
-                  { keys: [{ ctrl: true, key: 'W' }], label: 'Close tab' },
-                  { keys: [{ ctrl: true, key: 'Tab' }], label: 'Next tab' },
-                  { keys: [{ ctrl: true, shift: true, key: 'Tab' }], label: 'Previous tab' },
-                  { keys: [{ ctrl: true, key: '\\' }], label: 'Split right' },
-                  { keys: [{ ctrl: true, shift: true, key: '\\' }], label: 'Split down' },
-                ]}
-              />
-
-              {/* Live Monitor */}
-              <ShortcutGroup
-                title="Live Monitor"
-                shortcuts={[
-                  {
-                    keys: [{ key: 'j' }, { key: 'k' }],
-                    label: 'Next / previous session',
-                    separator: '/',
-                  },
-                  {
-                    keys: [{ key: '1' }, { key: '2' }, { key: '3' }, { key: '4' }],
-                    label: 'Switch view',
-                    separator: '/',
-                  },
-                  { keys: [{ key: '/' }], label: 'Search' },
-                  { keys: [{ key: '?' }], label: 'Show all shortcuts' },
-                ]}
-              />
-            </div>
-          </SettingsSection>
+            </SettingsSection>
           </SectionGroup>
 
           {/* ── Danger Zone — always last, outside all groups ── */}

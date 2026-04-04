@@ -79,6 +79,7 @@ core-foundation = "0.10"
 core-foundation-sys = "0.8"
 
 # Testing
+mockito = "1"
 tempfile = "3"
 tokio-test = "0.4"
 axum-test = "16"

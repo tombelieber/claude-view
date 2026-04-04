@@ -1,21 +1,14 @@
 pub mod client;
 mod config;
-mod download;
-mod inventory;
 mod lifecycle;
-mod model_manager;
 mod omlx_binary;
-mod process;
-pub mod registry;
+mod provider;
 mod routes;
 mod service;
 mod status;
 
 pub use config::LocalLlmConfig;
-pub use download::DownloadProgress;
-pub use lifecycle::{run_lifecycle, ProcessMode};
-pub use model_manager::ModelManager;
-pub use registry::{ModelEntry, REGISTRY};
+pub use provider::Provider;
 pub use routes::local_llm_routes;
-pub use service::{LocalLlmService, ModelInfo, ServiceStatus};
+pub use service::LocalLlmService;
 pub use status::{LlmStatus, ServerState, StatusSnapshot};

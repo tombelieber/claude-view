@@ -56,34 +56,25 @@ pub fn collect(
         details: ComponentDetails::Sidecar { session_count },
     });
 
-    // --- oMLX ---
-    let omlx_healthy = omlx_status.ready.load(Ordering::Acquire);
-    // PID cached by omlx_lifecycle at startup — no lsof on the 10s hot path
-    let omlx_pid = if omlx_healthy {
-        omlx_status.pid()
-    } else {
-        None
-    };
-    let (omlx_cpu, omlx_mem) = pid_metrics(sys, omlx_pid);
+    // --- Local LLM ---
+    let llm_healthy = omlx_status.ready.load(Ordering::Acquire);
     components.push(ComponentStatus {
-        name: "omlx-qwen".into(),
+        name: "local-llm".into(),
         kind: ComponentKind::ExternalService,
-        enabled: true, // v1: always enabled
-        running: omlx_healthy && omlx_pid.is_some(),
-        pid: omlx_pid,
-        cpu_percent: omlx_cpu,
-        memory_bytes: omlx_mem,
-        vram_bytes: if omlx_healthy {
+        enabled: true,
+        running: llm_healthy,
+        pid: None,
+        cpu_percent: 0.0,
+        memory_bytes: 0,
+        vram_bytes: if llm_healthy {
             gpu_memory::gpu_alloc_bytes()
         } else {
             None
         },
         details: ComponentDetails::Omlx {
-            model_id: omlx_status
-                .discovered_model_id()
-                .unwrap_or_else(|| "none".into()),
-            port: omlx_status.port,
-            healthy: omlx_healthy,
+            model_id: omlx_status.active_model().unwrap_or_else(|| "none".into()),
+            port: 0,
+            healthy: llm_healthy,
         },
     });
 

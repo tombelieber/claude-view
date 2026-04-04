@@ -158,7 +158,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         },
         local_llm: Arc::new(local_llm::LocalLlmService::new(
             Arc::new(local_llm::LocalLlmConfig::new_disabled()),
-            Arc::new(local_llm::LlmStatus::new(10710)),
+            Arc::new(local_llm::LlmStatus::new()),
         )),
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
@@ -260,7 +260,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         },
         local_llm: Arc::new(local_llm::LocalLlmService::new(
             Arc::new(local_llm::LocalLlmConfig::new_disabled()),
-            Arc::new(local_llm::LlmStatus::new(10710)),
+            Arc::new(local_llm::LlmStatus::new()),
         )),
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
@@ -296,12 +296,8 @@ pub fn create_app_full(
         &dirs::home_dir().expect("home dir exists").join(".claude"),
     ));
     // Create local LLM service before oracle (both need the status handle).
-    let omlx_port: u16 = std::env::var("OMLX_PORT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(10710);
     let llm_config = Arc::new(local_llm::LocalLlmConfig::load());
-    let llm_status = Arc::new(local_llm::LlmStatus::new(omlx_port));
+    let llm_status = Arc::new(local_llm::LlmStatus::new());
     let local_llm_service = Arc::new(local_llm::LocalLlmService::new(
         llm_config.clone(),
         llm_status.clone(),
