@@ -1359,6 +1359,69 @@ npx claude-view@latest
 Enable on-device AI in Settings to try local phase classification. The smart drain loop means you won't even notice the GPU usage.
 
 
+--- blog/v0-30-0-on-device-ai-and-hook-visibility.mdx ---
+
+---
+title: "On-Device AI, Hook Visibility, and Sub-Agent Pagination"
+description: "v0.30.0 brings provider-agnostic local LLM settings, hook events rendered inline in conversations, and paginated sub-agent views."
+date: 2026-04-05
+author: claude-view team
+---
+
+This release focuses on three areas: giving you control over local AI providers, making hooks visible in your conversation timeline, and handling large sub-agent sessions gracefully.
+
+## On-Device AI settings
+
+If you're running a local LLM — whether through Ollama, LM Studio, or any OpenAI-compatible server — the settings experience just got a lot better.
+
+The previous implementation was tightly coupled to oMLX, Apple's on-device framework. That worked for Apple Silicon users running specific models, but left everyone else out. v0.30.0 replaces this with a **provider-agnostic architecture**:
+
+- **Model selector dropdown** — pick from detected models instead of typing slugs
+- **Any OpenAI-compatible endpoint** — point it at `localhost:11434`, `localhost:1234`, or wherever your local inference runs
+- **Redesigned settings card** — cleaner layout that makes connection status and model selection obvious at a glance
+
+The underlying integration no longer manages processes for you. It connects to whatever you're already running and gets out of the way.
+
+## Hook events in your conversation
+
+Claude Code hooks — the `PreToolUse`, `PostToolUse`, and `Stop` handlers you configure in `settings.json` — have always run invisibly. You knew they fired because you saw their side effects (a linter ran, a file was formatted), but the hooks themselves didn't appear in your session timeline.
+
+v0.30.0 renders hook events as **conversation blocks** alongside assistant messages, tool calls, and user input. Three delivery paths ensure you see them regardless of how you're viewing the session:
+
+- **Live sessions** stream hook blocks over WebSocket in real time
+- **Historical sessions** merge hook events from the database into the block timeline
+- **JSONL replay** picks them up from the raw session file
+
+This means when you scroll through a conversation, you can see exactly when your formatting hook ran, what it did, and how long it took — without checking terminal output separately.
+
+## Sub-agent pagination
+
+Sessions with sub-agents can generate hundreds of blocks. Previously, opening a sub-agent panel loaded every block at once — slow for long-running agents and unusable for agents that ran thousands of tool calls.
+
+Sub-agent block views now paginate. Blocks load incrementally as you scroll, with the same stable scroll anchoring used in the main conversation view. This also fixed a bug where sub-agent WebSocket connections failed for historical sessions (99% of sessions), because the handler only checked live sessions instead of falling back through the full session lifecycle.
+
+## Under the hood
+
+- The sidecar had a memory problem: `listSessions()` spawned a full Claude CLI process on every call, consuming 900MB+ of RSS. Removed entirely — the sidecar now scans the filesystem directly.
+- The Activity page moved from client-side aggregation to a dedicated `rich_activity()` database function. Faster queries, less data transferred, more accurate results.
+- CLI plugin commands that produced more than 64KB of stdout were silently truncated due to a Node.js pipe buffering limit. Fixed by routing output through a temp file.
+- Session mutations and the multiplexed WebSocket hook were centralized into shared modules, and pagination was extracted to the coordinator level so every session phase gets it automatically.
+
+## What's next
+
+- Phase classification confidence tuning — the ML classifier is approaching the precision threshold for production display
+- Linux and Windows binary builds in the release pipeline
+- Search across all sessions with the Tantivy full-text index
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open your settings to try the new On-Device AI card, or check any session with hooks to see them rendered inline.
+
+
 --- blog/v0-29-0-one-fsm-to-rule-them-all.mdx ---
 
 ---
@@ -2707,6 +2770,43 @@ version: v0.29.0
 **Agent name parsing** — the block pipeline now parses `agent-name` JSONL entries for better sub-agent identification in conversation views.
 
 **Evidence baseline sync** — added a baseline-to-parser sync guard that prevents stale evidence drift, catching schema changes before they ship.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.30.0.md ---
+
+---
+title: "v0.30.0 — On-Device AI, Hook Events & Sub-Agent Pagination"
+date: 2026-04-05
+version: v0.30.0
+---
+
+## New features
+
+**On-Device AI settings** — redesigned settings card with a provider-agnostic architecture. Select models from a dropdown, connect to any OpenAI-compatible endpoint, and manage local LLM integrations without oMLX-specific tooling.
+
+**Hook events in conversation** — hooks now render as conversation blocks across three paths: live WebSocket streaming, historical API, and JSONL replay. See your pre/post tool hooks inline with the rest of the conversation.
+
+**Sub-agent pagination** — sub-agent block views now paginate, so large agent sessions with hundreds of blocks load incrementally instead of all at once.
+
+**Server-side activity aggregation** — the Activity page now uses a dedicated `rich_activity()` database function, replacing client-side computation with faster, more accurate server-driven data.
+
+## Improvements
+
+**Sidecar memory fix** — removed `listSessions()` which spawned a full CLI process (900MB+ per call) on every invocation. The sidecar health endpoint now includes memory diagnostics for easier monitoring.
+
+**Historical sub-agent sessions** — sub-agent WebSocket connections now fall back through live → recently_closed → database, fixing failures for 99% of sessions that aren't currently live.
+
+**CLI plugin stdout fix** — prevented Node.js stdout truncation at 64KB in CLI plugin commands by switching from pipe to tempfile-based output.
+
+**Block accumulator robustness** — string-content user messages (not just array-content) are now correctly parsed by the block accumulator, fixing silent data loss.
+
+**Architecture cleanup** — centralized session mutations into a shared multiplexed WS hook, extracted pagination to a coordinator-level module, and introduced an AppState builder pattern for the server.
 
 ## Getting started
 
