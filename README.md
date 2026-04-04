@@ -2,11 +2,13 @@
 
 # claude-view
 
-**You have 10 Claude sessions running right now. What are they doing?**
+**Mission Control for Claude Code**
+
+You have 10 AI agents running. One finished 12 minutes ago. Another hit its context limit. A third needs tool approval. You're <kbd>Cmd</kbd>+<kbd>Tab</kbd>-bing through terminals, burning $200/mo blind.
 
 <p>
   <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
-  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/docs-claudeview.ai-orange" alt="Website"></a>
   <a href="https://www.npmjs.com/package/@claude-view/plugin"><img src="https://img.shields.io/npm/v/@claude-view/plugin.svg?label=plugin" alt="plugin version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
@@ -28,14 +30,6 @@
   <a href="./README.nl.md">Nederlands</a>
 </p>
 
-</div>
-
-Behind every "thinking..." spinner, Claude is spawning sub-agents, calling MCP servers, running skills, firing hooks — and you can't see any of it. You <kbd>Cmd</kbd>+<kbd>Tab</kbd> through 15 terminals trying to remember which session was doing what. A cache expired while you weren't looking. A session finished 10 minutes ago and you didn't notice. Another one hit its context limit and you're burning tokens on a dead conversation.
-
-**You're paying $200/mo for Claude Code. You deserve a dashboard.**
-
-<div align="center">
-
 ```bash
 curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
@@ -46,115 +40,96 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 ---
 
-## What You Get
+## What Is claude-view?
 
-### Live Monitor
+claude-view is an open-source dashboard that monitors every Claude Code session on your machine — live agents, past conversations, costs, sub-agents, hooks, tool calls — in one place. Rust backend, React frontend, ~10 MB binary. Zero config, zero accounts, 100% local.
 
-| Feature | Why it matters |
-|---------|---------------|
-| **Session cards with last message** | Instantly remember what each long-running session is working on |
-| **Notification sounds** | Get pinged when a session finishes or needs your input — stop polling terminals |
-| **Context gauge** | Real-time context window usage per session — see which ones are in the danger zone |
-| **Cache warm countdown** | Know exactly when prompt cache expires so you can time your next message to save tokens |
-| **Cost tracking** | Per-session and aggregate spend — hover for token/cost breakdown with cache savings by category |
-| **Sub-agent visualization** | See the full agent tree — sub-agents, their status, and what tools they're calling |
-| **Multiple views** | Grid, List, Kanban, or Monitor mode — pick what fits your workflow |
-| **Kanban swimlanes** | Group sessions by project or branch — visual swimlane layout for multi-project workflows |
-| **Recently closed sessions** | Sessions that end appear in a "Recently Closed" section instead of vanishing — persist across server restarts |
-| **Unified live chat** | History and real-time messages in a single scrollable conversation — no more tab-switching |
-| **Queued message indicators** | Messages waiting in the queue show as pending bubbles with a "Queued" badge |
-| **SSE-driven live data** | Live session data pushed via Server-Sent Events — eliminates stale-cache risks entirely |
-
-### Rich Chat History
-
-| Feature | Why it matters |
-|---------|---------------|
-| **Full conversation browser** | Every session, every message, fully rendered with markdown and code blocks |
-| **Tool call visualization** | See file reads, edits, bash commands, MCP calls, skill invocations — not just text |
-| **Compact / verbose toggle** | Skim the conversation or drill into every tool call |
-| **Thread view** | Follow agent conversations with sub-agent hierarchies |
-| **Export** | Markdown export for context resumption or sharing |
-| **Bulk select & archive** | Select multiple sessions for batch archiving with persistent filter state |
-| **Encrypted sharing** | Share any session via E2E encrypted link — zero server trust |
-
-### Advanced Search
-
-| Feature | Why it matters |
-|---------|---------------|
-| **Full-text search** | Search across all sessions — messages, tool calls, file paths |
-| **Unified search engine** | Tantivy full-text + SQLite pre-filter run in parallel — one endpoint, no frontend wiring gaps |
-| **Project & branch filters** | Scope to the project you're working on right now |
-| **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
-
-### Plans, Prompts & Teams
-
-| Feature | Why it matters |
-|---------|---------------|
-| **Plan browser** | View your `.claude/plans/` directly in session detail — no more hunting through files |
-| **Prompt history** | Full-text search across all prompts you've sent to Claude Code with template clustering and intent classification |
-| **Teams dashboard** | See team leads, inbox messages, team tasks, and file changes across all team members — with JSONL fallback so history is never lost |
-| **Prompt analytics** | Leaderboards of prompt templates, intent distribution, and usage statistics |
-
-### Plugin Manager
-
-| Feature | Why it matters |
-|---------|---------------|
-| **GUI plugin browser** | Browse, install, enable, disable, and uninstall Claude Code plugins without touching a terminal |
-| **Plugin card grid** | Every installed plugin shown as a card with name, status, scope, and version |
-| **Marketplace dialog** | Discover new plugins and install with scope picker (user-level or project-level) |
-| **Health banner** | Plugin system status at a glance — know when something is broken before it breaks your workflow |
-
-### Workflows
-
-| Feature | Why it matters |
-|---------|---------------|
-| **Workflow builder** | Create and run multi-stage workflows from a dedicated page — VS Code-style layout with Mermaid diagram preview and YAML editor |
-| **Streaming LLM chat rail** | Generate workflow definitions in real time using an embedded chat interface |
-| **Stage runner** | Visualize stage columns, attempt cards, and progress bar as your workflow executes |
-| **Built-in seed workflows** | Plan Polisher and Plan Executor ship out of the box |
-
-### Open in IDE
-
-| Feature | Why it matters |
-|---------|---------------|
-| **One-click file open** | Files referenced in sessions have a button to open them directly in your editor |
-| **Auto-detects your editor** | VS Code, Cursor, Zed, and others auto-detected — no configuration needed |
-| **Everywhere it matters** | Button appears in Changes tab, file headers, and Kanban project headers |
-| **Preference memory** | Your preferred editor is remembered across sessions |
+**30 releases. 86 MCP tools. 9 skills. One `npx claude-view`.**
 
 ---
 
-### Agent Internals — See What's Hidden
+## Live Monitor
+
+See every running session at a glance. No more terminal tab-switching.
+
+| Feature | What it does |
+|---------|-------------|
+| **Session cards** | Each card shows the last message, model, cost, and status — instantly know what every agent is working on |
+| **Multi-session chat** | Open sessions side-by-side in VS Code-style tabs (dockview). Drag to split horizontally or vertically |
+| **Context gauge** | Real-time context window fill per session — see which agents are in the danger zone before they hit the limit |
+| **Cache countdown** | Know exactly when prompt cache expires so you can time messages to save tokens |
+| **Cost tracking** | Per-session and aggregate spend with token breakdown — hover for input/output/cache split by model |
+| **Sub-agent tree** | See the full tree of spawned agents, their status, costs, and what tools they're calling |
+| **Notification sounds** | Get pinged when a session finishes, errors, or needs your input — stop polling terminals |
+| **Multiple views** | Grid, List, Kanban, or Monitor mode — pick what fits your workflow |
+| **Kanban swimlanes** | Group sessions by project or branch — visual swimlane layout for multi-project workflows |
+| **Recently closed** | Sessions that end appear in "Recently Closed" instead of vanishing — persists across server restarts |
+| **Queued messages** | Messages waiting in the queue show as pending bubbles with a "Queued" badge |
+| **SSE-driven** | All live data pushed via Server-Sent Events — eliminates stale-cache risks entirely |
+
+---
+
+## Chat & Conversation
+
+Read, search, and interact with any session — live or historical.
+
+| Feature | What it does |
+|---------|-------------|
+| **Unified live chat** | History and real-time messages in a single scrollable conversation — no tab-switching |
+| **Developer mode** | Toggle between Chat and Developer views per session. Developer mode shows tool cards, event cards, hook metadata, and the full execution trace with filter chips |
+| **Full conversation browser** | Every session, every message, fully rendered with markdown and code blocks |
+| **Tool call visualization** | See file reads, edits, bash commands, MCP calls, skill invocations — not just text |
+| **Compact / verbose toggle** | Skim the conversation or drill into every tool call |
+| **Thread view** | Follow agent conversations with sub-agent hierarchies and indented threading |
+| **Hook events inline** | Pre/post tool hooks rendered as conversation blocks — see hooks firing alongside the conversation |
+| **Export** | Markdown export for context resumption or sharing |
+| **Bulk select & archive** | Select multiple sessions for batch archiving with persistent filter state |
+| **Encrypted sharing** | Share any session via E2E encrypted link — AES-256-GCM, zero server trust, key lives only in the URL fragment |
+
+---
+
+## Agent Internals
 
 Claude Code does a lot behind `"thinking..."` that never shows in your terminal. claude-view exposes all of it.
 
-| Feature | Why it matters |
-|---------|---------------|
-| **Sub-agent conversations** | See the full tree of spawned agents, their prompts, and their outputs |
-| **MCP server calls** | See which MCP tools are being invoked and their results |
-| **Skill / hook / plugin tracking** | Know which skills fired, which hooks ran, what plugins are active |
-| **Hook event recording** | Dual-channel hook capture (live + JSONL backfill) — every hook event recorded and browsable, even for past sessions |
+| Feature | What it does |
+|---------|-------------|
+| **Sub-agent conversations** | Full tree of spawned agents, their prompts, outputs, and per-agent cost/token breakdown |
+| **MCP server calls** | Which MCP tools are being invoked and their results |
+| **Skill / hook / plugin tracking** | Which skills fired, which hooks ran, what plugins are active |
+| **Hook event recording** | Dual-channel hook capture (live WebSocket + JSONL backfill) — every event recorded and browsable, even for past sessions |
+| **Session source badges** | Each session shows how it was started: Terminal, VS Code, Agent SDK, or other entrypoints |
 | **Worktree branch drift** | Detects when git worktree branches diverge — shown in live monitor and history |
-| **@File mention chips** | `@filename` references extracted from sessions shown as chips on cards — hover for the full path |
-| **Agent SDK live chat** | Thinking blocks, tool calls, and tool results with syntax highlighting, collapsible sections, and a context window gauge |
+| **@File mention chips** | `@filename` references extracted and shown as chips — hover for full path |
 | **Tool use timeline** | Action log of every tool_use/tool_result pair with timing |
-| **Error surfacing** | Errors bubble up to the session card — no more buried failures |
+| **Error surfacing** | Errors bubble up to the session card — no buried failures |
 | **Raw message inspector** | Drill into any message's raw JSON when you need the full picture |
 
 ---
 
-### Analytics
+## Search
 
-A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but deeper.
+| Feature | What it does |
+|---------|-------------|
+| **Full-text search** | Search across all sessions — messages, tool calls, file paths. Powered by Tantivy (Rust-native, Lucene-class) |
+| **Unified search engine** | Tantivy full-text + SQLite pre-filter run in parallel — one endpoint, sub-50ms results |
+| **Project & branch filters** | Scope to the project or branch you're working on right now |
+| **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
+
+---
+
+## Analytics
+
+A full analytics suite for your Claude Code usage. Think Cursor's dashboard, but deeper.
 
 <details>
-<summary><strong>Dashboard Overview</strong></summary>
+<summary><strong>Dashboard</strong></summary>
 <br>
 
 | Feature | Description |
 |---------|-------------|
 | **Week-over-week metrics** | Session count, token usage, cost — compared to your previous period |
-| **Activity heatmap** | 90-day GitHub-style grid showing your daily Claude Code usage intensity |
+| **Activity heatmap** | 90-day GitHub-style grid showing daily usage intensity |
 | **Top skills / commands / MCP tools / agents** | Leaderboards of your most-used invocables — click any to search matching sessions |
 | **Most active projects** | Bar chart of projects ranked by session count |
 | **Tool usage breakdown** | Total edits, reads, and bash commands across all sessions |
@@ -173,7 +148,7 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 | **Model comparison** | Side-by-side breakdown of output and efficiency by model (Opus, Sonnet, Haiku) |
 | **Learning curve** | Re-edit rate over time — see yourself getting better at prompting |
 | **Branch breakdown** | Collapsible per-branch view with session drill-down |
-| **Skill effectiveness** | Which skills actually improve your output vs which ones don't |
+| **Skill effectiveness** | Which skills actually improve your output vs which don't |
 
 </details>
 
@@ -188,22 +163,110 @@ A rich analytics suite for your Claude Code usage. Think Cursor's dashboard, but
 | **Category breakdown** | Treemap of what you use Claude for — refactoring, features, debugging, etc. |
 | **AI Fluency Score** | Single 0-100 number tracking your overall effectiveness |
 
-> Insights and Fluency Score are in early experimental stage. Treat as directional, not definitive.
+> Insights and Fluency Score are experimental. Treat as directional, not definitive.
 
 </details>
 
 ---
 
-## Built for the Power User
+## Plans, Prompts & Teams
 
-claude-view is for the developer who:
+| Feature | What it does |
+|---------|-------------|
+| **Plan browser** | View your `.claude/plans/` directly in session detail — no more hunting through files |
+| **Prompt history** | Full-text search across all prompts you've sent with template clustering and intent classification |
+| **Teams dashboard** | See team leads, inbox messages, team tasks, and file changes across all team members |
+| **Prompt analytics** | Leaderboards of prompt templates, intent distribution, and usage statistics |
 
-- Runs **3+ projects simultaneously**, each with multiple worktrees
-- Has **10-20 Claude Code sessions** open at any time
-- Needs to context-switch fast without losing track of what's running
-- Wants to **optimize token spend** by timing messages around cache windows
-- Gets frustrated by <kbd>Cmd</kbd>+<kbd>Tab</kbd>-bing through terminals to check on agents
-- **Worktree-aware** — detects branch drift across git worktrees
+---
+
+## System Monitor
+
+| Feature | What it does |
+|---------|-------------|
+| **Live CPU / RAM / Disk gauges** | Real-time system metrics streaming via SSE with smooth animated transitions |
+| **Component dashboard** | See sidecar and on-device AI metrics: VRAM usage, CPU, RAM, and session count per component |
+| **Process list** | Processes grouped by name, sorted by CPU — see what your machine is actually doing while agents run |
+
+---
+
+## On-Device AI
+
+Run a local LLM for session phase classification — no API calls, no extra cost.
+
+| Feature | What it does |
+|---------|-------------|
+| **Provider-agnostic** | Connect to any OpenAI-compatible endpoint — oMLX, Ollama, LM Studio, or your own server |
+| **Model selector** | Choose from a curated model registry with RAM requirements shown |
+| **Phase classification** | Sessions tagged with their current phase (coding, debugging, planning, etc.) using confidence-gated display |
+| **Smart resource management** | EMA-stabilized classification with exponential backoff — 93% GPU waste reduction vs naive polling |
+
+---
+
+## Plugin
+
+`@claude-view/plugin` gives Claude native access to your dashboard data — 86 MCP tools, 9 skills, and auto-start.
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+### Auto-start
+
+Every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed.
+
+### 86 MCP tools
+
+8 hand-crafted tools with optimized output for Claude:
+
+| Tool | Description |
+|------|-------------|
+| `list_sessions` | Browse sessions with filters |
+| `get_session` | Full session detail with messages and metrics |
+| `search_sessions` | Full-text search across all conversations |
+| `get_stats` | Dashboard overview — total sessions, costs, trends |
+| `get_fluency_score` | AI Fluency Score (0-100) with breakdown |
+| `get_token_stats` | Token usage with cache hit ratio |
+| `list_live_sessions` | Currently running agents (real-time) |
+| `get_live_summary` | Aggregate cost and status for today |
+
+Plus **78 auto-generated tools** from the OpenAPI spec across 27 categories (contributions, insights, coaching, exports, workflows, and more).
+
+### 9 Skills
+
+| Skill | What it does |
+|-------|-------------|
+| `/session-recap` | Summarize a specific session — commits, metrics, duration |
+| `/daily-cost` | Today's spending, running sessions, token usage |
+| `/standup` | Multi-session work log for standup updates |
+| `/coaching` | AI coaching tips and custom rule management |
+| `/insights` | Behavioral pattern analysis |
+| `/project-overview` | Project summary across sessions |
+| `/search` | Natural language search |
+| `/export-data` | Export sessions to CSV/JSON |
+| `/team-status` | Team activity overview |
+
+---
+
+## Workflows
+
+| Feature | What it does |
+|---------|-------------|
+| **Workflow builder** | Create multi-stage workflows with VS Code-style layout, Mermaid diagram preview, and YAML editor |
+| **Streaming LLM chat rail** | Generate workflow definitions in real time via embedded chat |
+| **Stage runner** | Visualize stage columns, attempt cards, and progress bar as your workflow executes |
+| **Built-in seed workflows** | Plan Polisher and Plan Executor ship out of the box |
+
+---
+
+## Open in IDE
+
+| Feature | What it does |
+|---------|-------------|
+| **One-click file open** | Files referenced in sessions open directly in your editor |
+| **Auto-detects your editor** | VS Code, Cursor, Zed, and others — no configuration needed |
+| **Everywhere it matters** | Button appears in Changes tab, file headers, and Kanban project headers |
+| **Preference memory** | Your preferred editor is remembered across sessions |
 
 ---
 
@@ -211,38 +274,29 @@ claude-view is for the developer who:
 
 | | |
 |---|---|
-| **Blazing fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
-| **Real-time** | File watcher + SSE + unified WebSocket with heartbeat, event replay, and crash recovery |
-| **Tiny footprint** | ~10 MB download, ~27 MB on disk. No runtime dependencies, no background daemons |
-| **100% local** | All data stays on your machine. Zero telemetry, zero required accounts. Optional encrypted sharing available. |
+| **Fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
+| **Real-time** | File watcher + SSE + multiplexed WebSocket with heartbeat, event replay, and crash recovery |
+| **Tiny** | ~10 MB download, ~27 MB on disk. No runtime dependencies, no background daemons |
+| **100% local** | All data stays on your machine. Zero telemetry by default, zero required accounts |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
+| **FSM-driven** | Chat sessions run on a finite state machine with explicit phases and typed events — deterministic, race-free |
 
 <details>
-<summary><strong>Why Rust? — The Numbers</strong></summary>
+<summary><strong>The Numbers</strong></summary>
 <br>
 
 Measured on an M-series Mac with 1,493 sessions across 26 projects:
 
 | Metric | claude-view | Typical Electron dashboard |
 |--------|:-----------:|:--------------------------:|
-| **Download** | **~10 MB** | 150–300 MB |
-| **On disk** | **~27 MB** | 300–500 MB |
-| **Startup (ready to serve)** | **< 500 ms** | 3–8 s |
-| **RAM (full index loaded)** | **~50 MB** | 300–800 MB |
-| **Deep-index 1,500 sessions** | **< 1 s** | N/A |
-| **Runtime dependencies** | **0** | Node.js + Chromium |
+| **Download** | **~10 MB** | 150-300 MB |
+| **On disk** | **~27 MB** | 300-500 MB |
+| **Startup** | **< 500 ms** | 3-8 s |
+| **RAM (full index)** | **~50 MB** | 300-800 MB |
+| **Index 1,500 sessions** | **< 1 s** | N/A |
+| **Runtime deps** | **0** | Node.js + Chromium |
 
-Key techniques:
-
-- **SIMD pre-filter** — `memchr` scans raw bytes before touching a JSON parser
-- **Memory-mapped I/O** — JSONL files are mmap'd and parsed in-place, never copied
-- **Tantivy search** — Same engine behind Quickwit; indexes 1,500 sessions in under a second
-- **Zero-copy where it counts** — Borrowed slices from mmap through parse to response
-
-```bash
-cargo build --release
-/usr/bin/time -l target/release/claude-view   # peak RSS + wall time
-```
+Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, Tantivy full-text search, zero-copy slices from mmap through parse to response.
 
 </details>
 
@@ -250,34 +304,15 @@ cargo build --release
 
 ## How It Compares
 
-The Claude Code ecosystem has great tools — chat UIs, history viewers, session managers. claude-view fills a different gap: **real-time monitoring + deep history + analytics in one lightweight workspace.**
+| Tool | Category | Stack | Size | Live monitor | Multi-session chat | Search | Analytics | MCP tools |
+|------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Yes** | **Yes** | **Yes** | **Yes** | **86** |
+| [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 | ~13 MB | Partial | No | No | Yes | No |
+| [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | No | No | No | CLI | No |
+| [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron | ~140 MB | No | No | No | No | No |
+| [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript | ~500 KB | Partial | No | Basic | No | No |
 
-| Tool | Category | Stack | Size | Live monitor | Search | Analytics |
-|------|----------|-------|:----:|:------------:|:------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Yes** | **Yes** | **Yes** |
-| [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 | ~13 MB | Partial | No | Yes |
-| [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | No | No | CLI |
-| [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron | ~140 MB | No | No | No |
-| [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript | ~500 KB | Partial | Basic | No |
-
-> Chat UIs (CodePilot, CUI, claude-code-webui) are interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary, not competing.
-
-<details>
-<summary><strong>Why the size difference matters</strong></summary>
-<br>
-
-| | claude-view | Electron app |
-|---|:-:|:-:|
-| **Download** | ~10 MB | ~140 MB |
-| **On disk** | ~27 MB | ~400 MB |
-| **What's in it** | Rust server + SPA assets | Chromium + Node.js + Next.js + app code |
-| **RAM at idle** | ~50 MB | ~300 MB+ |
-| **Startup** | < 500 ms | 3–8 s |
-| **Background cost** | Negligible | Chromium renderer process |
-
-When you're already running 10+ Claude Code sessions eating RAM and CPU, the last thing you want is a 300 MB dashboard competing for resources.
-
-</details>
+> Chat UIs (CodePilot, CUI, claude-code-webui) are interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary.
 
 ---
 
@@ -287,10 +322,11 @@ When you're already running 10+ Claude Code sessions eating RAM and CPU, the las
 |--------|---------|
 | **Shell** (recommended) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
+| **Plugin** (auto-start) | `claude plugin add @claude-view/plugin` |
 
 The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claude-view/bin`, and adds it to your PATH. Then just run `claude-view`.
 
-**Only requirement:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed — this creates the session files we monitor.
+**Only requirement:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
 
 <details>
 <summary><strong>Configuration</strong></summary>
@@ -303,49 +339,35 @@ The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claud
 </details>
 
 <details>
-<summary><strong>Self-hosting / Local Dev — Optional Cloud Features</strong></summary>
+<summary><strong>Self-Hosting & Local Dev</strong></summary>
 <br>
 
-The pre-built binary (`npx claude-view`) ships with auth, sharing, and mobile relay baked in. If you're building from source or running your own server, these features are **opt-in via environment variables** — omit any of them and that feature is simply disabled. No errors, no warnings, just graceful degradation.
+The pre-built binary ships with auth, sharing, and mobile relay baked in. Building from source? These features are **opt-in via environment variables** — omit any and that feature is simply disabled.
 
-| Env Variable | Feature | What happens without it |
-|-------------|---------|------------------------|
-| `SUPABASE_URL` | Login / auth | Auth disabled — app runs in fully local, zero-account mode |
-| `RELAY_URL` | Mobile pairing (QR code) | Mobile relay disabled — QR pairing unavailable |
-| `SHARE_WORKER_URL` + `SHARE_VIEWER_URL` | Encrypted session sharing | Share button hidden — sessions stay local |
-
-**To run fully local with no cloud dependencies** (the default for self-hosters):
+| Env Variable | Feature | Without it |
+|-------------|---------|------------|
+| `SUPABASE_URL` | Login / auth | Auth disabled — fully local, zero-account mode |
+| `RELAY_URL` | Mobile pairing | QR pairing unavailable |
+| `SHARE_WORKER_URL` + `SHARE_VIEWER_URL` | Encrypted sharing | Share button hidden |
 
 ```bash
-bun dev    # just works — all cloud features off
+bun dev    # fully local, no cloud dependencies
 ```
-
-**To enable a feature**, export the env var before starting the server:
-
-```bash
-export SUPABASE_URL=https://your-project.supabase.co
-export RELAY_URL=wss://your-relay.fly.dev/ws
-export SHARE_WORKER_URL=https://your-worker.example.com
-export SHARE_VIEWER_URL=https://your-viewer.example.com
-bun run dev:server
-```
-
-> These are **runtime** overrides — they take precedence over whatever is baked into the binary at build time.
 
 </details>
 
 <details>
-<summary><strong>Corporate / Sandbox Environments</strong></summary>
+<summary><strong>Enterprise / Sandbox Environments</strong></summary>
 <br>
 
-If your machine restricts writes to `~/Library/Caches/` (e.g., DataCloak, CrowdStrike, corporate DLP):
+If your machine restricts writes (DataCloak, CrowdStrike, corporate DLP):
 
 ```bash
 cp crates/server/.env.example .env
-# Uncomment the CLAUDE_VIEW_DATA_DIR line
+# Uncomment CLAUDE_VIEW_DATA_DIR
 ```
 
-This keeps the database, search index, and lock files in `.data/` inside the repo — no writes outside the project directory.
+This keeps database, search index, and lock files inside the repo. Set `CLAUDE_VIEW_SKIP_HOOKS=1` to skip hook registration in read-only environments.
 
 </details>
 
@@ -357,47 +379,31 @@ This keeps the database, search index, and lock files in `.data/` inside the rep
 <summary><strong>"Not signed in" banner showing even though I'm logged in</strong></summary>
 <br>
 
-claude-view checks your Claude credentials by reading `~/.claude/.credentials.json` (with macOS Keychain fallback). If it can't find or parse valid credentials, the warning banner appears. Try these steps in order:
+claude-view checks your Claude credentials by reading `~/.claude/.credentials.json` (with macOS Keychain fallback). Try these steps:
 
-**1. Verify Claude CLI auth works**
+1. **Verify Claude CLI auth:** `claude auth status`
+2. **Check credentials file:** `cat ~/.claude/.credentials.json` — should have a `claudeAiOauth` section with an `accessToken`
+3. **Check macOS Keychain:** `security find-generic-password -s "Claude Code-credentials" -w`
+4. **Check token expiry:** Look at `expiresAt` in the credentials JSON — if past, run `claude auth login`
+5. **Check HOME:** `echo $HOME` — the server reads from `$HOME/.claude/.credentials.json`
 
-```bash
-claude auth status
-```
+If all checks pass and the banner persists, report it on [Discord](https://discord.gg/G7wdZTpRfu).
 
-If this says "Logged in", your credentials are valid. If not, run `claude auth login` first.
+</details>
 
-**2. Check the credentials file exists**
+<details>
+<summary><strong>What data does claude-view access?</strong></summary>
+<br>
 
-```bash
-cat ~/.claude/.credentials.json
-```
+claude-view reads the JSONL session files that Claude Code writes to `~/.claude/projects/`. It indexes them locally using SQLite and Tantivy. **No data leaves your machine** unless you explicitly use the encrypted sharing feature. Telemetry is opt-in and off by default.
 
-You should see JSON with a `claudeAiOauth` section containing an `accessToken`. If the file is missing, your credentials may be stored only in the OS Keychain (see step 3).
+</details>
 
-**3. Check macOS Keychain access**
+<details>
+<summary><strong>Does it work with Claude Code in VS Code / Cursor / IDE extensions?</strong></summary>
+<br>
 
-```bash
-security find-generic-password -s "Claude Code-credentials" -w
-```
-
-If this returns JSON or hex-encoded data, credentials are in Keychain. If it returns an error, or you're on a corporate machine with security tools (DataCloak, CrowdStrike, etc.) that block Keychain access, this is likely the issue — run `claude auth login` to regenerate the file.
-
-**4. Check for token expiry**
-
-Inside the credentials JSON, look at the `expiresAt` field (Unix milliseconds). If it's in the past, your token has expired. Run `claude auth login` to refresh.
-
-**5. Check HOME environment**
-
-claude-view reads credentials from `$HOME/.claude/.credentials.json`. If the server process has a different `$HOME` than your shell, it won't find your credentials.
-
-```bash
-echo $HOME
-```
-
----
-
-If all the above checks pass and the banner still shows, please report it on our [Discord](https://discord.gg/G7wdZTpRfu) with the output of `claude auth status` and we'll help debug it.
+Yes. claude-view monitors all Claude Code sessions regardless of how they were started — terminal CLI, VS Code extension, Cursor, or Agent SDK. Each session shows a source badge (Terminal, VS Code, SDK) so you can filter by launch method.
 
 </details>
 
@@ -406,7 +412,8 @@ If all the above checks pass and the banner still shows, please report it on our
 ## Community
 
 - **Website:** [claudeview.ai](https://claudeview.ai) — docs, changelog, blog
-- **Discord:** [Join the server](https://discord.gg/G7wdZTpRfu) for support, feature requests, and discussion
+- **Discord:** [Join the server](https://discord.gg/G7wdZTpRfu) — support, feature requests, discussion
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 MCP tools, 9 skills, auto-start
 
 ---
 
@@ -418,7 +425,7 @@ Prerequisites: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo instal
 
 ```bash
 bun install        # Install all workspace dependencies
-bun dev            # Start full-stack dev (Rust + Web with hot reload)
+bun dev            # Start full-stack dev (Rust + Web + Sidecar with hot reload)
 ```
 
 ### Workspace Layout
@@ -426,58 +433,39 @@ bun dev            # Start full-stack dev (Rust + Web with hot reload)
 | Path | Package | Purpose |
 |------|---------|---------|
 | `apps/web/` | `@claude-view/web` | React SPA (Vite) — main web frontend |
-| `apps/share/` | `@claude-view/share` | Share viewer SPA (Vite) — Cloudflare Pages |
+| `apps/share/` | `@claude-view/share` | Share viewer SPA — Cloudflare Pages |
 | `apps/mobile/` | `@claude-view/mobile` | Expo native app |
-| `apps/landing/` | `@claude-view/landing` | Static HTML landing page |
+| `apps/landing/` | `@claude-view/landing` | Astro 5 landing page (zero client-side JS) |
 | `packages/shared/` | `@claude-view/shared` | Shared types & theme tokens |
 | `packages/design-tokens/` | `@claude-view/design-tokens` | Colors, spacing, typography |
 | `packages/plugin/` | `@claude-view/plugin` | Claude Code plugin (MCP server + tools + skills) |
 | `crates/` | — | Rust backend (Axum) |
+| `sidecar/` | — | Node.js sidecar (Agent SDK bridge) |
 | `infra/share-worker/` | — | Cloudflare Worker — share API (R2 + D1) |
-| `infra/install-worker/` | — | Cloudflare Worker — install script proxy with download tracking |
+| `infra/install-worker/` | — | Cloudflare Worker — install script with download tracking |
 
 ### Dev Commands
 
 | Command | Description |
 |---------|-------------|
-| `bun dev` | Full-stack dev — Rust server (cargo-watch) + Web frontend (Vite HMR) |
-| `bun run dev:web` | Web frontend only (assumes Rust server already running) |
-| `bun run dev:server` | Rust backend only (with cargo-watch) |
-| `bun run dev:all` | All JS/TS apps via Turbo (web + mobile + landing, no Rust) |
+| `bun dev` | Full-stack dev — Rust + Web + Sidecar with hot reload |
+| `bun run dev:web` | Web frontend only |
+| `bun run dev:server` | Rust backend only |
 | `bun run build` | Build all workspaces |
 | `bun run preview` | Build web + serve via release binary |
-| `bun run lint` | Lint all JS/TS workspaces |
 | `bun run lint:all` | Lint JS/TS + Rust (Clippy) |
 | `bun run typecheck` | TypeScript type checking |
 | `bun run test` | Run all tests (Turbo) |
-| `bun run test:rust` | Run Rust tests (`cargo test --workspace`) |
-| `cd apps/web && bunx vitest run` | Run web frontend tests only |
-| `bun run fmt` | Format Rust code |
-| `bun run cleanupport` | Kill processes on dev ports (47892, 5173) |
+| `bun run test:rust` | Run Rust tests |
+| `bun run storybook` | Launch Storybook for component development |
+| `bun run dist:test` | Build + pack + install + run (full dist test) |
 
-**Testing Production Distribution:**
-
-```bash
-bun run dist:test    # One command: build → pack → install → run
-```
-
-| Command | Description |
-|---------|-------------|
-| `bun run dist:pack` | Package binary + frontend into tarball at `/tmp/` |
-| `bun run dist:install` | Extract tarball to `~/.cache/claude-view/` (simulates first-run download) |
-| `bun run dist:run` | Run the npx wrapper using the cached binary |
-| `bun run dist:clean` | Remove all dist cache and temp files |
-
-**Releasing:**
+### Releasing
 
 ```bash
-bun run release          # patch bump: 0.1.0 → 0.1.1
-bun run release:minor    # minor bump: 0.1.0 → 0.2.0
-bun run release:major    # major bump: 0.1.0 → 1.0.0
-```
-
-```bash
-git push origin main --tags    # triggers CI → builds all platforms → auto-publishes to npm
+bun run release          # patch bump
+bun run release:minor    # minor bump
+git push origin main --tags    # triggers CI → builds → auto-publishes to npm
 ```
 
 </details>
@@ -498,14 +486,14 @@ git push origin main --tags    # triggers CI → builds all platforms → auto-p
 ## Related
 
 - **[claudeview.ai](https://claudeview.ai)** — Official website, docs, and changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 8 MCP tools and 3 skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 86 MCP tools and 9 skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 
 ---
 
 <div align="center">
 
-If **claude-view** helps you fly Claude Code, consider giving it a star.
+If **claude-view** helps you see what your AI agents are doing, consider giving it a star.
 
 <a href="https://github.com/tombelieber/claude-view/stargazers">
   <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
@@ -513,6 +501,6 @@ If **claude-view** helps you fly Claude Code, consider giving it a star.
 
 <br><br>
 
-MIT © 2026
+MIT &copy; 2026
 
 </div>
