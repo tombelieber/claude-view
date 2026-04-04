@@ -19,40 +19,41 @@ describe('TelemetrySection', () => {
     expect(screen.getByText('Anonymous Usage Analytics')).toBeInTheDocument()
   })
 
-  it('checkbox is checked when telemetry is enabled', () => {
+  it('switch is checked when telemetry is enabled', () => {
     render(<TelemetrySection {...defaultProps} telemetryStatus="enabled" />)
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).toBeChecked()
+    const toggle = screen.getByRole('switch')
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
   })
 
-  it('checkbox is unchecked when telemetry is disabled', () => {
+  it('switch is unchecked when telemetry is disabled', () => {
     render(<TelemetrySection {...defaultProps} telemetryStatus="disabled" />)
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).not.toBeChecked()
+    const toggle = screen.getByRole('switch')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
   })
 
   it('calls onEnable when toggled on', () => {
     const onEnable = vi.fn()
     render(<TelemetrySection {...defaultProps} telemetryStatus="disabled" onEnable={onEnable} />)
-    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('switch'))
     expect(onEnable).toHaveBeenCalledOnce()
   })
 
   it('calls onDisable when toggled off', () => {
     const onDisable = vi.fn()
     render(<TelemetrySection {...defaultProps} telemetryStatus="enabled" onDisable={onDisable} />)
-    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('switch'))
     expect(onDisable).toHaveBeenCalledOnce()
   })
 
-  it('checkbox is disabled when no posthog key (self-hosted)', () => {
+  it('shows private message when no posthog key (self-hosted)', () => {
     render(<TelemetrySection {...defaultProps} telemetryStatus="disabled" hasPosHogKey={false} />)
-    const checkbox = screen.getByRole('checkbox')
-    expect(checkbox).toBeDisabled()
+    // Self-hosted path renders a privacy message with no toggle at all
+    expect(screen.getByText(/no data leaves your machine/i)).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
   })
 
-  it('shows "not available" text when self-hosted', () => {
+  it('shows fully private explanation when self-hosted', () => {
     render(<TelemetrySection {...defaultProps} telemetryStatus="disabled" hasPosHogKey={false} />)
-    expect(screen.getByText(/not available/i)).toBeInTheDocument()
+    expect(screen.getByText(/local build with no analytics endpoint/i)).toBeInTheDocument()
   })
 })

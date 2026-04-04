@@ -48,7 +48,7 @@ test('uses smaller font for long names (>24 chars)', () => {
   const longItem = { ...item, name: 'full-codebase-docs-sync-scanner' }
   render(<UserItemCard item={longItem} />)
   const nameEl = screen.getByText('full-codebase-docs-sync-scanner')
-  expect(nameEl.className).toMatch(/text-\[12px\]/)
+  expect(nameEl.className).toMatch(/text-xs/)
 })
 
 test('card has full opacity for all items (no muting)', () => {
