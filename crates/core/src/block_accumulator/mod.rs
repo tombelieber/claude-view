@@ -138,9 +138,44 @@ impl BlockAccumulator {
     // ── Private handlers ──────────────────────────────────────────
 
     fn handle_user(&mut self, entry: &Value) {
-        let content_arr = entry.pointer("/message/content").and_then(|c| c.as_array());
+        let content = entry.pointer("/message/content");
 
-        let Some(arr) = content_arr else {
+        // String content: Claude CLI sometimes writes content as a plain string
+        // instead of the array-of-blocks format. Handle it directly.
+        if let Some(text) = content.and_then(|c| c.as_str()) {
+            self.flush_current_assistant();
+            self.blocks.push(ConversationBlock::User(UserBlock {
+                id: entry
+                    .get("uuid")
+                    .and_then(|u| u.as_str())
+                    .map(String::from)
+                    .unwrap_or_else(|| self.make_id("user")),
+                text: text.to_string(),
+                timestamp: self.extract_timestamp(entry).unwrap_or(0.0),
+                status: None,
+                local_id: None,
+                pending: None,
+                permission_mode: entry
+                    .get("permissionMode")
+                    .and_then(|p| p.as_str())
+                    .map(String::from),
+                parent_uuid: entry
+                    .get("parentUuid")
+                    .and_then(|p| p.as_str())
+                    .map(String::from),
+                is_sidechain: entry.get("isSidechain").and_then(|v| v.as_bool()),
+                agent_id: entry
+                    .get("agentId")
+                    .and_then(|a| a.as_str())
+                    .map(String::from),
+                images: vec![],
+                raw_json: None,
+            }));
+            return;
+        }
+
+        // Array content: standard Claude API format
+        let Some(arr) = content.and_then(|c| c.as_array()) else {
             return;
         };
 
@@ -1149,6 +1184,56 @@ mod tests {
         let blocks = acc.finalize();
         if let ConversationBlock::User(u) = &blocks[0] {
             assert_eq!(u.parent_uuid, None);
+        } else {
+            panic!("Expected UserBlock");
+        }
+    }
+
+    #[test]
+    fn user_message_string_content_creates_block() {
+        // Claude CLI sometimes writes message.content as a plain string
+        // instead of the array-of-blocks format. Both must produce a UserBlock.
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "user",
+            "uuid": "u-str",
+            "message": {"content": "commit  n  push"},
+            "parentUuid": "p-1",
+            "permissionMode": "default",
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        assert_eq!(
+            blocks.len(),
+            1,
+            "string-content user message must produce a block"
+        );
+        if let ConversationBlock::User(u) = &blocks[0] {
+            assert_eq!(u.id, "u-str");
+            assert_eq!(u.text, "commit  n  push");
+            assert_eq!(u.parent_uuid, Some("p-1".to_string()));
+            assert_eq!(u.permission_mode, Some("default".to_string()));
+        } else {
+            panic!("Expected UserBlock, got {:?}", blocks[0]);
+        }
+    }
+
+    #[test]
+    fn user_message_array_content_still_works() {
+        // Ensure array-format content (the standard path) is not broken.
+        let mut acc = BlockAccumulator::new();
+        let entry = serde_json::json!({
+            "type": "user",
+            "uuid": "u-arr",
+            "message": {"content": [{"type": "text", "text": "hello world"}]},
+            "timestamp": "2026-04-04T01:00:01.000Z"
+        });
+        acc.process_line(&entry);
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        if let ConversationBlock::User(u) = &blocks[0] {
+            assert_eq!(u.text, "hello world");
         } else {
             panic!("Expected UserBlock");
         }
