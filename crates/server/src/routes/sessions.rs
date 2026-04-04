@@ -10,6 +10,7 @@ use axum::{
 };
 use claude_view_core::accumulator::SessionAccumulator;
 use claude_view_core::hook_to_block::make_hook_progress_block;
+use claude_view_core::subagent::SubAgentStatus;
 use claude_view_core::task_files::{self, TaskItem};
 use claude_view_core::{ParsedSession, SessionInfo};
 use claude_view_db::git_correlation::GitCommit;
@@ -627,11 +628,21 @@ pub async fn get_session_rich(
     let pricing = state.pricing.clone();
 
     // 3. Parse JSONL through SessionAccumulator (blocking I/O → spawn_blocking)
-    let rich_data =
+    let mut rich_data =
         tokio::task::spawn_blocking(move || SessionAccumulator::from_file(&path, &pricing))
             .await
             .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?
             .map_err(|e| ApiError::Internal(format!("Parse error: {e}")))?;
+
+    // Historical sessions are loaded from file — any subagent still marked
+    // Running can't actually be running (the parent session is over).
+    // Mark them as Error so the UI doesn't show a green "running" dot.
+    for agent in &mut rich_data.sub_agents {
+        if agent.status == SubAgentStatus::Running {
+            agent.status = SubAgentStatus::Error;
+            agent.current_activity = None;
+        }
+    }
 
     Ok(Json(rich_data))
 }

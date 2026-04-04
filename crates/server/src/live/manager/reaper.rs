@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use claude_view_core::subagent::SubAgentStatus;
 use tracing::info;
 
 use crate::live::state::SessionEvent;
@@ -64,6 +65,16 @@ impl LiveSessionManager {
                 .as_secs() as i64;
             closed.status = crate::live::state::SessionStatus::Done;
             closed.closed_at = Some(now);
+
+            // Mark orphaned Running subagents as Error — parent is dead,
+            // they can't report back. Without this, the UI shows a green
+            // "running" dot on sessions that have long ended.
+            for agent in &mut closed.hook.sub_agents {
+                if agent.status == SubAgentStatus::Running {
+                    agent.status = SubAgentStatus::Error;
+                    agent.current_activity = None;
+                }
+            }
 
             sessions.remove(session_id);
             (transcript_path, closed)
