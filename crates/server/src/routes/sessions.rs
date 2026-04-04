@@ -538,48 +538,37 @@ pub async fn get_session_messages_by_id(
         let mut blocks = parsed.blocks;
 
         // Merge DB hook events (Channel B) into the block list.
-        // Skip if JSONL already produced Hook-variant ProgressBlocks (Channel A),
-        // to avoid rendering the same logical hook event twice.
-        let jsonl_has_hook_blocks = blocks.iter().any(|b| {
-            matches!(
-                b,
-                claude_view_core::ConversationBlock::Progress(p)
-                    if p.variant == claude_view_core::block_types::ProgressVariant::Hook
-            )
-        });
+        // Channel A (JSONL hook_progress) and Channel B (DB hook_events) are
+        // separate data sources with different schemas — both always render.
+        // See CLAUDE.md: "Separate Channels = Separate Data = No Dedup".
+        match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await {
+            Ok(hook_rows) if !hook_rows.is_empty() => {
+                let hook_blocks: Vec<_> = hook_rows
+                    .iter()
+                    .enumerate()
+                    .map(|(i, row)| {
+                        make_hook_progress_block(
+                            format!("hook-db-{}-{}", row.timestamp, i),
+                            row.timestamp as f64,
+                            &row.event_name,
+                            row.tool_name.as_deref(),
+                            &row.label,
+                        )
+                    })
+                    .collect();
 
-        if !jsonl_has_hook_blocks {
-            match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await
-            {
-                Ok(hook_rows) if !hook_rows.is_empty() => {
-                    // Convert DB rows to ProgressBlocks
-                    let hook_blocks: Vec<_> = hook_rows
-                        .iter()
-                        .enumerate()
-                        .map(|(i, row)| {
-                            make_hook_progress_block(
-                                format!("hook-db-{}-{}", row.timestamp, i),
-                                row.timestamp as f64,
-                                &row.event_name,
-                                row.tool_name.as_deref(),
-                                &row.label,
-                            )
-                        })
-                        .collect();
-
-                    // Positional merge: insert hook blocks at correct timestamp
-                    // positions without disturbing existing block order.
-                    // hook_blocks are already sorted by ts ASC (DB ORDER BY).
-                    blocks = merge_hook_blocks_by_timestamp(blocks, hook_blocks);
-                }
-                Ok(_) => {} // no hook events in DB
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        error = %e,
-                        "Failed to fetch hook events for block merge — serving JSONL blocks only"
-                    );
-                }
+                // Positional merge: insert hook blocks at correct timestamp
+                // positions without disturbing existing block order.
+                // hook_blocks are already sorted by ts ASC (DB ORDER BY).
+                blocks = merge_hook_blocks_by_timestamp(blocks, hook_blocks);
+            }
+            Ok(_) => {} // no hook events in DB
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to fetch hook events for block merge — serving JSONL blocks only"
+                );
             }
         }
 
@@ -2695,14 +2684,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_messages_block_format_skips_merge_when_jsonl_has_hook_blocks() {
+    async fn get_messages_block_format_merges_both_channels() {
         use claude_view_db::hook_events_queries;
 
         let tmp = tempfile::TempDir::new().unwrap();
         let db = test_db().await;
 
-        // Create JSONL with a Channel A hook_progress block (correct nested format)
-        let jsonl_path = tmp.path().join("channel-a-test.jsonl");
+        // Create JSONL with a Channel A hook_progress block
+        let jsonl_path = tmp.path().join("both-channels-test.jsonl");
         std::fs::write(
             &jsonl_path,
             r#"{"type":"human","message":{"role":"user","content":"hello"},"timestamp":"2026-01-01T00:00:00Z"}
@@ -2711,13 +2700,13 @@ mod tests {
         )
         .unwrap();
 
-        let mut session = make_session("channel-a-test", "project-a", 1735689600);
+        let mut session = make_session("both-channels-test", "project-a", 1735689600);
         session.file_path = jsonl_path.to_string_lossy().to_string();
         db.insert_session(&session, "project-a", "Project A")
             .await
             .unwrap();
 
-        // Insert DB hook events (Channel B) — these should be SKIPPED
+        // Insert DB hook events (Channel B) — BOTH channels should render
         let events = vec![claude_view_db::HookEventRow {
             timestamp: 1735689601,
             event_name: "PreToolUse".into(),
@@ -2727,24 +2716,33 @@ mod tests {
             context: None,
             source: "hook".into(),
         }];
-        hook_events_queries::insert_hook_events(&db, "channel-a-test", &events)
+        hook_events_queries::insert_hook_events(&db, "both-channels-test", &events)
             .await
             .unwrap();
 
         let app = build_app(db);
-        let (status, body) =
-            do_get(app, "/api/sessions/channel-a-test/messages?format=block").await;
+        let (status, body) = do_get(
+            app,
+            "/api/sessions/both-channels-test/messages?format=block",
+        )
+        .await;
 
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         let blocks = json["blocks"].as_array().unwrap();
 
-        // Should contain only the Channel A hook block, NOT the DB one
-        let _channel_a_hook_blocks: Vec<_> = blocks
+        // Channel A (from JSONL) and Channel B (from DB) both present
+        let hook_blocks: Vec<_> = blocks
             .iter()
             .filter(|b| b["type"] == "progress" && b["variant"] == "hook")
             .collect();
-        // The key assertion: no "hook-db-" prefixed IDs from DB merge.
+        assert!(
+            hook_blocks.len() >= 2,
+            "Both Channel A and Channel B hook blocks should coexist, got {}",
+            hook_blocks.len()
+        );
+
+        // DB hook events have "hook-db-" prefix
         let db_hook_blocks: Vec<_> = blocks
             .iter()
             .filter(|b| {
@@ -2755,8 +2753,8 @@ mod tests {
             .collect();
         assert_eq!(
             db_hook_blocks.len(),
-            0,
-            "DB hook events should be skipped when JSONL has Channel A hook blocks"
+            1,
+            "Channel B hook block must be present alongside Channel A"
         );
     }
 
