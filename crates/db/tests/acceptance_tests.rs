@@ -478,7 +478,8 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
         !models.is_empty(),
         "Models table should have at least 1 model after indexing"
     );
-    assert_eq!(models[0].id, "claude-opus-4-5-20251101");
+    // M4: Model IDs are now normalized — date suffix stripped
+    assert_eq!(models[0].id, "claude-opus-4-5");
     assert_eq!(models[0].provider.as_deref(), Some("anthropic"));
     assert_eq!(models[0].family.as_deref(), Some("opus"));
     assert!(

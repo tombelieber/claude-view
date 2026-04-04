@@ -314,8 +314,11 @@ async fn fetch_contributions_scope_meta(
                     COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
                 FROM sessions
-                WHERE datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
-                  AND (?2 IS NULL OR project_id = ?2)
+                WHERE archived_at IS NULL
+                  AND datetime(last_message_at, 'unixepoch', 'localtime') >= ?1
+                  AND (?2 IS NULL OR project_id = ?2
+                       OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2)
+                       OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2))
                   AND (?3 IS NULL OR git_branch = ?3)
                 "#,
             )
@@ -332,7 +335,10 @@ async fn fetch_contributions_scope_meta(
                     COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
                 FROM sessions
-                WHERE (?1 IS NULL OR project_id = ?1)
+                WHERE archived_at IS NULL
+                  AND (?1 IS NULL OR project_id = ?1
+                       OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1)
+                       OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1))
                   AND (?2 IS NULL OR git_branch = ?2)
                 "#,
             )
@@ -349,9 +355,12 @@ async fn fetch_contributions_scope_meta(
                     COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
                     COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
                 FROM sessions
-                WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+                WHERE archived_at IS NULL
+                  AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
                   AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
-                  AND (?3 IS NULL OR project_id = ?3)
+                  AND (?3 IS NULL OR project_id = ?3
+                       OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)
+                       OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3))
                   AND (?4 IS NULL OR git_branch = ?4)
                 "#,
             )
@@ -385,7 +394,8 @@ async fn fetch_session_contribution_scope_meta(
             COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
         FROM sessions
-        WHERE id = ?1
+        WHERE archived_at IS NULL
+          AND id = ?1
         "#,
     )
     .bind(session_id)
@@ -418,9 +428,12 @@ async fn fetch_branch_sessions_scope_meta(
             COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
         FROM sessions
-        WHERE date(last_message_at, 'unixepoch', 'localtime') >= ?1
+        WHERE archived_at IS NULL
+          AND date(last_message_at, 'unixepoch', 'localtime') >= ?1
           AND date(last_message_at, 'unixepoch', 'localtime') <= ?2
-          AND (?3 IS NULL OR project_id = ?3)
+          AND (?3 IS NULL OR project_id = ?3
+               OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)
+               OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3))
           AND (
                 (?4 IS NULL AND git_branch IS NULL)
              OR (?4 IS NOT NULL AND git_branch = ?4)
