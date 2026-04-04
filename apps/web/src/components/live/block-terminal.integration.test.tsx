@@ -1,11 +1,14 @@
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../hooks/use-terminal-socket', () => ({
-  useTerminalSocket: vi.fn(() => ({
+vi.mock('../../hooks/use-session-channel', () => ({
+  useSessionChannel: vi.fn(() => ({
+    blocks: [],
+    bufferDone: false,
+    rawLines: [],
     connectionState: 'connected' as const,
-    sendMessage: vi.fn(),
-    reconnect: vi.fn(),
+    error: null,
+    sdkConnected: false,
   })),
 }))
 
@@ -13,27 +16,27 @@ vi.mock('../../store/monitor-store', () => ({
   useMonitorStore: vi.fn((sel: any) => sel({ displayMode: 'chat', setDisplayMode: vi.fn() })),
 }))
 
-vi.mock('../conversation/ConversationThread', () => ({
+vi.mock('@claude-view/shared/components/conversation/ConversationThread', () => ({
   ConversationThread: vi.fn(() => <div data-testid="conversation-thread" />),
 }))
 
+import { useSessionChannel } from '../../hooks/use-session-channel'
+import { useMonitorStore } from '../../store/monitor-store'
 import { BlockTerminalPane } from './BlockTerminalPane'
 
 describe('BlockTerminalPane integration', () => {
-  it('wires sessionId through useBlockSocket to useTerminalSocket', async () => {
-    const { useTerminalSocket } = await import('../../hooks/use-terminal-socket')
+  it('wires sessionId through useSessionChannel in block mode', () => {
     render(<BlockTerminalPane sessionId="test-session" isVisible />)
-    expect(vi.mocked(useTerminalSocket)).toHaveBeenCalledWith(
+    expect(vi.mocked(useSessionChannel)).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 'test-session',
-        mode: 'block',
+        modes: ['block'],
         enabled: true,
       }),
     )
   })
 
-  it('reads displayMode from monitor-store for registry selection', async () => {
-    const { useMonitorStore } = await import('../../store/monitor-store')
+  it('reads displayMode from monitor-store for registry selection', () => {
     render(<BlockTerminalPane sessionId="test-session" isVisible />)
     expect(vi.mocked(useMonitorStore)).toHaveBeenCalled()
   })
