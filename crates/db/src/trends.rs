@@ -180,7 +180,8 @@ impl Database {
     ) -> DbResult<WeekTrends> {
         let duration = to - from;
         let comp_end = from - 1;
-        let comp_start = comp_end - duration;
+        // H5: Clamp to 0 to prevent negative timestamps for new users
+        let comp_start = (comp_end - duration).max(0);
 
         self.get_trends_for_periods(from, to, comp_start, comp_end, project, branch)
             .await
