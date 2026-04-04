@@ -217,9 +217,12 @@ async fn fetch_session_breakdown(
             COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0) AS primary_sessions,
             COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0) AS sidechain_sessions
         FROM sessions
-        WHERE (?1 IS NULL OR last_message_at >= ?1)
+        WHERE archived_at IS NULL
+          AND (?1 IS NULL OR last_message_at >= ?1)
           AND (?2 IS NULL OR last_message_at <= ?2)
-          AND (?3 IS NULL OR project_id = ?3)
+          AND (?3 IS NULL OR project_id = ?3
+               OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3)
+               OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3))
           AND (?4 IS NULL OR git_branch = ?4)
         "#,
     )

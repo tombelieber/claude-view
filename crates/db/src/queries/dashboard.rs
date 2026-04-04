@@ -685,12 +685,12 @@ impl Database {
 
         // Heatmap: 90-day activity (sessions per day)
         let now = Utc::now().timestamp();
-        let ninety_days_ago = now - (90 * 86400);
+        let ninety_days_ago = now - 90 * 86400;
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
-            SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
+            SELECT date(COALESCE(first_message_at, last_message_at), 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
-            WHERE last_message_at >= ?1
+            WHERE last_message_at > ?1
               AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
@@ -835,12 +835,12 @@ impl Database {
 
         // Heatmap: always 90 days (not affected by time range filter)
         let now = Utc::now().timestamp();
-        let ninety_days_ago = now - (90 * 86400);
+        let ninety_days_ago = now - 90 * 86400;
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
-            SELECT date(last_message_at, 'unixepoch', 'localtime') as day, COUNT(*) as cnt
+            SELECT date(COALESCE(first_message_at, last_message_at), 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
-            WHERE last_message_at >= ?1
+            WHERE last_message_at > ?1
               AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
             GROUP BY day
             ORDER BY day ASC
