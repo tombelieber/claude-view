@@ -169,7 +169,7 @@ impl Database {
         Ok(db)
     }
 
-    /// Open the database at the default location: `~/.cache/claude-view/claude-view.db`
+    /// Open the database at the default location: `~/.claude-view/claude-view.db`
     pub async fn open_default() -> DbResult<Self> {
         let path = default_db_path()?;
         Self::new(&path).await
@@ -370,7 +370,7 @@ impl Database {
     }
 }
 
-/// Returns the default database path: `~/.cache/claude-view/claude-view.db`
+/// Returns the default database path: `~/.claude-view/claude-view.db`
 pub fn default_db_path() -> DbResult<PathBuf> {
     claude_view_core::paths::db_path().ok_or(DbError::NoCacheDir)
 }
