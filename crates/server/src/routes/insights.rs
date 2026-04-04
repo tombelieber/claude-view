@@ -463,7 +463,8 @@ async fn fetch_analytics_scope_meta_for_range(
             COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
             COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
         FROM sessions
-        WHERE last_message_at >= ?1
+        WHERE archived_at IS NULL
+          AND last_message_at >= ?1
           AND last_message_at <= ?2
         "#,
     )
