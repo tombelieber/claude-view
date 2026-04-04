@@ -85,9 +85,9 @@ pub struct ParsedSession {
     pub cache_read_tokens: i64,
     pub cache_creation_tokens: i64,
     pub thinking_block_count: i32,
-    pub turn_duration_avg_ms: i64,
-    pub turn_duration_max_ms: i64,
-    pub turn_duration_total_ms: i64,
+    pub turn_duration_avg_ms: Option<i64>,
+    pub turn_duration_max_ms: Option<i64>,
+    pub turn_duration_total_ms: Option<i64>,
     pub api_error_count: i32,
     pub api_retry_count: i32,
     pub compaction_count: i32,
@@ -2988,7 +2988,8 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
                 .iter()
                 .max()
                 .expect("non-empty checked above");
-            let avg = total / meta.turn_durations_ms.len() as u64;
+            let count = meta.turn_durations_ms.len() as u64;
+            let avg = (total + count / 2) / count;
             (Some(avg as i64), Some(max as i64), Some(total as i64))
         };
 
@@ -3430,12 +3431,13 @@ where
             let commit_count = commit_invocations.len() as i32;
 
             let (dur_avg, dur_max, dur_total) = if meta.turn_durations_ms.is_empty() {
-                (0i64, 0i64, 0i64)
+                (None, None, None)
             } else {
                 let total: u64 = meta.turn_durations_ms.iter().sum();
                 let max = *meta.turn_durations_ms.iter().max().unwrap();
-                let avg = total / meta.turn_durations_ms.len() as u64;
-                (avg as i64, max as i64, total as i64)
+                let count = meta.turn_durations_ms.len() as u64;
+                let avg = (total + count / 2) / count;
+                (Some(avg as i64), Some(max as i64), Some(total as i64))
             };
 
             let work_type_input = ClassificationInput::new(
