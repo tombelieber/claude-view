@@ -1233,7 +1233,7 @@ async fn handle_terminal_ws(
 /// on all platforms) and filters events to only the target file.
 /// Modified events are sent through the `mpsc::Sender<WatchEvent>` channel.
 pub(crate) fn start_file_watcher(
-    file_path: &PathBuf,
+    file_path: &std::path::Path,
     tx: mpsc::Sender<WatchEvent>,
 ) -> notify::Result<RecommendedWatcher> {
     // Canonicalize the target path so that the comparison against event paths
@@ -1242,7 +1242,7 @@ pub(crate) fn start_file_watcher(
     // /private/var/folders/...).
     let canonical_path = file_path
         .canonicalize()
-        .unwrap_or_else(|_| file_path.clone());
+        .unwrap_or_else(|_| file_path.to_path_buf());
     let target_for_closure = canonical_path.clone();
 
     let mut watcher =

@@ -557,7 +557,7 @@ async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect) {
         SideEffect::PersistHookEvents { session_id, events } => {
             let rows: Vec<_> = events.iter().map(|e| e.to_row()).collect();
             if let Err(e) =
-                claude_view_db::hook_events_queries::insert_hook_events(ctx.db, &session_id, &rows)
+                claude_view_db::hook_events_queries::insert_hook_events(ctx.db, session_id, &rows)
                     .await
             {
                 tracing::warn!(
