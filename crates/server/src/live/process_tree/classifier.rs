@@ -1028,7 +1028,9 @@ mod tests {
         // Empty (SIP fallback)
         assert!(is_anthropic_claude(""));
         // Binary with different basename (e.g. claude-wrapper, claude-game)
-        assert!(!is_anthropic_claude("/opt/tools/claude-wrapper --mode=chatbot"));
+        assert!(!is_anthropic_claude(
+            "/opt/tools/claude-wrapper --mode=chatbot"
+        ));
         assert!(!is_anthropic_claude("/opt/games/claude-game start"));
         // Binary named "claude" at non-standard path — accepted (basename is "claude")
         assert!(is_anthropic_claude("/opt/custom/bin/claude --flag"));
