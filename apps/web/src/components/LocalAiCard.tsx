@@ -1,18 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Copy,
-  Cpu,
-  ExternalLink,
-  Loader2,
-  Plug,
-  PlugZap,
-  Unplug,
-  Wifi,
-  WifiOff,
-} from 'lucide-react'
+import { Check, Copy, Cpu, Loader2, Plug, PlugZap, Wifi } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { cn } from '../lib/utils'
 
@@ -46,6 +33,53 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   custom: 'Custom',
 }
 
+/** Toggle switch — matches TelemetrySection dimensions with refined shadow and easing. */
+function Toggle({
+  checked,
+  onChange,
+  disabled,
+  loading,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+  loading?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent',
+        'transition-colors duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+        checked ? 'bg-green-500 dark:bg-green-600' : 'bg-gray-300 dark:bg-gray-600',
+      )}
+    >
+      <span
+        className={cn(
+          'pointer-events-none inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white ring-0',
+          'transition-transform duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+          checked ? 'translate-x-5' : 'translate-x-0',
+        )}
+        style={{
+          boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.06)',
+        }}
+      >
+        {loading ? (
+          <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+        ) : (
+          checked && <Check className="h-3 w-3 text-green-600" />
+        )}
+      </span>
+    </button>
+  )
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -75,7 +109,6 @@ function CopyButton({ text }: { text: string }) {
 export function LocalAiCard() {
   const queryClient = useQueryClient()
   const [customUrl, setCustomUrl] = useState('')
-  const [showAlternatives, setShowAlternatives] = useState(false)
 
   const { data: status } = useQuery<ServiceStatus>({
     queryKey: ['local-llm-status'],
@@ -98,7 +131,22 @@ export function LocalAiCard() {
       })
       if (!res.ok) throw new Error('toggle failed')
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local-llm-status'] }),
+    onMutate: async (enabled) => {
+      await queryClient.cancelQueries({ queryKey: ['local-llm-status'] })
+      const previous = queryClient.getQueryData<ServiceStatus>(['local-llm-status'])
+      queryClient.setQueryData<ServiceStatus>(['local-llm-status'], (old) =>
+        old ? { ...old, enabled } : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['local-llm-status'], context.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
+    },
   })
 
   const connectMutation = useMutation({
@@ -110,80 +158,80 @@ export function LocalAiCard() {
       })
       if (!res.ok) throw new Error('connect failed')
     },
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['local-llm-status'] })
+      const previous = queryClient.getQueryData<ServiceStatus>(['local-llm-status'])
+      queryClient.setQueryData<ServiceStatus>(['local-llm-status'], (old) =>
+        old ? { ...old, enabled: true, state: 'scanning' as ServerState } : old,
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['local-llm-status'], context.previous)
+      }
+    },
+    onSettled: () => {
       setCustomUrl('')
       queryClient.invalidateQueries({ queryKey: ['local-llm-status'] })
     },
   })
 
-  const disconnectMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/local-llm/disconnect', { method: 'POST' })
-      if (!res.ok) throw new Error('disconnect failed')
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['local-llm-status'] }),
-  })
-
   if (!status) {
     return (
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          Loading local AI status…
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+        <div className="px-5 py-4">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading local AI status…
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      {/* Header with toggle */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50">
+    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+      {/* Header — matches SettingsSection pattern */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-1.5">
         <div className="flex items-center gap-2">
-          <Cpu className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium">On-Device AI</span>
-          {status.state === 'connected' && status.provider && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+          <Cpu className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <h2 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+            On-Device AI
+          </h2>
+          {status.enabled && status.state === 'connected' && status.provider && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
               {PROVIDER_LABELS[status.provider]}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => toggleMutation.mutate(!status.enabled)}
+        <Toggle
+          checked={status.enabled}
+          onChange={(v) => toggleMutation.mutate(v)}
           disabled={toggleMutation.isPending}
-          className={cn(
-            'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-            status.enabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600',
-          )}
-        >
-          <span
-            className={cn(
-              'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-              status.enabled ? 'translate-x-4' : 'translate-x-0',
-            )}
-          />
-        </button>
+          loading={toggleMutation.isPending}
+        />
       </div>
 
-      {/* Body — rendered based on state */}
+      {/* Body — one of three clean states */}
       {status.enabled && (
-        <div className="px-4 py-3 space-y-3 text-sm">
-          {status.state === 'scanning' && <ScanningState />}
-          {status.state === 'connected' && (
-            <ConnectedState status={status} onDisconnect={() => disconnectMutation.mutate()} />
-          )}
-          {status.state === 'disconnected' && (
-            <DisconnectedState
+        <div className="px-5 pb-5 pt-1 text-sm">
+          {toggleMutation.isPending || status.state === 'scanning' || status.state === 'unknown' ? (
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Scanning for local servers…</span>
+            </div>
+          ) : status.state === 'connected' ? (
+            <ConnectedInfo status={status} />
+          ) : (
+            <NotFoundState
               status={status}
               customUrl={customUrl}
               setCustomUrl={setCustomUrl}
               onConnect={(url) => connectMutation.mutate(url)}
-              showAlternatives={showAlternatives}
-              setShowAlternatives={setShowAlternatives}
+              isConnecting={connectMutation.isPending}
             />
           )}
-          {status.state === 'unknown' && <div className="text-gray-400 text-xs">Initializing…</div>}
         </div>
       )}
     </div>
@@ -191,138 +239,83 @@ export function LocalAiCard() {
 }
 
 // ---------------------------------------------------------------------------
-// State components
+// Connected — clean status display, no actions (toggle OFF to disconnect)
 // ---------------------------------------------------------------------------
 
-function ScanningState() {
-  return (
-    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-      <Loader2 className="w-4 h-4 animate-spin" />
-      <span>Scanning for local LLM servers…</span>
-    </div>
-  )
-}
+function ConnectedInfo({ status }: { status: ServiceStatus }) {
+  const hasModelDetails = !!status.active_model
 
-function ConnectedState({
-  status,
-  onDisconnect,
-}: {
-  status: ServiceStatus
-  onDisconnect: () => void
-}) {
   return (
     <div className="space-y-2">
-      {/* Connection info */}
       <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
         <Wifi className="w-4 h-4" />
         <span className="font-medium">Connected</span>
         {status.url && (
-          <span className="text-xs text-gray-400 font-mono truncate max-w-48">{status.url}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-48">
+            {status.url}
+          </span>
         )}
       </div>
 
-      {/* Active model */}
-      {status.active_model && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-medium">Model:</span>
-          <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-mono">
-            {status.active_model}
-          </code>
+      {hasModelDetails ? (
+        <>
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span className="font-medium">Model:</span>
+            <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 font-mono">
+              {status.active_model}
+            </code>
+          </div>
+          {status.models.length > 1 && (
+            <div className="text-xs text-gray-400 dark:text-gray-500">
+              {status.models.length} models available
+            </div>
+          )}
+          {status.provider === 'omlx' && (
+            <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+              <PlugZap className="w-3 h-3" />
+              Apple Silicon optimized
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-2.5" role="status" aria-label="Loading model details">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-12 rounded bg-gray-200 dark:bg-gray-700 animate-pulse" />
+            <div className="h-4 w-36 rounded bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          </div>
+          <div className="h-[22px] w-40 rounded-md bg-gray-100 dark:bg-gray-800 animate-pulse" />
         </div>
       )}
-
-      {/* Model list (if 2+) */}
-      {status.models.length > 1 && (
-        <div className="text-xs text-gray-400">{status.models.length} models available</div>
-      )}
-
-      {/* oMLX Apple Silicon badge */}
-      {status.provider === 'omlx' && (
-        <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-          <PlugZap className="w-3 h-3" />
-          Apple Silicon optimized
-        </div>
-      )}
-
-      {/* Disconnect button */}
-      <div className="pt-1">
-        <button
-          type="button"
-          onClick={onDisconnect}
-          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer text-gray-500"
-        >
-          <Unplug className="w-3 h-3" />
-          Disconnect
-        </button>
-      </div>
     </div>
   )
 }
 
-function DisconnectedState({
+// ---------------------------------------------------------------------------
+// Not found — one guidance block + custom URL fallback
+// ---------------------------------------------------------------------------
+
+function NotFoundState({
   status,
   customUrl,
   setCustomUrl,
   onConnect,
-  showAlternatives,
-  setShowAlternatives,
+  isConnecting,
 }: {
   status: ServiceStatus
   customUrl: string
   setCustomUrl: (url: string) => void
   onConnect: (url: string) => void
-  showAlternatives: boolean
-  setShowAlternatives: (v: boolean) => void
+  isConnecting: boolean
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-        <WifiOff className="w-4 h-4" />
-        <span>No local LLM server detected</span>
-      </div>
+      <p className="text-gray-500 dark:text-gray-400">No server detected</p>
 
-      {/* oMLX-specific guidance */}
-      <OmlxGuidance status={status} />
+      <SetupGuidance status={status} />
 
-      {/* Alternatives (collapsed by default) */}
-      <button
-        type="button"
-        onClick={() => setShowAlternatives(!showAlternatives)}
-        className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
-      >
-        {showAlternatives ? (
-          <ChevronDown className="w-3 h-3" />
-        ) : (
-          <ChevronRight className="w-3 h-3" />
-        )}
-        Other providers
-      </button>
-
-      {showAlternatives && (
-        <div className="space-y-2 pl-4 text-xs text-gray-500 dark:text-gray-400">
-          <a
-            href="https://ollama.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          >
-            Ollama <ExternalLink className="w-3 h-3" />
-          </a>
-          <a
-            href="https://lmstudio.ai"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-          >
-            LM Studio <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      )}
-
-      {/* Custom URL */}
-      <div className="pt-1 space-y-1.5">
-        <label htmlFor="local-llm-custom-url" className="text-xs text-gray-400">
-          Custom URL
+      <div className="space-y-1.5">
+        <label htmlFor="local-llm-custom-url" className="text-xs text-gray-400 dark:text-gray-500">
+          Or connect to a running server
         </label>
         <div className="flex gap-2">
           <input
@@ -331,72 +324,86 @@ function DisconnectedState({
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}
             placeholder="http://localhost:8080"
-            className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            disabled={isConnecting}
+            className="flex-1 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
           />
           <button
             type="button"
             onClick={() => customUrl.trim() && onConnect(customUrl.trim())}
-            disabled={!customUrl.trim()}
-            className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            disabled={!customUrl.trim() || isConnecting}
+            className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
-            <Plug className="w-3 h-3" />
+            {isConnecting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Plug className="w-3 h-3" />
+            )}
             Connect
           </button>
         </div>
       </div>
+
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        Works with{' '}
+        <a
+          href="https://github.com/nicholasgasior/omlx"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-gray-300 dark:decoration-gray-600 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          oMLX
+        </a>
+        ,{' '}
+        <a
+          href="https://ollama.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-gray-300 dark:decoration-gray-600 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          Ollama
+        </a>
+        , and{' '}
+        <a
+          href="https://lmstudio.ai"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-gray-300 dark:decoration-gray-600 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          LM Studio
+        </a>
+      </p>
     </div>
   )
 }
 
-function OmlxGuidance({ status }: { status: ServiceStatus }) {
-  // Four sub-states based on omlx_installed and omlx_running
+// ---------------------------------------------------------------------------
+// Setup guidance — one contextual command based on oMLX state
+// ---------------------------------------------------------------------------
+
+function SetupGuidance({ status }: { status: ServiceStatus }) {
+  let command: string
+  let hint: string
+
   if (!status.omlx_installed) {
-    return (
-      <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 space-y-1.5">
-        <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
-          Recommended: Install oMLX for Apple Silicon
-        </div>
-        <div className="flex items-center gap-2">
-          <code className="text-xs font-mono px-2 py-1 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            pip install omlx
-          </code>
-          <CopyButton text="pip install omlx" />
-        </div>
-      </div>
-    )
+    command = 'pip install omlx && omlx serve'
+    hint = 'Get started with oMLX for Apple Silicon'
+  } else if (!status.omlx_running) {
+    command = 'omlx serve'
+    hint = 'Start the oMLX server'
+  } else {
+    command = 'omlx pull mlx-community/Qwen3-4B-4bit'
+    hint = 'Load a model to get started'
   }
 
-  if (status.omlx_installed && !status.omlx_running) {
-    return (
-      <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 space-y-1.5">
-        <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
-          oMLX is installed but not running
-        </div>
-        <div className="flex items-center gap-2">
-          <code className="text-xs font-mono px-2 py-1 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            omlx serve
-          </code>
-          <CopyButton text="omlx serve" />
-        </div>
+  return (
+    <div className="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
+      <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{hint}</p>
+      <div className="flex items-center gap-2">
+        <code className="text-xs font-mono px-2 py-1 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+          {command}
+        </code>
+        <CopyButton text={command} />
       </div>
-    )
-  }
-
-  if (status.omlx_installed && status.omlx_running) {
-    return (
-      <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 space-y-1.5">
-        <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
-          oMLX is running but no models loaded
-        </div>
-        <div className="flex items-center gap-2">
-          <code className="text-xs font-mono px-2 py-1 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200">
-            omlx pull mlx-community/Qwen3-4B-4bit
-          </code>
-          <CopyButton text="omlx pull mlx-community/Qwen3-4B-4bit" />
-        </div>
-      </div>
-    )
-  }
-
-  return null
+    </div>
+  )
 }
