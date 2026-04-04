@@ -26,15 +26,15 @@ fn fixture_jsonl() -> Vec<u8> {
 
 // Ground truth for the fixture above:
 const EXPECTED_TURN_COUNT: i32 = 3;
-const EXPECTED_TOOL_READ: i32 = 2;  // Read auth.rs + Read integration.rs
-const EXPECTED_TOOL_EDIT: i32 = 1;  // Edit auth.rs
+const EXPECTED_TOOL_READ: i32 = 2; // Read auth.rs + Read integration.rs
+const EXPECTED_TOOL_EDIT: i32 = 1; // Edit auth.rs
 const EXPECTED_TOOL_WRITE: i32 = 1; // Write auth_test.rs
-const EXPECTED_TOOL_BASH: i32 = 1;  // Bash cargo test
+const EXPECTED_TOOL_BASH: i32 = 1; // Bash cargo test
 const EXPECTED_TOOL_TOTAL: i32 = 5; // 2+1+1+1
-const EXPECTED_INPUT_TOKENS: i64 = 120_000;  // 50k + 40k + 30k
-const EXPECTED_OUTPUT_TOKENS: i64 = 25_000;  // 8k + 12k + 5k
-const EXPECTED_CACHE_READ: i64 = 65_000;     // 20k + 30k + 15k
-const EXPECTED_CACHE_CREATE: i64 = 10_000;   // 5k + 3k + 2k
+const EXPECTED_INPUT_TOKENS: i64 = 120_000; // 50k + 40k + 30k
+const EXPECTED_OUTPUT_TOKENS: i64 = 25_000; // 8k + 12k + 5k
+const EXPECTED_CACHE_READ: i64 = 65_000; // 20k + 30k + 15k
+const EXPECTED_CACHE_CREATE: i64 = 10_000; // 5k + 3k + 2k
 
 #[test]
 fn parse_bytes_matches_ground_truth() {
@@ -113,9 +113,9 @@ async fn parsed_session_roundtrips_through_db() {
         cache_read_tokens: result.deep.cache_read_tokens as i64,
         cache_creation_tokens: result.deep.cache_creation_tokens as i64,
         thinking_block_count: 0,
-        turn_duration_avg_ms: 0,
-        turn_duration_max_ms: 0,
-        turn_duration_total_ms: 0,
+        turn_duration_avg_ms: None,
+        turn_duration_max_ms: None,
+        turn_duration_total_ms: None,
         api_error_count: 0,
         api_retry_count: 0,
         compaction_count: 0,
@@ -184,6 +184,12 @@ async fn parsed_session_roundtrips_through_db() {
     .unwrap();
 
     assert_eq!(session_count, 1, "exactly one session in valid_sessions");
-    assert_eq!(total_input, EXPECTED_INPUT_TOKENS, "aggregated input tokens");
-    assert_eq!(total_tool_calls, EXPECTED_TOOL_TOTAL as i64, "aggregated tool calls");
+    assert_eq!(
+        total_input, EXPECTED_INPUT_TOKENS,
+        "aggregated input tokens"
+    );
+    assert_eq!(
+        total_tool_calls, EXPECTED_TOOL_TOTAL as i64,
+        "aggregated tool calls"
+    );
 }
