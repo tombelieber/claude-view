@@ -1,8 +1,55 @@
 import type { PhaseFreshness } from '@claude-view/shared/types/generated/PhaseFreshness'
 import type { SessionPhase } from '@claude-view/shared/types/generated/SessionPhase'
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { useQuery } from '@tanstack/react-query'
 import { Cpu } from 'lucide-react'
 import { cn } from '../lib/utils'
+
+// ---------------------------------------------------------------------------
+// Local LLM status — passive reader of the same cache LocalAiCard polls
+// ---------------------------------------------------------------------------
+
+interface LlmStatus {
+  enabled: boolean
+  provider: 'omlx' | 'ollama' | 'lm_studio' | 'custom' | null
+  active_model: string | null
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  omlx: 'oMLX',
+  ollama: 'Ollama',
+  lm_studio: 'LM Studio',
+  custom: 'Custom',
+}
+
+/** Strip org prefix: "mlx-community/Qwen3-4B-4bit" → "Qwen3-4B-4bit" */
+function shortModel(model: string): string {
+  const i = model.lastIndexOf('/')
+  return i >= 0 ? model.slice(i + 1) : model
+}
+
+function useLlmStatus() {
+  return useQuery<LlmStatus>({
+    queryKey: ['local-llm-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/local-llm/status')
+      if (!res.ok) throw new Error('status fetch failed')
+      return res.json()
+    },
+    staleTime: 30_000, // Passive — LocalAiCard's 5s poll keeps cache fresh
+  })
+}
+
+/** Format "Provider · Model" from live status, falling back gracefully. */
+function classifierLabel(status: LlmStatus | undefined): string {
+  if (!status) return 'On-device AI'
+  const prov = status.provider ? (PROVIDER_LABELS[status.provider] ?? status.provider) : null
+  const model = status.active_model ? shortModel(status.active_model) : null
+  if (prov && model) return `${prov} · ${model}`
+  if (prov) return prov
+  if (model) return model
+  return 'On-device AI'
+}
 
 interface PhaseConfig {
   label: string
@@ -74,6 +121,10 @@ interface PhaseBadgeProps {
  * - `settled` → dimmed 75% opacity (NeedsYou, phase frozen)
  */
 export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgeProps) {
+  const { data: llmStatus } = useLlmStatus()
+
+  // Feature gate: hide when on-device AI is explicitly disabled
+  if (llmStatus && !llmStatus.enabled) return null
   if (!phase || phase === 'working') return null
 
   const config = PHASE_CONFIG[phase]
@@ -125,7 +176,7 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
             {scope && <p className="text-gray-500 dark:text-gray-400 mt-0.5">{scope}</p>}
             <p className="text-gray-400 dark:text-gray-500 mt-1">
               <Cpu className="inline size-3 mr-0.5 -mt-px" />
-              oMLX · Qwen3.5 — {freshnessLabel}
+              {classifierLabel(llmStatus)} — {freshnessLabel}
             </p>
             <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
           </Tooltip.Content>
@@ -136,10 +187,14 @@ export function PhaseBadge({ phase, scope, freshness, className }: PhaseBadgePro
 }
 
 /**
- * Skeleton shown while oMLX + Qwen3.5 is classifying the session phase.
+ * Skeleton shown while the on-device classifier is determining the session phase.
  * Displays only for autonomous sessions before the first stabilized result.
  */
 export function PhaseBadgeSkeleton({ className }: { className?: string }) {
+  const { data: llmStatus } = useLlmStatus()
+
+  if (llmStatus && !llmStatus.enabled) return null
+
   return (
     <span
       className={cn(
@@ -152,7 +207,7 @@ export function PhaseBadgeSkeleton({ className }: { className?: string }) {
       )}
     >
       <Cpu className="size-2.5" />
-      <span>oMLX · Qwen3.5</span>
+      <span>{classifierLabel(llmStatus)}</span>
       <span className="inline-flex gap-px ml-0.5">
         <span className="size-1 rounded-full bg-current animate-bounce [animation-delay:0ms]" />
         <span className="size-1 rounded-full bg-current animate-bounce [animation-delay:150ms]" />
