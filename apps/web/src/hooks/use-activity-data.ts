@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use `useActivityCombined` instead — server-side aggregation via
+ * /api/sessions/activity/rich replaces this 10K-session client-side pagination loop.
+ */
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import {

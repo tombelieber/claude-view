@@ -6,7 +6,7 @@ import { DailyTimeline } from '../components/activity/DailyTimeline'
 import { ProjectBreakdown } from '../components/activity/ProjectBreakdown'
 import { SummaryStats } from '../components/activity/SummaryStats'
 import { DateRangePicker, TimeRangeSelector } from '../components/ui'
-import { useActivityData } from '../hooks/use-activity-data'
+import { useActivityCombined } from '../hooks/use-activity-combined'
 import { useIsMobile } from '../hooks/use-media-query'
 import { useTimeRange } from '../hooks/use-time-range'
 import type { TimeRangePreset } from '../hooks/use-time-range'
@@ -28,7 +28,7 @@ export function ActivityPage() {
   const isMobile = useIsMobile()
 
   const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
-  const { data, isLoading, error } = useActivityData(
+  const { data, isLoading, error } = useActivityCombined(
     timeRange.fromTimestamp,
     timeRange.toTimestamp,
     sidebarProject,
