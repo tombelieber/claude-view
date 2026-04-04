@@ -528,27 +528,10 @@ export interface ForkSessionRequest {
   initialMessage?: string
 }
 
-export interface PromptRequest {
-  message: string
-  model: string
-  permissionMode?: string
-}
-
 export interface SessionResponse {
   controlId: string
   sessionId: string
   status: 'created' | 'resumed' | 'already_active'
-}
-
-export interface AvailableSession {
-  sessionId: string
-  summary: string
-  lastModified: number
-  fileSize: number
-  customTitle?: string
-  firstPrompt?: string
-  gitBranch?: string
-  cwd?: string
 }
 
 export interface ActiveSession {
