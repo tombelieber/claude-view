@@ -398,7 +398,8 @@ pub async fn dashboard_stats(
             let duration = to - from;
             // Previous period is the same duration immediately before
             let comp_end = from - 1;
-            let comp_start = comp_end - duration;
+            // H5: Clamp to 0 to prevent negative timestamps for new users
+            let comp_start = (comp_end - duration).max(0);
             (Some(from), Some(to), Some(comp_start), Some(comp_end))
         } else {
             (None, None, None, None)
