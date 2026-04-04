@@ -29,7 +29,7 @@ export function useMarketplaceRefresh() {
   // Toast on batch completion (active → false transition)
   useEffect(() => {
     if (prevActiveRef.current && !isActive && data) {
-      const ops = Object.values(data.ops)
+      const ops = Object.values(data.ops ?? {})
       const succeeded = ops.filter((op) => op?.status === 'completed').length
       const failed = ops.filter((op) => op?.status === 'failed').length
 
