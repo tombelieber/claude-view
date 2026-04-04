@@ -10,7 +10,6 @@ import {
   type PermissionMode,
   type SDKMessage,
   getSessionInfo,
-  listSessions,
   query,
 } from '@anthropic-ai/claude-agent-sdk'
 import { findClaudeExecutable } from './cli-path.js'
@@ -19,7 +18,6 @@ import { MessageBridge } from './message-bridge.js'
 import { updateModelCacheFromSession } from './model-cache.js'
 import { PermissionHandler } from './permission-handler.js'
 import type {
-  AvailableSession,
   CreateSessionRequest,
   ForkSessionRequest,
   ResumeSessionRequest,
@@ -494,18 +492,4 @@ export function sessionJsonlExists(sessionId: string): boolean {
     // If ~/.claude/projects doesn't exist, session can't exist
   }
   return false
-}
-
-export async function listAvailableSessions(): Promise<AvailableSession[]> {
-  const sessions = await listSessions()
-  return sessions.map((s) => ({
-    sessionId: s.sessionId,
-    summary: s.summary,
-    lastModified: s.lastModified,
-    fileSize: s.fileSize ?? 0,
-    customTitle: s.customTitle,
-    firstPrompt: s.firstPrompt,
-    gitBranch: s.gitBranch,
-    cwd: s.cwd,
-  }))
 }

@@ -18,7 +18,6 @@ vi.mock('./sdk-session.js', () => ({
   closeSession: vi.fn(),
   sendMessage: vi.fn(),
   waitForSessionInit: (...args: unknown[]) => mockWaitForSessionInit(...args),
-  listAvailableSessions: vi.fn().mockResolvedValue([]),
 }))
 
 // Import routes AFTER mocks are set up
