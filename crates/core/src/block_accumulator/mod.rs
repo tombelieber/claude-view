@@ -1238,4 +1238,215 @@ mod tests {
             panic!("Expected UserBlock");
         }
     }
+
+    // ── Regression: user message content format handling ──────────────
+    // Bug (2026-04-04): handle_user() only handled array content,
+    // silently dropping string-content user messages. These tests
+    // ensure BOTH formats always produce UserBlocks.
+
+    #[test]
+    fn regression_string_user_then_assistant_ordering_preserved() {
+        // Real pattern: user sends text prompt, assistant replies.
+        // String-content user must appear BEFORE assistant in block list.
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-1",
+            "message": {"content": "commit n push"},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        acc.process_line(&serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-1",
+                "content": [{"type": "text", "text": "Done."}],
+                "stop_reason": "end_turn"
+            },
+            "timestamp": "2026-04-04T01:00:01.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 2);
+        assert!(matches!(&blocks[0], ConversationBlock::User(_)));
+        assert!(matches!(&blocks[1], ConversationBlock::Assistant(_)));
+    }
+
+    #[test]
+    fn regression_mixed_string_and_array_users_in_same_session() {
+        // Real pattern: first prompt is string, tool results are arrays,
+        // then another string prompt. All must produce correct blocks.
+        let mut acc = BlockAccumulator::new();
+
+        // String user prompt
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-1",
+            "message": {"content": "check git status"},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+
+        // Assistant with tool_use
+        acc.process_line(&serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-1",
+                "content": [
+                    {"type": "text", "text": "Let me check."},
+                    {"type": "tool_use", "id": "tu-1", "name": "Bash", "input": {"command": "git status"}}
+                ]
+            },
+            "timestamp": "2026-04-04T01:00:01.000Z"
+        }));
+
+        // Array user with tool_result (should NOT create UserBlock)
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "tu-1", "content": "On branch main"}
+            ]},
+            "timestamp": "2026-04-04T01:00:02.000Z"
+        }));
+
+        // Second string user prompt
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-2",
+            "message": {"content": "now push it"},
+            "timestamp": "2026-04-04T01:00:03.000Z"
+        }));
+
+        let blocks = acc.finalize();
+        let user_blocks: Vec<_> = blocks
+            .iter()
+            .filter(|b| matches!(b, ConversationBlock::User(_)))
+            .collect();
+        assert_eq!(
+            user_blocks.len(),
+            2,
+            "both string-content user messages must produce blocks; tool_result must not"
+        );
+        if let ConversationBlock::User(u1) = user_blocks[0] {
+            assert_eq!(u1.text, "check git status");
+        }
+        if let ConversationBlock::User(u2) = user_blocks[1] {
+            assert_eq!(u2.text, "now push it");
+        }
+    }
+
+    #[test]
+    fn regression_string_content_empty_string_no_block() {
+        // Edge case: empty string content should still create a block
+        // (the user explicitly sent an empty message — don't swallow it).
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-empty",
+            "message": {"content": ""},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(
+            blocks.len(),
+            1,
+            "empty string user message should still produce a block"
+        );
+    }
+
+    #[test]
+    fn regression_string_content_whitespace_only() {
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-ws",
+            "message": {"content": "   \n  "},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(
+            blocks.len(),
+            1,
+            "whitespace-only user message should still produce a block"
+        );
+    }
+
+    #[test]
+    fn regression_no_message_field_no_crash() {
+        // Defensive: malformed entry with no message field should not panic.
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-no-msg",
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 0, "no message field = no block, no crash");
+    }
+
+    #[test]
+    fn regression_content_is_number_no_crash() {
+        // Defensive: content is neither string nor array.
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-num",
+            "message": {"content": 42},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(
+            blocks.len(),
+            0,
+            "non-string non-array content = no block, no crash"
+        );
+    }
+
+    #[test]
+    fn regression_string_content_preserves_all_fields() {
+        // Ensure string-content path propagates every field identically
+        // to the array-content path.
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-full",
+            "message": {"content": "test message"},
+            "parentUuid": "parent-1",
+            "permissionMode": "bypassPermissions",
+            "isSidechain": true,
+            "agentId": "agent-xyz",
+            "timestamp": "2026-04-04T12:30:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        if let ConversationBlock::User(u) = &blocks[0] {
+            assert_eq!(u.id, "u-full");
+            assert_eq!(u.text, "test message");
+            assert_eq!(u.parent_uuid.as_deref(), Some("parent-1"));
+            assert_eq!(u.permission_mode.as_deref(), Some("bypassPermissions"));
+            assert_eq!(u.is_sidechain, Some(true));
+            assert_eq!(u.agent_id.as_deref(), Some("agent-xyz"));
+            assert!(u.images.is_empty());
+            assert!(u.timestamp > 0.0);
+        } else {
+            panic!("Expected UserBlock");
+        }
+    }
+
+    #[test]
+    fn regression_snapshot_includes_string_content_users() {
+        // The snapshot() path (used by terminal WS block-mode) must also
+        // include string-content user blocks — not just finalize().
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-snap",
+            "message": {"content": "live prompt"},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+        let snap = acc.snapshot();
+        assert_eq!(
+            snap.len(),
+            1,
+            "snapshot must include string-content user blocks"
+        );
+        assert!(matches!(&snap[0], ConversationBlock::User(_)));
+    }
 }
