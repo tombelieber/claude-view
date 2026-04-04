@@ -1,7 +1,7 @@
 import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { useBlockSocket } from '../../hooks/use-block-socket'
+import { useSubAgentBlocks } from '../../hooks/use-subagent-blocks'
 import { useMonitorStore } from '../../store/monitor-store'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
@@ -26,12 +26,14 @@ export function SubAgentBlockView({
   const displayMode = useMonitorStore((s) => s.displayMode)
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
 
-  const { blocks, connectionState, error } = useBlockSocket({
-    sessionId,
-    agentId,
-    enabled: true,
-    scrollback: 100_000,
-  })
+  const { blocks, isLoading, isFetchingOlder, hasOlderMessages, fetchOlder, error } =
+    useSubAgentBlocks({
+      sessionId,
+      agentId,
+      enabled: true,
+    })
+
+  const connectionLabel = isLoading ? 'loading' : error ? 'error' : 'loaded'
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -49,13 +51,12 @@ export function SubAgentBlockView({
         <span
           className={cn(
             'text-xs font-mono flex-shrink-0',
-            connectionState === 'connected' && 'text-green-600 dark:text-green-400',
-            connectionState === 'connecting' && 'text-yellow-600 dark:text-yellow-400',
-            connectionState === 'disconnected' && 'text-gray-400 dark:text-gray-500',
-            connectionState === 'error' && 'text-red-500 dark:text-red-400',
+            connectionLabel === 'loaded' && 'text-green-600 dark:text-green-400',
+            connectionLabel === 'loading' && 'text-yellow-600 dark:text-yellow-400',
+            connectionLabel === 'error' && 'text-red-500 dark:text-red-400',
           )}
         >
-          {connectionState}
+          {connectionLabel}
         </span>
         <DisplayModeToggle />
         <button
@@ -75,9 +76,9 @@ export function SubAgentBlockView({
               Sub-agent JSONL may not exist yet or session has ended
             </p>
           </div>
-        ) : blocks.length === 0 && connectionState !== 'connecting' ? (
+        ) : blocks.length === 0 && !isLoading ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-gray-500 p-4">
-            {connectionState === 'error' ? 'Failed to load sub-agent content' : 'No messages yet'}
+            No messages yet
           </div>
         ) : (
           <ErrorBoundary>
@@ -85,6 +86,9 @@ export function SubAgentBlockView({
               blocks={blocks}
               renderers={registry}
               filterBar={displayMode === 'developer'}
+              onStartReached={fetchOlder}
+              isFetchingOlder={isFetchingOlder}
+              hasOlderMessages={hasOlderMessages}
             />
           </ErrorBoundary>
         )}
