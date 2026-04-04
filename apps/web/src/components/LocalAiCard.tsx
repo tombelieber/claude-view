@@ -321,9 +321,12 @@ function DisconnectedState({
 
       {/* Custom URL */}
       <div className="pt-1 space-y-1.5">
-        <label className="text-xs text-gray-400">Custom URL</label>
+        <label htmlFor="local-llm-custom-url" className="text-xs text-gray-400">
+          Custom URL
+        </label>
         <div className="flex gap-2">
           <input
+            id="local-llm-custom-url"
             type="text"
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}
