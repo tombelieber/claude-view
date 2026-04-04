@@ -25,6 +25,43 @@ use claude_view_core::hook_to_block::make_hook_progress_block;
 
 use crate::state::AppState;
 
+/// Resolve the JSONL file path for a session.
+///
+/// Checks (in order): live sessions → recently closed → database.
+/// This allows terminal WebSocket handlers to serve both live and historical
+/// sessions — not just the ones currently in the `live_sessions` map.
+async fn resolve_jsonl_path(state: &AppState, session_id: &str) -> Option<PathBuf> {
+    // 1. Live sessions (in-memory, actively monitored)
+    {
+        let map = state.live_sessions.read().await;
+        if let Some(fp) = map.get(session_id).map(|s| s.jsonl.file_path.clone()) {
+            if !fp.is_empty() {
+                return Some(PathBuf::from(fp));
+            }
+        }
+    }
+
+    // 2. Recently closed (ephemeral, post-reap)
+    {
+        let map = state.recently_closed.read().await;
+        if let Some(fp) = map.get(session_id).map(|s| s.jsonl.file_path.clone()) {
+            if !fp.is_empty() {
+                return Some(PathBuf::from(fp));
+            }
+        }
+    }
+
+    // 3. Database (historical sessions)
+    if let Ok(Some(fp)) = state.db.get_session_file_path(session_id).await {
+        let path = PathBuf::from(&fp);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
 /// RAII guard that calls `disconnect()` when dropped, ensuring connection
 /// count is always decremented even if the WebSocket handler panics or the
 /// tokio task is cancelled (e.g., during server shutdown or HMR reload).
@@ -76,17 +113,10 @@ async fn ws_terminal_handler(
     Path(session_id): Path<String>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // Look up the session to get its JSONL file path
-    let file_path = {
-        let map = state.live_sessions.read().await;
-        map.get(&session_id).map(|s| s.jsonl.file_path.clone())
-    };
-
-    let file_path = match file_path {
-        Some(fp) if !fp.is_empty() => PathBuf::from(fp),
-        _ => {
-            // Session not found in live sessions map -- return an error
-            // via a WebSocket that immediately sends an error and closes.
+    // Look up the session JSONL path: live → recently closed → DB
+    let file_path = match resolve_jsonl_path(&state, &session_id).await {
+        Some(path) => path,
+        None => {
             return ws.on_upgrade(move |mut socket| async move {
                 let err_msg = serde_json::json!({
                     "type": "error",
@@ -174,15 +204,10 @@ async fn ws_subagent_terminal_handler(
         });
     }
 
-    // Look up parent session to get its JSONL file path
-    let parent_file_path = {
-        let map = state.live_sessions.read().await;
-        map.get(&session_id).map(|s| s.jsonl.file_path.clone())
-    };
-
-    let parent_file_path = match parent_file_path {
-        Some(fp) if !fp.is_empty() => PathBuf::from(fp),
-        _ => {
+    // Look up parent session JSONL path: live → recently closed → DB
+    let parent_file_path = match resolve_jsonl_path(&state, &session_id).await {
+        Some(path) => path,
+        None => {
             return ws.on_upgrade(move |mut socket| async move {
                 let err_msg = serde_json::json!({
                     "type": "error",
