@@ -941,6 +941,14 @@ impl Database {
     ///
     /// Returns every non-empty `file_path` in the sessions table.
     /// Used by the stale-session pruning step to check which files still exist on disk.
+    /// Get all session IDs in the database (for backup dedup).
+    pub async fn get_all_session_ids(&self) -> DbResult<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT id FROM sessions")
+            .fetch_all(self.pool())
+            .await?;
+        Ok(rows.into_iter().map(|(id,)| id).collect())
+    }
+
     pub async fn get_all_session_file_paths(&self) -> DbResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT file_path FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",

@@ -27,6 +27,8 @@ export interface ActivitySummary {
 export interface ActivityPoint {
   date: string
   count: number
+  /** Total duration in seconds for this bucket (used by CalendarHeatmap). */
+  totalSeconds: number
 }
 
 /** Full server-side activity response. */

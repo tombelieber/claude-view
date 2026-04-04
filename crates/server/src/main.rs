@@ -664,6 +664,25 @@ async fn main() -> Result<()> {
                     "Startup scan complete"
                 );
 
+                // Ingest backup sessions from ~/.claude-backup (optimistic, best-effort).
+                // Runs after primary scan so dedup check against DB is accurate.
+                {
+                    let search_for_backup = idx_search.read().unwrap().clone();
+                    let (backup_imported, backup_skipped) =
+                        claude_view_db::indexer_parallel::ingest_backup_sessions(
+                            &idx_db,
+                            search_for_backup,
+                        )
+                        .await;
+                    if backup_imported > 0 {
+                        tracing::info!(
+                            backup_imported,
+                            backup_skipped,
+                            "Backup sessions imported from ~/.claude-backup"
+                        );
+                    }
+                }
+
                 // Signal Done immediately — search index is ready.
                 // Post-scan cleanup below is housekeeping, not indexing.
                 idx_state.set_status(IndexingStatus::Done);

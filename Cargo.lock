@@ -590,6 +590,7 @@ dependencies = [
  "claude-view-search",
  "claude-view-server",
  "dirs",
+ "flate2",
  "memchr",
  "memmap2",
  "rusqlite",
@@ -604,6 +605,7 @@ dependencies = [
  "tracing",
  "ts-rs",
  "utoipa",
+ "walkdir",
  "workspace-hack",
 ]
 

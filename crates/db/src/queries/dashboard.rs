@@ -37,6 +37,9 @@ pub struct SessionFilterParams {
 pub struct ActivityPoint {
     pub date: String,
     pub count: i64,
+    /// Total duration in seconds for this bucket (used by CalendarHeatmap).
+    #[serde(rename = "totalSeconds")]
+    pub total_seconds: i64,
 }
 
 /// Project-level aggregation for the activity page.
@@ -1020,18 +1023,23 @@ impl Database {
             ("DATE(last_message_at, 'unixepoch')", "day")
         };
 
-        // 2. Run grouped count (exclude ts <= 0)
+        // 2. Run grouped count + total_seconds (exclude ts <= 0)
         let sql = format!(
-            "SELECT {group_expr} AS date, COUNT(*) AS count \
+            "SELECT {group_expr} AS date, COUNT(*) AS count, \
+                COALESCE(SUM(duration_seconds), 0) AS total_seconds \
              FROM valid_sessions WHERE last_message_at > 0 \
              GROUP BY date ORDER BY date"
         );
 
-        let raw_rows: Vec<(String, i64)> = sqlx::query_as(&sql).fetch_all(self.pool()).await?;
+        let raw_rows: Vec<(String, i64, i64)> = sqlx::query_as(&sql).fetch_all(self.pool()).await?;
 
         let rows: Vec<ActivityPoint> = raw_rows
             .into_iter()
-            .map(|(date, count)| ActivityPoint { date, count })
+            .map(|(date, count, total_seconds)| ActivityPoint {
+                date,
+                count,
+                total_seconds,
+            })
             .collect();
 
         Ok((rows, bucket.to_string()))
@@ -1065,32 +1073,27 @@ impl Database {
         }
         let where_clause = conditions.join(" AND ");
 
-        // 1. Histogram (reuse bucket logic)
-        let span_sql = format!(
-            "SELECT COALESCE(MIN(last_message_at), 0), COALESCE(MAX(last_message_at), 0) \
-             FROM valid_sessions WHERE {where_clause}"
-        );
-        let (min_ts, max_ts): (i64, i64) = sqlx::query_as(&span_sql).fetch_one(self.pool()).await?;
-
-        let span_days = (max_ts - min_ts) / 86400;
-        let (group_expr, bucket) = if span_days > 365 {
-            ("strftime('%Y-%m', last_message_at, 'unixepoch')", "month")
-        } else if span_days > 60 {
-            ("strftime('%Y-W%W', last_message_at, 'unixepoch')", "week")
-        } else {
-            ("DATE(last_message_at, 'unixepoch')", "day")
-        };
+        // 1. Histogram — always daily buckets for CalendarHeatmap (needs YYYY-MM-DD).
+        // The older session_activity_histogram (sparkline) can still auto-bucket.
+        // needs YYYY-MM-DD dates regardless of span. The older
+        // session_activity_histogram (sparkline) can still auto-bucket.
+        let bucket = "day";
 
         let hist_sql = format!(
-            "SELECT {group_expr} AS date, COUNT(*) AS count \
+            "SELECT DATE(last_message_at, 'unixepoch') AS date, COUNT(*) AS count, \
+                COALESCE(SUM(duration_seconds), 0) AS total_seconds \
              FROM valid_sessions WHERE {where_clause} \
              GROUP BY date ORDER BY date"
         );
-        let histogram: Vec<ActivityPoint> = sqlx::query_as::<_, (String, i64)>(&hist_sql)
+        let histogram: Vec<ActivityPoint> = sqlx::query_as::<_, (String, i64, i64)>(&hist_sql)
             .fetch_all(self.pool())
             .await?
             .into_iter()
-            .map(|(date, count)| ActivityPoint { date, count })
+            .map(|(date, count, total_seconds)| ActivityPoint {
+                date,
+                count,
+                total_seconds,
+            })
             .collect();
 
         // 2. Project breakdown (top 20 by session count)
