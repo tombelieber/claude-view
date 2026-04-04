@@ -4,6 +4,7 @@ import { PenSquare, Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useSessionMutations } from '../../../hooks/use-session-mutations'
 import { TOAST_DURATION } from '../../../lib/notify'
 import { toSidebarItems } from '../../../lib/sidebar-mapper'
 import { useAppStore } from '../../../store/app-store'
@@ -48,6 +49,7 @@ function groupByTime(sessions: SessionInfo[], now: number) {
 export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
+  const { resumeSession, deleteSession, forkSession } = useSessionMutations()
 
   const chatNeedsYouCollapsed = useAppStore((s) => s.chatNeedsYouCollapsed)
   const chatWorkingCollapsed = useAppStore((s) => s.chatWorkingCollapsed)
@@ -148,37 +150,20 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
 
   const handleTakeOver = useCallback(
     async (sessionId: string) => {
-      try {
-        const res = await fetch(`/api/sidecar/sessions/${sessionId}/resume`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        })
-        const data = await res.json()
-        if (data.controlId) {
-          toast.success('Session taken over', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${sessionId}`)
-        } else {
-          toast.error('Take over failed', {
-            description: data.error,
-            duration: TOAST_DURATION.extended,
-          })
-        }
-      } catch {
-        toast.error('Failed to take over session', { duration: TOAST_DURATION.extended })
+      const data = await resumeSession.mutateAsync(sessionId)
+      if (data.controlId) {
+        navigate(`/chat/${sessionId}`)
       }
     },
-    [navigate],
+    [navigate, resumeSession],
   )
 
-  const handleShutDown = useCallback(async (sessionId: string) => {
-    try {
-      await fetch(`/api/sidecar/sessions/${sessionId}`, { method: 'DELETE' })
-      toast.success('Session shut down', { duration: TOAST_DURATION.micro })
-    } catch {
-      toast.error('Failed to shut down session', { duration: TOAST_DURATION.extended })
-    }
-  }, [])
+  const handleShutDown = useCallback(
+    (sessionId: string) => {
+      deleteSession.mutate(sessionId)
+    },
+    [deleteSession],
+  )
 
   const handleOpenInMonitor = useCallback(
     (sessionId: string) => {
@@ -198,25 +183,16 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
 
   const handleFork = useCallback(
     async (sessionId: string) => {
-      try {
-        const session = enrichedHistory.find((s) => s.id === sessionId)
-        const res = await fetch(`/api/sidecar/sessions/${sessionId}/fork`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectPath: session?.projectPath }),
-        })
-        const data = await res.json()
-        if (data.sessionId) {
-          toast.success('Session forked', { duration: TOAST_DURATION.micro })
-          navigate(`/chat/${data.sessionId}`)
-        } else {
-          toast.error('Fork failed', { duration: TOAST_DURATION.extended })
-        }
-      } catch {
-        toast.error('Failed to fork session', { duration: TOAST_DURATION.extended })
+      const session = enrichedHistory.find((s) => s.id === sessionId)
+      const data = await forkSession.mutateAsync({
+        sessionId,
+        projectPath: session?.projectPath,
+      })
+      if (data.sessionId) {
+        navigate(`/chat/${data.sessionId}`)
       }
     },
-    [enrichedHistory, navigate],
+    [enrichedHistory, navigate, forkSession],
   )
 
   return (

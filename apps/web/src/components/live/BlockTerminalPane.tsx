@@ -1,5 +1,5 @@
 import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
-import { useBlockSocket } from '../../hooks/use-block-socket'
+import { useSessionChannel } from '../../hooks/use-session-channel'
 import { useMonitorStore } from '../../store/monitor-store'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
@@ -8,23 +8,21 @@ import { developerRegistry } from '@claude-view/shared/components/conversation/b
 interface BlockTerminalPaneProps {
   sessionId: string
   isVisible: boolean
-  agentId?: string
   compact?: boolean
 }
 
 export function BlockTerminalPane({
   sessionId,
   isVisible,
-  agentId,
   compact = true,
 }: BlockTerminalPaneProps) {
   const displayMode = useMonitorStore((s) => s.displayMode)
   const registry = displayMode === 'chat' ? chatRegistry : developerRegistry
 
-  const { blocks } = useBlockSocket({
+  const { blocks } = useSessionChannel({
     sessionId,
+    modes: ['block'],
     enabled: isVisible,
-    agentId,
   })
 
   if (blocks.length === 0) {

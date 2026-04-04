@@ -2,6 +2,7 @@ import * as ContextMenu from '@radix-ui/react-context-menu'
 import type { DockviewApi, IDockviewPanel } from 'dockview-react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useSessionMutations } from '../../hooks/use-session-mutations'
 
 export interface ChatTabContextMenuProps {
   children: ReactNode
@@ -11,6 +12,7 @@ export interface ChatTabContextMenuProps {
 
 export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuProps) {
   const sessionId = (panel.params as { sessionId?: string })?.sessionId
+  const { deleteSession } = useSessionMutations()
 
   const handleClose = () => {
     panel.api.close()
@@ -69,9 +71,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
 
   const handleEndSession = () => {
     if (sessionId) {
-      fetch(`/api/sidecar/sessions/${sessionId}`, { method: 'DELETE' }).catch((err) => {
-        toast.error('Failed to end session', { description: String(err) })
-      })
+      deleteSession.mutate(sessionId)
       panel.api.close()
     }
   }
