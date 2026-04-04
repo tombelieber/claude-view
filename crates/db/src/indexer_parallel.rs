@@ -158,6 +158,33 @@ pub fn build_index_hints(claude_dir: &Path) -> HashMap<String, IndexHints> {
     hints
 }
 
+/// Normalize model IDs to canonical family names.
+/// Maps dated variants (e.g., "claude-3-5-sonnet-20241022") to their
+/// canonical names (e.g., "claude-3.5-sonnet") so token breakdowns
+/// don't fragment across model versions.
+fn normalize_model_id(model_id: &str) -> String {
+    // Strip date suffixes like -20241022, -20250514, etc.
+    // Pattern: ends with -YYYYMMDD
+    let stripped = if model_id.len() > 9 {
+        let suffix = &model_id[model_id.len() - 9..];
+        if suffix.starts_with('-') && suffix[1..].chars().all(|c| c.is_ascii_digit()) {
+            &model_id[..model_id.len() - 9]
+        } else {
+            model_id
+        }
+    } else {
+        model_id
+    };
+
+    // Normalize known aliases (hyphen vs dot variants)
+    match stripped {
+        "claude-3-5-sonnet" => "claude-3.5-sonnet".to_string(),
+        "claude-3-5-haiku" => "claude-3.5-haiku".to_string(),
+        "claude-3-opus" => "claude-3-opus".to_string(),
+        _ => stripped.to_string(),
+    }
+}
+
 /// Compute the primary model for a session: the model_id with the most turns.
 fn compute_primary_model(turns: &[claude_view_core::RawTurn]) -> Option<String> {
     if turns.is_empty() {
@@ -1694,7 +1721,8 @@ fn handle_assistant_line(
 
         // Extract turn data (model + tokens) for turns table
         if let Some(ref model) = message.model {
-            let model_id = model.clone();
+            // M4: Normalize model ID to canonical family name
+            let model_id = normalize_model_id(model);
             if !models_seen.contains(&model_id) {
                 models_seen.push(model_id.clone());
             }
@@ -1896,7 +1924,8 @@ fn handle_assistant_value(
     // Extract turn data (model + tokens) for turns table
     if let Some(message) = value.get("message") {
         if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
-            let model_id = model.to_string();
+            // M4: Normalize model ID to canonical family name
+            let model_id = normalize_model_id(model);
             if !models_seen.contains(&model_id) {
                 models_seen.push(model_id.clone());
             }
@@ -3058,7 +3087,9 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
             meta.last_timestamp,
             meta.first_user_prompt.as_deref(),
             meta.total_task_time_seconds as i32,
-            meta.longest_task_seconds.map(|v| v as i32),
+            // L2: Saturating conversion to prevent u32→i32 overflow wrapping
+            meta.longest_task_seconds
+                .map(|v| v.min(i32::MAX as u32) as i32),
             meta.longest_task_preview.as_deref(),
             calculate_per_turn_cost(&result.parse_result.turns, &pricing),
         )
@@ -3148,7 +3179,63 @@ async fn write_results_sqlx(db: &Database, results: &[DeepIndexResult]) -> Resul
         .await
         .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
 
+    // H2-H4: Token reconciliation check (diagnostic — surfaces drift between
+    // sessions and turns tables caused by different dedup gates)
+    let session_ids: Vec<String> = results.iter().map(|r| r.session_id.clone()).collect();
+    check_token_reconciliation(db, &session_ids).await;
+
     Ok(results.len())
+}
+
+/// Check for token divergence between sessions and turns tables.
+/// Logs a warning if SUM(turns tokens) doesn't match sessions tokens.
+/// This is a diagnostic check, not a correctness fix — it surfaces drift
+/// caused by different dedup gates (count_usage_block vs INSERT OR IGNORE).
+async fn check_token_reconciliation(db: &Database, session_ids: &[String]) {
+    if session_ids.is_empty() {
+        return;
+    }
+
+    // Sample up to 10 sessions per batch to avoid expensive queries
+    let sample: Vec<&str> = session_ids.iter().take(10).map(|s| s.as_str()).collect();
+
+    for session_id in sample {
+        let result: Option<(Option<i64>, Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+            r#"
+            SELECT
+                s.total_input_tokens,
+                s.total_output_tokens,
+                (SELECT COALESCE(SUM(input_tokens), 0) FROM turns WHERE session_id = s.id),
+                (SELECT COALESCE(SUM(output_tokens), 0) FROM turns WHERE session_id = s.id)
+            FROM sessions s WHERE s.id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .fetch_optional(db.pool())
+        .await
+        .ok()
+        .flatten();
+
+        if let Some((Some(sess_input), Some(sess_output), Some(turn_input), Some(turn_output))) =
+            result
+        {
+            let input_drift = (sess_input - turn_input).abs();
+            let output_drift = (sess_output - turn_output).abs();
+
+            if input_drift > 0 || output_drift > 0 {
+                tracing::warn!(
+                    session_id = %session_id,
+                    sess_input_tokens = sess_input,
+                    turn_sum_input_tokens = turn_input,
+                    input_drift = input_drift,
+                    sess_output_tokens = sess_output,
+                    turn_sum_output_tokens = turn_output,
+                    output_drift = output_drift,
+                    "Token reconciliation: session vs turns divergence detected"
+                );
+            }
+        }
+    }
 }
 
 /// Prune sessions from the database whose JSONL files no longer exist on disk.
@@ -3805,6 +3892,10 @@ where
             .await
             .map_err(|e| format!("Failed to commit write transaction: {}", e))?;
 
+        // H2-H4: Token reconciliation check (diagnostic)
+        let chunk_session_ids: Vec<String> = chunk.iter().map(|s| s.parsed.id.clone()).collect();
+        check_token_reconciliation(db, &chunk_session_ids).await;
+
         // Fire deferred progress — these sessions are now written to DB.
         for session in chunk {
             on_file_done(&session.parsed.id);
@@ -3909,6 +4000,40 @@ where
     }
 
     Ok((indexed_count, skipped.load(Ordering::Relaxed)))
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::normalize_model_id;
+
+    #[test]
+    fn test_strips_date_suffix() {
+        assert_eq!(
+            normalize_model_id("claude-3-5-sonnet-20241022"),
+            "claude-3.5-sonnet"
+        );
+        assert_eq!(
+            normalize_model_id("claude-3-5-haiku-20241022"),
+            "claude-3.5-haiku"
+        );
+        assert_eq!(
+            normalize_model_id("claude-3-opus-20240229"),
+            "claude-3-opus"
+        );
+    }
+
+    #[test]
+    fn test_preserves_canonical_names() {
+        assert_eq!(normalize_model_id("claude-sonnet-4"), "claude-sonnet-4");
+        assert_eq!(normalize_model_id("claude-haiku-3.5"), "claude-haiku-3.5");
+        assert_eq!(normalize_model_id("gpt-4o"), "gpt-4o");
+    }
+
+    #[test]
+    fn test_short_names() {
+        assert_eq!(normalize_model_id("gpt-4"), "gpt-4");
+        assert_eq!(normalize_model_id("o1"), "o1");
+    }
 }
 
 #[cfg(test)]

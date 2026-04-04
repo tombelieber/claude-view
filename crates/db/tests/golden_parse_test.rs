@@ -115,7 +115,8 @@ fn golden_turns_extracted_from_assistant_with_usage() {
 
     // First turn
     assert_eq!(result.turns[0].uuid, "a1");
-    assert_eq!(result.turns[0].model_id, "claude-opus-4-5-20251101");
+    // M4: Model IDs are normalized — date suffix stripped
+    assert_eq!(result.turns[0].model_id, "claude-opus-4-5");
     assert_eq!(result.turns[0].seq, 0);
     assert_eq!(result.turns[0].input_tokens, Some(3));
     assert_eq!(result.turns[0].output_tokens, Some(9));
@@ -126,18 +127,16 @@ fn golden_turns_extracted_from_assistant_with_usage() {
 
     // Second turn
     assert_eq!(result.turns[1].uuid, "a2");
-    assert_eq!(result.turns[1].model_id, "claude-sonnet-4-20250514");
+    // M4: Model IDs are normalized — date suffix stripped
+    assert_eq!(result.turns[1].model_id, "claude-sonnet-4");
     assert_eq!(result.turns[1].seq, 1);
     assert_eq!(result.turns[1].input_tokens, Some(100));
     assert_eq!(result.turns[1].content_type, "tool_use");
 
     // Models seen
-    assert!(result
-        .models_seen
-        .contains(&"claude-opus-4-5-20251101".to_string()));
-    assert!(result
-        .models_seen
-        .contains(&"claude-sonnet-4-20250514".to_string()));
+    // M4: Model IDs are normalized — date suffixes stripped
+    assert!(result.models_seen.contains(&"claude-opus-4-5".to_string()));
+    assert!(result.models_seen.contains(&"claude-sonnet-4".to_string()));
 }
 
 #[test]
@@ -349,11 +348,10 @@ fn golden_phase3_turns_with_tokens() {
 fn golden_phase3_models_seen() {
     let result = parse_bytes(PHASE3_GOLDEN_FIXTURE);
 
-    // All turns use claude-opus-4-5-20251101
+    // All turns use claude-opus-4-5-20251101 → normalized to claude-opus-4-5
     assert_eq!(result.models_seen.len(), 1, "Should see 1 unique model");
-    assert!(result
-        .models_seen
-        .contains(&"claude-opus-4-5-20251101".to_string()));
+    // M4: Model IDs are normalized — date suffix stripped
+    assert!(result.models_seen.contains(&"claude-opus-4-5".to_string()));
 }
 
 #[test]
