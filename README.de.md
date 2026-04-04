@@ -1,10 +1,22 @@
+<div align="center">
+
 # claude-view
 
-<p align="center">
-  <strong>Live-Monitor & Copilot für Claude Code Power-User.</strong>
+**Leitstand für Claude Code**
+
+Du hast 10 KI-Agenten laufen. Einer ist vor 12 Minuten fertig geworden. Ein anderer hat sein Kontextlimit erreicht. Ein dritter braucht eine Tool-Freigabe. Du springst mit <kbd>Cmd</kbd>+<kbd>Tab</kbd> durch Terminals und verbrennst blind 200 $/Monat.
+
+<p>
+  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
+  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/docs-claudeview.ai-orange" alt="Website"></a>
+  <a href="https://www.npmjs.com/package/@claude-view/plugin"><img src="https://img.shields.io/npm/v/@claude-view/plugin.svg?label=plugin" alt="plugin version"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
+  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
+  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
 </p>
 
-<p align="center">
+<p>
   <a href="./README.md">English</a> ·
   <a href="./README.zh-TW.md">繁體中文</a> ·
   <a href="./README.zh-CN.md">简体中文</a> ·
@@ -18,148 +30,289 @@
   <a href="./README.nl.md">Nederlands</a>
 </p>
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/claude-view"><img src="https://img.shields.io/npm/v/claude-view.svg" alt="npm version"></a>
-  <a href="https://claudeview.ai"><img src="https://img.shields.io/badge/Website-claudeview.ai-orange" alt="Website"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Platform-macOS-lightgrey.svg" alt="macOS">
-  <a href="https://discord.gg/G7wdZTpRfu"><img src="https://img.shields.io/discord/1325420051266592859?color=5865F2&logo=discord&logoColor=white&label=Discord" alt="Discord"></a>
-  <a href="https://github.com/tombelieber/claude-view/stargazers"><img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=social" alt="GitHub stars"></a>
-</p>
-
----
-
-## Das Problem
-
-Du hast 3 Projekte offen. Jedes Projekt hat mehrere Git-Worktrees. Jeder Worktree hat mehrere Claude Code Sessions laufen. Manche denken nach, manche warten auf dich, manche erreichen gleich die Kontextlimits, und eine ist vor 10 Minuten fertig geworden, aber du hast sie vergessen.
-
-Du wechselst mit Cmd-Tab durch 15 Terminalfenster und versuchst dich zu erinnern, welche Session was gemacht hat. Du verschwendest Tokens, weil ein Cache abgelaufen ist, während du nicht hingeschaut hast. Du verlierst deinen Flow, weil es keinen einzelnen Ort gibt, um alles zu sehen. Und hinter dem "denke nach..."-Spinner erzeugt Claude Sub-Agents, ruft MCP-Server auf, führt Skills aus, löst Hooks aus — und du kannst nichts davon sehen.
-
-**Claude Code ist unglaublich leistungsfähig. Aber 10+ gleichzeitige Sessions ohne Dashboard zu fliegen, ist wie Autofahren ohne Tachometer.**
-
-## Die Lösung
-
-**claude-view** ist ein Echtzeit-Dashboard, das neben deinen Claude Code Sessions läuft. Ein Browser-Tab, jede Session sichtbar, voller Kontext auf einen Blick.
-
 ```bash
 curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
-Das war's. Öffnet sich im Browser. Alle deine Sessions — live und vergangene — in einem Workspace.
+**Ein Befehl. Jede Sitzung sichtbar. In Echtzeit.**
+
+</div>
 
 ---
 
-## Was Du Bekommst
+## Was ist claude-view?
 
-### Live-Monitor
+claude-view ist ein Open-Source-Dashboard, das jede Claude Code-Sitzung auf deinem Rechner überwacht — laufende Agenten, vergangene Konversationen, Kosten, Sub-Agenten, Hooks, Tool-Aufrufe — alles an einem Ort. Rust-Backend, React-Frontend, ~10 MB Binary. Keine Konfiguration, keine Konten, 100 % lokal.
 
-| Feature | Warum es wichtig ist |
-|---------|---------------|
-| **Sessionkarten mit letzter Nachricht** | Erinnere dich sofort, woran jede langlaufende Session arbeitet |
-| **Benachrichtigungstöne** | Werde benachrichtigt, wenn eine Session fertig ist oder deine Eingabe braucht — hör auf, Terminals zu pollen |
-| **Kontextanzeige** | Echtzeit-Kontextfenster-Nutzung pro Session — sieh, welche in der Gefahrenzone sind |
-| **Cache-Warm-Countdown** | Wisse genau, wann der Prompt-Cache abläuft, um deine nächste Nachricht zu timen und Tokens zu sparen |
-| **Kostenverfolgung** | Ausgaben pro Session und aggregiert — hover für Token/Kosten-Aufschlüsselung mit Cache-Einsparungen nach Kategorie |
-| **Sub-Agent-Visualisierung** | Sieh den vollständigen Agent-Baum — Sub-Agents, ihren Status und welche Tools sie aufrufen |
+**30 Releases. 86 MCP-Tools. 9 Skills. Ein `npx claude-view`.**
+
+---
+
+## Live Monitor
+
+Sieh jede laufende Sitzung auf einen Blick. Kein Terminal-Tab-Wechsel mehr.
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Session-Karten** | Jede Karte zeigt die letzte Nachricht, das Modell, die Kosten und den Status — sofort wissen, woran jeder Agent arbeitet |
+| **Multi-Session-Chat** | Sitzungen nebeneinander in VS Code-ähnlichen Tabs öffnen (dockview). Zum horizontalen oder vertikalen Teilen ziehen |
+| **Kontextanzeige** | Echtzeit-Kontextfenster-Füllstand pro Sitzung — erkenne, welche Agenten in der Gefahrenzone sind, bevor sie das Limit erreichen |
+| **Cache-Countdown** | Wisse genau, wann der Prompt-Cache abläuft, damit du Nachrichten zeitlich abstimmen kannst, um Tokens zu sparen |
+| **Kostenverfolgung** | Ausgaben pro Sitzung und aggregiert mit Token-Aufschlüsselung — hovere für die Aufteilung in Input/Output/Cache nach Modell |
+| **Sub-Agent-Baum** | Sieh den vollständigen Baum gestarteter Agenten, ihren Status, Kosten und welche Tools sie aufrufen |
+| **Benachrichtigungstöne** | Werde benachrichtigt, wenn eine Sitzung endet, fehlschlägt oder deine Eingabe braucht — kein Terminal-Polling mehr |
 | **Mehrere Ansichten** | Grid, Liste, Kanban oder Monitor-Modus — wähle, was zu deinem Workflow passt |
-| **Kanban-Swimlanes** | Gruppiere Sessions nach Projekt oder Branch — visuelles Swimlane-Layout für Multi-Projekt-Workflows |
+| **Kanban-Swimlanes** | Sitzungen nach Projekt oder Branch gruppieren — visuelles Swimlane-Layout für Multi-Projekt-Workflows |
+| **Kürzlich geschlossen** | Beendete Sitzungen erscheinen unter „Kürzlich geschlossen" statt zu verschwinden — bleibt auch nach Server-Neustarts erhalten |
+| **Warteschlangen-Nachrichten** | Nachrichten in der Warteschlange werden als ausstehende Blasen mit einem „Queued"-Badge angezeigt |
+| **SSE-getrieben** | Alle Live-Daten per Server-Sent Events gepusht — eliminiert Stale-Cache-Risiken vollständig |
 
-### Reichhaltiger Chat-Verlauf
+---
 
-| Feature | Warum es wichtig ist |
-|---------|---------------|
-| **Vollständiger Konversationsbrowser** | Jede Session, jede Nachricht, vollständig gerendert mit Markdown und Codeblöcken |
-| **Tool-Aufruf-Visualisierung** | Sieh Datei-Lese, Bearbeitungen, Bash-Befehle, MCP-Aufrufe, Skill-Invokationen — nicht nur Text |
-| **Kompakt-/Detail-Toggle** | Überfliege die Konversation oder tauche in jeden Tool-Aufruf ein |
-| **Thread-Ansicht** | Verfolge Agent-Konversationen mit Sub-Agent-Hierarchien |
-| **Export** | Markdown-Export für Kontextwiederaufnahme oder Teilen |
-| **Massenauswahl & Archivierung** | Wähle mehrere Sessions für Batch-Archivierung mit persistentem Filterstatus |
-| **Verschlüsseltes Teilen** | Teile jede Session über E2E-verschlüsselten Link — null Server-Vertrauen |
+## Chat & Konversation
 
-### Erweiterte Suche
-
-| Feature | Warum es wichtig ist |
-|---------|---------------|
-| **Volltextsuche** | Suche über alle Sessions — Nachrichten, Tool-Aufrufe, Dateipfade |
-| **Projekt- & Branch-Filter** | Beschränke auf das Projekt, an dem du gerade arbeitest |
-| **Befehlspalette** | Cmd+K zum Springen zwischen Sessions, Ansichten wechseln, alles finden |
-
-### Agent-Interna — Sieh Was Verborgen Ist
-
-Claude Code tut viel hinter "denke nach...", das nie in deinem Terminal erscheint. claude-view legt alles offen.
-
-| Feature | Warum es wichtig ist |
-|---------|---------------|
-| **Sub-Agent-Konversationen** | Sieh den vollständigen Baum der erzeugten Agents, ihre Prompts und ihre Ausgaben |
-| **MCP-Server-Aufrufe** | Sieh, welche MCP-Tools aufgerufen werden und ihre Ergebnisse |
-| **Skill-/Hook-/Plugin-Tracking** | Wisse, welche Skills ausgelöst wurden, welche Hooks liefen, welche Plugins aktiv sind |
-| **Hook-Event-Aufzeichnung** | Dual-Channel-Hook-Erfassung (Live + JSONL-Backfill) — jedes Hook-Event aufgezeichnet und durchsuchbar, auch für vergangene Sessions |
-| **Worktree-Branch-Drift** | Erkennt, wenn Git-Worktree-Branches divergieren — im Live-Monitor und Verlauf angezeigt |
-| **Tool-Nutzungs-Timeline** | Aktionslog jedes tool_use/tool_result-Paares mit Timing |
-| **Fehler-Surfacing** | Fehler tauchen auf der Sessionkarte auf — keine vergrabenen Fehlschläge mehr |
-| **Roh-Nachrichten-Inspektor** | Tauche in das rohe JSON jeder Nachricht ein, wenn du das vollständige Bild brauchst |
-
-### Analytik
-
-Eine umfangreiche Analyse-Suite für deine Claude Code-Nutzung. Denke an Cursors Dashboard, aber tiefer.
-
-**Dashboard-Übersicht**
+Lese, durchsuche und interagiere mit jeder Sitzung — live oder historisch.
 
 | Feature | Beschreibung |
 |---------|-------------|
-| **Woche-für-Woche-Metriken** | Session-Anzahl, Token-Nutzung, Kosten — verglichen mit deiner vorherigen Periode |
-| **Aktivitäts-Heatmap** | 90-Tage-GitHub-Style-Grid, das deine tägliche Claude Code Nutzungsintensität zeigt |
-| **Top Skills / Befehle / MCP-Tools / Agents** | Ranglisten deiner meistgenutzten Aufrufbaren — klicke auf einen, um passende Sessions zu suchen |
-| **Aktivste Projekte** | Balkendiagramm der Projekte, sortiert nach Session-Anzahl |
-| **Tool-Nutzungs-Aufschlüsselung** | Gesamte Bearbeitungen, Lesevorgänge und Bash-Befehle über alle Sessions |
-| **Längste Sessions** | Schnellzugriff auf deine Marathon-Sessions mit Dauer |
+| **Einheitlicher Live-Chat** | Verlauf und Echtzeit-Nachrichten in einer scrollbaren Konversation — kein Tab-Wechsel |
+| **Entwicklermodus** | Zwischen Chat- und Entwickler-Ansicht pro Sitzung umschalten. Der Entwicklermodus zeigt Tool-Karten, Event-Karten, Hook-Metadaten und die vollständige Ausführungsspur mit Filter-Chips |
+| **Vollständiger Konversations-Browser** | Jede Sitzung, jede Nachricht, vollständig gerendert mit Markdown und Code-Blöcken |
+| **Tool-Aufruf-Visualisierung** | Sieh Datei-Lesevorgänge, Bearbeitungen, Bash-Befehle, MCP-Aufrufe, Skill-Aufrufe — nicht nur Text |
+| **Kompakt-/Detailansicht** | Überflieg die Konversation oder tauche in jeden Tool-Aufruf ein |
+| **Thread-Ansicht** | Folge Agent-Konversationen mit Sub-Agent-Hierarchien und eingerücktem Threading |
+| **Hook-Events inline** | Pre-/Post-Tool-Hooks als Konversationsblöcke gerendert — sieh Hooks neben der Konversation feuern |
+| **Export** | Markdown-Export für Kontext-Wiederaufnahme oder zum Teilen |
+| **Mehrfachauswahl & Archivierung** | Mehrere Sitzungen für Batch-Archivierung mit persistentem Filterstatus auswählen |
+| **Verschlüsseltes Teilen** | Teile jede Sitzung über einen E2E-verschlüsselten Link — AES-256-GCM, kein Server-Vertrauen nötig, der Schlüssel lebt nur im URL-Fragment |
 
-**KI-Beiträge**
+---
 
-| Feature | Beschreibung |
-|---------|-------------|
-| **Code-Output-Tracking** | Hinzugefügte/entfernte Zeilen, bearbeitete Dateien, Commit-Anzahl — über alle Sessions |
-| **Kosten-ROI-Metriken** | Kosten pro Commit, Kosten pro Session, Kosten pro KI-Output-Zeile — mit Trendcharts |
-| **Modellvergleich** | Nebeneinander-Aufschlüsselung von Output und Effizienz nach Modell (Opus, Sonnet, Haiku) |
-| **Lernkurve** | Re-Edit-Rate über die Zeit — sieh, wie du beim Prompting besser wirst |
-| **Branch-Aufschlüsselung** | Klappbare Branch-Ansicht mit Session-Drill-Down |
-| **Skill-Effektivität** | Welche Skills deinen Output tatsächlich verbessern vs welche nicht |
+## Agent-Interna
 
-**Insights** *(experimentell)*
+Claude Code macht hinter `"thinking..."` eine Menge, die in deinem Terminal nie sichtbar wird. claude-view legt alles offen.
 
 | Feature | Beschreibung |
 |---------|-------------|
-| **Mustererkennung** | Verhaltensmuster, die aus deinem Session-Verlauf entdeckt wurden |
+| **Sub-Agent-Konversationen** | Vollständiger Baum gestarteter Agenten, ihre Prompts, Ausgaben und Agent-bezogene Kosten-/Token-Aufschlüsselung |
+| **MCP-Server-Aufrufe** | Welche MCP-Tools aufgerufen werden und ihre Ergebnisse |
+| **Skill-/Hook-/Plugin-Tracking** | Welche Skills gefeuert wurden, welche Hooks liefen, welche Plugins aktiv sind |
+| **Hook-Event-Aufzeichnung** | Dual-Channel-Hook-Erfassung (Live-WebSocket + JSONL-Backfill) — jedes Event aufgezeichnet und durchsuchbar, auch für vergangene Sitzungen |
+| **Session-Quellen-Badges** | Jede Sitzung zeigt, wie sie gestartet wurde: Terminal, VS Code, Agent SDK oder andere Einstiegspunkte |
+| **Worktree-Branch-Drift** | Erkennt, wenn git-Worktree-Branches auseinanderlaufen — im Live-Monitor und in der Historie angezeigt |
+| **@File-Erwähnungs-Chips** | `@filename`-Referenzen werden als Chips extrahiert und angezeigt — hovere für den vollständigen Pfad |
+| **Tool-Nutzungs-Timeline** | Aktionsprotokoll jedes tool_use/tool_result-Paares mit Zeitangaben |
+| **Fehler-Anzeige** | Fehler werden auf die Session-Karte hochgehoben — keine versteckten Ausfälle |
+| **Raw-Message-Inspektor** | Tauche in das rohe JSON jeder Nachricht ein, wenn du das vollständige Bild brauchst |
+
+---
+
+## Suche
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Volltextsuche** | Suche über alle Sitzungen — Nachrichten, Tool-Aufrufe, Dateipfade. Betrieben von Tantivy (Rust-nativ, Lucene-Klasse) |
+| **Einheitliche Suchmaschine** | Tantivy-Volltext + SQLite-Vorfilter laufen parallel — ein Endpunkt, Ergebnisse unter 50 ms |
+| **Projekt- & Branch-Filter** | Auf das Projekt oder den Branch eingrenzen, an dem du gerade arbeitest |
+| **Befehlspalette** | <kbd>Cmd</kbd>+<kbd>K</kbd> zum Wechseln zwischen Sitzungen, Ansichten ändern, alles finden |
+
+---
+
+## Analytik
+
+Eine vollständige Analytik-Suite für deine Claude Code-Nutzung. Wie Cursors Dashboard, aber tiefgehender.
+
+<details>
+<summary><strong>Dashboard</strong></summary>
+<br>
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Wochen-Vergleich** | Sitzungsanzahl, Token-Verbrauch, Kosten — verglichen mit dem vorherigen Zeitraum |
+| **Aktivitäts-Heatmap** | 90-Tage-GitHub-ähnliches Raster, das die tägliche Nutzungsintensität zeigt |
+| **Top-Skills / Befehle / MCP-Tools / Agenten** | Ranglisten der meistgenutzten Aufrufe — klicke auf einen, um passende Sitzungen zu suchen |
+| **Aktivste Projekte** | Balkendiagramm der Projekte nach Sitzungsanzahl sortiert |
+| **Tool-Nutzungs-Aufschlüsselung** | Gesamtzahl der Bearbeitungen, Lesevorgänge und Bash-Befehle über alle Sitzungen |
+| **Längste Sitzungen** | Schnellzugriff auf deine Marathon-Sitzungen mit Dauer |
+
+</details>
+
+<details>
+<summary><strong>KI-Beiträge</strong></summary>
+<br>
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Code-Output-Tracking** | Hinzugefügte/entfernte Zeilen, bearbeitete Dateien, Commit-Anzahl — über alle Sitzungen |
+| **Kosten-ROI-Metriken** | Kosten pro Commit, pro Sitzung, pro Zeile KI-Output — mit Trenddiagrammen |
+| **Modellvergleich** | Seite-an-Seite-Aufschlüsselung von Output und Effizienz nach Modell (Opus, Sonnet, Haiku) |
+| **Lernkurve** | Re-Edit-Rate über die Zeit — beobachte, wie du beim Prompting besser wirst |
+| **Branch-Aufschlüsselung** | Einklappbare Ansicht pro Branch mit Sitzungs-Drill-Down |
+| **Skill-Effektivität** | Welche Skills deinen Output tatsächlich verbessern und welche nicht |
+
+</details>
+
+<details>
+<summary><strong>Erkenntnisse</strong> <em>(experimentell)</em></summary>
+<br>
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Mustererkennung** | Verhaltensmuster, die aus deiner Sitzungshistorie entdeckt wurden |
 | **Damals-vs-Jetzt-Benchmarks** | Vergleiche deinen ersten Monat mit der aktuellen Nutzung |
-| **Kategorien-Aufschlüsselung** | Treemap, wofür du Claude nutzt — Refactoring, Features, Debugging, etc. |
-| **KI-Fluenz-Score** | Eine einzige 0-100-Zahl, die deine Gesamteffektivität verfolgt |
+| **Kategorie-Aufschlüsselung** | Treemap, wofür du Claude nutzt — Refactoring, Features, Debugging usw. |
+| **AI Fluency Score** | Eine einzelne Zahl von 0-100, die deine Gesamteffektivität verfolgt |
 
-> **Hinweis:** Insights und Fluenz-Score sind in einer frühen experimentellen Phase. Betrachte sie als richtungsweisend, nicht definitiv.
+> Erkenntnisse und Fluency Score sind experimentell. Als Richtungswert zu verstehen, nicht als definitive Aussage.
 
----
-
-## Für den Flow Gebaut
-
-claude-view ist für den Entwickler konzipiert, der:
-
-- **3+ Projekte gleichzeitig** ausführt, jedes mit mehreren Worktrees
-- Jederzeit **10-20 Claude Code Sessions** offen hat
-- Schnell den Kontext wechseln muss, ohne den Überblick zu verlieren
-- **Token-Ausgaben optimieren** will, indem Nachrichten um Cache-Fenster herum getimed werden
-- Frustriert ist vom Cmd-Tab durch Terminals, um Agents zu prüfen
-- **Worktree-bewusst** — erkennt Branch-Drift über Git-Worktrees hinweg
+</details>
 
 ---
 
-## Wie Es Gebaut Ist
+## Pläne, Prompts & Teams
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Plan-Browser** | Sieh deine `.claude/plans/` direkt in der Sitzungsdetailansicht — kein Durchsuchen von Dateien mehr |
+| **Prompt-Verlauf** | Volltextsuche über alle gesendeten Prompts mit Template-Clustering und Intent-Klassifikation |
+| **Teams-Dashboard** | Sieh Team-Leads, Posteingangsnachrichten, Team-Aufgaben und Dateiänderungen aller Teammitglieder |
+| **Prompt-Analytik** | Ranglisten von Prompt-Templates, Intent-Verteilung und Nutzungsstatistiken |
+
+---
+
+## Systemmonitor
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Live-CPU-/RAM-/Disk-Anzeigen** | Echtzeit-Systemmetriken per SSE gestreamt mit flüssigen animierten Übergängen |
+| **Komponenten-Dashboard** | Sieh Sidecar- und On-Device-KI-Metriken: VRAM-Nutzung, CPU, RAM und Sitzungsanzahl pro Komponente |
+| **Prozessliste** | Prozesse nach Name gruppiert, nach CPU sortiert — sieh, was dein Rechner tatsächlich tut, während Agenten laufen |
+
+---
+
+## On-Device-KI
+
+Betreibe ein lokales LLM für die Sitzungsphasen-Klassifikation — keine API-Aufrufe, keine Zusatzkosten.
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Provider-unabhängig** | Verbinde dich mit jedem OpenAI-kompatiblen Endpunkt — oMLX, Ollama, LM Studio oder deinem eigenen Server |
+| **Modellauswahl** | Wähle aus einer kuratierten Modellregistrierung mit angezeigten RAM-Anforderungen |
+| **Phasenklassifikation** | Sitzungen werden mit ihrer aktuellen Phase getaggt (Coding, Debugging, Planung usw.) mittels konfidenzgesteuerter Anzeige |
+| **Intelligentes Ressourcenmanagement** | EMA-stabilisierte Klassifikation mit exponentiellem Backoff — 93 % GPU-Verschwendungsreduktion gegenüber naivem Polling |
+
+---
+
+## Plugin
+
+`@claude-view/plugin` gibt Claude nativen Zugriff auf deine Dashboard-Daten — 86 MCP-Tools, 9 Skills und Auto-Start.
+
+```bash
+claude plugin add @claude-view/plugin
+```
+
+### Auto-Start
+
+Jede Claude Code-Sitzung startet automatisch das Dashboard. Kein manuelles `npx claude-view` nötig.
+
+### 86 MCP-Tools
+
+8 handgefertigte Tools mit optimierter Ausgabe für Claude:
+
+| Tool | Beschreibung |
+|------|-------------|
+| `list_sessions` | Sitzungen mit Filtern durchsuchen |
+| `get_session` | Vollständige Sitzungsdetails mit Nachrichten und Metriken |
+| `search_sessions` | Volltextsuche über alle Konversationen |
+| `get_stats` | Dashboard-Überblick — Gesamtsitzungen, Kosten, Trends |
+| `get_fluency_score` | AI Fluency Score (0-100) mit Aufschlüsselung |
+| `get_token_stats` | Token-Verbrauch mit Cache-Trefferquote |
+| `list_live_sessions` | Aktuell laufende Agenten (Echtzeit) |
+| `get_live_summary` | Aggregierte Kosten und Status für heute |
+
+Plus **78 automatisch generierte Tools** aus der OpenAPI-Spezifikation in 27 Kategorien (Beiträge, Erkenntnisse, Coaching, Exporte, Workflows und mehr).
+
+### 9 Skills
+
+| Skill | Beschreibung |
+|-------|-------------|
+| `/session-recap` | Fasse eine bestimmte Sitzung zusammen — Commits, Metriken, Dauer |
+| `/daily-cost` | Heutige Ausgaben, laufende Sitzungen, Token-Verbrauch |
+| `/standup` | Multi-Sitzungs-Arbeitsprotokoll für Standup-Updates |
+| `/coaching` | KI-Coaching-Tipps und benutzerdefinierte Regelverwaltung |
+| `/insights` | Analyse von Verhaltensmustern |
+| `/project-overview` | Projektübersicht über Sitzungen hinweg |
+| `/search` | Suche in natürlicher Sprache |
+| `/export-data` | Sitzungen als CSV/JSON exportieren |
+| `/team-status` | Team-Aktivitätsübersicht |
+
+---
+
+## Workflows
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Workflow-Builder** | Erstelle mehrstufige Workflows mit VS Code-ähnlichem Layout, Mermaid-Diagramm-Vorschau und YAML-Editor |
+| **Streaming-LLM-Chat-Schiene** | Generiere Workflow-Definitionen in Echtzeit über eingebetteten Chat |
+| **Stage-Runner** | Visualisiere Stufen-Spalten, Versuchs-Karten und Fortschrittsbalken während dein Workflow ausgeführt wird |
+| **Mitgelieferte Seed-Workflows** | Plan Polisher und Plan Executor sind sofort verfügbar |
+
+---
+
+## In IDE öffnen
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **Ein-Klick-Dateiöffnung** | In Sitzungen referenzierte Dateien öffnen sich direkt in deinem Editor |
+| **Automatische Editor-Erkennung** | VS Code, Cursor, Zed und andere — keine Konfiguration nötig |
+| **Überall, wo es zählt** | Button erscheint im Changes-Tab, in Datei-Headern und Kanban-Projekt-Headern |
+| **Präferenz-Speicher** | Dein bevorzugter Editor wird sitzungsübergreifend gespeichert |
+
+---
+
+## Wie es gebaut ist
 
 | | |
 |---|---|
-| **Blitzschnell** | Rust-Backend mit SIMD-beschleunigtem JSONL-Parsing, Memory-Mapped I/O — indiziert tausende Sessions in Sekunden |
-| **Echtzeit** | File-Watcher + SSE + vereinheitlichter WebSocket mit Heartbeat, Event-Replay und Crash-Recovery |
-| **Minimaler Fußabdruck** | ~10 MB Download, ~27 MB auf der Festplatte. Keine Runtime-Abhängigkeiten, keine Hintergrund-Daemons |
-| **100% lokal** | Alle Daten bleiben auf deinem Rechner. Null Telemetrie, keine Konten erforderlich. Optionales verschlüsseltes Teilen verfügbar. |
+| **Schnell** | Rust-Backend mit SIMD-beschleunigtem JSONL-Parsing, Memory-Mapped I/O — indexiert tausende Sitzungen in Sekunden |
+| **Echtzeit** | File-Watcher + SSE + multiplexierter WebSocket mit Heartbeat, Event-Replay und Crash-Recovery |
+| **Winzig** | ~10 MB Download, ~27 MB auf der Festplatte. Keine Laufzeitabhängigkeiten, keine Hintergrund-Daemons |
+| **100 % lokal** | Alle Daten bleiben auf deinem Rechner. Standardmäßig null Telemetrie, keine erforderlichen Konten |
 | **Null Konfiguration** | `npx claude-view` und fertig. Keine API-Keys, kein Setup, keine Konten |
+| **FSM-gesteuert** | Chat-Sitzungen laufen auf einer endlichen Zustandsmaschine mit expliziten Phasen und typisierten Events — deterministisch, frei von Race-Conditions |
+
+<details>
+<summary><strong>Die Zahlen</strong></summary>
+<br>
+
+Gemessen auf einem M-Series-Mac mit 1.493 Sitzungen über 26 Projekte:
+
+| Metrik | claude-view | Typisches Electron-Dashboard |
+|--------|:-----------:|:--------------------------:|
+| **Download** | **~10 MB** | 150-300 MB |
+| **Auf der Festplatte** | **~27 MB** | 300-500 MB |
+| **Startzeit** | **< 500 ms** | 3-8 s |
+| **RAM (vollständiger Index)** | **~50 MB** | 300-800 MB |
+| **1.500 Sitzungen indexieren** | **< 1 s** | N/A |
+| **Laufzeitabhängigkeiten** | **0** | Node.js + Chromium |
+
+Schlüsseltechniken: SIMD-Vorfilter (`memchr`), Memory-Mapped JSONL-Parsing, Tantivy-Volltextsuche, Zero-Copy-Slices von mmap über das Parsing bis zur Response.
+
+</details>
+
+---
+
+## Im Vergleich
+
+| Tool | Kategorie | Stack | Größe | Live-Monitor | Multi-Session-Chat | Suche | Analytik | MCP-Tools |
+|------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + Workspace | Rust | **~10 MB** | **Ja** | **Ja** | **Ja** | **Ja** | **86** |
+| [opcode](https://github.com/winfunc/opcode) | GUI + Session-Manager | Tauri 2 | ~13 MB | Teilweise | Nein | Nein | Ja | Nein |
+| [ccusage](https://github.com/ryoppippi/ccusage) | CLI-Nutzungstracker | TypeScript | ~600 KB | Nein | Nein | Nein | CLI | Nein |
+| [CodePilot](https://github.com/op7418/CodePilot) | Desktop-Chat-UI | Electron | ~140 MB | Nein | Nein | Nein | Nein | Nein |
+| [claude-run](https://github.com/kamranahmedse/claude-run) | Verlaufs-Viewer | TypeScript | ~500 KB | Teilweise | Nein | Einfach | Nein | Nein |
+
+> Chat-UIs (CodePilot, CUI, claude-code-webui) sind Oberflächen *für* Claude Code. claude-view ist ein Dashboard, das deine bestehenden Terminal-Sitzungen überwacht. Sie ergänzen sich.
 
 ---
 
@@ -169,116 +322,157 @@ claude-view ist für den Entwickler konzipiert, der:
 |--------|---------|
 | **Shell** (empfohlen) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
+| **Plugin** (Auto-Start) | `claude plugin add @claude-view/plugin` |
 
-Das Shell-Installationsskript lädt eine vorkompilierte Binärdatei (~10 MB) herunter, installiert sie in `~/.claude-view/bin` und fügt sie zum PATH hinzu. Danach einfach `claude-view` ausführen.
+Der Shell-Installer lädt ein vorkompiliertes Binary (~10 MB) herunter, installiert es nach `~/.claude-view/bin` und fügt es deinem PATH hinzu. Dann einfach `claude-view` ausführen.
 
-### Konfiguration
+**Einzige Voraussetzung:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installiert.
+
+<details>
+<summary><strong>Konfiguration</strong></summary>
+<br>
 
 | Umgebungsvariable | Standard | Beschreibung |
 |-------------|---------|-------------|
 | `CLAUDE_VIEW_PORT` oder `PORT` | `47892` | Standard-Port überschreiben |
-| `CLAUDE_VIEW_DATA_DIR` | `~/Library/Caches/claude-view` | Datenverzeichnis überschreiben |
+
+</details>
+
+<details>
+<summary><strong>Self-Hosting & lokale Entwicklung</strong></summary>
+<br>
+
+Das vorkompilierte Binary enthält Auth, Sharing und Mobile-Relay. Beim Bauen aus dem Quellcode? Diese Features sind **opt-in über Umgebungsvariablen** — weglassen und das Feature ist einfach deaktiviert.
+
+| Umgebungsvariable | Feature | Ohne diese Variable |
+|-------------|---------|------------|
+| `SUPABASE_URL` | Login / Auth | Auth deaktiviert — vollständig lokal, Null-Konto-Modus |
+| `RELAY_URL` | Mobile Kopplung | QR-Kopplung nicht verfügbar |
+| `SHARE_WORKER_URL` + `SHARE_VIEWER_URL` | Verschlüsseltes Teilen | Teilen-Button ausgeblendet |
+
+```bash
+bun dev    # vollständig lokal, keine Cloud-Abhängigkeiten
+```
+
+</details>
+
+<details>
+<summary><strong>Enterprise / Sandbox-Umgebungen</strong></summary>
+<br>
+
+Falls dein Rechner Schreibzugriffe einschränkt (DataCloak, CrowdStrike, Unternehmens-DLP):
+
+```bash
+cp crates/server/.env.example .env
+# CLAUDE_VIEW_DATA_DIR auskommentieren
+```
+
+Dies hält Datenbank, Suchindex und Lock-Dateien innerhalb des Repos. Setze `CLAUDE_VIEW_SKIP_HOOKS=1`, um die Hook-Registrierung in schreibgeschützten Umgebungen zu überspringen.
+
+</details>
 
 ---
 
-**Einzige Voraussetzung:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installiert — das erstellt die Session-Dateien, die wir überwachen.
+## FAQ
 
----
+<details>
+<summary><strong>Banner „Nicht angemeldet" wird angezeigt, obwohl ich eingeloggt bin</strong></summary>
+<br>
 
-## Vergleich
+claude-view prüft deine Claude-Anmeldedaten, indem es `~/.claude/.credentials.json` liest (mit macOS-Keychain-Fallback). Versuche diese Schritte:
 
-Andere Tools sind entweder Viewer (Verlauf durchsuchen) oder einfache Monitore. Keines kombiniert Echtzeit-Monitoring, reichhaltigen Chat-Verlauf, Debugging-Tools und erweiterte Suche in einem einzigen Workspace.
+1. **Claude CLI-Auth prüfen:** `claude auth status`
+2. **Anmeldedaten-Datei prüfen:** `cat ~/.claude/.credentials.json` — sollte einen `claudeAiOauth`-Abschnitt mit einem `accessToken` enthalten
+3. **macOS-Keychain prüfen:** `security find-generic-password -s "Claude Code-credentials" -w`
+4. **Token-Ablauf prüfen:** Schau dir `expiresAt` in der Credentials-JSON an — falls abgelaufen, führe `claude auth login` aus
+5. **HOME prüfen:** `echo $HOME` — der Server liest aus `$HOME/.claude/.credentials.json`
 
-```
-                    Passiv ←————————————→ Aktiv
-                         |                  |
-            Nur Ansicht  |  ccusage         |
-                         |  History Viewer  |
-                         |  clog            |
-                         |                  |
-            Nur Monitor  |  claude-code-ui  |
-                         |  Agent Sessions  |
-                         |                  |
-            Vollständiger|  ★ claude-view   |
-            Workspace    |                  |
-```
+Falls alle Prüfungen bestanden und das Banner weiterhin angezeigt wird, melde es auf [Discord](https://discord.gg/G7wdZTpRfu).
+
+</details>
+
+<details>
+<summary><strong>Auf welche Daten greift claude-view zu?</strong></summary>
+<br>
+
+claude-view liest die JSONL-Sitzungsdateien, die Claude Code nach `~/.claude/projects/` schreibt. Es indexiert sie lokal mit SQLite und Tantivy. **Keine Daten verlassen deinen Rechner**, es sei denn, du nutzt explizit die verschlüsselte Teilen-Funktion. Telemetrie ist opt-in und standardmäßig deaktiviert.
+
+</details>
+
+<details>
+<summary><strong>Funktioniert es mit Claude Code in VS Code / Cursor / IDE-Erweiterungen?</strong></summary>
+<br>
+
+Ja. claude-view überwacht alle Claude Code-Sitzungen, unabhängig davon, wie sie gestartet wurden — Terminal-CLI, VS Code-Erweiterung, Cursor oder Agent SDK. Jede Sitzung zeigt ein Quellen-Badge (Terminal, VS Code, SDK), damit du nach Startmethode filtern kannst.
+
+</details>
 
 ---
 
 ## Community
 
-Tritt dem [Discord-Server](https://discord.gg/G7wdZTpRfu) bei für Support, Feature-Requests und Diskussion.
+- **Website:** [claudeview.ai](https://claudeview.ai) — Dokumentation, Changelog, Blog
+- **Discord:** [Server beitreten](https://discord.gg/G7wdZTpRfu) — Support, Feature-Wünsche, Diskussion
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 MCP-Tools, 9 Skills, Auto-Start
 
 ---
 
-## Gefällt dir dieses Projekt?
-
-Wenn **claude-view** dir hilft, Claude Code zu meistern, erwäge einen Stern zu vergeben. Es hilft anderen, dieses Tool zu entdecken.
-
-<p align="center">
-  <a href="https://github.com/tombelieber/claude-view/stargazers">
-    <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
-  </a>
-</p>
-
----
-
-## Entwicklung
+<details>
+<summary><strong>Entwicklung</strong></summary>
+<br>
 
 Voraussetzungen: [Rust](https://rustup.rs/), [Bun](https://bun.sh/), `cargo install cargo-watch`
 
 ```bash
-bun install        # Frontend-Abhängigkeiten installieren
-bun dev            # Full-Stack-Entwicklung starten (Rust + Vite mit Hot Reload)
+bun install        # Alle Workspace-Abhängigkeiten installieren
+bun dev            # Full-Stack-Dev starten (Rust + Web + Sidecar mit Hot Reload)
 ```
+
+### Workspace-Struktur
+
+| Pfad | Paket | Zweck |
+|------|---------|---------|
+| `apps/web/` | `@claude-view/web` | React SPA (Vite) — Haupt-Web-Frontend |
+| `apps/share/` | `@claude-view/share` | Share-Viewer SPA — Cloudflare Pages |
+| `apps/mobile/` | `@claude-view/mobile` | Expo Native App |
+| `apps/landing/` | `@claude-view/landing` | Astro 5 Landingpage (kein clientseitiges JS) |
+| `packages/shared/` | `@claude-view/shared` | Gemeinsame Typen & Theme-Tokens |
+| `packages/design-tokens/` | `@claude-view/design-tokens` | Farben, Abstände, Typografie |
+| `packages/plugin/` | `@claude-view/plugin` | Claude Code Plugin (MCP-Server + Tools + Skills) |
+| `crates/` | — | Rust-Backend (Axum) |
+| `sidecar/` | — | Node.js Sidecar (Agent SDK Bridge) |
+| `infra/share-worker/` | — | Cloudflare Worker — Share-API (R2 + D1) |
+| `infra/install-worker/` | — | Cloudflare Worker — Installations-Skript mit Download-Tracking |
+
+### Dev-Befehle
 
 | Befehl | Beschreibung |
 |---------|-------------|
-| `bun dev` | Full-Stack-Entwicklung — Rust startet bei Änderungen automatisch neu, Vite HMR |
-| `bun dev:server` | Nur Rust-Backend (mit cargo-watch) |
-| `bun dev:client` | Nur Vite-Frontend (setzt laufendes Backend voraus) |
-| `bun run build` | Frontend für Produktion bauen |
-| `bun run preview` | Bauen + über Release-Binary bereitstellen |
-| `bun run lint` | Frontend (ESLint) und Backend (Clippy) linten |
-| `bun run fmt` | Rust-Code formatieren |
-| `bun run check` | Typecheck + Lint + Test (Pre-Commit-Gate) |
-| `bun test` | Rust-Testsuite ausführen (`cargo test --workspace`) |
-| `bun test:client` | Frontend-Tests ausführen (vitest) |
-| `bun run test:e2e` | Playwright End-to-End-Tests ausführen |
+| `bun dev` | Full-Stack-Dev — Rust + Web + Sidecar mit Hot Reload |
+| `bun run dev:web` | Nur Web-Frontend |
+| `bun run dev:server` | Nur Rust-Backend |
+| `bun run build` | Alle Workspaces bauen |
+| `bun run preview` | Web bauen + über Release-Binary bereitstellen |
+| `bun run lint:all` | JS/TS + Rust (Clippy) linten |
+| `bun run typecheck` | TypeScript-Typ-Prüfung |
+| `bun run test` | Alle Tests ausführen (Turbo) |
+| `bun run test:rust` | Rust-Tests ausführen |
+| `bun run storybook` | Storybook für Komponentenentwicklung starten |
+| `bun run dist:test` | Bauen + packen + installieren + ausführen (vollständiger Dist-Test) |
 
-### Produktions-Distribution Testen
-
-```bash
-bun run dist:test    # Ein Befehl: Build → Pack → Install → Run
-```
-
-Oder Schritt für Schritt:
-
-| Befehl | Beschreibung |
-|---------|-------------|
-| `bun run dist:pack` | Binary + Frontend als Tarball in `/tmp/` verpacken |
-| `bun run dist:install` | Tarball nach `~/.cache/claude-view/` extrahieren (simuliert Erstdownload) |
-| `bun run dist:run` | npx-Wrapper mit gecachtem Binary ausführen |
-| `bun run dist:test` | Alles oben in einem Befehl |
-| `bun run dist:clean` | Alle Dist-Cache- und Temp-Dateien entfernen |
-
-### Veröffentlichung
+### Releases
 
 ```bash
-bun run release          # Patch-Bump: 0.1.0 → 0.1.1
-bun run release:minor    # Minor-Bump: 0.1.0 → 0.2.0
-bun run release:major    # Major-Bump: 0.1.0 → 1.0.0
+bun run release          # Patch-Bump
+bun run release:minor    # Minor-Bump
+git push origin main --tags    # löst CI aus → baut → veröffentlicht automatisch auf npm
 ```
 
-Dies erhöht die Version in `npx-cli/package.json`, committet und erstellt einen Git-Tag. Dann:
-
-```bash
-git push origin main --tags    # triggert CI → baut alle Plattformen → veröffentlicht automatisch auf npm
-```
+</details>
 
 ---
 
-## Plattform-Support
+## Plattform-Unterstützung
 
 | Plattform | Status |
 |----------|--------|
@@ -292,11 +486,21 @@ git push origin main --tags    # triggert CI → baut alle Plattformen → verö
 ## Verwandte Projekte
 
 - **[claudeview.ai](https://claudeview.ai)** — Offizielle Website, Dokumentation und Changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code Plugin mit 8 MCP-Tools und 3 Skills. `claude plugin add @claude-view/plugin`
-- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code löscht deine Sessions nach 30 Tagen. Dieses Tool sichert sie. `npx claude-backup`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code Plugin mit 86 MCP-Tools und 9 Skills. `claude plugin add @claude-view/plugin`
+- **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code löscht deine Sitzungen nach 30 Tagen. Dieses Tool sichert sie. `npx claude-backup`
 
 ---
 
-## Lizenz
+<div align="center">
 
-MIT © 2026
+Wenn **claude-view** dir hilft zu sehen, was deine KI-Agenten tun, erwäge einen Stern zu vergeben.
+
+<a href="https://github.com/tombelieber/claude-view/stargazers">
+  <img src="https://img.shields.io/github/stars/tombelieber/claude-view?style=for-the-badge&logo=github" alt="Star on GitHub">
+</a>
+
+<br><br>
+
+MIT &copy; 2026
+
+</div>
