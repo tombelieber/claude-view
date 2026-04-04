@@ -49,51 +49,58 @@ describe('SubAgentPills', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('shows single agent with correct summary text', () => {
+  it('shows agent type as pill text', () => {
     render(<SubAgentPills subAgents={[mockRunningAgent]} />)
-    expect(screen.getByText('1 agent (1 active)')).toBeInTheDocument()
+    expect(screen.getByText('Explore')).toBeInTheDocument()
   })
 
-  it('shows multiple agents with correct summary text (all active)', () => {
+  it('shows multiple agent pills', () => {
     render(
       <SubAgentPills
         subAgents={[mockRunningAgent, { ...mockRunningAgent, toolUseId: 'tool_999' }]}
       />,
     )
-    expect(screen.getByText('2 agents (2 active)')).toBeInTheDocument()
+    expect(screen.getAllByText('Explore')).toHaveLength(2)
   })
 
-  it('shows correct summary text when some completed (uses plural)', () => {
+  it('shows agent types for mixed statuses', () => {
     render(<SubAgentPills subAgents={[mockRunningAgent, mockCompleteAgent]} />)
-    expect(screen.getByText('2 agents (1 active)')).toBeInTheDocument()
+    expect(screen.getByText('Explore')).toBeInTheDocument()
+    expect(screen.getByText('code-reviewer')).toBeInTheDocument()
   })
 
-  it('shows "all done" when no agents are running', () => {
+  it('shows all agent type labels when all done', () => {
     render(<SubAgentPills subAgents={[mockCompleteAgent, mockErrorAgent]} />)
-    expect(screen.getByText('2 agents (all done)')).toBeInTheDocument()
+    expect(screen.getByText('code-reviewer')).toBeInTheDocument()
+    expect(screen.getByText('search')).toBeInTheDocument()
   })
 
-  it('displays first 3 agents as pills', () => {
-    const agents = [mockRunningAgent, mockCompleteAgent, mockErrorAgent]
-    render(<SubAgentPills subAgents={agents} />)
-
-    // Check that pills are rendered (by their initials)
-    expect(screen.getByText('E')).toBeInTheDocument() // Explore
-    expect(screen.getByText('C')).toBeInTheDocument() // code-reviewer
-    expect(screen.getByText('S')).toBeInTheDocument() // search
-  })
-
-  it('shows "+N more" pill when more than 3 agents', () => {
+  it('displays first 4 agents as pills', () => {
     const agents = [
       mockRunningAgent,
       mockCompleteAgent,
       mockErrorAgent,
-      { ...mockRunningAgent, toolUseId: 'tool_4' },
+      { ...mockRunningAgent, toolUseId: 'tool_4', agentType: 'edit-files', description: 'Editing' },
+    ]
+    render(<SubAgentPills subAgents={agents} />)
+
+    expect(screen.getByText('Explore')).toBeInTheDocument()
+    expect(screen.getByText('code-reviewer')).toBeInTheDocument()
+    expect(screen.getByText('search')).toBeInTheDocument()
+    expect(screen.getByText('edit-files')).toBeInTheDocument()
+  })
+
+  it('shows "+N more" pill when more than 4 agents', () => {
+    const agents = [
+      mockRunningAgent,
+      mockCompleteAgent,
+      mockErrorAgent,
+      { ...mockRunningAgent, toolUseId: 'tool_4', agentType: 'edit-files', description: 'Editing' },
       { ...mockCompleteAgent, toolUseId: 'tool_5' },
     ]
     render(<SubAgentPills subAgents={agents} />)
 
-    expect(screen.getByText('+2 more')).toBeInTheDocument()
+    expect(screen.getByText('+1 more')).toBeInTheDocument()
   })
 
   it('calls onExpand when clicked', async () => {
@@ -139,27 +146,27 @@ describe('SubAgentPills', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
-  it('shows correct status styling for running agent (green)', () => {
+  it('shows correct status styling for running agent (green bg)', () => {
     const { container } = render(<SubAgentPills subAgents={[mockRunningAgent]} />)
-    const pill = container.querySelector('.border-green-500')
+    const pill = container.querySelector('.bg-green-100')
     expect(pill).toBeInTheDocument()
   })
 
-  it('shows correct status styling for complete agent (neutral)', () => {
+  it('shows correct status styling for complete agent (neutral bg)', () => {
     const { container } = render(<SubAgentPills subAgents={[mockCompleteAgent]} />)
-    const pill = container.querySelector('.border-zinc-300')
+    const pill = container.querySelector('.bg-zinc-100')
     expect(pill).toBeInTheDocument()
   })
 
-  it('shows correct status styling for error agent (red)', () => {
+  it('shows correct status styling for error agent (red bg)', () => {
     const { container } = render(<SubAgentPills subAgents={[mockErrorAgent]} />)
-    const pill = container.querySelector('.border-red-500')
+    const pill = container.querySelector('.bg-red-100')
     expect(pill).toBeInTheDocument()
   })
 
-  it('shows agent type initial in pill', () => {
+  it('shows agent type in pill', () => {
     render(<SubAgentPills subAgents={[mockRunningAgent]} />)
-    expect(screen.getByText('E')).toBeInTheDocument() // First letter of "Explore"
+    expect(screen.getByText('Explore')).toBeInTheDocument()
   })
 
   it('shows aria-label with agent type and description', () => {
@@ -171,10 +178,11 @@ describe('SubAgentPills', () => {
   it('handles edge case: agent type is empty string', () => {
     const emptyTypeAgent = { ...mockRunningAgent, agentType: '' }
     render(<SubAgentPills subAgents={[emptyTypeAgent]} />)
-    expect(screen.getByText('T')).toBeInTheDocument() // Falls back to 'T'
+    // With empty agentType the description is still shown
+    expect(screen.getByText('Searching for files')).toBeInTheDocument()
   })
 
-  it('correctly counts active agents when mix of statuses', () => {
+  it('correctly renders pills for mix of statuses', () => {
     const agents = [
       mockRunningAgent,
       { ...mockRunningAgent, toolUseId: 'tool_2', status: 'running' as const },
@@ -182,6 +190,9 @@ describe('SubAgentPills', () => {
       mockErrorAgent,
     ]
     render(<SubAgentPills subAgents={agents} />)
-    expect(screen.getByText('4 agents (2 active)')).toBeInTheDocument()
+    // All 4 fit within display limit (4), so all should render as pills
+    expect(screen.getAllByText('Explore')).toHaveLength(2)
+    expect(screen.getByText('code-reviewer')).toBeInTheDocument()
+    expect(screen.getByText('search')).toBeInTheDocument()
   })
 })
