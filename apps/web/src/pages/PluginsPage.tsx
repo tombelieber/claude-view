@@ -1,4 +1,4 @@
-import { Blocks, TrendingUp } from 'lucide-react'
+import { Blocks } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AvailableSection } from '../components/plugins/AvailableSection'
 import { InstalledPluginsSection } from '../components/plugins/InstalledPluginsSection'
@@ -77,19 +77,6 @@ export function PluginsPage() {
     })
   }
 
-  const handleUpdateAll = () => {
-    if (!data) return
-    const updatable = data.installed.filter((p) => p.updatable)
-    for (const plugin of updatable) {
-      mutations.execute({
-        action: 'update',
-        name: plugin.name,
-        scope: plugin.scope,
-        projectPath: plugin.projectPath ?? null,
-      })
-    }
-  }
-
   if (!data) return <PluginsPageSkeleton />
 
   const totalCount =
@@ -119,15 +106,6 @@ export function PluginsPage() {
         </div>
         <div className="flex gap-2 items-center pt-1.5">
           <MarketplacesDialog />
-          <button
-            type="button"
-            onClick={handleUpdateAll}
-            disabled={data.updatableCount === 0 || mutations.isPending}
-            className="inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-lg bg-apple-blue text-white hover:opacity-85 transition-opacity disabled:opacity-40"
-          >
-            <TrendingUp className="w-3 h-3" />
-            {data.updatableCount > 0 ? `Update All (${data.updatableCount})` : 'Update All'}
-          </button>
         </div>
       </div>
 
