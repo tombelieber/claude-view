@@ -1,7 +1,10 @@
 /**
  * Combined activity hook — uses server-side aggregation for summary/projects
  * (single SQL query) and keeps the existing session-level data only for
- * DailyTimeline + CalendarHeatmap drill-down.
+ * DailyTimeline drill-down.
+ *
+ * CalendarHeatmap now uses the server histogram (covers ALL sessions for the
+ * selected time range) instead of the client-side session list (capped at 500).
  *
  * This replaces `useActivityData` which fetched up to 10,000 sessions
  * purely for client-side aggregation.
@@ -19,7 +22,9 @@ export interface CombinedActivityData {
   summary: ClientActivitySummary
   /** Server-computed project breakdown */
   projects: ClientProjectActivity[]
-  /** Client-computed daily breakdown (from paginated sessions) for heatmap/timeline */
+  /** Server-computed daily breakdown for CalendarHeatmap (covers ALL sessions) */
+  heatmapDays: DayActivity[]
+  /** Client-computed daily breakdown (from paginated sessions) for DailyTimeline drill-down */
   days: DayActivity[]
   /** Total count from server */
   totalCount: number
@@ -45,7 +50,7 @@ function toClientSummary(r: RichActivityResponse): ClientActivitySummary {
           title: r.summary.longestSessionTitle ?? '(untitled)',
         }
       : null,
-    busiestDay: null, // computed from days below if available
+    busiestDay: null, // computed from heatmapDays below
     totalToolCalls: r.summary.totalToolCalls,
     totalAgentSpawns: r.summary.totalAgentSpawns,
     totalMcpCalls: r.summary.totalMcpCalls,
@@ -54,11 +59,27 @@ function toClientSummary(r: RichActivityResponse): ClientActivitySummary {
 }
 
 function toClientProjects(r: RichActivityResponse): ClientProjectActivity[] {
-  return r.projects.map((p) => ({
-    name: p.displayName,
-    projectPath: p.projectPath,
-    totalSeconds: p.totalSeconds,
-    sessionCount: p.sessionCount,
+  return r.projects
+    .map((p) => ({
+      name: p.displayName,
+      projectPath: p.projectPath,
+      totalSeconds: p.totalSeconds,
+      sessionCount: p.sessionCount,
+    }))
+    .sort((a, b) => b.totalSeconds - a.totalSeconds)
+}
+
+/**
+ * Convert server histogram (ActivityPoint[]) → DayActivity[] for CalendarHeatmap.
+ * The histogram covers ALL sessions for the time range (no 500-row cap).
+ * DailyTimeline sessions are left empty — it uses the separate session query.
+ */
+function histogramToDays(r: RichActivityResponse): DayActivity[] {
+  return r.histogram.map((pt) => ({
+    date: pt.date,
+    totalSeconds: pt.totalSeconds,
+    sessionCount: pt.count,
+    sessions: [], // heatmap doesn't need individual sessions
   }))
 }
 
@@ -71,9 +92,8 @@ export function useActivityCombined(
   // 1. Server-side aggregation (1 request, <100ms for 10K sessions)
   const server = useServerActivity(timeAfter, timeBefore, sidebarProject, sidebarBranch)
 
-  // 2. Session list for day-level drill-down (single request, max 500 for heatmap)
-  //    This is much smaller than the old 10K fetch — we only need enough for
-  //    CalendarHeatmap + DailyTimeline day-level display.
+  // 2. Session list for DailyTimeline drill-down (single request, max 500)
+  //    Only used for the session-level timeline — NOT for heatmap/projects/summary.
   const sessionQuery = useQuery<SessionInfo[]>({
     queryKey: [
       'activity-sessions-light',
@@ -102,18 +122,20 @@ export function useActivityCombined(
 
   const allSessions = sessionQuery.data ?? []
 
-  // Compute days from session data (for heatmap/timeline)
-  const days = useMemo(() => aggregateByDay(allSessions), [allSessions])
+  // Client-side day aggregation for DailyTimeline (needs actual session objects for drill-down)
+  const timelineDays = useMemo(() => aggregateByDay(allSessions), [allSessions])
 
-  // Compute busiest day from client-side data and merge into server summary
+  // Compute combined data — use server histogram for heatmap, client sessions for timeline
   const data = useMemo<CombinedActivityData | null>(() => {
     if (!server.data) return null
 
     const summary = toClientSummary(server.data)
-    // Compute busiestDay from days (needs session-level data)
+    const heatmapDays = histogramToDays(server.data)
+
+    // Compute busiestDay from server histogram (covers ALL sessions, not just 500)
     let busiestDay: ClientActivitySummary['busiestDay'] = null
     let maxDaySeconds = 0
-    for (const day of days) {
+    for (const day of heatmapDays) {
       if (day.totalSeconds > maxDaySeconds) {
         maxDaySeconds = day.totalSeconds
         busiestDay = { date: day.date, totalSeconds: day.totalSeconds }
@@ -124,10 +146,11 @@ export function useActivityCombined(
     return {
       summary,
       projects: toClientProjects(server.data),
-      days,
+      heatmapDays,
+      days: timelineDays,
       totalCount: server.data.total,
     }
-  }, [server.data, days])
+  }, [server.data, timelineDays])
 
   return {
     data,
