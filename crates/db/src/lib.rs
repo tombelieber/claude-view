@@ -37,6 +37,7 @@ pub use queries::SystemStorageStats;
 pub use queries::TokenStats;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
+pub use queries::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};
 
 // Re-export session upsert helpers for the live manager's flush_batch
 pub use queries::sessions::{execute_upsert_parsed_session, UPSERT_SESSION_SQL};
