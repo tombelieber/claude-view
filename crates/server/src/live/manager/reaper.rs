@@ -395,4 +395,143 @@ mod tests {
             "all sessions should be gone"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Subagent status marking on reap
+    // -----------------------------------------------------------------------
+
+    /// When a session is reaped, any sub-agents with status Running must be
+    /// marked as Error in the recently_closed copy. The parent is dead — they
+    /// can never report back, so showing "running" is wrong.
+    #[tokio::test]
+    async fn test_reap_marks_running_subagents_as_error() {
+        use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
+
+        let (mgr, mut rx, _snap_rx) = make_test_manager().await;
+        let session_id = "sess-with-subagents";
+
+        let mut session = make_dead_session(session_id, DEAD_PID, "/tmp/subagents.jsonl");
+
+        // Add 3 subagents: 1 Running, 1 Complete, 1 Running with activity.
+        session.hook.sub_agents = vec![
+            SubAgentInfo {
+                tool_use_id: "toolu_run1".to_string(),
+                agent_id: Some("agent1".to_string()),
+                agent_type: "Explore".to_string(),
+                description: "Still running agent".to_string(),
+                status: SubAgentStatus::Running,
+                started_at: 1000,
+                completed_at: None,
+                duration_ms: None,
+                tool_use_count: None,
+                model: None,
+                input_tokens: None,
+                output_tokens: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+                cost_usd: None,
+                current_activity: Some("Read".to_string()),
+            },
+            SubAgentInfo {
+                tool_use_id: "toolu_done".to_string(),
+                agent_id: Some("agent2".to_string()),
+                agent_type: "Edit".to_string(),
+                description: "Completed agent".to_string(),
+                status: SubAgentStatus::Complete,
+                started_at: 1000,
+                completed_at: Some(1050),
+                duration_ms: Some(50000),
+                tool_use_count: Some(10),
+                model: Some("haiku".to_string()),
+                input_tokens: Some(500),
+                output_tokens: Some(200),
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+                cost_usd: Some(0.001),
+                current_activity: None,
+            },
+            SubAgentInfo {
+                tool_use_id: "toolu_run2".to_string(),
+                agent_id: None, // Running agents may not have agent_id yet
+                agent_type: "Search".to_string(),
+                description: "Another running agent".to_string(),
+                status: SubAgentStatus::Running,
+                started_at: 1010,
+                completed_at: None,
+                duration_ms: None,
+                tool_use_count: None,
+                model: None,
+                input_tokens: None,
+                output_tokens: None,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+                cost_usd: None,
+                current_activity: Some("Grep".to_string()),
+            },
+        ];
+
+        mgr.sessions
+            .write()
+            .await
+            .insert(session_id.to_string(), session);
+
+        // Reap the session.
+        let result = mgr.reap_session(session_id).await;
+        assert_eq!(result, ReapResult::Reaped);
+
+        // Check recently_closed: Running agents should now be Error.
+        let rc = mgr.recently_closed.read().await;
+        let closed = rc
+            .get(session_id)
+            .expect("reaped session should be in recently_closed");
+
+        assert_eq!(closed.hook.sub_agents.len(), 3);
+
+        // Agent 0: was Running → should be Error, current_activity cleared.
+        assert_eq!(
+            closed.hook.sub_agents[0].status,
+            SubAgentStatus::Error,
+            "Running subagent should be marked Error after reap"
+        );
+        assert_eq!(
+            closed.hook.sub_agents[0].current_activity, None,
+            "current_activity should be cleared for errored subagent"
+        );
+
+        // Agent 1: was Complete → should remain Complete (untouched).
+        assert_eq!(
+            closed.hook.sub_agents[1].status,
+            SubAgentStatus::Complete,
+            "Complete subagent should remain Complete after reap"
+        );
+        assert_eq!(
+            closed.hook.sub_agents[1].cost_usd,
+            Some(0.001),
+            "Complete subagent data should be preserved"
+        );
+
+        // Agent 2: was Running → should be Error, current_activity cleared.
+        assert_eq!(
+            closed.hook.sub_agents[2].status,
+            SubAgentStatus::Error,
+            "Second running subagent should be marked Error after reap"
+        );
+        assert_eq!(
+            closed.hook.sub_agents[2].current_activity, None,
+            "current_activity should be cleared for second errored subagent"
+        );
+
+        // Also verify the broadcast event carries the corrected statuses.
+        let event = rx
+            .try_recv()
+            .expect("expected a broadcast event after reap");
+        match event {
+            SessionEvent::SessionClosed { session } => {
+                assert_eq!(session.hook.sub_agents[0].status, SubAgentStatus::Error);
+                assert_eq!(session.hook.sub_agents[1].status, SubAgentStatus::Complete);
+                assert_eq!(session.hook.sub_agents[2].status, SubAgentStatus::Error);
+            }
+            other => panic!("expected SessionClosed, got {:?}", other),
+        }
+    }
 }
