@@ -1924,4 +1924,212 @@ mod tests {
             "gone dir missing → source_exists=false"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // strip_ansi — regression tests for large output integrity
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_strip_ansi_preserves_large_json() {
+        // Regression: strip_ansi must not truncate or corrupt large strings.
+        // The CLI output can exceed 64KB of valid JSON.
+        let large_json = serde_json::json!({
+            "plugins": (0..500).map(|i| {
+                serde_json::json!({
+                    "id": format!("plugin-{i}@marketplace"),
+                    "name": format!("plugin-{i}"),
+                    "url": format!("https://github.com/org/plugin-{i}.git"),
+                    "description": format!("Plugin {i} does something useful for developers"),
+                })
+            }).collect::<Vec<_>>(),
+        });
+        let json_str = serde_json::to_string_pretty(&large_json).unwrap();
+        assert!(
+            json_str.len() > 65_536,
+            "test data must exceed 64KB pipe buffer; got {}",
+            json_str.len()
+        );
+
+        let result = strip_ansi(&json_str);
+        assert_eq!(result, json_str, "strip_ansi should not alter clean JSON");
+        // Verify JSON still parses after strip_ansi
+        serde_json::from_str::<serde_json::Value>(&result)
+            .expect("strip_ansi output must remain valid JSON");
+    }
+
+    #[test]
+    fn test_strip_ansi_removes_codes_from_large_output() {
+        // Ensure ANSI codes are stripped without data loss in large payloads
+        let payload = "a".repeat(70_000);
+        let with_ansi = format!("\x1b[31m{payload}\x1b[0m");
+        let result = strip_ansi(&with_ansi);
+        assert_eq!(result.len(), 70_000);
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn test_strip_ansi_handles_empty_and_no_ansi() {
+        assert_eq!(strip_ansi(""), "");
+        assert_eq!(strip_ansi("hello world"), "hello world");
+        assert_eq!(strip_ansi("{\"key\": \"value\"}"), "{\"key\": \"value\"}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Tempfile stdout redirect — regression for 64KB pipe truncation
+    // -----------------------------------------------------------------------
+
+    /// Regression: Node.js CLI stdout truncates at 64KB (macOS pipe buffer)
+    /// when using piped stdout. This test verifies the tempfile redirect
+    /// pattern captures output beyond 64KB without data loss.
+    #[tokio::test]
+    async fn test_tempfile_stdout_captures_beyond_64kb() {
+        use std::process::Stdio;
+
+        // Write a script that outputs >64KB to stdout (simulates Node.js CLI)
+        let script = tempfile::NamedTempFile::with_suffix(".sh").unwrap();
+        let payload_size = 80_000; // well beyond 64KB
+        std::fs::write(
+            script.path(),
+            format!("#!/bin/sh\nprintf '%0{}d' 0", payload_size),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(script.path(), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+
+        // Method 1: piped stdout (may truncate for Node.js CLIs)
+        let piped_output = tokio::process::Command::new(script.path())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .await
+            .unwrap();
+
+        // Method 2: tempfile stdout (our fix)
+        let stdout_file = tempfile::NamedTempFile::new().unwrap();
+        let stdout_fd: Stdio = stdout_file.as_file().try_clone().unwrap().into();
+
+        let mut child = tokio::process::Command::new(script.path())
+            .stdout(stdout_fd)
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+
+        let tempfile_output = tokio::fs::read_to_string(stdout_file.path()).await.unwrap();
+
+        // Both should capture the full output for a shell script
+        // (shell scripts don't have Node's async stdout issue)
+        assert_eq!(
+            piped_output.stdout.len(),
+            payload_size,
+            "piped output should be complete for shell scripts"
+        );
+        assert_eq!(
+            tempfile_output.len(),
+            payload_size,
+            "tempfile output must capture full payload"
+        );
+    }
+
+    /// Verify that tokio Command::output() overrides stdout to piped,
+    /// defeating file redirect. This is why we use spawn() instead.
+    #[tokio::test]
+    async fn test_output_overrides_stdout_fd() {
+        use std::process::Stdio;
+
+        let stdout_file = tempfile::NamedTempFile::new().unwrap();
+        let stdout_fd: Stdio = stdout_file.as_file().try_clone().unwrap().into();
+
+        // output() silently overrides stdout to piped
+        let output = tokio::process::Command::new("echo")
+            .arg("hello")
+            .stdout(stdout_fd)
+            .output()
+            .await
+            .unwrap();
+
+        let file_content = tokio::fs::read_to_string(stdout_file.path()).await.unwrap();
+
+        // output() captured it via pipe, file is empty
+        assert!(
+            !output.stdout.is_empty(),
+            "output() should capture stdout via pipe"
+        );
+        assert!(
+            file_content.is_empty(),
+            "file should be empty because output() overrode the fd"
+        );
+    }
+
+    /// Verify that spawn() preserves file fd redirect.
+    #[tokio::test]
+    async fn test_spawn_preserves_stdout_fd() {
+        use std::process::Stdio;
+
+        let stdout_file = tempfile::NamedTempFile::new().unwrap();
+        let stdout_fd: Stdio = stdout_file.as_file().try_clone().unwrap().into();
+
+        // spawn() preserves our stdout redirect
+        let mut child = tokio::process::Command::new("echo")
+            .arg("hello")
+            .stdout(stdout_fd)
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+
+        let file_content = tokio::fs::read_to_string(stdout_file.path()).await.unwrap();
+
+        assert_eq!(
+            file_content.trim(),
+            "hello",
+            "spawn() must preserve file fd, capturing output to the file"
+        );
+    }
+
+    /// Integration: run_claude_plugin_in returns valid JSON for `list --available`
+    /// which is the command that exceeds 64KB and triggered the original bug.
+    #[tokio::test]
+    async fn test_run_claude_plugin_returns_complete_json() {
+        // Skip if CLI not available (CI environments)
+        if claude_view_core::resolved_cli_path().is_none() {
+            eprintln!("Skipping: claude CLI not found");
+            return;
+        }
+
+        let result = run_claude_plugin(&["list", "--available", "--json"]).await;
+        match result {
+            Ok(json_str) => {
+                assert!(
+                    json_str.len() > 65_536,
+                    "output should exceed 64KB pipe buffer; got {} bytes",
+                    json_str.len()
+                );
+
+                let parsed: serde_json::Value = serde_json::from_str(&json_str).expect(
+                    "run_claude_plugin must return valid JSON (regression: 64KB pipe truncation)",
+                );
+                assert!(
+                    parsed["installed"].is_array(),
+                    "parsed JSON must have 'installed' array"
+                );
+                assert!(
+                    parsed["available"].is_array(),
+                    "parsed JSON must have 'available' array"
+                );
+            }
+            Err(e) => {
+                let err_str = format!("{e:?}");
+                assert!(
+                    !err_str.contains("EOF while parsing"),
+                    "regression: stdout truncation must not cause JSON parse errors: {err_str}"
+                );
+                // Other errors (CLI not installed, auth) are OK to skip
+                eprintln!("Skipping: CLI error (not truncation): {err_str}");
+            }
+        }
+    }
 }
