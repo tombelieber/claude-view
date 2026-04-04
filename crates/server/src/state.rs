@@ -191,218 +191,153 @@ pub struct AppState {
     pub debug_omlx_log: Option<DebugEventLog>,
     /// Local LLM service (on-device AI).
     pub local_llm: Arc<crate::local_llm::LocalLlmService>,
+    /// Connection registry for multiplexed session WebSockets (Stage 1+4).
+    pub session_channels: Arc<crate::live::session_ws::registry::SessionChannelRegistry>,
+}
+
+/// Builder for constructing `AppState` with optional overrides.
+///
+/// Call `AppState::builder(db)` to start, chain `.with_*()` methods,
+/// then `.build()` to produce an `Arc<AppState>`.
+pub struct AppStateBuilder {
+    db: Database,
+    indexing: Option<Arc<IndexingState>>,
+    registry: Option<RegistryHolder>,
+    shutdown: Option<tokio::sync::watch::Receiver<bool>>,
+}
+
+impl AppStateBuilder {
+    /// Override the `IndexingState`.
+    pub fn with_indexing(mut self, indexing: Arc<IndexingState>) -> Self {
+        self.indexing = Some(indexing);
+        self
+    }
+
+    /// Override the shared registry holder.
+    pub fn with_registry(mut self, registry: RegistryHolder) -> Self {
+        self.registry = Some(registry);
+        self
+    }
+
+    /// Override the shutdown watch receiver.
+    pub fn with_shutdown(mut self, shutdown: tokio::sync::watch::Receiver<bool>) -> Self {
+        self.shutdown = Some(shutdown);
+        self
+    }
+
+    /// Build the `AppState` wrapped in an `Arc`.
+    pub fn build(self) -> Arc<AppState> {
+        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
+            (
+                Some(DebugEventLog::new(".debug/statusline.jsonl")),
+                Some(DebugEventLog::new(".debug/hooks.jsonl")),
+                Some(DebugEventLog::new(".debug/omlx.jsonl")),
+            )
+        } else {
+            (None, None, None)
+        };
+        Arc::new(AppState {
+            start_time: Instant::now(),
+            db: self.db,
+            indexing: self
+                .indexing
+                .unwrap_or_else(|| Arc::new(IndexingState::new())),
+            git_sync: Arc::new(GitSyncState::new()),
+            registry: self.registry.unwrap_or_else(|| Arc::new(RwLock::new(None))),
+            jobs: Arc::new(JobRunner::new()),
+            classify: Arc::new(ClassifyState::new()),
+            facet_ingest: Arc::new(FacetIngestState::new()),
+            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
+            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            live_tx: broadcast::channel(256).0,
+            rules_dir: dirs::home_dir()
+                .expect("home dir exists")
+                .join(".claude")
+                .join("rules"),
+            terminal_connections: Arc::new(TerminalConnectionManager::new()),
+            live_manager: None,
+            search_index: Arc::new(RwLock::new(None)),
+            shutdown: self
+                .shutdown
+                .unwrap_or_else(|| tokio::sync::watch::channel(false).1),
+            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            sidecar: Arc::new(SidecarManager::new()),
+            jwks: None,
+            share: None,
+            auth_identity: OnceCell::new(),
+            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
+            teams: Arc::new(crate::teams::TeamsStore::empty()),
+            prompt_index: Arc::new(RwLock::new(None)),
+            prompt_stats: Arc::new(RwLock::new(None)),
+            prompt_templates: Arc::new(RwLock::new(None)),
+            available_ides: Vec::new(),
+            monitor_tx: broadcast::channel(64).0,
+            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
+            oracle_rx: crate::live::process_oracle::stub(),
+            plugin_op_queue: Arc::new(PluginOpQueue::new()),
+            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
+            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
+            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
+                std::time::Duration::from_secs(120),
+            )),
+            coordinator: Arc::new(SessionCoordinator::new()),
+            telemetry: None,
+            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
+            debug_statusline_log,
+            debug_hooks_log,
+            debug_omlx_log,
+            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
+                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
+                Arc::new(crate::local_llm::LlmStatus::new(10710)),
+            )),
+            session_channels: Arc::new(
+                crate::live::session_ws::registry::SessionChannelRegistry::new(),
+            ),
+        })
+    }
 }
 
 impl AppState {
-    /// Create a new application state wrapped in an Arc for sharing.
-    ///
-    /// Uses a default (idle) `IndexingState` and empty registry holder.
-    pub fn new(db: Database) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
-            (
-                Some(DebugEventLog::new(".debug/statusline.jsonl")),
-                Some(DebugEventLog::new(".debug/hooks.jsonl")),
-                Some(DebugEventLog::new(".debug/omlx.jsonl")),
-            )
-        } else {
-            (None, None, None)
-        };
-        Arc::new(Self {
-            start_time: Instant::now(),
+    /// Create a builder for `AppState`.
+    pub fn builder(db: Database) -> AppStateBuilder {
+        AppStateBuilder {
             db,
-            indexing: Arc::new(IndexingState::new()),
-            git_sync: Arc::new(GitSyncState::new()),
-            registry: Arc::new(RwLock::new(None)),
-            jobs: Arc::new(JobRunner::new()),
-            classify: Arc::new(ClassifyState::new()),
-            facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
-            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            live_tx: broadcast::channel(256).0,
-
-            rules_dir: dirs::home_dir()
-                .expect("home dir exists")
-                .join(".claude")
-                .join("rules"),
-            terminal_connections: Arc::new(TerminalConnectionManager::new()),
-            live_manager: None,
-            search_index: Arc::new(RwLock::new(None)),
-            shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            sidecar: Arc::new(SidecarManager::new()),
-            jwks: None,
-            share: None,
-            auth_identity: OnceCell::new(),
-            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            teams: Arc::new(crate::teams::TeamsStore::empty()),
-            prompt_index: Arc::new(RwLock::new(None)),
-            prompt_stats: Arc::new(RwLock::new(None)),
-            prompt_templates: Arc::new(RwLock::new(None)),
-            available_ides: Vec::new(),
-            monitor_tx: broadcast::channel(64).0,
-            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
-            oracle_rx: crate::live::process_oracle::stub(),
-            plugin_op_queue: Arc::new(PluginOpQueue::new()),
-            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
-            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
-            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
-                std::time::Duration::from_secs(120),
-            )),
-            coordinator: Arc::new(SessionCoordinator::new()),
-            telemetry: None,
-            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
-            debug_statusline_log,
-            debug_hooks_log,
-            debug_omlx_log,
-            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
-                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
-                Arc::new(crate::local_llm::LlmStatus::new(10710)),
-            )),
-        })
+            indexing: None,
+            registry: None,
+            shutdown: None,
+        }
     }
 
-    /// Create with an externally-provided `IndexingState` (for testing and
-    /// server-first startup where the caller owns the indexing handle).
-    pub fn new_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
-            (
-                Some(DebugEventLog::new(".debug/statusline.jsonl")),
-                Some(DebugEventLog::new(".debug/hooks.jsonl")),
-                Some(DebugEventLog::new(".debug/omlx.jsonl")),
-            )
-        } else {
-            (None, None, None)
-        };
-        Arc::new(Self {
-            start_time: Instant::now(),
-            db,
-            indexing,
-            git_sync: Arc::new(GitSyncState::new()),
-            registry: Arc::new(RwLock::new(None)),
-            jobs: Arc::new(JobRunner::new()),
-            classify: Arc::new(ClassifyState::new()),
-            facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
-            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            live_tx: broadcast::channel(256).0,
+    /// Create a new application state with all defaults. Delegates to builder.
+    pub fn new(db: Database) -> Arc<Self> {
+        Self::builder(db).build()
+    }
 
-            rules_dir: dirs::home_dir()
-                .expect("home dir exists")
-                .join(".claude")
-                .join("rules"),
-            terminal_connections: Arc::new(TerminalConnectionManager::new()),
-            live_manager: None,
-            search_index: Arc::new(RwLock::new(None)),
-            shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            sidecar: Arc::new(SidecarManager::new()),
-            jwks: None,
-            share: None,
-            auth_identity: OnceCell::new(),
-            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            teams: Arc::new(crate::teams::TeamsStore::empty()),
-            prompt_index: Arc::new(RwLock::new(None)),
-            prompt_stats: Arc::new(RwLock::new(None)),
-            prompt_templates: Arc::new(RwLock::new(None)),
-            available_ides: Vec::new(),
-            monitor_tx: broadcast::channel(64).0,
-            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
-            oracle_rx: crate::live::process_oracle::stub(),
-            plugin_op_queue: Arc::new(PluginOpQueue::new()),
-            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
-            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
-            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
-                std::time::Duration::from_secs(120),
-            )),
-            coordinator: Arc::new(SessionCoordinator::new()),
-            telemetry: None,
-            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
-            debug_statusline_log,
-            debug_hooks_log,
-            debug_omlx_log,
-            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
-                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
-                Arc::new(crate::local_llm::LlmStatus::new(10710)),
-            )),
-        })
+    /// Deprecated — use `AppState::builder(db).with_indexing(i).build()`.
+    #[deprecated(note = "Use AppState::builder(db).with_indexing(i).build() instead")]
+    #[allow(dead_code)]
+    pub fn new_with_indexing(db: Database, indexing: Arc<IndexingState>) -> Arc<Self> {
+        Self::builder(db).with_indexing(indexing).build()
     }
 
     /// Create with both an external `IndexingState` and a shared registry holder.
+    /// Deprecated — use `AppState::builder(db).with_indexing(i).with_registry(r).build()`.
+    #[deprecated(
+        note = "Use AppState::builder(db).with_indexing(i).with_registry(r).build() instead"
+    )]
+    #[allow(dead_code)]
     pub fn new_with_indexing_and_registry(
         db: Database,
         indexing: Arc<IndexingState>,
         registry: RegistryHolder,
     ) -> Arc<Self> {
-        let (debug_statusline_log, debug_hooks_log, debug_omlx_log) = if cfg!(debug_assertions) {
-            (
-                Some(DebugEventLog::new(".debug/statusline.jsonl")),
-                Some(DebugEventLog::new(".debug/hooks.jsonl")),
-                Some(DebugEventLog::new(".debug/omlx.jsonl")),
-            )
-        } else {
-            (None, None, None)
-        };
-        Arc::new(Self {
-            start_time: Instant::now(),
-            db,
-            indexing,
-            git_sync: Arc::new(GitSyncState::new()),
-            registry,
-            jobs: Arc::new(JobRunner::new()),
-            classify: Arc::new(ClassifyState::new()),
-            facet_ingest: Arc::new(FacetIngestState::new()),
-            pricing: Arc::new(claude_view_core::pricing::load_pricing()),
-            live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            live_tx: broadcast::channel(256).0,
-
-            rules_dir: dirs::home_dir()
-                .expect("home dir exists")
-                .join(".claude")
-                .join("rules"),
-            terminal_connections: Arc::new(TerminalConnectionManager::new()),
-            live_manager: None,
-            search_index: Arc::new(RwLock::new(None)),
-            shutdown: tokio::sync::watch::channel(false).1,
-            hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            sidecar: Arc::new(SidecarManager::new()),
-            jwks: None,
-            share: None,
-            auth_identity: OnceCell::new(),
-            oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            plugin_cli_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
-            teams: Arc::new(crate::teams::TeamsStore::empty()),
-            prompt_index: Arc::new(RwLock::new(None)),
-            prompt_stats: Arc::new(RwLock::new(None)),
-            prompt_templates: Arc::new(RwLock::new(None)),
-            available_ides: Vec::new(),
-            monitor_tx: broadcast::channel(64).0,
-            monitor_subscribers: Arc::new(AtomicUsize::new(0)),
-            oracle_rx: crate::live::process_oracle::stub(),
-            plugin_op_queue: Arc::new(PluginOpQueue::new()),
-            plugin_op_notify: Arc::new(tokio::sync::Notify::new()),
-            marketplace_refresh: Arc::new(MarketplaceRefreshTracker::new()),
-            transcript_to_session: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            pending_statusline: tokio::sync::Mutex::new(PendingMutations::new(
-                std::time::Duration::from_secs(120),
-            )),
-            coordinator: Arc::new(SessionCoordinator::new()),
-            telemetry: None,
-            telemetry_config_path: claude_view_core::telemetry_config::telemetry_config_path(),
-            debug_statusline_log,
-            debug_hooks_log,
-            debug_omlx_log,
-            local_llm: Arc::new(crate::local_llm::LocalLlmService::new(
-                Arc::new(crate::local_llm::LocalLlmConfig::new_disabled()),
-                Arc::new(crate::local_llm::LlmStatus::new(10710)),
-            )),
-        })
+        Self::builder(db)
+            .with_indexing(indexing)
+            .with_registry(registry)
+            .build()
     }
 
     /// Build a `MutationContext` borrowing shared state for one coordinator call.
@@ -445,16 +380,98 @@ mod tests {
     async fn test_app_state_uptime() {
         let state = test_state().await;
         sleep(Duration::from_millis(100));
-        // Should be at least 0 seconds (could be 0 due to timing)
         let uptime = state.uptime_secs();
-        assert!(uptime < 5); // Reasonable upper bound
+        assert!(uptime < 5);
     }
 
     #[tokio::test]
     async fn test_app_state_clone() {
         let state = test_state().await;
         let cloned = state.clone();
-        // Both should report similar uptime
         assert_eq!(state.uptime_secs(), cloned.uptime_secs());
+    }
+
+    // ================================================================
+    // Stage 0B: AppState builder pattern tests
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_builder_defaults_match_new() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let state = AppState::builder(db).build();
+        assert!(state.live_manager.is_none());
+        assert!(state.jwks.is_none());
+        assert!(state.share.is_none());
+        assert!(state.telemetry.is_none());
+        assert!(state.uptime_secs() < 1);
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_indexing() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let indexing = Arc::new(IndexingState::new());
+        let indexing_clone = indexing.clone();
+        let state = AppState::builder(db).with_indexing(indexing).build();
+        assert!(Arc::ptr_eq(&state.indexing, &indexing_clone));
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_registry() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let registry: RegistryHolder = Arc::new(RwLock::new(None));
+        let registry_clone = registry.clone();
+        let state = AppState::builder(db).with_registry(registry).build();
+        assert!(Arc::ptr_eq(&state.registry, &registry_clone));
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_indexing_and_registry() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let indexing = Arc::new(IndexingState::new());
+        let registry: RegistryHolder = Arc::new(RwLock::new(None));
+        let indexing_clone = indexing.clone();
+        let registry_clone = registry.clone();
+        let state = AppState::builder(db)
+            .with_indexing(indexing)
+            .with_registry(registry)
+            .build();
+        assert!(Arc::ptr_eq(&state.indexing, &indexing_clone));
+        assert!(Arc::ptr_eq(&state.registry, &registry_clone));
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_shutdown() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let state = AppState::builder(db).with_shutdown(shutdown_rx).build();
+        assert!(!*state.shutdown.borrow());
+        shutdown_tx.send(true).unwrap();
+        assert!(*state.shutdown.borrow());
+    }
+
+    #[tokio::test]
+    async fn test_builder_chaining_order_irrelevant() {
+        let db1 = Database::new_in_memory().await.expect("in-memory DB");
+        let db2 = Database::new_in_memory().await.expect("in-memory DB");
+        let indexing = Arc::new(IndexingState::new());
+        let registry: RegistryHolder = Arc::new(RwLock::new(None));
+        let state_a = AppState::builder(db1)
+            .with_indexing(indexing.clone())
+            .with_registry(registry.clone())
+            .build();
+        let state_b = AppState::builder(db2)
+            .with_registry(registry.clone())
+            .with_indexing(indexing.clone())
+            .build();
+        assert!(Arc::ptr_eq(&state_a.indexing, &state_b.indexing));
+        assert!(Arc::ptr_eq(&state_a.registry, &state_b.registry));
+    }
+
+    #[tokio::test]
+    async fn test_mutation_context_from_builder_state() {
+        let db = Database::new_in_memory().await.expect("in-memory DB");
+        let state = AppState::builder(db).build();
+        let ctx = state.mutation_context();
+        assert!(ctx.live_manager.is_none());
     }
 }
