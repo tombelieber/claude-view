@@ -37,6 +37,7 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
         },
         [
           { cmd: 'FETCH_HISTORY', sessionId: event.sessionId },
+          { cmd: 'FETCH_HOOK_EVENTS', sessionId: event.sessionId },
           { cmd: 'CHECK_SIDECAR_ACTIVE', sessionId: event.sessionId },
         ],
       ]

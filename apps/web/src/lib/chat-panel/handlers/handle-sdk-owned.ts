@@ -1,4 +1,5 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { blockTimestamp } from '../hook-events'
 import { connTransition } from '../modules/conn-health'
 import { metaTransition } from '../modules/meta'
 import { outboxTransition } from '../modules/outbox'
@@ -74,6 +75,17 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
       }
       return [store, []]
 
+    case 'HOOK_EVENTS_OK': {
+      // Merge hook blocks by ID (append-or-replace, same as TERMINAL_BLOCK in cc_cli)
+      const existingIds = new Set(p.blocks.map((b) => b.id))
+      const newHooks = event.blocks.filter((b) => !existingIds.has(b.id))
+      if (newHooks.length === 0) return [store, []]
+      const merged = [...p.blocks, ...newHooks].sort(
+        (a, b) => blockTimestamp(a) - blockTimestamp(b),
+      )
+      return [{ ...store, panel: { ...p, blocks: merged } }, []]
+    }
+
     case 'TURN_COMPLETE': {
       const turn = turnTransition(p.turn, { type: 'TURN_COMPLETE' })
       const meta = metaTransition(store.meta, {
@@ -87,7 +99,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
           panel: { ...p, turn, blocks: mergeBlocks(p.blocks, event.blocks), pendingText: '' },
           meta,
         },
-        [],
+        [{ cmd: 'FETCH_HOOK_EVENTS', sessionId: p.sessionId }],
       ]
     }
 
@@ -104,7 +116,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
           panel: { ...p, turn, blocks: mergeBlocks(p.blocks, event.blocks), pendingText: '' },
           meta,
         },
-        [],
+        [{ cmd: 'FETCH_HOOK_EVENTS', sessionId: p.sessionId }],
       ]
     }
 

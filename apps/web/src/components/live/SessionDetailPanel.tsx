@@ -26,7 +26,6 @@ import { developerRegistry } from '@claude-view/shared/components/conversation/b
 import { useChatPanel } from '../../hooks/use-chat-panel'
 import { useCommandExecutor } from '../../hooks/use-command-executor'
 import { useFileHistory } from '../../hooks/use-file-history'
-import { useHookEvents } from '../../hooks/use-hook-events'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { deriveLiveStatus } from '../../lib/derive-panel-mode'
@@ -207,8 +206,8 @@ export function SessionDetailPanel({
     [setPreferredDetailTab],
   )
 
-  // Historical hook events (REST fetch for non-live sessions)
-  useHookEvents(data.id, !isLive)
+  // Hook events are now fetched via FSM command (FETCH_HOOK_EVENTS) and merged
+  // into convBlocks by phase handlers — no separate hook needed here.
 
   const [drillDownAgent, setDrillDownAgent] = useState<{
     agentId: string

@@ -77,6 +77,12 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       // Terminal WS finished scrollback — no-op, just marks readiness
       return [store, []]
 
+    case 'HOOK_EVENTS_OK':
+      // No-op in cc_cli — hook events already flow via TERMINAL_BLOCK from the
+      // multiplexed WS. The initial FETCH_HOOK_EVENTS from SELECT_SESSION may
+      // arrive after the cc_cli transition; safe to discard.
+      return [store, []]
+
     default:
       return [store, []]
   }
