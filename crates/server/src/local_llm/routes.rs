@@ -17,12 +17,18 @@ struct ToggleRequest {
     enabled: bool,
 }
 
+#[derive(serde::Deserialize)]
+struct SetModelRequest {
+    model_id: String,
+}
+
 pub fn local_llm_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/status", get(handle_status))
         .route("/connect", post(handle_connect))
         .route("/disconnect", post(handle_disconnect))
         .route("/toggle", post(handle_toggle))
+        .route("/model", post(handle_set_model))
 }
 
 async fn handle_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -48,6 +54,20 @@ async fn handle_disconnect(State(state): State<Arc<AppState>>) -> impl IntoRespo
         Ok(()) => Json(serde_json::json!({ "status": "disconnected" })).into_response(),
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_set_model(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SetModelRequest>,
+) -> impl IntoResponse {
+    match state.local_llm.set_model(&body.model_id) {
+        Ok(()) => Json(serde_json::json!({ "model_id": body.model_id })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": e })),
         )
             .into_response(),
