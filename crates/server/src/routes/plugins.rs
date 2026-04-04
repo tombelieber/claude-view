@@ -305,14 +305,32 @@ fn strip_ansi(s: &str) -> String {
 /// Run a `claude plugin` subcommand and return stdout as String.
 /// Strips ALL CLAUDE* env vars and ANSI codes per CLAUDE.md hard rules.
 /// Optional `cwd` sets the working directory (needed for project-scoped uninstall).
+///
+/// Stdout is redirected to a temp file instead of a pipe. Node.js (which powers
+/// the `claude` CLI) uses async I/O for piped stdout and can exit before its
+/// internal write queue drains. On macOS the kernel pipe buffer is 64KB, so any
+/// output beyond that is silently lost. File I/O is synchronous in Node.js,
+/// guaranteeing all data is on disk before the process exits.
+///
+/// We use `spawn()` instead of `output()` because `output()` internally overrides
+/// stdout to `Stdio::piped()`, defeating the file redirect.
 pub(crate) async fn run_claude_plugin_in(
     args: &[&str],
     cwd: Option<&str>,
     timeout_secs: u64,
 ) -> Result<String, ApiError> {
     use std::process::Stdio;
+    use tokio::io::AsyncReadExt;
 
     let cli_path = claude_view_core::resolved_cli_path().unwrap_or("claude");
+
+    let stdout_file = tempfile::NamedTempFile::new()
+        .map_err(|e| ApiError::Internal(format!("Failed to create temp file: {e}")))?;
+    let stdout_fd: Stdio = stdout_file
+        .as_file()
+        .try_clone()
+        .map_err(|e| ApiError::Internal(format!("Failed to clone temp file handle: {e}")))?
+        .into();
 
     let mut cmd = Command::new(cli_path);
     cmd.arg("plugin");
@@ -321,7 +339,7 @@ pub(crate) async fn run_claude_plugin_in(
         cmd.current_dir(dir);
     }
     cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::piped());
+    cmd.stdout(stdout_fd);
     cmd.stderr(Stdio::piped());
 
     // Suppress ANSI color codes in CLI output (https://no-color.org/)
@@ -336,30 +354,48 @@ pub(crate) async fn run_claude_plugin_in(
         cmd.env_remove(key);
     }
 
-    let output = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
-        .await
-        .map_err(|_| ApiError::Internal(format!("claude CLI timed out after {timeout_secs}s")))?
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                ApiError::Internal(
-                    "Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code"
-                        .into(),
-                )
-            } else {
-                ApiError::Internal(format!("Failed to spawn claude CLI: {e}"))
-            }
-        })?;
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            ApiError::Internal(
+                "Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code".into(),
+            )
+        } else {
+            ApiError::Internal(format!("Failed to spawn claude CLI: {e}"))
+        }
+    })?;
 
-    if !output.status.success() {
-        let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
+    // Read stderr while waiting for exit (stderr is piped)
+    let mut stderr_buf = Vec::new();
+    let stderr_handle = child.stderr.take();
+
+    let status = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), async {
+        // Drain stderr concurrently with waiting for exit
+        let stderr_fut = async {
+            if let Some(mut stderr) = stderr_handle {
+                let _ = stderr.read_to_end(&mut stderr_buf).await;
+            }
+        };
+        let (status, _) = tokio::join!(child.wait(), stderr_fut);
+        status
+    })
+    .await
+    .map_err(|_| {
+        let _ = child.start_kill();
+        ApiError::Internal(format!("claude CLI timed out after {timeout_secs}s"))
+    })?
+    .map_err(|e| ApiError::Internal(format!("Failed to wait for claude CLI: {e}")))?;
+
+    if !status.success() {
+        let stderr = strip_ansi(&String::from_utf8_lossy(&stderr_buf));
         return Err(ApiError::Internal(format!(
             "claude plugin {} failed: {stderr}",
             args.join(" ")
         )));
     }
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|e| ApiError::Internal(format!("Invalid UTF-8 from CLI: {e}")))?;
+    let stdout = tokio::fs::read_to_string(stdout_file.path())
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to read CLI output: {e}")))?;
     Ok(strip_ansi(&stdout))
 }
 

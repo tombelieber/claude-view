@@ -94,10 +94,10 @@ utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+tempfile = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 tokio-test = { workspace = true }
 axum-test = { workspace = true }
 assert-json-diff = { workspace = true }
