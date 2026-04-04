@@ -12,6 +12,8 @@ struct ConfigFile {
     active_model: Option<String>,
     #[serde(default)]
     classify_mode: ClassifyMode,
+    #[serde(default)]
+    url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -19,6 +21,7 @@ pub struct LocalLlmConfig {
     enabled: AtomicBool,
     active_model: RwLock<Option<String>>,
     classify_mode: RwLock<ClassifyMode>,
+    url: RwLock<Option<String>>,
     path: PathBuf,
 }
 
@@ -37,6 +40,7 @@ impl LocalLlmConfig {
             classify_mode: RwLock::new(
                 config.as_ref().map(|c| c.classify_mode).unwrap_or_default(),
             ),
+            url: RwLock::new(config.as_ref().and_then(|c| c.url.clone())),
             path,
         }
     }
@@ -47,6 +51,7 @@ impl LocalLlmConfig {
             enabled: AtomicBool::new(false),
             active_model: RwLock::new(None),
             classify_mode: RwLock::new(ClassifyMode::default()),
+            url: RwLock::new(None),
             path: config_path(),
         }
     }
@@ -60,6 +65,22 @@ impl LocalLlmConfig {
     pub fn set_enabled(&self, val: bool) -> std::io::Result<()> {
         self.enabled.store(val, Ordering::Release);
         self.persist()
+    }
+
+    /// Custom URL override, or None for auto-detect.
+    pub fn url(&self) -> Option<String> {
+        self.url.read().unwrap().clone()
+    }
+
+    /// Set or clear the custom URL.
+    pub fn set_url(&self, val: Option<String>) -> std::io::Result<()> {
+        *self.url.write().unwrap() = val;
+        self.persist()
+    }
+
+    /// Preferred model — alias for active_model (used by lifecycle).
+    pub fn preferred_model(&self) -> Option<String> {
+        self.active_model()
     }
 
     /// Active model ID, or None (callers fall back to registry default).
@@ -86,6 +107,7 @@ impl LocalLlmConfig {
             enabled: self.enabled.load(Ordering::Acquire),
             active_model: self.active_model.read().unwrap().clone(),
             classify_mode: *self.classify_mode.read().unwrap(),
+            url: self.url.read().unwrap().clone(),
         };
         let json = serde_json::to_string_pretty(&file).map_err(std::io::Error::other)?;
         if let Some(parent) = self.path.parent() {
@@ -112,6 +134,7 @@ mod tests {
             enabled: AtomicBool::new(false),
             active_model: RwLock::new(None),
             classify_mode: RwLock::new(ClassifyMode::default()),
+            url: RwLock::new(None),
             path: dir.join("local-llm.json"),
         }
     }
