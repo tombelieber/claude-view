@@ -69,6 +69,8 @@ regex-lite = "0.1"
 urlencoding = "2"
 memmap2 = "0.9"
 memchr = "2"
+walkdir = "2"
+flate2 = "1"
 sysinfo = "0.33"
 similar = "2"
 ts-rs = { version = "12", features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
