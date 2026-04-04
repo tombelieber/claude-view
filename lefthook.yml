@@ -17,6 +17,10 @@ pre-commit:
     cargo-fmt:
       glob: "*.rs"
       run: rustfmt {staged_files} && git add {staged_files}
+    ts-safety-check:
+      glob: "*.{ts,tsx}"
+      exclude: "*.test.{ts,tsx}"
+      run: bash scripts/ts-safety-check.sh {staged_files}
     skill-sync:
       glob: "{claude-view/**,packages/plugin/src/tools/**,plugin.json,marketplace.json}"
       run: bash test/skill-sync.sh
