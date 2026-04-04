@@ -5,15 +5,19 @@ use std::time::Duration;
 
 use reqwest::Client;
 use serde::Deserialize;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use super::config::LocalLlmConfig;
 use super::process::ManagedProcess;
 use super::registry;
-use super::status::{LlmStatus, ServerState};
+use super::status::{FailureReason, LlmStatus, ServerState};
 
 const POLL_INTERVAL_STARTUP: Duration = Duration::from_secs(2);
 const POLL_INTERVAL_RUNNING: Duration = Duration::from_secs(10);
+/// After this many consecutive failures, transition to Error state.
+const MAX_STARTUP_ATTEMPTS: u32 = 15; // 30s at 2s intervals
+/// Slow-poll interval once in Error state (still recoverable).
+const POLL_INTERVAL_ERROR: Duration = Duration::from_secs(30);
 
 /// How the LLM process is managed.
 #[derive(Debug)]
@@ -57,6 +61,7 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
         .expect("reqwest client");
 
     let mut state = ServerState::Unknown;
+    let mut consecutive_failures: u32 = 0;
     info!(
         port = status.port,
         "LLM lifecycle started, checking {}", base_url
@@ -70,10 +75,12 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
                 status.ready.store(false, Ordering::Release);
                 status.set_pid(None);
                 status.set_discovered_model_id(None);
+                status.set_failure_reason(None);
                 status.set_server_state(ServerState::Unknown);
             }
             tokio::time::sleep(POLL_INTERVAL_STARTUP).await;
             state = ServerState::Unknown;
+            consecutive_failures = 0;
             continue;
         }
 
@@ -82,6 +89,7 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
 
         let interval = match state {
             ServerState::Running if !was_demoted => POLL_INTERVAL_RUNNING,
+            ServerState::Error => POLL_INTERVAL_ERROR,
             _ => POLL_INTERVAL_STARTUP,
         };
 
@@ -93,18 +101,26 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
             .and_then(|id| registry::find_model(&id))
             .unwrap_or_else(registry::default_model);
 
-        // Probe /v1/models
-        let model_id = match check_model(&client, &base_url, active.model_id_substring).await {
-            Some(id) => id,
-            None => {
-                if state == ServerState::Running {
-                    warn!("LLM model check failed, marking unavailable");
-                }
-                status.ready.store(false, Ordering::Release);
-                status.set_pid(None);
-                status.set_discovered_model_id(None);
-                status.set_server_state(ServerState::Unavailable);
-                state = ServerState::Unavailable;
+        // Probe /v1/models — determine failure reason from the response
+        let probe = probe_model(&client, &base_url, active.model_id_substring).await;
+        let model_id = match probe {
+            ProbeResult::Found(id) => id,
+            ProbeResult::NoServer => {
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::NoServer,
+                );
+                continue;
+            }
+            ProbeResult::ModelNotFound => {
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::ModelNotFound,
+                );
                 continue;
             }
         };
@@ -116,11 +132,13 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
         // Verify inference on first transition to Running (or re-probe after demotion)
         if state != ServerState::Running || was_demoted {
             if !verify_inference(&client, &base_url, &model_id).await {
-                debug!("LLM inference verify failed (model loading?)");
-                status.ready.store(false, Ordering::Release);
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::InferenceFailed,
+                );
                 status.set_discovered_model_id(None);
-                status.set_server_state(ServerState::Unavailable);
-                state = ServerState::Unavailable;
                 continue;
             }
 
@@ -129,9 +147,42 @@ async fn run_discover_loop(status: Arc<LlmStatus>, config: Arc<LocalLlmConfig>) 
             info!(model = %model_id, ?pid, "LLM ready");
         }
 
+        // Success — clear all failure state
+        consecutive_failures = 0;
         status.ready.store(true, Ordering::Release);
+        status.set_failure_reason(None);
         status.set_server_state(ServerState::Running);
         state = ServerState::Running;
+    }
+}
+
+/// Record a health-check failure. After MAX_STARTUP_ATTEMPTS, escalate to Error.
+fn record_failure(
+    status: &LlmStatus,
+    state: &mut ServerState,
+    consecutive_failures: &mut u32,
+    reason: FailureReason,
+) {
+    if *state == ServerState::Running {
+        warn!(?reason, "LLM health check failed, marking unavailable");
+    }
+
+    *consecutive_failures += 1;
+    status.ready.store(false, Ordering::Release);
+    status.set_pid(None);
+    status.set_failure_reason(Some(reason));
+
+    if *consecutive_failures >= MAX_STARTUP_ATTEMPTS && *state != ServerState::Error {
+        warn!(
+            attempts = *consecutive_failures,
+            ?reason,
+            "exceeded max startup attempts, entering error state"
+        );
+        status.set_server_state(ServerState::Error);
+        *state = ServerState::Error;
+    } else if *state != ServerState::Error {
+        status.set_server_state(ServerState::Unavailable);
+        *state = ServerState::Unavailable;
     }
 }
 
@@ -150,6 +201,7 @@ async fn run_managed_loop(
 
     let mut state = ServerState::Unknown;
     let mut restart_count = 0u32;
+    let mut consecutive_failures: u32 = 0;
 
     info!(port = status.port, "LLM managed lifecycle started");
 
@@ -160,6 +212,7 @@ async fn run_managed_loop(
                 status.ready.store(false, Ordering::Release);
                 status.set_pid(None);
                 status.set_discovered_model_id(None);
+                status.set_failure_reason(None);
                 status.set_server_state(ServerState::Unknown);
             }
             // Shutdown managed process if running
@@ -169,6 +222,7 @@ async fn run_managed_loop(
             tokio::time::sleep(POLL_INTERVAL_STARTUP).await;
             state = ServerState::Unknown;
             restart_count = 0;
+            consecutive_failures = 0;
             continue;
         }
 
@@ -179,11 +233,6 @@ async fn run_managed_loop(
                 if !proc.is_alive() {
                     warn!("oMLX process exited unexpectedly");
                     *guard = None;
-                    status.ready.store(false, Ordering::Release);
-                    status.set_pid(None);
-                    status.set_discovered_model_id(None);
-                    status.set_server_state(ServerState::Unavailable);
-                    state = ServerState::Unavailable;
                     true
                 } else {
                     false
@@ -194,21 +243,29 @@ async fn run_managed_loop(
         }; // guard dropped here
 
         if process_died {
-            // Auto-restart up to MAX_RESTART_ATTEMPTS
+            record_failure(
+                &status,
+                &mut state,
+                &mut consecutive_failures,
+                FailureReason::ProcessCrashed,
+            );
+            status.set_discovered_model_id(None);
+
             if restart_count < MAX_RESTART_ATTEMPTS {
                 restart_count += 1;
                 warn!(attempt = restart_count, "will attempt restart");
             } else {
                 warn!("max restart attempts reached, giving up");
-                tokio::time::sleep(POLL_INTERVAL_RUNNING).await;
+                tokio::time::sleep(POLL_INTERVAL_ERROR).await;
                 continue;
             }
         }
 
-        // Standard health check (same as discover loop)
+        // Poll interval adapts to state
         let was_demoted = state == ServerState::Running && !status.ready.load(Ordering::Acquire);
         let interval = match state {
             ServerState::Running if !was_demoted => POLL_INTERVAL_RUNNING,
+            ServerState::Error => POLL_INTERVAL_ERROR,
             _ => POLL_INTERVAL_STARTUP,
         };
         tokio::time::sleep(interval).await;
@@ -218,17 +275,25 @@ async fn run_managed_loop(
             .and_then(|id| registry::find_model(&id))
             .unwrap_or_else(registry::default_model);
 
-        let model_id = match check_model(&client, &base_url, active.model_id_substring).await {
-            Some(id) => id,
-            None => {
-                if state == ServerState::Running {
-                    warn!("LLM model check failed, marking unavailable");
-                }
-                status.ready.store(false, Ordering::Release);
-                status.set_pid(None);
-                status.set_discovered_model_id(None);
-                status.set_server_state(ServerState::Unavailable);
-                state = ServerState::Unavailable;
+        let probe = probe_model(&client, &base_url, active.model_id_substring).await;
+        let model_id = match probe {
+            ProbeResult::Found(id) => id,
+            ProbeResult::NoServer => {
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::NoServer,
+                );
+                continue;
+            }
+            ProbeResult::ModelNotFound => {
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::ModelNotFound,
+                );
                 continue;
             }
         };
@@ -237,38 +302,55 @@ async fn run_managed_loop(
 
         if state != ServerState::Running || was_demoted {
             if !verify_inference(&client, &base_url, &model_id).await {
-                debug!("LLM inference verify failed (model loading?)");
-                status.ready.store(false, Ordering::Release);
+                record_failure(
+                    &status,
+                    &mut state,
+                    &mut consecutive_failures,
+                    FailureReason::InferenceFailed,
+                );
                 status.set_discovered_model_id(None);
-                status.set_server_state(ServerState::Unavailable);
-                state = ServerState::Unavailable;
                 continue;
             }
 
             let pid = find_llm_pid(status.port);
             status.set_pid(pid);
             info!(model = %model_id, ?pid, "LLM ready (managed)");
-            restart_count = 0; // Reset on successful startup
+            restart_count = 0;
         }
 
+        // Success — clear all failure state
+        consecutive_failures = 0;
         status.ready.store(true, Ordering::Release);
+        status.set_failure_reason(None);
         status.set_server_state(ServerState::Running);
         state = ServerState::Running;
     }
 }
 
-async fn check_model(client: &Client, base_url: &str, model_substring: &str) -> Option<String> {
-    let resp = client
-        .get(format!("{base_url}/v1/models"))
-        .send()
-        .await
-        .ok()?;
-    let models: ModelsResponse = resp.json().await.ok()?;
-    models
+enum ProbeResult {
+    Found(String),
+    NoServer,
+    ModelNotFound,
+}
+
+async fn probe_model(client: &Client, base_url: &str, model_substring: &str) -> ProbeResult {
+    let resp = match client.get(format!("{base_url}/v1/models")).send().await {
+        Ok(r) => r,
+        Err(_) => return ProbeResult::NoServer,
+    };
+    let models: ModelsResponse = match resp.json().await {
+        Ok(m) => m,
+        Err(_) => return ProbeResult::NoServer,
+    };
+    let needle = model_substring.to_lowercase();
+    match models
         .data
         .iter()
-        .find(|m| m.id.contains(model_substring))
-        .map(|m| m.id.clone())
+        .find(|m| m.id.to_lowercase().contains(&needle))
+    {
+        Some(m) => ProbeResult::Found(m.id.clone()),
+        None => ProbeResult::ModelNotFound,
+    }
 }
 
 async fn verify_inference(client: &Client, base_url: &str, model: &str) -> bool {
