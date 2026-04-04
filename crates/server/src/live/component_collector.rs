@@ -92,11 +92,11 @@ pub fn collect(
     }
 }
 
-/// Fetch active session count from sidecar HTTP API.
+/// Fetch active session count from sidecar health endpoint.
 /// Returns None if sidecar is not running or request fails.
-/// Uses a 1-second timeout — collector must not block the oracle.
+/// Uses the lightweight /health endpoint (no SDK calls, no child process spawning).
 fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
-    let url = format!("{}/api/sidecar/sessions", sidecar.base_url());
+    let url = format!("{}/health", sidecar.base_url());
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_millis(200))
         .build()
@@ -106,7 +106,7 @@ fn fetch_session_count(sidecar: &SidecarManager) -> Option<u32> {
         return None;
     }
     let body: serde_json::Value = resp.json().ok()?;
-    body.as_array().map(|arr| arr.len() as u32)
+    body["activeSessions"].as_u64().map(|n| n as u32)
 }
 
 /// Find sidecar PID by scanning sysinfo for the sidecar node process.

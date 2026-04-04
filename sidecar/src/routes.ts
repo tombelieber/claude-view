@@ -2,17 +2,11 @@
 import { Hono } from 'hono'
 import { notifyBindControl, notifyUnbindControl } from './control-binding.js'
 import { getCacheState } from './model-cache.js'
-import type {
-  CreateSessionRequest,
-  ForkSessionRequest,
-  PromptRequest,
-  ResumeSessionRequest,
-} from './protocol.js'
+import type { CreateSessionRequest, ForkSessionRequest, ResumeSessionRequest } from './protocol.js'
 import {
   closeSession,
   createControlSession,
   forkControlSession,
-  listAvailableSessions,
   resumeControlSession,
   sendMessage,
   waitForSessionInit,
@@ -102,81 +96,9 @@ export function createRoutes(registry: SessionRegistry) {
     }
   })
 
-  // Send message to session (path param)
-  app.post('/sessions/:id/send', async (c) => {
-    const sessionId = c.req.param('id')
-    const cs = registry.getBySessionId(sessionId)
-    if (!cs) return c.json({ error: 'Session not found' }, 404)
-
-    const body = await c.req.json<{ message: string }>()
-    sendMessage(cs, body.message)
-    return c.json({ status: 'sent' })
-  })
-
-  // One-shot prompt for session (path param)
-  app.post('/sessions/:id/prompt', async (c) => {
-    const body = await c.req.json<PromptRequest>()
-    if (!body.message || !body.model)
-      return c.json({ error: 'message and model are required' }, 400)
-
-    try {
-      const cs = createControlSession(
-        { model: body.model, permissionMode: body.permissionMode, initialMessage: body.message },
-        registry,
-      )
-      // Wait for turn_complete by listening to the emitter
-      return new Promise<Response>((resolve) => {
-        const onMessage = (event: { type: string }) => {
-          if (event.type === 'turn_complete' || event.type === 'turn_error') {
-            cleanup()
-            closeSession(cs, registry)
-            resolve(c.json(event))
-          }
-        }
-
-        const timeout = setTimeout(() => {
-          cleanup()
-          closeSession(cs, registry)
-          resolve(c.json({ error: 'Prompt timed out' }, 504))
-        }, 120_000) // 2 min max
-
-        const cleanup = () => {
-          clearTimeout(timeout)
-          cs.emitter.removeListener('message', onMessage)
-        }
-
-        cs.emitter.on('message', onMessage)
-      })
-    } catch (err) {
-      return c.json({ error: `Prompt failed: ${err instanceof Error ? err.message : err}` }, 500)
-    }
-  })
-
-  // Session status
-  app.get('/sessions/:id/status', (c) => {
-    const sessionId = c.req.param('id')
-    const cs = registry.getBySessionId(sessionId)
-    if (!cs) return c.json({ error: 'Session not found' }, 404)
-    return c.json({
-      sessionId: cs.sessionId,
-      state: cs.state,
-      model: cs.model,
-      permissionMode: cs.permissionMode,
-      turnCount: cs.turnCount,
-      totalCostUsd: cs.totalCostUsd,
-      startedAt: cs.startedAt,
-    })
-  })
-
-  // List active control sessions + available sessions merged
-  app.get('/sessions', async (c) => {
-    const active = registry.list()
-    try {
-      const available = await listAvailableSessions()
-      return c.json({ active, available })
-    } catch {
-      return c.json({ active, available: [] })
-    }
+  // List active control sessions (lightweight — no SDK calls)
+  app.get('/sessions', (c) => {
+    return c.json({ active: registry.list() })
   })
 
   // Terminate session (by sessionId)
