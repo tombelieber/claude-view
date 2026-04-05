@@ -3,4 +3,9 @@
 /**
  * Efficiency trend stats.
  */
-export type EfficiencyStats = { avgReeditRate: number, avgEditVelocity: number, trend: string, trendPct: number, };
+export type EfficiencyStats = {
+  avgReeditRate: number
+  avgEditVelocity: number
+  trend: string
+  trendPct: number
+}

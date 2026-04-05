@@ -3,4 +3,12 @@
 /**
  * A coaching rule parsed from a `coaching-*.md` file.
  */
-export type CoachingRule = { id: string, patternId: string, title: string, body: string, scope: string, appliedAt: string, filePath: string, };
+export type CoachingRule = {
+  id: string
+  patternId: string
+  title: string
+  body: string
+  scope: string
+  appliedAt: string
+  filePath: string
+}

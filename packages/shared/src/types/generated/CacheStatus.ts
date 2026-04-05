@@ -3,4 +3,4 @@
 /**
  * Whether the Anthropic prompt cache is likely warm or cold.
  */
-export type CacheStatus = "warm" | "cold" | "unknown";
+export type CacheStatus = 'warm' | 'cold' | 'unknown'

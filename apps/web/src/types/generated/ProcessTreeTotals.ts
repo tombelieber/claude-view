@@ -3,4 +3,13 @@
 /**
  * Aggregate statistics across the classified tree.
  */
-export type ProcessTreeTotals = { ecosystemCpu: number, ecosystemMemory: number, ecosystemCount: number, childCpu: number, childMemory: number, childCount: number, unparentedCount: number, unparentedMemory: number, };
+export type ProcessTreeTotals = {
+  ecosystemCpu: number
+  ecosystemMemory: number
+  ecosystemCount: number
+  childCpu: number
+  childMemory: number
+  childCount: number
+  unparentedCount: number
+  unparentedMemory: number
+}

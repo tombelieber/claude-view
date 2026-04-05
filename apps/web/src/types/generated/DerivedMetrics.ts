@@ -3,24 +3,25 @@
 /**
  * Derived metrics calculated from atomic units
  */
-export type DerivedMetrics = { 
-/**
- * Tokens per prompt: (total_input + total_output) / user_prompt_count
- */
-tokensPerPrompt?: number | null, 
-/**
- * Re-edit rate: reedited_files_count / files_edited_count
- */
-reeditRate?: number | null, 
-/**
- * Tool density: tool_call_count / api_call_count
- */
-toolDensity?: number | null, 
-/**
- * Edit velocity: files_edited_count / (duration_seconds / 60)
- */
-editVelocity?: number | null, 
-/**
- * Read-to-edit ratio: files_read_count / files_edited_count
- */
-readToEditRatio?: number | null, };
+export type DerivedMetrics = {
+  /**
+   * Tokens per prompt: (total_input + total_output) / user_prompt_count
+   */
+  tokensPerPrompt?: number | null
+  /**
+   * Re-edit rate: reedited_files_count / files_edited_count
+   */
+  reeditRate?: number | null
+  /**
+   * Tool density: tool_call_count / api_call_count
+   */
+  toolDensity?: number | null
+  /**
+   * Edit velocity: files_edited_count / (duration_seconds / 60)
+   */
+  editVelocity?: number | null
+  /**
+   * Read-to-edit ratio: files_read_count / files_edited_count
+   */
+  readToEditRatio?: number | null
+}

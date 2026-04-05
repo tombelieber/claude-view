@@ -3,12 +3,13 @@
 /**
  * A tool integration (MCP server or skill) detected from actual usage in a session.
  */
-export type ToolUsed = { 
-/**
- * Display name: "playwright", "chrome-devtools" for MCP; "commit", "review-pr" for skills.
- */
-name: string, 
-/**
- * Category: "mcp" or "skill".
- */
-kind: string, };
+export type ToolUsed = {
+  /**
+   * Display name: "playwright", "chrome-devtools" for MCP; "commit", "review-pr" for skills.
+   */
+  name: string
+  /**
+   * Category: "mcp" or "skill".
+   */
+  kind: string
+}

@@ -3,16 +3,17 @@
 /**
  * Performance section of system response.
  */
-export type PerformanceInfo = { 
-/**
- * Duration of last successful index in milliseconds.
- */
-lastIndexDurationMs: number | null, 
-/**
- * Throughput: bytes processed per second during last index.
- */
-throughputBytesPerSec: number | null, 
-/**
- * Sessions indexed per second during last index.
- */
-sessionsPerSec: number | null, };
+export type PerformanceInfo = {
+  /**
+   * Duration of last successful index in milliseconds.
+   */
+  lastIndexDurationMs: number | null
+  /**
+   * Throughput: bytes processed per second during last index.
+   */
+  throughputBytesPerSec: number | null
+  /**
+   * Sessions indexed per second during last index.
+   */
+  sessionsPerSec: number | null
+}
