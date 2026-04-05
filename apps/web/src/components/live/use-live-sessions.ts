@@ -31,7 +31,17 @@ export interface UseLiveSessionsResult {
   lastUpdate: Date | null
   /** Session IDs with no SSE event for >3 seconds */
   stalledSessions: Set<string>
-  /** Unix epoch seconds, ticks every ~1s for duration computation */
+  /**
+   * Unix epoch seconds, ticks every ~1s for duration computation.
+   *
+   * V1-hardening M1.4 — this field is preserved for backward compat but
+   * consumers should prefer `useTick()` from `hooks/use-tick.ts`. The
+   * value here is synced from the same source, but consuming it here
+   * forces a re-render of every `useLiveSessions()` caller every 1s.
+   * Direct `useTick()` subscribers only re-render the component that needs it.
+   *
+   * @deprecated prefer `useTick()` directly in the component that needs it
+   */
   currentTime: number
   recentlyClosed: LiveSession[]
   dismissSession: (sessionId: string) => Promise<void>
@@ -52,7 +62,16 @@ export function useLiveSessions(): UseLiveSessionsResult {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const lastEventTimes = useRef<Map<string, number>>(new Map())
   const [stalledSessions, setStalledSessions] = useState<Set<string>>(new Set())
-  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
+  // V1-hardening M1.4 — currentTime is NO LONGER held in React state here.
+  // Holding it here forced <App> to re-render every 1s, which rebuilt the
+  // Outlet context and cascaded through every page. The returned value is
+  // now computed at render-time from Date.now() — it is *only* fresh if
+  // this hook re-renders (i.e. when sessions/summary/connected change).
+  //
+  // Components that need a *live-ticking* currentTime MUST call
+  // `useTick()` from `hooks/use-tick.ts` directly. Do not rely on the
+  // `currentTime` field of this hook's return value for live updates.
+  const currentTime = Math.floor(Date.now() / 1000)
   const resyncRef = useRef<{
     ids: Set<string>
     timer: number | null
@@ -208,6 +227,11 @@ export function useLiveSessions(): UseLiveSessionsResult {
     }
   }, [])
 
+  // V1-hardening M1.4 — stall detection ticks every 1s via its own interval.
+  // Only calls setStalledSessions when the set actually changes (see
+  // identity-checking inside), so idle runs are a no-op for React.
+  // Does NOT tick currentTime anymore — that responsibility moved to
+  // `useTick()` in `hooks/use-tick.ts`.
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now()
@@ -219,7 +243,6 @@ export function useLiveSessions(): UseLiveSessionsResult {
         if (stalled.size === prev.size && [...stalled].every((id) => prev.has(id))) return prev
         return stalled
       })
-      setCurrentTime(Math.floor(now / 1000))
     }, 1000)
     return () => clearInterval(interval)
   }, [])
@@ -230,10 +253,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
   )
 
   const recentlyClosedList = useMemo(
-    () =>
-      Array.from(recentlyClosed.values()).sort(
-        (a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0),
-      ),
+    () => Array.from(recentlyClosed.values()).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
     [recentlyClosed],
   )
 

@@ -20,6 +20,7 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useTick } from '../../hooks/use-tick'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -114,12 +115,17 @@ interface SessionCardProps {
 export function SessionCard({
   session,
   stalledSessions,
-  currentTime,
+  currentTime: _currentTimeProp,
   onClickOverride,
   hideProjectBranch,
   showStateBadge,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
+  // V1-hardening M1.4 — source currentTime from useTick() directly so the
+  // card's duration display stays live even if the parent page doesn't
+  // re-render for 1+ seconds. The currentTime prop is kept for backward
+  // compat (type signature unchanged) but is ignored.
+  const currentTime = useTick()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
