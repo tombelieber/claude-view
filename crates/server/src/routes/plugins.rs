@@ -1825,8 +1825,7 @@ mod tests {
         )
         .unwrap();
 
-        let (descriptions, source_exists) =
-            read_plugin_descriptions_and_existence(&plugins_dir.to_path_buf());
+        let (descriptions, source_exists) = read_plugin_descriptions_and_existence(plugins_dir);
 
         assert_eq!(
             descriptions
@@ -1861,7 +1860,7 @@ mod tests {
         )
         .unwrap();
 
-        let counts = read_install_counts(&plugins_dir.to_path_buf());
+        let counts = read_install_counts(plugins_dir);
 
         assert_eq!(
             counts.get("my-plugin@my-marketplace").copied(),

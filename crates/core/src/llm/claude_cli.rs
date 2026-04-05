@@ -675,7 +675,7 @@ mod tests {
         // We can't test actual CLI invocation in unit tests.
         let _provider = ClaudeCliProvider::new("haiku");
         // Just verify it compiles — calling it would require CLI to be installed
-        let _: fn(
+        type StreamFn = fn(
             &ClaudeCliProvider,
             String,
         ) -> Result<
@@ -684,6 +684,7 @@ mod tests {
                 tokio::task::JoinHandle<Result<(), LlmError>>,
             ),
             LlmError,
-        > = ClaudeCliProvider::stream_completion;
+        >;
+        let _: StreamFn = ClaudeCliProvider::stream_completion;
     }
 }

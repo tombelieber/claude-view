@@ -125,9 +125,8 @@ async fn test_sse_stream_emits_process_tree_event() {
         parsed["ecosystem"][1]["ecosystemTag"], "self",
         "EcosystemTag::Self_ must serialize to 'self'"
     );
-    assert_eq!(
+    assert!(
         parsed["ecosystem"][1]["isSelf"].as_bool().unwrap(),
-        true,
         "is_self must be true for Self_ tagged entry"
     );
 

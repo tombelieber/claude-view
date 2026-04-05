@@ -70,7 +70,7 @@ fn progress_extraction_uses_primary_path_then_fallback_with_counter() {
 
     let after = progress_message_content_fallback_count();
     assert!(
-        after >= before + 1,
+        after > before,
         "fallback counter must increment when fallback path is used"
     );
 }

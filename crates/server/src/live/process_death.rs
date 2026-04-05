@@ -255,7 +255,7 @@ mod tests {
         let (watcher, mut death_rx) = ProcessDeathWatcher::start();
 
         // Spawn a short-lived process
-        let child = std::process::Command::new("sleep")
+        let mut child = std::process::Command::new("sleep")
             .arg("0.1")
             .spawn()
             .expect("failed to spawn sleep");
@@ -266,6 +266,9 @@ mod tests {
 
         // Wait for death notification (should arrive within ~200ms)
         let result = tokio::time::timeout(std::time::Duration::from_secs(3), death_rx.recv()).await;
+
+        // Reap the zombie.
+        let _ = child.wait();
 
         assert!(result.is_ok(), "Should receive death notification");
         let (dead_pid, session_id) = result.unwrap().unwrap();
@@ -297,7 +300,7 @@ mod tests {
         let (watcher, mut death_rx) = ProcessDeathWatcher::start();
 
         // Spawn a process
-        let child = std::process::Command::new("sleep")
+        let mut child = std::process::Command::new("sleep")
             .arg("0.5")
             .spawn()
             .expect("failed to spawn sleep");
@@ -310,6 +313,9 @@ mod tests {
 
         // Wait a bit — should NOT receive a notification
         let result = tokio::time::timeout(std::time::Duration::from_secs(2), death_rx.recv()).await;
+
+        // Reap the zombie.
+        let _ = child.wait();
 
         // It's OK if we get a notification (race condition), but it should
         // not crash. The main point is that unwatch doesn't panic.

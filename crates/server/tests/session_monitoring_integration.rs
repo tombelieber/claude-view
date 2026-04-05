@@ -155,6 +155,10 @@ fn test_snapshot_recovery_pid_dedup_end_to_end() {
 // =============================================================================
 
 #[test]
+// Clippy sees the `const` literals and warns that the expressions always
+// evaluate to the same value — that's the whole point of the test (verify
+// the detection logic against all four truth-table cases).
+#[allow(clippy::const_is_empty)]
 fn test_ghost_session_detection_logic() {
     // A ghost session has: empty file_path AND zero turn_count
     let file_path = "";

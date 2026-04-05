@@ -1190,7 +1190,7 @@ mod tests {
         let projects_dir = tmp.path().join("projects").join("test-project");
         fs::create_dir_all(&projects_dir).unwrap();
         let jsonl_path = projects_dir.join("sess-jsonl.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-jsonl","teamName":"test-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"test-team","description":"JSONL version"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
         ];
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
@@ -1209,7 +1209,7 @@ mod tests {
         fs::create_dir_all(&projects_dir).unwrap();
 
         let jsonl_path = projects_dir.join("sess-inbox.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-inbox","teamName":"inbox-only","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"inbox-only","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-inbox","teamName":"inbox-only","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"SendMessage","input":{"type":"message","recipient":"worker","content":"Hello worker"}}]},"timestamp":"2026-03-11T10:01:00.000Z"}"#,
         ];
@@ -1232,7 +1232,7 @@ mod tests {
         let projects_dir = tmp.path().join("projects").join("test-project");
         fs::create_dir_all(&projects_dir).unwrap();
         let jsonl_path = projects_dir.join("sess-summary.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-summary","teamName":"jsonl-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"jsonl-team","description":"JSONL-only team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-summary","teamName":"jsonl-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"agent-a","team_name":"jsonl-team","prompt":"Work"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
         ];
@@ -1254,7 +1254,7 @@ mod tests {
         fs::create_dir_all(&projects_dir).unwrap();
 
         let jsonl_path = projects_dir.join("sess-fallback.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-fallback","teamName":"ghost-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"ghost-team","description":"A team that no longer exists on disk"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-fallback","teamName":"ghost-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"worker","team_name":"ghost-team","prompt":"Do stuff","subagent_type":"general-purpose"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
         ];
@@ -1277,7 +1277,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl_path = tmp.path().join("sess-789.jsonl");
 
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-789","teamName":"inbox-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"SendMessage","input":{"type":"message","recipient":"analyst","summary":"Data ready","content":"Here is the analysis data."}}]},"timestamp":"2026-03-11T10:05:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-789","teamName":"inbox-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"SendMessage","input":{"type":"shutdown_request","recipient":"analyst","content":"All done."}}]},"timestamp":"2026-03-11T10:10:00.000Z"}"#,
         ];
@@ -1305,7 +1305,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl_path = tmp.path().join("sess-empty.jsonl");
 
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-empty","teamName":"no-msg-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"no-msg-team","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
         ];
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
@@ -1324,7 +1324,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl_path = tmp.path().join("sess-123.jsonl");
 
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"demo-team","description":"Demo research team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"researcher","team_name":"demo-team","prompt":"Research the topic","subagent_type":"Explore"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-123","teamName":"demo-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"name":"writer","team_name":"demo-team","prompt":"Write the report","subagent_type":"code-writer"}}]},"timestamp":"2026-03-11T10:00:02.000Z"}"#,
@@ -1356,7 +1356,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl_path = tmp.path().join("sess-456.jsonl");
 
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"my-team","description":"Test"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"model":"opus","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Agent","input":{"name":"member-a","team_name":"my-team","prompt":"Do work"}}]},"timestamp":"2026-03-11T10:00:01.000Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-456","teamName":"my-team","message":{"model":"haiku","role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"name":"helper","prompt":"Quick task"}}]},"timestamp":"2026-03-11T10:00:02.000Z"}"#,
@@ -1384,7 +1384,7 @@ mod tests {
         std::fs::create_dir_all(&projects_dir).unwrap();
 
         let jsonl_path = projects_dir.join("sess-abc.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"user","sessionId":"sess-abc","message":{"role":"user","content":"hi"},"timestamp":"2026-03-11T10:00:00Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-abc","teamName":"demo-team","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:01Z"}"#,
         ];
@@ -1407,7 +1407,7 @@ mod tests {
         std::fs::create_dir_all(&projects_dir).unwrap();
 
         let jsonl_path = projects_dir.join("sess-multi.jsonl");
-        let lines = vec![
+        let lines = [
             r#"{"type":"assistant","sessionId":"sess-multi","teamName":"team-a","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:01Z"}"#,
             r#"{"type":"assistant","sessionId":"sess-multi","teamName":"team-b","message":{"role":"assistant","content":[]},"timestamp":"2026-03-11T10:00:02Z"}"#,
         ];
@@ -1478,7 +1478,7 @@ mod tests {
 
         // Real-world shape: TeamCreate line has NO top-level teamName.
         // Subsequent Agent lines DO have teamName (real Claude Code behaviour).
-        let lines = vec![
+        let lines = [
             // TeamCreate — no teamName at top level (matches real JSONL structure)
             r#"{"type":"assistant","sessionId":"sess-real","message":{"model":"claude-sonnet-4-6","role":"assistant","content":[{"type":"tool_use","id":"toolu_abc","name":"TeamCreate","input":{"team_name":"real-team","description":"A real world team"},"caller":{"type":"direct"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             // Agent spawn — has teamName (subsequent messages after team creation)
@@ -1510,7 +1510,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl_path = tmp.path().join("sess-combined.jsonl");
 
-        let lines = vec![
+        let lines = [
             // TeamCreate — no teamName at top level
             r#"{"type":"assistant","sessionId":"sess-combined","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"TeamCreate","input":{"team_name":"combo-team","description":"Combined test team"}}]},"timestamp":"2026-03-11T10:00:00.000Z"}"#,
             // SendMessage — has teamName

@@ -379,8 +379,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- Summary ---
     println!("--- Results ({} iterations each) ---", BENCH_ITERATIONS);
     println!(
-        "{:<35} {:>8} {:>8} {:>8} {:>8}  {}",
-        "Function", "Avg(ms)", "Min(ms)", "Max(ms)", "Target", "Status"
+        "{:<35} {:>8} {:>8} {:>8} {:>8}  Status",
+        "Function", "Avg(ms)", "Min(ms)", "Max(ms)", "Target"
     );
     println!("{}", "-".repeat(88));
 

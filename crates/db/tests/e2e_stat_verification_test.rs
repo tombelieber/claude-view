@@ -10,7 +10,7 @@ use claude_view_db::indexer_parallel::{parse_bytes, ParsedSession, CURRENT_PARSE
 
 /// Build a realistic multi-turn JSONL with known ground truth.
 fn fixture_jsonl() -> Vec<u8> {
-    let lines = vec![
+    let lines = [
         // Turn 1: user asks, assistant reads + edits
         r#"{"type":"user","message":{"content":"Fix the authentication bug","timestamp":"2026-04-01T10:00:00Z"}}"#,
         r#"{"type":"assistant","message":{"id":"msg_001","content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/auth.rs"}},{"type":"tool_use","name":"Edit","input":{"file_path":"/src/auth.rs","old_string":"fn login()","new_string":"fn login(ctx: &Context)"}}],"usage":{"input_tokens":50000,"output_tokens":8000,"cache_read_input_tokens":20000,"cache_creation_input_tokens":5000},"model":"claude-opus-4-6"}}"#,

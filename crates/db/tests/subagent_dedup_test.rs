@@ -9,7 +9,7 @@ use claude_view_db::indexer_parallel::parse_bytes;
 /// Helper: create a minimal JSONL with the given number of tool calls and token usage.
 fn make_session_jsonl(
     user_msg: &str,
-    tools: &[(&str, &str)],       // (tool_name, file_path)
+    tools: &[(&str, &str)], // (tool_name, file_path)
     input_tokens: u64,
     output_tokens: u64,
 ) -> Vec<u8> {
@@ -112,8 +112,7 @@ fn subagent_tokens_merged_into_parent() {
         "Read count must include subagent reads"
     );
     assert_eq!(
-        parent.deep.tool_counts.edit as i64,
-        parent_tool_edit + 0 + 0,
+        parent.deep.tool_counts.edit as i64, parent_tool_edit,
         "Edit count must only include parent edits"
     );
     assert_eq!(parent.deep.tool_counts.bash, 1, "Bash from sub1");
@@ -173,11 +172,10 @@ async fn valid_sessions_view_excludes_sidechains() {
     .unwrap();
 
     // Query valid_sessions — must return only the primary session
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-            .fetch_one(db.pool())
-            .await
-            .unwrap();
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
     assert_eq!(count, 1, "valid_sessions must exclude sidechain sessions");
 
     // Verify token totals from valid_sessions match parent only (no double-counting)
@@ -197,12 +195,11 @@ async fn valid_sessions_view_excludes_sidechains() {
     );
 
     // Verify tool totals from valid_sessions
-    let (tool_total,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(tool_call_count), 0) FROM valid_sessions",
-    )
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
+    let (tool_total,): (i64,) =
+        sqlx::query_as("SELECT COALESCE(SUM(tool_call_count), 0) FROM valid_sessions")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
     assert_eq!(
         tool_total, 6,
         "tool count must only include primary session"
@@ -247,21 +244,16 @@ async fn archived_sessions_excluded_from_valid_sessions() {
     .await
     .unwrap();
 
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "valid_sessions must exclude archived sessions");
+
+    let (total_input,): (i64,) =
+        sqlx::query_as("SELECT COALESCE(SUM(total_input_tokens), 0) FROM valid_sessions")
             .fetch_one(db.pool())
             .await
             .unwrap();
-    assert_eq!(count, 1, "valid_sessions must exclude archived sessions");
-
-    let (total_input,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(total_input_tokens), 0) FROM valid_sessions",
-    )
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
-    assert_eq!(
-        total_input, 5000,
-        "token sum must exclude archived session"
-    );
+    assert_eq!(total_input, 5000, "token sum must exclude archived session");
 }

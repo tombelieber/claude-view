@@ -175,7 +175,7 @@ impl DrainState {
         }
     }
 
-    #[expect(dead_code, reason = "reserved for non-mode-multiplied callers")]
+    #[allow(dead_code)] // reserved for non-mode-multiplied callers
     fn is_idle_ready(entry: &DirtyEntry, now: Instant, bp: f32) -> bool {
         Self::is_idle_ready_with_mode(entry, now, bp, 1.0)
     }

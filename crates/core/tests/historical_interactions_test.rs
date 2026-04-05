@@ -46,7 +46,7 @@ fn plan_interaction_synthesised_for_exit_plan_mode_turn() {
 
     let plan = interactions[0];
     assert_eq!(plan.variant, InteractionVariant::Plan);
-    assert_eq!(plan.resolved, true);
+    assert!(plan.resolved);
     assert_eq!(plan.data["approved"], true);
     assert_eq!(
         plan.data["toolsExecutedAfter"], 1,
@@ -58,7 +58,10 @@ fn plan_interaction_synthesised_for_exit_plan_mode_turn() {
         "ExitPlanMode is a strong detection signal"
     );
     assert!(plan.id.starts_with("hist-interaction-"));
-    assert!(plan.request_id.is_none(), "historical → no sidecar requestId");
+    assert!(
+        plan.request_id.is_none(),
+        "historical → no sidecar requestId"
+    );
 
     let plan_content = plan.data["planContent"].as_str().unwrap_or("");
     assert!(
@@ -90,7 +93,10 @@ fn plan_interaction_positioned_immediately_after_assistant_block() {
 
     // The next block should be the synthesised InteractionBlock.
     assert!(
-        matches!(blocks.get(assistant_idx + 1), Some(ConversationBlock::Interaction(_))),
+        matches!(
+            blocks.get(assistant_idx + 1),
+            Some(ConversationBlock::Interaction(_))
+        ),
         "InteractionBlock must follow the triggering AssistantBlock directly"
     );
 }
@@ -118,7 +124,7 @@ fn existing_fixture_with_ask_user_question_gets_question_interaction() {
         .find(|i| i.variant == InteractionVariant::Question)
         .expect("fixture contains AskUserQuestion → expect Question");
 
-    assert_eq!(q.resolved, true, "user response attached as tool_result");
+    assert!(q.resolved, "user response attached as tool_result");
     assert_eq!(
         q.historical_source,
         Some(HistoricalSource::InferredFromToolPattern)

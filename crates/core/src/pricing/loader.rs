@@ -140,9 +140,9 @@ mod tests {
     #[test]
     fn test_aliases_in_map() {
         let pricing = load_pricing();
-        assert!(pricing.get("opus").is_some());
-        assert!(pricing.get("sonnet").is_some());
-        assert!(pricing.get("haiku").is_some());
+        assert!(pricing.contains_key("opus"));
+        assert!(pricing.contains_key("sonnet"));
+        assert!(pricing.contains_key("haiku"));
         // Alias should have same rates as target
         let opus_alias = pricing.get("opus").unwrap();
         let opus_direct = pricing.get("claude-opus-4-6").unwrap();

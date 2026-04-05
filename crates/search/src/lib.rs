@@ -328,7 +328,7 @@ mod tests {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
         // Index some documents
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "sess-001".to_string(),
                 project: "claude-view".to_string(),
@@ -396,7 +396,7 @@ mod tests {
     fn test_search_with_project_qualifier() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "sess-001".to_string(),
                 project: "claude-view".to_string(),
@@ -438,7 +438,7 @@ mod tests {
     fn test_search_with_scope() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "sess-001".to_string(),
                 project: "project-a".to_string(),
@@ -629,7 +629,7 @@ mod tests {
     fn test_search_with_skill_qualifier() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "sess-001".to_string(),
                 project: "test".to_string(),
@@ -743,7 +743,7 @@ mod tests {
     fn test_search_quoted_phrase() {
         let idx = SearchIndex::open_in_ram().expect("create index");
 
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "sess-001".to_string(),
                 project: "test".to_string(),
@@ -929,7 +929,7 @@ mod tests {
     fn test_search_model_partial_match() {
         let idx = SearchIndex::open_in_ram().unwrap();
 
-        let docs = vec![
+        let docs = [
             SearchDocument {
                 session_id: "s1".to_string(),
                 project: "test".to_string(),

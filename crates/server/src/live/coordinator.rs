@@ -1213,7 +1213,7 @@ mod tests {
         use claude_view_db::{hook_events_queries, Database};
 
         let db = Database::new_in_memory().await.unwrap();
-        let events = vec![
+        let events = [
             HookEvent {
                 timestamp: 1000,
                 event_name: "PreToolUse".into(),

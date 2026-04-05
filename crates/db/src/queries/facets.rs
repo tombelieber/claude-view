@@ -341,7 +341,9 @@ mod tests {
         let facet = make_facet("sess-1");
 
         // Insert once
-        db.batch_upsert_facets(&[facet.clone()]).await.unwrap();
+        db.batch_upsert_facets(std::slice::from_ref(&facet))
+            .await
+            .unwrap();
 
         // Insert again — should not error (INSERT OR REPLACE)
         let mut facet2 = facet;

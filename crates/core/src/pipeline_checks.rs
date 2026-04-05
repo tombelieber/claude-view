@@ -907,10 +907,8 @@ mod tests {
     #[test]
     fn test_session_token_round_trip() {
         let finders = TailFinders::new();
-        let lines_raw = vec![
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"hi","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
-            br#"{"type":"assistant","message":{"id":"msg-2","role":"assistant","content":"bye","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":75}},"requestId":"req-2"}"#.to_vec(),
-        ];
+        let lines_raw = [br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"hi","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
+            br#"{"type":"assistant","message":{"id":"msg-2","role":"assistant","content":"bye","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":75}},"requestId":"req-2"}"#.to_vec()];
         let parsed_lines: Vec<_> = lines_raw
             .iter()
             .map(|raw| (raw.as_slice(), parse_single_line(raw, &finders)))
@@ -923,10 +921,8 @@ mod tests {
     #[test]
     fn test_session_token_monotonicity() {
         let finders = TailFinders::new();
-        let lines_raw = vec![
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"hi","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
-            br#"{"type":"assistant","message":{"id":"msg-2","role":"assistant","content":"more","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":75}},"requestId":"req-2"}"#.to_vec(),
-        ];
+        let lines_raw = [br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"hi","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
+            br#"{"type":"assistant","message":{"id":"msg-2","role":"assistant","content":"more","model":"claude-sonnet-4-20250514","usage":{"input_tokens":200,"output_tokens":75}},"requestId":"req-2"}"#.to_vec()];
         let parsed_lines: Vec<_> = lines_raw
             .iter()
             .map(|raw| (raw.as_slice(), parse_single_line(raw, &finders)))
@@ -939,10 +935,8 @@ mod tests {
     #[test]
     fn test_session_dedup_duplicate_blocks_not_double_counted() {
         let finders = TailFinders::new();
-        let lines_raw = vec![
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block1","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block2","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
-        ];
+        let lines_raw = [br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block1","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
+            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block2","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec()];
         let parsed_lines: Vec<_> = lines_raw
             .iter()
             .map(|raw| (raw.as_slice(), parse_single_line(raw, &finders)))
@@ -959,10 +953,8 @@ mod tests {
     #[test]
     fn test_session_no_measurement_data_not_deduped() {
         let finders = TailFinders::new();
-        let lines_raw = vec![
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block1"},"requestId":"req-1"}"#.to_vec(),
-            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block2","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec(),
-        ];
+        let lines_raw = [br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block1"},"requestId":"req-1"}"#.to_vec(),
+            br#"{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":"block2","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50}},"requestId":"req-1"}"#.to_vec()];
         let parsed_lines: Vec<_> = lines_raw
             .iter()
             .map(|raw| (raw.as_slice(), parse_single_line(raw, &finders)))

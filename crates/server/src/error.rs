@@ -272,7 +272,7 @@ mod tests {
     async fn test_parse_io_error_returns_500() {
         let error = ApiError::Parse(ParseError::Io {
             path: PathBuf::from("/path/file.jsonl"),
-            source: std::io::Error::new(std::io::ErrorKind::Other, "disk error"),
+            source: std::io::Error::other("disk error"),
         });
         let response = error.into_response();
         let (status, body) = extract_response(response).await;
@@ -362,7 +362,7 @@ mod tests {
     async fn test_discovery_io_error_returns_500() {
         let error = ApiError::Discovery(DiscoveryError::Io {
             path: PathBuf::from("/home/user/.claude/projects"),
-            source: std::io::Error::new(std::io::ErrorKind::Other, "disk error"),
+            source: std::io::Error::other("disk error"),
         });
         let response = error.into_response();
         let (status, body) = extract_response(response).await;

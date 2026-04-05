@@ -94,16 +94,14 @@ fn simple_turn_produces_non_trivial_blocks() {
     assert!(progress.ts > 0.0, "ProgressBlock.ts should be > 0");
 
     // Verify ProgressBlock has non-empty data
-    match &progress.data {
-        ProgressData::Bash(bash) => {
-            // At least one of these should be non-trivial
-            assert!(
-                bash.total_lines > 0 || bash.total_bytes > 0 || !bash.output.is_empty(),
-                "BashProgress should have non-trivial data"
-            );
-        }
-        _ => {} // Other progress types are OK
+    if let ProgressData::Bash(bash) = &progress.data {
+        // At least one of these should be non-trivial
+        assert!(
+            bash.total_lines > 0 || bash.total_bytes > 0 || !bash.output.is_empty(),
+            "BashProgress should have non-trivial data"
+        );
     }
+    // Other progress types are OK
 }
 
 /// Verify that no blocks reference fields that aren't in the fixture

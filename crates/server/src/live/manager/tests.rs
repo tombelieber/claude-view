@@ -88,7 +88,7 @@ fn test_seconds_since_modified() {
         .as_secs() as i64;
 
     let seconds = seconds_since_modified_from_timestamp(now - 60);
-    assert!(seconds >= 59 && seconds <= 61);
+    assert!((59..=61).contains(&seconds));
 
     let seconds = seconds_since_modified_from_timestamp(now + 1000);
     assert_eq!(seconds, 0);

@@ -570,7 +570,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri(&format!("/api/reports/{id}"))
+                    .uri(format!("/api/reports/{id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -634,7 +634,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(&format!("/api/reports/{id}"))
+                    .uri(format!("/api/reports/{id}"))
                     .body(Body::empty())
                     .unwrap(),
             )

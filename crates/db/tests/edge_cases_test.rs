@@ -571,7 +571,7 @@ async fn a10_5_session_deleted_cascades_session_commits() {
 
     // Commit itself should still exist (no cascade on commit side)
     let commit_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM commits WHERE hash = ?1")
-        .bind(&"a".repeat(40))
+        .bind("a".repeat(40))
         .fetch_one(db.pool())
         .await
         .unwrap();

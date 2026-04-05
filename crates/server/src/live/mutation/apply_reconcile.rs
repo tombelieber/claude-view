@@ -68,13 +68,14 @@ mod tests {
 
     #[test]
     fn reconcile_updates_present_fields_only() {
-        let mut jsonl = JsonlFields::default();
-
         // Set initial values so we can verify None preserves them
-        jsonl.project = "original-project".into();
-        jsonl.project_display_name = "Original Project".into();
-        jsonl.project_path = "/home/user/original".into();
-        jsonl.edit_count = 5;
+        let mut jsonl = JsonlFields {
+            project: "original-project".into(),
+            project_display_name: "Original Project".into(),
+            project_path: "/home/user/original".into(),
+            edit_count: 5,
+            ..Default::default()
+        };
 
         // Reconcile with only some fields set
         let mut data = make_reconcile_data();
@@ -100,9 +101,11 @@ mod tests {
 
     #[test]
     fn reconcile_all_none_is_noop() {
-        let mut jsonl = JsonlFields::default();
-        jsonl.project = "keep-me".into();
-        jsonl.edit_count = 42;
+        let mut jsonl = JsonlFields {
+            project: "keep-me".into(),
+            edit_count: 42,
+            ..Default::default()
+        };
 
         let data = make_reconcile_data();
         apply_reconcile(&mut jsonl, &data);

@@ -133,9 +133,10 @@ pub fn synthesize_historical_interactions(blocks: &mut Vec<ConversationBlock>) {
                 // previous assistant block already carried an ExitPlanMode
                 // tool_use — we'd otherwise double-count. Safe heuristic:
                 // if any insertion already targets index i-1, skip.
-                if insertions.iter().any(|(idx, b)| {
-                    *idx + 1 == i && matches!(b.variant, InteractionVariant::Plan)
-                }) {
+                if insertions
+                    .iter()
+                    .any(|(idx, b)| *idx + 1 == i && matches!(b.variant, InteractionVariant::Plan))
+                {
                     continue;
                 }
                 let plan_content = system
@@ -269,6 +270,11 @@ fn count_tool_segments(block: &AssistantBlock, exclude_tool_use_id: Option<&str>
 }
 
 #[cfg(test)]
+// These tests compare serde_json::Value against bool/number literals via
+// assert_eq! (e.g., `assert_eq!(i.data["approved"], true)`). Clippy's
+// `bool_assert_comparison` lint misreads these as comparing a literal bool
+// to a literal bool. Suppressed at module scope.
+#[allow(clippy::bool_assert_comparison)]
 mod tests {
     use super::*;
     use crate::block_types::{
@@ -389,7 +395,7 @@ mod tests {
         assert_eq!(interactions.len(), 1);
         let i = interactions[0];
         assert_eq!(i.variant, InteractionVariant::Plan);
-        assert_eq!(i.resolved, true);
+        assert!(i.resolved);
         assert_eq!(i.data["approved"], true);
         assert_eq!(i.data["planContent"], "# My plan\n\nStep 1");
         assert_eq!(i.data["toolsExecutedAfter"], 1);
@@ -420,7 +426,7 @@ mod tests {
         synthesize_historical_interactions(&mut blocks);
         let interactions = interactions_only(&blocks);
         assert_eq!(interactions.len(), 1);
-        assert_eq!(interactions[0].resolved, true);
+        assert!(interactions[0].resolved);
         assert_eq!(interactions[0].data["approved"], false);
     }
 
@@ -440,7 +446,7 @@ mod tests {
         synthesize_historical_interactions(&mut blocks);
         let interactions = interactions_only(&blocks);
         assert_eq!(interactions.len(), 1);
-        assert_eq!(interactions[0].resolved, false);
+        assert!(!interactions[0].resolved);
         assert_eq!(interactions[0].data["approved"], false);
     }
 
@@ -464,7 +470,7 @@ mod tests {
         assert_eq!(interactions.len(), 1);
         let i = interactions[0];
         assert_eq!(i.variant, InteractionVariant::Question);
-        assert_eq!(i.resolved, true);
+        assert!(i.resolved);
         assert_eq!(i.data["question"], "What is the domain?");
         assert_eq!(i.data["userResponse"], "Web development");
         assert_eq!(i.data["toolUseName"], "AskUserQuestion");
@@ -488,7 +494,7 @@ mod tests {
         synthesize_historical_interactions(&mut blocks);
         let interactions = interactions_only(&blocks);
         assert_eq!(interactions.len(), 1);
-        assert_eq!(interactions[0].resolved, false);
+        assert!(!interactions[0].resolved);
         assert_eq!(interactions[0].data["userResponse"], "");
     }
 
@@ -615,8 +621,14 @@ mod tests {
         let mut b2 = build();
         synthesize_historical_interactions(&mut b1);
         synthesize_historical_interactions(&mut b2);
-        let ids1: Vec<_> = interactions_only(&b1).iter().map(|i| i.id.clone()).collect();
-        let ids2: Vec<_> = interactions_only(&b2).iter().map(|i| i.id.clone()).collect();
+        let ids1: Vec<_> = interactions_only(&b1)
+            .iter()
+            .map(|i| i.id.clone())
+            .collect();
+        let ids2: Vec<_> = interactions_only(&b2)
+            .iter()
+            .map(|i| i.id.clone())
+            .collect();
         assert_eq!(ids1, ids2);
         assert_eq!(ids1, vec!["hist-interaction-0", "hist-interaction-1"]);
     }

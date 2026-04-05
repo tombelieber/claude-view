@@ -1606,13 +1606,11 @@ mod tests {
 
         // Should receive a close frame next
         match tokio::time::timeout(Duration::from_secs(2), ws.next()).await {
-            Ok(Some(Ok(tungstenite::Message::Close(frame)))) => {
-                if let Some(cf) = frame {
-                    assert_eq!(
-                        cf.code,
-                        tungstenite::protocol::frame::coding::CloseCode::from(4004)
-                    );
-                }
+            Ok(Some(Ok(tungstenite::Message::Close(Some(cf))))) => {
+                assert_eq!(
+                    cf.code,
+                    tungstenite::protocol::frame::coding::CloseCode::from(4004)
+                );
             }
             _ => {
                 // Connection may already be closed -- that's acceptable
@@ -2235,18 +2233,13 @@ NaN ago
 
         // Collect messages until buffer_end (with timeout via recv_text)
         let mut messages = Vec::new();
-        loop {
-            match recv_text(&mut ws).await {
-                Some(text) => {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                        if v.get("type").and_then(|t| t.as_str()) == Some("buffer_end") {
-                            break;
-                        }
-                    }
-                    messages.push(text);
+        while let Some(text) = recv_text(&mut ws).await {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if v.get("type").and_then(|t| t.as_str()) == Some("buffer_end") {
+                    break;
                 }
-                None => break, // timeout — no more messages
             }
+            messages.push(text);
         }
 
         // Find the queue-operation message

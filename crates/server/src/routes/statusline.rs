@@ -655,7 +655,7 @@ mod tests {
             let tp = PathBuf::from(parsed.transcript_path.as_ref().unwrap());
             let tmap = transcript_map.read().await;
             tmap.get(&tp)
-                .filter(|existing| existing.as_str() != &parsed.session_id)
+                .filter(|existing| existing.as_str() != parsed.session_id)
                 .cloned()
         };
 

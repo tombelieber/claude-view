@@ -5,6 +5,14 @@
 //
 // Tests against real ~/.claude session files at multiple size tiers.
 
+// This is a standalone benchmark example — relaxed lints are acceptable.
+#![allow(
+    unused_assignments,
+    unused_variables,
+    dead_code,
+    clippy::type_complexity
+)]
+
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 

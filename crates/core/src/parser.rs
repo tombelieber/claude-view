@@ -1304,10 +1304,7 @@ mod tests {
             meta.get("type").unwrap().as_str().unwrap(),
             "file-history-snapshot"
         );
-        assert_eq!(
-            meta.get("isSnapshotUpdate").unwrap().as_bool().unwrap(),
-            false
-        );
+        assert!(!meta.get("isSnapshotUpdate").unwrap().as_bool().unwrap());
         assert!(meta.get("snapshot").is_some());
     }
 

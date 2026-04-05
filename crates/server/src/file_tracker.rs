@@ -207,7 +207,7 @@ mod tests {
         // Truncate and write shorter content
         {
             let mut f = std::fs::File::create(&path).unwrap(); // truncates
-            write!(f, "new\n").unwrap();
+            writeln!(f, "new").unwrap();
         }
 
         // Position is now past EOF — should detect truncation, reset, and re-read
@@ -240,7 +240,7 @@ mod tests {
                 .append(true)
                 .open(&path)
                 .unwrap();
-            write!(f, " continued\n").unwrap();
+            writeln!(f, " continued").unwrap();
         }
 
         // Now the full line should be returned
@@ -270,7 +270,7 @@ mod tests {
                 .append(true)
                 .open(&path)
                 .unwrap();
-            write!(f, "new-line\n").unwrap();
+            writeln!(f, "new-line").unwrap();
         }
 
         // Should only get the new content
