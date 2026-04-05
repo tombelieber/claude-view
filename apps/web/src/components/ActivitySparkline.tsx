@@ -26,14 +26,26 @@ interface ChartDatum {
   label: string // formatted for tooltip
 }
 
-export function ActivitySparkline() {
+interface ActivitySparklineProps {
+  /** Optional Unix-seconds lower bound — filters histogram to match page context */
+  timeAfter?: number | null
+  /** Optional Unix-seconds upper bound */
+  timeBefore?: number | null
+}
+
+export function ActivitySparkline({ timeAfter, timeBefore }: ActivitySparklineProps = {}) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
   const { data } = useQuery({
-    queryKey: ['session-activity'],
+    queryKey: ['session-activity', timeAfter ?? '', timeBefore ?? ''],
     queryFn: async () => {
-      const res = await fetch('/api/sessions/activity')
+      const sp = new URLSearchParams()
+      if (timeAfter != null && timeAfter > 0) sp.set('time_after', String(timeAfter))
+      if (timeBefore != null && timeBefore > 0) sp.set('time_before', String(timeBefore))
+      const qs = sp.toString()
+      const url = qs ? `/api/sessions/activity?${qs}` : '/api/sessions/activity'
+      const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch activity')
       return res.json() as Promise<{ activity: ActivityPoint[]; bucket: string; total: number }>
     },

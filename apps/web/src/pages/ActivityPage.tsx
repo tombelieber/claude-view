@@ -28,14 +28,15 @@ export function ActivityPage() {
   const isMobile = useIsMobile()
 
   const { state: timeRange, setPreset, setCustomRange } = useTimeRange()
-  const { data, isLoading, error } = useActivityCombined(
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  const { data, isLoading, isDayLoading, error } = useActivityCombined(
     timeRange.fromTimestamp,
     timeRange.toTimestamp,
     sidebarProject,
     sidebarBranch,
+    selectedDate,
   )
-
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
 
   const activeLabel = PRESET_LABELS[timeRange.preset] ?? 'Custom'
@@ -144,11 +145,19 @@ export function ActivityPage() {
                     selectedProject={selectedProject}
                   />
                 </div>
-                <DailyTimeline
-                  days={data.days}
-                  selectedDate={selectedDate}
-                  selectedProject={selectedProject}
-                />
+                {isDayLoading ? (
+                  <div className="space-y-2 animate-pulse">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-10 rounded-lg bg-gray-100 dark:bg-gray-800" />
+                    ))}
+                  </div>
+                ) : (
+                  <DailyTimeline
+                    days={data.days}
+                    selectedDate={selectedDate}
+                    selectedProject={selectedProject}
+                  />
+                )}
               </>
             )}
           </>
