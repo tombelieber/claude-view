@@ -1,4 +1,4 @@
-import { StopCircle } from 'lucide-react'
+import { ExternalLink, FileText, StopCircle, Tag } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import type { SystemBlock as SystemBlockType } from '../../../../types/blocks'
 import type {
@@ -364,6 +364,63 @@ function InformationalDetail({ data }: { data: Informational }) {
   )
 }
 
+function PrLinkDetail({ data }: { data: Record<string, unknown> }) {
+  const prUrl = data.prUrl as string | undefined
+  const prNumber = data.prNumber as number | undefined
+  const prRepo = data.prRepository as string | undefined
+  return (
+    <EventCard
+      dot="blue"
+      chip="PR"
+      label={prRepo ? `${prRepo}#${prNumber}` : `PR #${prNumber}`}
+      rawData={data}
+    >
+      {prUrl && (
+        <a
+          href={prUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+        >
+          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+          <span className="truncate font-mono">{prUrl}</span>
+        </a>
+      )}
+    </EventCard>
+  )
+}
+
+function CustomTitleDetail({ data }: { data: Record<string, unknown> }) {
+  const title = (data.customTitle as string) ?? ''
+  return (
+    <EventCard
+      dot="blue"
+      chip="Title"
+      chipColor="bg-blue-500/10 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
+      label={title}
+      rawData={data}
+      meta={<Tag className="w-3 h-3 text-gray-400" />}
+    />
+  )
+}
+
+function PlanContentDetail({ data }: { data: Record<string, unknown> }) {
+  const content = (data.planContent as string) || ''
+  return (
+    <EventCard
+      dot="purple"
+      chip="Plan"
+      chipColor="bg-violet-500/10 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300"
+      rawData={data}
+      meta={<FileText className="w-3 h-3 text-violet-400" />}
+    >
+      <div className="text-xs">
+        <Markdown content={content} />
+      </div>
+    </EventCard>
+  )
+}
+
 // ── Main dispatcher ─────────────────────────────────────────────────────────
 
 export function DevSystemBlock({ block }: SystemBlockProps) {
@@ -414,8 +471,21 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
             rawData={block.data}
           />
         )
-      default:
+      case 'pr_link':
+        return <PrLinkDetail data={block.data as Record<string, unknown>} />
+      case 'custom_title':
+        return <CustomTitleDetail data={block.data as Record<string, unknown>} />
+      case 'plan_content':
+        return <PlanContentDetail data={block.data as Record<string, unknown>} />
+      default: {
+        // Exhaustiveness check: if a new SystemVariant is added in blocks.ts,
+        // TypeScript will error here because `_exhaustive` is not `never`.
+        // This makes "dev mode must be a superset of chat mode" structurally
+        // enforced at compile time — no runtime test needed.
+        const _exhaustive: never = block.variant
+        void _exhaustive
         return null
+      }
     }
   })()
 
@@ -432,24 +502,10 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
           {block.rawJson.durationMs != null && (
             <DurationBadge ms={Number(block.rawJson.durationMs)} />
           )}
-          {typeof block.rawJson.planContent === 'string' && block.rawJson.planContent && (
-            <details className="mt-1">
-              <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
-                Plan content
-              </summary>
-              <Markdown content={block.rawJson.planContent} />
-            </details>
-          )}
-          {block.rawJson.prUrl != null && (
-            <a
-              href={String(block.rawJson.prUrl)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center text-xs font-mono text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-            >
-              PR #{String(block.rawJson.prNumber ?? '')}
-            </a>
-          )}
+          {/* planContent, prUrl, prNumber, customTitle are rendered via
+              first-class switch cases above (plan_content, pr_link,
+              custom_title variants). The raw-envelope dump below keeps them
+              in SYSTEM_RENDERED_KEYS so they don't duplicate there either. */}
           <RetryDetail rawJson={block.rawJson} />
           <ApiErrorDetail rawJson={block.rawJson} />
           <HookMetadataDetail rawJson={block.rawJson} />
