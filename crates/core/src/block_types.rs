@@ -187,6 +187,12 @@ pub struct InteractionBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
     pub resolved: bool,
+    /// Present on historically-synthesised blocks; absent on live sidecar
+    /// blocks. Per "Trust Over Accuracy": the user should know when they
+    /// are looking at reconstructed data. Top-level placement gives TS
+    /// consumers compile-time discrimination without inspecting `data`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub historical_source: Option<HistoricalSource>,
     #[ts(type = "any")]
     pub data: serde_json::Value,
 }
@@ -199,6 +205,23 @@ pub enum InteractionVariant {
     Question,
     Plan,
     Elicitation,
+}
+
+/// Origin of a historically-synthesised InteractionBlock. Live sidecar
+/// blocks set this to `None`; the historical synthesiser stamps it with
+/// the detection path that produced the block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "snake_case")]
+pub enum HistoricalSource {
+    /// Backed by an explicit SystemVariant entry (e.g. PlanContent) or
+    /// by an authoritative signal inside a tool_result (e.g. the
+    /// ExitPlanMode result string contains "User has approved your plan").
+    /// Strong confidence.
+    SystemVariant,
+    /// Reconstructed from assistant tool_use + user tool_result patterns
+    /// (e.g. AskUserQuestion). Medium confidence.
+    InferredFromToolPattern,
 }
 
 // ── Turn boundary ───────────────────────────────────────────────────
@@ -711,6 +734,7 @@ mod tests {
             variant: InteractionVariant::Permission,
             request_id: Some("req1".into()),
             resolved: false,
+            historical_source: None,
             data: json!({"tool": "Bash", "command": "rm -rf /"}),
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -718,5 +742,41 @@ mod tests {
         assert_eq!(json["variant"], "permission");
         assert_eq!(json["requestId"], "req1");
         assert_eq!(json["resolved"], false);
+        // historical_source is None → omitted via skip_serializing_if
+        assert!(
+            json.get("historicalSource").is_none(),
+            "historical_source should be omitted when None (live block)"
+        );
+    }
+
+    #[test]
+    fn interaction_block_historical_source_serializes() {
+        let block = InteractionBlock {
+            id: "hist-interaction-0".into(),
+            variant: InteractionVariant::Plan,
+            request_id: None,
+            resolved: true,
+            historical_source: Some(HistoricalSource::SystemVariant),
+            data: json!({"planContent": "p", "approved": true, "toolsExecutedAfter": 2}),
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["historicalSource"], "system_variant");
+        // request_id absent → omitted
+        assert!(json.get("requestId").is_none());
+    }
+
+    #[test]
+    fn interaction_block_live_deserializes_without_historical_source() {
+        // Backwards compat: live sidecar JSON has no historicalSource field.
+        let json_str = r#"{
+            "id": "live-1",
+            "variant": "permission",
+            "requestId": "req-42",
+            "resolved": false,
+            "data": {}
+        }"#;
+        let block: InteractionBlock = serde_json::from_str(json_str).unwrap();
+        assert_eq!(block.id, "live-1");
+        assert_eq!(block.historical_source, None);
     }
 }
