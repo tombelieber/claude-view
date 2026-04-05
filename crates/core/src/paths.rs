@@ -133,9 +133,14 @@ pub fn remove_lock_files() -> Vec<String> {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
+
+    // Serialize all tests that mutate CLAUDE_VIEW_DATA_DIR — env vars are process-global.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_data_dir_uses_env_var_absolute() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-claude-view-data");
         let dir = data_dir();
         assert_eq!(dir, PathBuf::from("/tmp/test-claude-view-data"));
@@ -144,6 +149,7 @@ mod tests {
 
     #[test]
     fn test_data_dir_resolves_relative_path() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "./.data");
         let dir = data_dir();
         assert!(
@@ -156,6 +162,7 @@ mod tests {
 
     #[test]
     fn test_data_dir_falls_back_to_home_dot_claude_view() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
         let dir = data_dir();
         assert!(
@@ -167,6 +174,7 @@ mod tests {
 
     #[test]
     fn test_db_path_derives_from_data_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         let path = db_path().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/claude-view.db"));
@@ -175,6 +183,7 @@ mod tests {
 
     #[test]
     fn test_search_index_dir_derives_from_data_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         let path = search_index_dir().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/search-index"));
@@ -183,6 +192,7 @@ mod tests {
 
     #[test]
     fn test_lock_dir_derives_from_data_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         let path = lock_dir().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/locks"));
@@ -191,6 +201,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_follows_data_dir_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv-sandbox");
         let dir = config_dir();
         assert_eq!(dir, PathBuf::from("/tmp/test-cv-sandbox"));
@@ -199,6 +210,7 @@ mod tests {
 
     #[test]
     fn test_config_dir_falls_back_to_home_dot_claude_view() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
         let dir = config_dir();
         assert!(
@@ -210,6 +222,7 @@ mod tests {
 
     #[test]
     fn test_archive_dir_derives_from_config_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         let path = archive_dir();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/archives"));
@@ -218,6 +231,7 @@ mod tests {
 
     #[test]
     fn test_workflows_dirs_derive_from_config_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
         assert_eq!(
             workflows_official_dir(),
