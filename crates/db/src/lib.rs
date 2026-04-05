@@ -118,6 +118,12 @@ impl Database {
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
             .busy_timeout(std::time::Duration::from_secs(30))
+            // V1-hardening M1.1 — enforce REFERENCES … ON DELETE CASCADE.
+            // SQLite requires this PRAGMA per-connection; without it, every FK
+            // clause in our 59 migrations is a comment. Dev mode + tests already
+            // ran with FKs ON, so no CASCADE behavior changes are expected —
+            // this just brings prod in line with what the tests verified.
+            .foreign_keys(true)
             .log_slow_statements(
                 tracing::log::LevelFilter::Warn,
                 std::time::Duration::from_secs(5),
