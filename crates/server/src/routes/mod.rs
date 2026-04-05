@@ -51,7 +51,13 @@ pub mod workflows;
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{
+    extract::Request,
+    http::HeaderValue,
+    middleware::{self, Next},
+    response::Response,
+    Router,
+};
 
 use crate::state::AppState;
 
@@ -117,53 +123,92 @@ use crate::state::AppState;
 /// - GET /api/teams/:name - Get team detail (config + members)
 /// - GET /api/teams/:name/inbox - Get team inbox messages
 /// - GET /metrics - Prometheus metrics (not under /api prefix)
-pub fn api_routes(state: Arc<AppState>) -> Router {
+//
+// V1-hardening M1.3 — Build the full route tree under a given prefix
+// (e.g. "/api" or "/api/v1"). Extracted so we can mount the same tree at
+// both `/api/v1/*` (canonical) and `/api/*` (legacy alias with
+// deprecation header).
+fn build_api_tree(prefix: &str) -> Router<Arc<AppState>> {
+    let live_prefix = format!("{prefix}/live");
+    let local_llm_prefix = format!("{prefix}/local-llm");
     Router::new()
-        .nest("/api", config::router())
-        .nest("/api", health::router())
-        .nest("/api", projects::router())
-        .nest("/api", sessions::router())
-        .nest("/api", indexing::router())
-        .nest("/api", invocables::router())
-        .nest("/api", models::router())
-        .nest("/api", stats::router())
-        .nest("/api", trends::router())
-        .nest("/api", status::router())
-        .nest("/api", export::router())
-        .nest("/api", sync::router())
-        .nest("/api", system::router())
-        .nest("/api", classify::router())
-        .nest("/api", coaching::router())
-        .nest("/api", control::router())
-        .nest("/api", insights::router())
-        .nest("/api", contributions::router())
-        .nest("/api", score::router())
-        .nest("/api", facets::router())
-        .nest("/api", file_history::router())
-        .nest("/api", live::router())
-        .nest("/api/live", terminal::router())
-        .nest("/api", turns::router())
-        .nest("/api", hooks::router())
-        .nest("/api", ide::router())
-        .nest("/api", search::router())
-        .nest("/api", reports::router())
-        .nest("/api", settings::router())
-        .nest("/api", oauth::router())
-        .nest("/api", pairing::router())
-        .nest("/api", plans::router())
-        .nest("/api", prompts::router())
-        .nest("/api", share::router())
-        .nest("/api", statusline::router())
-        .nest("/api", plugins::router())
-        .nest("/api", plugin_ops::router())
-        .nest("/api", marketplace_refresh::router())
-        .nest("/api", teams::router())
-        .nest("/api", workflows::router())
-        .nest("/api", monitor::router())
-        .nest("/api", processes::router())
-        .nest("/api", telemetry::router())
-        .nest("/api/local-llm", crate::local_llm::local_llm_routes())
-        // Swagger UI + OpenAPI spec
+        .nest(prefix, config::router())
+        .nest(prefix, health::router())
+        .nest(prefix, projects::router())
+        .nest(prefix, sessions::router())
+        .nest(prefix, indexing::router())
+        .nest(prefix, invocables::router())
+        .nest(prefix, models::router())
+        .nest(prefix, stats::router())
+        .nest(prefix, trends::router())
+        .nest(prefix, status::router())
+        .nest(prefix, export::router())
+        .nest(prefix, sync::router())
+        .nest(prefix, system::router())
+        .nest(prefix, classify::router())
+        .nest(prefix, coaching::router())
+        .nest(prefix, control::router())
+        .nest(prefix, insights::router())
+        .nest(prefix, contributions::router())
+        .nest(prefix, score::router())
+        .nest(prefix, facets::router())
+        .nest(prefix, file_history::router())
+        .nest(prefix, live::router())
+        .nest(&live_prefix, terminal::router())
+        .nest(prefix, turns::router())
+        .nest(prefix, hooks::router())
+        .nest(prefix, ide::router())
+        .nest(prefix, search::router())
+        .nest(prefix, reports::router())
+        .nest(prefix, settings::router())
+        .nest(prefix, oauth::router())
+        .nest(prefix, pairing::router())
+        .nest(prefix, plans::router())
+        .nest(prefix, prompts::router())
+        .nest(prefix, share::router())
+        .nest(prefix, statusline::router())
+        .nest(prefix, plugins::router())
+        .nest(prefix, plugin_ops::router())
+        .nest(prefix, marketplace_refresh::router())
+        .nest(prefix, teams::router())
+        .nest(prefix, workflows::router())
+        .nest(prefix, monitor::router())
+        .nest(prefix, processes::router())
+        .nest(prefix, telemetry::router())
+        .nest(&local_llm_prefix, crate::local_llm::local_llm_routes())
+}
+
+/// Middleware: mark legacy `/api/*` responses with `Deprecation` + `Link`
+/// headers pointing clients at `/api/v1/*`. Kept through one major version.
+async fn deprecation_header_middleware(req: Request, next: Next) -> Response {
+    let path = req.uri().path().to_string();
+    let mut resp = next.run(req).await;
+    // Point clients at the v1 equivalent (same suffix after /api/).
+    if let Some(suffix) = path.strip_prefix("/api/") {
+        let successor = format!("</api/v1/{suffix}>; rel=\"successor-version\"");
+        resp.headers_mut()
+            .insert("deprecation", HeaderValue::from_static("version=\"1.0\""));
+        if let Ok(link) = HeaderValue::from_str(&successor) {
+            resp.headers_mut().insert("link", link);
+        }
+    }
+    resp
+}
+
+/// Create the combined API router.
+///
+/// V1-hardening M1.3 — all routes are mounted at `/api/v1/*` (canonical).
+/// Legacy `/api/*` aliases are kept for backwards compatibility and emit
+/// `Deprecation` + `Link` headers pointing at the v1 equivalent. Plan to
+/// remove the legacy alias in 2.0.
+pub fn api_routes(state: Arc<AppState>) -> Router {
+    let v1 = build_api_tree("/api/v1");
+    let legacy = build_api_tree("/api").layer(middleware::from_fn(deprecation_header_middleware));
+
+    Router::new()
+        .merge(v1)
+        .merge(legacy)
+        // Swagger UI + OpenAPI spec (unversioned — served at root).
         .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)
         .merge(metrics::router())
@@ -177,6 +222,8 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::Body, http::StatusCode};
+    use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_api_routes_creation() {
@@ -185,5 +232,53 @@ mod tests {
             .expect("in-memory DB");
         let state = AppState::new(db);
         let _router = api_routes(state);
+    }
+
+    /// V1-hardening M1.3 — /api/v1/* is the canonical path.
+    #[tokio::test]
+    async fn api_v1_health_responds_200() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = AppState::new(db);
+        let app = api_routes(state);
+
+        let req = axum::http::Request::builder()
+            .uri("/api/v1/health")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        // v1 responses do NOT carry a Deprecation header.
+        assert!(
+            resp.headers().get("deprecation").is_none(),
+            "v1 responses must not carry Deprecation header"
+        );
+    }
+
+    /// V1-hardening M1.3 — legacy /api/* works but emits Deprecation header.
+    #[tokio::test]
+    async fn legacy_api_health_responds_with_deprecation_header() {
+        let db = claude_view_db::Database::new_in_memory().await.unwrap();
+        let state = AppState::new(db);
+        let app = api_routes(state);
+
+        let req = axum::http::Request::builder()
+            .uri("/api/health")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let deprecation = resp
+            .headers()
+            .get("deprecation")
+            .expect("legacy route must carry Deprecation header");
+        assert_eq!(deprecation.to_str().unwrap(), "version=\"1.0\"");
+        let link = resp
+            .headers()
+            .get("link")
+            .expect("legacy route must carry Link header")
+            .to_str()
+            .unwrap();
+        assert!(link.contains("/api/v1/health"));
+        assert!(link.contains("successor-version"));
     }
 }
