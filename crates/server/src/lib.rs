@@ -26,6 +26,7 @@ pub mod search_service;
 pub mod share_serializer;
 pub mod sidecar;
 pub mod state;
+pub mod supervisor;
 pub mod teams;
 pub mod telemetry;
 pub mod terminal_state;
