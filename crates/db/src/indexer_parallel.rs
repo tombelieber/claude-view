@@ -3257,10 +3257,13 @@ pub async fn prune_stale_sessions(db: &Database) -> Result<u64, String> {
         return Ok(0);
     }
 
-    // Check which files still exist on disk (blocking I/O, but just stat calls)
+    // Check which files still exist on disk (blocking I/O, but just stat calls).
+    // Backup-ingested sessions (.jsonl.gz in ~/.claude-backup/) are always treated
+    // as valid — the user may remove the backup dir without wanting to lose the
+    // DB records. Pruning only applies to live .jsonl files in ~/.claude/projects/.
     let valid_paths: Vec<String> = all_paths
         .into_iter()
-        .filter(|path| Path::new(path).exists())
+        .filter(|path| path.contains(".claude-backup") || Path::new(path).exists())
         .collect();
 
     let pruned = db
@@ -6438,6 +6441,35 @@ mod tests {
         // Prune on an empty DB -- should be a no-op
         let pruned = prune_stale_sessions(&db).await.unwrap();
         assert_eq!(pruned, 0, "Should not prune anything from empty DB");
+    }
+
+    #[tokio::test]
+    async fn test_prune_stale_sessions_preserves_backup_paths() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Insert a session whose file_path points to a non-existent backup location.
+        // This simulates a backup-ingested session after ~/.claude-backup is removed.
+        let backup_path =
+            "/Users/test/.claude-backup/machines/my-mac/project-abc/sess-backup-001.jsonl.gz";
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, preview, turn_count, last_message_at, message_count, is_sidechain, parse_version) \
+             VALUES ('sess-backup-001', 'project-abc', ?1, 'test', 0, 1700000000, 1, 0, 1)"
+        )
+        .bind(backup_path)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // The backup file doesn't exist on disk, but prune should NOT remove it
+        let pruned = prune_stale_sessions(&db).await.unwrap();
+        assert_eq!(
+            pruned, 0,
+            "Backup sessions must not be pruned even if file is missing"
+        );
+
+        let remaining = db.get_all_session_file_paths().await.unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert!(remaining[0].contains(".claude-backup"));
     }
 
     // ============================================================================
