@@ -394,7 +394,7 @@ export function HistoryView() {
         )}
 
         {/* Activity sparkline chart */}
-        <ActivitySparkline />
+        <ActivitySparkline timeAfter={timeRange.fromTimestamp} timeBefore={timeRange.toTimestamp} />
 
         {/* Search + Filters bar */}
         <div className="mt-5 space-y-3">

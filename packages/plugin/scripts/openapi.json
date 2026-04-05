@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.29.0"
+    "version": "0.30.0"
   },
   "paths": {
     "/api/branches": {
@@ -2812,6 +2812,28 @@
         ],
         "summary": "GET /api/sessions/activity — Activity histogram for sparkline chart.",
         "operationId": "session_activity",
+        "parameters": [
+          {
+            "name": "time_after",
+            "in": "query",
+            "description": "Unix timestamp lower bound",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "time_before",
+            "in": "query",
+            "description": "Unix timestamp upper bound",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Activity histogram with date buckets and session count",
@@ -4342,7 +4364,8 @@
         "description": "A single point in the activity histogram.",
         "required": [
           "date",
-          "count"
+          "count",
+          "totalSeconds"
         ],
         "properties": {
           "count": {
@@ -4351,6 +4374,11 @@
           },
           "date": {
             "type": "string"
+          },
+          "totalSeconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total duration in seconds for this bucket (used by CalendarHeatmap)."
           }
         }
       },

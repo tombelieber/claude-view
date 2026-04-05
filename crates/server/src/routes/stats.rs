@@ -346,10 +346,17 @@ pub async fn dashboard_stats(
             return Err(crate::error::ApiError::BadRequest(err.message));
         }
     };
+    // Heatmap now respects the caller's time range — no longer hardcoded to 90 days.
+    let heatmap_from = query.from.unwrap_or(1);
+    let heatmap_to = query.to.unwrap_or(now);
     let heatmap_range = EffectiveRangeMeta {
-        from: now - 90 * 86400,
-        to: now,
-        source: EffectiveRangeSource::ExplicitRangeParam,
+        from: heatmap_from,
+        to: heatmap_to,
+        source: if query.from.is_some() {
+            EffectiveRangeSource::ExplicitRangeParam
+        } else {
+            EffectiveRangeSource::DefaultAllTime
+        },
     };
     record_time_range_resolution("stats_dashboard_heatmap", heatmap_range.source);
     tracing::info!(
@@ -363,7 +370,7 @@ pub async fn dashboard_stats(
     // Determine if we have a time range filter
     let has_time_range = query.from.is_some() && query.to.is_some();
 
-    // Get base dashboard stats (always includes heatmap which is fixed at 90 days)
+    // Get base dashboard stats — heatmap respects the time range filter
     let base = match if has_time_range {
         state
             .db
@@ -994,9 +1001,10 @@ mod tests {
         );
         assert!(json["meta"]["ranges"]["heatmap"]["from"].is_number());
         assert!(json["meta"]["ranges"]["heatmap"]["to"].is_number());
+        // No time range params → heatmap uses all-time default
         assert_eq!(
             json["meta"]["ranges"]["heatmap"]["source"],
-            "explicit_range_param"
+            "default_all_time"
         );
     }
 
@@ -1261,9 +1269,10 @@ mod tests {
             json["meta"]["ranges"]["currentPeriod"]["source"],
             "default_all_time"
         );
+        // No time range params → heatmap uses all-time default
         assert_eq!(
             json["meta"]["ranges"]["heatmap"]["source"],
-            "explicit_range_param"
+            "default_all_time"
         );
     }
 
