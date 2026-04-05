@@ -75,7 +75,28 @@ impl SidecarManager {
     /// configured port (e.g. via `tsx watch` in dev mode), we skip spawning
     /// and use the existing one. This allows `bun dev` to run the sidecar
     /// independently with hot reload.
+    ///
+    /// Dev-mode opt-out: set `CLAUDE_VIEW_SIDECAR_EXTERNAL=1` to disable all
+    /// spawn/kill behaviour. The Rust server will only health-check and
+    /// proxy — it will never spawn its own sidecar, and crucially will never
+    /// call `kill_port_holder()` (which would kill `tsx watch` in dev).
+    ///
+    /// This is the industry-standard pattern for shared prod/dev ownership
+    /// code (Tauri, Electron, Next.js standalone). Prod code asserts
+    /// ownership by default; dev explicitly opts out via env var.
     pub async fn ensure_running(&self) -> Result<String, SidecarError> {
+        // Dev-mode hands-off path: external orchestrator (e.g. concurrently
+        // + tsx watch) owns the sidecar process. We only health-check.
+        if Self::is_external_mode() {
+            if self.health_check().await.is_ok() {
+                return Ok(self.base_url.clone());
+            }
+            // Not ready yet — wait_for_ready() polls for 3s. If the external
+            // sidecar isn't up by then, return HealthCheckTimeout so callers
+            // can retry or surface an actionable error.
+            return self.wait_for_ready().await;
+        }
+
         // Determine action under the lock, then release lock before any async work.
         // Mutex<Option<Child>> is !Send, so no .await can be held while guard is alive.
         let action = {
@@ -246,7 +267,18 @@ impl SidecarManager {
     }
 
     /// Check if the sidecar is currently running.
+    ///
+    /// In external mode (`CLAUDE_VIEW_SIDECAR_EXTERNAL=1`) we don't manage a
+    /// child process, but the reconciler uses this to decide whether to
+    /// trigger session recovery. Returning `true` in external mode is
+    /// correct because the reconciler's next step is `ensure_running()`
+    /// which health-checks the external sidecar — if it's down, recovery
+    /// is correctly skipped by the resulting `HealthCheckTimeout`. This
+    /// avoids a 10s-interval "Sidecar not running" warning spam in dev.
     pub fn is_running(&self) -> bool {
+        if Self::is_external_mode() {
+            return true;
+        }
         let Ok(mut guard) = self.child.lock() else {
             tracing::error!("sidecar mutex poisoned, another thread panicked");
             return false;
@@ -256,6 +288,12 @@ impl SidecarManager {
         } else {
             false
         }
+    }
+
+    /// Dev-mode opt-out: when set, `ensure_running()` never spawns/kills,
+    /// and `is_running()` is optimistic. See `ensure_running()` doc.
+    fn is_external_mode() -> bool {
+        std::env::var("CLAUDE_VIEW_SIDECAR_EXTERNAL").is_ok()
     }
 
     /// Get the PID of the managed sidecar child process, if alive.
@@ -446,6 +484,41 @@ impl Drop for SidecarManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex as StdMutex, OnceLock};
+
+    /// Serialize env-var mutating tests across the whole test binary.
+    /// Without this, parallel test execution causes
+    /// CLAUDE_VIEW_SIDECAR_EXTERNAL to leak from one test into another's
+    /// assertions (process-global env vars).
+    fn env_lock() -> &'static StdMutex<()> {
+        static ENV_LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
+        ENV_LOCK.get_or_init(|| StdMutex::new(()))
+    }
+
+    /// RAII guard: set an env var for the test duration, restore on drop.
+    /// Must be held alongside `env_lock()` to prevent cross-test leakage.
+    struct EnvGuard(&'static str, Option<String>);
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            // SAFETY: test-only; caller holds env_lock() for the test duration
+            unsafe {
+                std::env::set_var(key, val);
+            }
+            Self(key, prev)
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            // SAFETY: test-only; caller holds env_lock()
+            unsafe {
+                match &self.1 {
+                    Some(v) => std::env::set_var(self.0, v),
+                    None => std::env::remove_var(self.0),
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_new_creates_base_url_with_default_port() {
@@ -455,6 +528,14 @@ mod tests {
 
     #[test]
     fn test_not_running_by_default() {
+        // Hold env_lock so concurrent external-mode tests don't flip the
+        // env var while we assert the default behaviour.
+        let _lock = env_lock().lock().unwrap();
+        // Defensive: ensure the env var is unset for this test regardless
+        // of how a prior panicked test may have left it.
+        unsafe {
+            std::env::remove_var("CLAUDE_VIEW_SIDECAR_EXTERNAL");
+        }
         let mgr = SidecarManager::new();
         assert!(!mgr.is_running());
     }
@@ -469,5 +550,54 @@ mod tests {
     fn test_find_sidecar_dir_returns_error_when_not_found() {
         let result = SidecarManager::find_sidecar_dir();
         let _ = result;
+    }
+
+    /// External-mode opt-out must never spawn or kill processes. When
+    /// CLAUDE_VIEW_SIDECAR_EXTERNAL is set AND no external sidecar is
+    /// reachable, ensure_running() must return HealthCheckTimeout without
+    /// calling kill_port_holder or spawning a child — proving we take the
+    /// hands-off path all the way through.
+    #[tokio::test]
+    #[allow(
+        clippy::await_holding_lock,
+        reason = "test-only env-var serialization; no contention beyond test binary"
+    )]
+    async fn test_external_mode_never_spawns_or_kills() {
+        let _lock = env_lock().lock().unwrap();
+        let _guard = EnvGuard::set("CLAUDE_VIEW_SIDECAR_EXTERNAL", "1");
+
+        // Use a port we know nothing listens on (reserved IANA range).
+        // 1 is "TCP port service multiplexer" — almost never bound locally.
+        let mgr = SidecarManager {
+            child: Mutex::new(None),
+            base_url: "http://localhost:1".to_string(),
+            port: 1,
+        };
+
+        let result = mgr.ensure_running().await;
+        // External mode + nothing listening → HealthCheckTimeout (not spawned)
+        assert!(matches!(result, Err(SidecarError::HealthCheckTimeout)));
+
+        // Critical: we must not have created a child process. In external
+        // mode `is_running()` is optimistic (returns true), but child_pid
+        // returns None because we never spawn.
+        assert_eq!(mgr.child_pid(), None);
+    }
+
+    #[test]
+    fn test_is_running_optimistic_in_external_mode() {
+        let _lock = env_lock().lock().unwrap();
+        // Start from a known baseline — remove first, then assert default.
+        unsafe {
+            std::env::remove_var("CLAUDE_VIEW_SIDECAR_EXTERNAL");
+        }
+        let mgr = SidecarManager::new();
+
+        // Default mode: no child → false
+        assert!(!mgr.is_running());
+
+        // External mode: optimistic → true (avoids reconciler warning spam)
+        let _guard = EnvGuard::set("CLAUDE_VIEW_SIDECAR_EXTERNAL", "1");
+        assert!(mgr.is_running());
     }
 }
