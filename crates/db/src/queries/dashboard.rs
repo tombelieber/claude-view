@@ -686,20 +686,18 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        // Heatmap: 90-day activity (sessions per day)
-        let now = Utc::now().timestamp();
-        let ninety_days_ago = now - 90 * 86400;
+        // Heatmap: all-time activity (sessions per day) — respects project/branch
+        // filters but not time range (all-time view has no time bounds).
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT date(COALESCE(first_message_at, last_message_at), 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
-            WHERE last_message_at > ?1
-              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
+            WHERE last_message_at > 0
+              AND (?1 IS NULL OR project_id = ?1 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?1) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?1)) AND (?2 IS NULL OR git_branch = ?2)
             GROUP BY day
             ORDER BY day ASC
             "#,
         )
-        .bind(ninety_days_ago)
         .bind(project)
         .bind(branch)
         .fetch_all(self.pool())
@@ -836,20 +834,19 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        // Heatmap: always 90 days (not affected by time range filter)
-        let now = Utc::now().timestamp();
-        let ninety_days_ago = now - 90 * 86400;
+        // Heatmap: respects the caller's time range (from..to)
         let heatmap_rows: Vec<(String, i64)> = sqlx::query_as(
             r#"
             SELECT date(COALESCE(first_message_at, last_message_at), 'unixepoch', 'localtime') as day, COUNT(*) as cnt
             FROM valid_sessions
-            WHERE last_message_at > ?1
-              AND (?2 IS NULL OR project_id = ?2 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?2) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?2)) AND (?3 IS NULL OR git_branch = ?3)
+            WHERE last_message_at >= ?1 AND last_message_at <= ?2
+              AND (?3 IS NULL OR project_id = ?3 OR (git_root IS NOT NULL AND git_root <> '' AND git_root = ?3) OR (project_path IS NOT NULL AND project_path <> '' AND project_path = ?3)) AND (?4 IS NULL OR git_branch = ?4)
             GROUP BY day
             ORDER BY day ASC
             "#,
         )
-        .bind(ninety_days_ago)
+        .bind(from)
+        .bind(to)
         .bind(project)
         .bind(branch)
         .fetch_all(self.pool())
@@ -1004,15 +1001,27 @@ impl Database {
 
     /// Activity histogram for sparkline chart.
     /// Auto-buckets by day/week/month based on data span.
+    /// Optional time_after/time_before filter to match page context.
     /// Returns (Vec<ActivityPoint>, bucket_name).
-    pub async fn session_activity_histogram(&self) -> DbResult<(Vec<ActivityPoint>, String)> {
+    pub async fn session_activity_histogram(
+        &self,
+        time_after: Option<i64>,
+        time_before: Option<i64>,
+    ) -> DbResult<(Vec<ActivityPoint>, String)> {
+        // Build time filter clause
+        let time_clause = match (time_after, time_before) {
+            (Some(ta), Some(tb)) => format!("last_message_at >= {ta} AND last_message_at <= {tb}"),
+            (Some(ta), None) => format!("last_message_at >= {ta}"),
+            (None, Some(tb)) => format!("last_message_at > 0 AND last_message_at <= {tb}"),
+            (None, None) => "last_message_at > 0".to_string(),
+        };
+
         // 1. Determine span (guard ts <= 0 — timestamp 0 is a data bug)
-        let row: (i64, i64) = sqlx::query_as(
+        let span_sql = format!(
             "SELECT COALESCE(MIN(last_message_at), 0), COALESCE(MAX(last_message_at), 0) \
-             FROM valid_sessions WHERE last_message_at > 0",
-        )
-        .fetch_one(self.pool())
-        .await?;
+             FROM valid_sessions WHERE {time_clause}"
+        );
+        let row: (i64, i64) = sqlx::query_as(&span_sql).fetch_one(self.pool()).await?;
 
         let span_days = (row.1 - row.0) / 86400;
         let (group_expr, bucket) = if span_days > 365 {
@@ -1023,11 +1032,11 @@ impl Database {
             ("DATE(last_message_at, 'unixepoch')", "day")
         };
 
-        // 2. Run grouped count + total_seconds (exclude ts <= 0)
+        // 2. Run grouped count + total_seconds
         let sql = format!(
             "SELECT {group_expr} AS date, COUNT(*) AS count, \
                 COALESCE(SUM(duration_seconds), 0) AS total_seconds \
-             FROM valid_sessions WHERE last_message_at > 0 \
+             FROM valid_sessions WHERE {time_clause} \
              GROUP BY date ORDER BY date"
         );
 

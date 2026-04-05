@@ -88,12 +88,13 @@ export function useActivityCombined(
   timeBefore: number | null,
   sidebarProject?: string | null,
   sidebarBranch?: string | null,
+  /** When a heatmap day is clicked, pass the YYYY-MM-DD string to fetch that day's sessions on demand. */
+  selectedDate?: string | null,
 ) {
   // 1. Server-side aggregation (1 request, <100ms for 10K sessions)
   const server = useServerActivity(timeAfter, timeBefore, sidebarProject, sidebarBranch)
 
-  // 2. Session list for DailyTimeline drill-down (single request, max 500)
-  //    Only used for the session-level timeline — NOT for heatmap/projects/summary.
+  // 2. Default session list for DailyTimeline (recent 500) — used when no date is clicked.
   const sessionQuery = useQuery<SessionInfo[]>({
     queryKey: [
       'activity-sessions-light',
@@ -120,10 +121,46 @@ export function useActivityCombined(
     staleTime: 60_000,
   })
 
+  // 3. On-demand fetch for clicked day — fetches ALL sessions for that specific day.
+  //    This solves the "click January day → empty timeline" bug: the 500-row default
+  //    only covers recent sessions, but the heatmap (from server histogram) shows all dates.
+  const dayQuery = useQuery<SessionInfo[]>({
+    queryKey: [
+      'activity-day-sessions',
+      selectedDate ?? '',
+      sidebarProject ?? '',
+      sidebarBranch ?? '',
+    ],
+    queryFn: async () => {
+      if (!selectedDate) return []
+      // Convert YYYY-MM-DD to time_after (start of day) and time_before (end of day)
+      const dayStart = new Date(selectedDate + 'T00:00:00')
+      const dayEnd = new Date(selectedDate + 'T23:59:59')
+      const sp = new URLSearchParams()
+      sp.set('limit', '200') // max sessions in a single day
+      sp.set('offset', '0')
+      sp.set('sort', 'recent')
+      sp.set('time_after', String(Math.floor(dayStart.getTime() / 1000)))
+      sp.set('time_before', String(Math.floor(dayEnd.getTime() / 1000)))
+      if (sidebarProject) sp.set('project', sidebarProject)
+      if (sidebarBranch) sp.set('branches', sidebarBranch)
+
+      const res = await fetch(`/api/sessions?${sp}`)
+      if (!res.ok) throw new Error('Failed to fetch sessions for day')
+      const data = await res.json()
+      return data.sessions as SessionInfo[]
+    },
+    enabled: !!selectedDate, // only fetch when a day is clicked
+    staleTime: 60_000,
+  })
+
   const allSessions = sessionQuery.data ?? []
 
+  // Use day-specific sessions when a date is clicked, otherwise fall back to the 500-row default.
+  const effectiveSessions = selectedDate && dayQuery.data ? dayQuery.data : allSessions
+
   // Client-side day aggregation for DailyTimeline (needs actual session objects for drill-down)
-  const timelineDays = useMemo(() => aggregateByDay(allSessions), [allSessions])
+  const timelineDays = useMemo(() => aggregateByDay(effectiveSessions), [effectiveSessions])
 
   // Compute combined data — use server histogram for heatmap, client sessions for timeline
   const data = useMemo<CombinedActivityData | null>(() => {
@@ -155,6 +192,8 @@ export function useActivityCombined(
   return {
     data,
     isLoading: server.isLoading || sessionQuery.isLoading,
-    error: server.error ?? sessionQuery.error,
+    /** True while fetching sessions for a clicked heatmap day */
+    isDayLoading: dayQuery.isLoading && !!selectedDate,
+    error: server.error ?? sessionQuery.error ?? dayQuery.error,
   }
 }

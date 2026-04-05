@@ -70,7 +70,7 @@ async function fetchDashboardStats(
  *
  * Returns ExtendedDashboardStats with:
  * - totalSessions, totalProjects (counts)
- * - heatmap (DayActivity[]) - always 90 days, not affected by time range
+ * - heatmap (DayActivity[]) - respects time range filter
  * - topSkills, topCommands, topMcpTools, topAgents (SkillStat[])
  * - topProjects (ProjectStat[])
  * - toolTotals (ToolCounts)

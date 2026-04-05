@@ -813,17 +813,39 @@ pub async fn get_session_hook_events(
     }
 }
 
+/// Query parameters for the sparkline activity histogram.
+#[derive(Debug, serde::Deserialize)]
+pub struct SparklineActivityParams {
+    pub time_after: Option<i64>,
+    pub time_before: Option<i64>,
+}
+
 /// GET /api/sessions/activity — Activity histogram for sparkline chart.
 #[utoipa::path(get, path = "/api/sessions/activity", tag = "sessions",
+    params(
+        ("time_after" = Option<i64>, Query, description = "Unix timestamp lower bound"),
+        ("time_before" = Option<i64>, Query, description = "Unix timestamp upper bound"),
+    ),
     responses(
         (status = 200, description = "Activity histogram with date buckets and session count", body = SessionActivityResponse),
     )
 )]
 pub async fn session_activity(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<SparklineActivityParams>,
 ) -> ApiResult<Json<SessionActivityResponse>> {
-    let (activity, bucket) = state.db.session_activity_histogram().await?;
-    let total = state.db.get_session_count().await? as usize;
+    let (activity, bucket) = state
+        .db
+        .session_activity_histogram(params.time_after, params.time_before)
+        .await?;
+    // When time-filtered, total = sum of histogram counts (matches the chart).
+    // When unfiltered, use the full DB count (includes sessions with last_message_at=0
+    // that can't appear on the chart axis).
+    let total = if params.time_after.is_some() || params.time_before.is_some() {
+        activity.iter().map(|a| a.count as usize).sum()
+    } else {
+        state.db.get_session_count().await? as usize
+    };
     Ok(Json(SessionActivityResponse {
         activity,
         bucket,
