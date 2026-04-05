@@ -8,6 +8,7 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "predev": "bun run cleanupport",
+    "dev:cleanup": "bash scripts/dev-cleanup.sh",
     "dev": "concurrently --kill-others -n rust,web,sidecar -c red,cyan,yellow \"bun run dev:server\" \"turbo dev --filter=@claude-view/web\" \"cd sidecar && exec ./node_modules/.bin/tsx watch src/index.ts\"",
     "dev:web": "turbo dev --filter=@claude-view/web",
     "dev:landing": "turbo dev --filter=@claude-view/landing",
