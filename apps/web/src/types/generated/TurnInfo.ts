@@ -3,25 +3,26 @@
 /**
  * A single turn in the session breakdown.
  */
-export type TurnInfo = { 
-/**
- * 1-based turn index.
- */
-index: number, 
-/**
- * Unix timestamp (seconds) when the turn started (user prompt).
- */
-startedAt: number, 
-/**
- * Wall-clock seconds from turn start to turn end (last message before next turn or EOF).
- */
-wallClockSeconds: number, 
-/**
- * Claude Code reported turn duration in milliseconds (from `turn_duration` system message).
- * Null if no `turn_duration` message follows this turn.
- */
-ccDurationMs: number | null, 
-/**
- * First 60 characters of the user prompt text.
- */
-promptPreview: string, };
+export type TurnInfo = {
+  /**
+   * 1-based turn index.
+   */
+  index: number
+  /**
+   * Unix timestamp (seconds) when the turn started (user prompt).
+   */
+  startedAt: number
+  /**
+   * Wall-clock seconds from turn start to turn end (last message before next turn or EOF).
+   */
+  wallClockSeconds: number
+  /**
+   * Claude Code reported turn duration in milliseconds (from `turn_duration` system message).
+   * Null if no `turn_duration` message follows this turn.
+   */
+  ccDurationMs: number | null
+  /**
+   * First 60 characters of the user prompt text.
+   */
+  promptPreview: string
+}

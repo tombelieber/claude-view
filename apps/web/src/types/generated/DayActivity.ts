@@ -3,4 +3,4 @@
 /**
  * A single day in the activity heatmap.
  */
-export type DayActivity = { date: string, count: number, };
+export type DayActivity = { date: string; count: number }

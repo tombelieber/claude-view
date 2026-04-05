@@ -3,20 +3,21 @@
 /**
  * Claude CLI status information.
  */
-export type ClaudeCliStatus = { 
-/**
- * Path to claude binary, None if not found.
- */
-path: string | null, 
-/**
- * Version string, None if not found.
- */
-version: string | null, 
-/**
- * Whether CLI is authenticated.
- */
-authenticated: boolean, 
-/**
- * Subscription type if authenticated.
- */
-subscriptionType: string | null, };
+export type ClaudeCliStatus = {
+  /**
+   * Path to claude binary, None if not found.
+   */
+  path: string | null
+  /**
+   * Version string, None if not found.
+   */
+  version: string | null
+  /**
+   * Whether CLI is authenticated.
+   */
+  authenticated: boolean
+  /**
+   * Subscription type if authenticated.
+   */
+  subscriptionType: string | null
+}

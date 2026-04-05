@@ -3,4 +3,9 @@
 /**
  * Canonical `meta.sessionBreakdown` payload.
  */
-export type AnalyticsSessionBreakdown = { primarySessions: number, sidechainSessions: number, otherSessions: number, totalObservedSessions: number, };
+export type AnalyticsSessionBreakdown = {
+  primarySessions: number
+  sidechainSessions: number
+  otherSessions: number
+  totalObservedSessions: number
+}

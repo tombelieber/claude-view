@@ -3,4 +3,4 @@
 /**
  * Learning curve data point.
  */
-export type LearningCurvePeriod = { period: string, reeditRate: number, };
+export type LearningCurvePeriod = { period: string; reeditRate: number }

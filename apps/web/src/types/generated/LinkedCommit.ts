@@ -3,4 +3,10 @@
 /**
  * Linked commit for session drill-down.
  */
-export type LinkedCommit = { hash: string, message: string, insertions: number | null, deletions: number | null, tier: number, };
+export type LinkedCommit = {
+  hash: string
+  message: string
+  insertions: number | null
+  deletions: number | null
+  tier: number
+}
