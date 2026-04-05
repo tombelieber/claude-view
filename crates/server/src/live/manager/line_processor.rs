@@ -336,13 +336,19 @@ fn process_sub_agents(
                 }
                 let pricing_model = agent.model.as_deref().or(acc.model.as_deref());
                 if let Some(model) = pricing_model {
+                    // Threads nested cache_creation.{5m,1h} breakdown through so
+                    // 1hr-caching costs are charged at the 1hr rate.
                     let sub_tokens = TokenUsage {
                         input_tokens: result.usage_input_tokens.unwrap_or(0),
                         output_tokens: result.usage_output_tokens.unwrap_or(0),
                         cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
                         cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
-                        cache_creation_5m_tokens: 0,
-                        cache_creation_1hr_tokens: 0,
+                        cache_creation_5m_tokens: result
+                            .usage_cache_creation_5m_tokens
+                            .unwrap_or(0),
+                        cache_creation_1hr_tokens: result
+                            .usage_cache_creation_1hr_tokens
+                            .unwrap_or(0),
                         total_tokens: 0,
                     };
                     let sub_cost = calculate_cost(&sub_tokens, Some(model), pricing);

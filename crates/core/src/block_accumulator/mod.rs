@@ -276,9 +276,11 @@ impl BlockAccumulator {
             return;
         }
 
-        // Accumulate usage
+        // Accumulate usage. Extract typed TokenUsage (including nested 5m/1h
+        // cache_creation breakdown) so cost calculation gets the full picture.
         if let Some(usage_val) = usage {
-            self.boundary_acc.add_usage(model, usage_val);
+            let tokens = crate::pricing::extract_usage_tokens(usage_val);
+            self.boundary_acc.add_usage(model, &tokens);
         }
 
         // messageId flush guard — new message_id means new assistant block

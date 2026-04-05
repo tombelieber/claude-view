@@ -87,6 +87,14 @@ pub struct SubAgentResult {
     pub usage_output_tokens: Option<u64>,
     pub usage_cache_read_tokens: Option<u64>,
     pub usage_cache_creation_tokens: Option<u64>,
+    /// Sub-agent 5-minute TTL cache creation tokens (from nested
+    /// `cache_creation.ephemeral_5m_input_tokens`).
+    pub usage_cache_creation_5m_tokens: Option<u64>,
+    /// Sub-agent 1-hour TTL cache creation tokens (from nested
+    /// `cache_creation.ephemeral_1h_input_tokens`). This is Claude Code's
+    /// default caching TTL, so this field is usually where sub-agent
+    /// cache_creation tokens actually live.
+    pub usage_cache_creation_1hr_tokens: Option<u64>,
     /// Model used by the sub-agent, from `toolUseResult.model`.
     /// None if not present in the result payload.
     pub model: Option<String>,
@@ -309,6 +317,8 @@ struct ToolUseResultPayload {
     usage_output_tokens: Option<u64>,
     usage_cache_read_tokens: Option<u64>,
     usage_cache_creation_tokens: Option<u64>,
+    usage_cache_creation_5m_tokens: Option<u64>,
+    usage_cache_creation_1hr_tokens: Option<u64>,
     model: Option<String>,
 }
 
@@ -322,6 +332,8 @@ impl ToolUseResultPayload {
             || self.usage_output_tokens.is_some()
             || self.usage_cache_read_tokens.is_some()
             || self.usage_cache_creation_tokens.is_some()
+            || self.usage_cache_creation_5m_tokens.is_some()
+            || self.usage_cache_creation_1hr_tokens.is_some()
             || self.model.is_some()
     }
 
@@ -351,6 +363,16 @@ impl ToolUseResultPayload {
         {
             self.usage_cache_creation_tokens = other.usage_cache_creation_tokens;
         }
+        if other.usage_cache_creation_5m_tokens.is_some()
+            && self.usage_cache_creation_5m_tokens.is_none()
+        {
+            self.usage_cache_creation_5m_tokens = other.usage_cache_creation_5m_tokens;
+        }
+        if other.usage_cache_creation_1hr_tokens.is_some()
+            && self.usage_cache_creation_1hr_tokens.is_none()
+        {
+            self.usage_cache_creation_1hr_tokens = other.usage_cache_creation_1hr_tokens;
+        }
         if other.model.is_some() && self.model.is_none() {
             self.model = other.model;
         }
@@ -379,6 +401,23 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
                 .or_else(|| Some("completed".to_string()));
             let usage = obj.get("usage");
 
+            // Extract nested cache_creation ephemeral breakdown if present.
+            // Sub-agent toolUseResult.usage mirrors the SDK message.usage shape,
+            // including cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}.
+            let (usage_cache_creation_5m_tokens, usage_cache_creation_1hr_tokens) = usage
+                .and_then(|u| u.get("cache_creation"))
+                .and_then(|cc| cc.as_object())
+                .map(|cc_obj| {
+                    let t5m = cc_obj
+                        .get("ephemeral_5m_input_tokens")
+                        .and_then(|v| v.as_u64());
+                    let t1h = cc_obj
+                        .get("ephemeral_1h_input_tokens")
+                        .and_then(|v| v.as_u64());
+                    (t5m, t1h)
+                })
+                .unwrap_or((None, None));
+
             Some(ToolUseResultPayload {
                 agent_id: obj
                     .get("agentId")
@@ -403,6 +442,8 @@ fn parse_tool_use_result_payload(tur: &serde_json::Value) -> Option<ToolUseResul
                 usage_cache_creation_tokens: usage
                     .and_then(|u| u.get("cache_creation_input_tokens"))
                     .and_then(|v| v.as_u64()),
+                usage_cache_creation_5m_tokens,
+                usage_cache_creation_1hr_tokens,
                 model: obj.get("model").and_then(|v| v.as_str()).map(String::from),
             })
         }
@@ -780,6 +821,8 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                     usage_output_tokens: parsed_tur.usage_output_tokens,
                     usage_cache_read_tokens: parsed_tur.usage_cache_read_tokens,
                     usage_cache_creation_tokens: parsed_tur.usage_cache_creation_tokens,
+                    usage_cache_creation_5m_tokens: parsed_tur.usage_cache_creation_5m_tokens,
+                    usage_cache_creation_1hr_tokens: parsed_tur.usage_cache_creation_1hr_tokens,
                     model: parsed_tur.model,
                 })
             })
@@ -2614,5 +2657,69 @@ mod tests {
             re.is_ok(),
             "regex must compile with regex-lite (no lookbehinds, no Unicode classes)"
         );
+    }
+
+    #[test]
+    fn parse_tool_use_result_payload_extracts_ephemeral_5m_and_1h() {
+        // Verifies sub-agent toolUseResult.usage.cache_creation nested breakdown
+        // is parsed. Confirmed against real JSONL fixtures (2026-04-05): sub-agent
+        // toolUseResult mirrors the SDK message.usage shape, including nested
+        // cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}.
+        let tur = serde_json::json!({
+            "status": "completed",
+            "agentId": "abc123",
+            "totalDurationMs": 5000,
+            "totalToolUseCount": 3,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_read_input_tokens": 16416,
+                "cache_creation_input_tokens": 26109,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 26109
+                }
+            },
+            "model": "claude-opus-4-6"
+        });
+        let parsed = parse_tool_use_result_payload(&tur).unwrap();
+        assert_eq!(parsed.usage_input_tokens, Some(100));
+        assert_eq!(parsed.usage_cache_creation_tokens, Some(26109));
+        assert_eq!(parsed.usage_cache_creation_5m_tokens, Some(0));
+        assert_eq!(parsed.usage_cache_creation_1hr_tokens, Some(26109));
+    }
+
+    #[test]
+    fn parse_tool_use_result_payload_without_ephemeral_breakdown() {
+        // Older sub-agent results (or ones without caching) omit the nested
+        // cache_creation object entirely. Both fields should be None.
+        let tur = serde_json::json!({
+            "status": "completed",
+            "usage": {
+                "input_tokens": 100,
+                "cache_creation_input_tokens": 500
+            }
+        });
+        let parsed = parse_tool_use_result_payload(&tur).unwrap();
+        assert_eq!(parsed.usage_cache_creation_tokens, Some(500));
+        assert_eq!(parsed.usage_cache_creation_5m_tokens, None);
+        assert_eq!(parsed.usage_cache_creation_1hr_tokens, None);
+    }
+
+    #[test]
+    fn parse_tool_use_result_payload_with_5m_only_caching() {
+        let tur = serde_json::json!({
+            "status": "completed",
+            "usage": {
+                "cache_creation_input_tokens": 1000,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 1000,
+                    "ephemeral_1h_input_tokens": 0
+                }
+            }
+        });
+        let parsed = parse_tool_use_result_payload(&tur).unwrap();
+        assert_eq!(parsed.usage_cache_creation_5m_tokens, Some(1000));
+        assert_eq!(parsed.usage_cache_creation_1hr_tokens, Some(0));
     }
 }

@@ -8,12 +8,15 @@
 use std::collections::HashMap;
 
 use crate::block_types::*;
-use crate::pricing;
+use crate::pricing::{self, TokenUsage};
 
 /// Accumulates data for a TurnBoundaryBlock across multiple JSONL entries.
 pub struct TurnBoundaryAccumulator {
-    total_usage: HashMap<String, u64>,
-    model_usage: HashMap<String, serde_json::Value>,
+    /// Summed tokens across all models for this turn.
+    total_usage: TokenUsage,
+    /// Per-model accumulated tokens. Typed so cache_creation 5m/1h breakdown
+    /// flows all the way through to `pricing::calculate_cost()`.
+    model_usage: HashMap<String, TokenUsage>,
     duration_ms: Option<u64>,
     stop_reason: Option<String>,
     hook_summary: Option<serde_json::Value>,
@@ -40,7 +43,7 @@ impl Default for TurnBoundaryAccumulator {
 impl TurnBoundaryAccumulator {
     pub fn new() -> Self {
         Self {
-            total_usage: HashMap::new(),
+            total_usage: TokenUsage::default(),
             model_usage: HashMap::new(),
             duration_ms: None,
             stop_reason: None,
@@ -58,35 +61,18 @@ impl TurnBoundaryAccumulator {
         }
     }
 
-    /// Add usage from an assistant message's message.usage object.
-    /// Usage fields: input_tokens, output_tokens, cache_read_input_tokens, etc.
-    /// Accumulates into total_usage (summed) and model_usage (per-model).
-    pub fn add_usage(&mut self, model: &str, usage: &serde_json::Value) {
-        if let Some(obj) = usage.as_object() {
-            for (key, val) in obj {
-                if let Some(n) = val.as_u64() {
-                    *self.total_usage.entry(key.clone()).or_insert(0) += n;
-                }
-            }
-        }
-
-        // Store per-model usage (last write wins per model, or merge)
-        let model_entry = self
-            .model_usage
-            .entry(model.to_string())
-            .or_insert_with(|| serde_json::json!({}));
-        if let (Some(existing), Some(new_obj)) = (model_entry.as_object_mut(), usage.as_object()) {
-            for (key, val) in new_obj {
-                if let Some(n) = val.as_u64() {
-                    let prev = existing.get(key).and_then(|v| v.as_u64()).unwrap_or(0);
-                    existing.insert(key.clone(), serde_json::json!(prev + n));
-                }
-            }
-        }
+    /// Add typed token usage for a model. Accumulates into both the total-usage
+    /// summary (across models) and per-model usage. Typed `TokenUsage` means
+    /// cache_creation 5m/1h breakdown is preserved end-to-end (fix for the
+    /// 1hr-caching cost drift bug).
+    pub fn add_usage(&mut self, model: &str, tokens: &TokenUsage) {
+        add_tokens(&mut self.total_usage, tokens);
+        let entry = self.model_usage.entry(model.to_string()).or_default();
+        add_tokens(entry, tokens);
     }
 
     /// Get accumulated usage (total, per-model).
-    pub fn get_usage(&self) -> (&HashMap<String, u64>, &HashMap<String, serde_json::Value>) {
+    pub fn get_usage(&self) -> (&TokenUsage, &HashMap<String, TokenUsage>) {
         (&self.total_usage, &self.model_usage)
     }
 
@@ -151,8 +137,7 @@ impl TurnBoundaryAccumulator {
     /// Build a complete TurnBoundaryBlock (when we have both duration + hook summary).
     pub fn build(&self, id: String) -> Option<TurnBoundaryBlock> {
         let duration_ms = self.duration_ms?;
-
-        let total_cost_usd = self.calculate_cost();
+        let total_cost_usd = self.compute_total_cost();
 
         Some(TurnBoundaryBlock {
             id,
@@ -161,8 +146,8 @@ impl TurnBoundaryAccumulator {
             num_turns: self.num_turns,
             duration_ms,
             duration_api_ms: self.duration_api_ms,
-            usage: self.total_usage.clone(),
-            model_usage: self.model_usage.clone(),
+            usage: serialize_total_usage(&self.total_usage),
+            model_usage: serialize_model_usage(&self.model_usage),
             permission_denials: Vec::new(),
             result: self.result.clone(),
             structured_output: None,
@@ -181,11 +166,11 @@ impl TurnBoundaryAccumulator {
         let duration_ms = self.duration_ms.unwrap_or(0);
 
         // Must have at least some data to build
-        if self.duration_ms.is_none() && self.total_usage.is_empty() {
+        if self.duration_ms.is_none() && is_empty_usage(&self.total_usage) {
             return None;
         }
 
-        let total_cost_usd = self.calculate_cost();
+        let total_cost_usd = self.compute_total_cost();
 
         Some(TurnBoundaryBlock {
             id,
@@ -194,8 +179,8 @@ impl TurnBoundaryAccumulator {
             num_turns: self.num_turns,
             duration_ms,
             duration_api_ms: self.duration_api_ms,
-            usage: self.total_usage.clone(),
-            model_usage: self.model_usage.clone(),
+            usage: serialize_total_usage(&self.total_usage),
+            model_usage: serialize_model_usage(&self.model_usage),
             permission_denials: Vec::new(),
             result: self.result.clone(),
             structured_output: None,
@@ -209,9 +194,25 @@ impl TurnBoundaryAccumulator {
         })
     }
 
+    /// Compute the total cost by running `pricing::calculate_cost()` per-model
+    /// with the typed `TokenUsage` that carries the 5m/1h breakdown.
+    ///
+    /// This replaces the previous private `calculate_cost()` method which hardcoded
+    /// 5m/1h tokens to 0, producing a ~37.5% undercharge whenever Claude Code used
+    /// 1-hour caching (its default).
+    fn compute_total_cost(&self) -> f64 {
+        let pricing_table = pricing::load_pricing();
+        self.model_usage
+            .iter()
+            .map(|(model, tokens)| {
+                pricing::calculate_cost(tokens, Some(model.as_str()), &pricing_table).total_usd
+            })
+            .sum()
+    }
+
     /// Reset for next turn.
     pub fn reset(&mut self) {
-        self.total_usage.clear();
+        self.total_usage = TokenUsage::default();
         self.model_usage.clear();
         self.duration_ms = None;
         self.stop_reason = None;
@@ -228,43 +229,79 @@ impl TurnBoundaryAccumulator {
         self.duration_api_ms = None;
     }
 
-    /// Calculate cost from accumulated model_usage using default pricing.
-    fn calculate_cost(&self) -> f64 {
-        let pricing_table = pricing::load_pricing();
+}
 
-        let mut total_cost = 0.0;
-        for (model, usage_val) in &self.model_usage {
-            let input = usage_val
-                .get("input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let output = usage_val
-                .get("output_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let cache_read = usage_val
-                .get("cache_read_input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
-            let cache_creation = usage_val
-                .get("cache_creation_input_tokens")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0);
+// ── Helpers ───────────────────────────────────────────────────────────
 
-            let tokens = pricing::TokenUsage {
-                input_tokens: input,
-                output_tokens: output,
-                cache_read_tokens: cache_read,
-                cache_creation_tokens: cache_creation,
-                cache_creation_5m_tokens: 0,
-                cache_creation_1hr_tokens: 0,
-                total_tokens: input + output + cache_read + cache_creation,
-            };
-            let breakdown = pricing::calculate_cost(&tokens, Some(model.as_str()), &pricing_table);
-            total_cost += breakdown.total_usd;
-        }
-        total_cost
+/// Add `src` tokens into `dst`, field-wise. `total_tokens` is recomputed as the
+/// sum of the four primary fields (input, output, cache_read, cache_creation).
+fn add_tokens(dst: &mut TokenUsage, src: &TokenUsage) {
+    dst.input_tokens += src.input_tokens;
+    dst.output_tokens += src.output_tokens;
+    dst.cache_read_tokens += src.cache_read_tokens;
+    dst.cache_creation_tokens += src.cache_creation_tokens;
+    dst.cache_creation_5m_tokens += src.cache_creation_5m_tokens;
+    dst.cache_creation_1hr_tokens += src.cache_creation_1hr_tokens;
+    dst.total_tokens = dst.input_tokens
+        + dst.output_tokens
+        + dst.cache_read_tokens
+        + dst.cache_creation_tokens;
+}
+
+fn is_empty_usage(tokens: &TokenUsage) -> bool {
+    tokens.input_tokens == 0
+        && tokens.output_tokens == 0
+        && tokens.cache_read_tokens == 0
+        && tokens.cache_creation_tokens == 0
+        && tokens.cache_creation_5m_tokens == 0
+        && tokens.cache_creation_1hr_tokens == 0
+}
+
+/// Serialise `total_usage` to the existing wire shape: `HashMap<String, u64>`
+/// with snake_case JSONL keys. Keeps backwards-compatible with the frontend's
+/// `TurnBoundaryBlock.usage: Record<string, number>` consumer. 5m/1h fields are
+/// NOT included here because they were never in the existing wire contract for
+/// the `usage` field (they live per-model inside `model_usage`).
+fn serialize_total_usage(tokens: &TokenUsage) -> HashMap<String, u64> {
+    let mut out = HashMap::new();
+    if tokens.input_tokens > 0 {
+        out.insert("input_tokens".to_string(), tokens.input_tokens);
     }
+    if tokens.output_tokens > 0 {
+        out.insert("output_tokens".to_string(), tokens.output_tokens);
+    }
+    if tokens.cache_read_tokens > 0 {
+        out.insert(
+            "cache_read_input_tokens".to_string(),
+            tokens.cache_read_tokens,
+        );
+    }
+    if tokens.cache_creation_tokens > 0 {
+        out.insert(
+            "cache_creation_input_tokens".to_string(),
+            tokens.cache_creation_tokens,
+        );
+    }
+    out
+}
+
+/// Serialise `model_usage` to `HashMap<String, serde_json::Value>` so the
+/// existing wire contract (`TurnBoundaryBlock.model_usage: Record<string, any>`)
+/// is preserved. Each value is the `TokenUsage` struct serialised as camelCase
+/// JSON, which is additive to the existing `ModelUsageInfo` shape on the TS
+/// side — new 5m/1h fields appear but existing consumers ignore them.
+fn serialize_model_usage(
+    model_usage: &HashMap<String, TokenUsage>,
+) -> HashMap<String, serde_json::Value> {
+    model_usage
+        .iter()
+        .map(|(model, tokens)| {
+            (
+                model.clone(),
+                serde_json::to_value(tokens).expect("TokenUsage always serializable"),
+            )
+        })
+        .collect()
 }
 
 /// Detect a NoticeBlock from a system entry subtype.
@@ -318,45 +355,44 @@ pub fn detect_notice_from_assistant_error(entry: &serde_json::Value) -> Option<N
 mod tests {
     use super::*;
 
+    fn tokens(input: u64, output: u64, cache_read: u64, cache_creation: u64) -> TokenUsage {
+        TokenUsage {
+            input_tokens: input,
+            output_tokens: output,
+            cache_read_tokens: cache_read,
+            cache_creation_tokens: cache_creation,
+            cache_creation_5m_tokens: 0,
+            cache_creation_1hr_tokens: 0,
+            total_tokens: input + output + cache_read + cache_creation,
+        }
+    }
+
     #[test]
     fn accumulate_usage_single_model() {
         let mut acc = TurnBoundaryAccumulator::new();
-        let usage = serde_json::json!({
-            "input_tokens": 100,
-            "output_tokens": 50,
-            "cache_read_input_tokens": 20
-        });
-        acc.add_usage("claude-sonnet-4-6", &usage);
+        acc.add_usage("claude-sonnet-4-6", &tokens(100, 50, 20, 0));
         let (total, model) = acc.get_usage();
-        assert_eq!(*total.get("input_tokens").unwrap(), 100u64);
-        assert_eq!(*total.get("output_tokens").unwrap(), 50u64);
+        assert_eq!(total.input_tokens, 100);
+        assert_eq!(total.output_tokens, 50);
+        assert_eq!(total.cache_read_tokens, 20);
         assert!(model.contains_key("claude-sonnet-4-6"));
     }
 
     #[test]
     fn accumulate_usage_multiple_models() {
         let mut acc = TurnBoundaryAccumulator::new();
-        acc.add_usage(
-            "claude-sonnet-4-6",
-            &serde_json::json!({"input_tokens": 100, "output_tokens": 50}),
-        );
-        acc.add_usage(
-            "claude-haiku-4-5-20251001",
-            &serde_json::json!({"input_tokens": 200, "output_tokens": 100}),
-        );
+        acc.add_usage("claude-sonnet-4-6", &tokens(100, 50, 0, 0));
+        acc.add_usage("claude-haiku-4-5-20251001", &tokens(200, 100, 0, 0));
         let (total, model) = acc.get_usage();
-        assert_eq!(*total.get("input_tokens").unwrap(), 300u64);
-        assert_eq!(*total.get("output_tokens").unwrap(), 150u64);
+        assert_eq!(total.input_tokens, 300);
+        assert_eq!(total.output_tokens, 150);
         assert_eq!(model.len(), 2);
     }
 
     #[test]
     fn build_boundary_from_parts() {
         let mut acc = TurnBoundaryAccumulator::new();
-        acc.add_usage(
-            "claude-sonnet-4-6",
-            &serde_json::json!({"input_tokens": 1000, "output_tokens": 500}),
-        );
+        acc.add_usage("claude-sonnet-4-6", &tokens(1000, 500, 0, 0));
         acc.set_duration(45566);
         acc.set_hook_summary(&serde_json::json!({
             "stopReason": "end_turn",
@@ -376,16 +412,122 @@ mod tests {
     fn build_partial_boundary_no_hook_summary() {
         let mut acc = TurnBoundaryAccumulator::new();
         acc.set_duration(30000);
-        acc.add_usage(
-            "claude-sonnet-4-6",
-            &serde_json::json!({"input_tokens": 500}),
-        );
+        acc.add_usage("claude-sonnet-4-6", &tokens(500, 0, 0, 0));
         let block = acc.build_partial("tb-2".into());
         assert!(block.is_some());
         let block = block.unwrap();
         assert!(!block.success); // partial = not successful
         assert_eq!(block.duration_ms, 30000);
         assert_eq!(block.stop_reason, None); // no hook summary = no stop reason
+    }
+
+    // ── Regression tests for 1hr caching cost bug ───────────────────────
+
+    #[test]
+    fn turn_boundary_applies_1hr_rate_not_5m_rate() {
+        // Regression test: pre-fix, 1hr cache_creation tokens were charged at
+        // the 5m rate ($6.25/MTok on opus-4-6) instead of the 1hr rate
+        // ($10/MTok), producing a 37.5% undercharge. This test locks in the
+        // correct 1hr pricing.
+        let mut acc = TurnBoundaryAccumulator::new();
+        let t = TokenUsage {
+            cache_creation_tokens: 100_000,
+            cache_creation_1hr_tokens: 100_000,
+            total_tokens: 100_000,
+            ..Default::default()
+        };
+        acc.add_usage("claude-opus-4-6", &t);
+        acc.set_duration(1000);
+        acc.set_hook_summary(&serde_json::json!({
+            "stopReason": "end_turn", "hookInfos": [], "hookErrors": [], "hookCount": 0
+        }));
+
+        let block = acc.build("tb-1".into()).unwrap();
+
+        // Opus 4.6: 100k at 1hr rate ($10/MTok) = $1.00
+        assert!(
+            (block.total_cost_usd - 1.0).abs() < 0.001,
+            "expected $1.00 (1hr rate), got ${}",
+            block.total_cost_usd
+        );
+        // Pre-fix this would have been $0.625 (5m rate). Guard against regression.
+        assert!(
+            block.total_cost_usd > 0.8,
+            "1hr rate must be applied, got ${}",
+            block.total_cost_usd
+        );
+    }
+
+    #[test]
+    fn turn_boundary_applies_mixed_5m_and_1hr_rates() {
+        let mut acc = TurnBoundaryAccumulator::new();
+        let t = TokenUsage {
+            cache_creation_tokens: 200_000,
+            cache_creation_5m_tokens: 100_000,
+            cache_creation_1hr_tokens: 100_000,
+            total_tokens: 200_000,
+            ..Default::default()
+        };
+        acc.add_usage("claude-opus-4-6", &t);
+        acc.set_duration(1000);
+        acc.set_hook_summary(&serde_json::json!({
+            "stopReason": "end_turn", "hookInfos": [], "hookErrors": [], "hookCount": 0
+        }));
+
+        let block = acc.build("tb-1".into()).unwrap();
+        // 100k at 5m rate ($6.25/MTok) = $0.625
+        // 100k at 1hr rate ($10/MTok) = $1.00
+        // total = $1.625
+        assert!(
+            (block.total_cost_usd - 1.625).abs() < 0.001,
+            "expected $1.625 (mixed rates), got ${}",
+            block.total_cost_usd
+        );
+    }
+
+    #[test]
+    fn wire_format_model_usage_is_camelcase_serde_json() {
+        // Verifies the C3 wire-format guarantee: model_usage serialises as
+        // camelCase JSON with additive 5m/1h fields.
+        let mut acc = TurnBoundaryAccumulator::new();
+        let t = TokenUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_creation_tokens: 1000,
+            cache_creation_1hr_tokens: 1000,
+            total_tokens: 1150,
+            ..Default::default()
+        };
+        acc.add_usage("claude-opus-4-6", &t);
+        acc.set_duration(1000);
+        acc.set_hook_summary(&serde_json::json!({
+            "stopReason": "end_turn", "hookInfos": [], "hookErrors": [], "hookCount": 0
+        }));
+
+        let block = acc.build("tb-1".into()).unwrap();
+        let model_entry = block.model_usage.get("claude-opus-4-6").unwrap();
+        // TokenUsage serialises as camelCase via #[serde(rename_all = "camelCase")]
+        assert_eq!(model_entry["inputTokens"].as_u64(), Some(100));
+        assert_eq!(model_entry["outputTokens"].as_u64(), Some(50));
+        assert_eq!(model_entry["cacheCreationTokens"].as_u64(), Some(1000));
+        assert_eq!(model_entry["cacheCreation1hrTokens"].as_u64(), Some(1000));
+        assert_eq!(model_entry["cacheCreation5mTokens"].as_u64(), Some(0));
+    }
+
+    #[test]
+    fn wire_format_total_usage_is_snake_case_for_backcompat() {
+        // The flat `usage` field keeps snake_case JSONL keys that existing
+        // frontend consumers read (input_tokens, output_tokens, ...).
+        let mut acc = TurnBoundaryAccumulator::new();
+        acc.add_usage("claude-opus-4-6", &tokens(100, 50, 20, 0));
+        acc.set_duration(1000);
+        acc.set_hook_summary(&serde_json::json!({
+            "stopReason": "end_turn", "hookInfos": [], "hookErrors": [], "hookCount": 0
+        }));
+        let block = acc.build("tb-1".into()).unwrap();
+        assert_eq!(*block.usage.get("input_tokens").unwrap(), 100);
+        assert_eq!(*block.usage.get("output_tokens").unwrap(), 50);
+        assert_eq!(*block.usage.get("cache_read_input_tokens").unwrap(), 20);
     }
 
     #[test]

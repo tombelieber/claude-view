@@ -598,8 +598,22 @@ async fn main() -> Result<()> {
             }
         }
 
-        // 2c. Auto-reindex: compare registry fingerprint with stored hash
-        let new_hash = registry.fingerprint();
+        // 2c. Auto-reindex: compare combined fingerprint with stored hash.
+        //
+        // Combined = registry state (sessions/plugins/skills) + computation
+        // versions that affect stored aggregates. Bumping any version tag
+        // mismatches the stored hash and triggers a full reindex, keeping
+        // DB aggregates (e.g. sessions.total_cost_usd) in sync with the
+        // latest pricing/extraction logic. See pricing::PRICING_VERSION.
+        //
+        // Format: "{registry_fp}:pv{N}" — self-describing, trivially
+        // extensible (add `:ev{M}` etc. for future version tags).
+        let registry_fp = registry.fingerprint();
+        let new_hash = format!(
+            "{}:pv{}",
+            registry_fp,
+            claude_view_core::pricing::PRICING_VERSION
+        );
         match idx_db.get_registry_hash().await {
             Ok(Some(stored)) if stored == new_hash => {
                 tracing::debug!("Registry unchanged (hash={new_hash}), skipping full re-index");
