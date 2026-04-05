@@ -19,6 +19,7 @@ pub mod jobs;
 pub mod live;
 pub mod local_llm;
 pub mod metrics;
+pub mod middleware;
 pub mod openapi;
 pub mod routes;
 pub mod search_service;
@@ -51,8 +52,31 @@ use axum::http::HeaderValue;
 use axum::Router;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+
+/// V1-hardening M1.2 — max incoming request body size.
+/// 10 MB is generous for this app: the largest realistic POSTs are plugin
+/// manifests and share-payload encrypted blobs, both well under 1 MB.
+const MAX_REQUEST_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+/// V1-hardening M1.2 — compose the shared middleware stack.
+///
+/// Order matters. Outer-most layers run first on request, last on response:
+///   TraceLayer     — structured logs with method/uri/status/latency
+///   RequestId      — ensure every request has X-Request-Id
+///   BodyLimit      — reject oversized requests early
+///   CompressionLayer — gzip responses
+///   CorsLayer      — restrict origins to localhost
+fn apply_middleware_stack(router: Router) -> Router {
+    router
+        .layer(CompressionLayer::new())
+        .layer(cors_layer())
+        .layer(RequestBodyLimitLayer::new(MAX_REQUEST_BODY_BYTES))
+        .layer(axum::middleware::from_fn(crate::middleware::set_request_id))
+        .layer(TraceLayer::new_for_http())
+}
 
 /// Create a CORS layer that only allows localhost origins.
 ///
@@ -451,11 +475,7 @@ pub fn create_app_full(
         });
     }
 
-    let mut app = Router::new()
-        .merge(api_routes(state))
-        .layer(CompressionLayer::new())
-        .layer(cors_layer())
-        .layer(TraceLayer::new_for_http());
+    let mut app = apply_middleware_stack(Router::new().merge(api_routes(state)));
 
     if let Some(dir) = static_dir {
         let index = dir.join("index.html");
@@ -499,11 +519,7 @@ pub fn create_app_with_indexing_and_static(
 ) -> Router {
     let state = AppState::builder(db).with_indexing(indexing).build();
 
-    let mut app = Router::new()
-        .merge(api_routes(state))
-        .layer(CompressionLayer::new())
-        .layer(cors_layer())
-        .layer(TraceLayer::new_for_http());
+    let mut app = apply_middleware_stack(Router::new().merge(api_routes(state)));
 
     // Serve static files with SPA fallback
     // Use .fallback() instead of .not_found_service() to return 200 for SPA routing
