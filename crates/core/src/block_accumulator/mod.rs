@@ -1,6 +1,7 @@
 pub mod assistant;
 pub mod boundary;
 pub mod content;
+pub mod interactions;
 
 use serde_json::Value;
 
@@ -105,7 +106,13 @@ impl BlockAccumulator {
             }
         }
 
-        std::mem::take(&mut self.blocks)
+        // Post-processing: synthesise historical InteractionBlocks for Plan
+        // and Question patterns. Live sidecar InteractionBlocks never flow
+        // through this accumulator, so no dedup is needed here — per the
+        // "Separate Channels = Separate Data" rule in CLAUDE.md.
+        let mut blocks = std::mem::take(&mut self.blocks);
+        interactions::synthesize_historical_interactions(&mut blocks);
+        blocks
     }
 
     /// Non-consuming snapshot of current blocks, including any in-progress assistant.
@@ -114,11 +121,19 @@ impl BlockAccumulator {
     /// without resetting the accumulator. The persistent accumulator correlates
     /// multi-line constructs (e.g., assistant + tool_result) that the per-line
     /// approach cannot.
+    ///
+    /// Historical InteractionBlocks are synthesised on every snapshot call
+    /// (deterministic — same input → same IDs) so the live-monitor replay
+    /// gets the same plan/question context that finalize() would produce.
+    /// This does NOT overlap with the sidecar's live InteractionBlocks —
+    /// terminal WS (block stream) and sidecar WS (chat FSM) are separate
+    /// UI surfaces per CLAUDE.md's two-WS architecture rule.
     pub fn snapshot(&self) -> Vec<ConversationBlock> {
         let mut blocks = self.blocks.clone();
         if let Some(ref builder) = self.current_assistant {
             blocks.push(ConversationBlock::Assistant(builder.clone().finalize()));
         }
+        interactions::synthesize_historical_interactions(&mut blocks);
         blocks
     }
 
