@@ -103,12 +103,31 @@ export type ToolExecution = {
 
 // ── InteractionBlock ────────────────────────────────────────────────────────
 
+/**
+ * Provenance marker for InteractionBlocks. Absent on live sidecar blocks;
+ * present on historically-synthesised blocks so the UI can distinguish
+ * reconstructed data from authoritative live data (Trust Over Accuracy).
+ *
+ * - `system_variant`: backed by an explicit SystemVariant entry
+ *   (e.g. PlanContent) or an authoritative tool_result signal
+ *   (e.g. ExitPlanMode's "User has approved your plan" prefix).
+ * - `inferred_from_tool_pattern`: reconstructed from assistant tool_use
+ *   + user tool_result patterns (e.g. AskUserQuestion).
+ */
+export type HistoricalSource = 'system_variant' | 'inferred_from_tool_pattern'
+
 export type InteractionBlock = {
   type: 'interaction'
   id: string
   variant: 'permission' | 'question' | 'plan' | 'elicitation'
   requestId: string
   resolved: boolean
+  /**
+   * Present on historically-synthesised blocks; absent on live sidecar
+   * blocks. Top-level placement gives TS consumers compile-time
+   * discrimination without inspecting `data`.
+   */
+  historicalSource?: HistoricalSource
   data: PermissionRequest | AskQuestion | PlanApproval | Elicitation
 }
 
