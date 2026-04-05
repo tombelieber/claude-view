@@ -1473,6 +1473,61 @@ npx claude-view@latest
 Your git history now has context. Every commit, every session, connected.
 
 
+--- blog/v0-31-0-historical-conversation-blocks.mdx ---
+
+---
+title: "Complete Conversation Timelines for Every Session"
+description: "v0.31.0 synthesizes Plan and Question blocks from historical JSONL data, giving you a complete visual timeline for any session — not just recent ones."
+date: 2026-04-06
+author: claude-view team
+---
+
+When you open an old Claude Code session in claude-view, you should see the same rich conversation timeline you get for live sessions. Until now, you didn't.
+
+## The gap
+
+claude-view renders conversations as a sequence of **InteractionBlocks** — visual units that represent Plans, Questions, tool calls, and responses. These blocks make it easy to scan a session at a glance: "here's where the agent planned, here's what it asked me, here's where it ran the tests."
+
+The problem: Plan and Question blocks were only synthesized for sessions currently in memory. For any session that had ended — even from yesterday — those blocks were missing. You'd see a flat stream of tool calls and text, without the higher-level structure that makes sessions actually readable.
+
+This wasn't a small gap. Plans and Questions are the *most* informative blocks in a session. They're where Claude explains what it's about to do and why. Losing them from historical sessions meant losing the narrative thread.
+
+## What changed
+
+v0.31.0 synthesizes InteractionBlocks from historical JSONL data during the indexing pass. When you open any session — from today or from three months ago — claude-view reconstructs the block structure from the raw event log.
+
+The result: your full conversation timeline is complete, regardless of when the session happened. Plans appear where they were triggered. Questions appear where they were asked. The session reads like it did when it was live.
+
+## Accurate cost estimates
+
+A separate fix in this release plugs a caching issue that was silently skewing token cost estimates. A one-hour cache window was causing cost display to drift from actual usage — you might see costs from an hour ago presented as current. This is now resolved, and system message rendering gaps are also fixed.
+
+## Dev reliability improvements
+
+Four fixes landed for the development environment:
+
+- **Crash-aware sidecar supervisor** — `node --watch` doesn't handle crashes gracefully. The new supervisor detects crashes and restarts cleanly.
+- **Orchestrator script** — the 400-character inline `concurrently` command in the dev start script is replaced with a proper orchestrator. Easier to read, easier to debug.
+- **Cleanup script** — `dev-cleanup.sh` now kills orphan processes, not just the ports they were using.
+- **Sidecar ownership gate** — `CLAUDE_VIEW_SIDECAR_EXTERNAL` prevents the Rust server from spawning a second sidecar in dev mode. Previously, every `cargo watch` rebuild would kill the `tsx watch` process and replace it with a stale build, causing WebSocket failures that looked like FSM bugs.
+
+These are internal improvements — they don't affect the installed `npx claude-view` experience, only the development workflow.
+
+## What's next
+
+- Deeper historical reconstruction — filling more block types from JSONL
+- Improved cost breakdown by session phase
+- Timeline scrubbing for long sessions
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open any old session and check the timeline. Plans and Questions should now appear throughout.
+
+
 --- blog/v0-30-0-on-device-ai-and-hook-visibility.mdx ---
 
 ---
@@ -2860,6 +2915,35 @@ version: v0.30.1
 ## Improvements
 
 **App data consolidation** — all app data now lives under `~/.claude-view/`. One directory to manage, backup, or delete.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.31.0.md ---
+
+---
+title: "v0.31.0 — Historical Conversation Blocks"
+date: 2026-04-06
+version: v0.31.0
+---
+
+## New features
+
+**Historical InteractionBlocks** — Plan and Question blocks are now synthesized from historical JSONL data. Your full conversation timeline is complete even for sessions recorded months ago — not just live or recent ones.
+
+## Improvements
+
+**Cost estimate accuracy** — plugged a 1-hour cache drift that was silently skewing token cost estimates. System message render gaps also resolved.
+
+**Crash-aware sidecar supervisor** — replaced naked `node --watch` with a supervisor that detects crashes and restarts cleanly, eliminating silent failures during development.
+
+**Dev orchestration cleanup** — replaced a 400-character inline `concurrently` command with a maintainable orchestrator script. Added `dev-cleanup.sh` to kill orphan processes (not just ports) after dev sessions.
+
+**Sidecar ownership gate** — `CLAUDE_VIEW_SIDECAR_EXTERNAL` env var prevents the Rust server from spawning the sidecar in dev mode, eliminating the race between `tsx watch` and the production spawn path that caused phantom WebSocket failures.
 
 ## Getting started
 
