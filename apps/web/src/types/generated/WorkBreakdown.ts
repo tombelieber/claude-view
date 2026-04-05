@@ -3,4 +3,9 @@
 /**
  * Work type breakdown.
  */
-export type WorkBreakdown = { totalSessions: number, withCommits: number, exploration: number, avgSessionMinutes: number, };
+export type WorkBreakdown = {
+  totalSessions: number
+  withCommits: number
+  exploration: number
+  avgSessionMinutes: number
+}

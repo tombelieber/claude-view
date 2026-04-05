@@ -3,4 +3,4 @@
 /**
  * Health status enum for the system page.
  */
-export type HealthStatus = "healthy" | "warning" | "error";
+export type HealthStatus = 'healthy' | 'warning' | 'error'

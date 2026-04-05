@@ -3,4 +3,4 @@
 /**
  * A project with its session count (for dashboard top projects).
  */
-export type ProjectStat = { name: string, displayName: string, sessionCount: number, };
+export type ProjectStat = { name: string; displayName: string; sessionCount: number }

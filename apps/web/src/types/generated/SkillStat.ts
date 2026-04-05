@@ -3,4 +3,4 @@
 /**
  * A skill with its usage count.
  */
-export type SkillStat = { name: string, count: number, };
+export type SkillStat = { name: string; count: number }

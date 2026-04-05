@@ -11,7 +11,7 @@ export type PhaseHistory = {
   labels: Array<PhaseLabel>
   dominant: SessionPhase | null
   /**
-   * Badge animation hint: `fresh` = solid, `pending` = breathing.
+   * Badge visual state: `fresh` = solid, `pending` = shimmer, `settled` = dimmed.
    */
   freshness: PhaseFreshness
 }

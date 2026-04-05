@@ -3,4 +3,11 @@
 /**
  * JSON snapshot of current indexing progress (for polling).
  */
-export type IndexingStatusResponse = { phase: string, indexed: number, total: number, bytesProcessed: number, bytesTotal: number, errorMessage: string | null, };
+export type IndexingStatusResponse = {
+  phase: string
+  indexed: number
+  total: number
+  bytesProcessed: number
+  bytesTotal: number
+  errorMessage: string | null
+}

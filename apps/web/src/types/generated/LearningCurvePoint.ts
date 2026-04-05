@@ -3,4 +3,4 @@
 /**
  * Learning curve data point.
  */
-export type LearningCurvePoint = { session: number, reeditRate: number, };
+export type LearningCurvePoint = { session: number; reeditRate: number }

@@ -3,4 +3,8 @@
 /**
  * Canonical source for how a request's effective time range was resolved.
  */
-export type EffectiveRangeSource = "explicit_from_to" | "explicit_range_param" | "default_all_time" | "legacy_one_sided_coercion";
+export type EffectiveRangeSource =
+  | 'explicit_from_to'
+  | 'explicit_range_param'
+  | 'default_all_time'
+  | 'legacy_one_sided_coercion'

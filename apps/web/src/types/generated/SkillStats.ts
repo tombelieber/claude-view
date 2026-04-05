@@ -3,4 +3,10 @@
 /**
  * Skill effectiveness statistics.
  */
-export type SkillStats = { skill: string, sessions: number, avgLoc: number, commitRate: number, reeditRate: number, };
+export type SkillStats = {
+  skill: string
+  sessions: number
+  avgLoc: number
+  commitRate: number
+  reeditRate: number
+}

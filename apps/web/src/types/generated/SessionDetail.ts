@@ -94,4 +94,5 @@ export type SessionDetail = {
   longestTaskPreview?: string | null
   totalCostUsd?: number | null
   slug?: string | null
+  entrypoint?: string | null
 }

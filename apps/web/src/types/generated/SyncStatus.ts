@@ -3,4 +3,4 @@
 /**
  * Status value for accepted sync responses.
  */
-export type SyncStatus = "accepted";
+export type SyncStatus = 'accepted'

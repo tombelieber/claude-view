@@ -3,4 +3,4 @@
 /**
  * Count and percentage for a single L1 category.
  */
-export type CategorySummary = { count: number, percentage: number, };
+export type CategorySummary = { count: number; percentage: number }
