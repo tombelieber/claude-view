@@ -217,6 +217,45 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+/// Lightweight drop-in replacement for `tokio::spawn` that catches panics,
+/// logs them with structured context, and increments a metrics counter.
+///
+/// This does NOT restart the task on panic — use `TaskSupervisor::spawn`
+/// for that. Use this where full supervision is overkill but panic
+/// observability is still needed (one-shot tasks, best-effort background
+/// work, places where a supervisor Arc isn't plumbed yet).
+///
+/// V1-hardening M2.2 — migration helper for the 17 pre-existing
+/// `tokio::spawn` call sites. Spawn sites can be migrated independently
+/// and incrementally.
+pub fn spawn_observed<Fut>(name: &'static str, fut: Fut) -> JoinHandle<()>
+where
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    tokio::spawn(async move {
+        let result = AssertUnwindSafe(fut).catch_unwind().await;
+        match result {
+            Ok(()) => {
+                metrics::counter!(
+                    "supervised_task_completed_total",
+                    "task" => name
+                )
+                .increment(1);
+            }
+            Err(panic) => {
+                let msg = panic_message(&panic);
+                metrics::counter!(
+                    "supervised_task_panic_total",
+                    "task" => name
+                )
+                .increment(1);
+                tracing::error!(task = %name, panic = %msg,
+                    "observed task panicked (no restart — use TaskSupervisor for critical loops)");
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +336,27 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(ran.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn spawn_observed_catches_panic_and_returns_handle() {
+        let handle = spawn_observed("observed_test_panic", async {
+            panic!("boom");
+        });
+        // Observed task should NOT propagate the panic — the JoinHandle
+        // resolves to Ok(()) because we catch_unwind'd the panic.
+        let result = handle.await;
+        assert!(result.is_ok(), "spawn_observed task handle must not fail");
+    }
+
+    #[tokio::test]
+    async fn spawn_observed_returns_normally() {
+        let done = Arc::new(AtomicUsize::new(0));
+        let done_clone = done.clone();
+        let handle = spawn_observed("observed_test_ok", async move {
+            done_clone.fetch_add(1, Ordering::SeqCst);
+        });
+        handle.await.unwrap();
+        assert_eq!(done.load(Ordering::SeqCst), 1);
     }
 }

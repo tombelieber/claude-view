@@ -173,26 +173,32 @@ impl LiveSessionManager {
         manager.spawn_death_consumer(death_rx);
 
         // Spawn LLM drain loop (replaces cadence-based scheduler)
+        // V1-hardening M2.2 — wrapped in spawn_observed so panics are logged
+        // and counted via metrics instead of silently killing the task.
         let drain_wake = Arc::new(tokio::sync::Notify::new());
         let mode_multiplier = llm_config.classify_mode().budget_multiplier();
-        tokio::spawn(super::drain_loop::run_drain_loop(
-            dirty_rx,
-            result_tx,
-            manager.accumulators.clone(),
-            llm_client,
-            llm_status.ready.clone(),
-            drain_wake,
-            manager.sessions.clone(),
-            manager.tx.clone(),
-            mode_multiplier,
-        ));
+        crate::supervisor::spawn_observed(
+            "live_drain_loop",
+            super::drain_loop::run_drain_loop(
+                dirty_rx,
+                result_tx,
+                manager.accumulators.clone(),
+                llm_client,
+                llm_status.ready.clone(),
+                drain_wake,
+                manager.sessions.clone(),
+                manager.tx.clone(),
+                mode_multiplier,
+            ),
+        );
 
         // Spawn classify result handler
+        // V1-hardening M2.2 — wrapped in spawn_observed.
         {
             let accumulators = manager.accumulators.clone();
             let sessions = manager.sessions.clone();
             let tx = manager.tx.clone();
-            tokio::spawn(async move {
+            crate::supervisor::spawn_observed("live_classify_result_handler", async move {
                 while let Some(result) = result_rx.recv().await {
                     let session_id = result.session_id.clone();
 

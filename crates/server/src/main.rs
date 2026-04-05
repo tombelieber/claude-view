@@ -561,7 +561,10 @@ async fn main() -> Result<()> {
     let idx_prompt_stats = prompt_stats_holder.clone();
     let idx_prompt_templates = prompt_templates_holder.clone();
     let idx_telemetry = telemetry_for_indexer;
-    tokio::spawn(async move {
+    // V1-hardening M2.2 — wrapped in spawn_observed so an indexing panic
+    // is logged + counted via metrics instead of silently hanging the TUI
+    // spinner forever.
+    claude_view_server::supervisor::spawn_observed("startup_indexing", async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
 
