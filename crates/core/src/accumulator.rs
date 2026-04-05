@@ -350,15 +350,21 @@ impl SessionAccumulator {
                     agent.tool_use_count = result.total_tool_use_count;
                     agent.current_activity = None;
 
-                    // Compute cost from sub-agent token usage via pricing table
+                    // Compute cost from sub-agent token usage via pricing table.
+                    // Threads nested cache_creation.{5m,1h} breakdown through so
+                    // 1hr-caching costs are charged at the 1hr rate.
                     if let Some(model) = self.model.as_deref() {
                         let sub_tokens = TokenUsage {
                             input_tokens: result.usage_input_tokens.unwrap_or(0),
                             output_tokens: result.usage_output_tokens.unwrap_or(0),
                             cache_read_tokens: result.usage_cache_read_tokens.unwrap_or(0),
                             cache_creation_tokens: result.usage_cache_creation_tokens.unwrap_or(0),
-                            cache_creation_5m_tokens: 0,
-                            cache_creation_1hr_tokens: 0,
+                            cache_creation_5m_tokens: result
+                                .usage_cache_creation_5m_tokens
+                                .unwrap_or(0),
+                            cache_creation_1hr_tokens: result
+                                .usage_cache_creation_1hr_tokens
+                                .unwrap_or(0),
                             total_tokens: 0, // not used by calculate_cost
                         };
                         let sub_cost = calculate_cost(&sub_tokens, Some(model), pricing);
@@ -1040,6 +1046,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
@@ -1085,6 +1093,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
@@ -1130,6 +1140,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
@@ -1182,6 +1194,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
@@ -1229,6 +1243,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
@@ -1280,6 +1296,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
@@ -1328,6 +1346,8 @@ mod tests {
                 usage_output_tokens: None,
                 usage_cache_read_tokens: None,
                 usage_cache_creation_tokens: None,
+                usage_cache_creation_5m_tokens: None,
+                usage_cache_creation_1hr_tokens: None,
                 model: None,
             });
             acc.process_line(&result_line, 0, &pricing);
@@ -1381,6 +1401,8 @@ mod tests {
                 usage_output_tokens: None,
                 usage_cache_read_tokens: None,
                 usage_cache_creation_tokens: None,
+                usage_cache_creation_5m_tokens: None,
+                usage_cache_creation_1hr_tokens: None,
                 model: None,
             });
             acc.process_line(&result_line, 0, &pricing);
@@ -1432,6 +1454,8 @@ mod tests {
             usage_output_tokens: None,
             usage_cache_read_tokens: None,
             usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&launch_line, 0, &pricing);
@@ -1833,6 +1857,8 @@ mod tests {
             usage_output_tokens: Some(10_000),
             usage_cache_read_tokens: Some(50_000),
             usage_cache_creation_tokens: Some(5_000),
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
             model: None,
         });
         acc.process_line(&result_line, 0, &pricing);
@@ -1842,6 +1868,70 @@ mod tests {
         assert!(
             data.sub_agents[0].cost_usd.unwrap() > 0.0,
             "Sub-agent should have a non-zero cost"
+        );
+    }
+
+    #[test]
+    fn test_sub_agent_1hr_cache_cost_uses_1hr_rate() {
+        // Regression test: pre-fix, sub-agent cache_creation tokens with 1hr
+        // TTL were charged at the 5m rate because usage_cache_creation_5m_tokens
+        // and usage_cache_creation_1hr_tokens were hardcoded to 0 at the
+        // cost-calculation call site. This test locks in the fix.
+        let mut acc = SessionAccumulator::new();
+        let pricing = crate::pricing::load_pricing();
+
+        // Set model to opus-4-6 (has distinct 5m/1h rates: $6.25 vs $10 per MTok)
+        let mut model_line = empty_line();
+        model_line.model = Some("claude-opus-4-6".to_string());
+        acc.process_line(&model_line, 0, &pricing);
+
+        // Spawn
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_1hr".to_string(),
+                agent_type: "code".to_string(),
+                description: "1hr cache test".to_string(),
+                team_name: None,
+                model: None,
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        // Complete: 100k cache_creation tokens, ALL on 1hr TTL
+        let mut result_line = empty_line();
+        result_line.line_type = LineType::User;
+        result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_1hr".to_string(),
+            agent_id: Some("abc1234".to_string()),
+            status: "completed".to_string(),
+            total_duration_ms: Some(5000),
+            total_tool_use_count: Some(1),
+            usage_input_tokens: Some(0),
+            usage_output_tokens: Some(0),
+            usage_cache_read_tokens: Some(0),
+            usage_cache_creation_tokens: Some(100_000),
+            usage_cache_creation_5m_tokens: Some(0),
+            usage_cache_creation_1hr_tokens: Some(100_000),
+            model: None,
+        });
+        acc.process_line(&result_line, 0, &pricing);
+
+        let data = acc.finish(&pricing);
+        assert_eq!(data.sub_agents.len(), 1);
+        let cost = data.sub_agents[0].cost_usd.unwrap();
+        // 100k at opus-4-6 1hr rate ($10/MTok) = $1.00
+        // Pre-fix (5m rate $6.25/MTok) would have been $0.625
+        assert!(
+            (cost - 1.0).abs() < 0.001,
+            "expected $1.00 (1hr rate), got ${}",
+            cost
+        );
+        assert!(
+            cost > 0.8,
+            "sub-agent 1hr rate must be applied, got ${}",
+            cost
         );
     }
 
