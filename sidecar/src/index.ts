@@ -47,6 +47,23 @@ app.post('/workflows/run', async (c) => {
 })
 
 const server = createAdaptorServer(app)
+
+// Fail-fast port-conflict guard. The parent `bun dev` runs `predev: cleanupport`
+// to kill stale holders, but races are still possible (e.g. concurrent restart,
+// external process grabbing :3001). Surface an actionable message instead of an
+// opaque uncaught error, then exit so concurrently --kill-others tears everything
+// down cleanly — better than a half-alive stack where frontend hangs at Connecting.
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`[sidecar] ✗ Port ${SIDECAR_PORT} is already in use.`)
+    console.error('[sidecar]   Another sidecar may be running. To clear:')
+    console.error(`[sidecar]     lsof -ti :${SIDECAR_PORT} | xargs kill -9`)
+    process.exit(1)
+  }
+  console.error('[sidecar] ✗ Server error:', err)
+  process.exit(1)
+})
+
 server.listen(SIDECAR_PORT, () => {
   console.log(`[sidecar] Listening on :${SIDECAR_PORT}`)
   console.log(`[sidecar] PID: ${process.pid}`)
