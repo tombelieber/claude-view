@@ -880,6 +880,7 @@ export function SessionDetailPanel({
         {activeTab === 'teams' && data.teamName && (
           <TeamsTab
             teamName={data.teamName}
+            sessionId={data.id}
             inboxVersion={session?.teamInboxCount}
             transcript={isLive ? null : (transcriptBlock ?? null)}
             sseMembers={data.teamMembers}
