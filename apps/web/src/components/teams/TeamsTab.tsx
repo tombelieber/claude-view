@@ -5,10 +5,14 @@ import { useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
 import { markdownComponents } from '../../lib/markdown-components'
 import { cn } from '../../lib/utils'
 import type { InboxMessage, InboxMessageType, TeamMember } from '../../types/generated'
+import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
+import { TranscriptHeader } from './TranscriptHeader'
+import { TranscriptBody } from './TranscriptBody'
 
 interface TeamsTabProps {
   teamName: string
   inboxVersion?: number
+  transcript?: TeamTranscriptBlock | null
 }
 
 // ============================================================================
@@ -125,9 +129,26 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
 // Main component
 // ============================================================================
 
-export function TeamsTab({ teamName, inboxVersion }: TeamsTabProps) {
-  const { data: team, isLoading: teamLoading } = useTeamDetail(teamName)
-  const { data: inbox, isLoading: inboxLoading } = useTeamInbox(teamName, inboxVersion)
+export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) {
+  // Hooks called unconditionally — pass null to disable when transcript is present
+  const { data: team, isLoading: teamLoading } = useTeamDetail(transcript ? null : teamName)
+  const { data: inbox, isLoading: inboxLoading } = useTeamInbox(
+    transcript ? null : teamName,
+    inboxVersion,
+  )
+
+  // If we have a transcript block (from JSONL accumulation), render the clean view
+  if (transcript) {
+    const speakerMap = new Map(
+      transcript.speakers.map((s) => [s.id, { displayName: s.displayName, color: s.color }]),
+    )
+    return (
+      <div className="p-4 overflow-y-auto h-full">
+        <TranscriptHeader topic={transcript.description} speakers={transcript.speakers} />
+        <TranscriptBody entries={transcript.entries} speakers={speakerMap} />
+      </div>
+    )
+  }
 
   if (teamLoading || inboxLoading) {
     return (
