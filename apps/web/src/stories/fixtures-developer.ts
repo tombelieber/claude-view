@@ -19,6 +19,7 @@ import type {
   SessionStatus,
   StreamDelta,
   UnknownSdkEvent,
+  WorktreeState,
 } from '@claude-view/shared/types/sidecar-protocol'
 import { assistantBlocks, userBlocks } from './fixtures'
 
@@ -440,6 +441,25 @@ export const devSystemBlocks = {
       agentName: 'code-reviewer',
       sessionId: 'sess-100',
     } satisfies AgentName,
+  } satisfies SystemBlock,
+
+  /** worktree-state — emitted when session runs inside a git worktree */
+  worktreeState: {
+    type: 'system',
+    id: 'dsb_019',
+    variant: 'worktree_state',
+    data: {
+      type: 'worktree-state',
+      sessionId: 'sess-worktree-001',
+      worktreeSession: {
+        originalCwd: '/Users/dev/project',
+        worktreePath: '/Users/dev/project/.worktrees/feature-auth',
+        worktreeName: 'feature-auth',
+        worktreeBranch: 'feature/auth-middleware',
+        originalBranch: 'main',
+        originalHeadCommit: 'a1b2c3d4e5f6789012345678',
+      },
+    } satisfies WorktreeState,
   } satisfies SystemBlock,
 
   /** attachment — file attachment metadata (top-level JSONL type) */

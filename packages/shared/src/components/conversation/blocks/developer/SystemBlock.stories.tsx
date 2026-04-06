@@ -109,6 +109,10 @@ export const AgentName: Story = {
   args: { block: devSystemBlocks.agentName },
 }
 
+export const WorktreeState: Story = {
+  args: { block: devSystemBlocks.worktreeState },
+}
+
 export const Attachment: Story = {
   args: { block: devSystemBlocks.attachment },
 }

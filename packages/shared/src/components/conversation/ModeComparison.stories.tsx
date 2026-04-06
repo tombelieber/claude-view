@@ -364,6 +364,19 @@ const comparisons: ModeComparison[] = [
     ],
   },
 
+  // ── 30c. System: worktree + attachment + permission + scheduled ──
+  {
+    label: 'system: worktree + attachment + permission + scheduled',
+    description:
+      'Worktree session state, file attachments, permission mode change, scheduled task fire',
+    blocks: [
+      devSystemBlocks.worktreeState as ConversationBlock,
+      devSystemBlocks.attachment as ConversationBlock,
+      devSystemBlocks.permissionModeChange as ConversationBlock,
+      devSystemBlocks.scheduledTaskFire as ConversationBlock,
+    ],
+  },
+
   // ── 31. Progress: all variants ──
   {
     label: 'progress: all variants',
