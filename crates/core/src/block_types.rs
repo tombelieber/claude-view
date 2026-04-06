@@ -25,6 +25,7 @@ pub enum ConversationBlock {
     Notice(NoticeBlock),
     System(SystemBlock),
     Progress(ProgressBlock),
+    TeamTranscript(TeamTranscriptBlock),
 }
 
 impl ConversationBlock {
@@ -38,6 +39,7 @@ impl ConversationBlock {
             Self::Notice(b) => &b.id,
             Self::System(b) => &b.id,
             Self::Progress(b) => &b.id,
+            Self::TeamTranscript(b) => &b.id,
         }
     }
 }
@@ -460,6 +462,77 @@ pub struct QueryProgress {
     pub query: String,
 }
 
+// ── Team transcript ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamTranscriptBlock {
+    pub id: String,
+    pub team_name: String,
+    pub description: String,
+    pub speakers: Vec<TranscriptSpeaker>,
+    pub entries: Vec<TranscriptEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptSpeaker {
+    pub id: String,
+    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stance: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TranscriptEntry {
+    #[serde(rename_all = "camelCase")]
+    AgentMessage {
+        teammate_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        color: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+        text: String,
+        line_index: usize,
+    },
+    #[serde(rename_all = "camelCase")]
+    ModeratorNarration {
+        text: String,
+        is_verdict: bool,
+        line_index: usize,
+    },
+    #[serde(rename_all = "camelCase")]
+    ModeratorRelay {
+        to: String,
+        message: String,
+        line_index: usize,
+    },
+    #[serde(rename_all = "camelCase")]
+    TaskEvent {
+        subject: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        owner: Option<String>,
+        line_index: usize,
+    },
+    #[serde(rename_all = "camelCase")]
+    TeamLifecycle { event: String, line_index: usize },
+    #[serde(rename_all = "camelCase")]
+    Protocol {
+        teammate_id: String,
+        msg_type: String,
+        raw: String,
+        line_index: usize,
+    },
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -784,5 +857,67 @@ mod tests {
         let block: InteractionBlock = serde_json::from_str(json_str).unwrap();
         assert_eq!(block.id, "live-1");
         assert_eq!(block.historical_source, None);
+    }
+
+    #[test]
+    fn team_transcript_block_serializes() {
+        let block = ConversationBlock::TeamTranscript(TeamTranscriptBlock {
+            id: "tt-1".into(),
+            team_name: "debate-2".into(),
+            description: "Is AI code making devs better or lazier?".into(),
+            speakers: vec![TranscriptSpeaker {
+                id: "pro-ai".into(),
+                display_name: "Pro-AI".into(),
+                color: Some("blue".into()),
+                stance: Some("Argues FOR".into()),
+            }],
+            entries: vec![
+                TranscriptEntry::AgentMessage {
+                    teammate_id: "pro-ai".into(),
+                    color: Some("blue".into()),
+                    summary: Some("Opening argument".into()),
+                    text: "AI makes us smarter.".into(),
+                    line_index: 10,
+                },
+                TranscriptEntry::ModeratorNarration {
+                    text: "Strong openings!".into(),
+                    is_verdict: false,
+                    line_index: 11,
+                },
+            ],
+        });
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["type"], "team_transcript");
+        assert_eq!(json["teamName"], "debate-2");
+        assert_eq!(json["speakers"][0]["displayName"], "Pro-AI");
+        assert_eq!(json["entries"].as_array().unwrap().len(), 2);
+        assert_eq!(json["entries"][0]["kind"], "agent_message");
+        assert_eq!(json["entries"][1]["kind"], "moderator_narration");
+    }
+
+    #[test]
+    fn transcript_entry_protocol_serializes() {
+        let entry = TranscriptEntry::Protocol {
+            teammate_id: "pro-ai".into(),
+            msg_type: "idle_notification".into(),
+            raw: r#"{"type":"idle_notification"}"#.into(),
+            line_index: 20,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["kind"], "protocol");
+        assert_eq!(json["msgType"], "idle_notification");
+    }
+
+    #[test]
+    fn team_transcript_tagged_enum_discriminator() {
+        let transcript = ConversationBlock::TeamTranscript(TeamTranscriptBlock {
+            id: "tt1".into(),
+            team_name: "test".into(),
+            description: "test".into(),
+            speakers: vec![],
+            entries: vec![],
+        });
+        let json = serde_json::to_value(&transcript).unwrap();
+        assert_eq!(json["type"], "team_transcript");
     }
 }
