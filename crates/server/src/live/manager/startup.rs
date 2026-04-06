@@ -104,6 +104,9 @@ impl LiveSessionManager {
                     session.status = SessionStatus::Paused;
                 }
 
+                // Enrich with kind/entrypoint from sessions/{pid}.json
+                super::helpers::enrich_from_session_file(&mut session, entry.pid);
+
                 self.sessions
                     .write()
                     .await

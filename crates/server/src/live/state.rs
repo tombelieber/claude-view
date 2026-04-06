@@ -594,6 +594,16 @@ pub struct LiveSession {
     #[serde(flatten)]
     #[ts(flatten)]
     pub jsonl: JsonlFields,
+
+    // -- Session file fields (from ~/.claude/sessions/{pid}.json) --
+    /// Session kind: "interactive" or "background" (subagent).
+    /// Populated from sessions/{pid}.json, NOT from hooks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_kind: Option<String>,
+    /// Entrypoint: "cli", "claude-vscode", "claude-desktop", etc.
+    /// Populated from sessions/{pid}.json, NOT from hooks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entrypoint: Option<String>,
 }
 
 /// A single hook lifecycle event, captured for the event log.
@@ -818,6 +828,8 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
             source: None,
             phase: PhaseHistory::default(),
         },
+        session_kind: None,
+        entrypoint: None,
     }
 }
 

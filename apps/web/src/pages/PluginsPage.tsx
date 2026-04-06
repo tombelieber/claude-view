@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { AvailableSection } from '../components/plugins/AvailableSection'
 import { InstalledPluginsSection } from '../components/plugins/InstalledPluginsSection'
 import { MarketplacesDialog } from '../components/plugins/MarketplacesDialog'
+import { McpServersSection } from '../components/plugins/McpServersSection'
 import { PluginHealthPanel } from '../components/plugins/PluginHealthPanel'
 import { PluginToolbar } from '../components/plugins/PluginToolbar'
 import { PluginsPageSkeleton } from '../components/plugins/PluginsPageSkeleton'
@@ -150,6 +151,8 @@ export function PluginsPage() {
         {(!kind || kind === 'agent') && filteredAgents.length > 0 && (
           <UserItemSection title="Agents" items={filteredAgents} pathPrefix="~/.claude/agents/" />
         )}
+        {/* MCP Servers — shown when kind is mcp_tool or all */}
+        {(!kind || kind === 'mcp_tool') && <McpServersSection />}
         {/* Installed plugins — shown for 'plugin', 'mcp_tool', or all */}
         {(!kind || kind === 'plugin' || kind === 'mcp_tool') && filteredInstalled.length > 0 && (
           <InstalledPluginsSection

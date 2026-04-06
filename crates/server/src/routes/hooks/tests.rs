@@ -107,6 +107,8 @@ fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
             file_path: "/tmp/test.jsonl".to_string(),
             ..crate::live::state::JsonlFields::default()
         },
+        session_kind: None,
+        entrypoint: None,
     }
 }
 
