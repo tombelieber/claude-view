@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BarChart3,
   Blocks,
+  Brain,
   CalendarDays,
   ChevronRight,
   ChevronsDownUp,
@@ -607,6 +608,19 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           <Blocks className="w-5 h-5" />
         </Link>
         <Link
+          to="/memory"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/memory'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Memory"
+        >
+          <Brain className="w-5 h-5" />
+        </Link>
+        <Link
           to="/monitor"
           className={cn(
             'p-2 rounded-md transition-colors',
@@ -796,6 +810,18 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                       >
                         <Blocks className="w-4 h-4" />
                         <span className="font-medium">Plugins</span>
+                      </Link>
+                      <Link
+                        to="/memory"
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/memory'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <Brain className="w-4 h-4" />
+                        <span className="font-medium">Memory</span>
                       </Link>
                       <Link
                         to={`/monitor${paramString ? `?${paramString}` : ''}`}

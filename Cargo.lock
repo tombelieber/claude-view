@@ -567,6 +567,7 @@ dependencies = [
  "rust-stemmers",
  "serde",
  "serde_json",
+ "serde_yaml",
  "serial_test",
  "similar",
  "tempfile",

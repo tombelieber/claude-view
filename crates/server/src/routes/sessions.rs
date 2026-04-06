@@ -12,6 +12,7 @@ use claude_view_core::accumulator::SessionAccumulator;
 use claude_view_core::hook_to_block::make_hook_progress_block;
 use claude_view_core::subagent::SubAgentStatus;
 use claude_view_core::task_files::{self, TaskItem};
+use claude_view_core::todo_files::{self, AgentTodos};
 use claude_view_core::{ParsedSession, SessionInfo};
 use claude_view_db::git_correlation::GitCommit;
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,9 @@ pub struct SessionDetail {
     /// Persistent task data from ~/.claude/tasks/{sessionId}/*.json
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tasks: Vec<TaskItem>,
+    /// Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub todos: Vec<AgentTodos>,
     /// Whether plan files exist for this session's slug
     pub has_plans: bool,
     /// Warnings for non-fatal data read failures (e.g. task/plan file errors)
@@ -464,6 +468,12 @@ pub async fn get_session_detail(
         }
     };
 
+    // Read agent-level todo checklists (if any, 96% are empty)
+    let todos = match todo_files::claude_todos_dir() {
+        Some(dir) => todo_files::parse_session_todos(&dir, &session_id),
+        None => Vec::new(),
+    };
+
     // Check if plan files exist for this session's slug
     let has_plans = session.slug.as_ref().is_some_and(|slug| {
         match claude_view_core::plan_files::claude_plans_dir() {
@@ -483,6 +493,7 @@ pub async fn get_session_detail(
         commits,
         derived_metrics,
         tasks,
+        todos,
         has_plans,
         warnings,
     }))
@@ -1304,7 +1315,8 @@ fn block_timestamp(block: &claude_view_core::ConversationBlock) -> Option<f64> {
         ConversationBlock::Interaction(_)
         | ConversationBlock::TurnBoundary(_)
         | ConversationBlock::Notice(_)
-        | ConversationBlock::System(_) => None,
+        | ConversationBlock::System(_)
+        | ConversationBlock::TeamTranscript(_) => None,
     }
 }
 

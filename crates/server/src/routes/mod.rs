@@ -1,6 +1,8 @@
 //! API route handlers for the claude-view server.
 
+pub mod active_sessions;
 pub mod classify;
+pub mod claude_code_settings;
 pub mod coaching;
 pub mod config;
 pub mod contributions;
@@ -19,6 +21,8 @@ pub mod invocables;
 pub mod jobs;
 pub mod live;
 pub mod marketplace_refresh;
+pub mod mcp_servers;
+pub mod memory;
 pub mod metrics;
 pub mod models;
 pub mod monitor;
@@ -133,6 +137,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", sync::router())
         .nest("/api", system::router())
         .nest("/api", classify::router())
+        .nest("/api", claude_code_settings::router())
         .nest("/api", coaching::router())
         .nest("/api", control::router())
         .nest("/api", insights::router())
@@ -145,6 +150,9 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", turns::router())
         .nest("/api", hooks::router())
         .nest("/api", ide::router())
+        .nest("/api", active_sessions::router())
+        .nest("/api", mcp_servers::router())
+        .nest("/api", memory::router())
         .nest("/api", search::router())
         .nest("/api", reports::router())
         .nest("/api", settings::router())

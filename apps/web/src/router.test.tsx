@@ -45,6 +45,10 @@ vi.mock('./pages/LiveMonitorPage', () => ({
   LiveMonitorPage: () => <div>Live Monitor Page</div>,
 }))
 
+vi.mock('./pages/MemoryPage', () => ({
+  MemoryPage: () => <div>Memory Page</div>,
+}))
+
 vi.mock('./pages/ReportsPage', () => ({
   ReportsPage: () => <div>Reports Page</div>,
 }))

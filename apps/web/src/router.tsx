@@ -10,6 +10,7 @@ import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
+import { MemoryPage } from './pages/MemoryPage'
 
 // Lazy-loaded: ChatPageV2 pulls in dockview + block renderers (heavy deps)
 const ChatPageV2 = lazy(() => import('./pages/ChatPageV2').then((m) => ({ default: m.ChatPageV2 })))
@@ -88,6 +89,7 @@ export const router = createBrowserRouter([
       { path: 'workflows', element: <WorkflowsPage /> },
       { path: 'workflows/:id', element: <WorkflowDetailPage /> },
       { path: 'plugins', element: <PluginsPage /> },
+      { path: 'memory', element: <MemoryPage /> },
       { path: 'monitor', element: <SystemMonitorPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'system', element: <Navigate to="/settings" replace /> },
