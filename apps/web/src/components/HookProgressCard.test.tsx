@@ -40,11 +40,12 @@ describe('HookProgressCard', () => {
   }
 
   describe('All fields visible', () => {
-    it('should display hookEvent and hookName inline', () => {
+    it('should not render hookEvent/hookName (shown by parent EventCard header)', () => {
       renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
-      expect(screen.getByText('PreToolUse')).toBeInTheDocument()
-      expect(screen.getByText('live-monitor')).toBeInTheDocument()
+      // hookEvent and hookName are rendered by the EventCard header, not here
+      expect(screen.queryByText('PreToolUse')).not.toBeInTheDocument()
+      expect(screen.queryByText('live-monitor')).not.toBeInTheDocument()
     })
 
     it('should display statusMessage inline', () => {
@@ -76,11 +77,12 @@ describe('HookProgressCard', () => {
       expect((container.firstElementChild as HTMLElement).className).toContain('space-y')
     })
 
-    it('should have aria-hidden on decorative icon', () => {
+    it('should have no decorative icon (removed in simplified design)', () => {
       const { container } = renderWithCodeContext(<HookProgressCard {...baseProps} />)
 
+      // No SVG icon — component renders only statusMessage + command block
       const svg = container.querySelector('svg')
-      expect(svg?.getAttribute('aria-hidden')).toBe('true')
+      expect(svg).toBeNull()
     })
   })
 })
