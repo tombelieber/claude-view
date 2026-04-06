@@ -16,6 +16,7 @@ pub(crate) mod helpers;
 mod line_processor;
 mod reaper;
 mod reconciler;
+mod sessions_lifecycle;
 mod startup;
 mod watcher;
 
@@ -87,6 +88,8 @@ pub struct LiveSessionManager {
     oracle_rx: super::process_oracle::OracleReceiver,
     /// Event-driven process death watcher (kqueue on macOS).
     _death_watcher: super::process_death::ProcessDeathWatcher,
+    /// Sessions directory watcher (hook-free lifecycle detection).
+    _sessions_watcher: Option<notify::RecommendedWatcher>,
     /// Channel to mark sessions dirty for the drain loop classifier.
     dirty_tx: mpsc::Sender<super::drain_loop::DirtySignal>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
@@ -137,6 +140,13 @@ impl LiveSessionManager {
         // Start event-driven process death watcher (kqueue on macOS)
         let (death_watcher, death_rx) = super::process_death::ProcessDeathWatcher::start();
 
+        // Start sessions directory watcher (hook-free lifecycle detection)
+        let (sessions_lifecycle_rx, sessions_watcher) =
+            match super::sessions_watcher::start_sessions_watcher() {
+                Some((rx, w)) => (Some(rx), Some(w)),
+                None => (None, None),
+            };
+
         // LLM phase classifier infrastructure (llm_client injected from caller)
         let (dirty_tx, dirty_rx) = mpsc::channel::<super::drain_loop::DirtySignal>(256);
         let (result_tx, mut result_rx) = mpsc::channel::<ClassifyResult>(64);
@@ -160,6 +170,7 @@ impl LiveSessionManager {
             transcript_to_session: transcript_to_session.clone(),
             oracle_rx,
             _death_watcher: death_watcher,
+            _sessions_watcher: sessions_watcher,
             dirty_tx,
             hook_event_channels,
             coordinator: coordinator.clone(),
@@ -171,6 +182,9 @@ impl LiveSessionManager {
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
         manager.spawn_death_consumer(death_rx);
+        if let Some(lifecycle_rx) = sessions_lifecycle_rx {
+            manager.spawn_sessions_lifecycle_consumer(lifecycle_rx);
+        }
 
         // Spawn LLM drain loop (replaces cadence-based scheduler)
         let drain_wake = Arc::new(tokio::sync::Notify::new());

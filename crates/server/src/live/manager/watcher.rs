@@ -58,6 +58,11 @@ impl LiveSessionManager {
             // 1. Eager process scan FIRST
             manager.run_eager_process_scan().await;
 
+            // 1b. Sessions dir scan — primary lifecycle source (hook-free)
+            // Scan ~/.claude/sessions/ for alive sessions BEFORE JSONL/snapshot.
+            // This gives us immediate knowledge of who is alive + kind/entrypoint.
+            manager.scan_sessions_dir_at_startup().await;
+
             // 2. Initial JSONL scan
             let projects_dir = match dirs::home_dir() {
                 Some(home) => home.join(".claude").join("projects"),
