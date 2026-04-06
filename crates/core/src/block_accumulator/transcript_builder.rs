@@ -5,6 +5,7 @@ use crate::block_types::{TeamTranscriptBlock, TranscriptEntry, TranscriptSpeaker
 use crate::transcript::{self, TeammateContent};
 
 /// Accumulates team-related entries across JSONL lines.
+#[derive(Clone)]
 pub struct TranscriptBuilder {
     team_name: String,
     description: String,

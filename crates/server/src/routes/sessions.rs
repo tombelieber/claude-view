@@ -25,7 +25,7 @@ use crate::state::AppState;
 ///
 /// Live sessions (especially IDE-spawned ones) may not be indexed in the DB yet.
 /// The live session store always has the file path for any actively-monitored session.
-async fn resolve_session_file_path(
+pub(crate) async fn resolve_session_file_path(
     state: &AppState,
     session_id: &str,
 ) -> ApiResult<std::path::PathBuf> {
