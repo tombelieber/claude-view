@@ -8,8 +8,45 @@ use claude_view_core::pricing::{CostBreakdown, ModelPricing, TokenUsage};
 use memchr::memmem;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use ts_rs::TS;
+
+// ============================================================================
+// Team Snapshot (backup before TeamDelete cleanup)
+// ============================================================================
+
+/// Recursively copy src/ into dst/, creating dirs as needed. Overwrites existing files.
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Snapshot `~/.claude/teams/{name}/` → `~/.claude-view/teams/{name}/`.
+///
+/// Called when `TeamDelete` tool_use is detected in a JSONL line (PreToolUse timing —
+/// files still exist). The backup survives Claude Code's cleanup hook and is used
+/// as a fallback in `TeamsStore::get()` / `TeamsStore::inbox()`.
+pub fn snapshot_team(
+    team_name: &str,
+    claude_dir: &Path,
+    claude_view_dir: &Path,
+) -> std::io::Result<()> {
+    let src = claude_dir.join("teams").join(team_name);
+    if !src.exists() {
+        return Ok(());
+    }
+    let dst = claude_view_dir.join("teams").join(team_name);
+    copy_dir_all(&src, &dst)
+}
 
 // ============================================================================
 // API Response Types (generated to TypeScript via ts-rs)
@@ -291,16 +328,8 @@ fn scan_directory_for_teams(dir: &Path, finder: &memmem::Finder, index: &mut Tea
 // ============================================================================
 
 /// Deterministic color palette for team members when color is not in JSONL.
-const FALLBACK_COLORS: &[&str] = &[
-    "#3b82f6", // blue
-    "#ef4444", // red
-    "#22c55e", // green
-    "#f59e0b", // amber
-    "#8b5cf6", // violet
-    "#ec4899", // pink
-    "#06b6d4", // cyan
-    "#f97316", // orange
-];
+/// Uses named colors that match the frontend DOT_COLOR_MAP / BORDER_COLOR_MAP.
+const FALLBACK_COLORS: &[&str] = &["blue", "red", "green", "yellow", "purple", "orange"];
 
 /// Generate a deterministic color from a member name.
 fn deterministic_color(name: &str) -> &'static str {
@@ -1002,7 +1031,10 @@ pub fn build_team_cost(
 /// microseconds, far cheaper than any staleness/cache-invalidation bug.
 pub struct TeamsStore {
     /// Path to `~/.claude` (or equivalent). `None` for empty/test stores.
-    claude_dir: Option<std::path::PathBuf>,
+    claude_dir: Option<PathBuf>,
+    /// Path to `~/.claude-view` (backup dir). `None` for empty/test stores.
+    /// Teams are snapshotted here before TeamDelete cleanup.
+    claude_view_dir: Option<PathBuf>,
     /// Eagerly loaded snapshot (used for the initial log message at startup).
     pub teams: HashMap<String, TeamDetail>,
     pub inboxes: HashMap<String, Vec<InboxMessage>>,
@@ -1047,6 +1079,7 @@ impl TeamsStore {
     pub fn empty() -> Self {
         Self {
             claude_dir: None,
+            claude_view_dir: None,
             teams: HashMap::new(),
             inboxes: HashMap::new(),
             jsonl_index: HashMap::new(),
@@ -1054,16 +1087,31 @@ impl TeamsStore {
     }
 
     /// Scan ~/.claude/teams/ and build the JSONL fallback index.
-    /// Delegates to `load_with_index()` — the existing call at `lib.rs:234`
-    /// automatically builds the JSONL index at startup without changes.
     pub fn load(claude_dir: &Path) -> Self {
-        Self::load_with_index(claude_dir)
+        Self::load_with_index(claude_dir, None)
     }
 
-    /// Scan ~/.claude/teams/ for filesystem teams and build the JSONL fallback index.
-    /// Subsequent calls to `summaries()`, `get()`, etc. will re-scan disk live.
-    pub fn load_with_index(claude_dir: &Path) -> Self {
-        let (teams, inboxes) = scan_teams_dir(claude_dir);
+    /// Scan ~/.claude/teams/ + optional backup dir, and build the JSONL fallback index.
+    pub fn load_with_backup(claude_dir: &Path, claude_view_dir: &Path) -> Self {
+        Self::load_with_index(claude_dir, Some(claude_view_dir))
+    }
+
+    /// Scan ~/.claude/teams/ for filesystem teams, optionally merge from backup,
+    /// and build the JSONL fallback index.
+    fn load_with_index(claude_dir: &Path, claude_view_dir: Option<&Path>) -> Self {
+        let (mut teams, mut inboxes) = scan_teams_dir(claude_dir);
+
+        // Merge backup dir (primary wins)
+        if let Some(vdir) = claude_view_dir {
+            let (backup_teams, backup_inboxes) = scan_teams_dir(vdir);
+            for (name, detail) in backup_teams {
+                teams.entry(name.clone()).or_insert(detail);
+            }
+            for (name, msgs) in backup_inboxes {
+                inboxes.entry(name).or_insert(msgs);
+            }
+        }
+
         let jsonl_index = build_team_jsonl_index(claude_dir);
 
         for (name, detail) in &teams {
@@ -1096,6 +1144,7 @@ impl TeamsStore {
 
         Self {
             claude_dir: Some(claude_dir.to_path_buf()),
+            claude_view_dir: claude_view_dir.map(Path::to_path_buf),
             teams,
             inboxes,
             jsonl_index,
@@ -1103,16 +1152,29 @@ impl TeamsStore {
     }
 
     /// Re-scan disk and update the in-memory snapshot.
+    /// Reads primary (`~/.claude/`) first, merges backup (`~/.claude-view/`) for
+    /// teams not found in primary.
     fn refresh(
         &self,
     ) -> (
         HashMap<String, TeamDetail>,
         HashMap<String, Vec<InboxMessage>>,
     ) {
-        match &self.claude_dir {
+        let (mut teams, mut inboxes) = match &self.claude_dir {
             Some(dir) => scan_teams_dir(dir),
             None => (HashMap::new(), HashMap::new()),
+        };
+        // Merge backup (primary wins — .entry().or_insert())
+        if let Some(ref vdir) = self.claude_view_dir {
+            let (backup_teams, backup_inboxes) = scan_teams_dir(vdir);
+            for (name, detail) in backup_teams {
+                teams.entry(name.clone()).or_insert(detail);
+            }
+            for (name, msgs) in backup_inboxes {
+                inboxes.entry(name).or_insert(msgs);
+            }
         }
+        (teams, inboxes)
     }
 
     /// Build summary list for the /api/teams index endpoint.
@@ -1389,7 +1451,7 @@ mod tests {
         ];
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
 
-        let store = TeamsStore::load_with_index(tmp.path());
+        let store = TeamsStore::load(tmp.path());
 
         // Should return filesystem version (original description), NOT JSONL version
         let detail = store.get("test-team").unwrap();
@@ -1409,7 +1471,7 @@ mod tests {
         ];
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
 
-        let store = TeamsStore::load_with_index(tmp.path());
+        let store = TeamsStore::load(tmp.path());
         let inbox = store.inbox("inbox-only");
         assert!(inbox.is_some());
         assert_eq!(inbox.unwrap().len(), 1);
@@ -1432,7 +1494,7 @@ mod tests {
         ];
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
 
-        let store = TeamsStore::load_with_index(tmp.path());
+        let store = TeamsStore::load(tmp.path());
         let summaries = store.summaries();
 
         assert_eq!(summaries.len(), 2);
@@ -1455,7 +1517,7 @@ mod tests {
         fs::write(&jsonl_path, lines.join("\n") + "\n").unwrap();
 
         // Load with JSONL index — no teams/ directory exists
-        let store = TeamsStore::load_with_index(tmp.path());
+        let store = TeamsStore::load(tmp.path());
 
         let detail = store.get("ghost-team");
         assert!(detail.is_some(), "Should reconstruct ghost-team from JSONL");
@@ -1726,5 +1788,118 @@ mod tests {
         assert_eq!(team.name, "combo-team");
         assert_eq!(team.description, "Combined test team");
         assert_eq!(inbox.len(), 1);
+    }
+
+    // ====================================================================
+    // Team Snapshot + Backup Fallback Tests
+    // ====================================================================
+
+    #[test]
+    fn test_snapshot_team_copies_files() {
+        let claude_dir = TempDir::new().unwrap();
+        let cv_dir = TempDir::new().unwrap();
+        make_test_team(claude_dir.path());
+
+        snapshot_team("test-team", claude_dir.path(), cv_dir.path()).unwrap();
+
+        let dst_config = cv_dir.path().join("teams/test-team/config.json");
+        let dst_inbox = cv_dir.path().join("teams/test-team/inboxes/team-lead.json");
+        assert!(dst_config.exists(), "config.json must be copied");
+        assert!(dst_inbox.exists(), "inbox file must be copied");
+
+        // Content must match
+        let src_content =
+            fs::read_to_string(claude_dir.path().join("teams/test-team/config.json")).unwrap();
+        let dst_content = fs::read_to_string(&dst_config).unwrap();
+        assert_eq!(src_content, dst_content);
+    }
+
+    #[test]
+    fn test_snapshot_team_noop_when_source_missing() {
+        let claude_dir = TempDir::new().unwrap();
+        let cv_dir = TempDir::new().unwrap();
+
+        // No team dir exists — should return Ok(()) without creating anything
+        snapshot_team("nonexistent", claude_dir.path(), cv_dir.path()).unwrap();
+        assert!(!cv_dir.path().join("teams/nonexistent").exists());
+    }
+
+    #[test]
+    fn test_get_falls_back_to_backup() {
+        let claude_dir = TempDir::new().unwrap();
+        let cv_dir = TempDir::new().unwrap();
+
+        // Write team fixture ONLY in backup dir (simulates post-cleanup state)
+        make_test_team(cv_dir.path());
+
+        let store = TeamsStore::load_with_backup(claude_dir.path(), cv_dir.path());
+        let team = store.get("test-team");
+        assert!(team.is_some(), "Must find team from backup dir");
+        assert_eq!(team.unwrap().name, "test-team");
+
+        let inbox = store.inbox("test-team");
+        assert!(inbox.is_some(), "Must find inbox from backup dir");
+        assert!(!inbox.unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_primary_wins_over_backup() {
+        let claude_dir = TempDir::new().unwrap();
+        let cv_dir = TempDir::new().unwrap();
+
+        // Primary: "v2" description
+        make_test_team(claude_dir.path());
+        let primary_config = claude_dir.path().join("teams/test-team/config.json");
+        let mut config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&primary_config).unwrap()).unwrap();
+        config["description"] = serde_json::json!("v2 primary");
+        fs::write(
+            &primary_config,
+            serde_json::to_string_pretty(&config).unwrap(),
+        )
+        .unwrap();
+
+        // Backup: "v1" description
+        make_test_team(cv_dir.path());
+
+        let store = TeamsStore::load_with_backup(claude_dir.path(), cv_dir.path());
+        let team = store.get("test-team").unwrap();
+        assert_eq!(
+            team.description, "v2 primary",
+            "Primary must win over backup"
+        );
+    }
+
+    #[test]
+    fn test_snapshot_team_overwrites_stale_backup() {
+        let claude_dir = TempDir::new().unwrap();
+        let cv_dir = TempDir::new().unwrap();
+
+        // Create stale backup with original test team
+        make_test_team(cv_dir.path());
+
+        // Create primary with updated config
+        make_test_team(claude_dir.path());
+        let primary_config = claude_dir.path().join("teams/test-team/config.json");
+        let mut config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&primary_config).unwrap()).unwrap();
+        config["description"] = serde_json::json!("updated after snapshot");
+        fs::write(
+            &primary_config,
+            serde_json::to_string_pretty(&config).unwrap(),
+        )
+        .unwrap();
+
+        // Snapshot overwrites backup
+        snapshot_team("test-team", claude_dir.path(), cv_dir.path()).unwrap();
+
+        let backup_content =
+            fs::read_to_string(cv_dir.path().join("teams/test-team/config.json")).unwrap();
+        let backup_config: serde_json::Value = serde_json::from_str(&backup_content).unwrap();
+        assert_eq!(
+            backup_config["description"].as_str().unwrap(),
+            "updated after snapshot",
+            "Backup must reflect latest primary data",
+        );
     }
 }

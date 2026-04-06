@@ -14,6 +14,8 @@ interface TeamsTabProps {
   teamName: string
   inboxVersion?: number
   transcript?: TeamTranscriptBlock | null
+  /** SSE-pushed members for live sessions — renders directly, zero HTTP calls. */
+  sseMembers?: TeamMember[]
 }
 
 // ============================================================================
@@ -130,9 +132,14 @@ function MessageItem({ msg }: { msg: InboxMessage }) {
 // Main component
 // ============================================================================
 
-export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) {
-  // Hooks called unconditionally — pass null to disable when transcript is present
-  const { data: team, isLoading: teamLoading } = useTeamDetail(transcript ? null : teamName)
+export function TeamsTab({ teamName, inboxVersion, transcript, sseMembers }: TeamsTabProps) {
+  const hasSseMembers = sseMembers && sseMembers.length > 0
+
+  // API hooks — disabled when SSE provides members (live), or when transcript view is active
+  const { data: team, isLoading: teamLoading } = useTeamDetail(
+    transcript || hasSseMembers ? null : teamName,
+  )
+  // Inbox: inboxVersion comes from SSE teamInboxCount — query key changes → auto-refetch
   const { data: inbox, isLoading: inboxLoading } = useTeamInbox(
     transcript ? null : teamName,
     inboxVersion,
@@ -152,7 +159,11 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
     )
   }
 
-  if (teamLoading || inboxLoading) {
+  // SSE members available → render directly, zero HTTP latency
+  const members = hasSseMembers ? sseMembers : team?.members
+  const isLoading = hasSseMembers ? false : teamLoading
+
+  if (isLoading || inboxLoading) {
     return (
       <div className="p-4 space-y-3 animate-pulse">
         <div className="h-12 rounded bg-gray-100 dark:bg-gray-800" />
@@ -162,7 +173,7 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
     )
   }
 
-  if (!team) {
+  if (!members || members.length === 0) {
     return (
       <div className="p-4 space-y-2">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{teamName}</h3>
@@ -174,17 +185,23 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
     )
   }
 
-  const leadName = team.members.find((m) => m.agentType === 'team-lead')?.name
+  const leadName = members.find((m) => m.agentType === 'team-lead')?.name
 
   return (
     <div className="p-4 overflow-y-auto h-full space-y-4">
-      {/* Header */}
+      {/* Header — from API when available, otherwise just teamName */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{team.name}</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{team.description}</p>
-        <p className="text-xs text-gray-400 mt-1">
-          Created {team.createdAt > 0 ? new Date(team.createdAt).toLocaleString() : '—'}
-        </p>
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {team?.name ?? teamName}
+        </h3>
+        {team?.description && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{team.description}</p>
+        )}
+        {team?.createdAt != null && team.createdAt > 0 && (
+          <p className="text-xs text-gray-400 mt-1">
+            Created {new Date(team.createdAt).toLocaleString()}
+          </p>
+        )}
       </div>
 
       {/* Budget */}
@@ -193,10 +210,10 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
       {/* Members */}
       <div>
         <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
-          Members ({team.members.length})
+          Members ({members.length})
         </h4>
         <div className="divide-y divide-gray-100 dark:divide-gray-800">
-          {team.members.map((m) => (
+          {members.map((m) => (
             <MemberRow key={m.agentId} member={m} isLead={m.name === leadName} />
           ))}
         </div>

@@ -30,16 +30,25 @@ impl TranscriptBuilder {
         let parsed = transcript::parse_teammate_messages(text);
         for (i, msg) in parsed.into_iter().enumerate() {
             // Auto-register speaker on first appearance
-            if !msg.teammate_id.is_empty()
-                && msg.teammate_id != "system"
-                && self.speaker_ids.insert(msg.teammate_id.clone())
-            {
-                self.speakers.push(TranscriptSpeaker {
-                    id: msg.teammate_id.clone(),
-                    display_name: transcript::make_display_name(&msg.teammate_id),
-                    color: msg.color.clone(),
-                    stance: None,
-                });
+            if !msg.teammate_id.is_empty() && msg.teammate_id != "system" {
+                if self.speaker_ids.insert(msg.teammate_id.clone()) {
+                    self.speakers.push(TranscriptSpeaker {
+                        id: msg.teammate_id.clone(),
+                        display_name: transcript::make_display_name(&msg.teammate_id),
+                        color: msg.color.clone(),
+                        stance: None,
+                        model: None,
+                    });
+                } else if let Some(color) = &msg.color {
+                    // Speaker already registered (e.g. from spawn) — backfill color
+                    if let Some(speaker) =
+                        self.speakers.iter_mut().find(|s| s.id == msg.teammate_id)
+                    {
+                        if speaker.color.is_none() {
+                            speaker.color = Some(color.clone());
+                        }
+                    }
+                }
             }
 
             match msg.content {
@@ -117,7 +126,13 @@ impl TranscriptBuilder {
     }
 
     /// Register a speaker from Agent spawn data.
-    pub fn add_speaker_from_spawn(&mut self, id: &str, color: Option<&str>, description: &str) {
+    pub fn add_speaker_from_spawn(
+        &mut self,
+        id: &str,
+        color: Option<&str>,
+        description: &str,
+        model: Option<&str>,
+    ) {
         let stance = extract_stance(description);
 
         if self.speaker_ids.insert(id.to_string()) {
@@ -126,15 +141,19 @@ impl TranscriptBuilder {
                 display_name: transcript::make_display_name(id),
                 color: color.map(String::from),
                 stance,
+                model: model.map(String::from),
             });
         } else {
-            // Update existing speaker with stance if we didn't have it
+            // Update existing speaker with stance/color/model if we didn't have it
             if let Some(speaker) = self.speakers.iter_mut().find(|s| s.id == id) {
                 if speaker.stance.is_none() {
                     speaker.stance = stance;
                 }
                 if speaker.color.is_none() {
                     speaker.color = color.map(String::from);
+                }
+                if speaker.model.is_none() {
+                    speaker.model = model.map(String::from);
                 }
             }
         }
@@ -292,7 +311,12 @@ Good argument here.
     #[test]
     fn speaker_stance_from_agent_description() {
         let mut builder = TranscriptBuilder::new("debate".into(), "Test".into());
-        builder.add_speaker_from_spawn("pro-ai", Some("blue"), "Debate: argue FOR tabs");
+        builder.add_speaker_from_spawn(
+            "pro-ai",
+            Some("blue"),
+            "Debate: argue FOR tabs",
+            Some("sonnet"),
+        );
         let block = builder.build("tt-1".into());
         assert_eq!(block.speakers[0].stance.as_deref(), Some("Argues FOR tabs"));
     }
@@ -303,5 +327,34 @@ Good argument here.
         let block = builder.build("tt-1".into());
         assert!(block.speakers.is_empty());
         assert!(block.entries.is_empty());
+    }
+
+    /// Regression: spawn registers speaker with no color, then teammate-message
+    /// arrives with color → color must be backfilled on the existing speaker.
+    #[test]
+    fn spawn_then_message_backfills_color_and_model() {
+        let mut builder = TranscriptBuilder::new("debate".into(), "Test".into());
+        // Step 1: Agent spawn — no color available yet
+        builder.add_speaker_from_spawn("pro-ai", None, "Debate: argue FOR AI", Some("sonnet"));
+        assert_eq!(builder.speakers[0].color, None);
+        assert_eq!(builder.speakers[0].model.as_deref(), Some("sonnet"));
+
+        // Step 2: first teammate-message arrives with color
+        builder.add_teammate_messages(
+            r#"<teammate-message teammate_id="pro-ai" color="blue" summary="Opening">
+AI is great.
+</teammate-message>"#,
+            10,
+        );
+
+        let block = builder.build("tt-1".into());
+        // Only 1 speaker (not duplicated)
+        assert_eq!(block.speakers.len(), 1);
+        // Color backfilled from message
+        assert_eq!(block.speakers[0].color.as_deref(), Some("blue"));
+        // Model preserved from spawn
+        assert_eq!(block.speakers[0].model.as_deref(), Some("sonnet"));
+        // Stance from spawn description
+        assert_eq!(block.speakers[0].stance.as_deref(), Some("Argues FOR AI"));
     }
 }

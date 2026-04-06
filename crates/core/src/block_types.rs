@@ -485,6 +485,8 @@ pub struct TranscriptSpeaker {
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stance: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -870,6 +872,7 @@ mod tests {
                 display_name: "Pro-AI".into(),
                 color: Some("blue".into()),
                 stance: Some("Argues FOR".into()),
+                model: Some("sonnet".into()),
             }],
             entries: vec![
                 TranscriptEntry::AgentMessage {

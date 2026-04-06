@@ -5,4 +5,5 @@ export type TranscriptSpeaker = {
   displayName: string
   color?: string | null
   stance?: string | null
+  model?: string | null
 }
