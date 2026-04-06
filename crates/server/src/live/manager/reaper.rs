@@ -177,6 +177,7 @@ mod tests {
             transcript_to_session: Arc::new(RwLock::new(HashMap::new())),
             oracle_rx: process_oracle::stub(),
             _death_watcher: death_watcher,
+            _sessions_watcher: None,
             dirty_tx,
             hook_event_channels: Arc::new(RwLock::new(HashMap::new())),
             coordinator: Arc::new(SessionCoordinator::new()),

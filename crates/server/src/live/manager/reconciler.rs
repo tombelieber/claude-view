@@ -85,10 +85,43 @@ impl LiveSessionManager {
                 manager.refresh_process_data().await;
                 manager.register_pids_with_death_watcher().await;
 
+                // Phase 2b: Sessions dir crash detection (every 30s)
+                // Check for session files whose PIDs are dead (crashed without cleanup).
+                manager.detect_and_clean_crashed_sessions().await;
+
                 // Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
             }
         });
+    }
+
+    /// Detect crashed sessions from ~/.claude/sessions/ dir.
+    ///
+    /// Scans session files, checks PID liveness, removes stale files.
+    /// Complements the existing PID liveness check in Phase 1 — this catches
+    /// sessions that exist in the sessions dir but aren't tracked in our map yet.
+    async fn detect_and_clean_crashed_sessions(&self) {
+        let sessions =
+            tokio::task::spawn_blocking(crate::live::sessions_watcher::scan_sessions_dir)
+                .await
+                .unwrap_or_default();
+
+        for session in sessions {
+            if !crate::live::process::is_pid_alive(session.pid) {
+                // PID dead but file still exists → crashed without cleanup
+                if let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() {
+                    let stale_path = sessions_dir.join(format!("{}.json", session.pid));
+                    if stale_path.exists() {
+                        tracing::debug!(
+                            pid = session.pid,
+                            session_id = %session.session_id,
+                            "Cleaning crashed session file"
+                        );
+                        let _ = std::fs::remove_file(&stale_path);
+                    }
+                }
+            }
+        }
     }
 
     /// Reconcile controlled sessions with sidecar state.
