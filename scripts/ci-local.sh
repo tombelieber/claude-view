@@ -12,6 +12,7 @@ set -euo pipefail
 #   SKIP_RUST=1       Skip clippy + cargo test
 #   SKIP_TS=1         Skip lint + typecheck + test
 #   SKIP_EVIDENCE=1   Skip evidence audit (JSONL schema guard)
+#   SKIP_PIPELINE=1   Skip block pipeline drift check
 #   SKIP_STORYBOOK=1  Skip Storybook build check
 #   SKIP_INTEGRITY=1  Skip integrity gates (parser/indexer/replay)
 
@@ -24,7 +25,7 @@ GATE=0
 gate() {
   GATE=$((GATE + 1))
   echo ""
-  echo "--- [$GATE/8] $1 ---"
+  echo "--- [$GATE/9] $1 ---"
 }
 
 elapsed() {
@@ -69,7 +70,24 @@ if [ "${SKIP_EVIDENCE:-0}" != "1" ]; then
   S=$(date +%s); ./scripts/cq run -p claude-view-core --bin evidence-audit --release; elapsed $S
 else echo "  SKIP (SKIP_EVIDENCE=1)"; fi
 
-# ── 7. Storybook build ──
+# ── 7. Block pipeline drift check ──
+gate "Block pipeline drift check"
+if [ "${SKIP_PIPELINE:-0}" != "1" ]; then
+  S=$(date +%s)
+  AUDIT_OUT=$(mktemp)
+  bash scripts/integrity/block-pipeline-audit.sh --output "$AUDIT_OUT" --max-files 300 2>&1 | tail -3
+  NEW_TYPES=$(jq -r '.cross_layer_gaps.new_unhandled_types // [] | length' "$AUDIT_OUT" 2>/dev/null || echo "0")
+  rm -f "$AUDIT_OUT"
+  if [ "$NEW_TYPES" != "0" ]; then
+    echo "FAIL: $NEW_TYPES new unhandled JSONL types found — run /skill block-pipeline-audit to close gaps" >&2
+    exit 1
+  fi
+  # Also run the invariant tests that check baseline ↔ parser parity
+  ./scripts/cq test -p claude-view-core --test block_accumulator_invariant_test 2>&1 | tail -5
+  elapsed $S
+else echo "  SKIP (SKIP_PIPELINE=1)"; fi
+
+# ── 8. Storybook build ──
 gate "Storybook build"
 if [ "${SKIP_STORYBOOK:-0}" != "1" ]; then
   S=$(date +%s)
@@ -78,11 +96,11 @@ if [ "${SKIP_STORYBOOK:-0}" != "1" ]; then
   elapsed $S
 else echo "  SKIP (SKIP_STORYBOOK=1)"; fi
 
-# ── 8. Integrity gates (parser/indexer/replay) ──
+# ── 9. Integrity gates (parser/indexer/replay) ──
 gate "Integrity gates"
 if [ "${SKIP_INTEGRITY:-0}" != "1" ]; then
   S=$(date +%s); ./scripts/integrity/ci-gates.sh; elapsed $S
 else echo "  SKIP (SKIP_INTEGRITY=1)"; fi
 
 echo ""
-echo "=== Local CI: ALL GATES PASSED ($(( $(date +%s) - TOTAL_START ))s) ==="
+echo "=== Local CI: ALL 9 GATES PASSED ($(( $(date +%s) - TOTAL_START ))s) ==="
