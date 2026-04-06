@@ -91,6 +91,22 @@ impl BlockAccumulator {
             "pr-link" => self.handle_pr_link(entry),
             "custom-title" => self.handle_custom_title(entry),
             "agent-name" => self.handle_agent_name(entry),
+            "attachment" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::Attachment,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
+            "permission-mode" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::PermissionModeChange,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
             _ => {} // unknown entry type — skip silently
         }
     }
@@ -506,6 +522,14 @@ impl BlockAccumulator {
                 self.blocks.push(ConversationBlock::System(SystemBlock {
                     id: self.make_id("sys"),
                     variant: SystemVariant::Informational,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
+            "scheduled_task_fire" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::ScheduledTaskFire,
                     data: entry.clone(),
                     raw_json: None,
                 }));
@@ -1465,5 +1489,69 @@ mod tests {
             "snapshot must include string-content user blocks"
         );
         assert!(matches!(&snap[0], ConversationBlock::User(_)));
+    }
+
+    // ── TDD: Zero-gap pipeline tests (Tasks 1-3) ───────────────────────
+
+    #[test]
+    fn scheduled_task_fire_produces_system_block() {
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "system",
+            "uuid": "s-sched-1",
+            "subtype": "scheduled_task_fire",
+            "timestamp": "2026-04-06T01:00:00.000Z"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ConversationBlock::System(sys) => {
+                assert_eq!(sys.variant, SystemVariant::ScheduledTaskFire);
+            }
+            other => panic!("Expected SystemBlock, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn attachment_top_level_type_produces_system_block() {
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "attachment",
+            "uuid": "att-1",
+            "timestamp": "2026-04-06T01:00:00.000Z",
+            "attachment": {
+                "type": "file",
+                "addedNames": ["src/main.rs"],
+                "removedNames": [],
+                "addedLines": 42
+            }
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ConversationBlock::System(sys) => {
+                assert_eq!(sys.variant, SystemVariant::Attachment);
+            }
+            other => panic!("Expected SystemBlock, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn permission_mode_top_level_type_produces_system_block() {
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&serde_json::json!({
+            "type": "permission-mode",
+            "uuid": "pm-1",
+            "timestamp": "2026-04-06T01:00:00.000Z",
+            "permissionMode": "bypassPermissions"
+        }));
+        let blocks = acc.finalize();
+        assert_eq!(blocks.len(), 1);
+        match &blocks[0] {
+            ConversationBlock::System(sys) => {
+                assert_eq!(sys.variant, SystemVariant::PermissionModeChange);
+            }
+            other => panic!("Expected SystemBlock, got {:?}", other),
+        }
     }
 }

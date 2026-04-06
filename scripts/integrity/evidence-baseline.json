@@ -1,16 +1,18 @@
 {
   "version": 1,
-  "audit_date": "2026-03-24",
+  "audit_date": "2026-04-06",
   "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
   "corpus_stats": {
-    "files": 5932,
+    "files": 14194,
     "lines_approx": 997878
   },
   "top_level_types": {
     "handled": [
       "ai-title",
       "assistant",
+      "attachment",
       "file-history-snapshot",
+      "permission-mode",
       "queue-operation",
       "system",
       "user",
@@ -21,7 +23,7 @@
       "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["attachment", "permission-mode"],
+    "silently_ignored": [],
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["result", "saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
@@ -151,6 +153,26 @@
       "parentToolUseID",
       "message.content[].tool_use_id"
     ],
+    "consumed_by_parser": [
+      "permissionMode",
+      "hookCount",
+      "hookInfos",
+      "hookErrors",
+      "preventedContinuation",
+      "stopReason",
+      "durationMs",
+      "error",
+      "retryInMs",
+      "retryAttempt",
+      "maxRetries",
+      "isApiErrorMessage",
+      "forkedFrom",
+      "forkedFrom.sessionId",
+      "forkedFrom.messageUuid",
+      "planContent",
+      "entrypoint"
+    ],
+    "consumed_by_parser_note": "Fields previously listed as intentionally_ignored that are now consumed by the block pipeline (TurnBoundary, Notice, UserBlock.permission_mode, forkedFrom, PlanContent, entrypoint).",
     "intentionally_ignored": [
       "sessionId",
       "parentUuid",
@@ -166,26 +188,14 @@
       "isSnapshotUpdate",
       "operation",
       "level",
-      "permissionMode",
-      "hookCount",
-      "hookInfos",
-      "hookErrors",
-      "preventedContinuation",
-      "stopReason",
       "hasOutput",
       "sourceToolUseID",
-      "durationMs",
       "todos",
       "thinkingMetadata",
-      "error",
-      "retryInMs",
-      "retryAttempt",
-      "maxRetries",
       "logicalParentUuid",
       "compactMetadata",
       "isVisibleInTranscriptOnly",
       "isCompactSummary",
-      "isApiErrorMessage",
       "cause",
       "imagePasteIds",
       "lastPrompt",
@@ -209,16 +219,11 @@
       "message.container",
       "message.context_management",
       "message.stop_sequence",
-      "planContent",
       "customTitle",
       "apiError",
       "data",
       "data.message.message",
       "promptId",
-      "entrypoint",
-      "forkedFrom",
-      "forkedFrom.sessionId",
-      "forkedFrom.messageUuid",
       "worktreeSession",
       "worktreeSession.originalCwd",
       "worktreeSession.worktreePath",
@@ -240,6 +245,6 @@
       "attachment.removedNames",
       "attachment.addedLines"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Not needed by our parser for session display, cost tracking, or live monitoring."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring."
   }
 }
