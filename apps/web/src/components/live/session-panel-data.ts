@@ -5,6 +5,7 @@ import type { SessionDetail } from '../../types/generated/SessionDetail'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { AgentTodos } from '../../types/generated/AgentTodos'
 import type { TaskItem } from '../../types/generated/TaskItem'
+import type { TeamMember } from '../../types/generated/TeamMember'
 import type { AgentState } from './types'
 // src/components/live/session-panel-data.ts
 import type { LiveSession } from './use-live-sessions'
@@ -62,6 +63,8 @@ export interface SessionPanelData {
 
   // Team name if this session is a team lead (from backend)
   teamName?: string | null
+  // Team members (SSE-pushed for live sessions, API for history)
+  teamMembers?: TeamMember[]
 
   // Progress items (live tasks/todos)
   progressItems?: ProgressItem[]
@@ -148,6 +151,7 @@ export function liveSessionToPanelData(session: LiveSession): SessionPanelData {
     cacheStatus: session.cacheStatus,
     subAgents: session.subAgents,
     teamName: session.teamName ?? null,
+    teamMembers: session.teamMembers,
     progressItems: session.progressItems,
     compactCount: session.compactCount,
     statuslineContextWindowSize: session.statuslineContextWindowSize ?? null,

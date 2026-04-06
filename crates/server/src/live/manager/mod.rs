@@ -82,6 +82,10 @@ pub struct LiveSessionManager {
     sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
     /// Teams store for embedding team members in SSE payloads.
     teams: Arc<crate::teams::TeamsStore>,
+    /// claude_dir (~/.claude) for team snapshot source.
+    claude_dir: std::path::PathBuf,
+    /// claude_view_dir (~/.claude-view) for team snapshot destination.
+    claude_view_dir: std::path::PathBuf,
     /// Transcript path -> session ID dedup map, shared with AppState.
     transcript_to_session: TranscriptMap,
     /// Unified process oracle receiver for reading process data.
@@ -114,6 +118,8 @@ impl LiveSessionManager {
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
+        claude_dir: std::path::PathBuf,
+        claude_view_dir: std::path::PathBuf,
         llm_status: Arc<crate::local_llm::LlmStatus>,
         llm_config: Arc<crate::local_llm::LocalLlmConfig>,
         llm_client: Arc<LlmClient>,
@@ -167,6 +173,8 @@ impl LiveSessionManager {
             snapshot_tx,
             sidecar,
             teams,
+            claude_dir,
+            claude_view_dir,
             transcript_to_session: transcript_to_session.clone(),
             oracle_rx,
             _death_watcher: death_watcher,

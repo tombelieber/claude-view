@@ -292,8 +292,11 @@ pub fn create_app_full(
 ) -> (Router, Arc<local_llm::LocalLlmService>) {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let pricing = Arc::new(claude_view_core::pricing::load_pricing());
-    let teams = Arc::new(crate::teams::TeamsStore::load(
-        &dirs::home_dir().expect("home dir exists").join(".claude"),
+    let claude_dir = dirs::home_dir().expect("home dir exists").join(".claude");
+    let claude_view_dir = claude_view_core::paths::data_dir();
+    let teams = Arc::new(crate::teams::TeamsStore::load_with_backup(
+        &claude_dir,
+        &claude_view_dir,
     ));
     // Create local LLM service before oracle (both need the status handle).
     let llm_config = Arc::new(local_llm::LocalLlmConfig::load());
@@ -331,6 +334,8 @@ pub fn create_app_full(
             registry.clone(),
             Some(sidecar.clone()),
             teams.clone(),
+            claude_dir,
+            claude_view_dir,
             llm_status.clone(),
             llm_config.clone(),
             llm_client,

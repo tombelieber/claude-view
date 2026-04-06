@@ -424,7 +424,8 @@ impl BlockAccumulator {
                                     .get("description")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("");
-                                b.add_speaker_from_spawn(name, None, desc);
+                                let model = tu.input.get("model").and_then(|v| v.as_str());
+                                b.add_speaker_from_spawn(name, None, desc, model);
                             }
                         }
                     }

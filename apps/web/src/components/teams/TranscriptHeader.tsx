@@ -1,4 +1,5 @@
 import type { TranscriptSpeaker } from '../../types/generated/TranscriptSpeaker'
+import { formatModelName } from '../../lib/format-model'
 import { cn } from '../../lib/utils'
 
 const DOT_COLOR_MAP: Record<string, string> = {
@@ -31,14 +32,17 @@ export function TranscriptHeader({ topic, speakers }: TranscriptHeaderProps) {
                   DOT_COLOR_MAP[s.color ?? ''] ?? 'bg-gray-400',
                 )}
               />
-              <div>
+              <div className="flex items-center gap-1.5">
                 <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   {s.displayName}
                 </span>
-                {s.stance && (
-                  <span className="ml-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                    {s.stance}
+                {s.model && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+                    {formatModelName(s.model)}
                   </span>
+                )}
+                {s.stance && (
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.stance}</span>
                 )}
               </div>
             </div>

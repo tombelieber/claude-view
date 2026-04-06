@@ -43,7 +43,7 @@ export function useTeams() {
   })
 }
 
-/** Fetch detail for a specific team. */
+/** Fetch detail for a specific team (header info: name, description, createdAt). */
 export function useTeamDetail(name: string | null) {
   return useQuery({
     queryKey: ['team-detail', name],
@@ -53,7 +53,11 @@ export function useTeamDetail(name: string | null) {
   })
 }
 
-/** Fetch inbox messages for a specific team. */
+/**
+ * Fetch inbox messages for a specific team.
+ * Event-driven: `version` comes from SSE `teamInboxCount` — when it changes,
+ * query key changes → React Query auto-refetches. No polling needed.
+ */
 export function useTeamInbox(name: string | null, version?: number) {
   return useQuery({
     queryKey: ['team-inbox', name, version ?? 0],
