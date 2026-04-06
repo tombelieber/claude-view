@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-core"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1275,9 +1275,9 @@ checksum = "9afc2bd4d5a73106dd53d10d73d3401c2f32730ba2c0b93ddb888a8983680471"
 
 [[package]]
 name = "fastrand"
-version = "2.4.0"
+version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a043dc74da1e37d6afe657061213aa6f425f855399a11d3463c6ecccc4dfda1f"
+checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "ff"
