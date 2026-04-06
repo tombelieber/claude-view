@@ -1536,6 +1536,56 @@ npx claude-view@latest
 Open your settings to try the new On-Device AI card, or check any session with hooks to see them rendered inline.
 
 
+--- blog/v0-32-0-complete-block-pipeline.mdx ---
+
+---
+title: "Every Session Event Is Now Visible"
+description: "v0.32.0 closes the last gaps in claude-view's developer timeline: attachment changes, permission shifts, and scheduled task triggers are now rendered as first-class blocks."
+date: 2026-04-06
+author: claude-view team
+---
+
+When you're debugging a Claude Code session, the developer timeline in claude-view should show you *everything*. Until now, three categories of events were silently dropped: context attachment changes, permission mode shifts, and scheduled task triggers.
+
+v0.32.0 closes all three gaps.
+
+## What was missing
+
+Claude Code emits structured events for a lot of things: tool calls, hook executions, agent spawns, session boundaries. But three event types were passing through the block pipeline and rendering as nothing:
+
+**Attachment events** happen when files are added to or removed from Claude's context mid-session. If you're using `/add` to pull in a file, or if the agent's context window is being managed automatically, you'd see the downstream effects in the tool calls but not the context change itself.
+
+**Permission mode changes** happen when a session transitions between permission levels — from the default mode that asks before running tools, to the more autonomous modes that don't. These transitions are meaningful for understanding *why* the agent behaved differently in different parts of a session.
+
+**Scheduled task fires** happen when a scheduled Claude agent wakes up and starts work. The agent session would appear in the session list, but the trigger event — the moment something said "start now" — wasn't visible.
+
+All three were parsed and typed in the pipeline but fell into the `default:` branch of the renderer with no output.
+
+## The fix
+
+Each event type now has a dedicated renderer:
+
+- **Attachment blocks** show the file names added and removed, with additions in the default text color and removals in red — the same visual shorthand as a git diff.
+- **Permission mode change blocks** show the new mode with an amber badge — a warm color that signals "something about how this session operates changed here."
+- **Scheduled task fire blocks** show an orange "Scheduled" badge — distinct from permission changes but in the same warm range, since both represent configuration-level events rather than content events.
+
+The compiler now enforces this completeness. The renderer switch statement ends with an exhaustiveness check: if a new `SystemVariant` is added to the type definition without a matching renderer, the code won't compile.
+
+## Cleaner hook blocks
+
+A separate fix in this release de-duplicates information in hook progress blocks. Previously, the event name and hook name appeared in both the block header and the block body. The body now shows only what's unique to it: the status message and the command being executed.
+
+Long outputs are also no longer silently truncated. Hard `.slice()` caps on hook command output and stdout have been removed.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open any session with hook activity or context management and check the developer timeline. The events that were invisible before should now be there.
+
+
 --- blog/v0-31-0-historical-conversation-blocks.mdx ---
 
 ---
@@ -2944,6 +2994,37 @@ version: v0.31.0
 **Dev orchestration cleanup** — replaced a 400-character inline `concurrently` command with a maintainable orchestrator script. Added `dev-cleanup.sh` to kill orphan processes (not just ports) after dev sessions.
 
 **Sidecar ownership gate** — `CLAUDE_VIEW_SIDECAR_EXTERNAL` env var prevents the Rust server from spawning the sidecar in dev mode, eliminating the race between `tsx watch` and the production spawn path that caused phantom WebSocket failures.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.32.0.md ---
+
+---
+title: "v0.32.0 — Complete Block Pipeline Coverage"
+date: 2026-04-06
+version: v0.32.0
+---
+
+## New features
+
+**Attachment blocks** — files added or removed from Claude's context mid-session are now visible as structured blocks in developer mode. See exactly what context changes happened and when.
+
+**Permission mode change blocks** — when Claude's permission mode shifts during a session (e.g. from default to bypassPermissions), it now appears as an explicit event in the timeline rather than being invisible.
+
+**Scheduled task fire blocks** — when a scheduled task triggers and spawns a Claude agent, the trigger event is now rendered in the session timeline.
+
+## Improvements
+
+**Hook progress blocks de-duplicated** — event and hook name were duplicated between the block header and the body. The body now shows only the status message and command, while the header carries the full event→name label.
+
+**Stdout no longer silently truncated** — hard `.slice()` caps on hook command output and stdout have been removed. Long outputs now display in full. Height caps were also raised for better readability.
+
+**Block pipeline exhaustiveness enforced at compile time** — the renderer switch is now a compile-time exhaustiveness check. Adding a new system block variant without a matching renderer is a type error, not a runtime blank.
 
 ## Getting started
 
