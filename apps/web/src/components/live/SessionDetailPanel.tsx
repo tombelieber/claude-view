@@ -40,6 +40,7 @@ import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { TeamsTab } from '../teams/TeamsTab'
+import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
 import { DisplayModeToggle } from './DisplayModeToggle'
@@ -47,6 +48,7 @@ import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
 import { SessionBadges } from './SessionBadges'
 import { PlanTab } from './PlanTab'
+import { ProjectMemorySection } from './ProjectMemorySection'
 import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
@@ -169,6 +171,11 @@ export function SessionDetailPanel({
     historyPagination: convHistoryPagination,
   } = useChatPanel(data.id)
   useCommandExecutor(convStore, convDispatch, convPendingCmdsRef)
+
+  // Extract transcript block for Teams tab (if session is a completed team debate)
+  const transcriptBlock = (convBlocks as Array<{ type: string }>).find(
+    (b): b is { type: 'team_transcript' } & TeamTranscriptBlock => b.type === 'team_transcript',
+  ) as (TeamTranscriptBlock & { type: 'team_transcript' }) | undefined
 
   // Dispatch live status so FSM transitions correctly for CLI-owned sessions
   useEffect(() => {
@@ -757,6 +764,9 @@ export function SessionDetailPanel({
               </div>
             )}
 
+            {/* ── Project Memory (contextual — only when project has memories) ── */}
+            {data.project && <ProjectMemorySection projectDir={data.project} />}
+
             {/* ── Files Touched (history-only) ── */}
             {data.historyExtras?.sessionDetail && (
               <FilesTouchedPanel
@@ -860,7 +870,11 @@ export function SessionDetailPanel({
 
         {/* ---- Teams tab ---- */}
         {activeTab === 'teams' && data.teamName && (
-          <TeamsTab teamName={data.teamName} inboxVersion={session?.teamInboxCount} />
+          <TeamsTab
+            teamName={data.teamName}
+            inboxVersion={session?.teamInboxCount}
+            transcript={transcriptBlock ?? null}
+          />
         )}
 
         {/* ---- Cost tab ---- */}
