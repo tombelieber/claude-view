@@ -1310,9 +1310,13 @@ fn block_timestamp(block: &claude_view_core::ConversationBlock) -> Option<f64> {
 
 /// Merge hook ProgressBlocks into an existing block list by timestamp.
 ///
-/// Preserves original block order — only hook blocks are inserted.
-/// Non-timestamped blocks (TurnBoundary, Notice, etc.) are never moved.
-/// `hook_blocks` must be sorted by ts ASC (guaranteed by DB ORDER BY).
+/// Uses a stable sort on the combined list so that hook events (Channel B)
+/// interleave correctly even when assistant block timestamps (= API message
+/// creation time) are earlier than the hook events that fire during that
+/// turn's tool execution.
+///
+/// Blocks without a timestamp (TurnBoundary, Notice, System) keep their
+/// original relative position via the `original_index` tie-breaker.
 fn merge_hook_blocks_by_timestamp(
     blocks: Vec<claude_view_core::ConversationBlock>,
     hook_blocks: Vec<claude_view_core::ConversationBlock>,
@@ -1320,31 +1324,36 @@ fn merge_hook_blocks_by_timestamp(
     if hook_blocks.is_empty() {
         return blocks;
     }
-    let mut merged = Vec::with_capacity(blocks.len() + hook_blocks.len());
-    let mut hi = 0; // cursor into hook_blocks
 
-    for block in blocks {
-        // Before inserting this block, insert any pending hook events
-        // whose timestamp is <= this block's timestamp.
-        if let Some(bt) = block_timestamp(&block) {
-            while hi < hook_blocks.len() {
-                if let claude_view_core::ConversationBlock::Progress(p) = &hook_blocks[hi] {
-                    if p.ts <= bt {
-                        merged.push(hook_blocks[hi].clone());
-                        hi += 1;
-                        continue;
-                    }
-                }
-                break;
-            }
-        }
-        merged.push(block);
+    let blocks_len = blocks.len();
+    let total = blocks_len + hook_blocks.len();
+    let mut merged: Vec<(f64, usize, claude_view_core::ConversationBlock)> =
+        Vec::with_capacity(total);
+
+    // Original blocks get indices [0..blocks_len) — preserves relative order
+    // for blocks with no timestamp (system, turn_boundary, notice).
+    for (i, block) in blocks.into_iter().enumerate() {
+        let ts = block_timestamp(&block).unwrap_or(0.0);
+        merged.push((ts, i, block));
     }
-    // Append remaining hook events after the last block
-    for hb in &hook_blocks[hi..] {
-        merged.push(hb.clone());
+
+    // Hook blocks get indices [blocks_len..total) — sorts them after
+    // any original block at the exact same timestamp.
+    for (i, block) in hook_blocks.into_iter().enumerate() {
+        let ts = block_timestamp(&block).unwrap_or(0.0);
+        merged.push((ts, blocks_len + i, block));
     }
-    merged
+
+    // Stable sort: primary key = timestamp, secondary = original_index.
+    // f64 comparison: 0.0 timestamps (no-ts blocks) sort to the front,
+    // which is correct — system/notice blocks appear before content.
+    merged.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
+
+    merged.into_iter().map(|(_, _, block)| block).collect()
 }
 
 #[cfg(test)]
@@ -2926,6 +2935,124 @@ mod tests {
         assert_eq!(merged[2].id(), "hook-db-200-1");
         assert_eq!(merged[3].id(), "user-2");
         assert_eq!(merged[4].id(), "hook-db-400-2");
+    }
+
+    /// Regression: hook events from tool execution have timestamps LATER than
+    /// the assistant block that started the turn (assistant ts = API message
+    /// creation time; hook ts = actual tool execution time).
+    ///
+    /// The old positional-insertion merge placed hooks with ts=318 before the
+    /// assistant at ts=217, creating 100+ second backward time jumps.
+    /// The sort-based merge places everything in strict chronological order.
+    #[test]
+    fn merge_hook_blocks_handles_hooks_during_assistant_tool_execution() {
+        use claude_view_core::hook_to_block::make_hook_progress_block;
+
+        // Assistant starts a long-running turn at ts=100
+        let assistant =
+            claude_view_core::ConversationBlock::Assistant(claude_view_core::AssistantBlock {
+                id: "asst-1".into(),
+                segments: vec![],
+                thinking: None,
+                streaming: false,
+                timestamp: Some(100.0),
+                parent_uuid: None,
+                is_sidechain: None,
+                agent_id: None,
+                raw_json: None,
+            });
+        // User's tool_result comes back
+        let user_result = claude_view_core::ConversationBlock::User(claude_view_core::UserBlock {
+            id: "user-result".into(),
+            text: "tool output".into(),
+            timestamp: 105.0,
+            status: None,
+            local_id: None,
+            pending: None,
+            permission_mode: None,
+            parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            images: vec![],
+            raw_json: None,
+        });
+        // Next assistant message
+        let assistant2 =
+            claude_view_core::ConversationBlock::Assistant(claude_view_core::AssistantBlock {
+                id: "asst-2".into(),
+                segments: vec![],
+                thinking: None,
+                streaming: false,
+                timestamp: Some(200.0),
+                parent_uuid: None,
+                is_sidechain: None,
+                agent_id: None,
+                raw_json: None,
+            });
+
+        // Hook events fire DURING the assistant's tool execution:
+        // PreToolUse at ts=102 (before tool_result at 105 — no issue)
+        // PostToolUse at ts=150 (AFTER assistant ts=100 — was the bug)
+        // PreToolUse at ts=160 (second tool call)
+        // PostToolUse at ts=190 (still before asst-2 at 200)
+        let hook_pre1 = make_hook_progress_block(
+            "hook-102".into(),
+            102.0,
+            "PreToolUse",
+            Some("Bash"),
+            "Running git status",
+        );
+        let hook_post1 = make_hook_progress_block(
+            "hook-150".into(),
+            150.0,
+            "PostToolUse",
+            Some("Bash"),
+            "Completed",
+        );
+        let hook_pre2 = make_hook_progress_block(
+            "hook-160".into(),
+            160.0,
+            "PreToolUse",
+            Some("Agent"),
+            "Spawning subagent",
+        );
+        let hook_post2 = make_hook_progress_block(
+            "hook-190".into(),
+            190.0,
+            "PostToolUse",
+            Some("Agent"),
+            "Agent done",
+        );
+
+        let blocks = vec![assistant, user_result, assistant2];
+        let hook_blocks = vec![hook_pre1, hook_post1, hook_pre2, hook_post2];
+
+        let merged = merge_hook_blocks_by_timestamp(blocks, hook_blocks);
+
+        // Strict chronological order — no backward time jumps
+        assert_eq!(merged.len(), 7);
+        assert_eq!(merged[0].id(), "asst-1"); // ts=100
+        assert_eq!(merged[1].id(), "hook-102"); // ts=102
+        assert_eq!(merged[2].id(), "user-result"); // ts=105
+        assert_eq!(merged[3].id(), "hook-150"); // ts=150
+        assert_eq!(merged[4].id(), "hook-160"); // ts=160
+        assert_eq!(merged[5].id(), "hook-190"); // ts=190
+        assert_eq!(merged[6].id(), "asst-2"); // ts=200
+
+        // Verify no timestamp goes backwards
+        let mut prev_ts = 0.0f64;
+        for block in &merged {
+            if let Some(ts) = block_timestamp(block) {
+                assert!(
+                    ts >= prev_ts,
+                    "Timestamp went backwards: {} < {} at block {}",
+                    ts,
+                    prev_ts,
+                    block.id()
+                );
+                prev_ts = ts;
+            }
+        }
     }
 
     // ========================================================================
