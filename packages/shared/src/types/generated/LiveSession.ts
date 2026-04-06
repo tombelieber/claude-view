@@ -54,6 +54,16 @@ export type LiveSession = {
    */
   contextWindowTokens: number
   /**
+   * Session kind: "interactive" or "background" (subagent).
+   * Populated from sessions/{pid}.json, NOT from hooks.
+   */
+  sessionKind?: string | null
+  /**
+   * Entrypoint: "cli", "claude-vscode", "claude-desktop", etc.
+   * Populated from sessions/{pid}.json, NOT from hooks.
+   */
+  entrypoint?: string | null
+  /**
    * Claude Code's own total cost in USD, from statusline.
    */
   statuslineCostUsd?: number | null

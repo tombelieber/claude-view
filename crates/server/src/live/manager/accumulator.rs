@@ -286,6 +286,8 @@ pub(super) fn build_recovered_session(
             file_path: file_path.to_string(),
             ..JsonlFields::default()
         },
+        session_kind: None,
+        entrypoint: None,
     }
 }
 

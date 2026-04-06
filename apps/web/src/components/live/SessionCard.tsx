@@ -164,6 +164,11 @@ export function SessionCard({
             )
           )}
           <SourceBadge source={session.source} />
+          {session.sessionKind === 'background' && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+              Subagent
+            </span>
+          )}
           {session.statuslineVersion && (
             <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
               v{session.statuslineVersion}

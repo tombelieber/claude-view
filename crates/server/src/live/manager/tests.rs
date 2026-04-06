@@ -1056,6 +1056,8 @@ fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
             file_path: "/tmp/test.jsonl".to_string(),
             ..JsonlFields::default()
         },
+        session_kind: None,
+        entrypoint: None,
     }
 }
 

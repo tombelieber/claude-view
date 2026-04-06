@@ -1405,6 +1405,8 @@ mod tests {
                     file_path: file_path.to_string(),
                     ..crate::live::state::JsonlFields::default()
                 },
+                session_kind: None,
+                entrypoint: None,
             };
             map.insert(session_id.to_string(), session);
         }

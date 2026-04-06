@@ -701,6 +701,8 @@ mod tests {
                 file_path: "/tmp/test.jsonl".to_string(),
                 ..JsonlFields::default()
             },
+            session_kind: None,
+            entrypoint: None,
         };
         if closed {
             s.status = SessionStatus::Done;
