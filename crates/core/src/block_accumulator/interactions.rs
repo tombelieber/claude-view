@@ -133,9 +133,10 @@ pub fn synthesize_historical_interactions(blocks: &mut Vec<ConversationBlock>) {
                 // previous assistant block already carried an ExitPlanMode
                 // tool_use — we'd otherwise double-count. Safe heuristic:
                 // if any insertion already targets index i-1, skip.
-                if insertions.iter().any(|(idx, b)| {
-                    *idx + 1 == i && matches!(b.variant, InteractionVariant::Plan)
-                }) {
+                if insertions
+                    .iter()
+                    .any(|(idx, b)| *idx + 1 == i && matches!(b.variant, InteractionVariant::Plan))
+                {
                     continue;
                 }
                 let plan_content = system
@@ -615,8 +616,14 @@ mod tests {
         let mut b2 = build();
         synthesize_historical_interactions(&mut b1);
         synthesize_historical_interactions(&mut b2);
-        let ids1: Vec<_> = interactions_only(&b1).iter().map(|i| i.id.clone()).collect();
-        let ids2: Vec<_> = interactions_only(&b2).iter().map(|i| i.id.clone()).collect();
+        let ids1: Vec<_> = interactions_only(&b1)
+            .iter()
+            .map(|i| i.id.clone())
+            .collect();
+        let ids2: Vec<_> = interactions_only(&b2)
+            .iter()
+            .map(|i| i.id.clone())
+            .collect();
         assert_eq!(ids1, ids2);
         assert_eq!(ids1, vec!["hist-interaction-0", "hist-interaction-1"]);
     }
