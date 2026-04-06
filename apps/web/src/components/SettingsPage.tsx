@@ -35,6 +35,7 @@ import { TOAST_DURATION } from '../lib/notify'
 import { cn } from '../lib/utils'
 import type { IndexRunInfo } from '../types/generated'
 import { AccountSection } from './AccountSection'
+import { ClaudeCodeSettingsGroup } from './ClaudeCodeSettingsGroup'
 import { LocalAiCard } from './LocalAiCard'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
@@ -558,6 +559,9 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-8">
+          {/* ── Claude Code ──────────────────────────────────── */}
+          <ClaudeCodeSettingsGroup />
+
           {/* ── Account & AI ─────────────────────────────────── */}
           <SectionGroup label="Account & AI">
             <AccountSection />
