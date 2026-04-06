@@ -3,13 +3,14 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  FileText,
   FolderKanban,
   Loader2,
   MessageSquareWarning,
   Search,
   UserCircle,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { type MemoryEntry, type MemoryType, useMemoryIndex } from '../hooks/use-memory'
 import { cn } from '../lib/utils'
@@ -22,23 +23,23 @@ const TYPE_STYLES: Record<
   { bg: string; text: string; icon: React.ComponentType<{ className?: string }> }
 > = {
   user: {
-    bg: 'bg-violet-100 dark:bg-violet-900/40',
-    text: 'text-violet-700 dark:text-violet-300',
+    bg: 'bg-violet-50 dark:bg-violet-950/30',
+    text: 'text-violet-600 dark:text-violet-400',
     icon: UserCircle,
   },
   feedback: {
-    bg: 'bg-amber-100 dark:bg-amber-900/40',
-    text: 'text-amber-700 dark:text-amber-300',
+    bg: 'bg-amber-50 dark:bg-amber-950/30',
+    text: 'text-amber-600 dark:text-amber-400',
     icon: MessageSquareWarning,
   },
   project: {
-    bg: 'bg-blue-100 dark:bg-blue-900/40',
-    text: 'text-blue-700 dark:text-blue-300',
+    bg: 'bg-blue-50 dark:bg-blue-950/30',
+    text: 'text-blue-600 dark:text-blue-400',
     icon: FolderKanban,
   },
   reference: {
-    bg: 'bg-emerald-100 dark:bg-emerald-900/40',
-    text: 'text-emerald-700 dark:text-emerald-300',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    text: 'text-emerald-600 dark:text-emerald-400',
     icon: ExternalLink,
   },
 }
@@ -51,7 +52,7 @@ function MemoryTypePill({ type }: { type: MemoryType }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap',
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium capitalize flex-shrink-0',
         style.bg,
         style.text,
       )}
@@ -62,14 +63,7 @@ function MemoryTypePill({ type }: { type: MemoryType }) {
   )
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`
-  const kb = bytes / 1024
-  if (kb < 100) return `${kb.toFixed(1)}K`
-  return `${Math.round(kb)}K`
-}
-
-// ── Memory Row ──
+// ── Memory Row (left panel) ──
 
 function MemoryRow({
   memory,
@@ -85,23 +79,20 @@ function MemoryRow({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-2 text-left text-sm',
-        'hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors',
-        isSelected && 'bg-blue-50 dark:bg-blue-950/30 border-l-2 border-blue-500',
+        'w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] rounded-md transition-colors',
+        'hover:bg-gray-100 dark:hover:bg-gray-800/60',
+        isSelected
+          ? 'bg-apple-blue/8 dark:bg-apple-blue/15 text-apple-blue font-medium'
+          : 'text-gray-700 dark:text-gray-300',
       )}
     >
       <MemoryTypePill type={memory.memoryType} />
-      <span className="flex-1 truncate text-gray-900 dark:text-gray-100 font-medium">
-        {memory.name}
-      </span>
-      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums flex-shrink-0">
-        {formatBytes(memory.sizeBytes)}
-      </span>
+      <span className="flex-1 truncate">{memory.name}</span>
     </button>
   )
 }
 
-// ── Section Header ──
+// ── Section Header (left panel) ──
 
 function SectionHeader({
   label,
@@ -114,51 +105,79 @@ function SectionHeader({
   isOpen: boolean
   onToggle: () => void
 }) {
+  const Chevron = isOpen ? ChevronDown : ChevronRight
   return (
     <button
       type="button"
       onClick={onToggle}
-      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/30 rounded-lg transition-colors"
+      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left group"
     >
-      {isOpen ? (
-        <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-      ) : (
-        <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-      )}
-      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</span>
-      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">{count}</span>
+      <Chevron className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+      <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-[0.04em]">
+        {label}
+      </span>
+      <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">{count}</span>
     </button>
   )
 }
 
-// ── Detail Panel ──
+// ── Detail Panel (right panel) ──
 
 function MemoryDetail({ memory }: { memory: MemoryEntry }) {
+  const style = TYPE_STYLES[memory.memoryType]
+  const Icon = style.icon
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">
-          {memory.name}
-        </h3>
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <MemoryTypePill type={memory.memoryType} />
-          <span>·</span>
-          <span>{memory.scope}</span>
-          <span>·</span>
-          <span className="tabular-nums">{formatBytes(memory.sizeBytes)}</span>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="px-6 py-5 border-b border-gray-200/60 dark:border-gray-700/60 flex-shrink-0">
+        <div className="flex items-start gap-3">
+          <div className={cn('p-2 rounded-lg', style.bg)}>
+            <Icon className={cn('w-4 h-4', style.text)} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight">
+              {memory.name}
+            </h2>
+            <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+              <MemoryTypePill type={memory.memoryType} />
+              <span>·</span>
+              <span>{memory.scope}</span>
+              <span>·</span>
+              <span className="font-mono">{memory.filename}</span>
+            </div>
+            {memory.description && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+                {memory.description}
+              </p>
+            )}
+          </div>
         </div>
-        {memory.description && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{memory.description}</p>
-        )}
       </div>
-      <div className="px-5 py-4 prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-li:my-0.5 prose-headings:mt-3 prose-headings:mb-1.5 prose-code:text-xs prose-pre:text-xs">
-        <MarkdownBody content={memory.body} />
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-li:my-0.5 prose-headings:mt-4 prose-headings:mb-2 prose-code:text-xs prose-pre:text-xs prose-pre:bg-gray-50 prose-pre:dark:bg-gray-800/50 prose-a:text-apple-blue prose-a:no-underline hover:prose-a:underline">
+          <MarkdownBody content={memory.body} />
+        </div>
       </div>
     </div>
   )
 }
 
+function EmptyDetail() {
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 gap-2 px-8">
+      <FileText className="w-8 h-8 opacity-30" />
+      <p className="text-[13px] text-center">Select a memory to view its content</p>
+    </div>
+  )
+}
+
 // ── Main Page ──
+
+const MIN_PANEL_WIDTH = 240
+const MAX_PANEL_WIDTH = 600
+const DEFAULT_PANEL_WIDTH = 320
 
 export function MemoryPage() {
   const { data, isLoading, error } = useMemoryIndex()
@@ -168,8 +187,41 @@ export function MemoryPage() {
   const [typeFilter, setTypeFilter] = useState<MemoryType | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['Global']))
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
+  const [isResizing, setIsResizing] = useState(false)
+  const widthRef = useRef(DEFAULT_PANEL_WIDTH)
 
-  // Auto-expand project section when arriving from "Show all →" link
+  // Keep ref in sync
+  useEffect(() => {
+    widthRef.current = panelWidth
+  }, [panelWidth])
+
+  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsResizing(true)
+    const startX = e.clientX
+    const startW = widthRef.current
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX
+      const newWidth = Math.round(
+        Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, startW + delta)),
+      )
+      widthRef.current = newWidth
+      setPanelWidth(newWidth)
+    }
+
+    const onUp = () => {
+      setIsResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
+
+  // Auto-expand project section when arriving from "Show all" link
   useEffect(() => {
     if (projectParam && data) {
       setExpandedSections((prev) => {
@@ -182,16 +234,12 @@ export function MemoryPage() {
   const toggleSection = useCallback((key: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }, [])
 
-  // Filter memories
   const filterMemories = useCallback(
     (memories: MemoryEntry[]) => {
       return memories.filter((m) => {
@@ -209,6 +257,37 @@ export function MemoryPage() {
     },
     [typeFilter, searchQuery],
   )
+
+  // Compute type counts from unfiltered data (search-filtered but not type-filtered)
+  const typeCounts = useMemo(() => {
+    if (!data) return { all: 0, user: 0, feedback: 0, project: 0, reference: 0 }
+
+    const countByType = (memories: MemoryEntry[]) => {
+      // Apply search filter only, not type filter
+      const searched = searchQuery
+        ? memories.filter((m) => {
+            const q = searchQuery.toLowerCase()
+            return (
+              m.name.toLowerCase().includes(q) ||
+              m.description.toLowerCase().includes(q) ||
+              m.body.toLowerCase().includes(q)
+            )
+          })
+        : memories
+
+      const counts = { user: 0, feedback: 0, project: 0, reference: 0 }
+      for (const m of searched) {
+        counts[m.memoryType]++
+      }
+      return counts
+    }
+
+    const allMemories = [...data.global, ...data.projects.flatMap((g) => g.memories)]
+    const counts = countByType(allMemories)
+    const total = counts.user + counts.feedback + counts.project + counts.reference
+
+    return { all: total, ...counts }
+  }, [data, searchQuery])
 
   const filteredData = useMemo(() => {
     if (!data) return null
@@ -228,20 +307,18 @@ export function MemoryPage() {
     }
   }, [data, filterMemories])
 
-  // Auto-expand sections that have search matches
-  const prevSearchRef = useMemo(() => searchQuery, [searchQuery])
-  useMemo(() => {
+  // Auto-expand sections that have search matches when query changes
+  useEffect(() => {
     if (searchQuery && filteredData) {
       const newExpanded = new Set<string>(['Global'])
       for (const group of filteredData.projects) {
-        if (group.count > 0) {
-          newExpanded.add(group.projectDir)
-        }
+        if (group.count > 0) newExpanded.add(group.projectDir)
       }
       setExpandedSections(newExpanded)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prevSearchRef])
+    // Only react to search query changes, not filteredData recalculations
+    // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — expand on search change only
+  }, [searchQuery])
 
   if (isLoading) {
     return (
@@ -271,67 +348,81 @@ export function MemoryPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-6 py-8">
+    <div className={cn('h-full flex bg-apple-bg dark:bg-gray-950', isResizing && 'select-none')}>
+      {/* ── Left Panel: Memory List ── */}
+      <div
+        className="relative flex-shrink-0 border-r border-gray-200/80 dark:border-gray-800 flex flex-col bg-white/60 dark:bg-gray-900/40"
+        style={{ width: panelWidth }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Brain className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Memory</h1>
-            <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-              {filteredData?.totalCount ?? data.totalCount} memories
+        <div className="px-4 pt-5 pb-3 flex-shrink-0">
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <Brain className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+            <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">Memory</h1>
+            <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums ml-auto">
+              {filteredData?.totalCount ?? data.totalCount}
             </span>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-4 mb-6">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        {/* Search */}
+        <div className="px-3 pb-2 flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search memories..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+              placeholder="Search..."
+              className="w-full pl-8 pr-3 py-1.5 text-[13px] border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:ring-1 focus:ring-apple-blue/40 focus:border-apple-blue/40 focus:outline-none"
             />
           </div>
+        </div>
 
-          {/* Type filter */}
-          <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-md">
+        {/* Type filter pills with counts */}
+        <div className="px-3 pb-3 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-wrap">
             <button
               type="button"
               onClick={() => setTypeFilter('all')}
               className={cn(
-                'px-2.5 py-1 text-xs font-medium rounded transition-colors',
+                'px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors inline-flex items-center gap-1',
                 typeFilter === 'all'
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
+                  ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
               )}
             >
               All
+              <span className="tabular-nums">{typeCounts.all}</span>
             </button>
-            {TYPE_LABELS.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTypeFilter(t)}
-                className={cn(
-                  'px-2.5 py-1 text-xs font-medium rounded transition-colors',
-                  typeFilter === t
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300',
-                )}
-              >
-                {t}
-              </button>
-            ))}
+            {TYPE_LABELS.map((t) => {
+              const style = TYPE_STYLES[t]
+              const count = typeCounts[t]
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTypeFilter(t)}
+                  className={cn(
+                    'px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors capitalize inline-flex items-center gap-1',
+                    typeFilter === t
+                      ? cn(style.bg, style.text)
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
+                  )}
+                >
+                  {t}
+                  <span className="tabular-nums">{count}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="space-y-1">
+        {/* Divider */}
+        <div className="border-t border-gray-200/60 dark:border-gray-800" />
+
+        {/* Scrollable list */}
+        <div className="flex-1 overflow-y-auto px-1.5 py-2 space-y-0.5">
           {/* Global section */}
           {filteredData && filteredData.global.length > 0 && (
             <div>
@@ -342,7 +433,7 @@ export function MemoryPage() {
                 onToggle={() => toggleSection('Global')}
               />
               {expandedSections.has('Global') && (
-                <div className="ml-2">
+                <div className="ml-1">
                   {filteredData.global.map((m) => (
                     <MemoryRow
                       key={m.relativePath}
@@ -362,13 +453,13 @@ export function MemoryPage() {
           {filteredData?.projects.map((group) => (
             <div key={group.projectDir}>
               <SectionHeader
-                label={`${group.displayName} (${group.count})`}
+                label={group.displayName}
                 count={group.count}
                 isOpen={expandedSections.has(group.projectDir)}
                 onToggle={() => toggleSection(group.projectDir)}
               />
               {expandedSections.has(group.projectDir) && (
-                <div className="ml-2">
+                <div className="ml-1">
                   {group.memories.map((m) => (
                     <MemoryRow
                       key={m.relativePath}
@@ -385,12 +476,18 @@ export function MemoryPage() {
           ))}
         </div>
 
-        {/* Detail panel */}
-        {selected && (
-          <div className="mt-6">
-            <MemoryDetail memory={selected} />
-          </div>
-        )}
+        {/* Resize handle (right edge) */}
+        <div
+          onPointerDown={handleResizeStart}
+          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-10 group"
+        >
+          <div className="w-px h-full mx-auto bg-transparent group-hover:bg-blue-500/40 group-active:bg-blue-500/60 transition-colors" />
+        </div>
+      </div>
+
+      {/* ── Right Panel: Detail ── */}
+      <div className="flex-1 min-w-0 bg-white dark:bg-gray-900">
+        {selected ? <MemoryDetail memory={selected} /> : <EmptyDetail />}
       </div>
     </div>
   )
