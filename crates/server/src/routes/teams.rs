@@ -164,12 +164,17 @@ pub async fn get_team_sidechains(
         .get(&name)
         .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))?;
 
-    // Resolve session JSONL path, then get its parent directory
+    // Resolve session JSONL path, then derive the session directory.
+    // Layout: {project_dir}/{session_id}.jsonl → subagents at {project_dir}/{session_id}/subagents/
+    // Same convention as resolve_subagent_path in live/subagent_file.rs.
     let session_path = resolve_session_file_path(&state, &query.session_id).await?;
-    let session_dir = session_path
+    let parent_dir = session_path
         .parent()
-        .ok_or_else(|| ApiError::Internal("Session path has no parent directory".into()))?
-        .to_path_buf();
+        .ok_or_else(|| ApiError::Internal("Session path has no parent directory".into()))?;
+    let session_stem = session_path
+        .file_stem()
+        .ok_or_else(|| ApiError::Internal("Session path has no file stem".into()))?;
+    let session_dir = parent_dir.join(session_stem);
 
     // Heavy I/O: read meta.json + count JSONL lines on blocking thread
     let sidechains =
