@@ -174,6 +174,8 @@ mod tests {
             snapshot_tx,
             sidecar: None,
             teams: Arc::new(crate::teams::TeamsStore::empty()),
+            claude_dir: std::path::PathBuf::from("/tmp/test-claude"),
+            claude_view_dir: std::path::PathBuf::from("/tmp/test-claude-view"),
             transcript_to_session: Arc::new(RwLock::new(HashMap::new())),
             oracle_rx: process_oracle::stub(),
             _death_watcher: death_watcher,

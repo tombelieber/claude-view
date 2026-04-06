@@ -488,7 +488,7 @@ export function SessionDetailPanel({
         })}
 
         {/* Conditional tabs — only shown when data exists */}
-        {hasTasks && (
+        {(hasTasks || hasTodos) && (
           <button
             type="button"
             role="tab"
@@ -881,7 +881,8 @@ export function SessionDetailPanel({
           <TeamsTab
             teamName={data.teamName}
             inboxVersion={session?.teamInboxCount}
-            transcript={transcriptBlock ?? null}
+            transcript={isLive ? null : (transcriptBlock ?? null)}
+            sseMembers={data.teamMembers}
           />
         )}
 

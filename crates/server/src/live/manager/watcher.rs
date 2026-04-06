@@ -322,8 +322,12 @@ impl LiveSessionManager {
         }
 
         let mut channel_a_events: Vec<HookEvent> = Vec::new();
+        let mut saw_team_delete = false;
 
         for line in &new_lines {
+            if line.tool_names.iter().any(|n| n == "TeamDelete") {
+                saw_team_delete = true;
+            }
             self.process_single_line(
                 line,
                 acc,
@@ -331,6 +335,29 @@ impl LiveSessionManager {
                 &session_id,
                 &mut channel_a_events,
             );
+        }
+
+        // Snapshot team data before TeamDelete cleanup fires
+        if saw_team_delete {
+            if let Some(ref team_name) = acc.team_name {
+                match crate::teams::snapshot_team(
+                    team_name,
+                    &self.claude_dir,
+                    &self.claude_view_dir,
+                ) {
+                    Ok(()) => tracing::info!(
+                        session_id = %session_id,
+                        team = %team_name,
+                        "Snapshotted team before TeamDelete",
+                    ),
+                    Err(e) => tracing::warn!(
+                        session_id = %session_id,
+                        team = %team_name,
+                        error = %e,
+                        "Failed to snapshot team before TeamDelete",
+                    ),
+                }
+            }
         }
 
         // Build metadata from accumulator
