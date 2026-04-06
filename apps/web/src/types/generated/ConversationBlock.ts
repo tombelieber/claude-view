@@ -4,6 +4,7 @@ import type { InteractionBlock } from './InteractionBlock'
 import type { NoticeBlock } from './NoticeBlock'
 import type { ProgressBlock } from './ProgressBlock'
 import type { SystemBlock } from './SystemBlock'
+import type { TeamTranscriptBlock } from './TeamTranscriptBlock'
 import type { TurnBoundaryBlock } from './TurnBoundaryBlock'
 import type { UserBlock } from './UserBlock'
 
@@ -18,3 +19,4 @@ export type ConversationBlock =
   | ({ type: 'notice' } & NoticeBlock)
   | ({ type: 'system' } & SystemBlock)
   | ({ type: 'progress' } & ProgressBlock)
+  | ({ type: 'team_transcript' } & TeamTranscriptBlock)
