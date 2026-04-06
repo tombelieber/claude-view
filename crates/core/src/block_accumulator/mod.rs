@@ -2,6 +2,7 @@ pub mod assistant;
 pub mod boundary;
 pub mod content;
 pub mod interactions;
+pub mod transcript_builder;
 
 use serde_json::Value;
 
