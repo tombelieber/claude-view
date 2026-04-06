@@ -4,6 +4,7 @@
 //! Reads team configs and inbox messages from the filesystem.
 //! No file watching — teams are ephemeral (1–44 min bursts).
 
+use claude_view_core::pricing::{CostBreakdown, ModelPricing, TokenUsage};
 use memchr::memmem;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,6 +87,44 @@ pub enum InboxMessageType {
     IdleNotification,
     ShutdownRequest,
     ShutdownApproved,
+}
+
+// ============================================================================
+// Team Cost Types
+// ============================================================================
+
+/// Per-member cost data for the team cost breakdown.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMemberCost {
+    pub name: String,
+    pub color: String,
+    pub model: String,
+    pub agent_type: String,
+    /// Resolved session ID (None for in-process members whose cost is in the lead session).
+    pub session_id: Option<String>,
+    /// Total cost in USD (None if session not found or not yet resolved).
+    #[ts(type = "number | null")]
+    pub cost_usd: Option<f64>,
+    /// Token usage breakdown (None if session not found).
+    pub tokens: Option<TokenUsage>,
+    /// Full cost breakdown (None if session not found).
+    pub cost: Option<CostBreakdown>,
+}
+
+/// Aggregated cost breakdown for an entire team.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamCostBreakdown {
+    pub team_name: String,
+    #[ts(type = "number")]
+    pub total_cost_usd: f64,
+    /// Lead session cost (the coordinator).
+    #[ts(type = "number")]
+    pub lead_cost_usd: f64,
+    pub members: Vec<TeamMemberCost>,
 }
 
 // ============================================================================
@@ -799,6 +838,161 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
 
     let inbox = load_inbox(team_dir);
     Some((detail, inbox))
+}
+
+// ============================================================================
+// Team Member Session ID Resolution
+// ============================================================================
+
+/// Scan the lead session's JSONL to resolve team member names → session IDs.
+///
+/// Matches Agent/Task tool_use blocks with `input.team_name` against their
+/// corresponding `toolUseResult` entries (status: teammate_spawned, async_launched, etc.)
+/// to extract the spawned session's `agentId`.
+pub fn resolve_team_member_sessions(
+    lead_jsonl_path: &Path,
+    team_name: &str,
+) -> HashMap<String, String> {
+    let Ok(content) = std::fs::read_to_string(lead_jsonl_path) else {
+        return HashMap::new();
+    };
+
+    let team_finder = memmem::Finder::new(team_name.as_bytes());
+    let agent_finder = memmem::Finder::new(b"\"Agent\"");
+    let task_finder = memmem::Finder::new(b"\"Task\"");
+    let result_finder = memmem::Finder::new(b"\"toolUseResult\"");
+
+    // Phase 1: tool_use_id → member_name from spawn lines
+    let mut spawn_map: HashMap<String, String> = HashMap::new();
+    // Phase 2: tool_use_id → agent_id (session_id) from result lines
+    let mut result_map: HashMap<String, String> = HashMap::new();
+
+    for line in content.lines() {
+        let raw = line.as_bytes();
+
+        // Agent/Task spawn lines with our team name
+        if team_finder.find(raw).is_some()
+            && (agent_finder.find(raw).is_some() || task_finder.find(raw).is_some())
+        {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(blocks) = parsed
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array())
+                {
+                    for block in blocks {
+                        let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                        if tool != "Agent" && tool != "Task" {
+                            continue;
+                        }
+                        let Some(inp) = block.get("input") else {
+                            continue;
+                        };
+                        if inp.get("team_name").and_then(|v| v.as_str()) != Some(team_name) {
+                            continue;
+                        }
+                        let tool_use_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let member_name = inp
+                            .get("name")
+                            .or_else(|| inp.get("description"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unnamed");
+                        if !tool_use_id.is_empty() {
+                            spawn_map.insert(tool_use_id.to_string(), member_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // toolUseResult lines → extract agent_id (session_id)
+        if result_finder.find(raw).is_some() {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(tur) = parsed.get("toolUseResult") {
+                    let tool_use_id = tur.get("toolUseId").and_then(|v| v.as_str()).unwrap_or("");
+                    let agent_id = tur.get("agentId").and_then(|v| v.as_str()).unwrap_or("");
+                    if !tool_use_id.is_empty() && !agent_id.is_empty() {
+                        result_map.insert(tool_use_id.to_string(), agent_id.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Join: member_name → session_id
+    let mut member_sessions: HashMap<String, String> = HashMap::new();
+    for (tool_use_id, member_name) in &spawn_map {
+        if let Some(session_id) = result_map.get(tool_use_id) {
+            member_sessions.insert(member_name.clone(), session_id.clone());
+        }
+    }
+
+    tracing::debug!(
+        "Resolved {}/{} team member sessions for '{}'",
+        member_sessions.len(),
+        spawn_map.len(),
+        team_name,
+    );
+
+    member_sessions
+}
+
+/// Build a `TeamCostBreakdown` by resolving member sessions and computing costs.
+///
+/// `resolve_session_path` maps session_id → JSONL file path, allowing the caller
+/// to inject DB/live-session lookup logic.
+pub fn build_team_cost(
+    team: &TeamDetail,
+    lead_jsonl_path: &Path,
+    pricing: &HashMap<String, ModelPricing>,
+    resolve_session_path: impl Fn(&str) -> Option<std::path::PathBuf>,
+) -> TeamCostBreakdown {
+    use claude_view_core::accumulator::SessionAccumulator;
+
+    let member_sessions = resolve_team_member_sessions(lead_jsonl_path, &team.name);
+
+    // Lead session cost
+    let lead_rich = SessionAccumulator::from_file(lead_jsonl_path, pricing).ok();
+    let lead_cost_usd = lead_rich.as_ref().map(|r| r.cost.total_usd).unwrap_or(0.0);
+
+    let mut members = Vec::with_capacity(team.members.len());
+    let mut total_cost_usd = lead_cost_usd;
+
+    for member in &team.members {
+        // Lead's cost is already counted above
+        if member.agent_type == "team-lead" {
+            continue;
+        }
+
+        let session_id = member_sessions.get(&member.name).cloned();
+        let rich_data = session_id
+            .as_ref()
+            .and_then(|sid| resolve_session_path(sid))
+            .and_then(|path| SessionAccumulator::from_file(&path, pricing).ok());
+
+        let cost_usd = rich_data.as_ref().map(|r| r.cost.total_usd);
+        if let Some(c) = cost_usd {
+            total_cost_usd += c;
+        }
+
+        members.push(TeamMemberCost {
+            name: member.name.clone(),
+            color: member.color.clone(),
+            model: member.model.clone(),
+            agent_type: member.agent_type.clone(),
+            session_id,
+            cost_usd,
+            tokens: rich_data.as_ref().map(|r| r.tokens.clone()),
+            cost: rich_data.map(|r| r.cost),
+        });
+    }
+
+    TeamCostBreakdown {
+        team_name: team.name.clone(),
+        total_cost_usd,
+        lead_cost_usd,
+        members,
+    }
 }
 
 /// Live-reloading teams store.

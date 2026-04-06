@@ -22,4 +22,7 @@ export type SystemVariant =
   | 'plan_content'
   | 'informational'
   | 'agent_name'
+  | 'attachment'
+  | 'permission_mode_change'
+  | 'scheduled_task_fire'
   | 'unknown'

@@ -257,6 +257,19 @@ export type ProgressBlock = {
   parentToolUseId?: string
 }
 
+// ── TeamTranscriptBlock ───────────────────────────────────────────────────
+// Minimal shape for the ConversationBlock union — full type with speakers/entries
+// is in apps/web/src/types/generated/TeamTranscriptBlock.ts
+
+export type TeamTranscriptBlock = {
+  type: 'team_transcript'
+  id: string
+  teamName: string
+  description: string
+  speakers: unknown[]
+  entries: unknown[]
+}
+
 // ── ConversationBlock union ─────────────────────────────────────────────────
 
 export type ConversationBlock =
@@ -267,6 +280,7 @@ export type ConversationBlock =
   | NoticeBlock
   | SystemBlock
   | ProgressBlock
+  | TeamTranscriptBlock
 
 // ── Type guards ────────────────────────────────────────────────────────────
 

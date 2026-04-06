@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.31.0"
+    "version": "0.32.0"
   },
   "paths": {
     "/api/branches": {
@@ -4379,6 +4379,37 @@
             "type": "integer",
             "format": "int64",
             "description": "Total duration in seconds for this bucket (used by CalendarHeatmap)."
+          }
+        }
+      },
+      "AgentTodos": {
+        "type": "object",
+        "description": "A todo file parsed with its session and agent context.",
+        "required": [
+          "sessionId",
+          "agentId",
+          "isMainAgent",
+          "items"
+        ],
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent UUID (same as session_id for main agent, different for subagents)."
+          },
+          "isMainAgent": {
+            "type": "boolean",
+            "description": "Whether this is the main agent (session_id == agent_id)."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoItem"
+            },
+            "description": "The todo items (only non-empty results are returned)."
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "Session UUID this todo belongs to."
           }
         }
       },
@@ -10020,6 +10051,13 @@
                 },
                 "description": "Persistent task data from ~/.claude/tasks/{sessionId}/*.json"
               },
+              "todos": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AgentTodos"
+                },
+                "description": "Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json"
+              },
               "warnings": {
                 "type": "array",
                 "items": {
@@ -11512,6 +11550,28 @@
           "enabled",
           "disabled"
         ]
+      },
+      "TodoItem": {
+        "type": "object",
+        "description": "A single todo item from a TodoWrite output file.",
+        "required": [
+          "content",
+          "status"
+        ],
+        "properties": {
+          "activeForm": {
+            "type": "string",
+            "description": "Human-readable description of the current work on this todo."
+          },
+          "content": {
+            "type": "string",
+            "description": "Todo description text."
+          },
+          "status": {
+            "type": "string",
+            "description": "Status: \"completed\", \"pending\", \"in_progress\", etc."
+          }
+        }
       },
       "TokenStats": {
         "type": "object",

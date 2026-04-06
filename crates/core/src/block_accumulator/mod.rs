@@ -163,6 +163,15 @@ impl BlockAccumulator {
         if let Some(ref builder) = self.current_assistant {
             blocks.push(ConversationBlock::Assistant(builder.clone().finalize()));
         }
+
+        // Include in-progress transcript blocks (non-consuming clone + build)
+        for (i, builder) in self.transcript_builders.iter().enumerate() {
+            if !builder.is_empty() {
+                let id = format!("transcript-snap-{}-{}", self.line_index, i);
+                blocks.push(ConversationBlock::TeamTranscript(builder.clone().build(id)));
+            }
+        }
+
         interactions::synthesize_historical_interactions(&mut blocks);
         blocks
     }
@@ -1732,6 +1741,53 @@ mod tests {
             assert_eq!(t.description, "Tabs vs spaces");
             assert!(!t.entries.is_empty());
             assert!(!t.speakers.is_empty());
+        }
+    }
+
+    #[test]
+    fn snapshot_includes_in_progress_transcript() {
+        let mut acc = BlockAccumulator::new();
+
+        // TeamCreate
+        acc.process_line(&serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-tc",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tu_tc",
+                    "name": "TeamCreate",
+                    "input": { "team_name": "debate", "description": "Test topic" }
+                }]
+            },
+            "teamName": "debate"
+        }));
+
+        // User with teammate message (debate in progress)
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "message": {
+                "content": "<teammate-message teammate_id=\"agent-1\" color=\"blue\" summary=\"Opening\">\nGreat argument.\n</teammate-message>"
+            },
+            "teamName": "debate"
+        }));
+
+        // snapshot() should include the in-progress transcript (not yet finalized)
+        let snap = acc.snapshot();
+        let transcript = snap
+            .iter()
+            .find(|b| matches!(b, ConversationBlock::TeamTranscript(_)));
+        assert!(
+            transcript.is_some(),
+            "snapshot() must include in-progress TeamTranscript blocks"
+        );
+
+        if let ConversationBlock::TeamTranscript(t) = transcript.unwrap() {
+            assert_eq!(t.team_name, "debate");
+            assert!(
+                !t.entries.is_empty(),
+                "snapshot transcript should have entries"
+            );
         }
     }
 
