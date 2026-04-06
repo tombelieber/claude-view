@@ -409,6 +409,9 @@ pub struct JsonlFields {
     pub source: Option<SessionSourceInfo>,
     /// SDLC phase classification (current phase, label history, dominant phase).
     pub phase: PhaseHistory,
+    /// AI-generated session title (from `ai-title` JSONL lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_title: Option<String>,
 }
 
 impl Default for JsonlFields {
@@ -436,6 +439,7 @@ impl Default for JsonlFields {
             user_files: None,
             source: None,
             phase: PhaseHistory::default(),
+            ai_title: None,
         }
     }
 }
@@ -827,6 +831,7 @@ pub(crate) fn test_live_session(id: &str) -> LiveSession {
             user_files: None,
             source: None,
             phase: PhaseHistory::default(),
+            ai_title: None,
         },
         session_kind: None,
         entrypoint: None,
