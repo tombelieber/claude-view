@@ -141,8 +141,8 @@ function HookEventDetail({ data }: { data: SidecarHookEvent }) {
       }
     >
       {(data.stdout || data.stderr) && (
-        <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
-          {(data.stdout || data.stderr || '').slice(0, 200)}
+        <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
+          {data.stdout || data.stderr}
         </pre>
       )}
     </EventCard>
@@ -231,8 +231,8 @@ function CommandOutputDetail({ data }: { data: CommandOutput }) {
       chipColor="bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300"
       rawData={data}
     >
-      <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
-        {data.content.slice(0, 500)}
+      <pre className="text-xs font-mono text-gray-500 dark:text-gray-400 whitespace-pre-wrap max-h-64 overflow-y-auto">
+        {data.content}
       </pre>
     </EventCard>
   )
