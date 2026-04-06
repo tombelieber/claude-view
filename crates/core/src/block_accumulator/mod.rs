@@ -1755,4 +1755,138 @@ mod tests {
             "Should NOT produce TeamTranscript without TeamCreate"
         );
     }
+
+    #[test]
+    fn real_session_produces_team_transcripts() {
+        // Reference session with team debates — discover path dynamically
+        let home = std::env::var("HOME").unwrap_or_default();
+        let session_id = "4a1005cb-268a-4fe8-a371-11c2440fc28f";
+        let claude_projects = format!("{}/.claude/projects", home);
+
+        // Find the session file under any project directory
+        let path = std::fs::read_dir(&claude_projects)
+            .ok()
+            .and_then(|entries| {
+                entries.filter_map(|e| e.ok()).find_map(|entry| {
+                    let candidate = entry.path().join(format!("{}.jsonl", session_id));
+                    candidate.exists().then_some(candidate)
+                })
+            });
+
+        let Some(path) = path else {
+            eprintln!(
+                "Skipping real session test: session {} not found under {}",
+                session_id, claude_projects
+            );
+            return;
+        };
+
+        // Skip if reference file doesn't exist (CI, other machines)
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            eprintln!(
+                "Skipping real session test: reference JSONL not readable at {:?}",
+                path
+            );
+            return;
+        };
+
+        let mut acc = BlockAccumulator::new();
+        acc.process_all(&content);
+        let blocks = acc.finalize();
+
+        // Should have at least one TeamTranscript block
+        let transcripts: Vec<_> = blocks
+            .iter()
+            .filter_map(|b| {
+                if let ConversationBlock::TeamTranscript(t) = b {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(
+            !transcripts.is_empty(),
+            "Reference session should produce at least 1 TeamTranscript block, got 0. Total blocks: {}",
+            blocks.len()
+        );
+
+        // Verify structure of first transcript
+        let first = &transcripts[0];
+        assert!(!first.team_name.is_empty(), "team_name should not be empty");
+        assert!(
+            !first.description.is_empty(),
+            "description should not be empty"
+        );
+        assert!(!first.speakers.is_empty(), "should have speakers");
+        assert!(!first.entries.is_empty(), "should have entries");
+
+        // Verify we have agent messages (the core content)
+        let agent_messages: Vec<_> = first
+            .entries
+            .iter()
+            .filter(|e| matches!(e, TranscriptEntry::AgentMessage { .. }))
+            .collect();
+        assert!(
+            !agent_messages.is_empty(),
+            "Transcript should contain at least one agent message"
+        );
+
+        // Verify protocol messages were classified separately
+        let _protocol_messages: Vec<_> = first
+            .entries
+            .iter()
+            .filter(|e| matches!(e, TranscriptEntry::Protocol { .. }))
+            .collect();
+        // Protocol messages exist in the reference session
+
+        eprintln!("=== Team Transcript E2E Results ===");
+        eprintln!("Total transcripts: {}", transcripts.len());
+        for (i, t) in transcripts.iter().enumerate() {
+            eprintln!(
+                "Transcript {}: team={}, desc={}, speakers={}, entries={}",
+                i,
+                t.team_name,
+                t.description,
+                t.speakers.len(),
+                t.entries.len()
+            );
+            for s in &t.speakers {
+                eprintln!(
+                    "  Speaker: {} ({}) stance={:?}",
+                    s.display_name, s.id, s.stance
+                );
+            }
+            let agents = t
+                .entries
+                .iter()
+                .filter(|e| matches!(e, TranscriptEntry::AgentMessage { .. }))
+                .count();
+            let mods = t
+                .entries
+                .iter()
+                .filter(|e| matches!(e, TranscriptEntry::ModeratorNarration { .. }))
+                .count();
+            let protocols = t
+                .entries
+                .iter()
+                .filter(|e| matches!(e, TranscriptEntry::Protocol { .. }))
+                .count();
+            let relays = t
+                .entries
+                .iter()
+                .filter(|e| matches!(e, TranscriptEntry::ModeratorRelay { .. }))
+                .count();
+            let tasks = t
+                .entries
+                .iter()
+                .filter(|e| matches!(e, TranscriptEntry::TaskEvent { .. }))
+                .count();
+            eprintln!(
+                "  Entries: {} agent, {} mod, {} protocol, {} relay, {} task",
+                agents, mods, protocols, relays, tasks
+            );
+        }
+    }
 }
