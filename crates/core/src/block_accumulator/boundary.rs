@@ -228,7 +228,6 @@ impl TurnBoundaryAccumulator {
         self.fast_mode_state = None;
         self.duration_api_ms = None;
     }
-
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -242,10 +241,8 @@ fn add_tokens(dst: &mut TokenUsage, src: &TokenUsage) {
     dst.cache_creation_tokens += src.cache_creation_tokens;
     dst.cache_creation_5m_tokens += src.cache_creation_5m_tokens;
     dst.cache_creation_1hr_tokens += src.cache_creation_1hr_tokens;
-    dst.total_tokens = dst.input_tokens
-        + dst.output_tokens
-        + dst.cache_read_tokens
-        + dst.cache_creation_tokens;
+    dst.total_tokens =
+        dst.input_tokens + dst.output_tokens + dst.cache_read_tokens + dst.cache_creation_tokens;
 }
 
 fn is_empty_usage(tokens: &TokenUsage) -> bool {
