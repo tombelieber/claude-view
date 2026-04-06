@@ -344,10 +344,8 @@ fn parse_settings(value: &serde_json::Value) -> ClaudeCodeSettings {
     let status_line = obj.get("statusLine").and_then(|v| {
         if let Some(cmd) = v.get("command").and_then(|c| c.as_str()) {
             Some(cmd.to_string())
-        } else if let Some(s) = v.as_str() {
-            Some(s.to_string())
         } else {
-            None
+            v.as_str().map(|s| s.to_string())
         }
     });
 
