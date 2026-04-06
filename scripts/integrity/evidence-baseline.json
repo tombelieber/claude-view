@@ -243,7 +243,22 @@
       "attachment.type",
       "attachment.addedNames",
       "attachment.removedNames",
-      "attachment.addedLines"
+      "attachment.addedLines",
+      "forkedFrom",
+      "error",
+      "permissionMode",
+      "hookCount",
+      "hookInfos",
+      "hookErrors",
+      "preventedContinuation",
+      "stopReason",
+      "durationMs",
+      "retryInMs",
+      "retryAttempt",
+      "maxRetries",
+      "isApiErrorMessage",
+      "planContent",
+      "entrypoint"
     ],
     "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring."
   }
