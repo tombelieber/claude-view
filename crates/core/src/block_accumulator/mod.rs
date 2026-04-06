@@ -26,6 +26,7 @@ pub struct BlockAccumulator {
     forked_from: Option<Value>,
     entrypoint: Option<String>,
     line_index: usize,
+    transcript_builders: Vec<transcript_builder::TranscriptBuilder>,
 }
 
 impl BlockAccumulator {
@@ -37,6 +38,7 @@ impl BlockAccumulator {
             forked_from: None,
             entrypoint: None,
             line_index: 0,
+            transcript_builders: Vec::new(),
         }
     }
 
@@ -57,6 +59,7 @@ impl BlockAccumulator {
         self.forked_from = None;
         self.entrypoint = None;
         self.line_index = 0;
+        self.transcript_builders = Vec::new();
     }
 
     /// Process a single JSONL entry.
@@ -123,6 +126,16 @@ impl BlockAccumulator {
             }
         }
 
+        // Emit transcript blocks from all builders
+        let builders: Vec<_> = self.transcript_builders.drain(..).collect();
+        for (i, builder) in builders.into_iter().enumerate() {
+            if !builder.is_empty() {
+                let id = format!("transcript-{}-{}", self.line_index, i);
+                self.blocks
+                    .push(ConversationBlock::TeamTranscript(builder.build(id)));
+            }
+        }
+
         // Post-processing: synthesise historical InteractionBlocks for Plan
         // and Question patterns. Live sidecar InteractionBlocks never flow
         // through this accumulator, so no dedup is needed here — per the
@@ -175,6 +188,12 @@ impl BlockAccumulator {
         // String content: Claude CLI sometimes writes content as a plain string
         // instead of the array-of-blocks format. Handle it directly.
         if let Some(text) = content.and_then(|c| c.as_str()) {
+            // Feed teammate messages to active transcript builder
+            if text.contains("<teammate-message") {
+                if let Some(builder) = self.transcript_builders.last_mut() {
+                    builder.add_teammate_messages(text, self.line_index);
+                }
+            }
             self.flush_current_assistant();
             self.blocks.push(ConversationBlock::User(UserBlock {
                 id: entry
@@ -357,6 +376,110 @@ impl BlockAccumulator {
             for tu in blocks.tool_uses {
                 if let Some(ref mut builder) = self.current_assistant {
                     builder.add_tool_use(tu.id, tu.name, tu.input, tu.parent_tool_use_id);
+                }
+            }
+        }
+
+        // ── Team transcript wiring ──────────────────────────────────
+        if let Some(arr) = content {
+            let cb = extract_content_blocks(arr);
+
+            for tu in &cb.tool_uses {
+                match tu.name.as_str() {
+                    "TeamCreate" => {
+                        let team_name = tu
+                            .input
+                            .get("team_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let description = tu
+                            .input
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        self.transcript_builders
+                            .push(transcript_builder::TranscriptBuilder::new(
+                                team_name,
+                                description,
+                            ));
+                    }
+                    "Agent" => {
+                        if tu.input.get("team_name").is_some() {
+                            if let Some(b) = self.transcript_builders.last_mut() {
+                                let name =
+                                    tu.input.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                                let desc = tu
+                                    .input
+                                    .get("description")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                b.add_speaker_from_spawn(name, None, desc);
+                            }
+                        }
+                    }
+                    "SendMessage" => {
+                        if let Some(b) = self.transcript_builders.last_mut() {
+                            if let (Some(to), Some(msg)) = (
+                                tu.input.get("to").and_then(|v| v.as_str()),
+                                tu.input.get("message").and_then(|v| v.as_str()),
+                            ) {
+                                b.add_moderator_relay(to.into(), msg.into(), self.line_index);
+                            }
+                        }
+                    }
+                    "TaskCreate" => {
+                        if let Some(b) = self.transcript_builders.last_mut() {
+                            b.add_task_event(
+                                tu.input
+                                    .get("subject")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .into(),
+                                None,
+                                None,
+                                self.line_index,
+                            );
+                        }
+                    }
+                    "TaskUpdate" => {
+                        if let Some(b) = self.transcript_builders.last_mut() {
+                            b.add_task_event(
+                                tu.input
+                                    .get("subject")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("task")
+                                    .into(),
+                                tu.input
+                                    .get("status")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from),
+                                tu.input
+                                    .get("owner")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from),
+                                self.line_index,
+                            );
+                        }
+                    }
+                    "TeamDelete" => {
+                        if let Some(b) = self.transcript_builders.last_mut() {
+                            b.mark_verdict();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Moderator narration from text segments
+            if !self.transcript_builders.is_empty() {
+                for seg in &cb.text_segments {
+                    if !seg.text.is_empty() {
+                        if let Some(b) = self.transcript_builders.last_mut() {
+                            b.add_moderator_narration(seg.text.clone(), self.line_index);
+                        }
+                    }
                 }
             }
         }
@@ -1554,5 +1677,82 @@ mod tests {
             }
             other => panic!("Expected SystemBlock, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn accumulator_builds_team_transcript_from_teammate_messages() {
+        let mut acc = BlockAccumulator::new();
+
+        // TeamCreate tool_use
+        acc.process_line(&serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-tc",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "tu_tc",
+                    "name": "TeamCreate",
+                    "input": { "team_name": "debate", "description": "Tabs vs spaces" }
+                }]
+            },
+            "teamName": "debate"
+        }));
+
+        // User with teammate message
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "message": {
+                "content": "<teammate-message teammate_id=\"tabs\" color=\"blue\" summary=\"Opening\">\nTabs are better.\n</teammate-message>"
+            },
+            "teamName": "debate"
+        }));
+
+        // Moderator narration
+        acc.process_line(&serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg-narr",
+                "content": [{ "type": "text", "text": "Strong opening!" }],
+                "stop_reason": "end_turn"
+            },
+            "teamName": "debate"
+        }));
+
+        let blocks = acc.finalize();
+        let transcript = blocks
+            .iter()
+            .find(|b| matches!(b, ConversationBlock::TeamTranscript(_)));
+        assert!(
+            transcript.is_some(),
+            "Should produce a TeamTranscript block"
+        );
+
+        if let ConversationBlock::TeamTranscript(t) = transcript.unwrap() {
+            assert_eq!(t.team_name, "debate");
+            assert_eq!(t.description, "Tabs vs spaces");
+            assert!(!t.entries.is_empty());
+            assert!(!t.speakers.is_empty());
+        }
+    }
+
+    #[test]
+    fn accumulator_no_transcript_without_team_create() {
+        let mut acc = BlockAccumulator::new();
+
+        // Just a regular user message — no TeamCreate
+        acc.process_line(&serde_json::json!({
+            "type": "user",
+            "uuid": "u-1",
+            "message": {"content": "hello"},
+            "timestamp": "2026-04-04T01:00:00.000Z"
+        }));
+
+        let blocks = acc.finalize();
+        assert!(
+            !blocks
+                .iter()
+                .any(|b| matches!(b, ConversationBlock::TeamTranscript(_))),
+            "Should NOT produce TeamTranscript without TeamCreate"
+        );
     }
 }
