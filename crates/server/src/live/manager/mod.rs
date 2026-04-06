@@ -12,7 +12,7 @@
 //! - `reconciler` -- spawn_reconciliation_loop, cleanup, death consumer
 
 pub(crate) mod accumulator;
-mod helpers;
+pub(crate) mod helpers;
 mod line_processor;
 mod reaper;
 mod reconciler;

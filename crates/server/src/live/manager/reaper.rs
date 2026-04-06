@@ -229,6 +229,8 @@ mod tests {
                 project_path: "/tmp/test".to_string(),
                 ..JsonlFields::default()
             },
+            session_kind: None,
+            entrypoint: None,
         }
     }
 

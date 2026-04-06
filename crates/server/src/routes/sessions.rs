@@ -2393,6 +2393,8 @@ mod tests {
                 file_path: String::new(),
                 ..JsonlFields::default()
             },
+            session_kind: None,
+            entrypoint: None,
         };
         session.hook.hook_events.push(HookEvent {
             timestamp: 1000,
@@ -2600,6 +2602,8 @@ mod tests {
                 project_path: "/tmp/test".to_string(),
                 ..JsonlFields::default()
             },
+            session_kind: None,
+            entrypoint: None,
         }
     }
 

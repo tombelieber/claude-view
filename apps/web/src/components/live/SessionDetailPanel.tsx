@@ -53,6 +53,7 @@ import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
 import { TaskDetailTab } from './TaskDetailTab'
+import { TodoChecklist } from '../session/TodoChecklist'
 import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
 import { hasUnavailableCost } from './cost-display'
@@ -146,6 +147,8 @@ export function SessionDetailPanel({
   const { data: liveSessionDetail } = useSessionDetail(isLive ? data.id : null, taskVersion)
   const tasks = isLive ? liveSessionDetail?.tasks : data.tasks
   const hasTasks = tasks && tasks.length > 0
+  const todos = isLive ? liveSessionDetail?.todos : data.todos
+  const hasTodos = todos && todos.length > 0
 
   // File history (fetched on demand for all sessions)
   const { data: fileHistory } = useFileHistory(data.id, editVersion)
@@ -886,6 +889,11 @@ export function SessionDetailPanel({
 
         {/* ---- Tasks tab ---- */}
         {activeTab === 'tasks' && hasTasks && tasks && <TaskDetailTab tasks={tasks} />}
+        {activeTab === 'tasks' && hasTodos && todos && (
+          <div className="px-4 py-3">
+            <TodoChecklist todos={todos} />
+          </div>
+        )}
 
         {/* ---- Changes tab ---- */}
         {activeTab === 'changes' && hasChanges && fileHistory && (

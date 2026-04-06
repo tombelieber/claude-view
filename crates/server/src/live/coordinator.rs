@@ -200,6 +200,11 @@ impl SessionCoordinator {
                         .await;
                 }
 
+                // Enrich with kind/entrypoint from sessions/{pid}.json
+                if let Some(pid) = new_session.hook.pid {
+                    crate::live::manager::helpers::enrich_from_session_file(&mut new_session, pid);
+                }
+
                 sessions.insert(session_id.to_string(), new_session);
 
                 // Drain buffered mutations — apply them inline before the
@@ -367,6 +372,8 @@ fn create_session_from_start(
             project_path: cwd.clone().unwrap_or_default(),
             ..JsonlFields::default()
         },
+        session_kind: None,
+        entrypoint: None,
     }
 }
 
@@ -402,6 +409,8 @@ fn create_session_shell(session_id: &str, data: &ReconcileData, now: i64) -> Liv
         statusline: StatuslineFields::default(),
         hook,
         jsonl,
+        session_kind: None,
+        entrypoint: None,
     }
 }
 
