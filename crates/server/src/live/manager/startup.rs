@@ -18,6 +18,62 @@ use super::helpers::{extract_session_id, load_session_snapshot, pid_snapshot_pat
 use super::LiveSessionManager;
 
 impl LiveSessionManager {
+    /// Scan ~/.claude/sessions/ as the PRIMARY lifecycle source.
+    ///
+    /// This runs before JSONL scan and snapshot recovery. It provides:
+    /// - Immediate list of alive sessions (no hooks needed)
+    /// - kind (interactive/background) and entrypoint (cli/vscode/desktop)
+    /// - Crash detection: session file exists but PID is dead
+    ///
+    /// The results are stored as a "pre-enrichment map" that later stages
+    /// (promote_from_snapshot, coordinator) use to populate session_kind/entrypoint.
+    pub(super) async fn scan_sessions_dir_at_startup(self: &Arc<Self>) {
+        let sessions =
+            tokio::task::spawn_blocking(crate::live::sessions_watcher::scan_sessions_dir)
+                .await
+                .unwrap_or_default();
+
+        if sessions.is_empty() {
+            info!("Sessions dir scan: no active session files found");
+            return;
+        }
+
+        let (alive, crashed) = tokio::task::spawn_blocking(move || {
+            crate::live::sessions_watcher::partition_by_liveness(sessions)
+        })
+        .await
+        .unwrap_or_default();
+
+        info!(
+            alive = alive.len(),
+            crashed = crashed.len(),
+            "Sessions dir scan: primary lifecycle source"
+        );
+
+        // Clean up crashed session files (PID dead but file left behind)
+        for crashed_session in &crashed {
+            if let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() {
+                let stale_path = sessions_dir.join(format!("{}.json", crashed_session.pid));
+                if stale_path.exists() {
+                    info!(
+                        pid = crashed_session.pid,
+                        session_id = %crashed_session.session_id,
+                        "Cleaning stale session file (PID dead)"
+                    );
+                    let _ = std::fs::remove_file(&stale_path);
+                }
+            }
+        }
+
+        // For alive sessions, register their PIDs with the death watcher
+        // so we get immediate notification when they exit.
+        for session in &alive {
+            self._death_watcher
+                .watch(session.pid, session.session_id.clone())
+                .await;
+        }
+    }
+
     /// Promote sessions from crash-recovery snapshot.
     pub(super) async fn promote_from_snapshot(
         self: &Arc<Self>,
