@@ -421,6 +421,57 @@ function PlanContentDetail({ data }: { data: Record<string, unknown> }) {
   )
 }
 
+// ── Zero-gap pipeline: attachment, permission_mode_change, scheduled_task_fire ──
+
+function AttachmentDetail({ data }: { data: Record<string, unknown> }) {
+  const att = data.attachment as Record<string, unknown> | undefined
+  const addedNames = (att?.addedNames ?? []) as string[]
+  const removedNames = (att?.removedNames ?? []) as string[]
+  const label = `${addedNames.length} added, ${removedNames.length} removed`
+  return (
+    <EventCard dot="blue" chip="Attach" label={label} rawData={data}>
+      {addedNames.length > 0 && (
+        <div className="text-xs font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
+          {addedNames.map((n) => (
+            <div key={n}>+ {n}</div>
+          ))}
+        </div>
+      )}
+      {removedNames.length > 0 && (
+        <div className="text-xs font-mono text-red-500/70 dark:text-red-400/70 space-y-0.5">
+          {removedNames.map((n) => (
+            <div key={n}>− {n}</div>
+          ))}
+        </div>
+      )}
+    </EventCard>
+  )
+}
+
+function PermissionModeChangeDetail({ data }: { data: Record<string, unknown> }) {
+  const mode = (data.permissionMode as string) ?? 'unknown'
+  return (
+    <EventCard
+      dot="amber"
+      chip="Permission"
+      chipColor="bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300"
+      label={mode}
+      rawData={data}
+    />
+  )
+}
+
+function ScheduledTaskFireDetail({ data }: { data: Record<string, unknown> }) {
+  return (
+    <EventCard
+      dot="orange"
+      chip="Scheduled"
+      chipColor="bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300"
+      rawData={data}
+    />
+  )
+}
+
 // ── Main dispatcher ─────────────────────────────────────────────────────────
 
 export function DevSystemBlock({ block }: SystemBlockProps) {
@@ -477,6 +528,12 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <CustomTitleDetail data={block.data as Record<string, unknown>} />
       case 'plan_content':
         return <PlanContentDetail data={block.data as Record<string, unknown>} />
+      case 'attachment':
+        return <AttachmentDetail data={block.data as Record<string, unknown>} />
+      case 'permission_mode_change':
+        return <PermissionModeChangeDetail data={block.data as Record<string, unknown>} />
+      case 'scheduled_task_fire':
+        return <ScheduledTaskFireDetail data={block.data as Record<string, unknown>} />
       default: {
         // Exhaustiveness check: if a new SystemVariant is added in blocks.ts,
         // TypeScript will error here because `_exhaustive` is not `never`.

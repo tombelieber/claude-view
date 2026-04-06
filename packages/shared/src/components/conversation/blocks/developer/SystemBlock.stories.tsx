@@ -109,6 +109,18 @@ export const AgentName: Story = {
   args: { block: devSystemBlocks.agentName },
 }
 
+export const Attachment: Story = {
+  args: { block: devSystemBlocks.attachment },
+}
+
+export const PermissionModeChange: Story = {
+  args: { block: devSystemBlocks.permissionModeChange },
+}
+
+export const ScheduledTaskFire: Story = {
+  args: { block: devSystemBlocks.scheduledTaskFire },
+}
+
 export const WithRetryRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withRetry },
 }

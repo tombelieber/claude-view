@@ -348,6 +348,38 @@ jq -n \
     }
   }' > "$OUTPUT"
 
+# ══════════════════════════════════════════════════════════════════════
+# STEP 8: Baseline Regression Check
+# ══════════════════════════════════════════════════════════════════════
+
+step "Step 8/8: Checking for new unhandled types against baseline..."
+
+# Compare fresh JSONL types against baseline handled + handled_as_progress
+BASELINE_HANDLED=$(jq -r '(.top_level_types.handled // []) + (.top_level_types.handled_as_progress // []) | .[]' "$BASELINE" 2>/dev/null | sort -u)
+FRESH_TYPES=$(jq -r '.[]' "$TMPDIR_AUDIT/jsonl-types.json" 2>/dev/null | sort -u)
+
+NEW_TYPES=""
+while IFS= read -r t; do
+  [[ -z "$t" ]] && continue
+  if ! echo "$BASELINE_HANDLED" | grep -qxF "$t"; then
+    NEW_TYPES="${NEW_TYPES}${t}\n"
+  fi
+done <<< "$FRESH_TYPES"
+
+if [[ -n "$NEW_TYPES" ]]; then
+  step "  ⚠ NEW UNHANDLED TYPES FOUND (not in baseline):"
+  echo -e "$NEW_TYPES" | while read -r t; do
+    [[ -n "$t" ]] && step "    - $t"
+  done
+  # Write to report
+  jq --arg new_types "$(echo -e "$NEW_TYPES" | tr '\n' ',' | sed 's/,$//')" \
+    '.cross_layer_gaps.new_unhandled_types = ($new_types | split(",") | map(select(length > 0)))' \
+    "$OUTPUT" > "$OUTPUT.tmp" && mv "$OUTPUT.tmp" "$OUTPUT"
+else
+  step "  ✓ No new unhandled types — all JSONL types covered by baseline"
+  jq '.cross_layer_gaps.new_unhandled_types = []' "$OUTPUT" > "$OUTPUT.tmp" && mv "$OUTPUT.tmp" "$OUTPUT"
+fi
+
 step "Audit complete → $OUTPUT"
 step "  Corpus: $JSONL_COUNT files, $JSONL_PATH_COUNT unique paths"
 step "  Dark mode gaps: $DARK_GAP_COUNT"

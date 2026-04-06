@@ -441,6 +441,47 @@ export const devSystemBlocks = {
       sessionId: 'sess-100',
     } satisfies AgentName,
   } satisfies SystemBlock,
+
+  /** attachment — file attachment metadata (top-level JSONL type) */
+  attachment: {
+    type: 'system' as const,
+    id: 'dsb_016',
+    variant: 'attachment' as const,
+    data: {
+      type: 'attachment',
+      attachment: {
+        type: 'file',
+        addedNames: ['src/main.rs', 'src/lib.rs'],
+        removedNames: ['src/old.rs'],
+        addedLines: 142,
+      },
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  /** permission-mode — permission mode change event (top-level JSONL type) */
+  permissionModeChange: {
+    type: 'system' as const,
+    id: 'dsb_017',
+    variant: 'permission_mode_change' as const,
+    data: {
+      type: 'permission-mode',
+      permissionMode: 'bypassPermissions',
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  /** scheduled_task_fire — system subtype for scheduled task execution */
+  scheduledTaskFire: {
+    type: 'system' as const,
+    id: 'dsb_018',
+    variant: 'scheduled_task_fire' as const,
+    data: {
+      type: 'system',
+      subtype: 'scheduled_task_fire',
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
 }
 
 // ── System blocks with rawJson for detail panels ────────────────────────────
