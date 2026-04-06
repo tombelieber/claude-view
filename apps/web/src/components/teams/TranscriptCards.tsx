@@ -39,11 +39,11 @@ export function AgentMessageCard({ displayName, color, text }: AgentMessageCardP
     <div className={cn('border-l-3 pl-4 py-3', borderClass)}>
       <div className="flex items-center gap-2 mb-2">
         <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', dotClass)} />
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
           {displayName}
         </span>
       </div>
-      <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300">
+      <div className="prose prose-xs dark:prose-invert max-w-none text-gray-700 dark:text-gray-300">
         <Markdown components={markdownComponents}>{text}</Markdown>
       </div>
     </div>
@@ -60,7 +60,7 @@ export function ModeratorCard({ text }: ModeratorCardProps) {
   return (
     <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-lg px-4 py-3">
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">Moderator</div>
-      <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300">
+      <div className="prose prose-xs dark:prose-invert max-w-none text-gray-700 dark:text-gray-300">
         <Markdown components={markdownComponents}>{text}</Markdown>
       </div>
     </div>
@@ -79,7 +79,7 @@ export function VerdictCard({ text }: VerdictCardProps) {
       <div className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider mb-2">
         Verdict
       </div>
-      <div className="prose prose-sm dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 font-medium">
+      <div className="prose prose-xs dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 font-medium">
         <Markdown components={markdownComponents}>{text}</Markdown>
       </div>
     </div>

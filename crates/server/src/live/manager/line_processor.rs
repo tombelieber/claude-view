@@ -112,6 +112,11 @@ impl LiveSessionManager {
             }
         }
 
+        // Track AI-generated title
+        if let Some(ref title) = line.ai_title {
+            acc.ai_title = Some(title.clone());
+        }
+
         // Track user messages
         if line.line_type == LineType::User {
             acc.user_turn_count += 1;

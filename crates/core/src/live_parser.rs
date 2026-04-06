@@ -184,6 +184,8 @@ pub struct LiveLine {
     /// How the session was launched: "cli", "claude-vscode", "sdk-ts", etc.
     /// Present on the first JSONL line; extracted once by accumulator.
     pub entrypoint: Option<String>,
+    /// AI-generated session title from `ai-title` JSONL lines.
+    pub ai_title: Option<String>,
 }
 
 /// Broad classification of a JSONL line.
@@ -557,6 +559,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 at_files: Vec::new(),
                 pasted_paths: Vec::new(),
                 entrypoint: None,
+                ai_title: None,
             };
         }
     };
@@ -568,6 +571,19 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         Some("system") => LineType::System,
         Some("progress") => LineType::Progress,
         _ => LineType::Other,
+    };
+
+    // Extract session title from `custom-title` (user-set via /title) or `ai-title` (auto-generated).
+    let ai_title = match parsed.get("type").and_then(|t| t.as_str()) {
+        Some("custom-title") => parsed
+            .get("customTitle")
+            .and_then(|t| t.as_str())
+            .map(String::from),
+        Some("ai-title") => parsed
+            .get("aiTitle")
+            .and_then(|t| t.as_str())
+            .map(String::from),
+        _ => None,
     };
 
     // The nested message object (most fields live here in Claude Code JSONL)
@@ -1117,6 +1133,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         at_files,
         pasted_paths,
         entrypoint,
+        ai_title,
     }
 }
 

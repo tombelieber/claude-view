@@ -2,14 +2,32 @@
 import type { CostBreakdown } from '../../../../../packages/shared/src/types/generated/CostBreakdown'
 import type { TokenUsage } from '../../../../../packages/shared/src/types/generated/TokenUsage'
 
+/**
+ * Per-member cost data for the team cost breakdown.
+ */
 export type TeamMemberCost = {
   name: string
   color: string
   model: string
   agentType: string
+  /**
+   * Resolved session ID (None for in-process members whose cost is in the lead session).
+   */
   sessionId: string | null
+  /**
+   * True when member runs in-process — cost is included in the coordinator total.
+   */
   inProcess: boolean
+  /**
+   * Total cost in USD (None if session not found or not yet resolved).
+   */
   costUsd: number | null
+  /**
+   * Token usage breakdown (None if session not found).
+   */
   tokens: TokenUsage | null
+  /**
+   * Full cost breakdown (None if session not found).
+   */
   cost: CostBreakdown | null
 }

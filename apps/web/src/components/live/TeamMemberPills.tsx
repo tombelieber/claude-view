@@ -1,4 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
+import { Crown } from 'lucide-react'
 import type { TeamMember } from '../../types/generated/TeamMember'
 
 const PILL_CLASS =
@@ -13,12 +14,14 @@ interface TeamMemberPillsProps {
 }
 
 export function TeamMemberPills({ members }: TeamMemberPillsProps) {
-  // Filter out the team-lead — they're the parent session itself
+  // Sort: team-lead first (shown with crown), then members
+  const lead = members.find((m) => m.agentType === 'team-lead')
   const agents = members.filter((m) => m.agentType !== 'team-lead')
-  if (agents.length === 0) return null
+  const ordered = lead ? [lead, ...agents] : agents
+  if (ordered.length === 0) return null
 
-  const displayMembers = agents.slice(0, 4)
-  const overflowMembers = agents.slice(4)
+  const displayMembers = ordered.slice(0, 5)
+  const overflowMembers = ordered.slice(5)
 
   return (
     <Tooltip.Provider delayDuration={200}>
@@ -33,13 +36,18 @@ export function TeamMemberPills({ members }: TeamMemberPillsProps) {
 }
 
 function MemberPill({ member }: { member: TeamMember }) {
+  const isLead = member.agentType === 'team-lead'
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
         <span className={PILL_CLASS}>
-          <span className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
+          {isLead ? (
+            <Crown className="w-3 h-3 shrink-0 text-amber-500 dark:text-amber-400" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 shrink-0" />
+          )}
           <span className="truncate max-w-24">{member.name}</span>
-          <span className="text-xs opacity-60">{member.agentType}</span>
+          {!isLead && <span className="text-xs opacity-60">{member.agentType}</span>}
         </span>
       </Tooltip.Trigger>
       <Tooltip.Portal>

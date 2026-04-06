@@ -110,10 +110,16 @@ export function TeamsTab({
           messages={inbox ?? []}
           members={members}
           topic={team?.description ?? teamName}
+          sidechains={sidechains}
+          onSidechainSelect={setDrillDown}
         />
       </div>
       {sidechainsByMember.size > 0 && (
-        <SidechainsSection byMember={sidechainsByMember} members={members} onSelect={setDrillDown} />
+        <SidechainsSection
+          byMember={sidechainsByMember}
+          members={members}
+          onSelect={setDrillDown}
+        />
       )}
     </div>
   )

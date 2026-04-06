@@ -122,7 +122,7 @@ export type RawEvent =
   | { type: 'HISTORY_OK'; blocks: ConversationBlock[]; total?: number; offset?: number }
   | { type: 'HISTORY_FAILED'; error: string }
   // Hook events (REST-fetched, merged into phase blocks)
-  | { type: 'HOOK_EVENTS_OK'; blocks: ConversationBlock[] }
+  | { type: 'HOOK_EVENTS_OK'; sessionId: string; blocks: ConversationBlock[] }
   // Pagination (scroll-up infinite load)
   | { type: 'LOAD_OLDER_HISTORY' }
   | { type: 'OLDER_HISTORY_OK'; blocks: ConversationBlock[]; offset: number }

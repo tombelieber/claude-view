@@ -1,6 +1,7 @@
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
 import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
 import type { LiveSession } from './use-live-sessions'
 
@@ -8,11 +9,14 @@ interface CostBreakdownProps {
   cost: LiveSession['cost']
   tokens?: LiveSession['tokens']
   subAgents?: SubAgentInfo[]
+  /** Team member sidechains — when provided, renders "Cost by Member" section. */
+  sidechains?: TeamMemberSidechain[]
 }
 
-export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
+export function CostBreakdown({ cost, tokens, subAgents, sidechains }: CostBreakdownProps) {
   const subAgentTotal = subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
-  const grandTotal = cost.totalUsd + subAgentTotal
+  const sidechainTotal = sidechains?.reduce((sum, sc) => sum + (sc.costUsd ?? 0), 0) ?? 0
+  const grandTotal = cost.totalUsd + subAgentTotal + sidechainTotal
   const cacheCreation5mTokens = tokens?.cacheCreation5mTokens ?? 0
   const cacheCreation1hrTokens = tokens?.cacheCreation1hrTokens ?? 0
   const hasCacheCreationSplit = cacheCreation5mTokens > 0 || cacheCreation1hrTokens > 0
@@ -193,6 +197,78 @@ export function CostBreakdown({ cost, tokens, subAgents }: CostBreakdownProps) {
             })}
         </div>
       )}
+
+      {/* Member sidechain breakdown (team sessions) */}
+      {sidechains &&
+        sidechains.length > 0 &&
+        (() => {
+          // Group by member name and sum costs
+          const byMember = new Map<
+            string,
+            {
+              cost: number
+              inputTokens: number
+              outputTokens: number
+              cacheReadTokens: number
+              count: number
+              model: string
+            }
+          >()
+          for (const sc of sidechains) {
+            const existing = byMember.get(sc.memberName)
+            if (existing) {
+              existing.cost += sc.costUsd ?? 0
+              existing.inputTokens += sc.tokens?.inputTokens ?? 0
+              existing.outputTokens += sc.tokens?.outputTokens ?? 0
+              existing.cacheReadTokens += sc.tokens?.cacheReadTokens ?? 0
+              existing.count += 1
+            } else {
+              byMember.set(sc.memberName, {
+                cost: sc.costUsd ?? 0,
+                inputTokens: sc.tokens?.inputTokens ?? 0,
+                outputTokens: sc.tokens?.outputTokens ?? 0,
+                cacheReadTokens: sc.tokens?.cacheReadTokens ?? 0,
+                count: 1,
+                model: sc.model,
+              })
+            }
+          }
+          return (
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
+              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Cost by Member
+              </h4>
+              {[...byMember.entries()]
+                .filter(([, m]) => m.cost > 0)
+                .sort((a, b) => b[1].cost - a[1].cost)
+                .map(([name, m]) => {
+                  const modelHint = m.model ? ` (${m.model})` : ''
+                  const totalMemberTokens = m.inputTokens + m.outputTokens + m.cacheReadTokens
+                  return (
+                    <div key={name} className="space-y-0.5">
+                      <CostRow
+                        label={`${name}${modelHint} · ${m.count} session${m.count !== 1 ? 's' : ''}`}
+                        value={m.cost}
+                      />
+                      {totalMemberTokens > 0 && (
+                        <div className="ml-4 text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums">
+                          {[
+                            m.inputTokens > 0 ? `${formatTokenCount(m.inputTokens)} in` : null,
+                            m.outputTokens > 0 ? `${formatTokenCount(m.outputTokens)} out` : null,
+                            m.cacheReadTokens > 0
+                              ? `${formatTokenCount(m.cacheReadTokens)} cache`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+            </div>
+          )
+        })()}
     </div>
   )
 }

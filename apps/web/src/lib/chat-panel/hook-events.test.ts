@@ -88,18 +88,19 @@ describe('blockTimestamp', () => {
 })
 
 // ═════════════════════════════════════════════════════════════════
-// SELECT_SESSION emits FETCH_HOOK_EVENTS
+// SELECT_SESSION must NOT emit FETCH_HOOK_EVENTS
 // ═════════════════════════════════════════════════════════════════
 
-describe('SELECT_SESSION emits FETCH_HOOK_EVENTS', () => {
-  test('FETCH_HOOK_EVENTS is emitted alongside FETCH_HISTORY', () => {
+describe('SELECT_SESSION does NOT emit FETCH_HOOK_EVENTS', () => {
+  test('only FETCH_HISTORY + CHECK_SIDECAR_ACTIVE, no FETCH_HOOK_EVENTS', () => {
     const { allCmds } = drive(INITIAL, [{ type: 'SELECT_SESSION', sessionId: 'abc' }])
     expect(allCmds).toContainEqual(
       expect.objectContaining({ cmd: 'FETCH_HISTORY', sessionId: 'abc' }),
     )
-    expect(allCmds).toContainEqual(
-      expect.objectContaining({ cmd: 'FETCH_HOOK_EVENTS', sessionId: 'abc' }),
-    )
+    // FETCH_HOOK_EVENTS must NOT fire on initial load — ?format=block already
+    // merges DB hook events server-side. Firing it here would double-fetch with
+    // different ID prefixes (hook-db- vs hook-), causing duplicated events.
+    expect(allCmds).not.toContainEqual(expect.objectContaining({ cmd: 'FETCH_HOOK_EVENTS' }))
   })
 })
 
@@ -112,7 +113,7 @@ describe('nobody: HOOK_EVENTS_OK', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
     ])
 
     expect(store.panel.phase).toBe('nobody')
@@ -128,9 +129,9 @@ describe('nobody: HOOK_EVENTS_OK', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
       // Same hook block dispatched again
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
     ])
 
     if (store.panel.phase === 'nobody' && store.panel.sub.sub === 'ready') {
@@ -142,7 +143,7 @@ describe('nobody: HOOK_EVENTS_OK', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       // HOOK_EVENTS_OK arrives before HISTORY_OK
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
     ])
 
     expect(store.panel.phase).toBe('nobody')
@@ -155,7 +156,7 @@ describe('nobody: HOOK_EVENTS_OK', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [] },
     ])
 
     if (store.panel.phase === 'nobody' && store.panel.sub.sub === 'ready') {
@@ -167,7 +168,7 @@ describe('nobody: HOOK_EVENTS_OK', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
     ])
 
     const blocks = deriveBlocks(store)
@@ -204,6 +205,7 @@ describe('sdk_owned: HOOK_EVENTS_OK', () => {
   test('merges hook blocks into sdk_owned blocks sorted by timestamp', () => {
     const { store } = step(sdkOwnedStore, {
       type: 'HOOK_EVENTS_OK',
+      sessionId: 'abc',
       blocks: [mockHookBlock],
     })
 
@@ -218,16 +220,31 @@ describe('sdk_owned: HOOK_EVENTS_OK', () => {
     // First merge
     const { store: s1 } = step(sdkOwnedStore, {
       type: 'HOOK_EVENTS_OK',
+      sessionId: 'abc',
       blocks: [mockHookBlock],
     })
     // Second merge with same + new hook
     const { store: s2 } = step(s1, {
       type: 'HOOK_EVENTS_OK',
+      sessionId: 'abc',
       blocks: [mockHookBlock, mockHookBlock2],
     })
 
     if (s2.panel.phase === 'sdk_owned') {
       expect(s2.panel.blocks).toHaveLength(3) // u1 + hook-200-0 + hook-300-0
+    }
+  })
+
+  test('stale HOOK_EVENTS_OK from different session is discarded', () => {
+    const { store } = step(sdkOwnedStore, {
+      type: 'HOOK_EVENTS_OK',
+      sessionId: 'stale-session',
+      blocks: [mockHookBlock],
+    })
+
+    if (store.panel.phase === 'sdk_owned') {
+      expect(store.panel.blocks).toHaveLength(1) // unchanged — stale event ignored
+      expect(store.panel.blocks[0].id).toBe('u1')
     }
   })
 
@@ -299,6 +316,7 @@ describe('cc_cli: HOOK_EVENTS_OK is no-op', () => {
 
     const { store } = step(ccCliStore, {
       type: 'HOOK_EVENTS_OK',
+      sessionId: 'abc',
       blocks: [mockHookBlock],
     })
 
@@ -319,7 +337,7 @@ describe('integration: hook events across phase transitions', () => {
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'SIDECAR_NO_SESSION' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock, mockHookBlock2] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock, mockHookBlock2] },
     ])
 
     const blocks = deriveBlocks(store)
@@ -334,7 +352,7 @@ describe('integration: hook events across phase transitions', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'HOOK_EVENTS_OK', blocks: [mockHookBlock] },
+      { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
       // Go live → cc_cli
       { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
     ])

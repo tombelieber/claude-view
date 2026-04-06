@@ -3979,6 +3979,7 @@
           "teams"
         ],
         "summary": "GET /api/teams/:name — Get team detail.",
+        "description": "Enriches inbox-augmented members with model info from the lead JSONL.",
         "operationId": "get_team",
         "parameters": [
           {

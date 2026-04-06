@@ -79,8 +79,9 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
 
     case 'HOOK_EVENTS_OK':
       // No-op in cc_cli — hook events already flow via TERMINAL_BLOCK from the
-      // multiplexed WS. The initial FETCH_HOOK_EVENTS from SELECT_SESSION may
-      // arrive after the cc_cli transition; safe to discard.
+      // multiplexed WS. FETCH_HOOK_EVENTS only fires after TURN_COMPLETE in
+      // sdk_owned; if a phase transition races (sdk_owned → cc_cli before the
+      // async fetch returns), safe to discard the late-arriving response.
       return [store, []]
 
     default:

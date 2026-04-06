@@ -152,6 +152,9 @@ pub(crate) struct SessionAccumulator {
     /// How the session was launched: "cli", "claude-vscode", "sdk-ts".
     /// Set once from the first JSONL line that has it.
     pub entrypoint: Option<String>,
+    /// AI-generated session title from `ai-title` JSONL lines.
+    /// Updated on each occurrence (last one wins).
+    pub ai_title: Option<String>,
 }
 
 impl SessionAccumulator {
@@ -199,6 +202,7 @@ impl SessionAccumulator {
             last_applied_generation: 0,
             phase_labels: Vec::new(),
             entrypoint: None,
+            ai_title: None,
         }
     }
 }
@@ -232,6 +236,7 @@ pub(super) struct JsonlMetadata {
     pub edit_count: u32,
     pub phase: PhaseHistory,
     pub entrypoint: Option<String>,
+    pub ai_title: Option<String>,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -444,6 +449,9 @@ pub(super) fn apply_jsonl_metadata(
     }
     session.jsonl.edit_count = m.edit_count;
     session.jsonl.phase = m.phase.clone();
+    if m.ai_title.is_some() {
+        session.jsonl.ai_title = m.ai_title.clone();
+    }
     // Derive source from JSONL entrypoint (authoritative, no process classification needed)
     if let Some(ref ep) = m.entrypoint {
         let new_source = crate::live::process::entrypoint_to_source(ep);
@@ -542,5 +550,6 @@ pub(super) fn build_metadata_from_accumulator(
             freshness: Default::default(),
         },
         entrypoint: acc.entrypoint.clone(),
+        ai_title: acc.ai_title.clone(),
     }
 }
