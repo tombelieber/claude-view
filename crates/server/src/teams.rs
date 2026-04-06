@@ -1064,6 +1064,103 @@ pub fn resolve_team_member_sessions(
     members
 }
 
+// ============================================================================
+// Team Member Sidechains (subagent JSONL files per member)
+// ============================================================================
+
+/// A single sidechain instance for a team member.
+#[derive(Debug, Clone, Serialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMemberSidechain {
+    /// Hex agent ID — used with `/api/sessions/{sid}/subagents/{hex}/messages`.
+    pub hex_id: String,
+    /// Agent name from meta.json (e.g., "js-advocate").
+    pub member_name: String,
+    /// Number of JSONL lines (proxy for amount of work done).
+    #[ts(type = "number")]
+    pub line_count: u32,
+    /// File size in bytes.
+    #[ts(type = "number")]
+    pub file_size_bytes: u64,
+}
+
+/// Scan `{session_dir}/subagents/*.meta.json` and return sidechain info for each.
+///
+/// Each meta.json has `{"agentType":"js-advocate"}` and filename `agent-{hexId}.meta.json`.
+/// The corresponding `.jsonl` file is read for line count and file size.
+/// Results are sorted by `member_name` ascending, then `line_count` descending.
+pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
+    use std::io::{BufRead, BufReader};
+
+    #[derive(Deserialize)]
+    struct Meta {
+        #[serde(rename = "agentType")]
+        agent_type: String,
+    }
+
+    let subagents_dir = session_dir.join("subagents");
+    let entries = match std::fs::read_dir(&subagents_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut sidechains = Vec::new();
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+
+        // Match pattern: agent-{hexId}.meta.json
+        let hex_id = match name
+            .strip_prefix("agent-")
+            .and_then(|s| s.strip_suffix(".meta.json"))
+        {
+            Some(id) => id.to_string(),
+            None => continue,
+        };
+
+        // Parse meta.json for member name
+        let meta_path = entry.path();
+        let meta_bytes = match std::fs::read(&meta_path) {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let meta: Meta = match serde_json::from_slice(&meta_bytes) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        // Read corresponding .jsonl file for line count and size
+        let jsonl_path = subagents_dir.join(format!("agent-{hex_id}.jsonl"));
+        let (line_count, file_size_bytes) = match std::fs::File::open(&jsonl_path) {
+            Ok(file) => {
+                let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                let reader = BufReader::new(file);
+                let count = reader.lines().count() as u32;
+                (count, size)
+            }
+            Err(_) => (0, 0),
+        };
+
+        sidechains.push(TeamMemberSidechain {
+            hex_id,
+            member_name: meta.agent_type,
+            line_count,
+            file_size_bytes,
+        });
+    }
+
+    // Sort by member_name asc, then line_count desc
+    sidechains.sort_by(|a, b| {
+        a.member_name
+            .cmp(&b.member_name)
+            .then(b.line_count.cmp(&a.line_count))
+    });
+
+    sidechains
+}
+
 /// Build a `TeamCostBreakdown` by resolving member sessions and computing costs.
 ///
 /// `resolve_session_path` maps session_id → JSONL file path, allowing the caller
