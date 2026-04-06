@@ -1,11 +1,12 @@
 import { ChevronDown, ChevronRight, Crown } from 'lucide-react'
 import { useState } from 'react'
 import Markdown from 'react-markdown'
-import { useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
+import { useTeamCost, useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
 import { markdownComponents } from '../../lib/markdown-components'
 import { cn } from '../../lib/utils'
 import type { InboxMessage, InboxMessageType, TeamMember } from '../../types/generated'
 import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
+import { TeamBudgetSection } from './TeamBudgetSection'
 import { TranscriptHeader } from './TranscriptHeader'
 import { TranscriptBody } from './TranscriptBody'
 
@@ -136,6 +137,7 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
     transcript ? null : teamName,
     inboxVersion,
   )
+  const { data: teamCost } = useTeamCost(transcript ? null : teamName)
 
   // If we have a transcript block (from JSONL accumulation), render the clean view
   if (transcript) {
@@ -184,6 +186,9 @@ export function TeamsTab({ teamName, inboxVersion, transcript }: TeamsTabProps) 
           Created {team.createdAt > 0 ? new Date(team.createdAt).toLocaleString() : '—'}
         </p>
       </div>
+
+      {/* Budget */}
+      {teamCost && <TeamBudgetSection cost={teamCost} />}
 
       {/* Members */}
       <div>

@@ -504,7 +504,8 @@ export function SettingsPage() {
   const [exportFormat, setExportFormat] = useState<ExportFormat>('json')
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
-  const [_searchParams, _setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = searchParams.get('tab') === 'claude-code' ? 'claude-code' : 'app'
   const trackEvent = useTrackEvent()
 
   const handleIntervalChange = useCallback(
@@ -551,331 +552,346 @@ export function SettingsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-8">
-        <div className="flex items-baseline gap-3 mb-8">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h1>
-          <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
-            v{APP_VERSION}
-          </span>
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h1>
+            <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+              v{APP_VERSION}
+            </span>
+          </div>
+          <SegmentedControl
+            value={activeTab}
+            onChange={(tab) => setSearchParams({ tab }, { replace: true })}
+            options={[
+              { value: 'app', label: 'App' },
+              { value: 'claude-code', label: 'Claude Code' },
+            ]}
+            ariaLabel="Settings tab"
+          />
         </div>
 
-        <div className="space-y-8">
-          {/* ── Claude Code ──────────────────────────────────── */}
+        {activeTab === 'claude-code' ? (
           <ClaudeCodeSettingsGroup />
+        ) : (
+          <div className="space-y-8">
+            {/* ── Account & AI ─────────────────────────────────── */}
+            <SectionGroup label="Account & AI">
+              <AccountSection />
+              <LocalAiCard />
+              <ProviderSettings cliStatus={systemData?.claudeCli} />
+            </SectionGroup>
 
-          {/* ── Account & AI ─────────────────────────────────── */}
-          <SectionGroup label="Account & AI">
-            <AccountSection />
-            <LocalAiCard />
-            <ProviderSettings cliStatus={systemData?.claudeCli} />
-          </SectionGroup>
+            {/* ── Data ─────────────────────────────────────────── */}
+            <SectionGroup label="Data">
+              <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Storage">
+                <StorageOverview />
+              </SettingsSection>
 
-          {/* ── Data ─────────────────────────────────────────── */}
-          <SectionGroup label="Data">
-            <SettingsSection icon={<HardDrive className="w-4 h-4" />} title="Storage">
-              <StorageOverview />
-            </SettingsSection>
+              <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Scans git history and correlates commits with sessions.
+                </p>
 
-            <SettingsSection icon={<GitBranch className="w-4 h-4" />} title="Git Sync">
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Scans git history and correlates commits with sessions.
-              </p>
-
-              {status && (
-                <div className="space-y-0 mb-4">
-                  <InfoRow
-                    label="Last sync"
-                    value={
-                      status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'
-                    }
-                  />
-                  <InfoRow label="Commits found" value={formatNumber(status.commitsFound)} />
-                  <InfoRow label="Links created" value={formatNumber(status.linksCreated)} />
-                </div>
-              )}
-
-              {/* Sync interval setting */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="sync-interval"
-                    className="text-sm text-gray-500 dark:text-gray-400"
-                  >
-                    Auto-sync interval
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      id="sync-interval"
+                {status && (
+                  <div className="space-y-0 mb-4">
+                    <InfoRow
+                      label="Last sync"
                       value={
-                        status?.gitSyncIntervalSecs != null
-                          ? Number(status.gitSyncIntervalSecs)
-                          : 60
+                        status.lastGitSyncAt ? formatRelativeTime(status.lastGitSyncAt) : 'Never'
                       }
-                      onChange={(e) => handleIntervalChange(e.target.value)}
-                      disabled={isSavingInterval}
-                      className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                    />
+                    <InfoRow label="Commits found" value={formatNumber(status.commitsFound)} />
+                    <InfoRow label="Links created" value={formatNumber(status.linksCreated)} />
+                  </div>
+                )}
+
+                {/* Sync interval setting */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="sync-interval"
+                      className="text-sm text-gray-500 dark:text-gray-400"
                     >
-                      <option value="10">10 seconds</option>
-                      <option value="30">30 seconds</option>
-                      <option value="60">1 minute</option>
-                      <option value="120">2 minutes</option>
-                      <option value="300">5 minutes</option>
-                      <option value="600">10 minutes</option>
-                      <option value="1800">30 minutes</option>
-                      <option value="3600">1 hour</option>
-                    </select>
-                    {isSavingInterval && (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                    )}
-                    {intervalSaveStatus === 'success' && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                    )}
-                    {intervalSaveStatus === 'error' && (
-                      <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                    )}
+                      Auto-sync interval
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        id="sync-interval"
+                        value={
+                          status?.gitSyncIntervalSecs != null
+                            ? Number(status.gitSyncIntervalSecs)
+                            : 60
+                        }
+                        onChange={(e) => handleIntervalChange(e.target.value)}
+                        disabled={isSavingInterval}
+                        className="text-sm border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-400 focus:outline-none disabled:opacity-50"
+                      >
+                        <option value="10">10 seconds</option>
+                        <option value="30">30 seconds</option>
+                        <option value="60">1 minute</option>
+                        <option value="120">2 minutes</option>
+                        <option value="300">5 minutes</option>
+                        <option value="600">10 minutes</option>
+                        <option value="1800">30 minutes</option>
+                        <option value="3600">1 hour</option>
+                      </select>
+                      {isSavingInterval && (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                      )}
+                      {intervalSaveStatus === 'success' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                      )}
+                      {intervalSaveStatus === 'error' && (
+                        <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Sync status message */}
-              {syncStatus === 'success' && (
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-3 text-sm">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Sync started successfully</span>
-                </div>
-              )}
-              {syncStatus === 'conflict' && (
-                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-3 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Sync already in progress</span>
-                </div>
-              )}
-              {syncError && (
-                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{syncError}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={isSyncing}
-                aria-busy={isSyncing}
-                className={cn(
-                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-                  'transition-colors duration-150',
-                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                {/* Sync status message */}
+                {syncStatus === 'success' && (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-3 text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Sync started successfully</span>
+                  </div>
                 )}
-              >
-                {isSyncing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Syncing...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-4 h-4" />
-                    Sync Git History
-                  </>
+                {syncStatus === 'conflict' && (
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 mb-3 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>Sync already in progress</span>
+                  </div>
                 )}
-              </button>
-            </SettingsSection>
+                {syncError && (
+                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{syncError}</span>
+                  </div>
+                )}
 
-            <IndexHistorySection history={systemData?.indexHistory} isLoading={systemLoading} />
+                <button
+                  type="button"
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  aria-busy={isSyncing}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                    'transition-colors duration-150',
+                    'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                  )}
+                >
+                  {isSyncing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Syncing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Sync Git History
+                    </>
+                  )}
+                </button>
+              </SettingsSection>
 
-            <SettingsSection icon={<Download className="w-4 h-4" />} title="Export">
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Export all session data with metrics and commits.
-              </p>
+              <IndexHistorySection history={systemData?.indexHistory} isLoading={systemLoading} />
 
-              <div className="flex flex-wrap items-center gap-4 mb-4">
-                <div>
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1.5">
-                    Format
+              <SettingsSection icon={<Download className="w-4 h-4" />} title="Export">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Export all session data with metrics and commits.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <div>
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider block mb-1.5">
+                      Format
+                    </span>
+                    <SegmentedControl
+                      value={exportFormat}
+                      onChange={setExportFormat}
+                      options={[
+                        { value: 'json' as ExportFormat, label: 'JSON' },
+                        { value: 'csv' as ExportFormat, label: 'CSV' },
+                      ]}
+                      ariaLabel="Export format"
+                    />
+                  </div>
+                </div>
+
+                {exportError && (
+                  <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{exportError}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  aria-busy={isExporting}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
+                    'transition-colors duration-150',
+                    'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
+                  )}
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Download Export
+                    </>
+                  )}
+                </button>
+              </SettingsSection>
+            </SectionGroup>
+
+            {/* ── Connections ───────────────────────────────────── */}
+            <SectionGroup label="Connections">
+              <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      Pair your phone with Claude View for on-the-go access.
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Scan a QR code to securely connect the mobile app.
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    Coming Soon
                   </span>
-                  <SegmentedControl
-                    value={exportFormat}
-                    onChange={setExportFormat}
-                    options={[
-                      { value: 'json' as ExportFormat, label: 'JSON' },
-                      { value: 'csv' as ExportFormat, label: 'CSV' },
+                </div>
+              </SettingsSection>
+
+              <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
+                <SharedLinksSection />
+              </SettingsSection>
+            </SectionGroup>
+
+            {/* ── Privacy & About ───────────────────────────────── */}
+            <SectionGroup label="Privacy & About">
+              <SettingsSection icon={<Shield className="w-4 h-4" />} title="Privacy">
+                <TelemetrySection
+                  telemetryStatus={config.telemetry}
+                  hasPosHogKey={config.posthogKey !== null}
+                  onEnable={enableTelemetry}
+                  onDisable={disableTelemetry}
+                />
+              </SettingsSection>
+
+              {/* ABOUT */}
+              <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      Claude View v{APP_VERSION}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                      Built {APP_BUILD_DATE}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={GITHUB_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                        'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
+                        'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
+                      )}
+                    >
+                      <Star className="w-3.5 h-3.5" />
+                      Star on GitHub
+                    </a>
+                    <a
+                      href={`${GITHUB_URL}/releases`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cn(
+                        'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
+                        'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
+                        'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
+                      )}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Releases
+                    </a>
+                  </div>
+                </div>
+
+                <div id="keyboard-shortcuts" className="space-y-5 scroll-mt-6">
+                  {/* Global */}
+                  <ShortcutGroup
+                    title="Global"
+                    shortcuts={[
+                      { keys: [{ mod: true, key: 'K' }], label: 'Command palette' },
+                      { keys: [{ mod: true, key: 'B' }], label: 'Toggle sidebar' },
                     ]}
-                    ariaLabel="Export format"
+                  />
+
+                  {/* Conversation */}
+                  <ShortcutGroup
+                    title="Conversation"
+                    shortcuts={[
+                      { keys: [{ mod: true, key: 'F' }], label: 'Find in conversation' },
+                      { keys: [{ mod: true, shift: true, key: 'E' }], label: 'Export HTML' },
+                      { keys: [{ mod: true, shift: true, key: 'P' }], label: 'Export PDF' },
+                      {
+                        keys: [{ mod: true, shift: true, key: 'R' }],
+                        label: 'Copy resume command',
+                      },
+                    ]}
+                  />
+
+                  {/* Chat Tabs */}
+                  <ShortcutGroup
+                    title="Chat Tabs"
+                    shortcuts={[
+                      { keys: [{ ctrl: true, key: 'T' }], label: 'New tab' },
+                      { keys: [{ ctrl: true, key: 'W' }], label: 'Close tab' },
+                      { keys: [{ ctrl: true, key: 'Tab' }], label: 'Next tab' },
+                      { keys: [{ ctrl: true, shift: true, key: 'Tab' }], label: 'Previous tab' },
+                      { keys: [{ ctrl: true, key: '\\' }], label: 'Split right' },
+                      { keys: [{ ctrl: true, shift: true, key: '\\' }], label: 'Split down' },
+                    ]}
+                  />
+
+                  {/* Live Monitor */}
+                  <ShortcutGroup
+                    title="Live Monitor"
+                    shortcuts={[
+                      {
+                        keys: [{ key: 'j' }, { key: 'k' }],
+                        label: 'Next / previous session',
+                        separator: '/',
+                      },
+                      {
+                        keys: [{ key: '1' }, { key: '2' }, { key: '3' }, { key: '4' }],
+                        label: 'Switch view',
+                        separator: '/',
+                      },
+                      { keys: [{ key: '/' }], label: 'Search' },
+                      { keys: [{ key: '?' }], label: 'Show all shortcuts' },
+                    ]}
                   />
                 </div>
-              </div>
+              </SettingsSection>
+            </SectionGroup>
 
-              {exportError && (
-                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-3 text-sm">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{exportError}</span>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={isExporting}
-                aria-busy={isExporting}
-                className={cn(
-                  'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md cursor-pointer',
-                  'transition-colors duration-150',
-                  'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2',
-                )}
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Exporting...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Download Export
-                  </>
-                )}
-              </button>
-            </SettingsSection>
-          </SectionGroup>
-
-          {/* ── Connections ───────────────────────────────────── */}
-          <SectionGroup label="Connections">
-            <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    Pair your phone with Claude View for on-the-go access.
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Scan a QR code to securely connect the mobile app.
-                  </p>
-                </div>
-                <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                  Coming Soon
-                </span>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection icon={<Link2 className="w-4 h-4" />} title="Shared Links">
-              <SharedLinksSection />
-            </SettingsSection>
-          </SectionGroup>
-
-          {/* ── Privacy & About ───────────────────────────────── */}
-          <SectionGroup label="Privacy & About">
-            <SettingsSection icon={<Shield className="w-4 h-4" />} title="Privacy">
-              <TelemetrySection
-                telemetryStatus={config.telemetry}
-                hasPosHogKey={config.posthogKey !== null}
-                onEnable={enableTelemetry}
-                onDisable={disableTelemetry}
-              />
-            </SettingsSection>
-
-            {/* ABOUT */}
-            <SettingsSection icon={<Info className="w-4 h-4" />} title="About">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    Claude View v{APP_VERSION}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                    Built {APP_BUILD_DATE}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={GITHUB_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(
-                      'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                      'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900',
-                      'hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors',
-                    )}
-                  >
-                    <Star className="w-3.5 h-3.5" />
-                    Star on GitHub
-                  </a>
-                  <a
-                    href={`${GITHUB_URL}/releases`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(
-                      'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md',
-                      'border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300',
-                      'hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors',
-                    )}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Releases
-                  </a>
-                </div>
-              </div>
-
-              <div id="keyboard-shortcuts" className="space-y-5 scroll-mt-6">
-                {/* Global */}
-                <ShortcutGroup
-                  title="Global"
-                  shortcuts={[
-                    { keys: [{ mod: true, key: 'K' }], label: 'Command palette' },
-                    { keys: [{ mod: true, key: 'B' }], label: 'Toggle sidebar' },
-                  ]}
-                />
-
-                {/* Conversation */}
-                <ShortcutGroup
-                  title="Conversation"
-                  shortcuts={[
-                    { keys: [{ mod: true, key: 'F' }], label: 'Find in conversation' },
-                    { keys: [{ mod: true, shift: true, key: 'E' }], label: 'Export HTML' },
-                    { keys: [{ mod: true, shift: true, key: 'P' }], label: 'Export PDF' },
-                    { keys: [{ mod: true, shift: true, key: 'R' }], label: 'Copy resume command' },
-                  ]}
-                />
-
-                {/* Chat Tabs */}
-                <ShortcutGroup
-                  title="Chat Tabs"
-                  shortcuts={[
-                    { keys: [{ ctrl: true, key: 'T' }], label: 'New tab' },
-                    { keys: [{ ctrl: true, key: 'W' }], label: 'Close tab' },
-                    { keys: [{ ctrl: true, key: 'Tab' }], label: 'Next tab' },
-                    { keys: [{ ctrl: true, shift: true, key: 'Tab' }], label: 'Previous tab' },
-                    { keys: [{ ctrl: true, key: '\\' }], label: 'Split right' },
-                    { keys: [{ ctrl: true, shift: true, key: '\\' }], label: 'Split down' },
-                  ]}
-                />
-
-                {/* Live Monitor */}
-                <ShortcutGroup
-                  title="Live Monitor"
-                  shortcuts={[
-                    {
-                      keys: [{ key: 'j' }, { key: 'k' }],
-                      label: 'Next / previous session',
-                      separator: '/',
-                    },
-                    {
-                      keys: [{ key: '1' }, { key: '2' }, { key: '3' }, { key: '4' }],
-                      label: 'Switch view',
-                      separator: '/',
-                    },
-                    { keys: [{ key: '/' }], label: 'Search' },
-                    { keys: [{ key: '?' }], label: 'Show all shortcuts' },
-                  ]}
-                />
-              </div>
-            </SettingsSection>
-          </SectionGroup>
-
-          {/* ── Danger Zone — always last, outside all groups ── */}
-          <DangerZoneSection />
-        </div>
+            {/* ── Danger Zone — always last, outside all groups ── */}
+            <DangerZoneSection />
+          </div>
+        )}
       </div>
     </div>
   )

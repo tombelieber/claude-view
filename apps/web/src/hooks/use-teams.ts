@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { InboxMessage, TeamDetail, TeamSummary } from '../types/generated'
+import type { TeamCostBreakdown } from '../types/generated/TeamCostBreakdown'
 
 // ============================================================================
 // Fetch functions
@@ -20,6 +21,12 @@ async function fetchTeamDetail(name: string): Promise<TeamDetail> {
 async function fetchTeamInbox(name: string): Promise<InboxMessage[]> {
   const res = await fetch(`/api/teams/${encodeURIComponent(name)}/inbox`)
   if (!res.ok) throw new Error(`Failed to fetch inbox for team: ${name}`)
+  return res.json()
+}
+
+async function fetchTeamCost(name: string): Promise<TeamCostBreakdown> {
+  const res = await fetch(`/api/teams/${encodeURIComponent(name)}/cost`)
+  if (!res.ok) throw new Error(`Failed to fetch cost for team: ${name}`)
   return res.json()
 }
 
@@ -53,6 +60,16 @@ export function useTeamInbox(name: string | null, version?: number) {
     queryFn: () => fetchTeamInbox(name ?? ''),
     enabled: !!name,
     staleTime: 60_000,
+  })
+}
+
+/** Fetch cost breakdown for a specific team. */
+export function useTeamCost(name: string | null) {
+  return useQuery({
+    queryKey: ['team-cost', name],
+    queryFn: () => fetchTeamCost(name ?? ''),
+    enabled: !!name,
+    staleTime: 120_000, // Cost is expensive to compute, cache 2 min
   })
 }
 

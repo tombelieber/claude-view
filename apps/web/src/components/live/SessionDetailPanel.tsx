@@ -26,6 +26,7 @@ import { developerRegistry } from '@claude-view/shared/components/conversation/b
 import { useChatPanel } from '../../hooks/use-chat-panel'
 import { useCommandExecutor } from '../../hooks/use-command-executor'
 import { useFileHistory } from '../../hooks/use-file-history'
+import { useTeamCost } from '../../hooks/use-teams'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { deriveLiveStatus } from '../../lib/derive-panel-mode'
@@ -39,8 +40,9 @@ import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { TeamBudgetSection } from '../teams/TeamBudgetSection'
 import { TeamsTab } from '../teams/TeamsTab'
-import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
+import type { TeamTranscriptBlock as GeneratedTeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
 import { DisplayModeToggle } from './DisplayModeToggle'
@@ -175,10 +177,12 @@ export function SessionDetailPanel({
   } = useChatPanel(data.id)
   useCommandExecutor(convStore, convDispatch, convPendingCmdsRef)
 
-  // Extract transcript block for Teams tab (if session is a completed team debate)
-  const transcriptBlock = (convBlocks as Array<{ type: string }>).find(
-    (b): b is { type: 'team_transcript' } & TeamTranscriptBlock => b.type === 'team_transcript',
-  ) as (TeamTranscriptBlock & { type: 'team_transcript' }) | undefined
+  // Extract transcript block for Teams tab — match session's teamName to handle
+  // sessions with multiple debates (`.find()` without filter returns the wrong one).
+  const transcriptBlock = convBlocks.find(
+    (b): b is GeneratedTeamTranscriptBlock & { type: 'team_transcript' } =>
+      b.type === 'team_transcript' && (!data.teamName || b.teamName === data.teamName),
+  ) as (GeneratedTeamTranscriptBlock & { type: 'team_transcript' }) | undefined
 
   // Dispatch live status so FSM transitions correctly for CLI-owned sessions
   useEffect(() => {
@@ -192,6 +196,7 @@ export function SessionDetailPanel({
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
   const hasTeam = !!data.teamName
+  const { data: teamCostData } = useTeamCost(hasTeam ? (data.teamName ?? null) : null)
 
   // ---- URL param: ?tab= (with backward compat for removed terminal/log tabs) ----
   const [searchParams] = useSearchParams()
@@ -884,6 +889,11 @@ export function SessionDetailPanel({
         {activeTab === 'cost' && (
           <div className="overflow-y-auto h-full">
             <CostBreakdown cost={data.cost} tokens={data.tokens} subAgents={data.subAgents} />
+            {teamCostData && (
+              <div className="border-t border-gray-200 dark:border-gray-800 p-4">
+                <TeamBudgetSection cost={teamCostData} />
+              </div>
+            )}
           </div>
         )}
 
