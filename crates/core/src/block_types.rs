@@ -347,6 +347,9 @@ pub enum SystemVariant {
     PlanContent,
     Informational,
     AgentName,
+    Attachment,
+    PermissionModeChange,
+    ScheduledTaskFire,
     Unknown,
 }
 
@@ -711,9 +714,12 @@ mod tests {
             SystemVariant::PlanContent,
             SystemVariant::Informational,
             SystemVariant::AgentName,
+            SystemVariant::Attachment,
+            SystemVariant::PermissionModeChange,
+            SystemVariant::ScheduledTaskFire,
             SystemVariant::Unknown,
         ];
-        assert_eq!(variants.len(), 22);
+        assert_eq!(variants.len(), 25);
         for variant in &variants {
             let block = SystemBlock {
                 id: "s1".into(),
