@@ -26,7 +26,7 @@ export function HookMetadataDetail({ rawJson }: HookMetadataDetailProps) {
           </span>
         )}
       </div>
-      <pre className="px-2.5 py-1.5 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
+      <pre className="px-2.5 py-1.5 font-mono text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto">
         {JSON.stringify({ hookInfos, hookErrors }, null, 2)}
       </pre>
     </div>
