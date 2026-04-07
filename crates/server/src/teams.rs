@@ -7,7 +7,7 @@
 use claude_view_core::pricing::{CostBreakdown, ModelPricing, TokenUsage};
 use memchr::memmem;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
@@ -30,13 +30,17 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Snapshot `~/.claude/teams/{name}/` → `~/.claude-view/teams/{name}/`.
+/// Snapshot `~/.claude/teams/{name}/` → `~/.claude-view/{session_id}/teams/{name}/`.
+///
+/// Keyed by session_id to avoid collisions when different sessions reuse the
+/// same team name. Layout: `{claude_view_dir}/{session_id}/teams/{team_name}/`.
 ///
 /// Called when `TeamDelete` tool_use is detected in a JSONL line (PreToolUse timing —
 /// files still exist). The backup survives Claude Code's cleanup hook and is used
 /// as a fallback in `TeamsStore::get()` / `TeamsStore::inbox()`.
 pub fn snapshot_team(
     team_name: &str,
+    session_id: &str,
     claude_dir: &Path,
     claude_view_dir: &Path,
 ) -> std::io::Result<()> {
@@ -44,7 +48,10 @@ pub fn snapshot_team(
     if !src.exists() {
         return Ok(());
     }
-    let dst = claude_view_dir.join("teams").join(team_name);
+    let dst = claude_view_dir
+        .join(session_id)
+        .join("teams")
+        .join(team_name);
     copy_dir_all(&src, &dst)
 }
 
@@ -141,6 +148,8 @@ pub struct TeamMemberCost {
     pub agent_type: String,
     /// Resolved session ID (None for in-process members whose cost is in the lead session).
     pub session_id: Option<String>,
+    /// True when member runs in-process — cost is included in the coordinator total.
+    pub in_process: bool,
     /// Total cost in USD (None if session not found or not yet resolved).
     #[ts(type = "number | null")]
     pub cost_usd: Option<f64>,
@@ -837,12 +846,17 @@ fn load_inbox(team_dir: &Path) -> Vec<InboxMessage> {
 }
 
 /// Parse a single team directory into a TeamDetail + inbox messages.
+///
+/// After loading config.json members and inbox messages, augments the member
+/// list with any inbox senders not already registered. This handles sub-agents
+/// spawned by team members (e.g. debate participants spawned by debate-judge)
+/// that communicate through the team inbox without being in config.json.
 fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
     let config_path = team_dir.join("config.json");
     let content = std::fs::read_to_string(&config_path).ok()?;
     let raw: RawTeamConfig = serde_json::from_str(&content).ok()?;
 
-    let members = raw
+    let mut members: Vec<TeamMember> = raw
         .members
         .into_iter()
         .map(|m| TeamMember {
@@ -857,6 +871,11 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
         })
         .collect();
 
+    let inbox = load_inbox(team_dir);
+
+    // Augment members from inbox senders not in config.json
+    augment_members_from_inbox(&mut members, &inbox);
+
     let detail = TeamDetail {
         name: raw.name,
         description: raw.description,
@@ -865,105 +884,126 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
         members,
     };
 
-    let inbox = load_inbox(team_dir);
     Some((detail, inbox))
+}
+
+/// Fill in members discovered only from inbox messages (not in config.json).
+/// Uses the first message's color if available, otherwise deterministic color.
+fn augment_members_from_inbox(members: &mut Vec<TeamMember>, inbox: &[InboxMessage]) {
+    let known: HashSet<String> = members.iter().map(|m| m.name.clone()).collect();
+
+    // Collect unique senders not already in members, preserving first-seen order
+    let mut seen = HashSet::new();
+    for msg in inbox {
+        if known.contains(&msg.from) || !seen.insert(msg.from.clone()) {
+            continue;
+        }
+        let color = msg
+            .color
+            .clone()
+            .unwrap_or_else(|| deterministic_color(&msg.from).to_string());
+        members.push(TeamMember {
+            agent_id: String::new(),
+            name: msg.from.clone(),
+            agent_type: "general-purpose".to_string(),
+            model: String::new(),
+            prompt: None,
+            color,
+            backend_type: None,
+            cwd: String::new(),
+        });
+    }
 }
 
 // ============================================================================
 // Team Member Session ID Resolution
 // ============================================================================
 
-/// Scan the lead session's JSONL to resolve team member names → session IDs.
+/// Resolved metadata for a team member extracted from the lead JSONL.
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedMemberInfo {
+    /// Session ID or agent ID (e.g. UUID or "name@team").
+    pub agent_id: String,
+    /// Model used by this member (from toolUseResult).
+    pub model: Option<String>,
+    /// True when tmux_pane_id == "in-process" — cost is embedded in the lead session.
+    pub in_process: bool,
+}
+
+// ============================================================================
+// JSONL Spawn Data Parsing (typed serde)
+// ============================================================================
+
+/// A single JSONL line — we only care about the top-level `toolUseResult`.
+#[derive(Deserialize)]
+struct JsonlLine {
+    #[serde(default, rename = "toolUseResult")]
+    tool_use_result: Option<SpawnResult>,
+}
+
+/// The `toolUseResult` object written by Claude Code when spawning a teammate.
+#[derive(Deserialize)]
+struct SpawnResult {
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    agent_id: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    team_name: String,
+    #[serde(default)]
+    tmux_pane_id: String,
+}
+
+/// Scan the lead session's JSONL to resolve team member names → spawn metadata.
 ///
-/// Matches Agent/Task tool_use blocks with `input.team_name` against their
-/// corresponding `toolUseResult` entries (status: teammate_spawned, async_launched, etc.)
-/// to extract the spawned session's `agentId`.
+/// Parses `toolUseResult` objects with `status: "teammate_spawned"` and
+/// matching `team_name`. Each result carries `name`, `agent_id`, `model`, and
+/// `tmux_pane_id` directly.
 pub fn resolve_team_member_sessions(
     lead_jsonl_path: &Path,
     team_name: &str,
-) -> HashMap<String, String> {
+) -> HashMap<String, ResolvedMemberInfo> {
     let Ok(content) = std::fs::read_to_string(lead_jsonl_path) else {
         return HashMap::new();
     };
 
-    let team_finder = memmem::Finder::new(team_name.as_bytes());
-    let agent_finder = memmem::Finder::new(b"\"Agent\"");
-    let task_finder = memmem::Finder::new(b"\"Task\"");
-    let result_finder = memmem::Finder::new(b"\"toolUseResult\"");
-
-    // Phase 1: tool_use_id → member_name from spawn lines
-    let mut spawn_map: HashMap<String, String> = HashMap::new();
-    // Phase 2: tool_use_id → agent_id (session_id) from result lines
-    let mut result_map: HashMap<String, String> = HashMap::new();
+    let mut members: HashMap<String, ResolvedMemberInfo> = HashMap::new();
 
     for line in content.lines() {
-        let raw = line.as_bytes();
-
-        // Agent/Task spawn lines with our team name
-        if team_finder.find(raw).is_some()
-            && (agent_finder.find(raw).is_some() || task_finder.find(raw).is_some())
-        {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(blocks) = parsed
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(|c| c.as_array())
-                {
-                    for block in blocks {
-                        let tool = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        if tool != "Agent" && tool != "Task" {
-                            continue;
-                        }
-                        let Some(inp) = block.get("input") else {
-                            continue;
-                        };
-                        if inp.get("team_name").and_then(|v| v.as_str()) != Some(team_name) {
-                            continue;
-                        }
-                        let tool_use_id = block.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                        let member_name = inp
-                            .get("name")
-                            .or_else(|| inp.get("description"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unnamed");
-                        if !tool_use_id.is_empty() {
-                            spawn_map.insert(tool_use_id.to_string(), member_name.to_string());
-                        }
-                    }
-                }
-            }
+        let Ok(parsed) = serde_json::from_str::<JsonlLine>(line) else {
+            continue;
+        };
+        let Some(spawn) = parsed.tool_use_result else {
+            continue;
+        };
+        if spawn.status != "teammate_spawned" || spawn.team_name != team_name {
+            continue;
+        }
+        if spawn.name.is_empty() || spawn.agent_id.is_empty() {
+            continue;
         }
 
-        // toolUseResult lines → extract agent_id (session_id)
-        if result_finder.find(raw).is_some() {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(tur) = parsed.get("toolUseResult") {
-                    let tool_use_id = tur.get("toolUseId").and_then(|v| v.as_str()).unwrap_or("");
-                    let agent_id = tur.get("agentId").and_then(|v| v.as_str()).unwrap_or("");
-                    if !tool_use_id.is_empty() && !agent_id.is_empty() {
-                        result_map.insert(tool_use_id.to_string(), agent_id.to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // Join: member_name → session_id
-    let mut member_sessions: HashMap<String, String> = HashMap::new();
-    for (tool_use_id, member_name) in &spawn_map {
-        if let Some(session_id) = result_map.get(tool_use_id) {
-            member_sessions.insert(member_name.clone(), session_id.clone());
-        }
+        members.insert(
+            spawn.name.clone(),
+            ResolvedMemberInfo {
+                agent_id: spawn.agent_id,
+                model: spawn.model,
+                in_process: spawn.tmux_pane_id == "in-process",
+            },
+        );
     }
 
     tracing::debug!(
-        "Resolved {}/{} team member sessions for '{}'",
-        member_sessions.len(),
-        spawn_map.len(),
+        "Resolved {} team member(s) for '{}'",
+        members.len(),
         team_name,
     );
 
-    member_sessions
+    members
 }
 
 /// Build a `TeamCostBreakdown` by resolving member sessions and computing costs.
@@ -978,9 +1018,9 @@ pub fn build_team_cost(
 ) -> TeamCostBreakdown {
     use claude_view_core::accumulator::SessionAccumulator;
 
-    let member_sessions = resolve_team_member_sessions(lead_jsonl_path, &team.name);
+    let resolved = resolve_team_member_sessions(lead_jsonl_path, &team.name);
 
-    // Lead session cost
+    // Lead session cost (includes all in-process member costs)
     let lead_rich = SessionAccumulator::from_file(lead_jsonl_path, pricing).ok();
     let lead_cost_usd = lead_rich.as_ref().map(|r| r.cost.total_usd).unwrap_or(0.0);
 
@@ -988,31 +1028,51 @@ pub fn build_team_cost(
     let mut total_cost_usd = lead_cost_usd;
 
     for member in &team.members {
-        // Lead's cost is already counted above
         if member.agent_type == "team-lead" {
             continue;
         }
 
-        let session_id = member_sessions.get(&member.name).cloned();
-        let rich_data = session_id
-            .as_ref()
-            .and_then(|sid| resolve_session_path(sid))
-            .and_then(|path| SessionAccumulator::from_file(&path, pricing).ok());
+        let info = resolved.get(&member.name);
+        let in_process = info.is_some_and(|i| i.in_process)
+            || member.backend_type.as_deref() == Some("in-process");
+        let session_id = info.map(|i| i.agent_id.clone());
 
-        let cost_usd = rich_data.as_ref().map(|r| r.cost.total_usd);
-        if let Some(c) = cost_usd {
-            total_cost_usd += c;
-        }
+        // Use resolved model if member's model is empty (inbox-augmented members)
+        let model = if !member.model.is_empty() {
+            member.model.clone()
+        } else {
+            info.and_then(|i| i.model.clone()).unwrap_or_default()
+        };
+
+        // In-process members' cost is already in lead_cost_usd — don't double-count
+        let (cost_usd, tokens, cost) = if in_process {
+            (None, None, None)
+        } else {
+            let rich_data = session_id
+                .as_ref()
+                .and_then(|sid| resolve_session_path(sid))
+                .and_then(|path| SessionAccumulator::from_file(&path, pricing).ok());
+            let usd = rich_data.as_ref().map(|r| r.cost.total_usd);
+            if let Some(c) = usd {
+                total_cost_usd += c;
+            }
+            (
+                usd,
+                rich_data.as_ref().map(|r| r.tokens.clone()),
+                rich_data.map(|r| r.cost),
+            )
+        };
 
         members.push(TeamMemberCost {
             name: member.name.clone(),
             color: member.color.clone(),
-            model: member.model.clone(),
+            model,
             agent_type: member.agent_type.clone(),
             session_id,
+            in_process,
             cost_usd,
-            tokens: rich_data.as_ref().map(|r| r.tokens.clone()),
-            cost: rich_data.map(|r| r.cost),
+            tokens,
+            cost,
         });
     }
 
@@ -1042,6 +1102,42 @@ pub struct TeamsStore {
     /// Populated at startup by scanning all session JSONL files.
     /// Used when a team's filesystem directory no longer exists.
     jsonl_index: TeamJSONLIndex,
+}
+
+/// Scan backup dir: `{cv_dir}/{session_id}/teams/{team_name}/`.
+/// Merges into existing maps (primary wins via `.entry().or_insert()`).
+fn scan_backup_teams(
+    cv_dir: &Path,
+    teams: &mut HashMap<String, TeamDetail>,
+    inboxes: &mut HashMap<String, Vec<InboxMessage>>,
+) {
+    let Ok(session_dirs) = std::fs::read_dir(cv_dir) else {
+        return;
+    };
+    for session_entry in session_dirs.flatten() {
+        let session_path = session_entry.path();
+        if !session_path.is_dir() {
+            continue;
+        }
+        let teams_subdir = session_path.join("teams");
+        if !teams_subdir.is_dir() {
+            continue;
+        }
+        let Ok(team_dirs) = std::fs::read_dir(&teams_subdir) else {
+            continue;
+        };
+        for team_entry in team_dirs.flatten() {
+            let team_path = team_entry.path();
+            if !team_path.is_dir() {
+                continue;
+            }
+            if let Some((detail, inbox)) = parse_team(&team_path) {
+                let name = detail.name.clone();
+                teams.entry(name.clone()).or_insert(detail);
+                inboxes.entry(name).or_insert(inbox);
+            }
+        }
+    }
 }
 
 /// Internal: scan the teams directory and return (teams, inboxes).
@@ -1101,15 +1197,9 @@ impl TeamsStore {
     fn load_with_index(claude_dir: &Path, claude_view_dir: Option<&Path>) -> Self {
         let (mut teams, mut inboxes) = scan_teams_dir(claude_dir);
 
-        // Merge backup dir (primary wins)
+        // Merge backup: {claude_view_dir}/{session_id}/teams/{team_name}/
         if let Some(vdir) = claude_view_dir {
-            let (backup_teams, backup_inboxes) = scan_teams_dir(vdir);
-            for (name, detail) in backup_teams {
-                teams.entry(name.clone()).or_insert(detail);
-            }
-            for (name, msgs) in backup_inboxes {
-                inboxes.entry(name).or_insert(msgs);
-            }
+            scan_backup_teams(vdir, &mut teams, &mut inboxes);
         }
 
         let jsonl_index = build_team_jsonl_index(claude_dir);
@@ -1164,15 +1254,9 @@ impl TeamsStore {
             Some(dir) => scan_teams_dir(dir),
             None => (HashMap::new(), HashMap::new()),
         };
-        // Merge backup (primary wins — .entry().or_insert())
+        // Merge backup: {claude_view_dir}/{session_id}/teams/{team_name}/
         if let Some(ref vdir) = self.claude_view_dir {
-            let (backup_teams, backup_inboxes) = scan_teams_dir(vdir);
-            for (name, detail) in backup_teams {
-                teams.entry(name.clone()).or_insert(detail);
-            }
-            for (name, msgs) in backup_inboxes {
-                inboxes.entry(name).or_insert(msgs);
-            }
+            scan_backup_teams(vdir, &mut teams, &mut inboxes);
         }
         (teams, inboxes)
     }
@@ -1800,10 +1884,14 @@ mod tests {
         let cv_dir = TempDir::new().unwrap();
         make_test_team(claude_dir.path());
 
-        snapshot_team("test-team", claude_dir.path(), cv_dir.path()).unwrap();
+        snapshot_team("test-team", "session-123", claude_dir.path(), cv_dir.path()).unwrap();
 
-        let dst_config = cv_dir.path().join("teams/test-team/config.json");
-        let dst_inbox = cv_dir.path().join("teams/test-team/inboxes/team-lead.json");
+        let dst_config = cv_dir
+            .path()
+            .join("session-123/teams/test-team/config.json");
+        let dst_inbox = cv_dir
+            .path()
+            .join("session-123/teams/test-team/inboxes/team-lead.json");
         assert!(dst_config.exists(), "config.json must be copied");
         assert!(dst_inbox.exists(), "inbox file must be copied");
 
@@ -1820,7 +1908,13 @@ mod tests {
         let cv_dir = TempDir::new().unwrap();
 
         // No team dir exists — should return Ok(()) without creating anything
-        snapshot_team("nonexistent", claude_dir.path(), cv_dir.path()).unwrap();
+        snapshot_team(
+            "nonexistent",
+            "session-456",
+            claude_dir.path(),
+            cv_dir.path(),
+        )
+        .unwrap();
         assert!(!cv_dir.path().join("teams/nonexistent").exists());
     }
 
@@ -1829,8 +1923,10 @@ mod tests {
         let claude_dir = TempDir::new().unwrap();
         let cv_dir = TempDir::new().unwrap();
 
-        // Write team fixture ONLY in backup dir (simulates post-cleanup state)
-        make_test_team(cv_dir.path());
+        // Write team fixture under {cv_dir}/{session_id}/ (new layout)
+        let session_dir = cv_dir.path().join("session-abc");
+        fs::create_dir_all(&session_dir).unwrap();
+        make_test_team(&session_dir);
 
         let store = TeamsStore::load_with_backup(claude_dir.path(), cv_dir.path());
         let team = store.get("test-team");
@@ -1859,14 +1955,98 @@ mod tests {
         )
         .unwrap();
 
-        // Backup: "v1" description
-        make_test_team(cv_dir.path());
+        // Backup: "v1" description (under session_id subdir)
+        let session_dir = cv_dir.path().join("session-old");
+        fs::create_dir_all(&session_dir).unwrap();
+        make_test_team(&session_dir);
 
         let store = TeamsStore::load_with_backup(claude_dir.path(), cv_dir.path());
         let team = store.get("test-team").unwrap();
         assert_eq!(
             team.description, "v2 primary",
             "Primary must win over backup"
+        );
+    }
+
+    #[test]
+    fn test_augments_members_from_inbox_senders() {
+        let tmp = TempDir::new().unwrap();
+        let team_dir = tmp.path().join("teams").join("debate-team");
+        fs::create_dir_all(team_dir.join("inboxes")).unwrap();
+
+        // config.json has only team-lead + judge
+        let config = serde_json::json!({
+            "name": "debate-team",
+            "description": "AI debate",
+            "createdAt": 1772568545480_i64,
+            "leadSessionId": "lead-session-id",
+            "members": [
+                { "agentId": "tl", "name": "team-lead", "agentType": "team-lead", "model": "haiku", "cwd": "/tmp" },
+                { "agentId": "dj", "name": "debate-judge", "agentType": "general-purpose", "model": "opus", "color": "purple", "cwd": "/tmp" }
+            ]
+        });
+        fs::write(
+            team_dir.join("config.json"),
+            serde_json::to_string(&config).unwrap(),
+        )
+        .unwrap();
+
+        // Inbox has messages from 3 additional agents not in config
+        let inbox = serde_json::json!([
+            { "from": "advocate", "text": "Collaboration is key", "timestamp": "2026-04-07T01:00:00Z", "read": true, "color": "green" },
+            { "from": "champion", "text": "Competition drives innovation", "timestamp": "2026-04-07T01:01:00Z", "read": true, "color": "red" },
+            { "from": "pragmatist", "text": "Both have merit", "timestamp": "2026-04-07T01:02:00Z", "read": true },
+            { "from": "debate-judge", "text": "Good points all", "timestamp": "2026-04-07T01:03:00Z", "read": true, "color": "purple" }
+        ]);
+        fs::write(
+            team_dir.join("inboxes").join("team-lead.json"),
+            serde_json::to_string(&inbox).unwrap(),
+        )
+        .unwrap();
+
+        let store = TeamsStore::load(tmp.path());
+        let team = &store.teams["debate-team"];
+
+        // Should have 5 members: 2 from config + 3 from inbox
+        assert_eq!(team.members.len(), 5, "Expected 2 config + 3 inbox members");
+
+        let names: Vec<&str> = team.members.iter().map(|m| m.name.as_str()).collect();
+        assert!(
+            names.contains(&"advocate"),
+            "advocate should be augmented from inbox"
+        );
+        assert!(
+            names.contains(&"champion"),
+            "champion should be augmented from inbox"
+        );
+        assert!(
+            names.contains(&"pragmatist"),
+            "pragmatist should be augmented from inbox"
+        );
+
+        // Augmented members should pick up color from their first inbox message
+        let advocate = team.members.iter().find(|m| m.name == "advocate").unwrap();
+        assert_eq!(advocate.color, "green", "color from inbox message");
+
+        // pragmatist had no color in message — gets deterministic fallback
+        let pragmatist = team
+            .members
+            .iter()
+            .find(|m| m.name == "pragmatist")
+            .unwrap();
+        assert!(
+            !pragmatist.color.is_empty(),
+            "should get deterministic color"
+        );
+
+        // debate-judge should NOT be duplicated
+        assert_eq!(
+            team.members
+                .iter()
+                .filter(|m| m.name == "debate-judge")
+                .count(),
+            1,
+            "config member should not be duplicated"
         );
     }
 
@@ -1891,10 +2071,14 @@ mod tests {
         .unwrap();
 
         // Snapshot overwrites backup
-        snapshot_team("test-team", claude_dir.path(), cv_dir.path()).unwrap();
+        snapshot_team("test-team", "session-123", claude_dir.path(), cv_dir.path()).unwrap();
 
-        let backup_content =
-            fs::read_to_string(cv_dir.path().join("teams/test-team/config.json")).unwrap();
+        let backup_content = fs::read_to_string(
+            cv_dir
+                .path()
+                .join("session-123/teams/test-team/config.json"),
+        )
+        .unwrap();
         let backup_config: serde_json::Value = serde_json::from_str(&backup_content).unwrap();
         assert_eq!(
             backup_config["description"].as_str().unwrap(),

@@ -1,7 +1,6 @@
-import { useTeamCost, useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
+import { useTeamDetail, useTeamInbox } from '../../hooks/use-teams'
 import type { TeamMember } from '../../types/generated'
 import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
-import { TeamBudgetSection } from './TeamBudgetSection'
 import { TeamChatView } from './TeamChatView'
 import { TranscriptHeader } from './TranscriptHeader'
 import { TranscriptBody } from './TranscriptBody'
@@ -30,8 +29,6 @@ export function TeamsTab({ teamName, inboxVersion, transcript, sseMembers }: Tea
     transcript ? null : teamName,
     inboxVersion,
   )
-  const { data: teamCost } = useTeamCost(transcript ? null : teamName)
-
   // If we have a transcript block (from JSONL accumulation), render the clean view
   if (transcript) {
     const speakerMap = new Map(
@@ -71,21 +68,8 @@ export function TeamsTab({ teamName, inboxVersion, transcript, sseMembers }: Tea
     )
   }
 
-  // Primary view: group chat with team cost footer
+  // Primary view: group chat only (cost is in the Cost tab)
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 min-h-0">
-        <TeamChatView
-          messages={inbox ?? []}
-          members={members}
-          topic={team?.description ?? teamName}
-        />
-      </div>
-      {teamCost && (
-        <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 p-3">
-          <TeamBudgetSection cost={teamCost} />
-        </div>
-      )}
-    </div>
+    <TeamChatView messages={inbox ?? []} members={members} topic={team?.description ?? teamName} />
   )
 }
