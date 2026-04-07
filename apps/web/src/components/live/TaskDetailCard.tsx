@@ -56,7 +56,7 @@ export function TaskDetailCard({ task, onScrollTo }: TaskDetailCardProps) {
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
-              className="text-xs text-indigo-500 dark:text-indigo-400 hover:underline mt-0.5 cursor-pointer"
+              className="text-xs text-amber-500 dark:text-amber-400 hover:underline mt-0.5 cursor-pointer"
             >
               {expanded ? 'Show less' : 'Show more'}
             </button>

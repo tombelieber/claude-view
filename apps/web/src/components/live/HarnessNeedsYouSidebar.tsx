@@ -184,8 +184,8 @@ function GroupedSidebarCards({
                     }}
                     className={cn(
                       'cursor-pointer rounded-lg transition-opacity',
-                      session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg',
-                      session.cacheStatus !== 'warm' && 'opacity-70',
+                      session.id === selectedId && 'ring-2 ring-amber-500 rounded-lg',
+                      /* opacity only for recently_closed, never needs_you */
                     )}
                   >
                     <SessionCard

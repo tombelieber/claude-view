@@ -61,7 +61,7 @@ export function NotificationSoundPopover({
               onClick={() => onSettingsChange({ enabled: !isEnabled })}
               className={cn(
                 'relative w-9 h-5 rounded-full transition-colors duration-150 cursor-pointer',
-                isEnabled ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600',
+                isEnabled ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600',
               )}
             >
               <span
@@ -87,8 +87,8 @@ export function NotificationSoundPopover({
               }
               disabled={!isEnabled}
               className={cn(
-                'w-full h-1 rounded-full appearance-none accent-indigo-500 cursor-pointer',
-                '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-indigo-500',
+                'w-full h-1 rounded-full appearance-none accent-amber-500 cursor-pointer',
+                '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-amber-500',
                 !isEnabled && 'opacity-40 cursor-not-allowed',
               )}
             />
@@ -109,7 +109,7 @@ export function NotificationSoundPopover({
                   'flex-1 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 cursor-pointer',
                   'border',
                   settings.sound === preset.value
-                    ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
+                    ? 'ring-2 ring-amber-500 bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300'
                     : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700',
                   !isEnabled && 'opacity-40 cursor-not-allowed',
                 )}
