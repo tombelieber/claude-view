@@ -888,8 +888,8 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
 
     let inbox = load_inbox(team_dir);
 
-    // Augment members from inbox senders not in config.json
-    augment_members_from_inbox(&mut members, &inbox);
+    // Augment members from inbox filenames (primary) and senders (fallback)
+    augment_members_from_inbox_files_and_senders(&mut members, team_dir, &inbox);
 
     let detail = TeamDetail {
         name: raw.name,
@@ -902,15 +902,58 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
     Some((detail, inbox))
 }
 
-/// Fill in members discovered only from inbox messages (not in config.json).
-/// Uses the first message's color if available, otherwise deterministic color.
-fn augment_members_from_inbox(members: &mut Vec<TeamMember>, inbox: &[InboxMessage]) {
+/// Fill in members discovered only from inbox files or messages (not in config.json).
+///
+/// Primary source: inbox filenames themselves (e.g., `ts-advocate.json` → member `ts-advocate`).
+/// This is the canonical source of truth for team membership — when an agent is spawned as
+/// a teammate, a corresponding `inboxes/{agent_name}.json` is created immediately.
+///
+/// Fallback: inbox message senders (for sub-agents that send messages but don't have inboxes).
+fn augment_members_from_inbox_files_and_senders(
+    members: &mut Vec<TeamMember>,
+    team_dir: &Path,
+    inbox: &[InboxMessage],
+) {
     let known: HashSet<String> = members.iter().map(|m| m.name.clone()).collect();
 
-    // Collect unique senders not already in members, preserving first-seen order
+    // Primary: Discover members from inbox filenames
+    let inbox_dir = team_dir.join("inboxes");
+    if let Ok(entries) = std::fs::read_dir(&inbox_dir) {
+        let mut inbox_agents: Vec<String> = entries
+            .flatten()
+            .filter_map(|entry| {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "json") {
+                    path.file_stem()
+                        .and_then(|name| name.to_str().map(String::from))
+                } else {
+                    None
+                }
+            })
+            .filter(|name| !known.contains(name) && !name.is_empty() && name != "team-lead")
+            .collect();
+        inbox_agents.sort(); // Deterministic order
+
+        for name in inbox_agents {
+            let color = deterministic_color(&name).to_string();
+            members.push(TeamMember {
+                agent_id: String::new(),
+                name,
+                agent_type: "general-purpose".to_string(),
+                model: String::new(),
+                prompt: None,
+                color,
+                backend_type: None,
+                cwd: String::new(),
+            });
+        }
+    }
+
+    // Fallback: Discover members from message senders (sub-agents that don't have inboxes)
+    let known_after_inboxes: HashSet<String> = members.iter().map(|m| m.name.clone()).collect();
     let mut seen = HashSet::new();
     for msg in inbox {
-        if known.contains(&msg.from) || !seen.insert(msg.from.clone()) {
+        if known_after_inboxes.contains(&msg.from) || !seen.insert(msg.from.clone()) {
             continue;
         }
         let color = msg
