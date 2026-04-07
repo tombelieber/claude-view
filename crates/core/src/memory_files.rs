@@ -247,9 +247,9 @@ fn read_memory_dir(
 /// progressively, then fall back to heuristics.
 ///
 /// Examples:
-/// - `-Users-TBGor-dev--vicky-ai-claude-view` → `claude-view`
-/// - `-Users-TBGor-dev--ok-trending-radar` → `trending-radar`
-/// - `-Users-TBGor-dev--vicky-ai-gomoku` → `gomoku`
+/// - `-Users-alice-dev--acme-my-project` → `my-project`
+/// - `-Users-alice-dev--ok-trending-radar` → `trending-radar`
+/// - `-Users-alice-dev--acme-gomoku` → `gomoku`
 pub fn project_dir_to_display_name(encoded: &str) -> String {
     // Step 1: Strip worktree suffixes
     let base = encoded.split("--worktrees-").next().unwrap_or(encoded);
@@ -518,9 +518,14 @@ This is the body content.
 
     #[test]
     fn test_project_dir_to_display_name() {
-        // Existing dir on disk → probe_encoded_path finds it
-        let cv = project_dir_to_display_name("-Users-TBGor-dev--vicky-ai-claude-view");
-        assert_eq!(cv, "claude-view");
+        // Filesystem probe with a real path that exists on this machine
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("dev").join("@acme").join("my-project");
+        fs::create_dir_all(&nested).unwrap();
+        // Encode the path the way Claude Code does: / → -
+        let encoded = nested.to_str().unwrap().replace('/', "-");
+        let result = project_dir_to_display_name(&encoded);
+        assert_eq!(result, "my-project");
 
         // Scoped package fallback (dir may not exist) → returns after last --
         // This test doesn't rely on filesystem state — it tests the heuristic
