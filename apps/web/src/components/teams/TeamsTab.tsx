@@ -1,4 +1,3 @@
-import { CheckCircle2, ChevronRight } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTeamDetail, useTeamInbox, useTeamSidechains } from '../../hooks/use-teams'
 import type { TeamMember } from '../../types/generated'
@@ -7,6 +6,7 @@ import type { TeamTranscriptBlock } from '../../types/generated/TeamTranscriptBl
 import { TeamChatView } from './TeamChatView'
 import { TranscriptHeader } from './TranscriptHeader'
 import { TranscriptBody } from './TranscriptBody'
+import { SidechainsSection } from './SidechainsSection'
 import { SubAgentBlockView } from '../live/SubAgentBlockView'
 
 interface TeamsTabProps {
@@ -17,10 +17,6 @@ interface TeamsTabProps {
   /** SSE-pushed members for live sessions — renders directly, zero HTTP calls. */
   sseMembers?: TeamMember[]
 }
-
-// ============================================================================
-// Main component
-// ============================================================================
 
 export function TeamsTab({
   teamName,
@@ -117,96 +113,8 @@ export function TeamsTab({
         />
       </div>
       {sidechainsByMember.size > 0 && (
-        <SidechainsSection byMember={sidechainsByMember} onSelect={setDrillDown} />
+        <SidechainsSection byMember={sidechainsByMember} members={members} onSelect={setDrillDown} />
       )}
-    </div>
-  )
-}
-
-// ============================================================================
-// Sidechains section
-// ============================================================================
-
-/** Format seconds into a compact human-readable duration (e.g., "21m", "3m 12s", "34s"). */
-function formatCompactDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return s > 0 ? `${m}m ${s}s` : `${m}m`
-}
-
-/** Shorten model ID for display (e.g., "claude-opus-4-6" → "opus"). */
-function shortModel(model: string): string {
-  if (!model) return ''
-  // Extract the model family name: "claude-opus-4-6" → "opus", "claude-haiku-4-5-20251001" → "haiku"
-  const match = model.match(/claude-(\w+)-/)
-  return match ? match[1] : model
-}
-
-function SidechainsSection({
-  byMember,
-  onSelect,
-}: {
-  byMember: Map<string, TeamMemberSidechain[]>
-  onSelect: (target: { hexId: string; memberName: string }) => void
-}) {
-  return (
-    <div className="w-56 flex-shrink-0 border-l border-gray-200 dark:border-gray-800 overflow-y-auto">
-      <h4 className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-        Member Sessions
-      </h4>
-
-      {[...byMember.entries()].map(([member, chains]) => {
-        const model = shortModel(chains[0]?.model ?? '')
-        return (
-          <div key={member} className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800/50 last:border-b-0">
-            {/* Member header: name + model badge + session count */}
-            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">
-              {member}
-            </p>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              {model && (
-                <span className="inline-flex items-center px-1 py-px rounded text-[10px] font-medium bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
-                  {model}
-                </span>
-              )}
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {chains.length} {chains.length === 1 ? 'session' : 'sessions'}
-              </span>
-            </div>
-
-            {/* Sidechain rows */}
-            {chains.map((sc) => {
-              const isShort = sc.durationSeconds < 60
-              return (
-                <button
-                  key={sc.hexId}
-                  type="button"
-                  onClick={() => onSelect({ hexId: sc.hexId, memberName: sc.memberName })}
-                  className="group w-full flex items-center gap-1.5 px-1.5 py-1 rounded text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
-                >
-                  {/* Status indicator */}
-                  <CheckCircle2 className={`w-3 h-3 flex-shrink-0 ${
-                    isShort
-                      ? 'text-amber-400 dark:text-amber-500'
-                      : 'text-green-500 dark:text-green-400'
-                  }`} />
-                  {/* Duration (hero metric) */}
-                  <span className="text-xs tabular-nums text-gray-600 dark:text-gray-400 min-w-[2.5rem]">
-                    {formatCompactDuration(sc.durationSeconds)}
-                  </span>
-                  {/* Line count */}
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                    {sc.lineCount} lines
-                  </span>
-                  {/* Drill-down chevron */}
-                  <ChevronRight className="w-3 h-3 ml-auto flex-shrink-0 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-              )
-            })}
-          </div>
-        )
-      })}
     </div>
   )
 }
