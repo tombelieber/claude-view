@@ -306,7 +306,7 @@ claude plugin add @claude-view/plugin
 
 | 工具 | 類別 | 技術棧 | 大小 | 即時監控 | 多 session 聊天 | 搜尋 | 分析 | MCP 工具 |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | 監控 + 工作區 | Rust | **~10 MB** | **是** | **是** | **是** | **是** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | 監控 + 工作區 | Rust | **~10 MB** | **是** | **是** | **是** | **是** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + session 管理 | Tauri 2 | ~13 MB | 部分 | 否 | 否 | 是 | 否 |
 | [ccusage](https://github.com/ryoppippi/ccusage) | CLI 用量追蹤 | TypeScript | ~600 KB | 否 | 否 | 否 | CLI | 否 |
 | [CodePilot](https://github.com/op7418/CodePilot) | 桌面聊天 UI | Electron | ~140 MB | 否 | 否 | 否 | 否 | 否 |

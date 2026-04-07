@@ -44,7 +44,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 claude-view is an open-source dashboard that monitors every Claude Code session on your machine — live agents, past conversations, costs, sub-agents, hooks, tool calls — in one place. Rust backend, React frontend, ~10 MB binary. Zero config, zero accounts, 100% local.
 
-**30 releases. 86 MCP tools. 9 skills. One `npx claude-view`.**
+**50+ releases. 85 MCP tools. 9 skills. One `npx claude-view`.**
 
 ---
 
@@ -61,7 +61,7 @@ See every running session at a glance. No more terminal tab-switching.
 | **Cost tracking** | Per-session and aggregate spend with token breakdown — hover for input/output/cache split by model |
 | **Sub-agent tree** | See the full tree of spawned agents, their status, costs, and what tools they're calling |
 | **Notification sounds** | Get pinged when a session finishes, errors, or needs your input — stop polling terminals |
-| **Multiple views** | Grid, List, Kanban, or Monitor mode — pick what fits your workflow |
+| **Multiple views** | Grid, List, Kanban, Monitor, or Harness mode — pick what fits your workflow |
 | **Kanban swimlanes** | Group sessions by project or branch — visual swimlane layout for multi-project workflows |
 | **Recently closed** | Sessions that end appear in "Recently Closed" instead of vanishing — persists across server restarts |
 | **Queued messages** | Messages waiting in the queue show as pending bubbles with a "Queued" badge |
@@ -205,7 +205,7 @@ Run a local LLM for session phase classification — no API calls, no extra cost
 
 ## Plugin
 
-`@claude-view/plugin` gives Claude native access to your dashboard data — 86 MCP tools, 9 skills, and auto-start.
+`@claude-view/plugin` gives Claude native access to your dashboard data — 85 MCP tools, 9 skills, and auto-start.
 
 ```bash
 claude plugin add @claude-view/plugin
@@ -215,7 +215,7 @@ claude plugin add @claude-view/plugin
 
 Every Claude Code session automatically starts the dashboard. No manual `npx claude-view` needed.
 
-### 86 MCP tools
+### 85 MCP tools
 
 8 hand-crafted tools with optimized output for Claude:
 
@@ -230,7 +230,7 @@ Every Claude Code session automatically starts the dashboard. No manual `npx cla
 | `list_live_sessions` | Currently running agents (real-time) |
 | `get_live_summary` | Aggregate cost and status for today |
 
-Plus **78 auto-generated tools** from the OpenAPI spec across 27 categories (contributions, insights, coaching, exports, workflows, and more).
+Plus **77 auto-generated tools** from the OpenAPI spec across 26 categories (contributions, insights, coaching, exports, workflows, and more).
 
 ### 9 Skills
 
@@ -306,7 +306,7 @@ Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, Tantivy
 
 | Tool | Category | Stack | Size | Live monitor | Multi-session chat | Search | Analytics | MCP tools |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Yes** | **Yes** | **Yes** | **Yes** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Yes** | **Yes** | **Yes** | **Yes** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + session manager | Tauri 2 | ~13 MB | Partial | No | No | Yes | No |
 | [ccusage](https://github.com/ryoppippi/ccusage) | CLI usage tracker | TypeScript | ~600 KB | No | No | No | CLI | No |
 | [CodePilot](https://github.com/op7418/CodePilot) | Desktop chat UI | Electron | ~140 MB | No | No | No | No | No |
@@ -413,7 +413,7 @@ Yes. claude-view monitors all Claude Code sessions regardless of how they were s
 
 - **Website:** [claudeview.ai](https://claudeview.ai) — docs, changelog, blog
 - **Discord:** [Join the server](https://discord.gg/G7wdZTpRfu) — support, feature requests, discussion
-- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 MCP tools, 9 skills, auto-start
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 85 MCP tools, 9 skills, auto-start
 
 ---
 
@@ -486,7 +486,7 @@ git push origin main --tags    # triggers CI → builds → auto-publishes to np
 ## Related
 
 - **[claudeview.ai](https://claudeview.ai)** — Official website, docs, and changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 86 MCP tools and 9 skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 85 MCP tools and 9 skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 
 ---

@@ -14,12 +14,12 @@ This guide helps you execute the comprehensive E2E test plan for session discove
 ### 1. Environment Setup
 
 ```bash
-# Start backend (from repo root)
-cd crates/server
-cargo run
+# Start full-stack dev (from repo root)
+bun dev
 
-# Start frontend (from repo root)
-npm run dev
+# Or start individually:
+bun run dev:server   # Rust backend only
+bun run dev:web      # Frontend only
 
 # Verify services running
 curl http://localhost:47892/api/health  # Backend health
@@ -41,10 +41,10 @@ Your test database should include:
 **Create test data if needed:**
 ```bash
 # Index your ~/.claude/ directory
-cargo run -p server -- index
+./scripts/cq run -p claude-view-server -- index
 
 # Or use test fixtures (if available)
-cargo test --test integration -- setup_test_data
+./scripts/cq test --test integration -- setup_test_data
 ```
 
 ### 3. Browser Requirements
@@ -97,13 +97,13 @@ Eventually, these tests should be automated in CI:
 
 ```bash
 # Run E2E tests (not yet implemented)
-npm run test:e2e
+bun run test:e2e
 
 # Run specific phase
-npm run test:e2e -- --grep "Phase A"
+bun run test:e2e -- --grep "Phase A"
 
 # Run with headed browser (see what's happening)
-npm run test:e2e -- --headed
+bun run test:e2e -- --headed
 ```
 
 ## Test Case Format
@@ -265,7 +265,7 @@ curl http://localhost:47892/api/health
 **Symptom:** Blank page or build errors
 **Solution:** Restart Vite dev server
 ```bash
-npm run dev
+bun dev
 # Should show: ➜ Local: http://localhost:5173/
 ```
 

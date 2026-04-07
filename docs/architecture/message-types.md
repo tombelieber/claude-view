@@ -757,7 +757,7 @@ export interface RichMessage {
 
 ## 6. Action Categories
 
-Tool calls and events are categorized for filtering in the Action Log. There are **10 categories** total.
+Tool calls and events are categorized for filtering in the Action Log. The Rust enum has **8 categories**; the frontend adds 2 synthetic categories (`hook_progress`, `error`) at render time.
 
 ### Tool Categories (category.rs `categorize_tool()`)
 
@@ -793,12 +793,15 @@ Tool calls and events are categorized for filtering in the Action Log. There are
 ### Full ActionCategory TypeScript Type
 
 ```typescript
-// apps/web/src/components/live/action-log/types.ts
+// packages/shared/src/types/generated/ActionCategory.ts (Rust-generated, 8 variants)
 export type ActionCategory =
   | 'skill' | 'mcp' | 'builtin' | 'agent'
-  | 'hook' | 'hook_progress'
-  | 'error' | 'system' | 'snapshot' | 'queue'
+  | 'hook' | 'system' | 'snapshot' | 'queue'
 ```
+
+The frontend adds two synthetic categories at render time:
+- `hook_progress` — overrides Rust `"hook"` for `hook_progress` data type (filter chip UI)
+- `error` — assigned to error messages by the frontend renderer
 
 ---
 

@@ -44,7 +44,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 claude-view ist ein Open-Source-Dashboard, das jede Claude Code-Sitzung auf deinem Rechner überwacht — laufende Agenten, vergangene Konversationen, Kosten, Sub-Agenten, Hooks, Tool-Aufrufe — alles an einem Ort. Rust-Backend, React-Frontend, ~10 MB Binary. Keine Konfiguration, keine Konten, 100 % lokal.
 
-**30 Releases. 86 MCP-Tools. 9 Skills. Ein `npx claude-view`.**
+**50+ Releases. 85 MCP-Tools. 9 Skills. Ein `npx claude-view`.**
 
 ---
 
@@ -205,7 +205,7 @@ Betreibe ein lokales LLM für die Sitzungsphasen-Klassifikation — keine API-Au
 
 ## Plugin
 
-`@claude-view/plugin` gibt Claude nativen Zugriff auf deine Dashboard-Daten — 86 MCP-Tools, 9 Skills und Auto-Start.
+`@claude-view/plugin` gibt Claude nativen Zugriff auf deine Dashboard-Daten — 85 MCP-Tools, 9 Skills und Auto-Start.
 
 ```bash
 claude plugin add @claude-view/plugin
@@ -215,7 +215,7 @@ claude plugin add @claude-view/plugin
 
 Jede Claude Code-Sitzung startet automatisch das Dashboard. Kein manuelles `npx claude-view` nötig.
 
-### 86 MCP-Tools
+### 85 MCP-Tools
 
 8 handgefertigte Tools mit optimierter Ausgabe für Claude:
 
@@ -230,7 +230,7 @@ Jede Claude Code-Sitzung startet automatisch das Dashboard. Kein manuelles `npx 
 | `list_live_sessions` | Aktuell laufende Agenten (Echtzeit) |
 | `get_live_summary` | Aggregierte Kosten und Status für heute |
 
-Plus **78 automatisch generierte Tools** aus der OpenAPI-Spezifikation in 27 Kategorien (Beiträge, Erkenntnisse, Coaching, Exporte, Workflows und mehr).
+Plus **77 automatisch generierte Tools** aus der OpenAPI-Spezifikation in 26 Kategorien (Beiträge, Erkenntnisse, Coaching, Exporte, Workflows und mehr).
 
 ### 9 Skills
 
@@ -306,7 +306,7 @@ Schlüsseltechniken: SIMD-Vorfilter (`memchr`), Memory-Mapped JSONL-Parsing, Tan
 
 | Tool | Kategorie | Stack | Größe | Live-Monitor | Multi-Session-Chat | Suche | Analytik | MCP-Tools |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + Workspace | Rust | **~10 MB** | **Ja** | **Ja** | **Ja** | **Ja** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + Workspace | Rust | **~10 MB** | **Ja** | **Ja** | **Ja** | **Ja** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + Session-Manager | Tauri 2 | ~13 MB | Teilweise | Nein | Nein | Ja | Nein |
 | [ccusage](https://github.com/ryoppippi/ccusage) | CLI-Nutzungstracker | TypeScript | ~600 KB | Nein | Nein | Nein | CLI | Nein |
 | [CodePilot](https://github.com/op7418/CodePilot) | Desktop-Chat-UI | Electron | ~140 MB | Nein | Nein | Nein | Nein | Nein |
@@ -413,7 +413,7 @@ Ja. claude-view überwacht alle Claude Code-Sitzungen, unabhängig davon, wie si
 
 - **Website:** [claudeview.ai](https://claudeview.ai) — Dokumentation, Changelog, Blog
 - **Discord:** [Server beitreten](https://discord.gg/G7wdZTpRfu) — Support, Feature-Wünsche, Diskussion
-- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 MCP-Tools, 9 Skills, Auto-Start
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 85 MCP-Tools, 9 Skills, Auto-Start
 
 ---
 
@@ -486,7 +486,7 @@ git push origin main --tags    # löst CI aus → baut → veröffentlicht autom
 ## Verwandte Projekte
 
 - **[claudeview.ai](https://claudeview.ai)** — Offizielle Website, Dokumentation und Changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code Plugin mit 86 MCP-Tools und 9 Skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code Plugin mit 85 MCP-Tools und 9 Skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code löscht deine Sitzungen nach 30 Tagen. Dieses Tool sichert sie. `npx claude-backup`
 
 ---
