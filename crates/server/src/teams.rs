@@ -195,10 +195,15 @@ pub type TeamJSONLIndex = HashMap<String, Vec<TeamJSONLRef>>;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawTeamConfig {
+    #[serde(default)]
     name: String,
+    #[serde(default)]
     description: String,
+    #[serde(default)]
     created_at: i64,
+    #[serde(default)]
     lead_session_id: String,
+    #[serde(default)]
     members: Vec<RawTeamMember>,
 }
 
@@ -206,9 +211,13 @@ struct RawTeamConfig {
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)] // Fields deserialized from on-disk JSON but not all are mapped to API types
 struct RawTeamMember {
+    #[serde(default)]
     agent_id: String,
+    #[serde(default)]
     name: String,
+    #[serde(default)]
     agent_type: String,
+    #[serde(default)]
     model: String,
     #[serde(default)]
     prompt: Option<String>,
@@ -231,7 +240,9 @@ struct RawTeamMember {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RawInboxMessage {
+    #[serde(default)]
     from: String,
+    #[serde(default)]
     text: String,
     #[serde(default)]
     timestamp: String,
@@ -862,7 +873,11 @@ fn parse_team(team_dir: &Path) -> Option<(TeamDetail, Vec<InboxMessage>)> {
         .map(|m| TeamMember {
             agent_id: m.agent_id,
             name: m.name,
-            agent_type: m.agent_type,
+            agent_type: if m.agent_type.is_empty() {
+                "general-purpose".to_string()
+            } else {
+                m.agent_type
+            },
             model: m.model,
             prompt: m.prompt,
             color: m.color,
@@ -1491,6 +1506,65 @@ mod tests {
 
         let store = TeamsStore::load(tmp.path());
         assert_eq!(store.teams.len(), 0);
+    }
+
+    #[test]
+    fn test_parses_members_missing_agent_type() {
+        // Regression: Claude Code's newer team format omits agentType on spawned
+        // members. Our parser must not reject the entire team because of it.
+        let tmp = TempDir::new().unwrap();
+        let team_dir = tmp.path().join("teams").join("bench-team");
+        fs::create_dir_all(team_dir.join("inboxes")).unwrap();
+
+        let config = serde_json::json!({
+            "name": "bench-team",
+            "description": "Benchmark team",
+            "createdAt": 1775511338926_i64,
+            "leadAgentId": "team-lead@bench-team",
+            "leadSessionId": "6da88ea5-b2b5-4388-a92d-f75664ae95ca",
+            "members": [
+                {
+                    "agentId": "team-lead@bench-team",
+                    "name": "team-lead",
+                    "agentType": "team-lead",
+                    "model": "claude-opus-4-6",
+                    "joinedAt": 1775511338926_i64,
+                    "tmuxPaneId": "",
+                    "cwd": "/tmp",
+                    "subscriptions": []
+                },
+                {
+                    // No agentType field — this is the new format
+                    "agentId": "ws-agent@bench-team",
+                    "name": "ws-agent",
+                    "model": "sonnet",
+                    "prompt": "Design WebSocket benchmark",
+                    "color": "yellow",
+                    "planModeRequired": false,
+                    "joinedAt": 1775511377975_i64,
+                    "tmuxPaneId": "%2",
+                    "cwd": "/tmp",
+                    "subscriptions": [],
+                    "backendType": "tmux"
+                }
+            ]
+        });
+        fs::write(
+            team_dir.join("config.json"),
+            serde_json::to_string_pretty(&config).unwrap(),
+        )
+        .unwrap();
+
+        let store = TeamsStore::load(tmp.path());
+        assert_eq!(
+            store.teams.len(),
+            1,
+            "team must be parsed despite missing agentType"
+        );
+        let team = &store.teams["bench-team"];
+        assert_eq!(team.members.len(), 2);
+        // Missing agentType should default to "general-purpose"
+        assert_eq!(team.members[1].agent_type, "general-purpose");
     }
 
     #[test]
