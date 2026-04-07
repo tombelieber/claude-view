@@ -86,8 +86,8 @@ export function GridControls({
           disabled={isAutoMode}
           className={cn(
             'w-16 h-1 rounded-full appearance-none cursor-pointer',
-            'accent-indigo-500',
-            '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-indigo-500',
+            'accent-amber-500',
+            '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-amber-500',
             isAutoMode && 'opacity-40 cursor-not-allowed',
           )}
         />
@@ -115,8 +115,8 @@ export function GridControls({
           disabled={isAutoMode}
           className={cn(
             'w-16 h-1 rounded-full appearance-none cursor-pointer',
-            'accent-indigo-500',
-            '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-indigo-500',
+            'accent-amber-500',
+            '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-amber-500',
             isAutoMode && 'opacity-40 cursor-not-allowed',
           )}
         />
@@ -135,7 +135,7 @@ export function GridControls({
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
           isAutoMode
-            ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 border border-transparent',
         )}
         aria-pressed={isAutoMode}
@@ -154,7 +154,7 @@ export function GridControls({
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
           compactHeaders
-            ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 border border-transparent',
         )}
         aria-pressed={compactHeaders}
@@ -173,7 +173,7 @@ export function GridControls({
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors',
           isDeveloper
-            ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/30'
+            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
             : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 border border-transparent',
         )}
         aria-pressed={isDeveloper}

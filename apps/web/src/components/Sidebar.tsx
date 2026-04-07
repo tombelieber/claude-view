@@ -665,7 +665,7 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
         onPointerDown={handleResizeStart}
         className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-10 group"
       >
-        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
+        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-amber-500/40 group-active:bg-amber-500/60 transition-colors" />
       </div>
       <div className="flex-1 min-h-0 flex flex-col">
         {/* ─── Zone 1: Navigation Tabs ─── */}

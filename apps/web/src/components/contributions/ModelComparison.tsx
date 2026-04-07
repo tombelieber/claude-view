@@ -45,7 +45,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
     return (
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Cpu className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+          <Cpu className="w-4 h-4 text-amber-500" aria-hidden="true" />
           <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             By Model
           </h2>
@@ -68,7 +68,7 @@ export function ModelComparison({ byModel }: ModelComparisonProps) {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
       <div className="flex items-center gap-2 mb-4">
-        <Cpu className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+        <Cpu className="w-4 h-4 text-amber-500" aria-hidden="true" />
         <h2 className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
           By Model
         </h2>

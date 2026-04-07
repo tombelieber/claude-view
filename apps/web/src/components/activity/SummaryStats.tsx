@@ -84,7 +84,7 @@ export function SummaryStats({ summary, label }: SummaryStatsProps) {
       icon: Sparkles,
       label: 'Skills',
       value: String(summary.uniqueSkills),
-      color: 'text-indigo-400 dark:text-indigo-500',
+      color: 'text-amber-400 dark:text-amber-500',
     },
   ]
 

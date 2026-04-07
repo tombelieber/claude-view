@@ -97,7 +97,7 @@ export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHea
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded"
+          className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 rounded"
         >
           <Icon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
           <FileIcon className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 shrink-0" />
@@ -123,7 +123,7 @@ export function FileChangeHeader({ file, sessionId, projectPath }: FileChangeHea
                   className={cn(
                     'text-xs font-mono px-1.5 py-0.5 rounded-full transition-colors cursor-pointer',
                     isActive
-                      ? 'bg-indigo-500 text-white'
+                      ? 'bg-amber-500 text-white'
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700',
                   )}
                 >

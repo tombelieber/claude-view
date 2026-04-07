@@ -7,8 +7,6 @@ import {
   CirclePause,
   Clock,
   FileCheck,
-  FileCode,
-  FileText,
   FolderOpen,
   GitBranch,
   Loader,
@@ -29,16 +27,15 @@ import { SessionSpinner, pickVerb } from '../spinner'
 import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
-import { SessionBadges } from './SessionBadges'
-import { SessionToolChips } from './SessionToolChips'
-import { SubAgentPills } from './SubAgentPills'
 import { TaskProgressList } from './TaskProgressList'
-import { TeamMemberPills } from './TeamMemberPills'
 import { hasUnavailableCost } from './cost-display'
 import { getEffectiveBranch } from './effective-branch'
 import type { AgentState } from './types'
 import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
+import { useTeamSidechains } from '../../hooks/use-teams'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
+
+// ─── StateBadge (exported — used by Harness, ListView, TerminalOverlay) ──
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MessageCircle,
@@ -64,21 +61,6 @@ const COLOR_MAP: Record<string, string> = {
   gray: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
 }
 
-function formatDurationMs(ms: number): string {
-  const secs = Math.round(ms / 1000)
-  if (secs < 60) return `${secs}s`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m`
-  const hours = Math.floor(mins / 60)
-  const remMins = mins % 60
-  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
-}
-
-const MAX_VISIBLE_FILES = 3
-const TOOLTIP_CONTENT_CLASS =
-  'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs'
-const TOOLTIP_ARROW_CLASS = 'fill-gray-200 dark:fill-gray-700'
-
 function StateBadge({ agentState }: { agentState: AgentState }) {
   const known = KNOWN_STATES[agentState.state]
   const defaults = GROUP_DEFAULTS[agentState.group]
@@ -98,6 +80,224 @@ function StateBadge({ agentState }: { agentState: AgentState }) {
 }
 
 export { StateBadge }
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+function formatDurationMs(ms: number): string {
+  const secs = Math.round(ms / 1000)
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h${remMins}m` : `${hours}h`
+}
+
+const TOOLTIP_CLS =
+  'bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-sm text-xs'
+const ARROW_CLS = 'fill-gray-200 dark:fill-gray-700'
+
+// ─── Shared detail-zone text classes ──────────────────────────────────
+// 3 levels only: label (muted), content (readable), accent (colored)
+const TXT = {
+  label: 'text-gray-500 dark:text-gray-400', // labels, separators, overflow counts
+  content: 'text-gray-700 dark:text-gray-300', // values — file names, tool names, member names
+  accent: 'text-amber-600 dark:text-amber-400', // team name accent (Anthropic brand)
+} as const
+const SEP = <span className={`${TXT.label} mx-0.5`}>·</span>
+
+function DetailLabel({ children }: { children: React.ReactNode }) {
+  return <span className={`${TXT.label} shrink-0 select-none`}>{children}</span>
+}
+
+// ─── Detail-zone renderers (plain text, no colored pills) ─────────────
+
+const FILE_KIND_ICON: Record<string, React.ReactNode> = {
+  mention: <span className="text-emerald-500 dark:text-emerald-400 font-semibold">@</span>,
+  ide: <span className="text-sky-500 dark:text-sky-400">↗</span>,
+  pasted: <span className="text-violet-500 dark:text-violet-400">⎘</span>,
+}
+
+function FilesLine({ files }: { files: NonNullable<LiveSession['userFiles']> }) {
+  if (files.length === 0) return null
+  const visible = files.slice(0, 4)
+  const overflow = files.length - 4
+
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <div className="flex items-center gap-1.5 text-xs cursor-default min-w-0">
+          <DetailLabel>Files</DetailLabel>
+          <span className={`flex items-center gap-1 ${TXT.content} font-mono flex-wrap min-w-0`}>
+            {visible.map((f, i) => (
+              <span key={f.path} className="inline-flex items-center gap-0.5 shrink-0">
+                {i > 0 && SEP}
+                {FILE_KIND_ICON[f.kind] ?? FILE_KIND_ICON.mention}
+                {f.displayName}
+              </span>
+            ))}
+            {overflow > 0 && <span className={`${TXT.label} shrink-0 ml-0.5`}>+{overflow}</span>}
+          </span>
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className={TOOLTIP_CLS} sideOffset={5}>
+          <div className="space-y-0.5">
+            {files.map((f) => (
+              <div key={f.path} className="flex items-center gap-1.5">
+                <span className="shrink-0">{FILE_KIND_ICON[f.kind]}</span>
+                <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
+                  {f.path}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Tooltip.Arrow className={ARROW_CLS} />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
+}
+
+function cleanToolName(name: string, kind: string): string {
+  if (kind !== 'mcp') return name
+  let cleaned = name.startsWith('plugin_') ? name.slice(7) : name
+  const parts = cleaned.split('_')
+  if (parts.length === 2 && parts[0] === parts[1]) cleaned = parts[0]
+  return cleaned
+}
+
+function ToolsLine({ tools }: { tools: { name: string; kind: string }[] }) {
+  if (tools.length === 0) return null
+  const visible = tools.slice(0, 4)
+  const overflow = tools.length - 4
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs min-w-0">
+      <DetailLabel>Tools</DetailLabel>
+      <span className={`flex items-center gap-1 ${TXT.content} flex-wrap min-w-0`}>
+        {visible.map((t, i) => (
+          <span key={`${t.kind}-${t.name}`} className="inline-flex items-center gap-0.5 shrink-0">
+            {i > 0 && SEP}
+            <span className={TXT.label}>{t.kind === 'mcp' ? '⊞' : '⚡'}</span>
+            {cleanToolName(t.name, t.kind)}
+          </span>
+        ))}
+        {overflow > 0 && <span className={`${TXT.label} shrink-0 ml-0.5`}>+{overflow}</span>}
+      </span>
+    </div>
+  )
+}
+
+const STATUS_DOT: Record<string, string> = {
+  running: 'bg-green-500',
+  complete: 'bg-gray-400 dark:bg-gray-500',
+  error: 'bg-red-500',
+}
+
+function AgentsLine({ subAgents }: { subAgents: LiveSession['subAgents'] }) {
+  if (!subAgents || subAgents.length === 0) return null
+  const visible = subAgents.slice(0, 3)
+  const overflow = subAgents.length - 3
+
+  return (
+    <div className="text-xs space-y-0.5">
+      <DetailLabel>Agents</DetailLabel>
+      {visible.map((a) => (
+        <div key={a.toolUseId} className="flex items-center gap-1.5 pl-1 min-w-0">
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[a.status] ?? STATUS_DOT.complete}`}
+          />
+          <span className={`font-medium ${TXT.content} shrink-0`}>{a.agentType}</span>
+          {a.description && <span className={TXT.label}>{a.description}</span>}
+        </div>
+      ))}
+      {overflow > 0 && <div className={`pl-1 ${TXT.label}`}>+{overflow} more</div>}
+    </div>
+  )
+}
+
+function TeamLine({ session }: { session: LiveSession }) {
+  if (!session.teamName) return null
+  const members = session.teamMembers ?? []
+
+  return (
+    <div className="text-xs space-y-0.5">
+      <div className="flex items-center gap-1.5">
+        <DetailLabel>Team</DetailLabel>
+        <span className={`font-medium ${TXT.accent}`}>{session.teamName}</span>
+      </div>
+      {members.length > 0 && (
+        <div className={`flex items-center gap-1 pl-1 flex-wrap ${TXT.label}`}>
+          {members.map((m, i) => (
+            <span key={m.agentId} className="inline-flex items-center gap-0.5 shrink-0">
+              {i > 0 && SEP}
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: m.color }}
+              />
+              <span className={TXT.content}>{m.name}</span>
+              <span className={TXT.label}>{m.model}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function LocationGrouped({ session }: { session: LiveSession }) {
+  const { branch, isWorktree } = getEffectiveBranch(
+    session.gitBranch,
+    session.worktreeBranch ?? null,
+    session.isWorktree ?? false,
+  )
+
+  return (
+    <div className="text-xs">
+      <div className={`flex items-center gap-1 ${TXT.content}`}>
+        <FolderOpen className="w-3 h-3 shrink-0 text-amber-500 dark:text-amber-400" />
+        <span className="truncate">{session.projectDisplayName || session.project}</span>
+        {branch && (
+          <>
+            {SEP}
+            <GitBranch className={`w-2.5 h-2.5 shrink-0 ${TXT.label}`} />
+            <span className={`font-mono ${TXT.label}`}>{branch}</span>
+            {isWorktree && (
+              <TreePine className="w-2.5 h-2.5 shrink-0 text-green-500 dark:text-green-400" />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MetaFooter({ session }: { session: LiveSession }) {
+  const parts: string[] = []
+  if (session.statuslineVimMode) parts.push(`VIM:${session.statuslineVimMode}`)
+  if (session.statuslineOutputStyle && session.statuslineOutputStyle !== 'default')
+    parts.push(session.statuslineOutputStyle)
+  if (session.statuslineVersion) parts.push(`v${session.statuslineVersion}`)
+  if (session.sessionKind === 'background') parts.push('subagent')
+  if (session.statuslineWorktreeName) parts.push(`wt:${session.statuslineWorktreeName}`)
+  if (session.statuslineAgentName) parts.push(session.statuslineAgentName)
+
+  if (parts.length === 0) return null
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${TXT.label} font-mono select-none`}>
+      {parts.map((p, i) => (
+        <span key={p}>
+          {i > 0 && <span className="mr-1.5">·</span>}
+          {p}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// ─── SessionCard ──────────────────────────────────────────────────────
 
 interface SessionCardProps {
   session: LiveSession
@@ -123,17 +323,23 @@ export function SessionCard({
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
-  // Title: last user message (cleaned) > first user message > project display name
   const rawLastMessage = session.lastUserMessage || ''
   const rawTitle = session.title || ''
   const cleanedLastMessage = rawLastMessage ? cleanPreviewText(rawLastMessage) : ''
   const cleanedTitle = rawTitle ? cleanPreviewText(rawTitle) : ''
+  const aiTitle = session.aiTitle || ''
   const title = cleanedLastMessage || cleanedTitle || session.projectDisplayName || session.project
 
-  // Show "last message" only when different from title
   const lastMsg = cleanedLastMessage
   const showLastMsg = lastMsg && lastMsg !== title
-  const totalCost = sessionTotalCost(session)
+
+  // Fetch sidechain costs for team sessions (team sessions are rare — 1-2 max in any view)
+  const { data: sidechainsData } = useTeamSidechains(
+    session.teamName ?? null,
+    session.teamName ? session.id : null,
+  )
+  const sidechainCostTotal = sidechainsData?.reduce((sum, sc) => sum + (sc.costUsd ?? 0), 0) ?? 0
+  const totalCost = sessionTotalCost(session) + sidechainCostTotal
   const totalCostLabel = hasUnavailableCost(totalCost, session.cost, session.tokens.totalTokens)
     ? 'Unavailable'
     : formatCostUsd(totalCost)
@@ -144,11 +350,24 @@ export function SessionCard({
     isCompacting ? 'animate-live-compact-breathe' : 'border-gray-200 dark:border-gray-700'
   }`
 
+  const files = session.userFiles ?? []
+  const tools = session.toolsUsed ?? []
+  const hasPhaseData = session.phase?.current?.phase && session.phase.current.phase !== 'working'
+  const isClassifying = !hasPhaseData && isAutonomous && session.turnCount > 0
+
+  const hasLocation = !hideProjectBranch
+  const hasFiles = files.length > 0
+  const hasTools = tools.length > 0
+  const hasTeam = Boolean(session.teamName)
+  const hasAgents = session.subAgents && session.subAgents.length > 0
+  const hasDetails = hasLocation || hasFiles || hasTools || hasTeam || hasAgents
+
   const cardContent = (
-    <>
-      {/* Header: badges + cost */}
-      <div className="flex items-center gap-2 mb-1">
-        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+    <Tooltip.Provider delayDuration={200}>
+      {/* ── Row 1: Status + Phase (hero) → Cost ── */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <SourceBadge source={session.source} />
           {showStateBadge ? (
             <StateBadge agentState={session.agentState} />
           ) : (
@@ -163,227 +382,52 @@ export function SessionCard({
               </span>
             )
           )}
-          <SourceBadge source={session.source} />
-          {session.sessionKind === 'background' && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              Subagent
-            </span>
-          )}
-          {session.statuslineVersion && (
-            <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
-              v{session.statuslineVersion}
-            </span>
-          )}
-          {!hideProjectBranch && (
-            <>
-              <span
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded truncate max-w-30"
-                title={[
-                  session.projectPath || session.projectDisplayName || session.project,
-                  session.statuslineCwd &&
-                    session.statuslineCwd !== session.projectPath &&
-                    `cwd: ${session.statuslineCwd}`,
-                  session.statuslineProjectDir &&
-                    session.statuslineProjectDir !== session.projectPath &&
-                    `project: ${session.statuslineProjectDir}`,
-                  session.statuslineTranscriptPath &&
-                    `transcript: ${session.statuslineTranscriptPath}`,
-                ]
-                  .filter(Boolean)
-                  .join('\n')}
-              >
-                <FolderOpen className="w-2.5 h-2.5 shrink-0 text-amber-500 dark:text-amber-400" />
-                {session.projectDisplayName || session.project}
-              </span>
-              {(() => {
-                const { branch, driftOrigin, isWorktree } = getEffectiveBranch(
-                  session.gitBranch,
-                  session.worktreeBranch ?? null,
-                  session.isWorktree ?? false,
-                )
-                if (!branch) return null
-                return (
-                  <span
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300 rounded"
-                    title={driftOrigin ? `${branch} (worktree, started on ${driftOrigin})` : branch}
-                  >
-                    <GitBranch className="w-2.5 h-2.5 shrink-0" />
-                    <span className="truncate">{branch}</span>
-                    {isWorktree && (
-                      <TreePine className="w-2.5 h-2.5 shrink-0 text-green-600 dark:text-green-400" />
-                    )}
-                    {driftOrigin && (
-                      <span className="text-xs text-violet-400 dark:text-violet-500 ml-0.5">
-                        {'↗'}
-                        {driftOrigin}
-                      </span>
-                    )}
-                  </span>
-                )
-              })()}
-            </>
-          )}
+          {hasPhaseData ? (
+            <PhaseBadge
+              phase={session.phase!.current!.phase}
+              scope={session.phase?.current?.scope}
+              freshness={session.phase?.freshness}
+            />
+          ) : isClassifying ? (
+            <PhaseBadgeSkeleton />
+          ) : null}
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <CostTooltip
-            cost={session.cost}
-            cacheStatus={session.cacheStatus}
-            tokens={session.tokens}
-            subAgents={session.subAgents}
-            compactCount={session.compactCount}
-          >
-            <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums">
-              {totalCostLabel}
-            </span>
-          </CostTooltip>
-        </div>
+        <CostTooltip
+          cost={session.cost}
+          cacheStatus={session.cacheStatus}
+          tokens={session.tokens}
+          subAgents={session.subAgents}
+          sidechains={sidechainsData}
+          compactCount={session.compactCount}
+        >
+          <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
+            {totalCostLabel}
+          </span>
+        </CostTooltip>
       </div>
 
-      {/* Phase badge or oMLX skeleton — above title */}
-      {(() => {
-        const currentPhase = session.phase?.current?.phase
-        const hasPhase = currentPhase && currentPhase !== 'working'
-        const isClassifying = !hasPhase && isAutonomous && session.turnCount > 0
-        if (hasPhase) {
-          return (
-            <div className="mb-1">
-              <PhaseBadge
-                phase={currentPhase}
-                scope={session.phase?.current?.scope}
-                freshness={session.phase?.freshness}
-              />
-            </div>
-          )
-        }
-        if (isClassifying) {
-          return (
-            <div className="mb-1">
-              <PhaseBadgeSkeleton />
-            </div>
-          )
-        }
-        return null
-      })()}
+      {/* ── AI title ── */}
+      {aiTitle && (
+        <p className={`text-xs ${TXT.label} mb-0.5 truncate`}>
+          <span className="mr-1">✦</span>
+          {aiTitle}
+        </p>
+      )}
 
-      {/* Title: latest human prompt, with fallback to first prompt/project name */}
-      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mb-1">
+      {/* ── Title ── */}
+      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2 mb-0.5">
         {title}
       </p>
 
-      {/* Last user message (if different from title) */}
+      {/* ── Last user message ── */}
       {showLastMsg && (
-        <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1 mb-1">
-          <span className="text-gray-300 dark:text-gray-600 mr-1">{'->'}</span>
+        <p className={`text-xs ${TXT.label} line-clamp-1 mb-1`}>
+          <span className="mr-1">→</span>
           {lastMsg}
         </p>
       )}
 
-      {/* File context: VerifiedFile chips by kind (mention=emerald, ide=sky, pasted=violet) */}
-      {(() => {
-        const files = session.userFiles ?? []
-        if (files.length === 0) return null
-        const visible = files.slice(0, MAX_VISIBLE_FILES)
-        const overflow = files.slice(MAX_VISIBLE_FILES)
-
-        const kindStyle = {
-          mention: {
-            bg: 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300',
-            icon: <span className="shrink-0 font-semibold">@</span>,
-            tooltipIcon: (
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
-                @
-              </span>
-            ),
-          },
-          ide: {
-            bg: 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300',
-            icon: <FileText className="h-2.5 w-2.5 shrink-0" />,
-            tooltipIcon: <FileText className="h-3 w-3 shrink-0 text-sky-500 dark:text-sky-400" />,
-          },
-          pasted: {
-            bg: 'bg-violet-50 dark:bg-violet-950/40 border-violet-200 dark:border-violet-800 text-violet-700 dark:text-violet-300',
-            icon: <FileCode className="h-2.5 w-2.5 shrink-0" />,
-            tooltipIcon: (
-              <FileCode className="h-3 w-3 shrink-0 text-violet-500 dark:text-violet-400" />
-            ),
-          },
-        } as const
-
-        return (
-          <Tooltip.Provider delayDuration={200}>
-            <div className="flex flex-wrap items-center gap-1 mb-1">
-              {visible.map((file) => {
-                const style = kindStyle[file.kind] ?? kindStyle.mention
-                return (
-                  <Tooltip.Root key={`${file.kind}-${file.path}`}>
-                    <Tooltip.Trigger asChild>
-                      <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-mono rounded border max-w-[160px] truncate cursor-default ${style.bg}`}
-                      >
-                        {style.icon}
-                        <span className="truncate">{file.displayName}</span>
-                      </span>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
-                        <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
-                          {file.path}
-                        </span>
-                        <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                )
-              })}
-              {overflow.length > 0 && (
-                <Tooltip.Root>
-                  <Tooltip.Trigger asChild>
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 cursor-default">
-                      +{overflow.length} more
-                    </span>
-                  </Tooltip.Trigger>
-                  <Tooltip.Portal>
-                    <Tooltip.Content className={TOOLTIP_CONTENT_CLASS} sideOffset={5}>
-                      <div className="space-y-1">
-                        {overflow.map((file) => {
-                          const style = kindStyle[file.kind] ?? kindStyle.mention
-                          return (
-                            <div
-                              key={`${file.kind}-${file.path}`}
-                              className="flex items-center gap-1.5"
-                            >
-                              {style.tooltipIcon}
-                              <span className="font-mono text-gray-900 dark:text-gray-100 break-all">
-                                {file.path}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      <Tooltip.Arrow className={TOOLTIP_ARROW_CLASS} />
-                    </Tooltip.Content>
-                  </Tooltip.Portal>
-                </Tooltip.Root>
-              )}
-            </div>
-          </Tooltip.Provider>
-        )
-      })()}
-
-      {/* Session metadata badges: vim mode, agent identity, output style, worktree */}
-      <SessionBadges
-        vimMode={session.statuslineVimMode}
-        agentName={session.statuslineAgentName}
-        agentContext={session.currentActivity}
-        outputStyle={session.statuslineOutputStyle}
-        worktreeName={session.statuslineWorktreeName}
-        worktreePath={session.statuslineWorktreePath}
-        worktreeBranch={session.statuslineWorktreeBranch}
-        worktreeOriginalCwd={session.statuslineWorktreeOriginalCwd}
-        worktreeOriginalBranch={session.statuslineWorktreeOriginalBranch}
-      />
-
-      {/* Spinner row */}
+      {/* ── Spinner ── */}
       <div className="mb-2">
         <SessionSpinner
           mode="live"
@@ -400,71 +444,17 @@ export function SessionCard({
         />
       </div>
 
-      {/* Question card (AskUserQuestion) — show whenever context has questions,
-          regardless of specific state (awaiting_input, needs_permission, etc.) */}
+      {/* ── AskUserQuestion ── */}
       {session.agentState.context && isAskUserQuestionInput(session.agentState.context) && (
         <AskUserQuestionDisplay inputData={session.agentState.context} variant="amber" />
       )}
 
-      {/* Task progress */}
+      {/* ── Task progress ── */}
       {session.progressItems && session.progressItems.length > 0 && (
         <TaskProgressList items={session.progressItems} />
       )}
 
-      {/* Team section — badge + member pills */}
-      {session.teamName && (
-        <div className="mb-2 -mx-1 px-1">
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-xs font-medium uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-              Team
-            </span>
-            <Tooltip.Provider delayDuration={200}>
-              <Tooltip.Root>
-                <Tooltip.Trigger asChild>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 text-indigo-800 dark:text-indigo-200 cursor-default">
-                    <TreePine className="h-3 w-3 shrink-0" />
-                    {session.teamName}
-                  </span>
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Content
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 shadow-lg z-50 max-w-xs text-xs"
-                    sideOffset={5}
-                  >
-                    <p className="font-medium text-gray-900 dark:text-gray-100">
-                      Agent Team: {session.teamName}
-                    </p>
-                    <p className="text-gray-500 dark:text-gray-400 mt-0.5">
-                      Coordinated multi-agent team. Open the detail panel's Teams tab for members
-                      and inbox.
-                    </p>
-                    <Tooltip.Arrow className="fill-gray-200 dark:fill-gray-700" />
-                  </Tooltip.Content>
-                </Tooltip.Portal>
-              </Tooltip.Root>
-            </Tooltip.Provider>
-          </div>
-          {session.teamMembers && session.teamMembers.length > 0 && (
-            <TeamMemberPills members={session.teamMembers} />
-          )}
-        </div>
-      )}
-
-      {/* Sub-agents — inline pills matching SessionBadges aesthetic */}
-      {session.subAgents && session.subAgents.length > 0 && (
-        <div className="mb-1">
-          <SubAgentPills subAgents={session.subAgents} />
-        </div>
-      )}
-
-      {/* Tool integrations (MCP servers, Skills) */}
-      {session.toolsUsed && session.toolsUsed.length > 0 && (
-        <div className="mb-2 -mx-1">
-          <SessionToolChips tools={session.toolsUsed} />
-        </div>
-      )}
-
-      {/* Context gauge */}
+      {/* ── Context gauge ── */}
       <ContextGauge
         contextWindowTokens={session.contextWindowTokens}
         model={session.model}
@@ -481,31 +471,16 @@ export function SessionCard({
         statuslineTotalOutputTokens={session.statuslineTotalOutputTokens}
       />
 
-      {/* Footer: duration + lines changed */}
+      {/* ── Duration + lines changed ── */}
       {(session.statuslineTotalDurationMs != null ||
         session.statuslineLinesAdded != null ||
         session.statuslineLinesRemoved != null) && (
-        <div className="flex items-center gap-3 mt-2 text-xs text-gray-400 dark:text-gray-500">
+        <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-gray-500 font-mono tabular-nums">
           {session.statuslineTotalDurationMs != null && (
-            <span
-              className="font-mono tabular-nums"
-              title={
-                session.statuslineApiDurationMs != null
-                  ? `Total: ${formatDurationMs(Number(session.statuslineTotalDurationMs))} · API: ${formatDurationMs(Number(session.statuslineApiDurationMs))}`
-                  : undefined
-              }
-            >
-              {formatDurationMs(Number(session.statuslineTotalDurationMs))}
-              {session.statuslineApiDurationMs != null && (
-                <span className="text-gray-300 dark:text-gray-600">
-                  {' '}
-                  (API {formatDurationMs(Number(session.statuslineApiDurationMs))})
-                </span>
-              )}
-            </span>
+            <span>{formatDurationMs(Number(session.statuslineTotalDurationMs))}</span>
           )}
           {(session.statuslineLinesAdded != null || session.statuslineLinesRemoved != null) && (
-            <span className="font-mono tabular-nums">
+            <span>
               {session.statuslineLinesAdded != null && (
                 <span className="text-green-500 dark:text-green-400">
                   +{Number(session.statuslineLinesAdded)}
@@ -523,7 +498,19 @@ export function SessionCard({
           )}
         </div>
       )}
-    </>
+
+      {/* ── Detail zone — plain text, labeled lines ── */}
+      {hasDetails && (
+        <div className="border-t border-gray-100 dark:border-gray-800 mt-2.5 pt-2 space-y-1">
+          {hasLocation && <LocationGrouped session={session} />}
+          {hasFiles && <FilesLine files={files} />}
+          {hasTools && <ToolsLine tools={tools} />}
+          {hasTeam && <TeamLine session={session} />}
+          {hasAgents && <AgentsLine subAgents={session.subAgents} />}
+          <MetaFooter session={session} />
+        </div>
+      )}
+    </Tooltip.Provider>
   )
 
   if (onClickOverride) {

@@ -53,7 +53,7 @@ export function OpenInIdeButton({ projectPath, filePath, compact }: OpenInIdeBut
         title={label}
         className={cn(
           'inline-flex items-center gap-1 transition-colors cursor-pointer',
-          'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400',
+          'text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400',
           compact ? 'p-0.5 rounded' : 'px-1.5 py-0.5 rounded text-xs font-medium',
           isOpening && 'opacity-50 cursor-wait',
         )}
@@ -93,7 +93,7 @@ export function OpenInIdeButton({ projectPath, filePath, compact }: OpenInIdeBut
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors cursor-pointer',
                     ide.id === preferredIde.id
-                      ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20'
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20'
                       : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800',
                     isOpening && 'opacity-50 cursor-wait',
                   )}

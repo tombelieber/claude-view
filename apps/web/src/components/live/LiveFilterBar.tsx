@@ -170,7 +170,7 @@ export function LiveFilterBar({
             onChange={(e) => setLocalSearch(e.target.value)}
             placeholder={searchPlaceholder}
             aria-label={isIndexing ? 'Search sessions — indexing in progress' : 'Search sessions'}
-            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md pl-8 pr-8 py-1.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
+            className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md pl-8 pr-8 py-1.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30"
           />
           {localSearch && (
             <button
@@ -225,7 +225,7 @@ export function LiveFilterBar({
               onClick={() => toggleDropdown('groupBy')}
               className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
                 groupByValue !== 'none'
-                  ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
                   : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
               }`}
             >
@@ -248,7 +248,7 @@ export function LiveFilterBar({
                     }}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition-colors ${
                       groupByValue === opt.value
-                        ? 'text-indigo-400 bg-indigo-500/10'
+                        ? 'text-amber-400 bg-amber-500/10'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
                   >
@@ -268,7 +268,7 @@ export function LiveFilterBar({
               onClick={() => toggleDropdown('sort')}
               className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
                 sortValue !== 'recent'
-                  ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
                   : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
               }`}
             >
@@ -291,7 +291,7 @@ export function LiveFilterBar({
                     }}
                     className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition-colors ${
                       sortValue === opt.value
-                        ? 'text-indigo-400 bg-indigo-500/10'
+                        ? 'text-amber-400 bg-amber-500/10'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
                   >
@@ -310,7 +310,7 @@ export function LiveFilterBar({
             onClick={() => onShowClosedChange(!showClosed)}
             className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer ${
               showClosed
-                ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+                ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
                 : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
             }`}
           >
@@ -409,13 +409,13 @@ function FilterDropdownButton({
         onClick={onToggle}
         className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer ${
           count > 0
-            ? 'border-indigo-500/40 text-indigo-400 bg-indigo-500/10'
+            ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
             : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100/50 dark:hover:bg-gray-800/50'
         }`}
       >
         {label}
         {count > 0 && (
-          <span className="ml-0.5 px-1.5 py-0.5 text-xs rounded-full bg-indigo-500/20 text-indigo-400 leading-none">
+          <span className="ml-0.5 px-1.5 py-0.5 text-xs rounded-full bg-amber-500/20 text-amber-400 leading-none">
             {count}
           </span>
         )}
@@ -436,7 +436,7 @@ function FilterDropdownButton({
                   type="checkbox"
                   checked={selected.includes(option)}
                   onChange={() => onItemToggle(option)}
-                  className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-indigo-500 focus:ring-indigo-500/30 focus:ring-offset-0"
+                  className="h-3.5 w-3.5 rounded border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-amber-500 focus:ring-amber-500/30 focus:ring-offset-0"
                 />
                 <span className="truncate">{option}</span>
               </label>
@@ -456,7 +456,7 @@ function FilterPill({
   onRemove: () => void
 }) {
   return (
-    <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+    <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30">
       {label}
       <button type="button" onClick={onRemove} className="ml-1 hover:text-red-400 cursor-pointer">
         <X className="h-3 w-3" />
