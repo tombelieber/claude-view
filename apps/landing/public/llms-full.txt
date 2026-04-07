@@ -3093,26 +3093,6 @@ npx claude-view@latest
 ```
 
 
---- changelog/v0.33.1.md ---
-
----
-title: "v0.33.1 — Cost & Tasks Fixes"
-date: 2026-04-07
-version: v0.33.1
----
-
-## Fixes
-
-**Correct cost total in Overview tab** — the Overview tab now includes team sidechain costs in the total, matching the Cost tab and session card.
-
-**Tasks tab for historical sessions** — the Tasks tab no longer disappears when persistent task files are cleaned up after a session ends. Falls back to progress items already parsed from JSONL.
-
-## Getting started
-
-```bash
-npx claude-view@latest
-```
-
 --- changelog/v0.33.0.md ---
 
 ---
@@ -3145,6 +3125,27 @@ version: v0.33.0
 - External schema fields made optional to survive upstream SDK changes
 - Stable-sort hook block merge to eliminate timestamp violations
 - Block pipeline drift check added as CI gate 7
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.33.1.md ---
+
+---
+title: "v0.33.1 — Cost & Tasks Fixes"
+date: 2026-04-07
+version: v0.33.1
+---
+
+## Fixes
+
+**Correct cost total in Overview tab** — the Overview tab now includes team sidechain costs in the total, matching the Cost tab and session card.
+
+**Tasks tab for historical sessions** — the Tasks tab no longer disappears when persistent task files are cleaned up after a session ends. Falls back to progress items already parsed from JSONL.
 
 ## Getting started
 
