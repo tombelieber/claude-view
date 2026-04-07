@@ -674,6 +674,10 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-search",
+ "claude-view-server-insights",
+ "claude-view-server-jobs",
+ "claude-view-server-sidecar",
+ "claude-view-server-teams",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "crypto_box",
@@ -724,6 +728,58 @@ dependencies = [
  "uuid",
  "workspace-hack",
  "x25519-dalek",
+]
+
+[[package]]
+name = "claude-view-server-insights"
+version = "0.33.1"
+dependencies = [
+ "serde",
+ "ts-rs",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-jobs"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-sidecar"
+version = "0.33.1"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-teams"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "claude-view-core",
+ "memchr",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ts-rs",
+ "utoipa",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -5647,7 +5703,6 @@ dependencies = [
  "futures-executor",
  "futures-io",
  "futures-sink",
- "futures-task",
  "futures-util",
  "generic-array",
  "getrandom 0.2.17",

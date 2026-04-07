@@ -1,4 +1,3 @@
-// crates/server/src/sidecar/mod.rs
 //! Node.js sidecar process manager for interactive control.
 //!
 //! The sidecar wraps the Claude Agent SDK (npm-only) and exposes a local
@@ -15,6 +14,5 @@ mod process;
 #[cfg(test)]
 mod tests;
 
-// Re-export all public items to preserve the original `crate::sidecar::*` API.
 pub use error::SidecarError;
 pub use manager::SidecarManager;

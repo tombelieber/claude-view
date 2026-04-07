@@ -106,6 +106,10 @@ claude-view-core = { path = "crates/core" }
 claude-view-db = { path = "crates/db" }
 claude-view-search = { path = "crates/search" }
 claude-view-server = { path = "crates/server" }
+claude-view-server-sidecar = { path = "crates/server-sidecar" }
+claude-view-server-insights = { path = "crates/server-insights" }
+claude-view-server-jobs = { path = "crates/server-jobs" }
+claude-view-server-teams = { path = "crates/server-teams" }
 
 [profile.dev]
 opt-level = 0          # Fastest compile (no optimization)
