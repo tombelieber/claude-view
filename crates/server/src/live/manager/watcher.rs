@@ -342,6 +342,7 @@ impl LiveSessionManager {
             if let Some(ref team_name) = acc.team_name {
                 match crate::teams::snapshot_team(
                     team_name,
+                    &session_id,
                     &self.claude_dir,
                     &self.claude_view_dir,
                 ) {

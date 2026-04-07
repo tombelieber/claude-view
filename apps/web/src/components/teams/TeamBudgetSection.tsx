@@ -24,6 +24,7 @@ export function TeamBudgetSection({ cost }: TeamBudgetSectionProps) {
   const membersWithCost = cost.members.filter((m) => m.costUsd != null && m.costUsd > 0)
   const totalMemberCost = membersWithCost.reduce((sum, m) => sum + (m.costUsd ?? 0), 0)
   const grandTotal = cost.leadCostUsd + totalMemberCost
+  const allInProcess = cost.members.length > 0 && cost.members.every((m) => m.inProcess)
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-3 space-y-3">
@@ -45,7 +46,7 @@ export function TeamBudgetSection({ cost }: TeamBudgetSectionProps) {
             <div
               className="bg-gray-400 dark:bg-gray-500 transition-all"
               style={{ width: `${(cost.leadCostUsd / grandTotal) * 100}%` }}
-              title={`Coordinator: ${formatCostUsd(cost.leadCostUsd)}`}
+              title={`Lead session: ${formatCostUsd(cost.leadCostUsd)}`}
             />
           )}
           {/* Member portions */}
@@ -62,9 +63,9 @@ export function TeamBudgetSection({ cost }: TeamBudgetSectionProps) {
 
       {/* Per-member rows */}
       <div className="space-y-1.5">
-        {/* Lead */}
+        {/* Lead session */}
         <MemberCostRow
-          name="Coordinator"
+          name="Lead session"
           color="gray"
           model=""
           costUsd={cost.leadCostUsd}
@@ -78,10 +79,18 @@ export function TeamBudgetSection({ cost }: TeamBudgetSectionProps) {
             color={m.color}
             model={m.model}
             costUsd={m.costUsd}
+            inProcess={m.inProcess}
             pct={grandTotal > 0 ? ((m.costUsd ?? 0) / grandTotal) * 100 : 0}
           />
         ))}
       </div>
+
+      {/* Limitation note for in-process teams */}
+      {allInProcess && (
+        <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">
+          Per-member cost breakdown unavailable — in-process teammates share the lead session.
+        </p>
+      )}
 
       {/* Expandable token details */}
       {membersWithCost.length > 0 && (
@@ -112,12 +121,14 @@ function MemberCostRow({
   color,
   model,
   costUsd,
+  inProcess,
   pct,
 }: {
   name: string
   color: string
   model: string
   costUsd: number | null
+  inProcess?: boolean
   pct: number
 }) {
   return (
@@ -130,12 +141,20 @@ function MemberCostRow({
         </span>
       )}
       <span className="flex-1" />
-      <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300 shrink-0">
-        {costUsd != null ? formatCostUsd(costUsd) : '—'}
-      </span>
-      <span className="font-mono tabular-nums text-gray-400 dark:text-gray-500 w-10 text-right shrink-0">
-        {costUsd != null ? `${pct.toFixed(0)}%` : ''}
-      </span>
+      {inProcess ? (
+        <span className="text-xs text-gray-400 dark:text-gray-500 italic shrink-0">
+          incl. in coordinator
+        </span>
+      ) : (
+        <>
+          <span className="font-mono tabular-nums text-gray-700 dark:text-gray-300 shrink-0">
+            {costUsd != null ? formatCostUsd(costUsd) : '—'}
+          </span>
+          <span className="font-mono tabular-nums text-gray-400 dark:text-gray-500 w-10 text-right shrink-0">
+            {costUsd != null ? `${pct.toFixed(0)}%` : ''}
+          </span>
+        </>
+      )}
     </div>
   )
 }
