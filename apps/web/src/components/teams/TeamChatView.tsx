@@ -1,11 +1,48 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import Markdown from 'react-markdown'
-import { ChevronDown } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Crown } from 'lucide-react'
 import { markdownComponents } from '../../lib/markdown-components'
 import { formatModelName } from '../../lib/format-model'
+import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
 import type { InboxMessage, TeamMember } from '../../types/generated'
+import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
+import { StructuredMessageCard } from './StructuredMessageCard'
+
+// ============================================================================
+// Timeline types — union of messages and sidechain completion events
+// ============================================================================
+
+type TimelineItem =
+  | { kind: 'message'; msg: InboxMessage }
+  | { kind: 'work-done'; sidechain: TeamMemberSidechain; timestamp: string }
+
+/** Merge inbox messages and per-sidechain completion events into a single sorted timeline. */
+function buildTimeline(
+  messages: InboxMessage[],
+  sidechains: TeamMemberSidechain[] | undefined,
+): TimelineItem[] {
+  const items: TimelineItem[] = messages
+    .filter((m) => !isProtocol(m))
+    .map((msg) => ({ kind: 'message' as const, msg }))
+
+  if (sidechains && sidechains.length > 0) {
+    for (const sc of sidechains) {
+      if (sc.endedAt) {
+        items.push({ kind: 'work-done', sidechain: sc, timestamp: sc.endedAt })
+      }
+    }
+  }
+
+  items.sort((a, b) => {
+    const tsA = a.kind === 'message' ? a.msg.timestamp : a.timestamp
+    const tsB = b.kind === 'message' ? b.msg.timestamp : b.timestamp
+    return tsA.localeCompare(tsB)
+  })
+
+  return items
+}
 
 // ============================================================================
 // Color maps
@@ -90,15 +127,82 @@ function getInitial(name: string): string {
   return (name[0] ?? '?').toUpperCase()
 }
 
+/** Try parsing msg.text as structured JSON. Returns parsed data or null. */
+function tryParseStructured(text: string): Record<string, unknown> | null {
+  if (!text.startsWith('{')) return null
+  try {
+    const data = JSON.parse(text)
+    // Must be an object with a `type` field to qualify as structured
+    if (data && typeof data === 'object' && typeof data.type === 'string') return data
+    return null
+  } catch {
+    return null
+  }
+}
+
 // ============================================================================
 // Sub-components
 // ============================================================================
 
+/** Format seconds → compact duration (e.g. "3m 12s", "21m"). */
+function fmtDuration(s: number): string {
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return rem > 0 ? `${m}m ${rem}s` : `${m}m`
+}
+
+/** Inline badge: a single sidechain session completed. Clickable → opens JSONL drill-down. */
+function WorkDoneBadge({
+  sidechain,
+  member,
+  onSelect,
+}: {
+  sidechain: TeamMemberSidechain
+  member: TeamMember | undefined
+  onSelect?: (target: { hexId: string; memberName: string }) => void
+}) {
+  const color = member?.color ?? ''
+  const dotClass = DOT_COLOR_MAP[color] ?? 'bg-gray-400'
+  const clickable = !!onSelect
+
+  return (
+    <div className="flex items-center justify-center py-2 px-5">
+      <button
+        type="button"
+        disabled={!clickable}
+        onClick={() => onSelect?.({ hexId: sidechain.hexId, memberName: sidechain.memberName })}
+        className={cn(
+          'flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-xs text-gray-500 dark:text-gray-400 transition-colors',
+          clickable &&
+            'cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/40 hover:border-green-300 dark:hover:border-green-700',
+        )}
+      >
+        <CheckCircle2 className="w-3.5 h-3.5 text-green-500 dark:text-green-400 shrink-0" />
+        <span className={cn('w-2 h-2 rounded-full shrink-0', dotClass)} />
+        <span className="font-medium text-gray-700 dark:text-gray-300">{sidechain.memberName}</span>
+        <span>completed</span>
+        <span className="text-gray-300 dark:text-gray-600">·</span>
+        <span className="tabular-nums">{fmtDuration(sidechain.durationSeconds)}</span>
+        {sidechain.costUsd != null && sidechain.costUsd > 0 && (
+          <>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span className="tabular-nums font-mono">{formatCostUsd(sidechain.costUsd)}</span>
+          </>
+        )}
+        {clickable && (
+          <ChevronDown className="w-3 h-3 -rotate-90 text-gray-400 dark:text-gray-500 shrink-0" />
+        )}
+      </button>
+    </div>
+  )
+}
+
 function TimeDivider({ timestamp }: { timestamp: string }) {
   return (
-    <div className="flex items-center gap-3 py-2 px-4">
+    <div className="flex items-center gap-4 py-3 px-5">
       <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-      <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 tabular-nums">
+      <span className="text-xs font-medium text-gray-400 dark:text-gray-500 tabular-nums">
         {formatTime(timestamp)}
       </span>
       <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
@@ -118,110 +222,105 @@ function ChatBubble({
   const [expanded, setExpanded] = useState(false)
   const color = msg.color ?? member?.color ?? ''
   const isLead = member?.agentType === 'team-lead'
+  const structured = tryParseStructured(msg.text)
   const isLong = msg.text.length > 600
 
-  // Moderator/team-lead messages: narrator style (no bubble)
-  if (isLead) {
+  // Avatar element — reused across all message types
+  const dotClass = DOT_COLOR_MAP[color] ?? 'bg-gray-400'
+  const avatar = showHeader ? (
+    isLead ? (
+      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-amber-100 dark:bg-amber-900/40 shrink-0">
+        <Crown className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+      </div>
+    ) : (
+      <div
+        className={cn(
+          'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0',
+          dotClass,
+        )}
+      >
+        {getInitial(msg.from)}
+      </div>
+    )
+  ) : (
+    <div className="w-8 shrink-0" /> /* spacer for alignment */
+  )
+
+  // Name + model + time header
+  const nameClass = isLead
+    ? 'text-amber-700 dark:text-amber-300'
+    : (TEXT_COLOR_MAP[color] ?? 'text-gray-700 dark:text-gray-300')
+  const header = showHeader && (
+    <div className="flex items-center gap-2 mb-1">
+      {isLead && <Crown className="w-3.5 h-3.5 shrink-0 text-amber-500 dark:text-amber-400" />}
+      <span className={cn('text-sm font-semibold', nameClass)}>{member?.name ?? msg.from}</span>
+      {member?.model && (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+          {formatModelName(member.model)}
+        </span>
+      )}
+      <span className="text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+        {formatTime(msg.timestamp)}
+      </span>
+    </div>
+  )
+
+  // Structured JSON messages → EventCard-style card
+  if (structured) {
     return (
-      <div className="px-4 py-1.5">
-        {showHeader && (
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {member?.name ?? msg.from}
-            </span>
-            {member?.model && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {formatModelName(member.model)}
-              </span>
-            )}
-            <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-              {formatTime(msg.timestamp)}
-            </span>
+      <div className={cn('px-5', showHeader ? 'pt-5 pb-1' : 'py-1')}>
+        <div className="flex items-start gap-3">
+          {avatar}
+          <div className="flex-1 min-w-0">
+            {header}
+            <StructuredMessageCard data={structured} rawText={msg.text} />
           </div>
-        )}
-        <div
-          className={cn(
-            'text-xs text-gray-600 dark:text-gray-400 prose prose-xs dark:prose-invert max-w-none',
-            'bg-gray-50 dark:bg-gray-800/40 rounded-lg px-3 py-2',
-            !expanded && isLong && 'line-clamp-4',
-          )}
-        >
-          <Markdown components={markdownComponents}>{msg.text}</Markdown>
         </div>
-        {isLong && (
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-0.5 ml-3"
-          >
-            {expanded ? 'collapse' : 'show more'}
-          </button>
-        )}
       </div>
     )
   }
 
-  // Member messages: colored chat bubble
-  const bgClass = BG_COLOR_MAP[color] ?? 'bg-gray-50 dark:bg-gray-800/40'
-  const borderClass = BORDER_COLOR_MAP[color] ?? 'border-gray-300 dark:border-gray-600'
-  const dotClass = DOT_COLOR_MAP[color] ?? 'bg-gray-400'
-  const nameClass = TEXT_COLOR_MAP[color] ?? 'text-gray-700 dark:text-gray-300'
+  // All messages (lead + members): same avatar + bubble layout
+  const bgClass = isLead
+    ? 'bg-amber-50/60 dark:bg-amber-950/20'
+    : (BG_COLOR_MAP[color] ?? 'bg-gray-50 dark:bg-gray-800/40')
+  const borderClass = isLead
+    ? 'border-amber-300 dark:border-amber-700'
+    : (BORDER_COLOR_MAP[color] ?? 'border-gray-300 dark:border-gray-600')
 
   return (
-    <div className="px-4 py-0.5">
-      {showHeader && (
-        <div className="flex items-center gap-2 mb-1 ml-8">
-          <span className={cn('text-xs font-semibold', nameClass)}>{member?.name ?? msg.from}</span>
-          {member?.model && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-              {formatModelName(member.model)}
-            </span>
-          )}
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums">
-            {formatTime(msg.timestamp)}
-          </span>
-        </div>
-      )}
-      <div className="flex items-start gap-2">
-        {/* Avatar */}
-        {showHeader ? (
+    <div className={cn('px-5', showHeader ? 'pt-5 pb-1' : 'py-1')}>
+      <div className="flex items-start gap-3">
+        {avatar}
+        <div className="flex-1 min-w-0">
+          {header}
+          {/* Bubble */}
           <div
             className={cn(
-              'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 mt-0.5',
-              dotClass,
+              'rounded-2xl px-4 py-3 border-l-3',
+              bgClass,
+              borderClass,
+              !expanded && isLong && 'max-h-[240px] overflow-hidden relative',
             )}
           >
-            {getInitial(msg.from)}
+            <div className="text-sm text-gray-800 dark:text-gray-200 prose prose-sm dark:prose-invert max-w-none leading-relaxed">
+              <Markdown components={markdownComponents}>{msg.text}</Markdown>
+            </div>
+            {!expanded && isLong && (
+              <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white/90 dark:from-gray-950/90 to-transparent pointer-events-none rounded-b-2xl" />
+            )}
           </div>
-        ) : (
-          <div className="w-6 shrink-0" /> /* spacer for alignment */
-        )}
-        {/* Bubble */}
-        <div
-          className={cn(
-            'rounded-xl px-3 py-2 border-l-3 max-w-[85%]',
-            bgClass,
-            borderClass,
-            !expanded && isLong && 'max-h-[200px] overflow-hidden relative',
-          )}
-        >
-          <div className="text-xs text-gray-800 dark:text-gray-200 prose prose-xs dark:prose-invert max-w-none">
-            <Markdown components={markdownComponents}>{msg.text}</Markdown>
-          </div>
-          {!expanded && isLong && (
-            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-white/90 dark:from-gray-950/90 to-transparent pointer-events-none rounded-b-xl" />
+          {isLong && (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 mt-2"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
           )}
         </div>
       </div>
-      {isLong && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-0.5 ml-8"
-        >
-          {expanded ? 'collapse' : `show more (${msg.text.length.toLocaleString()} chars)`}
-        </button>
-      )}
     </div>
   )
 }
@@ -234,33 +333,42 @@ interface TeamChatViewProps {
   messages: InboxMessage[]
   members: TeamMember[]
   topic?: string
+  /** Sidechain data — when provided, completion badges are interleaved in the timeline. */
+  sidechains?: TeamMemberSidechain[]
+  /** Click handler for sidechain badges — opens the JSONL drill-down view. */
+  onSidechainSelect?: (target: { hexId: string; memberName: string }) => void
 }
 
-export function TeamChatView({ messages, members, topic }: TeamChatViewProps) {
+export function TeamChatView({
+  messages,
+  members,
+  topic,
+  sidechains,
+  onSidechainSelect,
+}: TeamChatViewProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [atBottom, setAtBottom] = useState(true)
-  const prevCountRef = useRef(messages.length)
 
   // Build member lookup
   const memberMap = new Map(members.map((m) => [m.name, m]))
 
-  // Filter out protocol messages
-  const visible = messages.filter((m) => !isProtocol(m))
+  // Merge messages + sidechain completions into a single sorted timeline
+  const timeline = useMemo(() => buildTimeline(messages, sidechains), [messages, sidechains])
+  const prevCountRef = useRef(timeline.length)
 
-  // Auto-scroll when new messages arrive (only if user was at bottom)
+  // Auto-scroll when new items arrive (only if user was at bottom)
   useEffect(() => {
-    if (visible.length > prevCountRef.current && atBottom) {
-      // Small delay to let Virtuoso measure the new item
+    if (timeline.length > prevCountRef.current && atBottom) {
       requestAnimationFrame(() => {
         virtuosoRef.current?.scrollToIndex({
-          index: visible.length - 1,
+          index: timeline.length - 1,
           align: 'end',
           behavior: 'smooth',
         })
       })
     }
-    prevCountRef.current = visible.length
-  }, [visible.length, atBottom])
+    prevCountRef.current = timeline.length
+  }, [timeline.length, atBottom])
 
   const handleAtBottomChange = useCallback((bottom: boolean) => {
     setAtBottom(bottom)
@@ -268,16 +376,16 @@ export function TeamChatView({ messages, members, topic }: TeamChatViewProps) {
 
   const scrollToBottom = useCallback(() => {
     virtuosoRef.current?.scrollToIndex({
-      index: visible.length - 1,
+      index: timeline.length - 1,
       align: 'end',
       behavior: 'smooth',
     })
-  }, [visible.length])
+  }, [timeline.length])
 
-  if (visible.length === 0) {
+  if (timeline.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-gray-500 dark:text-gray-400">No messages yet</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">No messages yet</p>
       </div>
     )
   }
@@ -286,31 +394,36 @@ export function TeamChatView({ messages, members, topic }: TeamChatViewProps) {
     <div className="flex flex-col h-full">
       {/* Pinned header: topic + speakers */}
       {(topic || members.length > 0) && (
-        <div className="flex-shrink-0 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
+        <div className="flex-shrink-0 px-5 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
           {topic && (
-            <h3 className="text-xs font-semibold text-gray-900 dark:text-gray-100 leading-snug mb-1.5">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug mb-2">
               {topic}
             </h3>
           )}
-          <div className="flex flex-wrap gap-2">
-            {members
-              .filter((m) => m.agentType !== 'team-lead')
-              .map((m) => (
+          <div className="flex flex-wrap gap-3">
+            {members.map((m) => {
+              const isLead = m.agentType === 'team-lead'
+              return (
                 <div key={m.agentId} className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      'w-2 h-2 rounded-full shrink-0',
-                      DOT_COLOR_MAP[m.color] ?? 'bg-gray-400',
-                    )}
-                  />
-                  <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                  {isLead ? (
+                    <Crown className="w-3.5 h-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
+                  ) : (
+                    <span
+                      className={cn(
+                        'w-2.5 h-2.5 rounded-full shrink-0',
+                        DOT_COLOR_MAP[m.color] ?? 'bg-gray-400',
+                      )}
+                    />
+                  )}
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     {m.name}
                   </span>
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
                     {formatModelName(m.model)}
                   </span>
                 </div>
-              ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -319,13 +432,32 @@ export function TeamChatView({ messages, members, topic }: TeamChatViewProps) {
       <div className="flex-1 min-h-0 relative">
         <Virtuoso
           ref={virtuosoRef}
-          data={visible}
+          data={timeline}
           alignToBottom
           followOutput="smooth"
           atBottomStateChange={handleAtBottomChange}
           atBottomThreshold={60}
-          itemContent={(index, msg) => {
-            const prev = index > 0 ? visible[index - 1] : undefined
+          itemContent={(index, item) => {
+            if (item.kind === 'work-done') {
+              return (
+                <WorkDoneBadge
+                  sidechain={item.sidechain}
+                  member={memberMap.get(item.sidechain.memberName)}
+                  onSelect={onSidechainSelect}
+                />
+              )
+            }
+
+            const msg = item.msg
+            // Look back for previous message item (skip badge items)
+            let prev: InboxMessage | undefined
+            for (let i = index - 1; i >= 0; i--) {
+              const p = timeline[i]
+              if (p.kind === 'message') {
+                prev = p.msg
+                break
+              }
+            }
             const showDivider = shouldShowTimeDivider(prev, msg)
             const showHeader = shouldShowHeader(prev, msg, showDivider)
             const member = memberMap.get(msg.from)

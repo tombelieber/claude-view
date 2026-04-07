@@ -69,9 +69,11 @@ export function useCommandExecutor(
         break
       }
       case 'FETCH_HOOK_EVENTS': {
-        fetchHookEventBlocks(cmd.sessionId)
+        const fetchSessionId = cmd.sessionId
+        fetchHookEventBlocks(fetchSessionId)
           .then((blocks) => {
-            if (blocks.length > 0) dispatch({ type: 'HOOK_EVENTS_OK', blocks })
+            if (blocks.length > 0)
+              dispatch({ type: 'HOOK_EVENTS_OK', sessionId: fetchSessionId, blocks })
           })
           .catch(() => {
             // Silently ignore — hook events are supplementary, not critical

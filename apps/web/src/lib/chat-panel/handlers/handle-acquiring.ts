@@ -128,6 +128,11 @@ function exitAcquiring(
     const cmds: Command[] = [
       { cmd: 'CANCEL_TIMER', id: 'init-timeout' },
       { cmd: 'INVALIDATE_SIDEBAR' },
+      // Fetch Channel B hook events from live memory now that we're sdk_owned.
+      // NOT fired on SELECT_SESSION — for completed sessions, ?format=block
+      // already merges DB hook events server-side. For live sessions, DB is
+      // empty so we need this fetch to populate Channel B from memory.
+      { cmd: 'FETCH_HOOK_EVENTS', sessionId },
     ]
 
     // Drain outbox: send all queued messages

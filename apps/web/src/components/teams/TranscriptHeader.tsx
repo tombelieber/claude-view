@@ -19,7 +19,7 @@ interface TranscriptHeaderProps {
 export function TranscriptHeader({ topic, speakers }: TranscriptHeaderProps) {
   return (
     <div className="space-y-4 pb-4 border-b border-zinc-200 dark:border-zinc-700">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 leading-snug">
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug">
         {topic}
       </h2>
       {speakers.length > 0 && (
@@ -33,7 +33,7 @@ export function TranscriptHeader({ topic, speakers }: TranscriptHeaderProps) {
                 )}
               />
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <span className="text-xs font-medium text-gray-900 dark:text-gray-100">
                   {s.displayName}
                 </span>
                 {s.model && (

@@ -33,7 +33,7 @@ export function TeamBudgetSection({ cost }: TeamBudgetSectionProps) {
         <span className="text-xs font-medium text-gray-500 dark:text-gray-500 uppercase tracking-wide">
           Team Cost
         </span>
-        <span className="text-lg font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+        <span className="text-sm font-mono font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
           {formatCostUsd(grandTotal)}
         </span>
       </div>
@@ -132,7 +132,7 @@ function MemberCostRow({
   pct: number
 }) {
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-xs">
       <span className={cn('w-2 h-2 rounded-full shrink-0', COLOR_MAP[color] || 'bg-gray-400')} />
       <span className="text-gray-700 dark:text-gray-300 truncate">{name}</span>
       {model && (

@@ -37,7 +37,12 @@ export function coordinate(store: ChatPanelStore, event: RawEvent): TransitionRe
         },
         [
           { cmd: 'FETCH_HISTORY', sessionId: event.sessionId },
-          { cmd: 'FETCH_HOOK_EVENTS', sessionId: event.sessionId },
+          // FETCH_HOOK_EVENTS intentionally NOT fired here — ?format=block
+          // already merges DB hook events server-side with correct pagination
+          // positioning. Firing it here would double-fetch the same events
+          // with different ID prefixes (hook-db- vs hook-), causing duplicates.
+          // FETCH_HOOK_EVENTS is only needed after TURN_COMPLETE/TURN_ERROR
+          // for live sessions where hook events are in memory (not yet in DB).
           { cmd: 'CHECK_SIDECAR_ACTIVE', sessionId: event.sessionId },
         ],
       ]

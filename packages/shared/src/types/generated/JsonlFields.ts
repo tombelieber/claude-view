@@ -116,4 +116,8 @@ export type JsonlFields = {
    * SDLC phase classification (current phase, label history, dominant phase).
    */
   phase: PhaseHistory
+  /**
+   * AI-generated session title (from `ai-title` JSONL lines).
+   */
+  aiTitle?: string | null
 }

@@ -678,6 +678,7 @@ mod tests {
             at_files: Vec::new(),
             pasted_paths: Vec::new(),
             entrypoint: None,
+            ai_title: None,
         }
     }
 

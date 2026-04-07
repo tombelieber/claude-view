@@ -41,6 +41,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
 
     case 'HOOK_EVENTS_OK': {
       if (p.sub.sub !== 'ready') return [store, []] // history not loaded yet — discard
+      if (event.sessionId !== p.sessionId) return [store, []] // stale fetch from previous session
       // Merge hook blocks into history blocks by timestamp, dedup by ID
       const existingIds = new Set(p.sub.blocks.map((b) => b.id))
       const newHooks = event.blocks.filter((b) => !existingIds.has(b.id))

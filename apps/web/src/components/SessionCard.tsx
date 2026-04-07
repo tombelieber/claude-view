@@ -16,7 +16,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import type { SessionInfo } from '../hooks/use-projects'
-import { useTeamDetail, useTeamForSession } from '../hooks/use-teams'
+import { useTeamDetail, useTeamForSession, useTeamSidechains } from '../hooks/use-teams'
 import { formatCostUsd, formatNumber } from '../lib/format-utils'
 import { computeWeight, weightBorderClass } from '../lib/session-weight'
 import { getDisplayLongestTaskSeconds, getDisplayTaskTimeSeconds } from '../lib/task-time-utils'
@@ -184,6 +184,11 @@ export function SessionCard({
   // Hooks must be called BEFORE early return to satisfy Rules of Hooks
   const teamMatch = useTeamForSession(session?.id)
   const { data: teamDetail } = useTeamDetail(teamMatch?.name ?? null)
+  // Fetch sidechain costs for team sessions (team sessions are rare — 1-2 max)
+  const { data: sidechainsData } = useTeamSidechains(
+    teamMatch?.name ?? null,
+    teamMatch ? (session?.id ?? null) : null,
+  )
 
   // Null safety: handle null/undefined session
   if (!session) {
@@ -220,8 +225,15 @@ export function SessionCard({
   const longestTaskSeconds = getDisplayLongestTaskSeconds(session) ?? 0
   const taskTimeSeconds = getDisplayTaskTimeSeconds(session)
 
-  // Cost
-  const totalCostUsd = session?.totalCostUsd ?? null
+  // Cost (include sidechain cost for team sessions)
+  const sidechainCostTotal = sidechainsData?.reduce((sum, sc) => sum + (sc.costUsd ?? 0), 0) ?? 0
+  const baseCost = session?.totalCostUsd ?? null
+  const totalCostUsd =
+    baseCost !== null
+      ? baseCost + sidechainCostTotal
+      : sidechainCostTotal > 0
+        ? sidechainCostTotal
+        : null
   const hasCost = totalCostUsd !== null && totalCostUsd > 0
 
   // Theme 3: Contribution metrics (optional, populated by deep index)
