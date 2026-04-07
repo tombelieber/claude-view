@@ -1,14 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use crate::teams::jsonl_index::build_team_jsonl_index;
-    use crate::teams::jsonl_reconstruct::{
+    use crate::jsonl_index::build_team_jsonl_index;
+    use crate::jsonl_reconstruct::{
         reconstruct_inbox_from_jsonl, reconstruct_team_and_inbox_from_jsonl,
         reconstruct_team_from_jsonl,
     };
-    use crate::teams::parser::classify_message;
-    use crate::teams::snapshot::snapshot_team;
-    use crate::teams::store::TeamsStore;
-    use crate::teams::types::{InboxMessageType, TeamJSONLRef};
+    use crate::parser::classify_message;
+    use crate::snapshot::snapshot_team;
+    use crate::store::TeamsStore;
+    use crate::types::{InboxMessageType, TeamJSONLRef};
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
