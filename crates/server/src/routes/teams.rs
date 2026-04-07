@@ -176,11 +176,13 @@ pub async fn get_team_sidechains(
         .ok_or_else(|| ApiError::Internal("Session path has no file stem".into()))?;
     let session_dir = parent_dir.join(session_stem);
 
-    // Heavy I/O: read meta.json + count JSONL lines on blocking thread
-    let sidechains =
-        tokio::task::spawn_blocking(move || crate::teams::resolve_team_sidechains(&session_dir))
-            .await
-            .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?;
+    // Heavy I/O: read meta.json + count JSONL lines + compute cost on blocking thread
+    let pricing = state.pricing.clone();
+    let sidechains = tokio::task::spawn_blocking(move || {
+        crate::teams::resolve_team_sidechains(&session_dir, &pricing)
+    })
+    .await
+    .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?;
 
     Ok(Json(sidechains))
 }
