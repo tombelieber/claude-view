@@ -89,10 +89,19 @@ export function useTeamCost(name: string | null) {
   })
 }
 
-/** Fetch sidechain (subagent JSONL) info for a team member in a given session. */
-export function useTeamSidechains(teamName: string | null, sessionId: string | null) {
+/**
+ * Fetch sidechain (subagent JSONL) info for team members in a given session.
+ * Event-driven: `inboxVersion` comes from SSE `teamInboxCount` — when it changes,
+ * query key changes → React Query auto-refetches. New sidechains appear as the
+ * debate progresses, without polling.
+ */
+export function useTeamSidechains(
+  teamName: string | null,
+  sessionId: string | null,
+  inboxVersion?: number,
+) {
   return useQuery({
-    queryKey: ['team-sidechains', teamName, sessionId],
+    queryKey: ['team-sidechains', teamName, sessionId, inboxVersion ?? 0],
     queryFn: () => fetchTeamSidechains(teamName ?? '', sessionId ?? ''),
     enabled: !!teamName && !!sessionId,
     staleTime: 60_000,
