@@ -460,7 +460,7 @@ export function LiveMonitorPage() {
                 <div
                   key={session.id}
                   data-session-id={session.id}
-                  className={selectedId === session.id ? 'ring-2 ring-indigo-500 rounded-lg' : ''}
+                  className={selectedId === session.id ? 'ring-2 ring-amber-500 rounded-lg' : ''}
                 >
                   <SessionCard
                     session={session}
@@ -554,7 +554,7 @@ export function LiveMonitorPage() {
                       <button
                         type="button"
                         onClick={filterActions.clearAll}
-                        className="text-indigo-400 hover:text-indigo-300"
+                        className="text-amber-400 hover:text-amber-300"
                       >
                         Clear filters
                       </button>

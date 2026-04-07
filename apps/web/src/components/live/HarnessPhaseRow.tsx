@@ -74,7 +74,7 @@ export function HarnessPhaseRow({
                   }}
                   className={cn(
                     'cursor-pointer rounded-lg transition-opacity',
-                    session.id === selectedId && 'ring-2 ring-indigo-500 rounded-lg',
+                    session.id === selectedId && 'ring-2 ring-amber-500 rounded-lg',
                   )}
                 >
                   <SessionCard

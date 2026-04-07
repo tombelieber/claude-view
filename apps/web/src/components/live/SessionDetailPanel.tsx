@@ -26,7 +26,7 @@ import { developerRegistry } from '@claude-view/shared/components/conversation/b
 import { useChatPanel } from '../../hooks/use-chat-panel'
 import { useCommandExecutor } from '../../hooks/use-command-executor'
 import { useFileHistory } from '../../hooks/use-file-history'
-import { useTeamCost } from '../../hooks/use-teams'
+import { useTeamSidechains } from '../../hooks/use-teams'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
 import { deriveLiveStatus } from '../../lib/derive-panel-mode'
@@ -40,7 +40,7 @@ import { CommitsPanel } from '../CommitsPanel'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
 import { ErrorBoundary } from '../ErrorBoundary'
-import { TeamBudgetSection } from '../teams/TeamBudgetSection'
+
 import { TeamsTab } from '../teams/TeamsTab'
 import type { TeamTranscriptBlock as GeneratedTeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
 import { CacheCountdownBar } from './CacheCountdownBar'
@@ -196,7 +196,11 @@ export function SessionDetailPanel({
 
   // ---- Teams tab (conditional — only show when session is a team lead) ----
   const hasTeam = !!data.teamName
-  const { data: teamCostData } = useTeamCost(hasTeam ? (data.teamName ?? null) : null)
+  // Sidechains: fetch for cost tab + tooltip (includes per-sidechain costUsd + tokens)
+  const { data: sidechainsData } = useTeamSidechains(
+    hasTeam ? (data.teamName ?? null) : null,
+    hasTeam ? data.id : null,
+  )
 
   // ---- URL param: ?tab= (with backward compat for removed terminal/log tabs) ----
   const [searchParams] = useSearchParams()
@@ -380,7 +384,7 @@ export function SessionDetailPanel({
         onPointerDown={handleResizeStart}
         className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize z-10 group"
       >
-        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-indigo-500/40 group-active:bg-indigo-500/60 transition-colors" />
+        <div className="w-px h-full mx-auto bg-transparent group-hover:bg-amber-500/40 group-active:bg-amber-500/60 transition-colors" />
       </div>
 
       {/* ---------------------------------------------------------------- */}
@@ -477,7 +481,7 @@ export function SessionDetailPanel({
               className={cn(
                 'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
                 activeTab === tab.id
-                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  ? 'border-amber-500 text-amber-600 dark:text-amber-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
               )}
             >
@@ -500,7 +504,7 @@ export function SessionDetailPanel({
             className={cn(
               'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
               activeTab === 'tasks'
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
             )}
           >
@@ -520,7 +524,7 @@ export function SessionDetailPanel({
             className={cn(
               'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
               activeTab === 'changes'
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
             )}
           >
@@ -540,7 +544,7 @@ export function SessionDetailPanel({
             className={cn(
               'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
               activeTab === 'plan'
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
             )}
           >
@@ -890,12 +894,12 @@ export function SessionDetailPanel({
         {/* ---- Cost tab ---- */}
         {activeTab === 'cost' && (
           <div className="overflow-y-auto h-full">
-            <CostBreakdown cost={data.cost} tokens={data.tokens} subAgents={data.subAgents} />
-            {teamCostData && (
-              <div className="border-t border-gray-200 dark:border-gray-800 p-4">
-                <TeamBudgetSection cost={teamCostData} />
-              </div>
-            )}
+            <CostBreakdown
+              cost={data.cost}
+              tokens={data.tokens}
+              subAgents={data.subAgents}
+              sidechains={sidechainsData}
+            />
           </div>
         )}
 

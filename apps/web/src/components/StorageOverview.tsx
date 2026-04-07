@@ -31,7 +31,7 @@ import { StatCard } from './ui'
 /** Colors for each storage category — soft, distinct, calming */
 const STORAGE_COLORS = [
   { fill: '#D97757', label: 'JSONL Sessions' }, // Claude Code terracotta — their data
-  { fill: '#6366f1', label: 'SQLite Database' }, // indigo — this app's DB
+  { fill: '#f59e0b', label: 'SQLite Database' }, // amber — this app's DB
   { fill: '#10b981', label: 'Search Index' }, // emerald — this app's index
 ] as const
 
@@ -595,10 +595,10 @@ function RebuildProgressBar({
         aria-label={`Index rebuild: ${phaseLabel}`}
       >
         {isIndeterminate ? (
-          <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 animate-indeterminate" />
+          <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-blue-500 to-amber-500 animate-indeterminate" />
         ) : (
           <div
-            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-amber-500 transition-all duration-300 ease-out"
             style={{ width: `${percentage}%` }}
           />
         )}
