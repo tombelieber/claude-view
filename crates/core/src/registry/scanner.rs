@@ -6,7 +6,7 @@
 use std::path::Path;
 use tracing::warn;
 
-use super::parse::{read_first_line_description, read_plugin_json, McpJson};
+use super::parse::{read_first_line_description, McpJson};
 use super::types::{InvocableInfo, InvocableKind};
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,6 @@ pub use parser::parse_bytes;
 pub use pipeline::{
     build_index_hints, pass_1_read_indexes, pass_2_deep_index, prune_stale_sessions,
 };
-pub(crate) use types::IndexedSession;
 pub use types::{
     read_file_fast, CommitSkillInvocation, DeepIndexResult, ExtendedMetadata, FileData, IndexHints,
     ParseDiagnostics, ParseResult, ParsedSession, RawInvocation, COMMIT_SKILL_NAMES,

@@ -1,4 +1,4 @@
-/// Query string parsing: tokenization, qualifier extraction, session ID detection.
+//! Query string parsing: tokenization, qualifier extraction, session ID detection.
 
 /// A parsed qualifier extracted from the query string.
 #[derive(Debug, Clone)]

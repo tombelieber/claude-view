@@ -4,7 +4,7 @@
 use serde::Deserialize;
 use tokio::process::Command;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiError;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
