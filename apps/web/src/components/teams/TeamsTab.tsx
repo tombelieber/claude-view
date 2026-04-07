@@ -21,7 +21,13 @@ interface TeamsTabProps {
 // Main component
 // ============================================================================
 
-export function TeamsTab({ teamName, sessionId, inboxVersion, transcript, sseMembers }: TeamsTabProps) {
+export function TeamsTab({
+  teamName,
+  sessionId,
+  inboxVersion,
+  transcript,
+  sseMembers,
+}: TeamsTabProps) {
   const hasSseMembers = sseMembers && sseMembers.length > 0
   const [drillDown, setDrillDown] = useState<{ hexId: string; memberName: string } | null>(null)
 
@@ -99,11 +105,15 @@ export function TeamsTab({ teamName, sessionId, inboxVersion, transcript, sseMem
     )
   }
 
-  // Primary view: group chat + member sessions
+  // Primary view: group chat (left) + member sessions sidebar (right)
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 min-h-0">
-        <TeamChatView messages={inbox ?? []} members={members} topic={team?.description ?? teamName} />
+    <div className="flex h-full overflow-hidden">
+      <div className="flex-1 min-w-0">
+        <TeamChatView
+          messages={inbox ?? []}
+          members={members}
+          topic={team?.description ?? teamName}
+        />
       </div>
       {sidechainsByMember.size > 0 && (
         <SidechainsSection byMember={sidechainsByMember} onSelect={setDrillDown} />
@@ -124,7 +134,7 @@ function SidechainsSection({
   onSelect: (target: { hexId: string; memberName: string }) => void
 }) {
   return (
-    <div className="border-t border-gray-200 dark:border-gray-800 px-3 py-2 overflow-y-auto max-h-48 flex-shrink-0">
+    <div className="w-56 flex-shrink-0 border-l border-gray-200 dark:border-gray-800 px-3 py-2 overflow-y-auto">
       <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">
         Member Sessions
       </h4>
@@ -143,9 +153,7 @@ function SidechainsSection({
               <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
                 {sc.hexId.slice(0, 8)}
               </span>
-              <span className="text-xs text-gray-600 dark:text-gray-400">
-                {sc.lineCount} lines
-              </span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">{sc.lineCount} lines</span>
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {(sc.fileSizeBytes / 1024).toFixed(1)} KB
               </span>
