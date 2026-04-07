@@ -1664,33 +1664,33 @@ If you're running multi-agent teams in Claude Code, you've probably wondered: "W
 
 When Claude Code spawns a team of agents to debate a problem, the raw output is a wall of XML blocks scattered across JSONL lines. Reading it means scrolling through `<teammate-message>` tags, cross-referencing session IDs, and mentally reconstructing who said what.
 
-v0.33.0 parses these debates into clean conversation transcripts. Each agent gets their own card. Moderator prompts are visually distinct from agent responses. Verdicts and round boundaries are marked clearly. It reads like a group chat, not a log file.
+v0.33.0 parses these debates into **clean conversation transcripts**. Each agent gets their own card. Moderator prompts are visually distinct from agent responses. Verdicts and round boundaries are marked clearly. It reads like a group chat, not a log file.
 
 The design follows progressive disclosure. By default, you see the conversation flow — who argued what, what the moderator asked, what verdict was reached. Technical details (model names, token counts, tool calls) are behind an expandable section. A product manager can follow the debate. An engineer can drill into the execution details. Same page, different depths.
 
 ## Per-member cost breakdown
 
-The Teams tab now shows per-member cost and token usage. Each team member card displays their total spend, and a crown icon marks the highest spender. This surfaces immediately when one agent is doing most of the heavy lifting while others are nearly idle — a common pattern when team configurations aren't balanced.
+The Teams tab now shows **per-member cost and token usage**. Each team member card displays their total spend, and a crown icon marks the highest spender. This surfaces immediately when one agent is doing most of the heavy lifting while others are nearly idle — a common pattern when team configurations aren't balanced.
 
 Cost breakdown is visible across all surfaces: the sidebar overview, the detail panel, and the team overview page. You don't have to navigate anywhere special to see where tokens are going.
 
 ## Sidechains
 
-Teams spawn sub-agents — claude-view calls these sidechains. v0.33.0 adds a dedicated section for them: model info, timestamps, duration, and token usage per sidechain. Click any sidechain to drill into its full block view.
+Teams spawn sub-agents — claude-view calls these **sidechains**. v0.33.0 adds a dedicated section for them: model info, timestamps, duration, and token usage per sidechain. Click any sidechain to drill into its full block view.
 
-Sidechain data refreshes reactively via inbox versioning. When a team member spawns a new sub-agent, the UI updates immediately without polling. This is the same event-driven architecture we use across the live monitor — no setInterval, no stale data.
+Sidechain data refreshes reactively via inbox versioning. When a team member spawns a new sub-agent, the UI updates immediately without polling. This is the same event-driven architecture we use across the live monitor — no `setInterval`, no stale data.
 
 ## ~/.claude integration
 
-Your ~/.claude directory contains your AI memory files, Claude Code settings, MCP server configs, active session metadata, and todo items. Until now, browsing these required terminal commands or a file manager.
+Your `~/.claude` directory contains your AI memory files, Claude Code settings, MCP server configs, active session metadata, and todo items. Until now, browsing these required terminal commands or a file manager.
 
-v0.33.0 adds a Memory page with a 2-column layout: type-grouped memory files on the left, content preview on the right. Badges show counts per type (user, feedback, project, reference). The panel is resizable.
+v0.33.0 adds a **Memory page** with a 2-column layout: type-grouped memory files on the left, content preview on the right. Badges show counts per type (user, feedback, project, reference). The panel is resizable.
 
-A separate Settings page surfaces your Claude Code configuration, MCP servers, active sessions, and todos. Everything is read-only — claude-view shows you what's there without modifying it.
+A separate **Settings page** surfaces your Claude Code configuration, MCP servers, active sessions, and todos. Everything is read-only — claude-view shows you what's there without modifying it.
 
 ## Sessions directory watcher
 
-The live monitor now watches ~/.claude/projects/ for new session directories. When a new session appears on disk, it's picked up immediately — no restart, no manual refresh. The watcher also runs a startup scan to catch sessions created while claude-view wasn't running, and detects crash artifacts from sessions that didn't shut down cleanly.
+The live monitor now watches `~/.claude/projects/` for new session directories. When a new session appears on disk, it's picked up immediately — no restart, no manual refresh. The watcher also runs a startup scan to catch sessions created while claude-view wasn't running, and detects crash artifacts from sessions that didn't shut down cleanly.
 
 ## Update now
 
@@ -1698,7 +1698,7 @@ The live monitor now watches ~/.claude/projects/ for new session directories. Wh
 npx claude-view@latest
 ```
 
-Open the Teams tab to see debate transcripts and cost breakdowns. Check the Memory page to browse your ~/.claude directory from the dashboard.
+Open the Teams tab to see debate transcripts and cost breakdowns. Check the Memory page to browse your `~/.claude` directory from the dashboard.
 
 
 --- blog/v0-4-0-dashboard-analytics.mdx ---
@@ -3092,6 +3092,26 @@ version: v0.32.0
 npx claude-view@latest
 ```
 
+
+--- changelog/v0.33.1.md ---
+
+---
+title: "v0.33.1 — Cost & Tasks Fixes"
+date: 2026-04-07
+version: v0.33.1
+---
+
+## Fixes
+
+**Correct cost total in Overview tab** — the Overview tab now includes team sidechain costs in the total, matching the Cost tab and session card.
+
+**Tasks tab for historical sessions** — the Tasks tab no longer disappears when persistent task files are cleaned up after a session ends. Falls back to progress items already parsed from JSONL.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
 
 --- changelog/v0.33.0.md ---
 
