@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.33.0"
+    "version": "0.33.1"
   },
   "paths": {
     "/api/branches": {
@@ -204,7 +204,7 @@
         "tags": [
           "coaching"
         ],
-        "summary": "GET /api/coaching/rules — List all coaching rules from the rules directory.",
+        "summary": "GET /api/coaching/rules -- List all coaching rules from the rules directory.",
         "operationId": "list_rules",
         "responses": {
           "200": {
@@ -223,7 +223,7 @@
         "tags": [
           "coaching"
         ],
-        "summary": "POST /api/coaching/rules — Create a new coaching rule file.",
+        "summary": "POST /api/coaching/rules -- Create a new coaching rule file.",
         "operationId": "apply_rule",
         "requestBody": {
           "content": {
@@ -257,7 +257,7 @@
         "tags": [
           "coaching"
         ],
-        "summary": "DELETE /api/coaching/rules/{id} — Remove a coaching rule file.",
+        "summary": "DELETE /api/coaching/rules/{id} -- Remove a coaching rule file.",
         "operationId": "remove_rule",
         "parameters": [
           {
@@ -846,8 +846,8 @@
         "tags": [
           "sync"
         ],
-        "summary": "GET /api/indexing/status — lightweight JSON snapshot of indexing progress.",
-        "description": "Returns the current phase, indexed count, and total count.\nDesigned for polling (every 200–300 ms) from the frontend during rebuilds.",
+        "summary": "GET /api/indexing/status -- lightweight JSON snapshot of indexing progress.",
+        "description": "Returns the current phase, indexed count, and total count.\nDesigned for polling (every 200-300 ms) from the frontend during rebuilds.",
         "operationId": "indexing_status",
         "responses": {
           "200": {
@@ -1726,7 +1726,7 @@
         "tags": [
           "plugins"
         ],
-        "summary": "GET /api/plugins — Unified view of installed + available plugins.",
+        "summary": "GET /api/plugins -- Unified view of installed + available plugins.",
         "operationId": "list_plugins",
         "responses": {
           "200": {
@@ -3312,7 +3312,7 @@
         "tags": [
           "turns"
         ],
-        "summary": "GET /api/sessions/{id}/turns — Per-turn breakdown for a historical session.",
+        "summary": "GET /api/sessions/{id}/turns -- Per-turn breakdown for a historical session.",
         "operationId": "get_session_turns",
         "parameters": [
           {
@@ -4792,6 +4792,7 @@
       },
       "BindControlRequest": {
         "type": "object",
+        "description": "Request body for binding sidecar control to a session.",
         "required": [
           "controlId"
         ],
@@ -5251,6 +5252,7 @@
       },
       "CheckPathResponse": {
         "type": "object",
+        "description": "Response for the check-path endpoint.",
         "required": [
           "exists"
         ],
@@ -9168,7 +9170,7 @@
               "string",
               "null"
             ],
-            "description": "Non-empty when the CLI call failed — used by PluginHealthBanner."
+            "description": "Non-empty when the CLI call failed -- used by PluginHealthBanner."
           },
           "duplicateCount": {
             "type": "integer",
@@ -10708,7 +10710,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "The real context window limit in tokens (200_000 or 1_000_000).\nThis is the authoritative value — no guessing needed.",
+            "description": "The real context window limit in tokens (200_000 or 1_000_000).\nThis is the authoritative value -- no guessing needed.",
             "minimum": 0
           },
           "current_usage": {
@@ -10728,7 +10730,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Pre-computed percentage remaining (0.0–100.0)."
+            "description": "Pre-computed percentage remaining (0.0-100.0)."
           },
           "total_input_tokens": {
             "type": [
@@ -10754,7 +10756,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Pre-computed percentage used (0.0–100.0). Null early in session."
+            "description": "Pre-computed percentage used (0.0-100.0). Null early in session."
           }
         }
       },
@@ -11784,6 +11786,7 @@
       },
       "UnbindControlRequest": {
         "type": "object",
+        "description": "Request body for unbinding sidecar control from a session.",
         "required": [
           "controlId"
         ],

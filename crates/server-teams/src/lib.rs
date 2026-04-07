@@ -9,10 +9,10 @@ pub mod parser;
 pub mod resolve;
 pub mod snapshot;
 pub mod store;
+#[cfg(test)]
 mod tests;
 mod types;
 
-// Re-export all public items so `crate::teams::*` paths remain unchanged.
 pub use jsonl_index::build_team_jsonl_index;
 pub use resolve::{build_team_cost, resolve_team_member_sessions, resolve_team_sidechains};
 pub use snapshot::snapshot_team;
