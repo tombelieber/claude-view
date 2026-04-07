@@ -40,7 +40,7 @@ export function TeamsTab({
     transcript ? null : teamName,
     inboxVersion,
   )
-  const { data: sidechains } = useTeamSidechains(teamName, sessionId)
+  const { data: sidechains } = useTeamSidechains(teamName, sessionId, inboxVersion)
 
   const sidechainsByMember = useMemo(() => {
     if (!sidechains?.length) return new Map<string, TeamMemberSidechain[]>()
