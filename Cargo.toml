@@ -111,6 +111,7 @@ claude-view-server-insights = { path = "crates/server-insights" }
 claude-view-server-jobs = { path = "crates/server-jobs" }
 claude-view-server-teams = { path = "crates/server-teams" }
 claude-view-server-local-llm = { path = "crates/server-local-llm" }
+claude-view-server-types = { path = "crates/server-types" }
 
 [profile.dev]
 opt-level = 0          # Fastest compile (no optimization)

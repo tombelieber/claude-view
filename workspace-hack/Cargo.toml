@@ -60,9 +60,12 @@ subtle = { version = "2.6.1", default-features = false, features = ["i128"] }
 time = { version = "0.3.47", features = ["macros", "serde-well-known"] }
 tokio = { version = "1.51.0", features = ["full", "test-util"] }
 tokio-stream = { version = "0.1.18", features = ["fs"] }
+tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+tower = { version = "0.5.3", default-features = false, features = ["log", "make", "timeout", "util"] }
 tower-http = { version = "0.6.8", features = ["compression-gzip", "cors", "fs", "limit", "trace"] }
 tracing = { version = "0.1.44", features = ["log"] }
 tracing-core = { version = "0.1.36" }
+tungstenite = { version = "0.28.0", default-features = false, features = ["__rustls-tls", "handshake"] }
 url = { version = "2.5.8", features = ["serde"] }
 utoipa = { version = "5.4.0", features = ["axum_extras"] }
 uuid = { version = "1.23.0", features = ["serde", "v4"] }
@@ -100,7 +103,7 @@ miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd",
 rustls = { version = "0.23.37", default-features = false, features = ["ring", "tls12"] }
 rustls-webpki = { version = "0.103.10", default-features = false, features = ["ring"] }
 security-framework-sys = { version = "2.17.0" }
-tower = { version = "0.5.3", default-features = false, features = ["log", "make", "retry", "timeout"] }
+tower = { version = "0.5.3", default-features = false, features = ["retry"] }
 tower-http = { version = "0.6.8", default-features = false, features = ["follow-redirect"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
