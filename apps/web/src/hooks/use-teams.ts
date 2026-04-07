@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { InboxMessage, TeamDetail, TeamSummary } from '../types/generated'
 import type { TeamCostBreakdown } from '../types/generated/TeamCostBreakdown'
+import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
 
 // ============================================================================
 // Fetch functions
@@ -27,6 +28,17 @@ async function fetchTeamInbox(name: string): Promise<InboxMessage[]> {
 async function fetchTeamCost(name: string): Promise<TeamCostBreakdown> {
   const res = await fetch(`/api/teams/${encodeURIComponent(name)}/cost`)
   if (!res.ok) throw new Error(`Failed to fetch cost for team: ${name}`)
+  return res.json()
+}
+
+async function fetchTeamSidechains(
+  name: string,
+  sessionId: string,
+): Promise<TeamMemberSidechain[]> {
+  const res = await fetch(
+    `/api/teams/${encodeURIComponent(name)}/sidechains?session_id=${encodeURIComponent(sessionId)}`,
+  )
+  if (!res.ok) throw new Error(`Failed to fetch sidechains for team: ${name}`)
   return res.json()
 }
 
@@ -74,6 +86,16 @@ export function useTeamCost(name: string | null) {
     queryFn: () => fetchTeamCost(name ?? ''),
     enabled: !!name,
     staleTime: 120_000, // Cost is expensive to compute, cache 2 min
+  })
+}
+
+/** Fetch sidechain (subagent JSONL) info for a team member in a given session. */
+export function useTeamSidechains(teamName: string | null, sessionId: string | null) {
+  return useQuery({
+    queryKey: ['team-sidechains', teamName, sessionId],
+    queryFn: () => fetchTeamSidechains(teamName ?? '', sessionId ?? ''),
+    enabled: !!teamName && !!sessionId,
+    staleTime: 60_000,
   })
 }
 

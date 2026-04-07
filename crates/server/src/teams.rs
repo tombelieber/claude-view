@@ -1070,7 +1070,13 @@ pub fn resolve_team_member_sessions(
 
 /// A single sidechain instance for a team member.
 #[derive(Debug, Clone, Serialize, TS)]
-#[cfg_attr(feature = "codegen", ts(export))]
+#[cfg_attr(
+    feature = "codegen",
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamMemberSidechain {
     /// Hex agent ID — used with `/api/sessions/{sid}/subagents/{hex}/messages`.
