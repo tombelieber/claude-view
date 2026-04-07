@@ -679,6 +679,7 @@ dependencies = [
  "claude-view-server-local-llm",
  "claude-view-server-sidecar",
  "claude-view-server-teams",
+ "claude-view-server-types",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "crypto_box",
@@ -797,6 +798,26 @@ dependencies = [
  "tracing",
  "ts-rs",
  "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-types"
+version = "0.33.1"
+dependencies = [
+ "axum 0.8.8",
+ "claude-view-core",
+ "claude-view-db",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "ts-rs",
  "workspace-hack",
 ]
 
@@ -5760,10 +5781,12 @@ dependencies = [
  "time-macros",
  "tokio",
  "tokio-stream",
+ "tokio-tungstenite",
  "tower",
  "tower-http",
  "tracing",
  "tracing-core",
+ "tungstenite",
  "url",
  "utoipa",
  "utoipa-gen",

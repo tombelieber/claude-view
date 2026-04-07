@@ -22,7 +22,7 @@ path = "src/main.rs"
 default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
 
 # Gate ts-rs file generation. Not in default — only generate-types.sh enables this.
-codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen", "claude-view-server-insights/codegen", "claude-view-server-jobs/codegen", "claude-view-server-teams/codegen"]
+codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen", "claude-view-server-insights/codegen", "claude-view-server-jobs/codegen", "claude-view-server-teams/codegen", "claude-view-server-types/codegen"]
 
 # Dashboard time range selector (7d/30d/90d/all-time)
 time-range = []
@@ -48,6 +48,7 @@ claude-view-server-insights = { workspace = true }
 claude-view-server-jobs = { workspace = true }
 claude-view-server-teams = { workspace = true }
 claude-view-server-local-llm = { workspace = true }
+claude-view-server-types = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 tower = { workspace = true }

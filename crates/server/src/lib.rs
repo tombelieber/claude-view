@@ -7,19 +7,19 @@
 pub mod app_factory;
 pub mod auth;
 pub mod backfill;
-pub mod cache;
-pub mod classify_state;
+pub use claude_view_server_types::cache;
+pub use claude_view_server_types::classify_state;
 pub mod crypto;
-pub mod error;
-pub mod facet_ingest;
+pub use claude_view_server_types::error;
+pub use claude_view_server_types::facet_ingest;
 pub mod file_tracker;
-pub mod git_sync_state;
-pub mod indexing_state;
 pub use claude_view_server_insights as insights;
 pub use claude_view_server_jobs as jobs;
+pub use claude_view_server_types::git_sync_state;
+pub use claude_view_server_types::indexing_state;
 pub mod live;
 pub mod local_llm;
-pub mod metrics;
+pub use claude_view_server_types::metrics;
 pub mod openapi;
 pub mod routes;
 pub mod search_service;
@@ -28,7 +28,7 @@ pub use claude_view_server_sidecar as sidecar;
 pub mod state;
 pub use claude_view_server_teams as teams;
 pub mod telemetry;
-pub mod terminal_state;
+pub use claude_view_server_types::terminal_state;
 pub mod time_range;
 
 #[cfg(test)]
