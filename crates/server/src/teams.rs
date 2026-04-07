@@ -1089,12 +1089,23 @@ pub struct TeamMemberSidechain {
     /// File size in bytes.
     #[ts(type = "number")]
     pub file_size_bytes: u64,
+    /// Model used by this sidechain (e.g., "claude-opus-4-6").
+    pub model: String,
+    /// ISO 8601 timestamp of the first JSONL entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    /// ISO 8601 timestamp of the last JSONL entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+    /// Duration in seconds (derived from started_at → ended_at).
+    #[ts(type = "number")]
+    pub duration_seconds: u32,
 }
 
 /// Scan `{session_dir}/subagents/*.meta.json` and return sidechain info for each.
 ///
 /// Each meta.json has `{"agentType":"js-advocate"}` and filename `agent-{hexId}.meta.json`.
-/// The corresponding `.jsonl` file is read for line count and file size.
+/// The corresponding `.jsonl` file is read for line count, file size, model, and timestamps.
 /// Results are sorted by `member_name` ascending, then `line_count` descending.
 pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
     use std::io::{BufRead, BufReader};
@@ -1103,6 +1114,24 @@ pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
     struct Meta {
         #[serde(rename = "agentType")]
         agent_type: String,
+    }
+
+    /// Minimal struct for extracting timestamp, type, and model from JSONL entries.
+    /// Only these fields are deserialized; everything else is skipped by serde.
+    #[derive(Deserialize)]
+    struct MinimalEntry {
+        #[serde(default)]
+        timestamp: Option<String>,
+        #[serde(default, rename = "type")]
+        entry_type: Option<String>,
+        #[serde(default)]
+        message: Option<MinimalMessage>,
+    }
+
+    #[derive(Deserialize)]
+    struct MinimalMessage {
+        #[serde(default)]
+        model: Option<String>,
     }
 
     let subagents_dir = session_dir.join("subagents");
@@ -1137,16 +1166,70 @@ pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
             Err(_) => continue,
         };
 
-        // Read corresponding .jsonl file for line count and size
+        // Read JSONL: count lines, extract model + first/last timestamps.
+        // Only parses JSON for early lines (model/timestamp) and the last line (end timestamp).
         let jsonl_path = subagents_dir.join(format!("agent-{hex_id}.jsonl"));
-        let (line_count, file_size_bytes) = match std::fs::File::open(&jsonl_path) {
-            Ok(file) => {
-                let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-                let reader = BufReader::new(file);
-                let count = reader.lines().count() as u32;
-                (count, size)
+        let (line_count, file_size_bytes, model, started_at, ended_at) =
+            match std::fs::File::open(&jsonl_path) {
+                Ok(file) => {
+                    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+                    let reader = BufReader::new(file);
+
+                    let mut count = 0u32;
+                    let mut first_ts: Option<String> = None;
+                    let mut model: Option<String> = None;
+                    let mut last_raw: Option<String> = None;
+
+                    for line_result in reader.lines() {
+                        let line = match line_result {
+                            Ok(l) => l,
+                            Err(_) => {
+                                count += 1;
+                                continue;
+                            }
+                        };
+                        count += 1;
+
+                        // Parse early lines only: first timestamp + first assistant model
+                        if first_ts.is_none() || model.is_none() {
+                            if let Ok(e) = serde_json::from_str::<MinimalEntry>(&line) {
+                                if first_ts.is_none() {
+                                    first_ts = e.timestamp.clone();
+                                }
+                                if model.is_none()
+                                    && e.entry_type.as_deref() == Some("assistant")
+                                {
+                                    model = e.message.and_then(|m| m.model);
+                                }
+                            }
+                        }
+
+                        last_raw = Some(line);
+                    }
+
+                    // Parse last line for end timestamp
+                    let last_ts = last_raw.and_then(|raw| {
+                        serde_json::from_str::<MinimalEntry>(&raw)
+                            .ok()
+                            .and_then(|e| e.timestamp)
+                    });
+
+                    (count, size, model.unwrap_or_default(), first_ts, last_ts)
+                }
+                Err(_) => (0, 0, String::new(), None, None),
+            };
+
+        // Compute duration from ISO 8601 timestamps
+        let duration_seconds = match (&started_at, &ended_at) {
+            (Some(start), Some(end)) => {
+                let s = chrono::DateTime::parse_from_rfc3339(start).ok();
+                let e = chrono::DateTime::parse_from_rfc3339(end).ok();
+                match (s, e) {
+                    (Some(s), Some(e)) => e.signed_duration_since(s).num_seconds().max(0) as u32,
+                    _ => 0,
+                }
             }
-            Err(_) => (0, 0),
+            _ => 0,
         };
 
         sidechains.push(TeamMemberSidechain {
@@ -1154,6 +1237,10 @@ pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
             member_name: meta.agent_type,
             line_count,
             file_size_bytes,
+            model,
+            started_at,
+            ended_at,
+            duration_seconds,
         });
     }
 
