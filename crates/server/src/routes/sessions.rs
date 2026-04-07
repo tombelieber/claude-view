@@ -553,6 +553,11 @@ pub async fn get_session_messages_by_id(
         // Channel A (JSONL hook_progress) and Channel B (DB hook_events) are
         // separate data sources with different schemas — both always render.
         // See CLAUDE.md: "Separate Channels = Separate Data = No Dedup".
+        //
+        // NOTE: The frontend must NOT also fire FETCH_HOOK_EVENTS on initial load,
+        // or the same events will be duplicated (different ID prefixes: hook-db- vs hook-).
+        // FETCH_HOOK_EVENTS is only needed after TURN_COMPLETE for live sessions
+        // where hook events are in memory and not yet flushed to DB.
         match claude_view_db::hook_events_queries::get_hook_events(&state.db, &session_id).await {
             Ok(hook_rows) if !hook_rows.is_empty() => {
                 let hook_blocks: Vec<_> = hook_rows

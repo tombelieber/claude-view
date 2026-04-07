@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
 import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
 import type { LiveSession } from './use-live-sessions'
 
@@ -12,6 +13,8 @@ interface CostTooltipProps {
   cacheStatus: 'warm' | 'cold' | 'unknown'
   tokens?: LiveSession['tokens']
   subAgents?: SubAgentInfo[]
+  /** Team member sidechains — when provided, shows member cost breakdown. */
+  sidechains?: TeamMemberSidechain[]
   compactCount?: number
   children: ReactNode
 }
@@ -24,6 +27,7 @@ export function CostTooltip({
   cacheStatus,
   tokens,
   subAgents,
+  sidechains,
   compactCount,
   children,
 }: CostTooltipProps) {
@@ -93,7 +97,10 @@ export function CostTooltip({
   const totalSubAgentCost = hasSubAgentCosts
     ? subAgentsWithCost.reduce((sum, sa) => sum + (sa.costUsd ?? 0), 0)
     : 0
-  const sessionTotalUsd = cost.totalUsd + totalSubAgentCost
+  // Calculate sidechain (team member) costs
+  const sidechainTotalCost = sidechains?.reduce((sum, sc) => sum + (sc.costUsd ?? 0), 0) ?? 0
+  const hasSidechainCosts = sidechainTotalCost > 0
+  const sessionTotalUsd = cost.totalUsd + totalSubAgentCost + sidechainTotalCost
   const totalTokens = tokens?.totalTokens ?? 0
   const cacheCreation5mTokens = tokens?.cacheCreation5mTokens ?? 0
   const cacheCreation1hrTokens = tokens?.cacheCreation1hrTokens ?? 0
@@ -170,6 +177,37 @@ export function CostTooltip({
                   </div>
                 </div>
               )}
+              {hasSidechainCosts &&
+                (() => {
+                  // Group sidechains by member name
+                  const byMember = new Map<string, { cost: number; count: number }>()
+                  for (const sc of sidechains!) {
+                    if (sc.costUsd == null || sc.costUsd <= 0) continue
+                    const existing = byMember.get(sc.memberName)
+                    if (existing) {
+                      existing.cost += sc.costUsd
+                      existing.count += 1
+                    } else {
+                      byMember.set(sc.memberName, { cost: sc.costUsd, count: 1 })
+                    }
+                  }
+                  const entries = [...byMember.entries()].sort((a, b) => b[1].cost - a[1].cost)
+                  return (
+                    <div className="pt-1 mt-1 border-t border-gray-200 dark:border-gray-700">
+                      <div className="text-gray-500 dark:text-gray-400 mb-0.5">Team members</div>
+                      <div className="space-y-0.5 font-mono text-gray-500 dark:text-gray-400">
+                        {entries.map(([name, m], idx) => (
+                          <div key={name} className="flex items-center justify-between">
+                            <span className="truncate mr-1">
+                              {idx === entries.length - 1 ? '└──' : '├──'} {name} ×{m.count}
+                            </span>
+                            <span className="tabular-nums shrink-0">{formatCostUsd(m.cost)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
               {cost.cacheSavingsUsd > 0 && (
                 <div className={`pt-1 ${COST_CATEGORY_COLORS.savings.text}`}>
                   Saved {formatCostUsd(cost.cacheSavingsUsd)} via caching

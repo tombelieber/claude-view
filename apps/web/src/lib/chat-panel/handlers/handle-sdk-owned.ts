@@ -76,6 +76,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
       return [store, []]
 
     case 'HOOK_EVENTS_OK': {
+      if (event.sessionId !== p.sessionId) return [store, []] // stale fetch from previous session
       // Merge hook blocks by ID (append-or-replace, same as TERMINAL_BLOCK in cc_cli)
       const existingIds = new Set(p.blocks.map((b) => b.id))
       const newHooks = event.blocks.filter((b) => !existingIds.has(b.id))

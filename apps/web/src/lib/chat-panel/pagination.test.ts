@@ -545,6 +545,167 @@ describe('OLDER_HISTORY_OK in sdk_owned phase', () => {
   })
 })
 
+// ── Hook events interleave correctly after prepend ──────────
+
+describe('OLDER_HISTORY_OK interleaves hook events by timestamp', () => {
+  it('re-sorts when hook events in existing blocks predate older blocks', () => {
+    // Simulate: existing blocks have a hook event from ts=50 (merged via
+    // FETCH_HOOK_EVENTS), then a message at ts=500. Older blocks have
+    // messages at ts=200 and ts=300. After prepend, the hook event at
+    // ts=50 should sort before the older blocks, not between them.
+    const hookBlock = {
+      type: 'progress',
+      id: 'hook-50-0',
+      variant: 'hook',
+      category: 'hook',
+      ts: 50,
+    } as unknown as ConversationBlock
+    const existingMsg = {
+      type: 'assistant',
+      id: 'msg-500',
+      timestamp: 500,
+    } as unknown as ConversationBlock
+    const olderMsg1 = {
+      type: 'user',
+      id: 'msg-200',
+      timestamp: 200,
+    } as unknown as ConversationBlock
+    const olderMsg2 = {
+      type: 'assistant',
+      id: 'msg-300',
+      timestamp: 300,
+    } as unknown as ConversationBlock
+
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: [hookBlock, existingMsg],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 100, offset: 50, fetchingOlder: true } },
+    )
+
+    const next = step(store, {
+      type: 'OLDER_HISTORY_OK',
+      blocks: [olderMsg1, olderMsg2],
+      offset: 48,
+    } as RawEvent)
+
+    if (next.panel.phase === 'sdk_owned') {
+      // Should be sorted: hook(50) → msg(200) → msg(300) → msg(500)
+      expect(next.panel.blocks.map((b) => b.id)).toEqual([
+        'hook-50-0',
+        'msg-200',
+        'msg-300',
+        'msg-500',
+      ])
+    }
+  })
+
+  it('preserves non-timestamped blocks (TurnBoundary) in older range', () => {
+    // TurnBoundary has no timestamp (blockTimestamp returns 0).
+    // It must stay in its original position within older blocks.
+    const hookBlock = {
+      type: 'progress',
+      id: 'hook-150-0',
+      ts: 150,
+    } as unknown as ConversationBlock
+    const existingMsg = {
+      type: 'assistant',
+      id: 'msg-500',
+      timestamp: 500,
+    } as unknown as ConversationBlock
+    const turnBoundary = {
+      type: 'turn_boundary',
+      id: 'tb-1',
+      // no timestamp — blockTimestamp returns 0
+    } as unknown as ConversationBlock
+    const olderMsg = {
+      type: 'user',
+      id: 'msg-200',
+      timestamp: 200,
+    } as unknown as ConversationBlock
+
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: [hookBlock, existingMsg],
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 100, offset: 50, fetchingOlder: true } },
+    )
+
+    const next = step(store, {
+      type: 'OLDER_HISTORY_OK',
+      blocks: [turnBoundary, olderMsg],
+      offset: 48,
+    } as RawEvent)
+
+    if (next.panel.phase === 'sdk_owned') {
+      // TurnBoundary stays before olderMsg (its original position in older)
+      // Hook interleaves by timestamp: ts=150 < ts=200 → before olderMsg
+      expect(next.panel.blocks.map((b) => b.id)).toEqual([
+        'tb-1', // non-timestamped, stays in original position
+        'hook-150-0', // ts=150, interleaved before msg-200
+        'msg-200', // ts=200
+        'msg-500', // ts=500, stays in existing
+      ])
+    }
+  })
+
+  it('skips sort when no timestamp disorder (fast path)', () => {
+    // Normal case: existing blocks all have timestamps after older blocks
+    const existing = [
+      { type: 'assistant', id: 'msg-300', timestamp: 300 },
+      { type: 'assistant', id: 'msg-400', timestamp: 400 },
+    ] as unknown as ConversationBlock[]
+    const older = [
+      { type: 'user', id: 'msg-100', timestamp: 100 },
+      { type: 'assistant', id: 'msg-200', timestamp: 200 },
+    ] as unknown as ConversationBlock[]
+
+    const store = makeStore(
+      {
+        phase: 'sdk_owned',
+        sessionId: 's1',
+        controlId: 'c1',
+        blocks: existing,
+        pendingText: '',
+        ephemeral: false,
+        turn: { turn: 'idle' },
+        conn: { health: 'ok' },
+      } as PanelState,
+      { historyPagination: { total: 100, offset: 50, fetchingOlder: true } },
+    )
+
+    const next = step(store, {
+      type: 'OLDER_HISTORY_OK',
+      blocks: older,
+      offset: 48,
+    } as RawEvent)
+
+    if (next.panel.phase === 'sdk_owned') {
+      // Simple concat order preserved (no sort needed)
+      expect(next.panel.blocks.map((b) => b.id)).toEqual([
+        'msg-100',
+        'msg-200',
+        'msg-300',
+        'msg-400',
+      ])
+    }
+  })
+})
+
 // ── HISTORY_OK populates historyPagination in sdk_owned ─────
 
 describe('HISTORY_OK populates historyPagination in sdk_owned phase', () => {
