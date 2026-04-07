@@ -2,7 +2,7 @@
 //!
 //! Contains the core accumulator state struct and its output type.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::phase::{PhaseHistory, PhaseLabel};
 use crate::pricing::{CacheStatus, CostBreakdown, TokenUsage};

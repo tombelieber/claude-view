@@ -37,9 +37,7 @@ pub(crate) use core::test_live_session;
 pub use core::{ControlBinding, LiveSession, SessionSnapshot, SessionStatus, SnapshotEntry};
 
 // event
-pub(crate) use event::{
-    append_capped_hook_event, append_capped_hook_events, MAX_HOOK_EVENTS_PER_SESSION,
-};
+pub(crate) use event::{append_capped_hook_event, MAX_HOOK_EVENTS_PER_SESSION};
 pub use event::{HookEvent, SessionEvent};
 
 // field_types
