@@ -55,6 +55,7 @@ import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
 import { TaskDetailTab } from './TaskDetailTab'
+import type { TaskItem } from '../../types/generated/TaskItem'
 import { TodoChecklist } from '../session/TodoChecklist'
 import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
@@ -147,7 +148,25 @@ export function SessionDetailPanel({
 
   // For live sessions, fetch tasks from API (the SSE live stream does not include persistent task data)
   const { data: liveSessionDetail } = useSessionDetail(isLive ? data.id : null, taskVersion)
-  const tasks = isLive ? liveSessionDetail?.tasks : data.tasks
+  const persistentTasks = isLive ? liveSessionDetail?.tasks : data.tasks
+  const hasPersistentTasks = persistentTasks && persistentTasks.length > 0
+  // Fallback: when persistent task files don't exist (cleaned up after session ends),
+  // derive from progressItems which the JSONL accumulator already parsed.
+  const derivedTasks: TaskItem[] | undefined =
+    !hasPersistentTasks && data.progressItems
+      ? data.progressItems
+          .filter((p) => p.source === 'task' && p.id)
+          .map((p) => ({
+            id: p.id!,
+            subject: p.title,
+            description: '',
+            activeForm: p.activeForm ?? '',
+            status: p.status,
+            blocks: [] as string[],
+            blockedBy: [] as string[],
+          }))
+      : undefined
+  const tasks = hasPersistentTasks ? persistentTasks : derivedTasks
   const hasTasks = tasks && tasks.length > 0
   const todos = isLive ? liveSessionDetail?.todos : data.todos
   const hasTodos = todos && todos.length > 0
@@ -351,7 +370,8 @@ export function SessionDetailPanel({
   // - Fall back to DB total_cost_usd only when rich data is unavailable.
   const dbCostUsd = data.historyExtras?.sessionInfo?.totalCostUsd
   const subAgentCostUsd = data.subAgents?.reduce((s, a) => s + (a.costUsd ?? 0), 0) ?? 0
-  const calculatedCostUsd = data.cost.totalUsd + subAgentCostUsd
+  const sidechainCostUsd = sidechainsData?.reduce((s, sc) => s + (sc.costUsd ?? 0), 0) ?? 0
+  const calculatedCostUsd = data.cost.totalUsd + subAgentCostUsd + sidechainCostUsd
   const totalCostUsd = calculatedCostUsd > 0 ? calculatedCostUsd : (dbCostUsd ?? 0)
   const totalCostLabel = hasUnavailableCost(totalCostUsd, data.cost, data.tokens.totalTokens)
     ? 'Unavailable'
