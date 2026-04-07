@@ -1649,6 +1649,58 @@ npx claude-view@latest
 Open any session with hook activity or context management and check the developer timeline. The events that were invisible before should now be there.
 
 
+--- blog/v0-33-0-teams-and-claude-integration.mdx ---
+
+---
+title: "Team Debates, Cost Tracking, and Your ~/.claude Directory"
+description: "v0.33.0 brings team debate transcripts, per-member cost breakdowns, sub-agent sidechains, and full ~/.claude directory integration to claude-view."
+date: 2026-04-07
+author: claude-view team
+---
+
+If you're running multi-agent teams in Claude Code, you've probably wondered: "What are they actually saying to each other?" And more practically: "Which agent is burning through my tokens?" v0.33.0 answers both questions.
+
+## Team debate transcripts
+
+When Claude Code spawns a team of agents to debate a problem, the raw output is a wall of XML blocks scattered across JSONL lines. Reading it means scrolling through `<teammate-message>` tags, cross-referencing session IDs, and mentally reconstructing who said what.
+
+v0.33.0 parses these debates into clean conversation transcripts. Each agent gets their own card. Moderator prompts are visually distinct from agent responses. Verdicts and round boundaries are marked clearly. It reads like a group chat, not a log file.
+
+The design follows progressive disclosure. By default, you see the conversation flow — who argued what, what the moderator asked, what verdict was reached. Technical details (model names, token counts, tool calls) are behind an expandable section. A product manager can follow the debate. An engineer can drill into the execution details. Same page, different depths.
+
+## Per-member cost breakdown
+
+The Teams tab now shows per-member cost and token usage. Each team member card displays their total spend, and a crown icon marks the highest spender. This surfaces immediately when one agent is doing most of the heavy lifting while others are nearly idle — a common pattern when team configurations aren't balanced.
+
+Cost breakdown is visible across all surfaces: the sidebar overview, the detail panel, and the team overview page. You don't have to navigate anywhere special to see where tokens are going.
+
+## Sidechains
+
+Teams spawn sub-agents — claude-view calls these sidechains. v0.33.0 adds a dedicated section for them: model info, timestamps, duration, and token usage per sidechain. Click any sidechain to drill into its full block view.
+
+Sidechain data refreshes reactively via inbox versioning. When a team member spawns a new sub-agent, the UI updates immediately without polling. This is the same event-driven architecture we use across the live monitor — no setInterval, no stale data.
+
+## ~/.claude integration
+
+Your ~/.claude directory contains your AI memory files, Claude Code settings, MCP server configs, active session metadata, and todo items. Until now, browsing these required terminal commands or a file manager.
+
+v0.33.0 adds a Memory page with a 2-column layout: type-grouped memory files on the left, content preview on the right. Badges show counts per type (user, feedback, project, reference). The panel is resizable.
+
+A separate Settings page surfaces your Claude Code configuration, MCP servers, active sessions, and todos. Everything is read-only — claude-view shows you what's there without modifying it.
+
+## Sessions directory watcher
+
+The live monitor now watches ~/.claude/projects/ for new session directories. When a new session appears on disk, it's picked up immediately — no restart, no manual refresh. The watcher also runs a startup scan to catch sessions created while claude-view wasn't running, and detects crash artifacts from sessions that didn't shut down cleanly.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Teams tab to see debate transcripts and cost breakdowns. Check the Memory page to browse your ~/.claude directory from the dashboard.
+
+
 --- blog/v0-4-0-dashboard-analytics.mdx ---
 
 ---
@@ -3033,6 +3085,46 @@ version: v0.32.0
 **Stdout no longer silently truncated** — hard `.slice()` caps on hook command output and stdout have been removed. Long outputs now display in full. Height caps were also raised for better readability.
 
 **Block pipeline exhaustiveness enforced at compile time** — the renderer switch is now a compile-time exhaustiveness check. Adding a new system block variant without a matching renderer is a type error, not a runtime blank.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.33.0.md ---
+
+---
+title: v0.33.0 — Teams, Transcripts & ~/.claude
+date: 2026-04-07
+version: v0.33.0
+---
+
+## New features
+
+**Team Debate Transcripts** — view multi-agent discussions as clean conversation transcripts with progressive disclosure. Non-technical users see the debate flow; engineers can expand technical details. Dedicated cards for agent messages, moderator prompts, verdicts, and round dividers.
+
+**Team Sidechains** — drill into sub-agent activity per team member. See per-sidechain cost and token usage, model info, timestamps, and duration. Event-driven refresh via inbox versioning — no polling.
+
+**Team Cost Breakdown** — per-member cost breakdown with crown indicator for highest-spending member. Visible across all surfaces: sidebar, detail panel, and overview.
+
+**~/.claude Integration** — browse your Claude Code memory files, settings, MCP servers, active sessions, and todos directly from the dashboard. Two-phase rollout: memory viewer + settings (Phase 1), MCP + active sessions + todos (Phase 2).
+
+**Memory Page Redesign** — 2-column layout with resizable panel, type badges, and per-type memory counts.
+
+**Sessions Directory Watcher** — live monitor now detects new sessions via filesystem watcher with startup scan and crash detection.
+
+## Improvements
+
+- SessionCard layout redesign with amber as the new primary color
+- Member Sessions moved from bottom panel to resizable right sidebar
+- SSE-driven real-time team updates (replaces polling)
+- Snapshot team data before deletion for recovery
+- Member discovery from inbox filenames, not just senders
+- External schema fields made optional to survive upstream SDK changes
+- Stable-sort hook block merge to eliminate timestamp violations
+- Block pipeline drift check added as CI gate 7
 
 ## Getting started
 
