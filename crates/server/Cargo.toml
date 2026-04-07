@@ -47,6 +47,7 @@ claude-view-server-sidecar = { workspace = true }
 claude-view-server-insights = { workspace = true }
 claude-view-server-jobs = { workspace = true }
 claude-view-server-teams = { workspace = true }
+claude-view-server-local-llm = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 tower = { workspace = true }

@@ -676,6 +676,7 @@ dependencies = [
  "claude-view-search",
  "claude-view-server-insights",
  "claude-view-server-jobs",
+ "claude-view-server-local-llm",
  "claude-view-server-sidecar",
  "claude-view-server-teams",
  "core-foundation 0.10.1",
@@ -750,6 +751,23 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-local-llm"
+version = "0.33.1"
+dependencies = [
+ "claude-view-core",
+ "dirs",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-test",
+ "tracing",
  "workspace-hack",
 ]
 
