@@ -5,16 +5,18 @@
 //! - GET /teams/:name        — Get team detail (config + members)
 //! - GET /teams/:name/inbox  — Get team inbox messages
 //! - GET /teams/:name/cost   — Get team cost breakdown (resolves member sessions)
+//! - GET /teams/:name/sidechains?session_id=xxx — Get team member sidechains
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::error::{ApiError, ApiResult};
 use crate::routes::sessions::resolve_session_file_path;
 use crate::state::AppState;
-use crate::teams::{InboxMessage, TeamCostBreakdown, TeamDetail, TeamSummary};
+use crate::teams::{InboxMessage, TeamCostBreakdown, TeamDetail, TeamMemberSidechain, TeamSummary};
 
 /// GET /api/teams — List all teams.
 #[utoipa::path(get, path = "/api/teams", tag = "teams",
@@ -132,10 +134,57 @@ pub async fn get_team_cost(
     Ok(Json(cost))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TeamSidechainsQuery {
+    pub session_id: String,
+}
+
+/// GET /api/teams/:name/sidechains?session_id=xxx — Get team member sidechains.
+///
+/// Resolves sidechain `.meta.json` / `.jsonl` pairs inside the session directory
+/// to enumerate each member's spawned sub-conversations.
+#[utoipa::path(get, path = "/api/teams/{name}/sidechains", tag = "teams",
+    params(
+        ("name" = String, Path, description = "Team name"),
+        ("session_id" = String, Query, description = "Lead session ID"),
+    ),
+    responses(
+        (status = 200, description = "Team member sidechains", body = serde_json::Value),
+        (status = 404, description = "Team not found"),
+    )
+)]
+pub async fn get_team_sidechains(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(query): Query<TeamSidechainsQuery>,
+) -> ApiResult<Json<Vec<TeamMemberSidechain>>> {
+    // Verify team exists
+    let _team = state
+        .teams
+        .get(&name)
+        .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))?;
+
+    // Resolve session JSONL path, then get its parent directory
+    let session_path = resolve_session_file_path(&state, &query.session_id).await?;
+    let session_dir = session_path
+        .parent()
+        .ok_or_else(|| ApiError::Internal("Session path has no parent directory".into()))?
+        .to_path_buf();
+
+    // Heavy I/O: read meta.json + count JSONL lines on blocking thread
+    let sidechains =
+        tokio::task::spawn_blocking(move || crate::teams::resolve_team_sidechains(&session_dir))
+            .await
+            .map_err(|e| ApiError::Internal(format!("Join error: {e}")))?;
+
+    Ok(Json(sidechains))
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/teams", get(list_teams))
         .route("/teams/{name}", get(get_team))
         .route("/teams/{name}/inbox", get(get_team_inbox))
         .route("/teams/{name}/cost", get(get_team_cost))
+        .route("/teams/{name}/sidechains", get(get_team_sidechains))
 }
