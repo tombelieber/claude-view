@@ -44,7 +44,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 claude-view est un tableau de bord open source qui surveille chaque session Claude Code sur votre machine — agents en direct, conversations passees, couts, sous-agents, hooks, appels d'outils — au meme endroit. Backend Rust, frontend React, binaire d'environ 10 Mo. Zero configuration, zero compte, 100 % local.
 
-**30 versions. 86 outils MCP. 9 skills. Un seul `npx claude-view`.**
+**30 versions. 85 outils MCP. 9 skills. Un seul `npx claude-view`.**
 
 ---
 
@@ -205,7 +205,7 @@ Executez un LLM local pour la classification de phase des sessions — aucun app
 
 ## Plugin
 
-`@claude-view/plugin` donne a Claude un acces natif aux donnees de votre tableau de bord — 86 outils MCP, 9 skills et demarrage automatique.
+`@claude-view/plugin` donne a Claude un acces natif aux donnees de votre tableau de bord — 85 outils MCP, 9 skills et demarrage automatique.
 
 ```bash
 claude plugin add @claude-view/plugin
@@ -215,7 +215,7 @@ claude plugin add @claude-view/plugin
 
 Chaque session Claude Code demarre automatiquement le tableau de bord. Plus besoin de lancer `npx claude-view` manuellement.
 
-### 86 outils MCP
+### 85 outils MCP
 
 8 outils faits main avec une sortie optimisee pour Claude :
 
@@ -230,7 +230,7 @@ Chaque session Claude Code demarre automatiquement le tableau de bord. Plus beso
 | `list_live_sessions` | Agents en cours d'execution (temps reel) |
 | `get_live_summary` | Cout agrege et statut pour aujourd'hui |
 
-Plus **78 outils auto-generes** a partir de la specification OpenAPI a travers 27 categories (contributions, perspectives, coaching, exports, workflows, et plus).
+Plus **78 outils auto-generes** a partir de la specification OpenAPI a travers 26 categories (contributions, perspectives, coaching, exports, workflows, et plus).
 
 ### 9 Skills
 
@@ -306,7 +306,7 @@ Techniques cles : pre-filtre SIMD (`memchr`), analyse JSONL par memoire mappee, 
 
 | Outil | Categorie | Stack | Taille | Moniteur en direct | Chat multi-session | Recherche | Analytiques | Outils MCP |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Moniteur + espace de travail | Rust | **~10 Mo** | **Oui** | **Oui** | **Oui** | **Oui** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Moniteur + espace de travail | Rust | **~10 Mo** | **Oui** | **Oui** | **Oui** | **Oui** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + gestionnaire de sessions | Tauri 2 | ~13 Mo | Partiel | Non | Non | Oui | Non |
 | [ccusage](https://github.com/ryoppippi/ccusage) | Suivi d'utilisation CLI | TypeScript | ~600 Ko | Non | Non | Non | CLI | Non |
 | [CodePilot](https://github.com/op7418/CodePilot) | Interface de chat bureau | Electron | ~140 Mo | Non | Non | Non | Non | Non |
@@ -413,7 +413,7 @@ Oui. claude-view surveille toutes les sessions Claude Code quel que soit leur mo
 
 - **Site web :** [claudeview.ai](https://claudeview.ai) — documentation, changelog, blog
 - **Discord :** [Rejoindre le serveur](https://discord.gg/G7wdZTpRfu) — support, demandes de fonctionnalites, discussions
-- **Plugin :** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 outils MCP, 9 skills, demarrage automatique
+- **Plugin :** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 85 outils MCP, 9 skills, demarrage automatique
 
 ---
 
@@ -486,7 +486,7 @@ git push origin main --tags    # declenche la CI → compile → publie automati
 ## Liens utiles
 
 - **[claudeview.ai](https://claudeview.ai)** — Site officiel, documentation et changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Plugin Claude Code avec 86 outils MCP et 9 skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Plugin Claude Code avec 85 outils MCP et 9 skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code supprime vos sessions apres 30 jours. Cet outil les sauvegarde. `npx claude-backup`
 
 ---

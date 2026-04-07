@@ -2,7 +2,7 @@
 
 > How Mission Control monitors active Claude Code sessions in real-time.
 >
-> **Date:** 2026-02-18
+> **Date:** 2026-02-18 (originally), updated 2026-04-07
 > **Status:** Current implementation (hook-primary state, JSONL metadata-only)
 
 ---
@@ -21,7 +21,7 @@ The Live Monitor tracks all active Claude Code sessions across all terminals on 
               │              ▼              ▼              ▼          │
               │     ┌────────────────────────────────────────────┐    │
               │     │        Hook Events (curl POST)             │    │
-              │     │  ALL 14 Claude Code hooks fire here.       │    │
+              │     │  ALL 25 Claude Code hooks fire here.       │    │
               │     │  Hooks are the SOLE authority for agent    │    │
               │     │  state — every hook maps to exactly one    │    │
               │     │  AgentState via a simple FSM.              │    │
@@ -43,12 +43,12 @@ The Live Monitor tracks all active Claude Code sessions across all terminals on 
               │              │   orchestrator)     │                   │
               │              └─────────┬──────────┘                   │
               │                        │                              │
-              │         ┌──────────────┼──────────────┐               │
-              │         ▼              ▼              ▼               │
-              │       File          Process        Cleanup            │
-              │       Watcher       Detector       Task               │
-              │       (JSONL →      (5s poll,      (30s)              │
-              │        metadata     crash-only)                       │
+              │         ┌──────────┼──────────┼──────────┼──────────┐   │
+              │         ▼          ▼          ▼          ▼          ▼ │
+              │       File      Reconcil-  Death     Sessions   Drain │
+              │       Watcher   ation Loop Consumer  Lifecycle  Loop  │
+              │       (JSONL→   (10s tick,  (kqueue   (fs event (LLM  │
+              │        meta     30s deep)   deaths)   watcher)  phase)│
               │        only)                                          │
               │                                                       │
               └───────────────────────┬───────────────────────────────┘
@@ -100,40 +100,51 @@ The system has two signal sources with strict separation of concerns:
 
 ### 3.1 Hook Registration (`hook_registrar.rs`)
 
-On server startup, `create_app_full()` calls `hook_registrar::register(port)` which injects **14 hook entries** into `~/.claude/settings.json` — one for every Claude Code hook event:
+On server startup, `create_app_full()` calls `hook_registrar::register(port)` which injects **25 hook entries** into `~/.claude/settings.json` — one for every Claude Code hook event:
 
 ```json
 {
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "curl ... # claude-view-hook", "statusMessage": "Mission Control" }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "curl ... # claude-view-hook", "statusMessage": "Live Monitor" }] }],
+    "SessionEnd": [{ "hooks": [{ ..., "async": true }] }],
     "UserPromptSubmit": [{ "hooks": [{ ..., "async": true }] }],
     "PreToolUse": [{ "hooks": [{ ..., "async": true }] }],
     "PostToolUse": [{ "hooks": [{ ..., "async": true }] }],
     "PostToolUseFailure": [{ "hooks": [{ ..., "async": true }] }],
     "PermissionRequest": [{ "hooks": [{ ..., "async": true }] }],
     "Stop": [{ "hooks": [{ ..., "async": true }] }],
+    "StopFailure": [{ "hooks": [{ ..., "async": true }] }],
     "Notification": [{ "hooks": [{ ..., "async": true }] }],
     "SubagentStart": [{ "hooks": [{ ..., "async": true }] }],
     "SubagentStop": [{ "hooks": [{ ..., "async": true }] }],
     "TeammateIdle": [{ "hooks": [{ ..., "async": true }] }],
+    "TaskCreated": [{ "hooks": [{ ..., "async": true }] }],
     "TaskCompleted": [{ "hooks": [{ ..., "async": true }] }],
     "PreCompact": [{ "hooks": [{ ..., "async": true }] }],
-    "SessionEnd": [{ "hooks": [{ ..., "async": true }] }]
+    "PostCompact": [{ "hooks": [{ ..., "async": true }] }],
+    "InstructionsLoaded": [{ "hooks": [{ ..., "async": true }] }],
+    "ConfigChange": [{ "hooks": [{ ..., "async": true }] }],
+    "CwdChanged": [{ "hooks": [{ ..., "async": true }] }],
+    "FileChanged": [{ "hooks": [{ ..., "async": true }] }],
+    "WorktreeCreate": [{ "hooks": [{ ..., "async": true }] }],
+    "WorktreeRemove": [{ "hooks": [{ ..., "async": true }] }],
+    "Elicitation": [{ "hooks": [{ ..., "async": true }] }],
+    "ElicitationResult": [{ "hooks": [{ ..., "async": true }] }]
   }
 }
 ```
 
 Key design:
 - **SessionStart is sync** (blocks Claude Code startup until curl completes) so the server creates the session skeleton before any JSONL is written.
-- **All other 13 hooks are async** (`"async": true` inside the handler object) so they don't block Claude Code's workflow.
-- **`statusMessage: "Mission Control"`** — all hooks show "Mission Control" in the Claude Code spinner while firing.
+- **All other 24 hooks are async** (`"async": true` inside the handler object) so they don't block Claude Code's workflow.
+- **`statusMessage: "Live Monitor"`** — all hooks show "Live Monitor" in the Claude Code spinner while firing.
 - **Sentinel comment** (`# claude-view-hook`) enables idempotent registration: old hooks are removed before new ones are added.
 - **Graceful cleanup** on server shutdown (`Ctrl+C`) removes all hooks from settings.json via the `with_graceful_shutdown` handler.
 - **Atomic writes** (temp file + rename) prevent Claude Code from seeing a partially-written settings.json.
 
 ### 3.2 Hook Event Flow (`routes/hooks.rs`)
 
-All 14 hook events POST to a single endpoint: `POST /api/live/hook`.
+All 25 hook events POST to a single endpoint: `POST /api/live/hook`.
 
 Claude Code pipes the hook payload as JSON via stdin to `curl --data-binary @-`. The payload contains:
 
@@ -174,7 +185,9 @@ Every hook event maps to exactly **one** AgentState. No merging, no expiry, no c
 
 | Hook Event | State | Group | Label |
 |-----------|-------|-------|-------|
-| SessionStart (startup/resume/clear) | `idle` | NeedsYou | "Waiting for first prompt" |
+| SessionStart (startup) | `idle` | NeedsYou | "Waiting for first prompt" |
+| SessionStart (resume) | `idle` | NeedsYou | "Session resumed" |
+| SessionStart (clear) | `idle` | NeedsYou | "Session cleared" |
 | SessionStart (compact) | `thinking` | Autonomous | "Compacting context..." |
 | UserPromptSubmit | `thinking` | Autonomous | "Processing prompt..." |
 | PreToolUse (AskUserQuestion) | `awaiting_input` | NeedsYou | "Asked you a question" |
@@ -195,15 +208,26 @@ Every hook event maps to exactly **one** AgentState. No merging, no expiry, no c
 | PostToolUseFailure (error) | `error` | NeedsYou | "Failed: tool_name" |
 | PermissionRequest | `needs_permission` | NeedsYou | "Needs permission: tool_name" |
 | Stop | `idle` | NeedsYou | "Waiting for your next prompt" |
+| StopFailure | `error` | NeedsYou | "API error: ..." |
 | Notification (permission_prompt) | `needs_permission` | NeedsYou | "Needs permission" |
 | Notification (idle_prompt) | `idle` | NeedsYou | "Session idle" |
 | Notification (elicitation_dialog) | `awaiting_input` | NeedsYou | (message text, truncated) |
 | SubagentStart | `delegating` | Autonomous | "Running agent_type agent" |
 | SubagentStop | `acting` | Autonomous | "agent_type agent finished" |
 | TeammateIdle | `delegating` | Autonomous | "Teammate name idle" (metadata update) |
+| TaskCreated | `acting` | Autonomous | "Task created: subject" |
 | TaskCompleted | `task_complete` | NeedsYou | task_subject |
-| PreCompact (manual) | `thinking` | Autonomous | "Compacting context..." |
-| PreCompact (auto) | `thinking` | Autonomous | "Auto-compacting context..." |
+| PreCompact (manual) | `compacting` | Autonomous | "Compacting context..." |
+| PreCompact (auto) | `compacting` | Autonomous | "Auto-compacting context..." |
+| PostCompact | `idle` | NeedsYou | "Context compacted" |
+| Elicitation | `waiting_mcp_input` | NeedsYou | "MCP input: server_name" |
+| ElicitationResult | `thinking` | Autonomous | "MCP input received" |
+| InstructionsLoaded | *(preserve)* | *(preserve)* | Observability only |
+| ConfigChange | *(preserve)* | *(preserve)* | Observability only |
+| CwdChanged | *(preserve)* | *(preserve)* | Observability only |
+| FileChanged | *(preserve)* | *(preserve)* | Observability only |
+| WorktreeCreate | *(preserve)* | *(preserve)* | Observability only |
+| WorktreeRemove | *(preserve)* | *(preserve)* | Observability only |
 | SessionEnd | `session_ended` | NeedsYou | "Session closed" |
 
 ### 3.4 PreToolUse: Instant Activity Labels
@@ -241,20 +265,23 @@ The `handle_hook` function does event-specific processing. The hook handler **di
 - **TaskCompleted**: Sets agent_state to NeedsYou/task_complete, marks the matching progress item as completed.
 - **TeammateIdle**: Updates sub-agent idle status in the sub_agents list, keeps parent session as delegating.
 - **PreCompact**: Sets agent_state to Autonomous/thinking with compaction label.
-- **SessionEnd**: Marks the session as Done, then spawns a 10-second delayed removal (grace period for UI animation).
+- **SessionEnd**: Marks the session as Done. The actual removal (move to recently_closed) happens when the PID dies, detected by kqueue or reconciliation loop.
 - **Generic** (Stop, Notification, SubagentStart/Stop, PostToolUseFailure): Updates the session's `agent_state` and broadcasts an update.
 
 ---
 
 ## 4. LiveSessionManager (Central Orchestrator)
 
-`LiveSessionManager::start()` creates the manager and spawns 3 background tasks:
+`LiveSessionManager::start()` creates the manager and spawns 5+ background tasks:
 
 ```
 LiveSessionManager
-├── spawn_file_watcher()       — JSONL file watching + metadata extraction (no state derivation)
-├── spawn_process_detector()   — 5s process table scan (crash detection only)
-└── spawn_cleanup_task()       — 30s orphan accumulator cleanup
+├── spawn_snapshot_writer()              — debounced session snapshot persistence (max 1/sec)
+├── spawn_file_watcher()                 — JSONL file watching + metadata extraction (no state derivation)
+├── spawn_reconciliation_loop()          — 10s tick PID liveness + 30s deep process count refresh
+├── spawn_death_consumer()               — event-driven kqueue PID death notifications (macOS)
+├── spawn_sessions_lifecycle_consumer()  — filesystem event-driven session lifecycle detection
+└── run_drain_loop()                     — LLM phase classifier (dirty-signal driven)
 ```
 
 ### 4.1 Shared State
@@ -318,31 +345,50 @@ let fallback_state = AgentState {
 
 The next hook event from that session will correct the state.
 
-### 4.4 Process Detector (`spawn_process_detector`)
+### 4.4 Reconciliation Loop (`spawn_reconciliation_loop`)
 
-The process detector is **crash-only**. It does exactly two things:
+Two-phase design on a **10-second tick** (replaced the old 5s process detector):
 
-1. **Update PIDs**: Scans the process table every 5 seconds for running `claude` processes and updates `session.pid` for each session.
-2. **Mark dead sessions**: If no process is found AND no activity for 5 minutes (300s) AND session is not already Done, mark as `session_ended`.
+**Phase 1 (every 10s) — lightweight liveness:**
+- For each session with a bound PID, check `is_pid_alive(pid)`.
+- Dead PIDs trigger `reap_session()` → session moved to `recently_closed`, broadcast `SessionClosed`.
+- Also reconciles stale control bindings and sweeps expired pending mutations.
+
+**Phase 2 (every 3rd tick = 30s) — process count + snapshot:**
+1. Refresh process count via `detect_claude_processes` (display metric only).
+2. Register PIDs with kqueue death watcher.
+3. Detect crashed sessions from `~/.claude/sessions/` directory.
+4. Unconditional snapshot save (defense in depth).
 
 ```
-Every 5 seconds:
-  1. Scan process table for claude processes
-  2. For each session:
-     a. Match process by working directory → update session.pid
-     b. If no process + stale >300s + not Done:
-        - Set agent_state = NeedsYou/session_ended
-        - Set status = Done
-        - Broadcast session_updated, then session_completed
-        - Remove from session map
+Every 10 seconds:
+  1. Check PID liveness for all sessions
+  2. Reap sessions with dead PIDs → recently_closed
+  3. Reconcile controlled sessions
+  4. Sweep expired pending mutations
+
+Every 30 seconds (3rd tick):
+  5. Refresh process count
+  6. Register new PIDs with kqueue
+  7. Detect crashed session files
+  8. Save snapshot
 ```
 
-The process detector does **no state derivation**. It never re-classifies agent state based on JSONL patterns or process presence. Its only state mutation is the crash-detection path above.
+### 4.5 Death Consumer (`spawn_death_consumer`)
 
-### 4.5 Cleanup Task (`spawn_cleanup_task`)
+Event-driven PID death detection via **kqueue** (macOS). When a monitored PID exits, kqueue delivers an instant notification instead of waiting for the next reconciliation tick:
 
-Every 30 seconds:
-- Removes orphaned accumulators (accumulator exists but session doesn't).
+- Receives PID death events from `ProcessDeathWatcher`
+- Looks up session by PID → calls `reap_session()`
+- Latency: ~0ms (event-driven) vs ~10s (polling fallback)
+
+### 4.6 Sessions Lifecycle Consumer (`spawn_sessions_lifecycle_consumer`)
+
+Watches `~/.claude/sessions/` for filesystem events — enables hook-free session lifecycle detection. Detects new session directories appearing and old ones being cleaned up.
+
+### 4.7 Drain Loop (`run_drain_loop`)
+
+LLM phase classifier — driven by dirty signals from JSONL processing. When a session accumulates enough new data, the drain loop sends it to the local LLM for phase classification (planning, debugging, coding, etc.). Results update session `phase_labels` for UI display.
 
 ---
 
@@ -369,18 +415,20 @@ There are no confidence scores, no `SignalSource` enum, and no expiry rules. Eve
 | `awaiting_input` | AskUserQuestion or elicitation dialog | PreToolUse(AskUserQuestion), Notification(elicitation_dialog) |
 | `awaiting_approval` | ExitPlanMode — plan ready for review | PreToolUse(ExitPlanMode) |
 | `needs_permission` | Permission prompt for tool use | PermissionRequest, Notification(permission_prompt) |
-| `error` | Tool failure | PostToolUseFailure (non-interrupt) |
+| `error` | Tool failure or API error | PostToolUseFailure (non-interrupt), StopFailure |
 | `interrupted` | User interrupted a tool | PostToolUseFailure (interrupt) |
-| `idle` | Session waiting for next prompt | Stop, SessionStart(startup/resume/clear), Notification(idle_prompt) |
+| `idle` | Session waiting for next prompt | Stop, SessionStart(startup/resume/clear), Notification(idle_prompt), PostCompact |
 | `task_complete` | Task finished | TaskCompleted |
-| `session_ended` | Session closed | SessionEnd, Process Detector (crash) |
+| `waiting_mcp_input` | MCP elicitation awaiting user input | Elicitation |
+| `session_ended` | Session closed | SessionEnd, Reconciliation (dead PID) |
 
 **Autonomous states** (agent working, no action needed):
 | State | Meaning | Triggered by |
 |-------|---------|-------------|
-| `thinking` | Processing prompt or between tools | UserPromptSubmit, PostToolUse, SessionStart(compact), PreCompact |
-| `acting` | Actively using tools | PreToolUse (non-blocking tools), SubagentStop |
+| `thinking` | Processing prompt or between tools | UserPromptSubmit, PostToolUse, SessionStart(compact), ElicitationResult |
+| `acting` | Actively using tools | PreToolUse (non-blocking tools), SubagentStop, TaskCreated |
 | `delegating` | Running sub-agents | SubagentStart, TeammateIdle |
+| `compacting` | Context compaction in progress | PreCompact |
 
 ### 5.2 Session Status (3 states, derived from AgentState)
 
@@ -438,7 +486,8 @@ Event types:
 | `summary` | `{ needsYouCount, autonomousCount, totalCostTodayUsd, totalTokensToday }` | On connect, on lag recovery |
 | `session_discovered` | Full `LiveSession` JSON | New session detected |
 | `session_updated` | Full `LiveSession` JSON | Session state changed |
-| `session_completed` | `{ sessionId }` | Session removed |
+| `session_closed` | Full `LiveSession` JSON | Session moved to recently_closed (PID died) |
+| `session_completed` | `{ sessionId }` | Session fully removed |
 | `heartbeat` | `{}` | Every 15s |
 
 ### 6.2 Client Side (`use-live-sessions.ts`)
@@ -491,12 +540,15 @@ main.rs
   │     ├── a. LiveSessionManager::start()
   │     │     ├── Creates broadcast channel (256 buffer)
   │     │     ├── Creates shared session map
-  │     │     ├── spawn_file_watcher()     ← Initial scan of ~/.claude/projects/ (metadata only)
-  │     │     ├── spawn_process_detector()  ← 5s polling loop (crash detection only)
-  │     │     └── spawn_cleanup_task()      ← 30s cleanup loop
+  │     │     ├── spawn_snapshot_writer()           ← Debounced snapshot persistence
+  │     │     ├── spawn_file_watcher()              ← Initial scan + JSONL watching
+  │     │     ├── spawn_reconciliation_loop()       ← 10s PID liveness + 30s deep
+  │     │     ├── spawn_death_consumer()            ← kqueue PID death events
+  │     │     ├── spawn_sessions_lifecycle_consumer()← fs session events
+  │     │     └── run_drain_loop()                  ← LLM phase classifier
   │     │
   │     ├── b. hook_registrar::register(port)
-  │     │     └── Injects 14 hooks into ~/.claude/settings.json
+  │     │     └── Injects 25 hooks into ~/.claude/settings.json
   │     │
   │     └── c. Build AppState with shared:
   │           - live_sessions (same Arc<RwLock<HashMap>>)
@@ -602,11 +654,16 @@ User exits Claude Code (Ctrl+D or /exit)
       1. Set agent_state = NeedsYou/session_ended
       2. Set status = Done
       3. Broadcast SessionUpdated (with Done status)
-      4. Spawn 10s delayed removal:
-          - Remove from live_sessions map
+  → PID exits shortly after
+  → kqueue death consumer (or 10s reconciliation fallback):
+      1. Detects dead PID
+      2. reap_session():
+          - Move session from live_sessions → recently_closed
           - Remove accumulator
-          - Broadcast SessionCompleted
-  → Frontend: card shows "Session closed" briefly, then removed after SessionCompleted
+          - Flush hook events to DB
+          - Save snapshot
+          - Broadcast SessionClosed
+  → Frontend: card moves to "Recently Closed" section
 ```
 
 ### 9.6 Session Crashes (No Hook)
@@ -614,14 +671,20 @@ User exits Claude Code (Ctrl+D or /exit)
 ```
 Claude Code process dies unexpectedly (kill -9, terminal closed)
   → No SessionEnd hook fires
-  → Process detector (5s poll) notices:
-      1. No matching process in process table
-      2. session.last_activity_at is >300s stale
-      3. Set agent_state = NeedsYou/session_ended, label = "Session ended (no process)"
-      4. Set status = Done
-      5. Broadcast SessionUpdated, then SessionCompleted
-      6. Remove from session map
-  → Frontend: card shows "Session ended (no process)", then removed
+  → kqueue death consumer detects PID death (~0ms latency):
+      1. Looks up session by dead PID
+      2. reap_session():
+          - Set agent_state = NeedsYou/session_ended
+          - Set status = Done
+          - Move from live_sessions → recently_closed
+          - Flush hook events to DB
+          - Save snapshot
+          - Broadcast SessionClosed
+  → Frontend: card moves to "Recently Closed" section
+
+  If kqueue misses the death (rare fallback):
+  → Reconciliation loop (10s tick) detects is_pid_alive(pid) == false
+  → Same reap_session() path as above
 ```
 
 ---
@@ -633,7 +696,7 @@ Claude Code process dies unexpectedly (kill -9, terminal closed)
 ```
 App
 └── MissionControl (page)
-    ├── ViewModeSelector (Grid | List | Board | Monitor)
+    ├── ViewModeSwitcher (Grid | List | Kanban | Monitor | Harness)
     ├── useLiveSessions() hook
     │   └── EventSource → /api/live/stream
     │
@@ -709,9 +772,9 @@ The UI maps `agentState.state` to visual indicators:
 
 5. **PreToolUse provides instant activity labels.** The `tool_input` field gives rich context (command text, file paths, search patterns) for real-time activity display with zero JSONL delay.
 
-6. **Process detector is crash-only.** It updates PIDs and marks dead sessions (no process + stale 5 minutes → session_ended). It does no state re-derivation, no 3-phase lock pattern, no JSONL re-classification.
+6. **Process death detection is event-driven.** PID deaths are detected via kqueue (macOS) with ~0ms latency, with a 10s reconciliation loop as fallback. Dead PIDs trigger `reap_session()` which moves the session to `recently_closed`. There is no 5-minute stale timeout — death is detected promptly.
 
-7. **Done sessions are removed with a grace period.** When SessionEnd fires, the session is marked Done and a 10-second delayed removal is spawned for UI animation. Crash-detected sessions are removed immediately.
+7. **Done sessions move to recently_closed.** When a session's PID dies (detected by kqueue or reconciliation), the session is reaped: removed from the live map, placed into the `recently_closed` ephemeral map, and a `SessionClosed` event is broadcast. The UI renders recently_closed sessions in a separate section. There is no server-side delay — the move is immediate.
 
 8. **File watcher drop recovery.** If the notify channel drops events, a full catch-up scan is triggered automatically.
 
@@ -723,26 +786,37 @@ The UI maps `agentState.state` to visual indicators:
 
 > **Reference:** [https://code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks)
 >
-> All 14 hooks are now registered by Mission Control.
+> All 25 hooks are now registered by Live Monitor.
 
 ### A.1 Hook Event Overview
 
 | Event | When it fires | Sync/Async | State mapping |
 |-------|--------------|------------|---------------|
 | `SessionStart` | Session begins or resumes | **Sync** (blocks startup) | idle or thinking(compact) |
+| `SessionEnd` | When a session terminates | Async | session_ended |
 | `UserPromptSubmit` | User submits a prompt | Async | thinking |
 | `PreToolUse` | Before a tool call executes | Async | acting (or awaiting_input/awaiting_approval for blocking tools) |
 | `PostToolUse` | After a tool call succeeds | Async | thinking |
 | `PostToolUseFailure` | After a tool call fails | Async | error or interrupted |
 | `PermissionRequest` | When a permission dialog appears | Async | needs_permission |
 | `Stop` | When Claude finishes responding | Async | idle |
+| `StopFailure` | API error during turn | Async | error |
 | `Notification` | When Claude Code sends a notification | Async | needs_permission, idle, or awaiting_input |
 | `SubagentStart` | When a subagent is spawned | Async | delegating |
 | `SubagentStop` | When a subagent finishes | Async | acting |
 | `TeammateIdle` | When a teammate is about to go idle | Async | delegating (metadata update) |
+| `TaskCreated` | When a task/todo is created | Async | acting |
 | `TaskCompleted` | When a task is marked completed | Async | task_complete |
-| `PreCompact` | Before context compaction | Async | thinking |
-| `SessionEnd` | When a session terminates | Async | session_ended |
+| `PreCompact` | Before context compaction | Async | compacting |
+| `PostCompact` | After context compaction completes | Async | idle |
+| `InstructionsLoaded` | CLAUDE.md loaded/reloaded | Async | *(preserve current state)* |
+| `ConfigChange` | Settings file changed | Async | *(preserve current state)* |
+| `CwdChanged` | Working directory changed | Async | *(preserve current state)* |
+| `FileChanged` | Watched file modified | Async | *(preserve current state)* |
+| `WorktreeCreate` | Git worktree created | Async | *(preserve current state)* |
+| `WorktreeRemove` | Git worktree removed | Async | *(preserve current state)* |
+| `Elicitation` | MCP server requests user input | Async | waiting_mcp_input |
+| `ElicitationResult` | MCP input response received | Async | thinking |
 
 ### A.2 Common Input Fields (All Events)
 

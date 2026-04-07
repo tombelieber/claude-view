@@ -306,7 +306,7 @@ M 시리즈 Mac에서 26개 프로젝트의 1,493개 세션으로 측정:
 
 | 도구 | 카테고리 | 스택 | 크기 | 라이브 모니터 | 멀티 세션 채팅 | 검색 | 분석 | MCP 도구 |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | 모니터 + 워크스페이스 | Rust | **~10 MB** | **지원** | **지원** | **지원** | **지원** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | 모니터 + 워크스페이스 | Rust | **~10 MB** | **지원** | **지원** | **지원** | **지원** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + 세션 관리자 | Tauri 2 | ~13 MB | 부분 지원 | 미지원 | 미지원 | 지원 | 미지원 |
 | [ccusage](https://github.com/ryoppippi/ccusage) | CLI 사용량 추적기 | TypeScript | ~600 KB | 미지원 | 미지원 | 미지원 | CLI | 미지원 |
 | [CodePilot](https://github.com/op7418/CodePilot) | 데스크톱 채팅 UI | Electron | ~140 MB | 미지원 | 미지원 | 미지원 | 미지원 | 미지원 |

@@ -6,7 +6,7 @@
   <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 86 MCP tools across 30 categories, and adds 9 skills for common workflows.
+Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 85 MCP tools across 26 categories, and adds 9 skills for common workflows.
 
 ## Install
 
@@ -34,7 +34,7 @@ Every time you start a Claude Code session, the plugin checks if the claude-view
 is running. If not, it starts it in the background. Web dashboard appears at
 `http://localhost:47892`.
 
-## Tools (86)
+## Tools (85)
 
 ### Hand-written (curated output) — 8 tools
 
@@ -51,9 +51,9 @@ These tools have hand-crafted response shaping for optimal Claude consumption.
 | `list_live_sessions` | Currently running sessions with real-time state |
 | `get_live_summary` | Aggregate: cost today, attention count, tokens |
 
-### Auto-generated (JSON passthrough) — 78 tools
+### Auto-generated (JSON passthrough) — 77 tools
 
-Generated from the OpenAPI spec. 78 tools across 27 categories.
+Generated from the OpenAPI spec. 77 tools across 26 categories.
 
 <details>
 <summary>Show all generated tools</summary>

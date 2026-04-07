@@ -44,7 +44,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 claude-view e um painel open-source que monitora todas as sessoes do Claude Code na sua maquina — agentes ativos, conversas anteriores, custos, sub-agentes, hooks, chamadas de ferramentas — em um so lugar. Backend em Rust, frontend em React, binario de ~10 MB. Zero configuracao, zero contas, 100% local.
 
-**30 releases. 86 ferramentas MCP. 9 skills. Um unico `npx claude-view`.**
+**50+ releases. 85 ferramentas MCP. 9 skills. Um unico `npx claude-view`.**
 
 ---
 
@@ -205,7 +205,7 @@ Execute um LLM local para classificacao de fase de sessao — sem chamadas de AP
 
 ## Plugin
 
-`@claude-view/plugin` da ao Claude acesso nativo aos dados do seu painel — 86 ferramentas MCP, 9 skills e auto-start.
+`@claude-view/plugin` da ao Claude acesso nativo aos dados do seu painel — 85 ferramentas MCP, 9 skills e auto-start.
 
 ```bash
 claude plugin add @claude-view/plugin
@@ -215,7 +215,7 @@ claude plugin add @claude-view/plugin
 
 Cada sessao do Claude Code inicia automaticamente o painel. Sem necessidade de `npx claude-view` manual.
 
-### 86 ferramentas MCP
+### 85 ferramentas MCP
 
 8 ferramentas elaboradas manualmente com saida otimizada para o Claude:
 
@@ -230,7 +230,7 @@ Cada sessao do Claude Code inicia automaticamente o painel. Sem necessidade de `
 | `list_live_sessions` | Agentes em execucao no momento (tempo real) |
 | `get_live_summary` | Custo agregado e status do dia |
 
-Mais **78 ferramentas geradas automaticamente** a partir da especificacao OpenAPI em 27 categorias (contribuicoes, insights, coaching, exportacoes, workflows e mais).
+Mais **78 ferramentas geradas automaticamente** a partir da especificacao OpenAPI em 26 categorias (contribuicoes, insights, coaching, exportacoes, workflows e mais).
 
 ### 9 Skills
 
@@ -306,7 +306,7 @@ Tecnicas-chave: pre-filtro SIMD (`memchr`), parsing JSONL com mapeamento de memo
 
 | Ferramenta | Categoria | Stack | Tamanho | Monitor ao vivo | Chat multi-sessao | Busca | Analiticos | Ferramentas MCP |
 |------------|-----------|-------|:-------:|:---------------:|:------------------:|:-----:|:----------:|:---------------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Sim** | **Sim** | **Sim** | **Sim** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Sim** | **Sim** | **Sim** | **Sim** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + gerenciador de sessoes | Tauri 2 | ~13 MB | Parcial | Nao | Nao | Sim | Nao |
 | [ccusage](https://github.com/ryoppippi/ccusage) | Rastreador de uso CLI | TypeScript | ~600 KB | Nao | Nao | Nao | CLI | Nao |
 | [CodePilot](https://github.com/op7418/CodePilot) | UI de chat desktop | Electron | ~140 MB | Nao | Nao | Nao | Nao | Nao |
@@ -413,7 +413,7 @@ Sim. O claude-view monitora todas as sessoes do Claude Code independentemente de
 
 - **Website:** [claudeview.ai](https://claudeview.ai) — documentacao, changelog, blog
 - **Discord:** [Entre no servidor](https://discord.gg/G7wdZTpRfu) — suporte, solicitacoes de funcionalidades, discussao
-- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 86 ferramentas MCP, 9 skills, auto-start
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) — 85 ferramentas MCP, 9 skills, auto-start
 
 ---
 
@@ -486,7 +486,7 @@ git push origin main --tags    # aciona CI → builds → publica automaticament
 ## Relacionados
 
 - **[claudeview.ai](https://claudeview.ai)** — Website oficial, documentacao e changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Plugin do Claude Code com 86 ferramentas MCP e 9 skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Plugin do Claude Code com 85 ferramentas MCP e 9 skills. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — O Claude Code deleta suas sessoes apos 30 dias. Isso as salva. `npx claude-backup`
 
 ---

@@ -44,7 +44,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 claude-view e una dashboard open-source che monitora ogni sessione di Claude Code sulla tua macchina -- agenti attivi, conversazioni passate, costi, sotto-agenti, hook, chiamate agli strumenti -- tutto in un unico posto. Backend in Rust, frontend in React, binario di ~10 MB. Zero configurazione, zero account, 100% locale.
 
-**30 release. 86 strumenti MCP. 9 skill. Un solo `npx claude-view`.**
+**50+ release. 85 strumenti MCP. 9 skill. Un solo `npx claude-view`.**
 
 ---
 
@@ -205,7 +205,7 @@ Esegui un LLM locale per la classificazione delle fasi della sessione -- nessuna
 
 ## Plugin
 
-`@claude-view/plugin` offre a Claude accesso nativo ai dati della tua dashboard -- 86 strumenti MCP, 9 skill e avvio automatico.
+`@claude-view/plugin` offre a Claude accesso nativo ai dati della tua dashboard -- 85 strumenti MCP, 9 skill e avvio automatico.
 
 ```bash
 claude plugin add @claude-view/plugin
@@ -215,7 +215,7 @@ claude plugin add @claude-view/plugin
 
 Ogni sessione di Claude Code avvia automaticamente la dashboard. Nessun `npx claude-view` manuale necessario.
 
-### 86 strumenti MCP
+### 85 strumenti MCP
 
 8 strumenti realizzati a mano con output ottimizzato per Claude:
 
@@ -230,7 +230,7 @@ Ogni sessione di Claude Code avvia automaticamente la dashboard. Nessun `npx cla
 | `list_live_sessions` | Agenti attualmente in esecuzione (tempo reale) |
 | `get_live_summary` | Costi aggregati e stato per oggi |
 
-Piu **78 strumenti auto-generati** dalla specifica OpenAPI in 27 categorie (contributi, approfondimenti, coaching, esportazioni, workflow e altro).
+Piu **78 strumenti auto-generati** dalla specifica OpenAPI in 26 categorie (contributi, approfondimenti, coaching, esportazioni, workflow e altro).
 
 ### 9 Skill
 
@@ -306,7 +306,7 @@ Tecniche chiave: pre-filtro SIMD (`memchr`), parsing JSONL memory-mapped, ricerc
 
 | Strumento | Categoria | Stack | Dimensione | Monitor live | Chat multi-sessione | Ricerca | Analitica | Strumenti MCP |
 |------|----------|-------|:----:|:------------:|:------------------:|:------:|:---------:|:---------:|
-| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Si** | **Si** | **Si** | **Si** | **86** |
+| **[claude-view](https://github.com/tombelieber/claude-view)** | Monitor + workspace | Rust | **~10 MB** | **Si** | **Si** | **Si** | **Si** | **85** |
 | [opcode](https://github.com/winfunc/opcode) | GUI + gestore sessioni | Tauri 2 | ~13 MB | Parziale | No | No | Si | No |
 | [ccusage](https://github.com/ryoppippi/ccusage) | Tracker utilizzo CLI | TypeScript | ~600 KB | No | No | No | CLI | No |
 | [CodePilot](https://github.com/op7418/CodePilot) | UI chat desktop | Electron | ~140 MB | No | No | No | No | No |
@@ -413,7 +413,7 @@ Si. claude-view monitora tutte le sessioni di Claude Code indipendentemente da c
 
 - **Sito web:** [claudeview.ai](https://claudeview.ai) -- documentazione, changelog, blog
 - **Discord:** [Unisciti al server](https://discord.gg/G7wdZTpRfu) -- supporto, richieste di funzionalita, discussione
-- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) -- 86 strumenti MCP, 9 skill, avvio automatico
+- **Plugin:** [`@claude-view/plugin`](https://www.npmjs.com/package/@claude-view/plugin) -- 85 strumenti MCP, 9 skill, avvio automatico
 
 ---
 
@@ -486,7 +486,7 @@ git push origin main --tags    # attiva la CI → compila → pubblica automatic
 ## Correlati
 
 - **[claudeview.ai](https://claudeview.ai)** -- Sito ufficiale, documentazione e changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** -- Plugin Claude Code con 86 strumenti MCP e 9 skill. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** -- Plugin Claude Code con 85 strumenti MCP e 9 skill. `claude plugin add @claude-view/plugin`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** -- Claude Code elimina le tue sessioni dopo 30 giorni. Questo le salva. `npx claude-backup`
 
 ---
