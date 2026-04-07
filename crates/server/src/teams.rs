@@ -1100,14 +1100,25 @@ pub struct TeamMemberSidechain {
     /// Duration in seconds (derived from started_at → ended_at).
     #[ts(type = "number")]
     pub duration_seconds: u32,
+    /// Cost in USD (computed from JSONL token usage + pricing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    /// Token usage breakdown (input, output, cache read, cache creation).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<TokenUsage>,
 }
 
 /// Scan `{session_dir}/subagents/*.meta.json` and return sidechain info for each.
 ///
 /// Each meta.json has `{"agentType":"js-advocate"}` and filename `agent-{hexId}.meta.json`.
 /// The corresponding `.jsonl` file is read for line count, file size, model, and timestamps.
+/// When `pricing` is provided, each sidechain's JSONL is also parsed via
+/// `SessionAccumulator::from_file()` to compute per-sidechain cost and token usage.
 /// Results are sorted by `member_name` ascending, then `line_count` descending.
-pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
+pub fn resolve_team_sidechains(
+    session_dir: &Path,
+    pricing: &HashMap<String, ModelPricing>,
+) -> Vec<TeamMemberSidechain> {
     use std::io::{BufRead, BufReader};
 
     #[derive(Deserialize)]
@@ -1232,6 +1243,15 @@ pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
             _ => 0,
         };
 
+        // Compute cost via SessionAccumulator (reuses the same JSONL parsing as build_team_cost)
+        let (cost_usd, tokens) = {
+            use claude_view_core::accumulator::SessionAccumulator;
+            match SessionAccumulator::from_file(&jsonl_path, pricing) {
+                Ok(rich) => (Some(rich.cost.total_usd), Some(rich.tokens)),
+                Err(_) => (None, None),
+            }
+        };
+
         sidechains.push(TeamMemberSidechain {
             hex_id,
             member_name: meta.agent_type,
@@ -1241,6 +1261,8 @@ pub fn resolve_team_sidechains(session_dir: &Path) -> Vec<TeamMemberSidechain> {
             started_at,
             ended_at,
             duration_seconds,
+            cost_usd,
+            tokens,
         });
     }
 
