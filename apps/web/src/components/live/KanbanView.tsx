@@ -157,7 +157,6 @@ function ColumnHeaders({
 
 function CardSlot({
   sessions,
-  group,
   selectedId,
   onSelect,
   stalledSessions,
@@ -166,7 +165,6 @@ function CardSlot({
   hideProjectBranch,
 }: {
   sessions: LiveSession[]
-  group: AgentStateGroup
   selectedId: string | null
   onSelect: (id: string) => void
   stalledSessions?: Set<string>
@@ -194,7 +192,6 @@ function CardSlot({
           className={cn(
             'cursor-pointer rounded-lg transition-opacity',
             session.id === selectedId && 'ring-2 ring-amber-500 rounded-lg',
-            group === 'recently_closed' && 'opacity-70',
           )}
         >
           <SessionCard
@@ -323,7 +320,6 @@ function BranchCardRow({
       <div className="flex-1 min-w-0">
         <CardSlot
           sessions={split.needs_you}
-          group="needs_you"
           selectedId={selectedId}
           onSelect={onSelect}
           stalledSessions={stalledSessions}
@@ -335,7 +331,6 @@ function BranchCardRow({
       <div className="flex-1 min-w-0">
         <CardSlot
           sessions={split.autonomous}
-          group="autonomous"
           selectedId={selectedId}
           onSelect={onSelect}
           stalledSessions={stalledSessions}
@@ -407,7 +402,6 @@ function FlatKanban({
             ) : (
               <CardSlot
                 sessions={split.needs_you}
-                group="needs_you"
                 selectedId={selectedId}
                 onSelect={onSelect}
                 stalledSessions={stalledSessions}
@@ -427,7 +421,6 @@ function FlatKanban({
             ) : (
               <CardSlot
                 sessions={split.autonomous}
-                group="autonomous"
                 selectedId={selectedId}
                 onSelect={onSelect}
                 stalledSessions={stalledSessions}
