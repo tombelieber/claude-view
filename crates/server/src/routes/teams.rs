@@ -27,6 +27,8 @@ pub async fn list_teams(State(state): State<Arc<AppState>>) -> ApiResult<Json<Ve
 }
 
 /// GET /api/teams/:name — Get team detail.
+///
+/// Enriches inbox-augmented members with model info from the lead JSONL.
 #[utoipa::path(get, path = "/api/teams/{name}", tag = "teams",
     params(("name" = String, Path, description = "Team name")),
     responses(
@@ -38,11 +40,29 @@ pub async fn get_team(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> ApiResult<Json<TeamDetail>> {
-    state
+    let mut team = state
         .teams
         .get(&name)
-        .map(Json)
-        .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))
+        .ok_or_else(|| ApiError::NotFound(format!("Team '{}' not found", name)))?;
+
+    // Enrich members that have empty model (inbox-augmented) from JSONL spawn data
+    let has_empty_model = team.members.iter().any(|m| m.model.is_empty());
+    if has_empty_model {
+        if let Ok(lead_path) = resolve_session_file_path(&state, &team.lead_session_id).await {
+            let resolved = crate::teams::resolve_team_member_sessions(&lead_path, &team.name);
+            for member in &mut team.members {
+                if member.model.is_empty() {
+                    if let Some(info) = resolved.get(&member.name) {
+                        if let Some(model) = &info.model {
+                            member.model.clone_from(model);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(Json(team))
 }
 
 /// GET /api/teams/:name/inbox — Get team inbox messages.
@@ -91,9 +111,11 @@ pub async fn get_team_cost(
     let member_sessions = crate::teams::resolve_team_member_sessions(&lead_path, &team.name);
     let mut session_paths: std::collections::HashMap<String, std::path::PathBuf> =
         std::collections::HashMap::new();
-    for session_id in member_sessions.values() {
-        if let Ok(path) = resolve_session_file_path(&state, session_id).await {
-            session_paths.insert(session_id.clone(), path);
+    for info in member_sessions.values() {
+        if !info.in_process {
+            if let Ok(path) = resolve_session_file_path(&state, &info.agent_id).await {
+                session_paths.insert(info.agent_id.clone(), path);
+            }
         }
     }
 

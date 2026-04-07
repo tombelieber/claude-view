@@ -8,6 +8,7 @@ export type TeamMemberCost = {
   model: string
   agentType: string
   sessionId: string | null
+  inProcess: boolean
   costUsd: number | null
   tokens: TokenUsage | null
   cost: CostBreakdown | null
