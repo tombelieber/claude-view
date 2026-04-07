@@ -15,7 +15,6 @@ mod tests;
 // Preserves the original flat `evidence_audit::*` public API.
 
 // Types
-pub(crate) use types::Sorted;
 pub use types::{
     AggregatedSignals, AuditResult, Baseline, CheckResult, ContentBlockTypes, FieldExtractionPaths,
     LineSignals, ProgressDataTypes, SystemSubtypes, ThinkingBlockKeys, TopLevelTypes,
@@ -25,7 +24,6 @@ pub use types::{
 pub use extraction::extract_line_signals;
 
 // Scanning
-pub(crate) use scanning::scan_file;
 pub use scanning::{
     discover_jsonl_files, load_baseline, scan_directory_parallel,
     scan_directory_parallel_with_pipeline, scan_file_with_pipeline,

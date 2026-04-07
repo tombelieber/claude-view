@@ -3,7 +3,7 @@
 //! These helpers run once during WebSocket setup before the main event loop
 //! begins streaming live updates.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 
@@ -17,7 +17,7 @@ use super::types::{HandshakeMessage, RichModeFinders, MAX_SCROLLBACK};
 /// Send the initial scrollback buffer to the client.
 pub(super) async fn send_scrollback(
     socket: &mut WebSocket,
-    file_path: &PathBuf,
+    file_path: &Path,
     handshake: &HandshakeMessage,
     current_mode: &str,
     finders: &RichModeFinders,
