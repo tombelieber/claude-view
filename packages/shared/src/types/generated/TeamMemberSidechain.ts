@@ -3,21 +3,36 @@
 /**
  * A single sidechain instance for a team member.
  */
-export type TeamMemberSidechain = {
-  /**
-   * Hex agent ID — used with `/api/sessions/{sid}/subagents/{hex}/messages`.
-   */
-  hexId: string
-  /**
-   * Agent name from meta.json (e.g., "js-advocate").
-   */
-  memberName: string
-  /**
-   * Number of JSONL lines (proxy for amount of work done).
-   */
-  lineCount: number
-  /**
-   * File size in bytes.
-   */
-  fileSizeBytes: number
-}
+export type TeamMemberSidechain = { 
+/**
+ * Hex agent ID — used with `/api/sessions/{sid}/subagents/{hex}/messages`.
+ */
+hexId: string, 
+/**
+ * Agent name from meta.json (e.g., "js-advocate").
+ */
+memberName: string, 
+/**
+ * Number of JSONL lines (proxy for amount of work done).
+ */
+lineCount: number, 
+/**
+ * File size in bytes.
+ */
+fileSizeBytes: number, 
+/**
+ * Model used by this sidechain (e.g., "claude-opus-4-6").
+ */
+model: string, 
+/**
+ * ISO 8601 timestamp of the first JSONL entry.
+ */
+startedAt: string | null, 
+/**
+ * ISO 8601 timestamp of the last JSONL entry.
+ */
+endedAt: string | null, 
+/**
+ * Duration in seconds (derived from started_at → ended_at).
+ */
+durationSeconds: number, };
