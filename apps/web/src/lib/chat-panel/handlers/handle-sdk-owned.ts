@@ -1,5 +1,5 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
-import { blockTimestamp } from '../hook-events'
+import { mergeHookBlocks } from '../hook-events'
 import { connTransition } from '../modules/conn-health'
 import { metaTransition } from '../modules/meta'
 import { outboxTransition } from '../modules/outbox'
@@ -77,13 +77,8 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
 
     case 'HOOK_EVENTS_OK': {
       if (event.sessionId !== p.sessionId) return [store, []] // stale fetch from previous session
-      // Merge hook blocks by ID (append-or-replace, same as TERMINAL_BLOCK in cc_cli)
-      const existingIds = new Set(p.blocks.map((b) => b.id))
-      const newHooks = event.blocks.filter((b) => !existingIds.has(b.id))
-      if (newHooks.length === 0) return [store, []]
-      const merged = [...p.blocks, ...newHooks].sort(
-        (a, b) => blockTimestamp(a) - blockTimestamp(b),
-      )
+      const merged = mergeHookBlocks(p.blocks, event.blocks)
+      if (merged.length === p.blocks.length) return [store, []] // nothing new
       return [{ ...store, panel: { ...p, blocks: merged } }, []]
     }
 

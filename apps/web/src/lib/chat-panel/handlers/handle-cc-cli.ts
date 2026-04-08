@@ -1,3 +1,4 @@
+import { insertBlockByTimestamp } from '../hook-events'
 import type {
   ChatPanelStore,
   HistoryPagination,
@@ -63,13 +64,9 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
     }
 
     case 'TERMINAL_BLOCK': {
-      // Live block from terminal WS block stream — merge by ID.
-      // Same ID → replace (block updated), new ID → append.
-      const existing = p.blocks.findIndex((b) => b.id === event.block.id)
-      const blocks =
-        existing >= 0
-          ? p.blocks.map((b, i) => (i === existing ? event.block : b))
-          : [...p.blocks, event.block]
+      // Live block from terminal WS block stream — merge by ID (replace) or
+      // insert at correct timestamp position (new block).
+      const blocks = insertBlockByTimestamp(p.blocks, event.block)
       return [{ ...store, panel: { ...p, blocks } }, []]
     }
 
