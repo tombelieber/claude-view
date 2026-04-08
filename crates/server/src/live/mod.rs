@@ -12,7 +12,7 @@ pub mod mutation;
 pub mod process;
 pub mod process_death;
 pub mod process_oracle;
-pub mod process_tree;
+pub use claude_view_server_process_tree as process_tree;
 pub mod relay_client;
 pub mod session_ws;
 pub mod sessions_watcher;

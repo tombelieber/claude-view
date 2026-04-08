@@ -111,6 +111,7 @@ claude-view-server-insights = { path = "crates/server-insights" }
 claude-view-server-jobs = { path = "crates/server-jobs" }
 claude-view-server-teams = { path = "crates/server-teams" }
 claude-view-server-live-state = { path = "crates/server-live-state" }
+claude-view-server-process-tree = { path = "crates/server-process-tree" }
 claude-view-server-local-llm = { path = "crates/server-local-llm" }
 claude-view-server-types = { path = "crates/server-types" }
 

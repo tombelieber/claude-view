@@ -1,5 +1,5 @@
 use super::pipeline::classify_process_list;
-use crate::live::process_tree::types::{EcosystemTag, RawProcessInfo, Staleness};
+use crate::types::{EcosystemTag, RawProcessInfo, Staleness};
 
 fn make_raw(
     pid: u32,
