@@ -16,4 +16,5 @@ serde_json = { workspace = true }
 ts-rs = { workspace = true }
 tokio-util = { workspace = true }
 libc = "0.2"
+claude-view-types = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }

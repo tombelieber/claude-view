@@ -102,6 +102,7 @@ http-body-util = "0.1"
 bytes = "1"
 
 # Internal crates
+claude-view-types = { path = "crates/types" }
 claude-view-core = { path = "crates/core" }
 claude-view-db = { path = "crates/db" }
 claude-view-search = { path = "crates/search" }

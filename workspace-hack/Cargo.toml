@@ -58,7 +58,7 @@ spin = { version = "0.9.8" }
 stable_deref_trait = { version = "1.2.1" }
 subtle = { version = "2.6.1", default-features = false, features = ["i128"] }
 time = { version = "0.3.47", features = ["macros", "serde-well-known"] }
-tokio = { version = "1.51.0", features = ["full", "test-util"] }
+tokio = { version = "1.51.1", features = ["full", "test-util"] }
 tokio-stream = { version = "0.1.18", features = ["fs"] }
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
 tokio-util = { version = "0.7.18", features = ["codec", "io"] }

@@ -559,6 +559,7 @@ version = "0.33.2"
 dependencies = [
  "async-trait",
  "chrono",
+ "claude-view-types",
  "dirs",
  "memchr",
  "pretty_assertions",
@@ -590,6 +591,7 @@ dependencies = [
  "claude-view-core",
  "claude-view-search",
  "claude-view-server",
+ "claude-view-types",
  "dirs",
  "flate2",
  "memchr",
@@ -644,6 +646,7 @@ version = "0.33.2"
 dependencies = [
  "chrono",
  "claude-view-core",
+ "claude-view-types",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
@@ -764,6 +767,7 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-server-teams",
+ "claude-view-types",
  "libc",
  "serde",
  "serde_json",
@@ -777,6 +781,7 @@ name = "claude-view-server-local-llm"
 version = "0.33.2"
 dependencies = [
  "claude-view-core",
+ "claude-view-types",
  "dirs",
  "mockito",
  "reqwest",
@@ -821,6 +826,7 @@ version = "0.33.2"
 dependencies = [
  "chrono",
  "claude-view-core",
+ "claude-view-types",
  "memchr",
  "serde",
  "serde_json",
@@ -838,6 +844,7 @@ dependencies = [
  "axum 0.8.8",
  "claude-view-core",
  "claude-view-db",
+ "claude-view-types",
  "metrics",
  "metrics-exporter-prometheus",
  "serde",

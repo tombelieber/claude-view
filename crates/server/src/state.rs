@@ -358,6 +358,14 @@ impl AppState {
     }
 }
 
+use claude_view_server_types::route_deps::DbDeps;
+
+impl DbDeps for AppState {
+    fn db(&self) -> &Database {
+        &self.db
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

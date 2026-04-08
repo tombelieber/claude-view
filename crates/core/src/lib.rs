@@ -2,15 +2,15 @@
 pub mod accumulator;
 pub mod analytics_scope_contract;
 pub mod block_accumulator;
-pub mod block_types;
+pub use claude_view_types::block_types;
 pub mod branch_filter;
-pub mod category;
+pub use claude_view_types::category;
 pub mod classification;
 pub mod cli;
 pub mod contribution;
 pub mod credentials;
 pub mod discovery;
-pub mod error;
+pub use claude_view_types::error;
 pub mod evidence_audit;
 pub mod facets;
 pub mod field_inventory;
@@ -46,7 +46,7 @@ pub mod telemetry_config;
 pub mod time_range_contract;
 pub mod todo_files;
 pub mod transcript;
-pub mod types;
+pub use claude_view_types::types;
 pub mod work_type;
 
 pub use analytics_scope_contract::*;

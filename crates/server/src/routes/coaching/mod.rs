@@ -44,7 +44,13 @@ const MAX_RULES: usize = 8;
 // Router
 // ============================================================================
 
-/// Create the coaching routes router.
+/// Coaching rules API router.
+///
+/// ## Dependencies
+/// - `state.rules_dir` — filesystem path for rule storage (`PathBuf`)
+///
+/// **ISP profile:** Minimal — single field access across all 3 handlers.
+/// Target trait: `CoachingDeps` (Phase 3).
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/coaching/rules", get(handlers::list_rules))
