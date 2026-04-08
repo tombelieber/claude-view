@@ -3,6 +3,7 @@
 // Additional edge cases, Agent tool, and user-level skill tests.
 
 use super::*;
+use crate::invocation::agents::is_builtin_agent;
 use crate::registry::InvocableKind;
 
 // -----------------------------------------------------------------------
