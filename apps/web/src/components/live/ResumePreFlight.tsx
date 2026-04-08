@@ -120,7 +120,7 @@ export function ResumePreFlight({ sessionId, open, onOpenChange, onResume }: Res
                 <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                   <span>{data.turn_count} turns</span>
                   <span>{data.files_edited} files edited</span>
-                  <span>{data.history_tokens.toLocaleString()} tokens</span>
+                  <span>{(data.history_tokens ?? 0).toLocaleString()} tokens</span>
                 </div>
               </div>
 
