@@ -9,7 +9,10 @@ export interface PlanApprovalCardProps {
   resolved?: { approved: boolean }
 }
 
-function extractPlanContent(planData: Record<string, unknown>): string {
+function extractPlanContent(planData: Record<string, unknown> | undefined | null): string {
+  if (!planData || typeof planData !== 'object') {
+    return typeof planData === 'string' ? planData : JSON.stringify(planData, null, 2)
+  }
   if (typeof planData.allowedPrompts === 'string') return planData.allowedPrompts
   if (typeof planData.plan === 'string') return planData.plan
   if (typeof planData.content === 'string') return planData.content
