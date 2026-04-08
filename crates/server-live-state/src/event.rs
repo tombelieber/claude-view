@@ -38,10 +38,7 @@ pub enum SessionEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct HookEvent {
@@ -79,10 +76,10 @@ impl HookEvent {
 }
 
 /// Maximum hook events kept in memory per session.
-pub(crate) const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
+pub const MAX_HOOK_EVENTS_PER_SESSION: usize = 5000;
 
 /// Append a hook event, draining oldest 100 events if at capacity.
-pub(crate) fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEvent, max: usize) {
+pub fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEvent, max: usize) {
     if dst.len() >= max {
         dst.drain(..100.min(dst.len()));
     }
@@ -90,12 +87,7 @@ pub(crate) fn append_capped_hook_event(dst: &mut Vec<HookEvent>, event: HookEven
 }
 
 /// Append multiple hook events, draining overflow from the front.
-#[allow(dead_code)]
-pub(crate) fn append_capped_hook_events(
-    dst: &mut Vec<HookEvent>,
-    mut events: Vec<HookEvent>,
-    max: usize,
-) {
+pub fn append_capped_hook_events(dst: &mut Vec<HookEvent>, mut events: Vec<HookEvent>, max: usize) {
     if events.is_empty() {
         return;
     }
