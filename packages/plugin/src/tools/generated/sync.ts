@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const syncGeneratedTools: ToolDef[] = [
   {
     name: 'sync_indexing_status',
-    description: 'lightweight JSON snapshot of indexing progress.',
+    description: '- lightweight JSON snapshot of indexing progress.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
@@ -34,5 +34,5 @@ export const syncGeneratedTools: ToolDef[] = [
       const result = await client.request('POST', '/api/sync/git')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]
