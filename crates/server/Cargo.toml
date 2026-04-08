@@ -49,6 +49,7 @@ claude-view-server-jobs = { workspace = true }
 claude-view-server-teams = { workspace = true }
 claude-view-server-local-llm = { workspace = true }
 claude-view-server-live-state = { workspace = true }
+claude-view-server-process-tree = { workspace = true }
 claude-view-server-types = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }

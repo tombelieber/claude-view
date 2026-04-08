@@ -678,6 +678,7 @@ dependencies = [
  "claude-view-server-jobs",
  "claude-view-server-live-state",
  "claude-view-server-local-llm",
+ "claude-view-server-process-tree",
  "claude-view-server-sidecar",
  "claude-view-server-teams",
  "claude-view-server-types",
@@ -785,6 +786,19 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-process-tree"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "libc",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "ts-rs",
  "workspace-hack",
 ]
 

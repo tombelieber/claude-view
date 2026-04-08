@@ -6,7 +6,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 pub enum ProcessCategory {
     /// Claude itself + claude-view — the "brain" processes.
@@ -19,7 +19,7 @@ pub enum ProcessCategory {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub enum EcosystemTag {
@@ -41,7 +41,7 @@ pub enum EcosystemTag {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 pub enum Staleness {
     /// Recent CPU activity (>0.1%) or recently started (<60s).
@@ -57,7 +57,7 @@ pub enum Staleness {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifiedProcess {
@@ -93,7 +93,7 @@ pub struct ClassifiedProcess {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessTreeSnapshot {
@@ -108,7 +108,7 @@ pub struct ProcessTreeSnapshot {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessTreeTotals {
