@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-core"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -660,7 +660,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -736,7 +736,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "serde",
  "ts-rs",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "chrono",
  "serde",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "claude-view-core",
  "dirs",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "chrono",
  "libc",
@@ -804,7 +804,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "libc",
  "reqwest",
@@ -817,7 +817,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -833,7 +833,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.33.1"
+version = "0.33.2"
 dependencies = [
  "axum 0.8.8",
  "claude-view-core",
@@ -4649,9 +4649,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.51.0"
+version = "1.51.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bd1c4c0fc4a7ab90fc15ef6daaa3ec3b893f004f915f2392557ed23237820cd"
+checksum = "f66bf9585cda4b724d3e78ab34b73fb2bbaba9011b9bfdf69dc836382ea13b8c"
 dependencies = [
  "bytes",
  "libc",
