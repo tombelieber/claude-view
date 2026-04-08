@@ -9,14 +9,15 @@ export interface PlanApprovalCardProps {
   resolved?: { approved: boolean }
 }
 
-function extractPlanContent(planData: Record<string, unknown> | undefined | null): string {
+function extractPlanContent(planData: unknown): string {
   if (!planData || typeof planData !== 'object') {
-    return typeof planData === 'string' ? planData : JSON.stringify(planData, null, 2)
+    return typeof planData === 'string' ? planData : String(planData ?? '')
   }
-  if (typeof planData.allowedPrompts === 'string') return planData.allowedPrompts
-  if (typeof planData.plan === 'string') return planData.plan
-  if (typeof planData.content === 'string') return planData.content
-  if (typeof planData.message === 'string') return planData.message
+  const d = planData as Record<string, unknown>
+  if (typeof d.allowedPrompts === 'string') return d.allowedPrompts
+  if (typeof d.plan === 'string') return d.plan
+  if (typeof d.content === 'string') return d.content
+  if (typeof d.message === 'string') return d.message
   return JSON.stringify(planData, null, 2)
 }
 
@@ -24,8 +25,8 @@ export function PlanApprovalCard({ plan, onApprove, resolved }: PlanApprovalCard
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
 
-  const planContent = useMemo(() => extractPlanContent(plan.planData), [plan.planData])
-  const requestId = plan.requestId
+  const planContent = useMemo(() => extractPlanContent(plan?.planData), [plan?.planData])
+  const requestId = plan?.requestId ?? ''
 
   const handleApprove = useCallback(() => {
     onApprove?.(requestId, true)
