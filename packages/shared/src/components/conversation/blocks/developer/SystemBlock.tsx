@@ -190,9 +190,9 @@ function TaskProgressDetail({ data }: { data: TaskProgressEvent }) {
       rawData={data}
     >
       <div className="flex items-center gap-3 text-xs font-mono text-gray-500 dark:text-gray-400">
-        <span>{data.usage.totalTokens.toLocaleString()} tok</span>
-        <span>{data.usage.toolUses} tools</span>
-        <span>{(data.usage.durationMs / 1000).toFixed(1)}s</span>
+        <span>{(data.usage?.totalTokens ?? 0).toLocaleString()} tok</span>
+        <span>{data.usage?.toolUses ?? 0} tools</span>
+        <span>{((data.usage?.durationMs ?? 0) / 1000).toFixed(1)}s</span>
       </div>
     </EventCard>
   )

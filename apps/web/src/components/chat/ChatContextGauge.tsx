@@ -94,7 +94,7 @@ export function ChatContextGauge({ percent, tokens, limit, source }: ChatContext
               <div className="font-medium">Context: {Math.round(clamped)}% used</div>
               {hasTokenInfo && (
                 <div className="text-gray-400 dark:text-gray-600">
-                  {tokens.toLocaleString()} / {limit.toLocaleString()} tokens
+                  {(tokens ?? 0).toLocaleString()} / {(limit ?? 0).toLocaleString()} tokens
                 </div>
               )}
               {hasTokenInfo && (
