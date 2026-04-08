@@ -3154,6 +3154,31 @@ npx claude-view@latest
 ```
 
 
+--- changelog/v0.33.2.md ---
+
+---
+title: "v0.33.2 — Architecture Decomposition"
+date: 2026-04-09
+version: v0.33.2
+---
+
+## Improvements
+
+**Decomposed monolithic Rust files into focused modules** — split ~69K lines of code across 3 batches into single-responsibility modules, improving build parallelism and code navigability.
+
+**Extracted 4 new independent crates** — `server-process-tree`, `server-live-state`, `server-types`, and `server-local-llm` now compile in parallel with the main server crate, reducing incremental build times.
+
+**Fixed 49 E2E test failures** — updated routes, selectors, and skip gates to match the new module structure.
+
+**Scrubbed PII from doc comments and tests** — removed personally identifiable information from code documentation and test fixtures.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
 --- changelog/v0.4.0.md ---
 
 ---
