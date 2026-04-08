@@ -852,6 +852,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-view-types"
+version = "0.33.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "ts-rs",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
