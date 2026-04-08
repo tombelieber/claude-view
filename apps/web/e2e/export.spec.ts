@@ -8,8 +8,8 @@ test.describe('Export Functionality', () => {
     // Wait for settings page content to load (not just the nav link)
     await expect(page.locator('h1:text("Settings")')).toBeVisible({ timeout: 10000 })
 
-    // Verify Export Data section exists
-    await expect(page.locator('text=Export Data')).toBeVisible()
+    // Verify Export section exists
+    await expect(page.getByRole('heading', { name: 'Export' })).toBeVisible()
 
     // Verify JSON is selected by default
     const jsonRadio = page.getByRole('radio', { name: 'JSON' })

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.describe('Feature 2C: Sync Button Redesign', () => {
   test('TC-2C-01: Labeled Sync Button Visibility', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for dashboard content to load
@@ -60,7 +60,7 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
       })
     })
 
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for dashboard to load
@@ -108,7 +108,7 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
       })
     })
 
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for dashboard to load
@@ -130,7 +130,7 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
   })
 
   test('TC-2C-05: Status Bar Data Display', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for dashboard to load
@@ -182,7 +182,7 @@ test.describe('Feature 2C: Sync Button Redesign', () => {
   })
 
   test('TC-2C-06: Button accessibility', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for dashboard to load

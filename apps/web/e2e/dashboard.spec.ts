@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test.describe('Dashboard', () => {
   test('loads dashboard with metrics', async ({ page }) => {
     // Navigate to home (dashboard)
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for content to load (not just skeleton)
@@ -24,8 +24,8 @@ test.describe('Dashboard', () => {
     // Verify Most Active Projects section exists
     await expect(page.locator('text=Most Active Projects')).toBeVisible()
 
-    // Verify Activity heatmap exists (text has "Activity" in heading)
-    await expect(page.locator('text=/Activity.*Last.*Days/')).toBeVisible()
+    // Verify Activity heatmap section exists
+    await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible()
 
     // Verify Tool Usage section exists
     await expect(page.locator('text=Tool Usage')).toBeVisible()
@@ -41,7 +41,7 @@ test.describe('Dashboard', () => {
       await route.continue()
     })
 
-    await page.goto('/')
+    await page.goto('/analytics')
 
     // Check for loading skeleton with role="status" and aria-busy="true"
     // The DashboardSkeleton component uses these attributes
@@ -50,7 +50,7 @@ test.describe('Dashboard', () => {
   })
 
   test('status bar shows data freshness', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/analytics')
     await page.waitForLoadState('domcontentloaded')
 
     // Wait for status bar to load
