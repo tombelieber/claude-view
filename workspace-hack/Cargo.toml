@@ -61,6 +61,7 @@ time = { version = "0.3.47", features = ["macros", "serde-well-known"] }
 tokio = { version = "1.51.0", features = ["full", "test-util"] }
 tokio-stream = { version = "0.1.18", features = ["fs"] }
 tokio-tungstenite = { version = "0.28.0", features = ["rustls-tls-webpki-roots"] }
+tokio-util = { version = "0.7.18", features = ["codec", "io"] }
 tower = { version = "0.5.3", default-features = false, features = ["log", "make", "timeout", "util"] }
 tower-http = { version = "0.6.8", features = ["compression-gzip", "cors", "fs", "limit", "trace"] }
 tracing = { version = "0.1.44", features = ["log"] }
