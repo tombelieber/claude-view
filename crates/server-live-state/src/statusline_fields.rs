@@ -1,6 +1,6 @@
 //! Statusline-derived fields with typed merge strategies.
 
-use crate::live::mutation::merge::{Latest, Monotonic, Transient};
+use super::merge_wrappers::{Latest, Monotonic, Transient};
 use serde::Serialize;
 use ts_rs::TS;
 
@@ -12,10 +12,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Default, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct StatuslineFields {

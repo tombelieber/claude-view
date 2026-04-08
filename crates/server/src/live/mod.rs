@@ -16,7 +16,7 @@ pub mod process_tree;
 pub mod relay_client;
 pub mod session_ws;
 pub mod sessions_watcher;
-pub mod state;
+pub use claude_view_server_live_state as state;
 pub mod statusline_injector;
 pub mod subagent_file;
 pub mod watcher;
