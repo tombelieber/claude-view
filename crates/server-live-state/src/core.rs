@@ -15,10 +15,7 @@ use super::statusline_fields::StatuslineFields;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
@@ -35,10 +32,7 @@ pub enum SessionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ControlBinding {
@@ -58,10 +52,7 @@ pub struct ControlBinding {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSession {
@@ -149,9 +140,8 @@ pub struct SessionSnapshot {
     pub sessions: std::collections::HashMap<String, SnapshotEntry>,
 }
 
-/// Minimal LiveSession factory for cross-module tests.
-#[cfg(test)]
-pub(crate) fn test_live_session(id: &str) -> LiveSession {
+/// Minimal LiveSession factory for cross-module/cross-crate tests.
+pub fn test_live_session(id: &str) -> LiveSession {
     use super::agent::{AgentState, AgentStateGroup};
     use claude_view_core::phase::PhaseHistory;
     use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};

@@ -20,6 +20,8 @@ pub mod event;
 pub mod field_types;
 pub mod hook_fields;
 pub mod jsonl_fields;
+pub mod merge_wrappers;
+pub mod source_info;
 pub mod statusline_fields;
 
 // ---- Re-exports for backward compatibility ----
@@ -31,13 +33,15 @@ pub use agent::{status_from_agent_state, AgentState, AgentStateGroup};
 // classify
 pub use classify::{classify_live_session, LiveSessionAction};
 
+// classify
+pub use classify::is_pid_alive;
+
 // core
-#[cfg(test)]
-pub(crate) use core::test_live_session;
+pub use core::test_live_session;
 pub use core::{ControlBinding, LiveSession, SessionSnapshot, SessionStatus, SnapshotEntry};
 
 // event
-pub(crate) use event::{append_capped_hook_event, MAX_HOOK_EVENTS_PER_SESSION};
+pub use event::{append_capped_hook_event, MAX_HOOK_EVENTS_PER_SESSION};
 pub use event::{HookEvent, SessionEvent};
 
 // field_types
@@ -48,6 +52,12 @@ pub use hook_fields::HookFields;
 
 // jsonl_fields
 pub use jsonl_fields::JsonlFields;
+
+// merge_wrappers
+pub use merge_wrappers::{Latest, Monotonic, Transient};
+
+// source_info
+pub use source_info::{SessionSource, SessionSourceInfo};
 
 // statusline_fields
 pub use statusline_fields::{StatuslineDebugEntry, StatuslineFields, MAX_STATUSLINE_DEBUG_ENTRIES};

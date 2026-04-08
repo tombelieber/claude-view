@@ -7,10 +7,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct AgentState {
@@ -28,10 +25,7 @@ pub struct AgentState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "snake_case")]
 pub enum AgentStateGroup {

@@ -676,6 +676,7 @@ dependencies = [
  "claude-view-search",
  "claude-view-server-insights",
  "claude-view-server-jobs",
+ "claude-view-server-live-state",
  "claude-view-server-local-llm",
  "claude-view-server-sidecar",
  "claude-view-server-teams",
@@ -752,6 +753,21 @@ dependencies = [
  "tokio",
  "tracing",
  "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-live-state"
+version = "0.33.1"
+dependencies = [
+ "claude-view-core",
+ "claude-view-db",
+ "claude-view-server-teams",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio-util",
+ "ts-rs",
  "workspace-hack",
 ]
 
@@ -5782,6 +5798,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
+ "tokio-util",
  "tower",
  "tower-http",
  "tracing",
