@@ -6,7 +6,6 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use claude_view_core::accumulator::SessionAccumulator;
 use claude_view_core::hook_to_block::make_hook_progress_block;
-use claude_view_core::subagent::SubAgentStatus;
 use claude_view_core::ParsedSession;
 
 use crate::error::{ApiError, ApiResult};
@@ -243,12 +242,10 @@ pub async fn get_session_rich(
     // Historical sessions are loaded from file — any subagent still marked
     // Running can't actually be running (the parent session is over).
     // Mark them as Error so the UI doesn't show a green "running" dot.
-    for agent in &mut rich_data.sub_agents {
-        if agent.status == SubAgentStatus::Running {
-            agent.status = SubAgentStatus::Error;
-            agent.current_activity = None;
-        }
-    }
+    crate::live::mutation::apply_lifecycle::finalize_orphaned_subagents(
+        &mut rich_data.sub_agents,
+        chrono::Utc::now().timestamp(),
+    );
 
     Ok(Json(rich_data))
 }

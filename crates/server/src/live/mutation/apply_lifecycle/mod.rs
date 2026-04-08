@@ -10,4 +10,5 @@ mod helpers;
 mod tests;
 
 pub use apply::apply_lifecycle;
+pub use helpers::finalize_orphaned_subagents;
 pub use helpers::status_from_agent_state;

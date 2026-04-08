@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use claude_view_core::subagent::SubAgentStatus;
 use tracing::info;
 
 use crate::live::state::SessionEvent;
@@ -69,12 +68,10 @@ impl LiveSessionManager {
             // Mark orphaned Running subagents as Error — parent is dead,
             // they can't report back. Without this, the UI shows a green
             // "running" dot on sessions that have long ended.
-            for agent in &mut closed.hook.sub_agents {
-                if agent.status == SubAgentStatus::Running {
-                    agent.status = SubAgentStatus::Error;
-                    agent.current_activity = None;
-                }
-            }
+            crate::live::mutation::apply_lifecycle::finalize_orphaned_subagents(
+                &mut closed.hook.sub_agents,
+                now,
+            );
 
             sessions.remove(session_id);
             (transcript_path, closed)
@@ -492,7 +489,7 @@ mod tests {
 
         assert_eq!(closed.hook.sub_agents.len(), 3);
 
-        // Agent 0: was Running → should be Error, current_activity cleared.
+        // Agent 0: was Running → should be Error, current_activity cleared, completed_at set.
         assert_eq!(
             closed.hook.sub_agents[0].status,
             SubAgentStatus::Error,
@@ -501,6 +498,10 @@ mod tests {
         assert_eq!(
             closed.hook.sub_agents[0].current_activity, None,
             "current_activity should be cleared for errored subagent"
+        );
+        assert!(
+            closed.hook.sub_agents[0].completed_at.is_some(),
+            "completed_at should be set for orphaned subagent"
         );
 
         // Agent 1: was Complete → should remain Complete (untouched).
@@ -514,8 +515,13 @@ mod tests {
             Some(0.001),
             "Complete subagent data should be preserved"
         );
+        assert_eq!(
+            closed.hook.sub_agents[1].completed_at,
+            Some(1050),
+            "Complete subagent completed_at should be preserved"
+        );
 
-        // Agent 2: was Running → should be Error, current_activity cleared.
+        // Agent 2: was Running → should be Error, current_activity cleared, completed_at set.
         assert_eq!(
             closed.hook.sub_agents[2].status,
             SubAgentStatus::Error,
@@ -524,6 +530,10 @@ mod tests {
         assert_eq!(
             closed.hook.sub_agents[2].current_activity, None,
             "current_activity should be cleared for second errored subagent"
+        );
+        assert!(
+            closed.hook.sub_agents[2].completed_at.is_some(),
+            "completed_at should be set for second orphaned subagent"
         );
 
         // Also verify the broadcast event carries the corrected statuses.
