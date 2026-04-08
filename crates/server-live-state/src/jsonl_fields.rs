@@ -1,6 +1,6 @@
 //! JSONL-watcher-sourced fields extracted from LiveSession.
 
-use crate::live::process::SessionSourceInfo;
+use super::source_info::SessionSourceInfo;
 use claude_view_core::phase::PhaseHistory;
 use claude_view_core::pricing::{CacheStatus, CostBreakdown, TokenUsage};
 use serde::Serialize;
@@ -16,10 +16,7 @@ use super::field_types::{is_zero_u32, ToolUsed, VerifiedFile};
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
+    ts(export, export_to = "../../../packages/shared/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct JsonlFields {
@@ -62,7 +59,7 @@ pub struct JsonlFields {
     /// Populated after each JSONL metadata application when team_name is Some.
     /// Empty vec when not a team lead.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub team_members: Vec<crate::teams::TeamMember>,
+    pub team_members: Vec<claude_view_server_teams::TeamMember>,
     /// Number of inbox messages for this team (0 when not a team lead).
     /// Used by frontend as a version signal to invalidate inbox queries.
     #[serde(default, skip_serializing_if = "is_zero_u32")]

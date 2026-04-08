@@ -5,49 +5,12 @@
 //! Session source (terminal, IDE, SDK) is derived from the JSONL `entrypoint` field
 //! rather than process tree inspection — see `entrypoint_to_source()`.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use sysinfo::{ProcessesToUpdate, System};
-use ts_rs::TS;
 
-/// Where a Claude Code process was launched from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[cfg_attr(
-    feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
-)]
-#[serde(rename_all = "snake_case")]
-pub enum SessionSource {
-    /// Interactive shell (zsh, bash, fish, etc.)
-    Terminal,
-    /// IDE extension (VS Code, Cursor, IntelliJ, etc.)
-    Ide,
-    /// claude-view Agent SDK sidecar
-    AgentSdk,
-}
-
-/// Metadata about the source environment of a Claude process.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[cfg_attr(
-    feature = "codegen",
-    ts(
-        export,
-        export_to = "../../../../../packages/shared/src/types/generated/"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionSourceInfo {
-    /// Category: terminal, ide, or agent_sdk.
-    pub category: SessionSource,
-    /// Human-readable label for the source (e.g. "VS Code", "IntelliJ", "Cursor").
-    /// None for terminal sessions.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
+// Re-export from canonical location in state crate
+pub use crate::live::state::source_info::{SessionSource, SessionSourceInfo};
 
 /// A running Claude Code process on the system.
 #[derive(Debug, Clone)]
@@ -229,18 +192,8 @@ pub fn has_running_process(
     }
 }
 
-/// Check if a process with the given PID is still alive.
-///
-/// Uses `kill(pid, 0)` which checks process existence without sending a signal.
-/// Returns `false` for PIDs <= 1 (kernel/init) to guard against reparented processes.
-pub fn is_pid_alive(pid: u32) -> bool {
-    if pid <= 1 {
-        return false;
-    }
-    // SAFETY: kill with signal 0 does not send a signal, only checks existence.
-    // Returns 0 if process exists and we have permission, -1 with ESRCH if not.
-    unsafe { libc::kill(pid as i32, 0) == 0 }
-}
+// Re-export from canonical location in state crate
+pub use crate::live::state::classify::is_pid_alive;
 
 #[cfg(test)]
 mod tests {
