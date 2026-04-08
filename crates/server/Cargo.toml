@@ -22,7 +22,7 @@ path = "src/main.rs"
 default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
 
 # Gate ts-rs file generation. Not in default — only generate-types.sh enables this.
-codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen"]
+codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen", "claude-view-server-process-tree/codegen"]
 
 # Dashboard time range selector (7d/30d/90d/all-time)
 time-range = []
@@ -95,6 +95,7 @@ utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 tempfile = { workspace = true }
+claude-view-server-process-tree = { path = "../server-process-tree" }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dev-dependencies]

@@ -674,6 +674,7 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-search",
+ "claude-view-server-process-tree",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "crypto_box",
@@ -724,6 +725,19 @@ dependencies = [
  "uuid",
  "workspace-hack",
  "x25519-dalek",
+]
+
+[[package]]
+name = "claude-view-server-process-tree"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "libc",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "ts-rs",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -5647,7 +5661,6 @@ dependencies = [
  "futures-executor",
  "futures-io",
  "futures-sink",
- "futures-task",
  "futures-util",
  "generic-array",
  "getrandom 0.2.17",

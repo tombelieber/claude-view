@@ -1,7 +1,7 @@
 use super::types::{ClassifiedProcess, Staleness};
 
 /// Compute staleness for a process.
-pub(super) fn compute_staleness(cpu_percent: f32, ppid: u32, uptime_secs: u64) -> Staleness {
+pub(crate) fn compute_staleness(cpu_percent: f32, ppid: u32, uptime_secs: u64) -> Staleness {
     if cpu_percent > 0.1 {
         return Staleness::Active;
     }
@@ -18,7 +18,7 @@ pub(super) fn compute_staleness(cpu_percent: f32, ppid: u32, uptime_secs: u64) -
 }
 
 /// Aggregate descendant_count, descendant_cpu, descendant_memory for a list of children.
-pub(super) fn aggregate_descendants(descendants: &[ClassifiedProcess]) -> (u32, f32, u64) {
+pub(crate) fn aggregate_descendants(descendants: &[ClassifiedProcess]) -> (u32, f32, u64) {
     descendants
         .iter()
         .fold((0, 0.0, 0), |(count, cpu, mem), d| {
@@ -32,7 +32,7 @@ pub(super) fn aggregate_descendants(descendants: &[ClassifiedProcess]) -> (u32, 
 
 /// Truncate command string to 512 chars AFTER classification.
 /// The `…` ellipsis is 3 bytes, so we slice to 509 bytes to keep total ≤ 512 bytes.
-pub(super) fn truncate_command(cmd: &str) -> String {
+pub(crate) fn truncate_command(cmd: &str) -> String {
     if cmd.len() <= 512 {
         cmd.to_string()
     } else {
@@ -43,7 +43,7 @@ pub(super) fn truncate_command(cmd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::live::process_tree::types::ProcessCategory;
+    use crate::types::ProcessCategory;
 
     fn minimal_child(
         cpu: f32,

@@ -12,7 +12,7 @@ use super::types::{
 // Pass 1: Collect raw process data
 // =============================================================================
 
-pub(super) fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProcessInfo> {
+pub(crate) fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProcessInfo> {
     // Pass 1: collect all processes, track which need ps fallback.
     struct Partial {
         pid: u32,
@@ -92,7 +92,7 @@ pub(super) fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProces
 // =============================================================================
 
 /// Check if a process is the claude-view binary (not sidecar, not a directory match).
-/// Requires the process name itself to be "claude-view" — pure substring matching
+/// Requires the process name itself to be "claude-view" -- pure substring matching
 /// on the command line would false-positive on paths like `/backup/claude-view-old/`.
 fn is_claude_view_binary(name: &str, cmd: &str) -> bool {
     name == "claude-view" && !cmd.contains("sidecar/dist/index.js")
@@ -102,7 +102,7 @@ fn is_claude_view_binary(name: &str, cmd: &str) -> bool {
 /// Validates against known installation paths and package identifiers to prevent
 /// false positives from unrelated binaries that happen to be named "claude".
 fn is_anthropic_claude(cmd: &str) -> bool {
-    // Empty command (SIP-restricted on macOS) — accept name-only match as fallback
+    // Empty command (SIP-restricted on macOS) -- accept name-only match as fallback
     // because the sysctl resolution already ran and couldn't resolve it.
     if cmd.is_empty() {
         return true;
@@ -125,7 +125,7 @@ fn is_anthropic_claude(cmd: &str) -> bool {
 // Pass 2 + 3: Classify and aggregate
 // =============================================================================
 
-pub(super) fn classify_process_list(
+pub(crate) fn classify_process_list(
     processes: &[RawProcessInfo],
     own_pid: u32,
 ) -> ProcessTreeSnapshot {
@@ -377,7 +377,7 @@ fn build_descendants(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::live::process_tree::types::Staleness;
+    use crate::types::Staleness;
 
     fn make_raw(
         pid: u32,
@@ -895,7 +895,7 @@ mod tests {
 
     #[test]
     fn sidecar_command_not_matched_as_self() {
-        // sidecar/dist/index.js contains "claude-view" in the path —
+        // sidecar/dist/index.js contains "claude-view" in the path --
         // must NOT be classified as Self_ ecosystem process.
         let processes = vec![make_raw(
             5001,
@@ -1032,7 +1032,7 @@ mod tests {
             "/opt/tools/claude-wrapper --mode=chatbot"
         ));
         assert!(!is_anthropic_claude("/opt/games/claude-game start"));
-        // Binary named "claude" at non-standard path — accepted (basename is "claude")
+        // Binary named "claude" at non-standard path -- accepted (basename is "claude")
         assert!(is_anthropic_claude("/opt/custom/bin/claude --flag"));
     }
 

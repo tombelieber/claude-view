@@ -1,10 +1,10 @@
 //! Process tree classifier for the System Monitor page.
 //!
 //! Scans ALL Claude-related OS processes (CLI, VS Code extension, Desktop app,
-//! orphaned snapshots, child processes) — no deduplication. PID is the atom.
+//! orphaned snapshots, child processes) -- no deduplication. PID is the atom.
 //!
 //! # Classification algorithm
-//! Three-pass: collect raw data → classify each PID → aggregate descendants.
+//! Three-pass: collect raw data -> classify each PID -> aggregate descendants.
 //!
 //! # macOS note
 //! sysinfo may return empty `cmd` for some processes. When `name` looks Claude-like
@@ -26,7 +26,7 @@ pub use types::{
 /// Classify all Claude-related processes visible in `sys`.
 ///
 /// IMPORTANT: `sys` must be already refreshed (call `collect_snapshot` first,
-/// which calls `sys.refresh_processes()`). Do NOT call `sys.refresh_*` here —
+/// which calls `sys.refresh_processes()`). Do NOT call `sys.refresh_*` here --
 /// this is a read-only pass on already-fresh data.
 pub fn classify_processes(sys: &System) -> ProcessTreeSnapshot {
     let own_pid = std::process::id();
@@ -95,6 +95,6 @@ mod tests {
         let sys = System::new_all();
         let h1 = compute_pid_set_hash(&sys);
         let h2 = compute_pid_set_hash(&sys);
-        assert_eq!(h1, h2, "same System → same hash");
+        assert_eq!(h1, h2, "same System -> same hash");
     }
 }

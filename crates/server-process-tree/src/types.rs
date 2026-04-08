@@ -6,12 +6,12 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 pub enum ProcessCategory {
-    /// Claude itself + claude-view — the "brain" processes.
+    /// Claude itself + claude-view -- the "brain" processes.
     ClaudeEcosystem,
-    /// Spawned by a Claude ecosystem process — build tools, dev servers, file watchers, etc.
+    /// Spawned by a Claude ecosystem process -- build tools, dev servers, file watchers, etc.
     ChildProcess,
 }
 
@@ -19,7 +19,7 @@ pub enum ProcessCategory {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub enum EcosystemTag {
@@ -41,7 +41,7 @@ pub enum EcosystemTag {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 pub enum Staleness {
     /// Recent CPU activity (>0.1%) or recently started (<60s).
@@ -57,7 +57,7 @@ pub enum Staleness {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ClassifiedProcess {
@@ -93,7 +93,7 @@ pub struct ClassifiedProcess {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessTreeSnapshot {
@@ -108,7 +108,7 @@ pub struct ProcessTreeSnapshot {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessTreeTotals {
@@ -127,14 +127,14 @@ pub struct ProcessTreeTotals {
 
 /// Raw process data collected from sysinfo before classification.
 #[derive(Debug)]
-pub(super) struct RawProcessInfo {
-    pub(super) pid: u32,
-    pub(super) ppid: u32,
-    pub(super) name: String,
-    pub(super) command: String,
-    pub(super) cpu_percent: f32,
-    pub(super) memory_bytes: u64,
-    pub(super) start_time: i64,
+pub(crate) struct RawProcessInfo {
+    pub(crate) pid: u32,
+    pub(crate) ppid: u32,
+    pub(crate) name: String,
+    pub(crate) command: String,
+    pub(crate) cpu_percent: f32,
+    pub(crate) memory_bytes: u64,
+    pub(crate) start_time: i64,
 }
 
 #[cfg(test)]
