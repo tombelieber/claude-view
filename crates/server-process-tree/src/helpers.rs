@@ -43,7 +43,7 @@ pub(super) fn truncate_command(cmd: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::live::process_tree::types::ProcessCategory;
+    use crate::types::ProcessCategory;
 
     fn minimal_child(
         cpu: f32,

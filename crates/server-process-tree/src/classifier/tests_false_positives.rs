@@ -1,6 +1,6 @@
 use super::pipeline::classify_process_list;
 use super::rules::{is_anthropic_claude, is_claude_view_binary};
-use crate::live::process_tree::types::{EcosystemTag, RawProcessInfo};
+use crate::types::{EcosystemTag, RawProcessInfo};
 
 fn make_raw(
     pid: u32,

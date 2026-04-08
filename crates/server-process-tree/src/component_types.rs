@@ -4,7 +4,7 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 pub enum ComponentKind {
     ChildProcess,
@@ -14,7 +14,7 @@ pub enum ComponentKind {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(tag = "type")]
 pub enum ComponentDetails {
@@ -33,7 +33,7 @@ pub enum ComponentDetails {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ComponentStatus {
@@ -53,7 +53,7 @@ pub struct ComponentStatus {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../../../apps/web/src/types/generated/")
+    ts(export, export_to = "../../../apps/web/src/types/generated/")
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ComponentSnapshot {
