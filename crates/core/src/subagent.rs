@@ -108,6 +108,19 @@ pub struct SubAgentInfo {
     pub current_activity: Option<String>,
 }
 
+impl SubAgentInfo {
+    /// Mark a Running sub-agent as Error (orphaned/abandoned).
+    /// Sets completed_at, clears current_activity.
+    /// No-op if the sub-agent is already Complete or Error.
+    pub fn finalize_as_orphaned(&mut self, now: i64) {
+        if self.status == SubAgentStatus::Running {
+            self.status = SubAgentStatus::Error;
+            self.current_activity = None;
+            self.completed_at = Some(now);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,6 +147,91 @@ mod tests {
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"currentActivity\":\"Read\""));
+    }
+
+    #[test]
+    fn test_finalize_as_orphaned_marks_running_as_error() {
+        let mut info = SubAgentInfo {
+            tool_use_id: "toolu_01ABC".to_string(),
+            agent_id: Some("a951849".to_string()),
+            agent_type: "Explore".to_string(),
+            description: "Search codebase".to_string(),
+            status: SubAgentStatus::Running,
+            started_at: 1739700000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            model: Some("haiku".to_string()),
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: Some("Read".to_string()),
+        };
+
+        info.finalize_as_orphaned(1739700100);
+
+        assert_eq!(info.status, SubAgentStatus::Error);
+        assert_eq!(info.current_activity, None);
+        assert_eq!(info.completed_at, Some(1739700100));
+    }
+
+    #[test]
+    fn test_finalize_as_orphaned_noop_for_complete() {
+        let mut info = SubAgentInfo {
+            tool_use_id: "toolu_done".to_string(),
+            agent_id: Some("agent2".to_string()),
+            agent_type: "Edit".to_string(),
+            description: "Completed agent".to_string(),
+            status: SubAgentStatus::Complete,
+            started_at: 1739700000,
+            completed_at: Some(1739700050),
+            duration_ms: Some(50000),
+            tool_use_count: Some(10),
+            model: Some("haiku".to_string()),
+            input_tokens: Some(500),
+            output_tokens: Some(200),
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: Some(0.001),
+            current_activity: None,
+        };
+
+        info.finalize_as_orphaned(1739700200);
+
+        // Should remain unchanged
+        assert_eq!(info.status, SubAgentStatus::Complete);
+        assert_eq!(info.completed_at, Some(1739700050));
+        assert_eq!(info.cost_usd, Some(0.001));
+    }
+
+    #[test]
+    fn test_finalize_as_orphaned_noop_for_error() {
+        let mut info = SubAgentInfo {
+            tool_use_id: "toolu_err".to_string(),
+            agent_id: None,
+            agent_type: "Search".to_string(),
+            description: "Failed agent".to_string(),
+            status: SubAgentStatus::Error,
+            started_at: 1739700000,
+            completed_at: Some(1739700030),
+            duration_ms: None,
+            tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: None,
+        };
+
+        info.finalize_as_orphaned(1739700200);
+
+        // Should remain unchanged
+        assert_eq!(info.status, SubAgentStatus::Error);
+        assert_eq!(info.completed_at, Some(1739700030));
     }
 
     #[test]

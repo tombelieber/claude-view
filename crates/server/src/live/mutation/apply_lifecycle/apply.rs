@@ -3,7 +3,7 @@
 use crate::live::mutation::types::{LifecycleEvent, SubEntityEvent};
 use crate::live::state::{AgentState, AgentStateGroup, HookFields, SessionStatus};
 
-use super::helpers::{bind_pid, status_from_agent_state};
+use super::helpers::{bind_pid, finalize_orphaned_subagents, status_from_agent_state};
 
 /// Apply a lifecycle event to hook fields, returning a new SessionStatus
 /// when the event changes it (StateChange, End, Stop, StopFailure, etc.).
@@ -163,6 +163,9 @@ pub fn apply_lifecycle(
         }
 
         LifecycleEvent::End { reason } => {
+            // Sweep any Running subagents — session is over, they can't report back.
+            finalize_orphaned_subagents(&mut hook.sub_agents, now);
+
             let label = match reason.as_deref() {
                 Some(r) if !r.is_empty() => format!("Session ended ({})", r),
                 _ => "Session ended".into(),
@@ -253,6 +256,8 @@ pub fn apply_lifecycle(
                             && agent.agent_id.as_deref() == agent_id.as_deref();
                         if type_match || id_match {
                             agent.status = claude_view_core::subagent::SubAgentStatus::Complete;
+                            agent.current_activity = None;
+                            agent.completed_at = Some(now);
                         }
                     }
                 }

@@ -371,3 +371,122 @@ fn task_created_pushes_progress_item() {
     assert_eq!(hook.progress_items.len(), 1);
     assert_eq!(hook.progress_items[0].title, "Fix the bug");
 }
+
+#[test]
+fn end_sweeps_running_subagents_as_orphaned() {
+    use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
+
+    let mut hook = make_hook_fields();
+
+    // Add 3 subagents: Running, Complete, Error
+    hook.sub_agents = vec![
+        SubAgentInfo {
+            tool_use_id: "toolu_run".to_string(),
+            agent_id: Some("agent1".to_string()),
+            agent_type: "Explore".to_string(),
+            description: "Still running".to_string(),
+            status: SubAgentStatus::Running,
+            started_at: 1000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: Some("Read".to_string()),
+        },
+        SubAgentInfo {
+            tool_use_id: "toolu_done".to_string(),
+            agent_id: Some("agent2".to_string()),
+            agent_type: "Edit".to_string(),
+            description: "Completed".to_string(),
+            status: SubAgentStatus::Complete,
+            started_at: 1000,
+            completed_at: Some(1050),
+            duration_ms: Some(50000),
+            tool_use_count: Some(10),
+            model: Some("haiku".to_string()),
+            input_tokens: Some(500),
+            output_tokens: Some(200),
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: Some(0.001),
+            current_activity: None,
+        },
+        SubAgentInfo {
+            tool_use_id: "toolu_err".to_string(),
+            agent_id: None,
+            agent_type: "Search".to_string(),
+            description: "Already errored".to_string(),
+            status: SubAgentStatus::Error,
+            started_at: 1010,
+            completed_at: Some(1020),
+            duration_ms: None,
+            tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: None,
+        },
+    ];
+
+    let result = apply_lifecycle(&mut hook, &LifecycleEvent::End { reason: None }, 2000);
+    assert_eq!(result, Some(SessionStatus::Done));
+
+    // Running subagent → Error with completed_at set and activity cleared
+    assert_eq!(hook.sub_agents[0].status, SubAgentStatus::Error);
+    assert_eq!(hook.sub_agents[0].completed_at, Some(2000));
+    assert_eq!(hook.sub_agents[0].current_activity, None);
+
+    // Complete subagent → unchanged
+    assert_eq!(hook.sub_agents[1].status, SubAgentStatus::Complete);
+    assert_eq!(hook.sub_agents[1].completed_at, Some(1050));
+    assert_eq!(hook.sub_agents[1].cost_usd, Some(0.001));
+
+    // Error subagent → unchanged (already finalized)
+    assert_eq!(hook.sub_agents[2].status, SubAgentStatus::Error);
+    assert_eq!(hook.sub_agents[2].completed_at, Some(1020));
+}
+
+#[test]
+fn subagent_complete_sets_completed_at_and_clears_activity() {
+    use claude_view_core::subagent::{SubAgentInfo, SubAgentStatus};
+
+    let mut hook = make_hook_fields();
+
+    // Add a running subagent with current_activity
+    hook.sub_agents = vec![SubAgentInfo {
+        tool_use_id: "toolu_run".to_string(),
+        agent_id: Some("agent1".to_string()),
+        agent_type: "Explore".to_string(),
+        description: "Running agent".to_string(),
+        status: SubAgentStatus::Running,
+        started_at: 1000,
+        completed_at: None,
+        duration_ms: None,
+        tool_use_count: None,
+        model: None,
+        input_tokens: None,
+        output_tokens: None,
+        cache_read_tokens: None,
+        cache_creation_tokens: None,
+        cost_usd: None,
+        current_activity: Some("Grep".to_string()),
+    }];
+
+    let event = LifecycleEvent::SubEntity(SubEntityEvent::SubagentComplete {
+        agent_type: "Explore".into(),
+        agent_id: Some("agent1".into()),
+    });
+    apply_lifecycle(&mut hook, &event, 1500);
+
+    assert_eq!(hook.sub_agents[0].status, SubAgentStatus::Complete);
+    assert_eq!(hook.sub_agents[0].completed_at, Some(1500));
+    assert_eq!(hook.sub_agents[0].current_activity, None);
+}
