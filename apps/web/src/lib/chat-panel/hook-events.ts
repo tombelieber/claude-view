@@ -7,6 +7,36 @@ export function blockTimestamp(b: ConversationBlock): number {
   return 0
 }
 
+/** Merge incoming hook blocks into existing blocks, dedup by ID, sort by timestamp. */
+export function mergeHookBlocks(
+  existing: ConversationBlock[],
+  incoming: ConversationBlock[],
+): ConversationBlock[] {
+  const existingIds = new Set(existing.map((b) => b.id))
+  const newHooks = incoming.filter((b) => !existingIds.has(b.id))
+  return [...existing, ...newHooks].sort((a, b) => blockTimestamp(a) - blockTimestamp(b))
+}
+
+/** Insert a single block at the correct timestamp position. Replace if ID exists. */
+export function insertBlockByTimestamp(
+  blocks: ConversationBlock[],
+  newBlock: ConversationBlock,
+): ConversationBlock[] {
+  // Replace existing block with same ID
+  const existingIdx = blocks.findIndex((b) => b.id === newBlock.id)
+  if (existingIdx >= 0) {
+    return blocks.map((b, i) => (i === existingIdx ? newBlock : b))
+  }
+  // Insert at correct timestamp position (scan from end)
+  const ts = blockTimestamp(newBlock)
+  if (ts === 0) return [...blocks, newBlock] // No timestamp = append
+  let i = blocks.length
+  while (i > 0 && blockTimestamp(blocks[i - 1]) > ts) i--
+  const result = [...blocks]
+  result.splice(i, 0, newBlock)
+  return result
+}
+
 /**
  * Fetch hook events from REST and convert to ConversationBlock[].
  *
