@@ -6,6 +6,7 @@
 mod edge_cases;
 
 use super::*;
+use crate::invocation::mcp_parser::parse_mcp_tool_name;
 use crate::registry::InvocableKind;
 
 /// Build a registry with only built-in tools (no plugins).
