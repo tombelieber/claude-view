@@ -1,0 +1,19 @@
+[package]
+name = "claude-view-server-live-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-server-teams/codegen"]
+
+[dependencies]
+claude-view-core = { workspace = true }
+claude-view-db = { workspace = true }
+claude-view-server-teams = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ts-rs = { workspace = true }
+tokio-util = { workspace = true }
+libc = "0.2"
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
