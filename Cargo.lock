@@ -674,6 +674,14 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-search",
+ "claude-view-server-insights",
+ "claude-view-server-jobs",
+ "claude-view-server-live-state",
+ "claude-view-server-local-llm",
+ "claude-view-server-process-tree",
+ "claude-view-server-sidecar",
+ "claude-view-server-teams",
+ "claude-view-server-types",
  "core-foundation 0.10.1",
  "core-foundation-sys",
  "crypto_box",
@@ -724,6 +732,123 @@ dependencies = [
  "uuid",
  "workspace-hack",
  "x25519-dalek",
+]
+
+[[package]]
+name = "claude-view-server-insights"
+version = "0.33.1"
+dependencies = [
+ "serde",
+ "ts-rs",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-jobs"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-live-state"
+version = "0.33.1"
+dependencies = [
+ "claude-view-core",
+ "claude-view-db",
+ "claude-view-server-teams",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio-util",
+ "ts-rs",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-local-llm"
+version = "0.33.1"
+dependencies = [
+ "claude-view-core",
+ "dirs",
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-process-tree"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "libc",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "ts-rs",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-sidecar"
+version = "0.33.1"
+dependencies = [
+ "libc",
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-teams"
+version = "0.33.1"
+dependencies = [
+ "chrono",
+ "claude-view-core",
+ "memchr",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ts-rs",
+ "utoipa",
+ "workspace-hack",
+]
+
+[[package]]
+name = "claude-view-server-types"
+version = "0.33.1"
+dependencies = [
+ "axum 0.8.8",
+ "claude-view-core",
+ "claude-view-db",
+ "metrics",
+ "metrics-exporter-prometheus",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "ts-rs",
+ "workspace-hack",
 ]
 
 [[package]]
@@ -5647,7 +5772,6 @@ dependencies = [
  "futures-executor",
  "futures-io",
  "futures-sink",
- "futures-task",
  "futures-util",
  "generic-array",
  "getrandom 0.2.17",
@@ -5687,10 +5811,13 @@ dependencies = [
  "time-macros",
  "tokio",
  "tokio-stream",
+ "tokio-tungstenite",
+ "tokio-util",
  "tower",
  "tower-http",
  "tracing",
  "tracing-core",
+ "tungstenite",
  "url",
  "utoipa",
  "utoipa-gen",

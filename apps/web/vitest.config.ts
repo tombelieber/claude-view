@@ -13,6 +13,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
+    testTimeout: 10_000,
+    hookTimeout: 10_000,
     setupFiles: ['./src/test-setup.ts'],
     exclude: ['**/node_modules/**', '**/e2e/**', '**/.claude/**', '**/.worktrees/**'],
     server: {
