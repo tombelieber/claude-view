@@ -74,9 +74,9 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | `classify_single_session` | Classify a single session synchronously. |
 | `classify_get_classification_status` | Get classification status. |
 | **Coaching Tools** | |
-| `coaching_list_rules` | List all coaching rules from the rules directory. |
-| `coaching_apply_rule` | Create a new coaching rule file. |
-| `coaching_remove_rule` | Remove a coaching rule file. |
+| `coaching_list_rules` | - List all coaching rules from the rules directory. |
+| `coaching_apply_rule` | - Create a new coaching rule file. |
+| `coaching_remove_rule` | - Remove a coaching rule file. |
 | **Contributions Tools** | |
 | `contributions_get_contributions` | Main contributions page data. |
 | `contributions_get_branch_sessions` | Sessions for a branch. |
@@ -117,7 +117,7 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | **Plans Tools** | |
 | `plans_get_session_plans` | - returns plan documents for the session's slug. |
 | **Plugins Tools** | |
-| `plugins_list_plugins` | Unified view of installed + available plugins. |
+| `plugins_list_plugins` | - Unified view of installed + available plugins. |
 | `plugins_list_marketplaces` | plugins marketplaces |
 | `plugins_refresh_all` | all |
 | `plugins_refresh_status` | status |
@@ -150,7 +150,7 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | `share_revoke_share` | sessions {session_id} share |
 | `share_list_shares` | shares |
 | **Sync Tools** | |
-| `sync_indexing_status` | lightweight JSON snapshot of indexing progress. |
+| `sync_indexing_status` | - lightweight JSON snapshot of indexing progress. |
 | `sync_trigger_deep_index` | Trigger a full deep index rebuild. |
 | `sync_trigger_git_sync` | Trigger git commit scanning (A8.5). |
 | **System Tools** | |
@@ -167,7 +167,7 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | **Telemetry Tools** | |
 | `telemetry_set_consent` | Set telemetry consent preference. |
 | **Turns Tools** | |
-| `turns_get_session_turns` | Per-turn breakdown for a historical session. |
+| `turns_get_session_turns` | - Per-turn breakdown for a historical session. |
 | **Workflows Tools** | |
 | `workflows_list_workflows` | workflows |
 | `workflows_create_workflow` | workflows |
