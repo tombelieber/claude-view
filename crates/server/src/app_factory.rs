@@ -421,6 +421,13 @@ pub fn create_app_full(
         });
     }
 
+    // Spawn CLI session health check (marks dead tmux sessions as Exited every 30s).
+    crate::routes::cli_sessions::health::spawn_health_check(
+        state.cli_sessions.clone(),
+        state.tmux.clone(),
+        state.shutdown.clone(),
+    );
+
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
 

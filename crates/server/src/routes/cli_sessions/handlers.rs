@@ -30,6 +30,21 @@ pub async fn create_session(
         ));
     }
 
+    // Validate project_dir if provided — must be an absolute path to an existing directory.
+    if let Some(ref dir) = req.project_dir {
+        let path = std::path::Path::new(dir);
+        if !path.is_absolute() {
+            return Err(ApiError::BadRequest(
+                "project_dir must be an absolute path".to_string(),
+            ));
+        }
+        if !path.is_dir() {
+            return Err(ApiError::BadRequest(format!(
+                "project_dir does not exist or is not a directory: {dir}"
+            )));
+        }
+    }
+
     // Generate a short unique ID.
     let short_id = &uuid::Uuid::new_v4().to_string()[..8];
     let session_id = format!("cv-{short_id}");

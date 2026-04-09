@@ -171,7 +171,7 @@ async fn test_create_session_success() {
     let app = build_app(test_db().await, mock);
 
     let payload = serde_json::json!({
-        "projectDir": "/tmp/my-project",
+        "projectDir": "/tmp",
         "args": ["--verbose"]
     });
 
@@ -190,7 +190,7 @@ async fn test_create_session_success() {
     assert_eq!(resp.session.status, CliSessionStatus::Running);
     assert_eq!(
         resp.session.project_dir,
-        Some("/tmp/my-project".to_string())
+        Some("/tmp".to_string())
     );
     assert_eq!(resp.session.args, vec!["--verbose"]);
     assert!(resp.session.created_at > 0);
@@ -280,7 +280,6 @@ async fn test_list_sessions_marks_dead_as_exited() {
 
 #[tokio::test]
 async fn test_kill_session_success() {
-    let mock = MockTmux::new();
     let db = test_db().await;
     let mut state = crate::state::AppState::new(db);
     let mock_tmux = MockTmux::new();
@@ -318,9 +317,6 @@ async fn test_kill_session_success() {
 
     // Verify removed from store.
     assert!(state.cli_sessions.get("cv-kill-me").await.is_none());
-
-    // Suppress unused variable warning.
-    let _ = mock;
 }
 
 #[tokio::test]
@@ -382,4 +378,45 @@ fn test_mock_tmux_kill_missing_errors() {
     let mock = MockTmux::new();
     let result = mock.kill_session("cv-nope");
     assert!(result.is_err());
+}
+
+// ============================================================================
+// Path validation tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_session_rejects_relative_project_dir() {
+    let mock = MockTmux::new();
+    let app = build_app(test_db().await, mock);
+
+    let (status, resp) = do_request(
+        app,
+        Method::POST,
+        "/api/cli-sessions",
+        Some(r#"{"projectDir":"relative/path"}"#),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(resp.contains("absolute path"), "Expected absolute path error, got: {resp}");
+}
+
+#[tokio::test]
+async fn test_create_session_rejects_nonexistent_project_dir() {
+    let mock = MockTmux::new();
+    let app = build_app(test_db().await, mock);
+
+    let (status, resp) = do_request(
+        app,
+        Method::POST,
+        "/api/cli-sessions",
+        Some(r#"{"projectDir":"/nonexistent/path/that/does/not/exist"}"#),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        resp.contains("not a directory") || resp.contains("does not exist"),
+        "Expected directory error, got: {resp}"
+    );
 }
