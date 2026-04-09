@@ -12,17 +12,29 @@ use std::path::Path;
 use ts_rs::TS;
 
 /// A single todo item from a TodoWrite output file.
+///
+/// Written by Claude Code CLI — external data we don't control.
+/// Every field uses `#[serde(default)]` so missing fields never
+/// cause silent deserialization failures.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TodoItem {
     /// Todo description text.
+    #[serde(default)]
     pub content: String,
     /// Status: "completed", "pending", "in_progress", etc.
+    #[serde(default)]
     pub status: String,
     /// Human-readable description of the current work on this todo.
     #[serde(default)]
     pub active_form: String,
+    /// Optional unique ID (present in ~8% of items).
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Optional priority level (present in ~1% of items).
+    #[serde(default)]
+    pub priority: Option<String>,
 }
 
 /// A todo file parsed with its session and agent context.
@@ -233,5 +245,36 @@ mod tests {
         assert_eq!(todos.len(), 2);
         assert!(todos[0].is_main_agent); // Main agent first
         assert!(!todos[1].is_main_agent); // Subagent second
+    }
+
+    #[test]
+    fn test_parse_todo_missing_optional_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session_id = "eb7c9838-dbf2-4f98-8861-32cdf60c34c5";
+        let filename = format!("{session_id}-agent-{session_id}.json");
+
+        // Real-world: 11% of items lack activeForm, 92% lack id, 99% lack priority
+        fs::write(
+            tmp.path().join(&filename),
+            r#"[
+                {"content":"Minimal item","status":"pending"},
+                {"content":"With id","status":"completed","id":"42","priority":"high"},
+                {"content":"Full","status":"in_progress","activeForm":"Working","id":"1"}
+            ]"#,
+        )
+        .unwrap();
+
+        let todos = parse_session_todos(tmp.path(), session_id);
+        assert_eq!(todos.len(), 1);
+        assert_eq!(
+            todos[0].items.len(),
+            3,
+            "all 3 items must parse regardless of optional fields"
+        );
+        assert_eq!(todos[0].items[0].active_form, "");
+        assert_eq!(todos[0].items[0].id, None);
+        assert_eq!(todos[0].items[1].id, Some("42".into()));
+        assert_eq!(todos[0].items[1].priority, Some("high".into()));
+        assert_eq!(todos[0].items[2].active_form, "Working");
     }
 }

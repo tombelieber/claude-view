@@ -2,6 +2,10 @@
 
 /**
  * A single todo item from a TodoWrite output file.
+ *
+ * Written by Claude Code CLI — external data we don't control.
+ * Every field uses `#[serde(default)]` so missing fields never
+ * cause silent deserialization failures.
  */
 export type TodoItem = {
   /**
@@ -16,4 +20,12 @@ export type TodoItem = {
    * Human-readable description of the current work on this todo.
    */
   activeForm: string
+  /**
+   * Optional unique ID (present in ~8% of items).
+   */
+  id: string | null
+  /**
+   * Optional priority level (present in ~1% of items).
+   */
+  priority: string | null
 }

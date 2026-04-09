@@ -2,6 +2,10 @@
 
 /**
  * A parsed session file from ~/.claude/sessions/{pid}.json.
+ *
+ * Written by Claude Code CLI — external data we don't control.
+ * Every field uses `#[serde(default)]` so missing fields never
+ * cause silent deserialization failures.
  */
 export type ActiveSession = {
   /**

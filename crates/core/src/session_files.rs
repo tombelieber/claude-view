@@ -10,22 +10,32 @@ use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 /// A parsed session file from ~/.claude/sessions/{pid}.json.
+///
+/// Written by Claude Code CLI — external data we don't control.
+/// Every field uses `#[serde(default)]` so missing fields never
+/// cause silent deserialization failures.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveSession {
     /// Process ID of the Claude Code process.
+    #[serde(default)]
     pub pid: u32,
     /// Session UUID.
+    #[serde(default)]
     pub session_id: String,
     /// Working directory where the session was started.
+    #[serde(default)]
     pub cwd: String,
     /// Unix timestamp (milliseconds) when the session started.
+    #[serde(default)]
     #[ts(type = "number")]
     pub started_at: i64,
     /// Session kind: "interactive" or "background" (subagent).
+    #[serde(default)]
     pub kind: String,
     /// Entrypoint: "cli", "claude-vscode", "claude-desktop", "claude-web", etc.
+    #[serde(default)]
     pub entrypoint: String,
 }
 
@@ -168,5 +178,30 @@ mod tests {
 
         let session = parse_session_file(&path).unwrap();
         assert_eq!(session.kind, "background");
+    }
+
+    #[test]
+    fn test_parse_session_with_missing_and_extra_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Minimal: only pid and sessionId (Claude Code could change schema)
+        let path = tmp.path().join("777.json");
+        fs::write(
+            &path,
+            r#"{"pid":777,"sessionId":"min-sess","cwd":"/x","startedAt":5000}"#,
+        )
+        .unwrap();
+        let session = parse_session_file(&path).unwrap();
+        assert_eq!(session.pid, 777);
+        assert_eq!(session.kind, ""); // defaulted
+        assert_eq!(session.entrypoint, ""); // defaulted
+
+        // Extra unknown fields must not break deserialization
+        let path2 = tmp.path().join("888.json");
+        fs::write(
+            &path2,
+            r#"{"pid":888,"sessionId":"extra","cwd":"/y","startedAt":6000,"kind":"interactive","entrypoint":"cli","newField":"surprise","nested":{"a":1}}"#,
+        ).unwrap();
+        let session2 = parse_session_file(&path2).unwrap();
+        assert_eq!(session2.pid, 888);
     }
 }
