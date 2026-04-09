@@ -91,7 +91,7 @@ pub async fn deliver(
                 }
 
                 // Don't retry client errors (4xx)
-                if status >= 400 && status < 500 {
+                if (400..500).contains(&status) {
                     return DeliveryResult {
                         success: false,
                         status_code: Some(status),
