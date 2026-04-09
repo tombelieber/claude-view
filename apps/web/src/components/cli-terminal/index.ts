@@ -1,2 +1,7 @@
 export { CliTerminal } from './CliTerminal'
+export { CliTerminalCompact } from './CliTerminalCompact'
+export { CliTerminalPanel } from './CliTerminalPanel'
+export { NewCliSessionButton } from './NewCliSessionButton'
+export { useCardDelegation } from './useCardDelegation'
+export type { CardDelegationState } from './useCardDelegation'
 export { useCliTerminal } from './useCliTerminal'
