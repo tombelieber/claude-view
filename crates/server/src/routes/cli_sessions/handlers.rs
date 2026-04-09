@@ -23,6 +23,14 @@ pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateRequest>,
 ) -> ApiResult<Json<CreateResponse>> {
+    // Limit concurrent sessions to prevent resource exhaustion.
+    const MAX_CLI_SESSIONS: usize = 10;
+    if state.cli_sessions.list().await.len() >= MAX_CLI_SESSIONS {
+        return Err(ApiError::Conflict(format!(
+            "Maximum {MAX_CLI_SESSIONS} concurrent CLI sessions reached"
+        )));
+    }
+
     // Check tmux availability.
     if !state.tmux.is_available() {
         return Err(ApiError::ServiceUnavailable(

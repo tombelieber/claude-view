@@ -96,10 +96,20 @@ export function canResume(clients: Set<WebSocket>): boolean {
  * If a pty already exists for this tmux session, the client joins it.
  * Otherwise, spawns `tmux attach-session -t {tmuxSessionId}`.
  */
+/** Validate session ID format: cv-{8 hex chars} */
+const SESSION_ID_PATTERN = /^cv-[a-f0-9]{8}$/
+
 export function handleTerminalWebSocket(
   ws: WebSocket,
   tmuxSessionId: string,
 ): void {
+  // Validate session ID to prevent injection via tmux -t argument
+  if (!SESSION_ID_PATTERN.test(tmuxSessionId)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid session ID format' }))
+    ws.close()
+    return
+  }
+
   let session = activeSessions.get(tmuxSessionId)
 
   if (!session) {

@@ -192,11 +192,22 @@ async fn ws_proxy_handler(
 }
 
 /// Upgrade to WebSocket and relay to sidecar's `/ws/terminal/:session_id`.
+///
+/// Validates session ID format (`cv-{8 hex chars}`) to prevent injection
+/// into the tmux `-t` argument on the sidecar side.
 async fn ws_terminal_proxy_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     ws: WebSocketUpgrade,
 ) -> Response {
+    // Validate session ID format: cv-{8 hex chars}
+    if !session_id.starts_with("cv-")
+        || session_id.len() != 11
+        || !session_id[3..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return error_response(StatusCode::BAD_REQUEST, "Invalid session ID format");
+    }
+
     let sidecar_base = match state.sidecar.ensure_running().await {
         Ok(url) => url,
         Err(e) => {

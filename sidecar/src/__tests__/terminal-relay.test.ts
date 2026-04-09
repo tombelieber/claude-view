@@ -164,11 +164,11 @@ describe('handleTerminalWebSocket', () => {
 
   it('spawns a pty with correct args for a new session', () => {
     const ws = createMockWs()
-    handleTerminalWebSocket(ws, 'my-session')
+    handleTerminalWebSocket(ws, 'cv-a1b2c3d4')
 
     expect(spawn).toHaveBeenCalledWith(
       'tmux',
-      ['attach-session', '-t', 'my-session'],
+      ['attach-session', '-t', 'cv-a1b2c3d4'],
       expect.objectContaining({
         cols: 120,
         rows: 40,
@@ -182,8 +182,8 @@ describe('handleTerminalWebSocket', () => {
     const ws1 = createMockWs()
     const ws2 = createMockWs()
 
-    handleTerminalWebSocket(ws1, 'shared-session')
-    handleTerminalWebSocket(ws2, 'shared-session')
+    handleTerminalWebSocket(ws1, 'cv-e5f6a7b8')
+    handleTerminalWebSocket(ws2, 'cv-e5f6a7b8')
 
     // spawn called only once
     expect(spawn).toHaveBeenCalledTimes(1)
@@ -192,7 +192,7 @@ describe('handleTerminalWebSocket', () => {
 
   it('registers message and close handlers on the ws', () => {
     const ws = createMockWs()
-    handleTerminalWebSocket(ws, 'handler-test')
+    handleTerminalWebSocket(ws, 'cv-11111111')
 
     const onCalls = (ws.on as ReturnType<typeof vi.fn>).mock.calls
     const events = onCalls.map((call: unknown[]) => call[0])
@@ -203,7 +203,7 @@ describe('handleTerminalWebSocket', () => {
 
   it('forwards binary messages to pty.write', () => {
     const ws = createMockWs()
-    handleTerminalWebSocket(ws, 'binary-test')
+    handleTerminalWebSocket(ws, 'cv-22222222')
 
     // Get the 'message' handler
     const onCalls = (ws.on as ReturnType<typeof vi.fn>).mock.calls
@@ -222,7 +222,7 @@ describe('handleTerminalWebSocket', () => {
 
   it('handles resize JSON messages', () => {
     const ws = createMockWs()
-    handleTerminalWebSocket(ws, 'resize-test')
+    handleTerminalWebSocket(ws, 'cv-33333333')
 
     const onCalls = (ws.on as ReturnType<typeof vi.fn>).mock.calls
     const messageHandler = onCalls.find(
@@ -237,7 +237,7 @@ describe('handleTerminalWebSocket', () => {
 
   it('cleans up session when last client disconnects', () => {
     const ws = createMockWs()
-    handleTerminalWebSocket(ws, 'cleanup-test')
+    handleTerminalWebSocket(ws, 'cv-44444444')
 
     expect(activeTerminalCount()).toBe(1)
 
@@ -257,8 +257,8 @@ describe('handleTerminalWebSocket', () => {
     const ws1 = createMockWs()
     const ws2 = createMockWs()
 
-    handleTerminalWebSocket(ws1, 'multi-client')
-    handleTerminalWebSocket(ws2, 'multi-client')
+    handleTerminalWebSocket(ws1, 'cv-55555555')
+    handleTerminalWebSocket(ws2, 'cv-55555555')
 
     expect(activeTerminalCount()).toBe(1)
 
@@ -287,8 +287,8 @@ describe('closeAllTerminals', () => {
     const ws1 = createMockWs()
     const ws2 = createMockWs()
 
-    handleTerminalWebSocket(ws1, 'session-a')
-    handleTerminalWebSocket(ws2, 'session-b')
+    handleTerminalWebSocket(ws1, 'cv-66666666')
+    handleTerminalWebSocket(ws2, 'cv-77777777')
 
     expect(activeTerminalCount()).toBe(2)
 
