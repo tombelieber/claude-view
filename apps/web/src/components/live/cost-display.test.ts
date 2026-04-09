@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
+import {
+  hasUnavailableCost,
+  pricedCoveragePercent,
+  unavailableCostReason,
+  unpricedTokenTotal,
+} from './cost-display'
 
 describe('cost-display helpers', () => {
   it('marks cost unavailable when unpriced usage exists and total tokens are non-zero', () => {
@@ -30,5 +35,23 @@ describe('cost-display helpers', () => {
     expect(pricedCoveragePercent({ pricedTokenCoverage: -0.5 })).toBe(0)
     expect(pricedCoveragePercent({ pricedTokenCoverage: 0.678 })).toBe(68)
     expect(pricedCoveragePercent({ pricedTokenCoverage: 1.5 })).toBe(100)
+  })
+
+  it('explains why cost is unavailable with token count and coverage', () => {
+    const cost = {
+      hasUnpricedUsage: true,
+      unpricedInputTokens: 500,
+      unpricedOutputTokens: 300,
+      unpricedCacheReadTokens: 100,
+      unpricedCacheCreationTokens: 100,
+      pricedTokenCoverage: 0,
+    }
+    const reason = unavailableCostReason(cost)
+    expect(reason).toContain('1,000 tokens')
+    expect(reason).toContain('0% priced')
+  })
+
+  it('returns generic reason when cost is null', () => {
+    expect(unavailableCostReason(null)).toBe('Cost data unavailable')
   })
 })

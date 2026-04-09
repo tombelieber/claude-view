@@ -182,6 +182,8 @@ pub struct LiveLine {
     pub entrypoint: Option<String>,
     /// AI-generated session title from `ai-title` JSONL lines.
     pub ai_title: Option<String>,
+    /// Original content byte length before truncation. None if no content extracted.
+    pub content_byte_len: Option<usize>,
 }
 
 /// Broad classification of a JSONL line.

@@ -28,6 +28,7 @@ pub(super) fn process_progress_items(
                         Some(t.active_form.clone())
                     },
                     source: ProgressSource::Todo,
+                    description: None,
                 }
             })
             .collect();
@@ -54,6 +55,11 @@ pub(super) fn process_progress_items(
                 Some(create.active_form.clone())
             },
             source: ProgressSource::Task,
+            description: if create.description.is_empty() {
+                None
+            } else {
+                Some(create.description.clone())
+            },
         });
     }
 

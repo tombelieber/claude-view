@@ -22,7 +22,12 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
     // Parse JSON to extract structured fields
     let parsed: serde_json::Value = match serde_json::from_slice(raw) {
         Ok(v) => v,
-        Err(_) => {
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                preview = %String::from_utf8_lossy(&raw[..raw.len().min(200)]),
+                "JSONL parse failed — returning empty stub"
+            );
             return LiveLine {
                 line_type: LineType::Other,
                 role: None,
@@ -65,6 +70,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 pasted_paths: Vec::new(),
                 entrypoint: None,
                 ai_title: None,
+                content_byte_len: None,
             };
         }
     };
@@ -320,6 +326,26 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         Vec::new()
     };
 
+    let content_byte_len = if content_extended.is_empty() {
+        None
+    } else {
+        let original_len = content_source
+            .get("content")
+            .and_then(|c| match c {
+                serde_json::Value::String(s) => Some(s.len()),
+                serde_json::Value::Array(blocks) => blocks.iter().find_map(|b| {
+                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                        b.get("text").and_then(|t| t.as_str()).map(|s| s.len())
+                    } else {
+                        None
+                    }
+                }),
+                _ => None,
+            })
+            .unwrap_or(content_extended.len());
+        Some(original_len)
+    };
+
     LiveLine {
         line_type,
         role,
@@ -362,6 +388,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         pasted_paths,
         entrypoint,
         ai_title,
+        content_byte_len,
     }
 }
 
@@ -402,14 +429,13 @@ fn extract_todo_write(msg: Option<&serde_json::Value>) -> Option<Vec<RawTodoItem
                         .and_then(|i| i.get("todos"))
                         .and_then(|t| t.as_array())
                         .map(|todos| {
-                            todos
+                            let total = todos.len();
+                            let items: Vec<_> = todos
                                 .iter()
                                 .filter_map(|item| {
+                                    let content = item.get("content").and_then(|v| v.as_str())?;
                                     Some(RawTodoItem {
-                                        content: item
-                                            .get("content")
-                                            .and_then(|v| v.as_str())?
-                                            .to_string(),
+                                        content: content.to_string(),
                                         status: item
                                             .get("status")
                                             .and_then(|v| v.as_str())
@@ -422,7 +448,16 @@ fn extract_todo_write(msg: Option<&serde_json::Value>) -> Option<Vec<RawTodoItem
                                             .to_string(),
                                     })
                                 })
-                                .collect::<Vec<_>>()
+                                .collect();
+                            let skipped = total - items.len();
+                            if skipped > 0 {
+                                tracing::debug!(
+                                    total,
+                                    skipped,
+                                    "TodoWrite items skipped due to missing content field"
+                                );
+                            }
+                            items
                         })
                 } else {
                     None
@@ -545,6 +580,11 @@ fn extract_task_id_assignments(
                 tool_use_id,
                 task_id: task_id.to_string(),
             });
+        } else {
+            tracing::warn!(
+                task_id = task_id,
+                "Task ID found in toolUseResult but no matching tool_result block — assignment skipped"
+            );
         }
     }
     assignments

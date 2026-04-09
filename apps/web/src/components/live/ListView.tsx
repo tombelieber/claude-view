@@ -7,7 +7,7 @@ import { SourceBadge } from '../shared/SourceBadge'
 import { ContextBar } from './ContextBar'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
-import { hasUnavailableCost } from './cost-display'
+import { hasUnavailableCost, unavailableCostReason } from './cost-display'
 import { GROUP_ORDER } from './types'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
@@ -38,6 +38,13 @@ function formatCost(session: LiveSession): string {
   return hasUnavailableCost(usd, session.cost, session.tokens.totalTokens)
     ? 'Unavailable'
     : formatCostUsd(usd)
+}
+
+function costTooltip(session: LiveSession): string | undefined {
+  const usd = sessionTotalCost(session)
+  return hasUnavailableCost(usd, session.cost, session.tokens.totalTokens)
+    ? unavailableCostReason(session.cost)
+    : undefined
 }
 
 const COLUMNS: {
@@ -239,7 +246,10 @@ export function ListView({ sessions, selectedId, onSelect }: ListViewProps) {
 
                 {/* Cost */}
                 <td className="px-2 py-2 w-[70px]">
-                  <span className="text-xs text-gray-700 dark:text-gray-300 tabular-nums">
+                  <span
+                    className="text-xs text-gray-700 dark:text-gray-300 tabular-nums"
+                    title={costTooltip(session)}
+                  >
                     {formatCost(session)}
                   </span>
                 </td>

@@ -317,8 +317,14 @@ impl SessionAccumulator {
                         }
                     }
                 }
+            } else {
+                tracing::debug!(
+                    tool_use_id = %result.tool_use_id,
+                    agent_id = ?result.agent_id,
+                    status = %result.status,
+                    "Orphaned tool_result — no matching spawn found"
+                );
             }
-            // If no matching spawn found, ignore gracefully (orphaned tool_result)
         }
 
         // Sub-agent progress tracking (early agentId + current activity)
@@ -379,6 +385,7 @@ impl SessionAccumulator {
                             Some(t.active_form.clone())
                         },
                         source: ProgressSource::Todo,
+                        description: None,
                     }
                 })
                 .collect();
@@ -404,6 +411,11 @@ impl SessionAccumulator {
                     Some(create.active_form.clone())
                 },
                 source: ProgressSource::Task,
+                description: if create.description.is_empty() {
+                    None
+                } else {
+                    Some(create.description.clone())
+                },
             });
         }
 

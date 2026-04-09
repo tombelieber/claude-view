@@ -215,29 +215,48 @@ pub(crate) fn truncate_str(s: &str, max: usize) -> String {
 ///
 /// Walks the content field (string or array of text blocks) looking for
 /// `<task-id>` and `<status>` XML tags within a `<task-notification>` block.
+/// Falls back to regex extraction if strict XML parsing fails.
 pub(crate) fn extract_task_notification(
     content_source: &serde_json::Value,
 ) -> Option<super::types::SubAgentNotification> {
-    // Collect the full text from content (string or first text block in array)
-    let full_text = match content_source.get("content") {
-        Some(serde_json::Value::String(s)) => s.as_str(),
-        Some(serde_json::Value::Array(blocks)) => {
-            // Find the text block containing <task-notification>
-            blocks
-                .iter()
-                .filter_map(|b| {
-                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
-                        b.get("text").and_then(|t| t.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .find(|text| text.contains("<task-notification>"))?
-        }
-        _ => return None,
-    };
+    if let Some(result) = extract_task_notification_xml(content_source) {
+        return Some(result);
+    }
+    // Fallback: regex tolerates whitespace and minor malformation
+    extract_task_notification_regex(content_source)
+}
 
-    // Find <task-notification> and extract <task-id> and <status> after it
+/// Collect the full text from the content field (string or array of text blocks)
+/// that contains `<task-notification>`.
+fn collect_notification_text(content_source: &serde_json::Value) -> Option<&str> {
+    match content_source.get("content") {
+        Some(serde_json::Value::String(s)) => {
+            if s.contains("<task-notification>") || s.contains("<task-id>") {
+                Some(s.as_str())
+            } else {
+                None
+            }
+        }
+        Some(serde_json::Value::Array(blocks)) => blocks
+            .iter()
+            .filter_map(|b| {
+                if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    b.get("text").and_then(|t| t.as_str())
+                } else {
+                    None
+                }
+            })
+            .find(|text| text.contains("<task-notification>") || text.contains("<task-id>")),
+        _ => None,
+    }
+}
+
+/// Strict XML extraction — requires exact tag structure.
+fn extract_task_notification_xml(
+    content_source: &serde_json::Value,
+) -> Option<super::types::SubAgentNotification> {
+    let full_text = collect_notification_text(content_source)?;
+
     let tn_start = full_text.find("<task-notification>")?;
     let after_tn = &full_text[tn_start..];
 
@@ -260,6 +279,34 @@ pub(crate) fn extract_task_notification(
         }
         s.to_string()
     };
+
+    Some(super::types::SubAgentNotification { agent_id, status })
+}
+
+/// Regex fallback — tolerates whitespace inside tags.
+fn extract_task_notification_regex(
+    content_source: &serde_json::Value,
+) -> Option<super::types::SubAgentNotification> {
+    let full_text = collect_notification_text(content_source)?;
+
+    let id_re = regex_lite::Regex::new(r"<task-id>\s*(.*?)\s*</task-id>").ok()?;
+    let status_re = regex_lite::Regex::new(r"<status>\s*(.*?)\s*</status>").ok()?;
+
+    let agent_id = id_re
+        .captures(full_text)?
+        .get(1)
+        .map(|m| m.as_str().trim().to_string())
+        .filter(|s| !s.is_empty())?;
+    let status = status_re
+        .captures(full_text)?
+        .get(1)
+        .map(|m| m.as_str().trim().to_string())
+        .filter(|s| !s.is_empty())?;
+
+    tracing::debug!(
+        agent_id = %agent_id,
+        "Task notification extracted via regex fallback — XML parse failed"
+    );
 
     Some(super::types::SubAgentNotification { agent_id, status })
 }

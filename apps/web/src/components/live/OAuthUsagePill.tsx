@@ -335,7 +335,7 @@ export function OAuthUsagePill({ statuslineRateLimit }: OAuthUsagePillProps) {
               <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   {forceRefresh.isError
-                    ? (forceRefresh.error?.message ?? 'Try again later')
+                    ? forceRefresh.error?.message || forceRefresh.error?.name || 'Refresh failed'
                     : formatUpdatedAgo(dataUpdatedAt)}
                 </span>
                 <button

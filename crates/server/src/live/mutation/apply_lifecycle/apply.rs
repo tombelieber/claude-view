@@ -225,7 +225,13 @@ pub fn apply_lifecycle(
                     tool_use_id: String::new(), // Hook events don't carry tool_use_id
                     agent_id: agent_id.clone(),
                     agent_type: agent_type.clone(),
-                    description: String::new(),
+                    description: if !agent_state.label.is_empty() {
+                        agent_state.label.clone()
+                    } else if !agent_type.is_empty() {
+                        format!("Agent ({})", agent_type)
+                    } else {
+                        String::new()
+                    },
                     status: claude_view_core::subagent::SubAgentStatus::Running,
                     started_at: now,
                     completed_at: None,
@@ -265,7 +271,7 @@ pub fn apply_lifecycle(
                 SubEntityEvent::TaskCreated {
                     task_id,
                     subject,
-                    description: _,
+                    description,
                 } => {
                     hook.progress_items
                         .push(claude_view_core::progress::ProgressItem {
@@ -275,6 +281,7 @@ pub fn apply_lifecycle(
                             status: claude_view_core::progress::ProgressStatus::InProgress,
                             active_form: None,
                             source: claude_view_core::progress::ProgressSource::Task,
+                            description: description.clone(),
                         });
                 }
                 SubEntityEvent::TaskComplete { task_id } => {

@@ -25,6 +25,16 @@ export function unpricedTokenTotal(cost: UnpricedCostMeta | null | undefined): n
   )
 }
 
+export function unavailableCostReason(cost: UnpricedCostMeta | null | undefined): string {
+  if (!cost) return 'Cost data unavailable'
+  const unpriced = unpricedTokenTotal(cost)
+  const coverage = pricedCoveragePercent(cost)
+  if (unpriced > 0) {
+    return `${unpriced.toLocaleString()} tokens from unpriced model (${coverage}% priced)`
+  }
+  return 'Cost data unavailable'
+}
+
 export function pricedCoveragePercent(
   cost: Pick<UnpricedCostMeta, 'pricedTokenCoverage'> | null | undefined,
 ): number {

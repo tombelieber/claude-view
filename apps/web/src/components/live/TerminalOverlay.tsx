@@ -7,7 +7,7 @@ import { BlockTerminalPane } from './BlockTerminalPane'
 import { DisplayModeToggle } from './DisplayModeToggle'
 import { StateBadge } from './SessionCard'
 import { StatusDot } from './StatusDot'
-import { hasUnavailableCost } from './cost-display'
+import { hasUnavailableCost, unavailableCostReason } from './cost-display'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 interface TerminalOverlayProps {
@@ -143,7 +143,10 @@ export function TerminalOverlay({ session, onClose }: TerminalOverlayProps) {
           <div className="flex-1" />
 
           {/* Metrics */}
-          <span className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums">
+          <span
+            className="text-xs font-mono text-gray-500 dark:text-[#8B949E] tabular-nums"
+            title={showUnavailableCost ? unavailableCostReason(session.cost) : undefined}
+          >
             {formattedCost}
           </span>
           <span className="text-xs text-gray-400 dark:text-[#6E7681] tabular-nums">

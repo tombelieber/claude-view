@@ -28,7 +28,7 @@ import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestio
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { TaskProgressList } from './TaskProgressList'
-import { hasUnavailableCost } from './cost-display'
+import { hasUnavailableCost, unavailableCostReason } from './cost-display'
 import { getEffectiveBranch } from './effective-branch'
 import type { AgentState } from './types'
 import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
@@ -340,9 +340,9 @@ export function SessionCard({
   )
   const sidechainCostTotal = sidechainsData?.reduce((sum, sc) => sum + (sc.costUsd ?? 0), 0) ?? 0
   const totalCost = sessionTotalCost(session) + sidechainCostTotal
-  const totalCostLabel = hasUnavailableCost(totalCost, session.cost, session.tokens.totalTokens)
-    ? 'Unavailable'
-    : formatCostUsd(totalCost)
+  const isCostUnavailable = hasUnavailableCost(totalCost, session.cost, session.tokens.totalTokens)
+  const totalCostLabel = isCostUnavailable ? 'Unavailable' : formatCostUsd(totalCost)
+  const costTitle = isCostUnavailable ? unavailableCostReason(session.cost) : undefined
 
   const isAutonomous = session.agentState.group === 'autonomous'
   const isCompacting = session.agentState.state === 'compacting'
@@ -400,7 +400,10 @@ export function SessionCard({
           sidechains={sidechainsData}
           compactCount={session.compactCount}
         >
-          <span className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0">
+          <span
+            className="text-sm font-mono text-gray-500 dark:text-gray-400 tabular-nums shrink-0"
+            title={costTitle}
+          >
             {totalCostLabel}
           </span>
         </CostTooltip>

@@ -5,7 +5,12 @@ import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
-import { hasUnavailableCost, pricedCoveragePercent, unpricedTokenTotal } from './cost-display'
+import {
+  hasUnavailableCost,
+  pricedCoveragePercent,
+  unavailableCostReason,
+  unpricedTokenTotal,
+} from './cost-display'
 import type { LiveSession } from './use-live-sessions'
 
 interface CostTooltipProps {
@@ -131,7 +136,9 @@ export function CostTooltip({
             <div className="space-y-1">
               <div className="font-medium text-gray-900 dark:text-gray-100 mb-1">
                 Session Cost:{' '}
-                {showUnavailableSessionTotal ? 'Unavailable' : formatCostUsd(sessionTotalUsd)}
+                {showUnavailableSessionTotal
+                  ? `Unavailable — ${unavailableCostReason(cost)}`
+                  : formatCostUsd(sessionTotalUsd)}
               </div>
               <CostRow label="Input" cost={cost.inputCostUsd} />
               <CostRow label="Output" cost={cost.outputCostUsd} />

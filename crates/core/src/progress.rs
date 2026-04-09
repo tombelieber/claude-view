@@ -111,4 +111,8 @@ pub struct ProgressItem {
 
     /// Which system produced this item.
     pub source: ProgressSource,
+
+    /// Task description from TaskCreate. Not present for TodoWrite items.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }

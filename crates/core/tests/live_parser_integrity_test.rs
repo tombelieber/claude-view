@@ -135,3 +135,81 @@ fn tool_use_result_polymorphism_is_handled_without_silent_invalid_coercion() {
         "unknown object shape must not be silently coerced"
     );
 }
+
+#[test]
+fn malformed_json_returns_other_without_panic() {
+    let finders = TailFinders::new();
+    let line = parse(b"this is not json {{{", &finders);
+    assert_eq!(line.line_type, LineType::Other);
+    assert!(line.content_preview.is_empty());
+    assert!(line.model.is_none());
+}
+
+#[test]
+fn content_byte_len_tracks_original_size() {
+    let finders = TailFinders::new();
+    // Short content — no truncation
+    let short = parse(
+        br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello world"}]}}"#,
+        &finders,
+    );
+    assert_eq!(short.content_byte_len, Some(11));
+
+    // No content — None
+    let no_content = parse(
+        br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","id":"t1","input":{}}]}}"#,
+        &finders,
+    );
+    assert_eq!(no_content.content_byte_len, None);
+}
+
+#[test]
+fn task_notification_regex_fallback_handles_whitespace() {
+    let finders = TailFinders::new();
+    // Whitespace inside tags — strict XML parse fails, regex succeeds
+    let line = parse(
+        br#"{"type":"user","message":{"role":"user","content":"<task-notification>\n  <task-id> agent_123 </task-id>\n  <status> completed </status>\n</task-notification>"}}"#,
+        &finders,
+    );
+    let notif = line
+        .sub_agent_notification
+        .expect("should parse via regex fallback");
+    assert_eq!(notif.agent_id, "agent_123");
+    assert_eq!(notif.status, "completed");
+}
+
+#[test]
+fn truncated_json_returns_other() {
+    let finders = TailFinders::new();
+    let line = parse(br#"{"type":"assistant","message":{"role":"assis"#, &finders);
+    assert_eq!(line.line_type, LineType::Other);
+}
+
+#[test]
+fn todo_write_skips_items_without_content() {
+    let finders = TailFinders::new();
+    let json = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"TodoWrite","id":"toolu_1","input":{"todos":[{"content":"valid task","status":"pending"},{"status":"in_progress"},{"content":"another valid","status":"completed"}]}}]}}"#;
+    let line = parse(json, &finders);
+    let todos = line.todo_write.expect("should have todo_write");
+    assert_eq!(
+        todos.len(),
+        2,
+        "should keep 2 valid items, skip 1 without content"
+    );
+    assert_eq!(todos[0].content, "valid task");
+    assert_eq!(todos[1].content, "another valid");
+}
+
+#[test]
+fn task_id_assignment_empty_when_no_tool_result_block() {
+    let finders = TailFinders::new();
+    // Has toolUseResult.task.id but content is plain text (no tool_result block)
+    let line = parse(
+        br#"{"type":"user","message":{"role":"user","content":"plain text"},"toolUseResult":{"task":{"id":"42"},"status":"completed"}}"#,
+        &finders,
+    );
+    assert!(
+        line.task_id_assignments.is_empty(),
+        "should skip assignment when no tool_result block matches"
+    );
+}

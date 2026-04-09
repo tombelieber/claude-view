@@ -114,6 +114,20 @@ fn end_with_reason_includes_reason_in_label() {
 }
 
 #[test]
+fn end_with_file_removed_reason_formats_label() {
+    let mut hook = make_hook_fields();
+    let result = apply_lifecycle(
+        &mut hook,
+        &LifecycleEvent::End {
+            reason: Some("File removed".into()),
+        },
+        2000,
+    );
+    assert_eq!(result, Some(SessionStatus::Done));
+    assert_eq!(hook.agent_state.label, "Session ended (File removed)");
+}
+
+#[test]
 fn state_change_returns_status() {
     let mut hook = make_hook_fields();
     let state = make_autonomous_state("acting", "Working on task");
@@ -355,6 +369,29 @@ fn subagent_started_pushes_and_updates_state() {
     assert_eq!(hook.sub_agents.len(), 1);
     assert_eq!(hook.sub_agents[0].agent_type, "Explore");
     assert_eq!(hook.agent_state.state, "delegating");
+    assert_eq!(
+        hook.sub_agents[0].description, "Running Explore agent",
+        "description should come from agent_state.label"
+    );
+}
+
+#[test]
+fn subagent_started_falls_back_to_agent_type_for_description() {
+    let mut hook = make_hook_fields();
+    let state = AgentState {
+        group: AgentStateGroup::Autonomous,
+        state: "delegating".into(),
+        label: String::new(), // empty label
+        context: None,
+    };
+    let event = LifecycleEvent::SubagentStarted {
+        agent_state: state,
+        agent_type: "general-purpose".into(),
+        agent_id: Some("def456".into()),
+        pid: None,
+    };
+    apply_lifecycle(&mut hook, &event, 1000);
+    assert_eq!(hook.sub_agents[0].description, "Agent (general-purpose)");
 }
 
 #[test]
@@ -370,6 +407,11 @@ fn task_created_pushes_progress_item() {
     apply_lifecycle(&mut hook, &event, 1000);
     assert_eq!(hook.progress_items.len(), 1);
     assert_eq!(hook.progress_items[0].title, "Fix the bug");
+    assert_eq!(
+        hook.progress_items[0].description,
+        Some("Fix auth flow".into()),
+        "description should be carried through from TaskCreated"
+    );
 }
 
 #[test]

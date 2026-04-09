@@ -168,7 +168,9 @@ impl LiveSessionManager {
                 .handle(
                     &ctx,
                     &session_id,
-                    SessionMutation::Lifecycle(LifecycleEvent::End { reason: None }),
+                    SessionMutation::Lifecycle(LifecycleEvent::End {
+                        reason: Some("File removed".into()),
+                    }),
                     None,
                     now,
                     None,

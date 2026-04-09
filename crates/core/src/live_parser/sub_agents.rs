@@ -220,7 +220,13 @@ pub(crate) fn extract_sub_agent_spawns(msg: Option<&serde_json::Value>) -> Vec<S
                 let tool_use_id = block
                     .get("id")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("")
+                    .unwrap_or_else(|| {
+                        tracing::warn!(
+                            tool_name,
+                            "Sub-agent spawn missing tool_use_id — result matching will fail"
+                        );
+                        ""
+                    })
                     .to_string();
                 let input = block.get("input");
                 // Agent tool uses input.name as display name, Task uses input.description
