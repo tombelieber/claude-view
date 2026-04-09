@@ -86,11 +86,18 @@ export function TaskProgressList({ items }: TaskProgressListProps) {
                 return (
                   <li key={item.id ?? idx} className="flex items-start gap-1.5 leading-tight">
                     <span className={`flex-shrink-0 font-mono ${colorClass}`}>{icon}</span>
-                    <span
-                      className={`${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}`}
-                    >
-                      {label}
-                    </span>
+                    <div className="min-w-0">
+                      <span
+                        className={`${item.status === 'completed' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}`}
+                      >
+                        {label}
+                      </span>
+                      {item.description && (
+                        <p className="text-gray-400 dark:text-gray-500 truncate max-w-[250px]">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
                   </li>
                 )
               })}

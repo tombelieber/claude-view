@@ -17,7 +17,7 @@ export type PluginsResponse = {
   updatableCount: number
   marketplaces: Array<MarketplaceInfo>
   /**
-   * Non-empty when the CLI call failed — used by PluginHealthBanner.
+   * Non-empty when the CLI call failed -- used by PluginHealthBanner.
    */
   cliError: string | null
   orphanCount: number

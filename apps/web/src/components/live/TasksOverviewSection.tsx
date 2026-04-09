@@ -49,6 +49,11 @@ export function TasksOverviewSection({ items }: TasksOverviewSectionProps) {
                 >
                   {item.title}
                 </span>
+                {item.description && (
+                  <p className="mt-0.5 text-gray-400 dark:text-gray-500 truncate">
+                    {item.description}
+                  </p>
+                )}
                 {item.status === 'in_progress' && item.activeForm && (
                   <div className="flex items-center gap-1.5 mt-0.5 text-blue-600 dark:text-blue-400 text-xs">
                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse flex-shrink-0" />

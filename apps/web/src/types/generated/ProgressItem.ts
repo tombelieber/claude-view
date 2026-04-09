@@ -24,4 +24,8 @@ export type ProgressItem = {
    * Which system produced this item.
    */
   source: ProgressSource
+  /**
+   * Task description from TaskCreate. Not present for TodoWrite items.
+   */
+  description?: string | null
 }
