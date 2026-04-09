@@ -1,4 +1,5 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { normalizeBlocks } from '@claude-view/shared/utils/normalize-block'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { computeInitialPage, computePreviousPage } from '../lib/block-pagination'
 
@@ -81,7 +82,7 @@ export function useSubAgentBlocks({
             return r.json()
           })
           .then((data) => {
-            setBlocks(data.blocks ?? [])
+            setBlocks(normalizeBlocks(data.blocks ?? []))
             setIsLoading(false)
           })
       })
@@ -109,7 +110,7 @@ export function useSubAgentBlocks({
         return r.json()
       })
       .then((data) => {
-        const older: ConversationBlock[] = data.blocks ?? []
+        const older = normalizeBlocks(data.blocks ?? [])
         offsetRef.current = prev.offset
         setBlocks((current) => [...older, ...current])
         setIsFetchingOlder(false)

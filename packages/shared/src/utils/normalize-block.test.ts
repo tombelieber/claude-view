@@ -23,15 +23,24 @@ describe('normalizeBlock', () => {
     expect((block as any).streaming).toBe(true)
   })
 
-  it('defaults missing requestId on interaction block', () => {
-    const block = {
+  it('defaults missing requestId on interaction block with unique fallback', () => {
+    const block1 = {
       type: 'interaction',
       id: 'i1',
       variant: 'permission',
     } as unknown as ConversationBlock
-    normalizeBlock(block)
-    expect((block as any).requestId).toBe('')
-    expect((block as any).resolved).toBe(false)
+    const block2 = {
+      type: 'interaction',
+      id: 'i2',
+      variant: 'question',
+    } as unknown as ConversationBlock
+    normalizeBlock(block1)
+    normalizeBlock(block2)
+    // Each gets a unique requestId, not shared ''
+    expect((block1 as any).requestId).toMatch(/^req-/)
+    expect((block2 as any).requestId).toMatch(/^req-/)
+    expect((block1 as any).requestId).not.toBe((block2 as any).requestId)
+    expect((block1 as any).resolved).toBe(false)
   })
 
   it('preserves existing requestId on interaction block', () => {
@@ -137,10 +146,14 @@ describe('normalizeBlock', () => {
     expect((block as any).entries).toEqual([])
   })
 
-  it('generates id for blocks missing one', () => {
-    const block = { type: 'user' } as unknown as ConversationBlock
-    normalizeBlock(block)
-    expect((block as any).id).toMatch(/^unknown-/)
+  it('generates collision-free ids for blocks missing one', () => {
+    const block1 = { type: 'user' } as unknown as ConversationBlock
+    const block2 = { type: 'user' } as unknown as ConversationBlock
+    normalizeBlock(block1)
+    normalizeBlock(block2)
+    expect((block1 as any).id).toMatch(/^block-/)
+    expect((block2 as any).id).toMatch(/^block-/)
+    expect((block1 as any).id).not.toBe((block2 as any).id)
   })
 })
 
@@ -173,7 +186,7 @@ describe('normalizeBlocks', () => {
     ]
     const result = normalizeBlocks(blocks as any)
     expect((result[0] as any).segments).toEqual([])
-    expect((result[1] as any).requestId).toBe('')
+    expect((result[1] as any).requestId).toMatch(/^req-/)
   })
 
   it('handles undefined input', () => {

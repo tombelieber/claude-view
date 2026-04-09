@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { normalizeBlock } from '@claude-view/shared/utils/normalize-block'
 import { wsUrl } from '../lib/ws-url'
 
 // ── Types matching Rust SessionFrame ────────────────────────────────
@@ -138,7 +139,7 @@ export function useSessionChannel(options: UseSessionChannelOptions): UseSession
         case 'block_delta': {
           // Extract the block data (everything except the 'frame' discriminator)
           const { frame: _f, ...blockData } = frame
-          const block = blockData as unknown as ConversationBlock
+          const block = normalizeBlock(blockData as unknown as ConversationBlock)
           if (block.id && block.type) {
             setBlockMap((prev) => {
               const next = new Map(prev)
