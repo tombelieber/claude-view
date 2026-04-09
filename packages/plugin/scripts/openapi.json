@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.33.1"
+    "version": "0.33.2"
   },
   "paths": {
     "/api/branches": {
@@ -11383,14 +11383,7 @@
       },
       "TaskItem": {
         "type": "object",
-        "description": "A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.\n\nRicher than ProgressItem — includes description and dependency edges.",
-        "required": [
-          "id",
-          "subject",
-          "description",
-          "activeForm",
-          "status"
-        ],
+        "description": "A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so unknown/missing fields never\ncause silent deserialization failures.",
         "properties": {
           "activeForm": {
             "type": "string"
@@ -11412,6 +11405,12 @@
           },
           "id": {
             "type": "string"
+          },
+          "owner": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -11556,11 +11555,7 @@
       },
       "TodoItem": {
         "type": "object",
-        "description": "A single todo item from a TodoWrite output file.",
-        "required": [
-          "content",
-          "status"
-        ],
+        "description": "A single todo item from a TodoWrite output file.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so missing fields never\ncause silent deserialization failures.",
         "properties": {
           "activeForm": {
             "type": "string",
@@ -11569,6 +11564,20 @@
           "content": {
             "type": "string",
             "description": "Todo description text."
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional unique ID (present in ~8% of items)."
+          },
+          "priority": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional priority level (present in ~1% of items)."
           },
           "status": {
             "type": "string",

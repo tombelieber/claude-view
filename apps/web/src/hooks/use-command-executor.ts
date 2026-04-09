@@ -1,4 +1,5 @@
 import type { ActiveSession } from '@claude-view/shared/types/sidecar-protocol'
+import { normalizeBlocks } from '@claude-view/shared/utils/normalize-block'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -58,7 +59,7 @@ export function useCommandExecutor(
           .then((data) =>
             dispatch({
               type: 'OLDER_HISTORY_OK',
-              blocks: data.blocks ?? [],
+              blocks: normalizeBlocks(data.blocks ?? []),
               offset: cmd.offset,
             }),
           )
@@ -271,7 +272,8 @@ export function useCommandExecutor(
             if (parsed.type === 'pong' || parsed.type === 'error') return
             // Block mode: each message is a ConversationBlock (no wrapper type field)
             if (parsed.id && parsed.type) {
-              dispatch({ type: 'TERMINAL_BLOCK', block: parsed })
+              const [normalized] = normalizeBlocks([parsed])
+              if (normalized) dispatch({ type: 'TERMINAL_BLOCK', block: normalized })
             }
           } catch {
             // Not JSON — ignore

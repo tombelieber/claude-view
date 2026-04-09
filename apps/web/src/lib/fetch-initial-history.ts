@@ -1,4 +1,5 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { normalizeBlocks } from '@claude-view/shared/utils/normalize-block'
 import { computeInitialPage } from './block-pagination'
 
 export interface HistoryResult {
@@ -36,5 +37,10 @@ export async function fetchInitialHistory(sessionId: string): Promise<HistoryRes
   if (!dataResponse.ok) throw new Error(`Failed to fetch history (${dataResponse.status})`)
   const data = await dataResponse.json()
 
-  return { type: 'HISTORY_OK', blocks: data.blocks ?? [], total, offset: tailOffset }
+  return {
+    type: 'HISTORY_OK',
+    blocks: normalizeBlocks(data.blocks ?? []),
+    total,
+    offset: tailOffset,
+  }
 }
