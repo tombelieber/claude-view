@@ -8,8 +8,10 @@
     "build": "tsup",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "npx node-gyp rebuild --directory=node_modules/node-pty 2>/dev/null || true"
   },
+  "trustedDependencies": ["node-pty"],
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.75",
     "@hono/node-server": "^1.13.0",

@@ -257,13 +257,18 @@ export function DockLayout({
     [initialLayout, onApiReady],
   )
 
-  // Sync session data into existing panels when sessions update
+  // Sync session data into existing panels when sessions update.
+  // CLI terminal panels (id starts with "cli-") have their own lifecycle
+  // and are NOT tied to the live sessions list — skip them entirely.
   useEffect(() => {
     const api = apiRef.current
     if (!api) return
 
-    // Update existing panels with fresh displayMode
+    const isCliPanel = (id: string) => id.startsWith('cli-')
+
+    // Update existing session panels with fresh displayMode
     for (const panel of api.panels) {
+      if (isCliPanel(panel.id)) continue
       const session = sessions.find((s) => s.id === panel.id)
       if (session) {
         panel.api.updateParameters({
@@ -274,8 +279,11 @@ export function DockLayout({
       }
     }
 
-    // Add panels for new sessions
+    // Add panels for new sessions.
+    // If CLI terminal panels exist, add session panels as inactive so they
+    // don't steal focus from the xterm terminal (tmux has higher precedence).
     const existingIds = new Set(api.panels.map((p) => p.id))
+    const hasCliPanels = api.panels.some((p) => isCliPanel(p.id))
     for (const session of sessions) {
       if (!existingIds.has(session.id)) {
         api.addPanel({
@@ -287,6 +295,7 @@ export function DockLayout({
             displayMode,
             status: session.status,
           },
+          inactive: hasCliPanels,
         })
       }
     }
@@ -296,7 +305,7 @@ export function DockLayout({
     // api.panels in place, which causes iterator invalidation if we iterate
     // the live array directly (same pattern as Array.prototype.filter-then-forEach).
     const currentIds = new Set(sessions.map((s) => s.id))
-    const panelsToRemove = api.panels.filter((p) => !currentIds.has(p.id))
+    const panelsToRemove = api.panels.filter((p) => !isCliPanel(p.id) && !currentIds.has(p.id))
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
     }

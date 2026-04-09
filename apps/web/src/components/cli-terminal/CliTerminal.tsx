@@ -10,7 +10,7 @@ interface CliTerminalProps {
 
 export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { isConnected, error, sendKeys, reconnect } = useCliTerminal({
+  const { isConnected, error, sendKeys, reconnect, focus } = useCliTerminal({
     tmuxSessionId,
     containerRef,
   })
@@ -31,8 +31,16 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
           {isConnected ? 'Connected' : (error ?? 'Connecting...')}
         </span>
       </div>
-      {/* Terminal container */}
-      <div ref={containerRef} className="w-full h-full pt-5" />
+      {/* Terminal container — mousedown stops propagation to prevent dockview's
+          focus management from stealing focus away from xterm's textarea */}
+      <div
+        ref={containerRef}
+        className="w-full h-full pt-5"
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          requestAnimationFrame(focus)
+        }}
+      />
       {/* Error overlay with reconnect button */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900/90">

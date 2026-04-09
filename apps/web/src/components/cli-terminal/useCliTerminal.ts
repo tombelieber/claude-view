@@ -15,6 +15,8 @@ interface UseCliTerminalResult {
   sendKeys: (data: string) => void
   /** Manually retry connection after exhausting auto-reconnect attempts. */
   reconnect: () => void
+  /** Focus the terminal so it receives keyboard input. */
+  focus: () => void
 }
 
 const TERMINAL_THEME = {
@@ -73,6 +75,8 @@ export function useCliTerminal({
         reconnectAttempts.current = 0
         const { cols, rows } = terminal
         ws.send(JSON.stringify({ type: 'resize', cols, rows }))
+        // Focus terminal so it receives keystrokes immediately
+        terminal.focus()
       })
 
       ws.addEventListener('message', (event) => {
@@ -226,5 +230,9 @@ export function useCliTerminal({
     }
   }, [tmuxSessionId, containerRef, connectWs])
 
-  return { isConnected, error, sendKeys, reconnect }
+  const focus = useCallback(() => {
+    terminalRef.current?.focus()
+  }, [])
+
+  return { isConnected, error, sendKeys, reconnect, focus }
 }

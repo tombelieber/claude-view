@@ -180,11 +180,14 @@ export function handleTerminalWebSocket(ws: WebSocket, tmuxSessionId: string): v
       const str = typeof data === 'string' ? data : data.toString('utf8')
       session.pty.write(str)
     } else {
-      // Text frame: JSON control message
+      // Text frame: JSON control message or raw keystrokes
       const str = typeof data === 'string' ? data : data.toString('utf8')
       const msg = parseClientMessage(str)
       if (msg?.type === 'resize') {
         session.pty.resize(msg.cols, msg.rows)
+      } else {
+        // Not a control message — treat as raw keystrokes
+        session.pty.write(str)
       }
     }
   })

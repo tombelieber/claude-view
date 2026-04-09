@@ -10,7 +10,7 @@ const mockUseCliTerminal = vi.fn(() => ({
 }))
 
 vi.mock('../useCliTerminal', () => ({
-  useCliTerminal: (...args: unknown[]) => mockUseCliTerminal(...args),
+  useCliTerminal: (...args: Parameters<typeof mockUseCliTerminal>) => mockUseCliTerminal(...args),
 }))
 
 // Mock xterm CSS import

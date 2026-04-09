@@ -17,7 +17,10 @@ export function NewCliSessionButton({ onSessionCreated, projectDir }: NewCliSess
       const resp = await fetch('/api/cli-sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectDir }),
+        body: JSON.stringify({
+          projectDir,
+          args: ['--dangerously-skip-permissions'],
+        }),
       })
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({ error: 'Unknown error' }))
