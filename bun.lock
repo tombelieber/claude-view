@@ -32,7 +32,7 @@
     },
     "apps/mobile": {
       "name": "@claude-view/mobile",
-      "version": "0.26.1",
+      "version": "0.33.2",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
@@ -76,7 +76,7 @@
     },
     "apps/share": {
       "name": "@claude-view/share",
-      "version": "0.26.1",
+      "version": "0.33.2",
       "dependencies": {
         "@claude-view/shared": "workspace:*",
         "@sentry/react": "^10.40.0",
@@ -99,7 +99,7 @@
     },
     "apps/web": {
       "name": "@claude-view/web",
-      "version": "0.26.1",
+      "version": "0.33.2",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@claude-view/shared": "workspace:*",
@@ -118,6 +118,9 @@
         "@tailwindcss/typography": "^0.5.19",
         "@tanstack/react-query": "^5.90.18",
         "@tanstack/react-table": "^8.21.3",
+        "@xterm/addon-fit": "^0.11.0",
+        "@xterm/addon-webgl": "^0.19.0",
+        "@xterm/xterm": "^6.0.0",
         "@xyflow/react": "^12.10.1",
         "clsx": "^2.1.1",
         "dockview": "^5.0.0",
@@ -169,11 +172,11 @@
     },
     "packages/design-tokens": {
       "name": "@claude-view/design-tokens",
-      "version": "0.26.1",
+      "version": "0.33.2",
     },
     "packages/plugin": {
       "name": "@claude-view/plugin",
-      "version": "0.26.1",
+      "version": "0.33.2",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
         "zod": "^3.24",
@@ -185,7 +188,7 @@
     },
     "packages/shared": {
       "name": "@claude-view/shared",
-      "version": "0.26.1",
+      "version": "0.33.2",
       "dependencies": {
         "@claude-view/design-tokens": "workspace:*",
         "@noble/hashes": "^2.0.1",
@@ -1694,6 +1697,12 @@
     "@vscode/l10n": ["@vscode/l10n@0.0.18", "", {}, "sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ=="],
 
     "@xmldom/xmldom": ["@xmldom/xmldom@0.8.11", "", {}, "sha512-cQzWCtO6C8TQiYl1ruKNn2U6Ao4o4WBBcbL61yJl84x+j5sOWWFU9X7DpND8XZG3daDppSsigMdfAIl2upQBRw=="],
+
+    "@xterm/addon-fit": ["@xterm/addon-fit@0.11.0", "", {}, "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g=="],
+
+    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.19.0", "", {}, "sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A=="],
+
+    "@xterm/xterm": ["@xterm/xterm@6.0.0", "", {}, "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg=="],
 
     "@xyflow/react": ["@xyflow/react@12.10.1", "", { "dependencies": { "@xyflow/system": "0.0.75", "classcat": "^5.0.3", "zustand": "^4.4.0" }, "peerDependencies": { "react": ">=17", "react-dom": ">=17" } }, "sha512-5eSWtIK/+rkldOuFbOOz44CRgQRjtS9v5nufk77DV+XBnfCGL9HAQ8PG00o2ZYKqkEU/Ak6wrKC95Tu+2zuK3Q=="],
 
