@@ -103,12 +103,12 @@ pub fn build_payload(
                 }
             },
             turn_count: if session.hook.turn_count > 0 {
-                Some(session.hook.turn_count as u32)
+                Some(session.hook.turn_count)
             } else {
                 None
             },
             edit_count: if session.jsonl.edit_count > 0 {
-                Some(session.jsonl.edit_count as u32)
+                Some(session.jsonl.edit_count)
             } else {
                 None
             },
