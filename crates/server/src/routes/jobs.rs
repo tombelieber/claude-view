@@ -148,6 +148,8 @@ mod tests {
             session_channels: Arc::new(
                 crate::live::session_ws::registry::SessionChannelRegistry::new(),
             ),
+            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         });
 
         let app = Router::new()

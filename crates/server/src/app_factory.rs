@@ -140,6 +140,8 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
 }
@@ -242,6 +244,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
 }
@@ -402,6 +406,8 @@ pub fn create_app_full(
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).

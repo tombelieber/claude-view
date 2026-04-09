@@ -193,6 +193,10 @@ pub struct AppState {
     pub local_llm: Arc<crate::local_llm::LocalLlmService>,
     /// Connection registry for multiplexed session WebSockets (Stage 1+4).
     pub session_channels: Arc<crate::live::session_ws::registry::SessionChannelRegistry>,
+    /// In-memory store for tmux-backed CLI sessions.
+    pub cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Tmux command abstraction (real in prod, mock in tests).
+    pub tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -296,6 +300,8 @@ impl AppStateBuilder {
             session_channels: Arc::new(
                 crate::live::session_ws::registry::SessionChannelRegistry::new(),
             ),
+            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         })
     }
 }
