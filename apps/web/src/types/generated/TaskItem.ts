@@ -3,7 +3,9 @@
 /**
  * A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.
  *
- * Richer than ProgressItem — includes description and dependency edges.
+ * Written by Claude Code CLI — external data we don't control.
+ * Every field uses `#[serde(default)]` so unknown/missing fields never
+ * cause silent deserialization failures.
  */
 export type TaskItem = {
   id: string
@@ -13,4 +15,5 @@ export type TaskItem = {
   status: string
   blocks: Array<string>
   blockedBy: Array<string>
+  owner: string | null
 }

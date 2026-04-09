@@ -6,20 +6,29 @@ use ts_rs::TS;
 
 /// A persistent task item from ~/.claude/tasks/{sessionId}/{id}.json.
 ///
-/// Richer than ProgressItem — includes description and dependency edges.
+/// Written by Claude Code CLI — external data we don't control.
+/// Every field uses `#[serde(default)]` so unknown/missing fields never
+/// cause silent deserialization failures.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskItem {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub subject: String,
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub active_form: String,
+    #[serde(default)]
     pub status: String,
     #[serde(default)]
     pub blocks: Vec<String>,
     #[serde(default)]
     pub blocked_by: Vec<String>,
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 /// Read all task JSON files for a session from ~/.claude/tasks/{sessionId}/.
@@ -135,5 +144,38 @@ mod tests {
         let tasks = parse_session_tasks(tmp.path(), "sess-sort");
         let ids: Vec<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
         assert_eq!(ids, vec!["1", "2", "3", "10"]);
+    }
+
+    #[test]
+    fn test_parse_tasks_without_active_form() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session_dir = tmp.path().join("sess-no-af");
+        fs::create_dir_all(&session_dir).unwrap();
+
+        // Real-world: 23% of Claude Code task files omit activeForm
+        fs::write(
+            session_dir.join("1.json"),
+            r#"{"id":"1","subject":"No activeForm","description":"desc","status":"pending","blocks":[],"blockedBy":[]}"#,
+        ).unwrap();
+        // With activeForm present
+        fs::write(
+            session_dir.join("2.json"),
+            r#"{"id":"2","subject":"Has activeForm","description":"desc","activeForm":"Working","status":"in_progress","blocks":[],"blockedBy":[]}"#,
+        ).unwrap();
+        // With extra unknown fields (owner, metadata) — must not break
+        fs::write(
+            session_dir.join("3.json"),
+            r#"{"id":"3","subject":"Extra fields","description":"","status":"completed","blocks":[],"blockedBy":[],"owner":"backend-auditor","metadata":{"_internal":true}}"#,
+        ).unwrap();
+
+        let tasks = parse_session_tasks(tmp.path(), "sess-no-af");
+        assert_eq!(
+            tasks.len(),
+            3,
+            "all 3 tasks must parse regardless of optional fields"
+        );
+        assert_eq!(tasks[0].active_form, "");
+        assert_eq!(tasks[1].active_form, "Working");
+        assert_eq!(tasks[2].owner, Some("backend-auditor".into()));
     }
 }

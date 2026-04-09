@@ -164,6 +164,7 @@ export function SessionDetailPanel({
             status: p.status,
             blocks: [] as string[],
             blockedBy: [] as string[],
+            owner: null,
           }))
       : undefined
   const tasks = hasPersistentTasks ? persistentTasks : derivedTasks
