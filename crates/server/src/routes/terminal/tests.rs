@@ -77,6 +77,8 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
             crate::auth::api_key::ApiKeyStore::default(),
         )),
         api_key_store_path: std::env::temp_dir().join("api-keys.json"),
+        webhook_config_path: std::env::temp_dir().join("notifications.json"),
+        webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
     });
 
     // Register the session in the live sessions map
@@ -303,6 +305,8 @@ async fn ws_unknown_session_returns_error() {
             crate::auth::api_key::ApiKeyStore::default(),
         )),
         api_key_store_path: std::env::temp_dir().join("api-keys.json"),
+        webhook_config_path: std::env::temp_dir().join("notifications.json"),
+        webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
     });
 
     let (addr, server_handle) = start_test_server(state).await;

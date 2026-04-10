@@ -152,6 +152,8 @@ mod tests {
                 crate::auth::api_key::ApiKeyStore::default(),
             )),
             api_key_store_path: std::env::temp_dir().join("api-keys.json"),
+            webhook_config_path: std::env::temp_dir().join("notifications.json"),
+            webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
         });
 
         let app = Router::new()

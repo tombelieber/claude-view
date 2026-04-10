@@ -52,6 +52,7 @@ pub mod telemetry;
 pub mod terminal;
 pub mod trends;
 pub mod turns;
+pub mod webhooks;
 pub mod workflows;
 
 use std::sync::Arc;
@@ -173,6 +174,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", telemetry::router())
         .nest("/api/local-llm", crate::local_llm::local_llm_routes())
         .nest("/api", auth_keys::router())
+        .nest("/api", webhooks::router())
         // Swagger UI + OpenAPI spec
         .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)
