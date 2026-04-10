@@ -107,6 +107,9 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             sidecar: Arc::new(crate::sidecar::SidecarManager::new()),
+            terminal_manager: Arc::new(
+                crate::routes::cli_sessions::terminal::TerminalManager::new(),
+            ),
             jwks: None,
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),

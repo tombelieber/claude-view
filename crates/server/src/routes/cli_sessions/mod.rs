@@ -10,7 +10,10 @@
 
 pub mod handlers;
 pub mod health;
+pub mod ring_buffer;
 pub mod store;
+pub mod terminal;
+pub mod terminal_ws;
 pub mod tmux;
 pub mod types;
 

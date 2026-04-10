@@ -185,6 +185,11 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         // /ws/chat/* sits outside the /api prefix. In dev, Vite handles this;
         // in production, the Rust server proxies to sidecar on :3001.
         .merge(sidecar_proxy::router())
+        // Rust-native terminal relay (portable-pty) — replaces sidecar WS proxy.
+        .route(
+            "/ws/terminal/{session_id}",
+            axum::routing::get(cli_sessions::terminal_ws::ws_terminal_handler),
+        )
         .with_state(state)
 }
 

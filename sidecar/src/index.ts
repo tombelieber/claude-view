@@ -13,7 +13,6 @@ import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
 import type { WorkflowEvent } from './workflow-runner.js'
-import { closeAllTerminals, handleTerminalWebSocket } from './terminal-relay.js'
 import { handleWebSocket } from './ws-handler.js'
 
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT ?? '3001')
@@ -90,21 +89,11 @@ server.on('upgrade', (request, socket, head) => {
     return
   }
 
-  // Terminal WS — tmux pty relay
-  const terminalMatch = request.url?.match(/\/ws\/terminal\/([^/?]+)/)
-  if (terminalMatch?.[1]) {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      handleTerminalWebSocket(ws, terminalMatch[1])
-    })
-    return
-  }
-
   socket.destroy()
 })
 
 async function shutdown() {
   stopModelCacheRefresh()
-  closeAllTerminals()
   wss.close()
   await registry.closeAll()
   server.close()

@@ -13,6 +13,7 @@ use crate::live::coordinator::{MutationContext, SessionCoordinator};
 use crate::live::debug_log::DebugEventLog;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
 use crate::live::state::SessionEvent;
+use crate::routes::cli_sessions::terminal::TerminalManager;
 use crate::routes::marketplace_refresh::MarketplaceRefreshTracker;
 use crate::routes::oauth::OAuthUsageResponse;
 use crate::routes::plugin_ops::PluginOpQueue;
@@ -130,6 +131,8 @@ pub struct AppState {
     /// Node.js sidecar manager for Phase F interactive control.
     /// Lazy-started on first `/api/control/*` request.
     pub sidecar: Arc<SidecarManager>,
+    /// Rust-native terminal relay manager (portable-pty).
+    pub terminal_manager: Arc<TerminalManager>,
     /// Supabase JWKS cache for JWT validation (sharing feature).
     /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
     pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
@@ -275,6 +278,7 @@ impl AppStateBuilder {
                 .unwrap_or_else(|| tokio::sync::watch::channel(false).1),
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
+            terminal_manager: Arc::new(TerminalManager::new()),
             jwks: None,
             share: None,
             auth_identity: OnceCell::new(),

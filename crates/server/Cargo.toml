@@ -97,6 +97,7 @@ hyper = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
 bytes = { workspace = true }
+portable-pty = "0.9"
 aes-gcm = "0.10.3"
 flate2 = "1.1.9"
 serde_yaml = "0.9"

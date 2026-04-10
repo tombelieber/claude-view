@@ -6,7 +6,7 @@ export default defineConfig({
   target: 'node20',
   clean: true,
   noExternal: [/.*/],
-  external: ['bufferutil', 'utf-8-validate', 'node-pty'],
+  external: ['bufferutil', 'utf-8-validate'],
   platform: 'node',
   splitting: false,
   minify: false,
