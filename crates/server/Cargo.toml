@@ -88,6 +88,8 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand = "0.8"
 base64 = { workspace = true }
+crc32fast = { workspace = true }
+hex = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 hmac = "0.12"
 sha2 = "0.10"
