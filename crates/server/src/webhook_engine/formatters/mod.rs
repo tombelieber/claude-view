@@ -4,7 +4,9 @@
 //! `build_payload` to construct one from a `LiveSession`, and
 //! `format_payload` to serialize it for a specific target platform.
 
+pub mod lark;
 pub mod raw;
+pub mod slack;
 
 use crate::webhook_engine::config::{WebhookEventType, WebhookFormat};
 use claude_view_server_live_state::core::LiveSession;
@@ -125,8 +127,8 @@ pub fn build_payload(
 pub fn format_payload(payload: &WebhookPayload, format: &WebhookFormat) -> serde_json::Value {
     match format {
         WebhookFormat::Raw => raw::format(payload),
-        WebhookFormat::Lark => serde_json::to_value(payload).unwrap(), // placeholder until Task 7
-        WebhookFormat::Slack => serde_json::to_value(payload).unwrap(), // placeholder until Task 7
+        WebhookFormat::Lark => lark::format(payload),
+        WebhookFormat::Slack => slack::format(payload),
     }
 }
 
