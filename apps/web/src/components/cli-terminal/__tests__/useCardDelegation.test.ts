@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
+import type { Mock } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCardDelegation } from '../useCardDelegation'
 
@@ -16,10 +17,10 @@ async function flushDispatchKeys(keyCount: number) {
 }
 
 describe('useCardDelegation', () => {
-  let sendKeys: ReturnType<typeof vi.fn>
+  let sendKeys: (data: string) => void
 
   beforeEach(() => {
-    sendKeys = vi.fn()
+    sendKeys = vi.fn<(data: string) => void>()
     vi.useFakeTimers()
   })
 
@@ -75,7 +76,7 @@ describe('useCardDelegation', () => {
     expect(result.current.state).toBe('sending')
 
     // Try second delegation while still sending
-    sendKeys.mockClear()
+    ;(sendKeys as Mock).mockClear()
     act(() => {
       result.current.delegateSelectOption(1)
     })

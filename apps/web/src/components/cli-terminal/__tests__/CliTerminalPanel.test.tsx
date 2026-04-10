@@ -6,6 +6,7 @@ const mockUseCliTerminal = vi.fn(() => ({
   isConnected: false,
   error: null,
   sendKeys: vi.fn(),
+  reconnect: vi.fn(),
 }))
 
 vi.mock('../useCliTerminal', () => ({
@@ -17,13 +18,14 @@ vi.mock('@xterm/xterm/css/xterm.css', () => ({}))
 
 const { CliTerminalPanel } = await import('../CliTerminalPanel')
 
+// Minimal mock of IDockviewPanelProps — only `params` is used by the component.
+function makePanelProps(tmuxSessionId: string) {
+  return { params: { tmuxSessionId } } as unknown as Parameters<typeof CliTerminalPanel>[0]
+}
+
 describe('CliTerminalPanel', () => {
   it('renders with a tmuxSessionId param', () => {
-    const props = {
-      params: { tmuxSessionId: 'test-session-123' },
-    } as Parameters<typeof CliTerminalPanel>[0]
-
-    const { container } = render(<CliTerminalPanel {...props} />)
+    const { container } = render(<CliTerminalPanel {...makePanelProps('test-session-123')} />)
 
     // The panel should render a container div (the CliTerminal wrapper)
     expect(container.firstElementChild).not.toBeNull()
@@ -34,11 +36,7 @@ describe('CliTerminalPanel', () => {
   it('passes tmuxSessionId through to CliTerminal', () => {
     mockUseCliTerminal.mockClear()
 
-    const props = {
-      params: { tmuxSessionId: 'my-tmux-sess' },
-    } as Parameters<typeof CliTerminalPanel>[0]
-
-    render(<CliTerminalPanel {...props} />)
+    render(<CliTerminalPanel {...makePanelProps('my-tmux-sess')} />)
 
     // useCliTerminal should have been called with the tmuxSessionId
     expect(mockUseCliTerminal).toHaveBeenCalledWith(
