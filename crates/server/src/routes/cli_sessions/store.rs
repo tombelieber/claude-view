@@ -10,6 +10,12 @@ pub struct CliSessionStore {
     inner: RwLock<HashMap<String, CliSession>>,
 }
 
+impl Default for CliSessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CliSessionStore {
     /// Create an empty store.
     pub fn new() -> Self {

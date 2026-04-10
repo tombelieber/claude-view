@@ -67,6 +67,12 @@ pub struct TerminalManager {
     sessions: RwLock<HashMap<String, Arc<TerminalSession>>>,
 }
 
+impl Default for TerminalManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalManager {
     pub fn new() -> Self {
         Self {

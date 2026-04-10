@@ -82,7 +82,7 @@ async fn handle_terminal_ws(socket: WebSocket, session_id: String, manager: Arc<
                     match result {
                         Ok(chunk) => {
                             if ws_tx
-                                .send(axum::extract::ws::Message::Binary(chunk.into()))
+                                .send(axum::extract::ws::Message::Binary(chunk))
                                 .await
                                 .is_err()
                             {

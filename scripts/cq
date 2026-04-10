@@ -74,6 +74,25 @@ esac
 # targets per worktree.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$COMMON_ROOT/target}"
 
+# --- two-phase for `run`: build under lock, then run without lock ---
+# `cargo run` = compile + execute. Only the compile phase needs the queue.
+# Holding the lock during execution blocks all other cq commands forever
+# (e.g. pre-push hooks can't run clippy/test while bun dev is running).
+if [[ "${1:-}" == "run" ]]; then
+  # Convert 'run' args to 'build' args (strip -- and runtime args)
+  build_args=("build")
+  for arg in "${@:2}"; do
+    [[ "$arg" == "--" ]] && break
+    build_args+=("$arg")
+  done
+
+  # Phase 1: build under the queue lock (recursive cq call)
+  "$0" "${build_args[@]}" || exit $?
+
+  # Phase 2: run without lock — binary already compiled, starts instantly
+  exec "$CARGO" "$@"
+fi
+
 # --- incremental: OFF for one-shot, ON for interactive dev loop ---
 case "${1:-}" in
   test|check|clippy|bench|doc)
