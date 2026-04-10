@@ -1,6 +1,6 @@
 # Lefthook git hooks — fast gate strategy
 # Pre-commit: format + lint (~2s)
-# Pre-push: Rust quality + supply chain (~15s)
+# Pre-push: Rust quality + codegen freshness + supply chain
 
 pre-commit:
   parallel: true
@@ -29,7 +29,9 @@ pre-push:
   parallel: true
   commands:
     clippy:
-      run: cargo clippy --workspace -- -D warnings
+      run: ./scripts/cq clippy --workspace -- -D warnings
+    generated-types:
+      run: bash scripts/ci/check-generated-types.sh
     cargo-deny:
       run: |
         # Self-healing: if advisory DB is corrupted (untracked files from

@@ -19,8 +19,13 @@
 set -euo pipefail
 
 LOCK_FILE="/tmp/claude-view-cargo.lock"
-CARGO="/opt/homebrew/bin/cargo"
+CARGO="${CARGO:-$(command -v cargo)}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ -z "$CARGO" ]]; then
+  echo "cargo not found in PATH" >&2
+  exit 1
+fi
 
 # --- sweep: prune stale incremental compilation caches ---
 if [[ "${1:-}" == "sweep" ]]; then
