@@ -25,3 +25,17 @@ Project-wide instructions for Claude/Codex-style agents working in this repo.
   - `./scripts/cq clippy --workspace -- -D warnings`
 - Why: `./scripts/cq` serializes heavy Cargo work across worktrees, shares the
   repo-common Rust `target/`, and prevents per-worktree build-cache bloat.
+
+## JS / Tooling Rules
+
+- Prefer explicit `esbuild` scripts over `tsup` for small repo-owned runtime
+  bundles when stability matters. If a wrapper build is being SIGKILLed in
+  `bun preview` or local release flows, replace the wrapper rather than
+  debugging around opaque tool behavior.
+- For workspace packages that are consumed as source and do not need a real
+  compiled artifact, the `build` script must still emit a deterministic stamp
+  file under `dist/` so Turbo task outputs stay clean. Do not rely on
+  per-package Turbo config to silence `no output files found` warnings.
+- In `happy-dom` / Vitest UI tests, provide a default `fetch` stub for local
+  `/api/*` requests in shared test setup. Do not let tests attempt real
+  localhost requests just because a component mounted without a focused mock.
