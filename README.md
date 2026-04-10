@@ -208,7 +208,8 @@ Run a local LLM for session phase classification — no API calls, no extra cost
 `@claude-view/plugin` gives Claude native access to your dashboard data — 85 MCP tools, 9 skills, and auto-start.
 
 ```bash
-claude plugin add @claude-view/plugin
+claude plugin marketplace add tombelieber/claude-view
+claude plugin install claude-view
 ```
 
 ### Auto-start
@@ -322,7 +323,7 @@ Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, Tantivy
 |--------|---------|
 | **Shell** (recommended) | `curl -fsSL https://get.claudeview.ai/install.sh \| sh` |
 | **npx** | `npx claude-view` |
-| **Plugin** (auto-start) | `claude plugin add @claude-view/plugin` |
+| **Plugin** (auto-start) | `claude plugin marketplace add tombelieber/claude-view && claude plugin install claude-view` |
 
 The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claude-view/bin`, and adds it to your PATH. Then just run `claude-view`.
 
@@ -486,7 +487,7 @@ git push origin main --tags    # triggers CI → builds → auto-publishes to np
 ## Related
 
 - **[claudeview.ai](https://claudeview.ai)** — Official website, docs, and changelog
-- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 85 MCP tools and 9 skills. `claude plugin add @claude-view/plugin`
+- **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 85 MCP tools and 9 skills. `claude plugin marketplace add tombelieber/claude-view && claude plugin install claude-view`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 
 ---
