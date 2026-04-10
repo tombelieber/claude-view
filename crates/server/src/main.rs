@@ -11,6 +11,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use clap::Parser;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 use claude_view_server::auth::supabase::fetch_decoding_key;
@@ -21,6 +22,8 @@ use claude_view_server::{
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use tracing_subscriber::FmtSubscriber;
+
+mod cli;
 
 /// Default port for the server.
 const DEFAULT_PORT: u16 = 47892;
@@ -256,9 +259,11 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    // Parse CLI arguments with clap
+    let cli_parsed = cli::Cli::parse();
+
     // Handle `claude-view cleanup` subcommand early, before any async/DB work
-    let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(|s| s.as_str()) == Some("cleanup") {
+    if let Some(cli::Cmd::Cleanup) = &cli_parsed.command {
         eprintln!("\n\u{1f9f9} claude-view cleanup\n");
         let mut actions = Vec::new();
 
@@ -282,6 +287,13 @@ async fn main() -> Result<()> {
         eprintln!();
         std::process::exit(0);
     }
+
+    // Handle query subcommands (monitor, live, stats) — these hit the running server
+    if let Some(cmd) = cli_parsed.command {
+        return cli::run(cmd).await;
+    }
+
+    // No subcommand -> start the server (rest of main continues)
 
     let startup_start = Instant::now();
 
@@ -529,6 +541,12 @@ async fn main() -> Result<()> {
     // Register Claude Code hooks with the ACTUAL bound port (may differ
     // from requested port due to auto-increment on conflict).
     claude_view_server::register_hooks(port);
+
+    // Write port file so CLI subcommands can discover the running server
+    let port_file = claude_view_core::paths::data_dir().join("port");
+    if let Err(e) = std::fs::write(&port_file, port.to_string()) {
+        tracing::warn!("Failed to write port file: {e}");
+    }
 
     // Fire server_started telemetry event (fire-and-forget, non-blocking)
     let install_source = detect_install_source();
@@ -1151,6 +1169,9 @@ async fn main() -> Result<()> {
             // This is the key step — without it, axum waits forever for open
             // SSE connections to close, and the process never exits.
             let _ = shutdown_tx.send(true);
+
+            // Remove port file so CLI subcommands don't connect to a dead server
+            let _ = std::fs::remove_file(claude_view_core::paths::data_dir().join("port"));
 
             // Clean up hooks from ~/.claude/settings.json (skip in sandbox mode)
             if std::env::var("CLAUDE_VIEW_SKIP_HOOKS").as_deref() != Ok("1") {
