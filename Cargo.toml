@@ -61,6 +61,10 @@ open = "5"
 # HTTP client (auth, sidecar proxy, telemetry)
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
 
+# Checksums and encoding
+crc32fast = "1"
+hex = "0.4"
+
 # Utilities
 base64 = "0.22"
 dirs = "5"
